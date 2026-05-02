@@ -1891,6 +1891,38 @@ async function processJob(input: any) {
     let polygonNormalizeDebug: any = null;
     try {
       if (cleanPlanes.length > 0) {
+        if (solverTopologyLocked || isSolverTopologySource()) {
+          const solverCounts = cleanEdges.reduce((acc: Record<string, number>, edge) => {
+            acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+            return acc;
+          }, {});
+          const solverShared = cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length;
+          const solverExterior = cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length;
+          planeEdgeClassifierDebug = {
+            source: "constraint_solver_topology",
+            classifier_skipped: true,
+            plane_count: cleanPlanes.length,
+            shared_edges: solverShared,
+            exterior_edges: solverExterior,
+            invalid_edges: 0,
+            counts: solverCounts,
+          };
+          strictEdgeGraphDebug = {
+            total_edges: cleanEdges.length,
+            shared_edges: solverShared,
+            exterior_edges: solverExterior,
+            invalid_edges: 0,
+          };
+          (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
+          (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
+          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using constraint solver topology as final authority");
+          console.log("[FINAL_TOPOLOGY_SOURCE]", JSON.stringify({
+            solver_used: topologySource,
+            classifier_used: false,
+            edges_from_solver: cleanEdges.length,
+            edges_from_classifier: 0,
+          }));
+        } else {
         // ── POLYGON NORMALIZATION — snap shared vertices, insert boundary
         //    points, and ensure consistent winding BEFORE classification.
         //    This fixes the "planes=N edges=0" bug where ridge splitting
@@ -1982,6 +2014,7 @@ async function processJob(input: any) {
         }));
 
         } // end else (non-hybrid classifier path)
+        } // end solver-topology bypass else
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
