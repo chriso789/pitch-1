@@ -1,99 +1,70 @@
 
-# DSM-First Autonomous Roof Graph Pipeline (Corrected)
+# Fix Autonomous Graph Solver: Stop Hallucinating Structure
 
-## Root Cause
+## Problem Summary
 
-Three bugs make the current DSM data useless:
-1. **Mask parsing is fake** — fills entire grid with `true`, never reads actual pixels
-2. **DSM GeoTIFF parsing is broken** — strip-reading loop corrupts data, falls back to all-zeros, hardcodes 50m bounds instead of reading real geo-referencing
-3. **Ridge/valley detection only finds axis-aligned lines** — diagonal features (most real hips/valleys) are invisible
+The current solver forces all detected edges into a closed planar graph, creating fake symmetry (the "X" pattern), reporting 0 valleys, and collapsing complex roofs to 4 facets. The root cause is that **edges are never pruned** and **graph closure is forced** by aggressive snapping and intersection splitting.
 
-Because DSM evidence is empty, the solver falls back to skeleton/synthesis, and complex roofs collapse to 4 planes.
+## Changes
 
-## Corrected Pipeline (7 Steps)
+### 1. Rewrite `autonomous-graph-solver.ts` — Core solver logic
 
-### Step 1 — GeoTIFF Parsing (dsm-analyzer.ts rewrite)
-- Replace hand-rolled TIFF parser with `npm:geotiff@2.1.3`
-- Read actual float32 elevation values from DSM
-- Read actual boolean mask pixels (not `fill(true)`)
-- Extract real geo-bounds from GeoTIFF ModelTiepoint + ModelPixelScale tags
+**a) Edge scoring before graph build**
+- Add a composite edge score: `gradient_strength * length * alignment_consistency * height_delta_across_edge`
+- Filter edges below threshold BEFORE any graph construction
+- Sort by score and only keep edges that naturally contribute to structure
 
-### Step 2 — Multi-Source Edge Detection (new: dsm-edge-detector.ts)
-- **DSM gradient**: Sobel operator at each pixel, detect local height maxima (ridges) and minima (valleys) along gradient direction. Connected-component analysis groups pixels into line segments at any angle. Least-squares fit through each component.
-- **RGB edges**: Canny-style edge detection on the rgbUrl imagery to confirm visible structural lines
-- **Solar azimuth**: Use segment azimuth/pitch as orientation validators for candidate edges
+**b) Stop forcing graph closure**
+- Remove the current `enforceplanarGraph` logic that splits edges at every intersection and forces connectivity
+- Replace with conservative connection: only snap if distance < 5px AND angle difference < 10 degrees
+- If edges don't naturally form intersections, DROP the weakest edge rather than bending edges to connect
+- Remove the "split segment at intersection" loop that creates fake nodes
 
-### Step 2.5 — Edge Fusion (in autonomous-graph-solver.ts)
-Each candidate edge gets a fused confidence score:
-```
-confidence = 0.5 * DSM_score + 0.3 * RGB_edge_score + 0.2 * Solar_alignment_score
-```
-Reject edges below 0.4 threshold. No synthetic edges for complex roofs.
+**c) DSM-based physics classification (the big fix)**
+- Replace the current classification which preserves initial type labels
+- For each structural edge: sample DSM perpendicular cross-section at multiple points along the edge
+- Both sides slope DOWN from edge = RIDGE
+- Both sides slope UP toward edge = VALLEY  
+- One side slopes differently = HIP
+- This alone fixes the "0 valleys" issue — valleys exist but were misclassified
 
-### Step 3 — Clip to Mask
-- All edges must lie within the actual roof mask boundary
-- Snap structural line endpoints to mask perimeter where they intersect
-- Discard any edge outside the mask
+**d) Strict facet validation**
+- Current `buildFacesFromSolarSegments` just maps solar segments to faces with empty polygons — it never validates against the graph
+- Replace with: extract closed polygons from the edge graph, then validate each polygon by fitting a DSM plane (least-squares). Discard any facet with plane-fit error above threshold
+- Only accept facets where ALL edges are real (scored above threshold), not inferred
 
-### Step 3.5 — Planar Graph Enforcement (new logic in autonomous-graph-solver.ts)
-- Snap all vertices to a 2-pixel grid (prevents near-miss intersections)
-- Split edges at every intersection point
-- Validate: edges only meet at vertices, no floating edges, closed loops exist
-- If graph is not valid: FAIL with `invalid_roof_graph`
+**e) Hard fail on under-segmented complex roofs**
+- Keep existing complexity detection but enforce it earlier
+- If the graph produces fewer facets than expected AND required fake intersections to close, fail with `ai_failed_complex_topology`
 
-### Step 4 — Build Faces
-- Extract polygons from the planar graph (face traversal)
-- Discard degenerate faces (< 3 edges, area < 10 sqft)
+### 2. Create `dsm-utils.ts` — Shared DSM sampling utilities
 
-### Step 4.5 — Canonical Edge Mapping
-- For every edge: key = sorted(start_vertex, end_vertex)
-- Build edgeMap[key] = list of face IDs sharing that edge
-- Enforce: two adjacent planes share the exact same edge coordinates (no duplicates, no near-misses)
-- Only then classify:
-  - **ridge** = 2 planes, both slope away from edge
-  - **valley** = 2 planes, both slope toward edge
-  - **hip** = mixed slope directions
-  - **eave/rake** = perimeter edge (1 face only)
+New helper file with functions the solver needs:
+- `getPerpendicularProfile(edge, dsm, width, sampleCount)` — samples elevation on both sides of an edge perpendicular to its direction, returns left/right averages and slopes
+- `fitPlaneToPolygon(polygon, dsm, width)` — least-squares plane fit to DSM pixels within a polygon, returns fit error
+- `detectClosedPolygons(edges)` — minimal cycle detection from edge list using face traversal algorithm
 
-### Step 5 — Diagram Rendering
-- Render ONLY from the overlay graph (vertices, edges, faces in pixel coordinates)
-- No templates, no normalization, no simplification
-- The diagram IS the graph — if the graph is wrong, the diagram must be wrong too (not masked by a template)
+### 3. Update `supabase/functions/measure/index.ts`
 
-### Step 6 — QA Gates
-Hard fail conditions (no fallbacks):
-- `insufficient_structural_signal` — DSM + fusion produces < 2 structural edges
-- `invalid_roof_graph` — graph enforcement fails (floating edges, unclosed loops)
-- `ai_failed_complex_topology` — complex roof (>4 segments, reflex corners) collapses to ≤4 facets
-- `coverage_ratio` outside [0.92, 1.08]
-- `graph_connected` must be true
-- Complex roofs must have ≥6 edges
+- Wire the new solver, pass DSM grid directly for classification
+- Add structured logging for edge pruning stats
 
-**No synthetic fallbacks. No skeleton fallback for complex roofs. Fail hard.**
+### 4. Update memory
 
-### Step 7 — Structured Logging
-```
-[DSM_STRUCTURE] {
-  dsm_grid_size, mask_coverage_pct,
-  ridge_lines, valley_lines, hip_lines,
-  fused_edge_count, rejected_edge_count,
-  vertices, faces, graph_valid,
-  coverage_ratio, confidence
-}
-```
+- Update `mem://features/measurement-system/autonomous-graph-solver` with the new "prune-first, don't force" philosophy
 
 ## Files Changed
 
-| File | Change |
+| File | Action |
 |------|--------|
-| `supabase/functions/measure/dsm-analyzer.ts` | Rewrite with `npm:geotiff` for real DSM + mask parsing, real geo-bounds |
-| `supabase/functions/measure/dsm-edge-detector.ts` | New file: gradient-based ridge/valley/hip detection at any angle, RGB edge confirmation |
-| `supabase/functions/measure/autonomous-graph-solver.ts` | Invert pipeline (DSM-first), add edge fusion scoring, planar graph enforcement, canonical edge mapping, shared-edge classification, remove all synthetic fallbacks |
-| `supabase/functions/measure/index.ts` | Wire new pipeline, add DSM_STRUCTURE logging, remove skeleton-as-primary path for complex roofs |
+| `supabase/functions/measure/autonomous-graph-solver.ts` | Rewrite core solver (edge scoring, conservative snapping, DSM classification, polygon-based facets) |
+| `supabase/functions/measure/dsm-utils.ts` | New: perpendicular profiling, plane fitting, polygon detection |
+| `supabase/functions/measure/index.ts` | Minor wiring updates |
+| `mem://features/measurement-system/autonomous-graph-solver` | Update blueprint |
 
-## What Changes for 4063 Fonsica
+## What changes for the 4063 Fonsica report
 
-Current: skeleton → 4-plane collapse → fake diagram
-After: DSM heights → real ridges/valleys at diagonal angles → mask clips to actual roof → enforced planar graph → 14 faces with shared edges → diagram matches aerial
-
-Or: DSM signal too weak → honest failure → human review requested
+- The fake "X" pattern disappears because weak edges are pruned before graph construction
+- Valleys appear because DSM perpendicular sampling correctly classifies edges where both sides slope upward
+- Facet count increases from 4 to 6-8 because only real DSM-validated polygons become facets
+- OR: the system honestly fails with `ai_failed_complex_topology` if DSM signal is too weak, instead of hallucinating structure
