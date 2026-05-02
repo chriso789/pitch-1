@@ -3213,6 +3213,7 @@ async function processJob(input: any) {
       source_button: input.source_button,
       engine_version: "geometry_first_v2",
       geometry_source: resolvedGeometrySource,
+      final_edge_source: finalEdgeSource,
       footprint_source: footprintSource,
       topology_source: topologySource,
       block_customer_report_reason: blockCustomerReportReason,
@@ -3244,6 +3245,21 @@ async function processJob(input: any) {
     };
 
     // Publish canonical roof_measurements row
+    const finalWriteSourceAssert = {
+      topology_source: topologySource,
+      edge_source: finalEdges?.[0]?.source,
+      final_edges_count: finalEdges?.length,
+      ridge_ft: Number(totals.ridge_length_ft) || 0,
+      hip_ft: Number(totals.hip_length_ft) || 0,
+      valley_ft: Number(totals.valley_length_ft) || 0,
+      eave_ft: Number(totals.eave_length_ft) || 0,
+      rake_ft: Number(totals.rake_length_ft) || 0,
+    };
+    console.log("[FINAL_WRITE_SOURCE_ASSERT]", JSON.stringify(finalWriteSourceAssert));
+    if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdges?.[0]?.source !== "constraint_solver_topology") {
+      throw new Error("WRONG_FINAL_EDGE_SOURCE");
+    }
+
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
       .insert({
