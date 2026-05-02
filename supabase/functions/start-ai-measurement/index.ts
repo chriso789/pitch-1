@@ -1111,6 +1111,7 @@ async function processJob(input: any) {
               confidence: 0.70,
             }));
             topologySource = "hybrid_roof_solver";
+            lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hybrid_roof_solver" };
             footprintCoverageDebug = {
@@ -1151,6 +1152,7 @@ async function processJob(input: any) {
               confidence: 0.60,
             }));
             topologySource = "hip_roof_generator_last_resort";
+            lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator_last_resort" };
             console.log("[COVERAGE_GATE] Hip-roof generator last resort", JSON.stringify({ planes: lastResort.planes.length }));
@@ -1300,6 +1302,7 @@ async function processJob(input: any) {
               confidence: 0.78,
             }));
             topologySource = "hybrid_roof_solver_primary";
+            lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = {
               ...simpleRoofTypeDebug,
@@ -1738,6 +1741,7 @@ async function processJob(input: any) {
                 confidence: 0.70,
               }));
               topologySource = "hybrid_roof_solver";
+              lockSolverTopology(topologySource);
               ridgeSplitPlaneCount = cleanPlanes.length;
               simpleRoofTypeDebug = {
                 ...simpleRoofTypeDebug,
