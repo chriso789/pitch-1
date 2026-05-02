@@ -3728,13 +3728,14 @@ Deno.serve(async (req) => {
               overlayComplexity
             );
 
-            if (overlayValidation.status === 'ai_failed_complex_topology') {
-              console.warn(`[generate-overlay] 🚫 AUTONOMOUS FAILURE: ${overlayValidation.reason}`);
+            const overlayHardFail = ['ai_failed_complex_topology', 'insufficient_structural_signal', 'invalid_roof_graph'].includes(overlayValidation.status);
+            if (overlayHardFail) {
+              console.warn(`[generate-overlay] 🚫 AUTONOMOUS FAILURE [${overlayValidation.status}]: ${overlayValidation.reason}`);
               return json({
                 ok: false,
-                error: 'Autonomous roof graph failed for complex topology',
+                error: `Autonomous roof graph failed: ${overlayValidation.status}`,
                 autonomousValidation: {
-                  status: 'ai_failed_complex_topology',
+                  status: overlayValidation.status,
                   reason: overlayValidation.reason,
                   complexity: overlayComplexity,
                 },
