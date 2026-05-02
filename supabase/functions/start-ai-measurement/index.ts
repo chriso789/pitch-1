@@ -2693,9 +2693,9 @@ async function processJob(input: any) {
       return dedupeFinalEdges([...structuralEdges, ...perimeterEaves]);
     })();
     cleanEdges = finalEdges;
-    const finalEdgeSource = solverTopologyLocked ? "constraint_solver_topology" : (finalEdges[0]?.source || "none");
+    const finalEdgeSource = finalEdges[0]?.source || "none";
     if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdgeSource !== "constraint_solver_topology") {
-      throw new Error("solver_topology_not_used_in_final_write");
+      throw new Error("WRONG_FINAL_EDGE_SOURCE");
     }
 
     const planeRows = buildPlaneRows({
@@ -2726,6 +2726,7 @@ async function processJob(input: any) {
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
     const finalWriteLog = {
       solverTopologyLocked,
+      topology_source: topologySource,
       final_edge_source: finalEdgeSource,
       final_edges_count: finalEdges.length,
       ridge_ft: Number(totals.ridge_length_ft) || 0,
