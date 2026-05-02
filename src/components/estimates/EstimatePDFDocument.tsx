@@ -123,6 +123,8 @@ interface EstimatePDFDocumentProps {
   // Multi-estimate deduplication flags
   skipCoverPage?: boolean;
   skipWarrantyAndTerms?: boolean;
+  // Per-company template style
+  templateStyle?: string | null;
 }
 
 const formatCurrency = (amount: number) => {
