@@ -33,6 +33,16 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
+// ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
+// Live AI measurement must NEVER depend on vendor ground-truth data.
+// All geometry comes from imagery, Solar API, and topology solvers only.
+const _originalFrom = (globalThis as any).__vendorGuardInstalled ? null : null;
+function assertNoVendorTruth(tableName: string) {
+  if (tableName === "measurement_ground_truth") {
+    throw new Error("vendor_truth_not_allowed_in_live_measurement");
+  }
+}
+// ──────────────────────────────────────────────────────────────────────
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
