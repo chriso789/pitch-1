@@ -831,6 +831,7 @@ async function processJob(input: any) {
     let ridgeDetectionRan = false;
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
+    let singlePlaneFallbackForbidden = false;
     let planeMergeDebug: any = null;
     let footprintCoverageDebug: any = null;
     let planeEdgeClassifierDebug: any = null;
@@ -1067,6 +1068,13 @@ async function processJob(input: any) {
             hip_roof_recovered_with_synthetic_planes: recovered,
           };
           if (recovered) return false;
+        }
+        if (singlePlaneFallbackForbidden) {
+          footprintCoverageDebug = {
+            ...footprintCoverageDebug,
+            fallback_blocked_for_large_pitched_roof: true,
+          };
+          return false;
         }
         const prior = cleanPlanes[0] || null;
         cleanPlanes = [{
