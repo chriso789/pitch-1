@@ -3624,7 +3624,7 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
-        validation_status: reviewRequired ? "flagged" : "validated",
+        validation_status: vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
           : blockCustomerReportReason,
