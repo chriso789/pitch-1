@@ -1897,6 +1897,20 @@ async function processJob(input: any) {
           pitch_degrees: p.pitch_degrees ?? null,
           azimuth: p.azimuth ?? null,
         }));
+        // When hybrid solver is the source, its edges already have correct
+        // ridge/hip/eave classification. Skip the generic classifier which
+        // would destroy those labels and reclassify everything as eave.
+        if (topologySource.startsWith("hybrid_roof_solver")) {
+          console.log("[PLANE_EDGE_CLASSIFIER] Skipped — hybrid solver edges preserved");
+          // Still ensure perimeter eaves exist
+          const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
+          strictEdgeGraphDebug = {
+            total_edges: cleanEdges.length,
+            shared_edges: cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip").length,
+            exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave").length,
+            invalid_edges: 0,
+          };
+        } else {
         const edgeResult = classifyPlaneEdges({
           planes: planesForClassifier,
           ridgeHints: ridgeHintsForClassifier,
