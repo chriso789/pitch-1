@@ -831,6 +831,7 @@ async function processJob(input: any) {
     let ridgeDetectionRan = false;
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
+    let singlePlaneFallbackForbidden = false;
     let planeMergeDebug: any = null;
     let footprintCoverageDebug: any = null;
     let planeEdgeClassifierDebug: any = null;
@@ -887,7 +888,109 @@ async function processJob(input: any) {
       return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
     };
 
+    const countAzimuthClusters = (angles: number[], toleranceDeg = 24) => {
+      const normalized = angles
+        .filter((n) => Number.isFinite(n))
+        .map((n) => ((Number(n) % 180) + 180) % 180)
+        .sort((a, b) => a - b);
+      if (!normalized.length) return 0;
+      const clusters: number[] = [];
+      for (const angle of normalized) {
+        const match = clusters.findIndex((c) => angleDiff180(c, angle) <= toleranceDeg);
+        if (match >= 0) clusters[match] = (clusters[match] + angle) / 2;
+        else clusters.push(angle);
+      }
+      return clusters.length;
+    };
+
+    const meaningfulFootprintSideCount = () =>
+      footprint.reduce((count, a, i) => {
+        const b = footprint[(i + 1) % footprint.length];
+        return count + (Math.hypot(b.x - a.x, b.y - a.y) >= 6 ? 1 : 0);
+      }, 0);
+
+    let simpleRoofTypeDebug: any = {
+      hip_roof: false,
+      gable_roof: false,
+      rake_forced_zero: false,
+      source: "undetermined",
+    };
+
+    const refreshSimpleRoofType = (stage: string) => {
+      const footprintSides = meaningfulFootprintSideCount();
+      const solarAzimuthClusters = countAzimuthClusters(
+        (solarSegments || []).map((s: any) => Number(s?.azimuthDegrees)),
+      );
+      const planeAzimuthClusters = countAzimuthClusters(
+        (cleanPlanes || []).map((p: any) => Number(p?.azimuth)),
+      );
+      const diagonalLines = Number(hipRoofDetectorDebug?.diagonal_lines_kept ?? 0);
+      const hipEvidence = footprintSides >= 4 && (
+        diagonalLines >= 2 ||
+        solarAzimuthClusters > 2 ||
+        planeAzimuthClusters >= 3
+      );
+      simpleRoofTypeDebug = {
+        hip_roof: Boolean(simpleRoofTypeDebug.hip_roof || hipEvidence),
+        gable_roof: Boolean(!simpleRoofTypeDebug.hip_roof && !hipEvidence && planeAzimuthClusters <= 2),
+        rake_forced_zero: Boolean(simpleRoofTypeDebug.rake_forced_zero),
+        stage,
+        footprint_sides: footprintSides,
+        solar_azimuth_clusters: solarAzimuthClusters,
+        plane_azimuth_clusters: planeAzimuthClusters,
+        diagonal_lines: diagonalLines,
+        source: hipEvidence ? "hip_roof_evidence" : simpleRoofTypeDebug.source,
+      };
+      return simpleRoofTypeDebug;
+    };
+
+    const applySyntheticHipRoofTopology = (source = "hip_roof_synthetic") => {
+      const synthetic = synthesizeHipPlanesFromFootprint(footprint);
+      if (!synthetic || synthetic.planes.length < 4) return false;
+      cleanPlanes = synthetic.planes.map((sp, i) => ({
+        plane_index: i + 1,
+        polygon_px: sp.polygon_px,
+        confidence: source.includes("coverage") ? 0.66 : 0.68,
+        pitch: null,
+        pitch_degrees: null,
+        azimuth: null,
+        source,
+      }));
+      cleanEdges = cleanEdges.filter((e) => e.edge_type !== "rake");
+      cleanEdges.push({
+        edge_type: "ridge",
+        line_px: [synthetic.ridgeLine.p1, synthetic.ridgeLine.p2],
+        confidence: 0.70,
+        source: `${source}_ridge`,
+      });
+      const bb = bboxOf(footprint);
+      if (bb) {
+        const corners = [
+          { x: bb.minX, y: bb.minY }, { x: bb.minX, y: bb.maxY },
+          { x: bb.maxX, y: bb.minY }, { x: bb.maxX, y: bb.maxY },
+        ];
+        for (const c of corners) {
+          const ridgeEnd = Math.hypot(c.x - synthetic.ridgeLine.p1.x, c.y - synthetic.ridgeLine.p1.y) <
+            Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
+            ? synthetic.ridgeLine.p1
+            : synthetic.ridgeLine.p2;
+          cleanEdges.push({
+            edge_type: "hip",
+            line_px: [ridgeEnd, c],
+            confidence: 0.65,
+            source: `${source}_hip`,
+          });
+        }
+      }
+      topologySource = source;
+      ridgeSplitPlaneCount = cleanPlanes.length;
+      simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source };
+      console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({ planes: cleanPlanes.length, source }));
+      return true;
+    };
+
     const classifyFootprintEdge = (a: Point, b: Point): "eave" | "rake" => {
+      if (simpleRoofTypeDebug?.hip_roof) return "eave";
       const solarAz = dominantSolarAzimuth(solarData);
       if (solarAz === null) return "eave";
       const edgeAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
@@ -956,6 +1059,23 @@ async function processJob(input: any) {
         solar_segment_exempt: isSolarSegmentSource,
       };
       if (fallbackRequired) {
+        refreshSimpleRoofType("coverage_gate_before_fallback");
+        if (simpleRoofTypeDebug.hip_roof) {
+          const recovered = applySyntheticHipRoofTopology("hip_roof_synthetic_coverage_recovery");
+          footprintCoverageDebug = {
+            ...footprintCoverageDebug,
+            fallback_blocked_by_hip_roof: true,
+            hip_roof_recovered_with_synthetic_planes: recovered,
+          };
+          if (recovered) return false;
+        }
+        if (singlePlaneFallbackForbidden) {
+          footprintCoverageDebug = {
+            ...footprintCoverageDebug,
+            fallback_blocked_for_large_pitched_roof: true,
+          };
+          return false;
+        }
         const prior = cleanPlanes[0] || null;
         cleanPlanes = [{
           plane_index: 1,
@@ -1392,65 +1512,13 @@ async function processJob(input: any) {
           console.log("[HIP_ROOF_DETECTOR]", JSON.stringify(hipResult.debug));
 
           if (hipResult.blockedSinglePlane || hipResult.isHipCandidate) {
-            // C. Hip-roof synthetic topology from footprint corners + detected diagonals
-            const synthetic = synthesizeHipPlanesFromFootprint(footprint);
-            if (synthetic && synthetic.planes.length >= 2) {
-              cleanPlanes = synthetic.planes.map((sp, i) => ({
-                plane_index: i + 1,
-                polygon_px: sp.polygon_px,
-                confidence: 0.68,
-                pitch: null,
-                pitch_degrees: null,
-                azimuth: null,
-                source: "hip_roof_synthetic",
-              }));
-              // Add the synthetic ridge
-              cleanEdges.push({
-                edge_type: "ridge",
-                line_px: [synthetic.ridgeLine.p1, synthetic.ridgeLine.p2],
-                confidence: 0.70,
-                source: "hip_roof_synthetic_ridge",
-              });
-              // Add hip edges from ridge endpoints to footprint corners
-              const bb = (() => {
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                for (const p of footprint) {
-                  if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
-                  if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
-                }
-                return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
-              })();
-              const isHz = bb.w >= bb.h;
-              // Hip lines connect ridge endpoints to the nearest short-side corners
-              const corners = isHz
-                ? [
-                    { x: bb.minX, y: bb.minY }, { x: bb.minX, y: bb.maxY },
-                    { x: bb.maxX, y: bb.minY }, { x: bb.maxX, y: bb.maxY },
-                  ]
-                : [
-                    { x: bb.minX, y: bb.minY }, { x: bb.maxX, y: bb.minY },
-                    { x: bb.minX, y: bb.maxY }, { x: bb.maxX, y: bb.maxY },
-                  ];
-              for (const c of corners) {
-                const ridgeEnd = Math.hypot(c.x - synthetic.ridgeLine.p1.x, c.y - synthetic.ridgeLine.p1.y) <
-                  Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
-                  ? synthetic.ridgeLine.p1
-                  : synthetic.ridgeLine.p2;
-                cleanEdges.push({
-                  edge_type: "hip",
-                  line_px: [ridgeEnd, c],
-                  confidence: 0.65,
-                  source: "hip_roof_synthetic_hip",
-                });
-              }
-              topologySource = "hip_roof_synthetic";
-              ridgeSplitPlaneCount = cleanPlanes.length;
-              console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({
-                planes: cleanPlanes.length,
-                ridge: synthetic.ridgeLine,
-                hip_edges: corners.length,
-              }));
-            }
+            simpleRoofTypeDebug = {
+              ...simpleRoofTypeDebug,
+              hip_roof: true,
+              gable_roof: false,
+              source: hipResult.isHipCandidate ? "hip_roof_diagonal_detector" : "large_pitched_roof_hip_guard",
+            };
+            applySyntheticHipRoofTopology("hip_roof_synthetic");
           }
         } catch (e) {
           console.warn("[HIP_ROOF_DETECTOR] failed:", (e as Error).message);
@@ -1542,7 +1610,22 @@ async function processJob(input: any) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
+    const preCoveragePitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+    singlePlaneFallbackForbidden =
+      polygonAreaPx(footprint) * actualFpp * actualFpp > 1200 &&
+      preCoveragePitchRise !== null &&
+      preCoveragePitchRise > 2;
+    if (singlePlaneFallbackForbidden) {
+      simpleRoofTypeDebug = {
+        ...simpleRoofTypeDebug,
+        hip_roof: true,
+        gable_roof: false,
+        source: "large_pitched_roof_single_plane_forbidden",
+      };
+    }
+    refreshSimpleRoofType("pre_coverage_gate");
     applyFootprintCoverageGate("pre_edge_classification");
+    refreshSimpleRoofType("pre_edge_classification");
 
     // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
     //    Build shared-boundary adjacency from the FINAL plane set, classify
@@ -1863,6 +1946,7 @@ async function processJob(input: any) {
       });
       const simpleGableEnabled = Boolean(
         roofBbox &&
+        !simpleRoofTypeDebug.hip_roof &&
         cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
         (reflexCorners === 0 || noisyReflexOnly) &&
         mostlyRectangular &&
@@ -2018,6 +2102,33 @@ async function processJob(input: any) {
       (globalThis as any).__simpleGableFinalOverride = simpleGableFinalDebug;
       console.log("[SIMPLE_GABLE_FINAL_OVERRIDE]", JSON.stringify(simpleGableFinalDebug));
     }
+
+    refreshSimpleRoofType("final_roof_type_authority");
+    if (simpleRoofTypeDebug.hip_roof) {
+      if (cleanPlanes.length < 3) {
+        applySyntheticHipRoofTopology("hip_roof_synthetic_final_recovery");
+        refreshSimpleRoofType("final_roof_type_recovered");
+      }
+      let convertedRakes = 0;
+      cleanEdges = cleanEdges.map((edge) => {
+        if (edge.edge_type !== "rake") return edge;
+        convertedRakes++;
+        return {
+          ...edge,
+          edge_type: "eave" as const,
+          source: edge.source || "hip_roof_rake_zero_guard",
+          debug_reason: [edge.debug_reason, "hip_roof_rake_forced_to_eave"].filter(Boolean).join("; "),
+        };
+      });
+      simpleRoofTypeDebug = {
+        ...simpleRoofTypeDebug,
+        hip_roof: true,
+        gable_roof: false,
+        rake_forced_zero: true,
+        converted_rake_edges: convertedRakes,
+      };
+    }
+    console.log("[SIMPLE_ROOF_TYPE]", JSON.stringify(simpleRoofTypeDebug));
 
     // Hard-fail log if edges are still 0 after all classification
     if (cleanEdges.length === 0 && footprint.length >= 3) {
@@ -2309,6 +2420,7 @@ async function processJob(input: any) {
     const ridgeFt = Number(totals.ridge_length_ft) || 0;
     const hipFt = Number(totals.hip_length_ft) || 0;
     const valleyFt = Number(totals.valley_length_ft) || 0;
+    const rakeFt = Number(totals.rake_length_ft) || 0;
     const dominantPitchRise = Number(totals.dominant_pitch) || 0;
     const isFlatRoof = dominantPitchRise > 0 && dominantPitchRise < 1.5;
 
@@ -2395,6 +2507,12 @@ async function processJob(input: any) {
       if (!sanityFailures.includes("hip_roof_detected_but_single_plane")) {
         sanityFailures.push("hip_roof_detected_but_single_plane");
       }
+    }
+    if (simpleRoofTypeDebug?.hip_roof && planeRows.length < 3) {
+      sanityFailures.push("hip_roof_requires_multi_plane");
+    }
+    if (simpleRoofTypeDebug?.hip_roof && rakeFt > 0) {
+      sanityFailures.push("hip_roof_has_invalid_rake");
     }
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
@@ -2506,6 +2624,7 @@ async function processJob(input: any) {
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
       hip_roof_detector: hipRoofDetectorDebug,
+      simple_roof_type: simpleRoofTypeDebug,
     }));
 
     const quality = scoreQuality({
@@ -2552,6 +2671,7 @@ async function processJob(input: any) {
         engine_version: "geometry_first_v2",
         footprint_source: footprintSource,
         topology_source: topologySource,
+        simple_roof_type: simpleRoofTypeDebug,
         unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
         block_customer_report_reason: blockCustomerReportReason,
         calibration: {
