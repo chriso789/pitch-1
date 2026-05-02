@@ -899,6 +899,20 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         last_price_updated: new Date().toISOString()
       },
     ];
+
+    // Underlayment (synthetic felt, ~400 sq ft coverage per roll)
+    const adjustedArea = (totalSquares * 100);
+    newLineItems.push({
+      item_category: 'material',
+      item_name: 'Synthetic Underlayment',
+      description: `Roof underlayment (${adjustedArea.toFixed(0)} sq ft ÷ 400)`,
+      quantity: Math.max(1, Math.ceil(adjustedArea / 400)),
+      unit_cost: 65,
+      unit_type: 'roll',
+      markup_percent: 25,
+      sku: 'UNDERLAY-001',
+      last_price_updated: new Date().toISOString()
+    });
     
     if (valleyFt > 0) {
       newLineItems.push({
