@@ -164,6 +164,7 @@ export function EstimatePreviewPanel({
   customerPhone,
   customerEmail,
   companyInfo,
+  templateStyle,
   materialItems,
   laborItems,
   breakdown,
