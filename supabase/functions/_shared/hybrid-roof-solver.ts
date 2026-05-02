@@ -14,6 +14,7 @@ type GeneratedEdge = {
   edge_type: "ridge" | "hip" | "eave";
   line_px: Point[];
   source: string;
+  adjacent_plane_ids?: number[];
 };
 
 type HybridSolverResult = {
@@ -194,13 +195,13 @@ function classifyEdgesFromPlanes(
       // Shared edge: ridge or hip
       // Is it on the ridge line?
       if (isOnRidgeLine(a, b, snappedR1, snappedR2, SNAP_GRID + 1)) {
-        edges.push({ edge_type: "ridge", line_px: [a, b], source });
+        edges.push({ edge_type: "ridge", line_px: [a, b], source, adjacent_plane_ids: [...planeIds] });
       } else {
-        edges.push({ edge_type: "hip", line_px: [a, b], source });
+        edges.push({ edge_type: "hip", line_px: [a, b], source, adjacent_plane_ids: [...planeIds] });
       }
     } else {
       // Unshared edge = eave (boundary of single plane = exterior)
-      edges.push({ edge_type: "eave", line_px: [a, b], source });
+      edges.push({ edge_type: "eave", line_px: [a, b], source, adjacent_plane_ids: [...planeIds] });
     }
   }
 
@@ -300,7 +301,7 @@ function partitionVertices(
 // ─── MAIN CONSTRAINT SOLVER ────────────────────────
 
 function solveConstraint(footprint: Point[]): HybridSolverResult {
-  const source = "constraint_ridge_first";
+  const source = "constraint_solver_topology";
   const ccwFootprint = ensureCCW(footprint);
   const c = centroid(ccwFootprint);
   const { ux, uy } = obbLongAxis(ccwFootprint);
