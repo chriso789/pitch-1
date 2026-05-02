@@ -56,22 +56,38 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'pipelineEntryId and measurementIds are required' }, 400);
     }
 
+    // Look up pipeline entry - check user's tenant OR allow master users to access child tenants
     const { data: pipelineEntry, error: pipelineEntryError } = await supabase
       .from('pipeline_entries')
       .select('id, tenant_id')
       .eq('id', pipelineEntryId)
-      .eq('tenant_id', tenantId)
       .single();
 
     if (pipelineEntryError || !pipelineEntry) {
       return jsonResponse({ success: false, error: 'Lead not found or access denied' }, 404);
     }
 
+    // Verify user has access: either their tenant matches the pipeline entry's tenant,
+    // or they have access via user_company_access
+    const peTenantId = pipelineEntry.tenant_id;
+    if (peTenantId !== tenantId) {
+      const { data: access } = await supabase
+        .from('user_company_access')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('company_id', peTenantId)
+        .maybeSingle();
+
+      if (!access) {
+        return jsonResponse({ success: false, error: 'Lead not found or access denied' }, 404);
+      }
+    }
+
+    // Look up measurements - they may be under the pipeline entry's tenant OR the user's tenant
     const { data: measurements, error: measurementsError } = await supabase
       .from('roof_measurements')
       .select('id, created_at')
       .in('id', measurementIds)
-      .eq('tenant_id', tenantId)
       .eq('customer_id', pipelineEntryId);
 
     if (measurementsError) throw measurementsError;
@@ -79,6 +95,7 @@ Deno.serve(async (req) => {
     const foundMeasurementIds = (measurements || []).map((measurement) => measurement.id);
     if (foundMeasurementIds.length !== measurementIds.length) {
       const missingIds = measurementIds.filter((id) => !foundMeasurementIds.includes(id));
+      console.error('Missing measurement IDs:', missingIds, 'tenantId:', tenantId, 'peTenantId:', peTenantId);
       return jsonResponse({
         success: false,
         error: missingIds.length === 1
