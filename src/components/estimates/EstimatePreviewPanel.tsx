@@ -98,6 +98,7 @@ interface EstimatePreviewPanelProps {
   customerPhone?: string | null;
   customerEmail?: string | null;
   companyInfo?: CompanyInfo | null;
+  templateStyle?: string | null;
   materialItems: LineItem[];
   laborItems: LineItem[];
   breakdown: {
