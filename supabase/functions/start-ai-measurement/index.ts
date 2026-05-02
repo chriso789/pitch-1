@@ -1847,7 +1847,11 @@ async function processJob(input: any) {
       };
     }
     refreshSimpleRoofType("pre_coverage_gate");
-    applyFootprintCoverageGate("pre_edge_classification");
+    if (!hybridSolverAccepted) {
+      applyFootprintCoverageGate("pre_edge_classification");
+    } else {
+      console.log("[COVERAGE_GATE] Skipped — hybrid solver already accepted as primary");
+    }
     refreshSimpleRoofType("pre_edge_classification");
 
     // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
