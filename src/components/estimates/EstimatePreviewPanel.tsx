@@ -1524,6 +1524,7 @@ export function EstimatePreviewPanel({
                     templateAttachments={[]}
                     jobPhotos={jobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
+                    templateStyle={templateStyle}
                   />
                   
                   {/* Additional selected estimates */}
