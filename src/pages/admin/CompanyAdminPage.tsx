@@ -581,20 +581,22 @@ const CompanyAdminPage = () => {
               Manage companies, demo requests, and feature access
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="outline"
-              onClick={seedCompanyOwners}
-              disabled={seedingOwners}
-            >
-              <Users className="h-4 w-4 mr-2" />
-              {seedingOwners ? "Creating Owners..." : "Seed Missing Owners"}
-            </Button>
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Company
-            </Button>
-          </div>
+          {currentUser?.role === 'master' && (
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline"
+                onClick={seedCompanyOwners}
+                disabled={seedingOwners}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                {seedingOwners ? "Creating Owners..." : "Seed Missing Owners"}
+              </Button>
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Company
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Main Tabs */}
