@@ -841,6 +841,100 @@ async function processJob(input: any) {
       rejected: candidates.filter((c) => c.rejected_reason).map((c) => ({ source: c.source, reason: c.rejected_reason })),
     }));
 
+    // HARD GATE: DSM graph is now the only publishable topology source.
+    // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
+    let autonomousDebug: any = null;
+    {
+      let dsmGrid: any = null;
+      let roofMask: any = null;
+      let maskedDSM: any = null;
+      try {
+        if (GOOGLE_SOLAR_API_KEY) {
+          [dsmGrid, roofMask] = await Promise.all([
+            fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+            fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+          ]);
+          maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
+        }
+      } catch (e) {
+        console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
+      }
+
+      const footprintGeo = footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+      const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
+      const graphInput: AutonomousGraphInput = {
+        lat: coords.lat,
+        lng: coords.lng,
+        footprintCoords: footprintGeo,
+        solarSegments,
+        dsmGrid,
+        maskedDSM,
+        skeletonEdges: [],
+        boundaryEdges: { eaveEdges: perimeterEdges, rakeEdges: [] },
+      };
+      const graph = solveAutonomousGraph(graphInput);
+      const complexity = detectComplexRoof(solarSegments, footprintGeo);
+      autonomousDebug = {
+        topology_source: REQUIRED_TOPOLOGY_SOURCE,
+        solver_version: "autonomous_graph_solver_v3_prune_first",
+        fallback_used: false,
+        hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
+        dsm_loaded: !!dsmGrid,
+        mask_loaded: !!roofMask,
+        edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
+        edge_filter_count_after: graph.logs?.fused_edges || 0,
+        snapped_vertex_count: graph.vertices.length,
+        rejected_fake_intersections: graph.logs?.pruned_by_intersection || 0,
+        facet_validation_errors: graph.logs?.faces_rejected_by_plane_fit || 0,
+        edge_count: graph.edges.length,
+        ridge_count: graph.edges.filter((e) => e.type === "ridge").length,
+        valley_count: graph.edges.filter((e) => e.type === "valley").length,
+        hip_count: graph.edges.filter((e) => e.type === "hip").length,
+        facet_count: graph.faces.length,
+        status: graph.validation_status,
+        complexity,
+      };
+
+      const failReason = graph.validation_status !== "validated"
+        ? graph.validation_status
+        : complexity.isComplex && graph.faces.length <= 4
+          ? "ai_failed_complex_topology"
+          : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
+            ? "invalid_roof_graph"
+            : null;
+      if (failReason) {
+        autonomousDebug.hard_fail_reason = failReason;
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
+        return;
+      }
+
+      cleanPlanes = graph.faces.map((f, i) => ({
+        plane_index: i + 1,
+        polygon_px: f.polygon.map(([lng, lat]) => lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)),
+        confidence: 0.9,
+        pitch: Math.tan((f.pitch_degrees * Math.PI) / 180) * 12,
+        pitch_degrees: f.pitch_degrees,
+        azimuth: f.azimuth_degrees,
+        source: REQUIRED_TOPOLOGY_SOURCE,
+      }));
+      cleanEdges = graph.edges.map((e) => ({
+        edge_type: e.type,
+        line_px: [
+          lngLatToPx(e.start[1], e.start[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+          lngLatToPx(e.end[1], e.end[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+        ],
+        confidence: e.confidence.final_confidence,
+        source: REQUIRED_TOPOLOGY_SOURCE,
+      } as RoofEdge));
+      topologySource = REQUIRED_TOPOLOGY_SOURCE;
+      solverTopologyLocked = true;
+      constraintSolverEdges = [...cleanEdges];
+      ridgeSplitPlaneCount = cleanPlanes.length;
+      console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
+    }
+
     // 5. Run deterministic topology on the selected footprint.
     let cleanPlanes: RoofPlane[] = [];
     let cleanEdges: RoofEdge[] = [];
