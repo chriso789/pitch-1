@@ -2924,6 +2924,128 @@ async function processJob(input: any) {
       footprint_perimeter_ft: footprintPerimeterFt,
     };
     console.log("[FINAL_MEASUREMENT_WRITE]", JSON.stringify(finalWriteLog));
+
+    // ───────── VENDOR TRUTH COMPARISON QA ─────────
+    // When a paid vendor report (EagleView, Roofr, etc.) exists for this
+    // lead/project, compare AI totals against vendor ground truth.
+    // Block synthetic 4-plane topology when vendor confirms complex roof.
+    let vendorTruthComparison: any = null;
+    try {
+      const vendorQuery = supabase
+        .from("roof_reports")
+        .select("id, parsed, report_type, provider, total_area_sqft")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (input.lead_id) vendorQuery.eq("pipeline_entry_id", input.lead_id);
+      else if (input.project_id) vendorQuery.eq("project_id", input.project_id);
+      const { data: vendorReports } = await vendorQuery;
+      const vendorReport = vendorReports?.[0] ?? null;
+
+      if (vendorReport) {
+        const p = vendorReport.parsed ?? {};
+        const vendor = {
+          area: Number(p.total_area_sqft ?? p.area_sqft ?? vendorReport.total_area_sqft ?? 0),
+          facets: Number(p.facets ?? p.facet_count ?? p.total_facets ?? 0),
+          ridge: Number(p.ridges_ft ?? p.ridge_length_ft ?? p.total_ridge_length ?? p.ridge_ft ?? 0),
+          hip: Number(p.hips_ft ?? p.hip_length_ft ?? p.total_hip_length ?? p.hip_ft ?? 0),
+          valley: Number(p.valleys_ft ?? p.valley_length_ft ?? p.total_valley_length ?? p.valley_ft ?? 0),
+          eave: Number(p.eaves_ft ?? p.eave_length_ft ?? p.total_eave_length ?? p.eave_ft ?? 0),
+          rake: Number(p.rakes_ft ?? p.rake_length_ft ?? p.total_rake_length ?? p.rake_ft ?? 0),
+        };
+        const ai = {
+          area: Number(totals.total_area_pitch_adjusted_sqft) || 0,
+          facets: planeRows.length,
+          ridge: Number(totals.ridge_length_ft) || 0,
+          hip: Number(totals.hip_length_ft) || 0,
+          valley: Number(totals.valley_length_ft) || 0,
+          eave: Number(totals.eave_length_ft) || 0,
+          rake: Number(totals.rake_length_ft) || 0,
+        };
+        const pctDelta = (a: number, b: number) => b > 0 ? Math.abs(a - b) / b * 100 : null;
+        const blocked_reasons: string[] = [];
+
+        // Rule 2: Block 4-plane synthetic when vendor shows complex roof
+        if (vendor.facets >= 8 && ai.facets <= 4) {
+          blocked_reasons.push("synthetic_template_undersegmented_complex_roof");
+          finalWriteSanityFailures.push("synthetic_template_undersegmented_complex_roof");
+        }
+
+        // Rule 3: Do not allow hip_synthetic_coverage_recovery to pass as validated
+        if (
+          vendor.facets >= 8 &&
+          (topologySource.includes("hip_roof_synthetic") || topologySource.includes("hip_roof_generator_last_resort"))
+        ) {
+          blocked_reasons.push("synthetic_topology_invalid_for_complex_vendor_roof");
+          finalWriteSanityFailures.push("synthetic_topology_invalid_for_complex_vendor_roof");
+        }
+
+        // Rule 4: Multi-wing requirement
+        const solarSegCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
+        const footprintVerts = footprint.length;
+        const reflexCorners = (() => {
+          let count = 0;
+          for (let i = 0; i < footprint.length; i++) {
+            const prev = footprint[(i - 1 + footprint.length) % footprint.length];
+            const curr = footprint[i];
+            const next = footprint[(i + 1) % footprint.length];
+            const cross = (curr.x - prev.x) * (next.y - curr.y) - (curr.y - prev.y) * (next.x - curr.x);
+            if (cross < 0) count++;
+          }
+          return count;
+        })();
+        const needsMultiWing =
+          solarSegCount >= 8 || footprintVerts >= 12 || reflexCorners >= 4 || vendor.facets >= 8;
+        if (needsMultiWing && ai.facets < 8) {
+          blocked_reasons.push("multi_wing_required_facets_insufficient");
+          if (ai.valley === 0 && vendor.valley > 10) {
+            blocked_reasons.push("valleys_required_but_missing");
+          }
+          finalWriteSanityFailures.push("multi_wing_required_but_undersegmented");
+        }
+
+        // Rule 6: QA delta checks
+        const area_delta = pctDelta(ai.area, vendor.area);
+        const ridge_delta = pctDelta(ai.ridge, vendor.ridge);
+        const hip_delta = pctDelta(ai.hip, vendor.hip);
+        const valley_delta = vendor.valley > 0 ? pctDelta(ai.valley, vendor.valley) : null;
+        const facet_delta = Math.abs(ai.facets - vendor.facets);
+        const qaFailed =
+          (area_delta !== null && area_delta > 10) ||
+          (ridge_delta !== null && ridge_delta > 35) ||
+          (hip_delta !== null && hip_delta > 35) ||
+          (valley_delta !== null && valley_delta > 35) ||
+          facet_delta > 4;
+        if (qaFailed) {
+          blocked_reasons.push("ai_does_not_match_vendor_truth");
+          finalWriteSanityFailures.push("vendor_truth_mismatch");
+        }
+
+        vendorTruthComparison = {
+          vendor_report_id: vendorReport.id,
+          vendor_facets: vendor.facets,
+          ai_facets: ai.facets,
+          vendor_area: vendor.area,
+          ai_area: ai.area,
+          vendor_ridge: vendor.ridge,
+          ai_ridge: ai.ridge,
+          vendor_hip: vendor.hip,
+          ai_hip: ai.hip,
+          vendor_valley: vendor.valley,
+          ai_valley: ai.valley,
+          vendor_eave: vendor.eave,
+          ai_eave: ai.eave,
+          vendor_rake: vendor.rake,
+          ai_rake: ai.rake,
+          deltas: { area_delta, ridge_delta, hip_delta, valley_delta, facet_delta },
+          blocked_reasons,
+          needs_internal_review: qaFailed,
+        };
+        console.log("[VENDOR_TRUTH_COMPARISON]", JSON.stringify(vendorTruthComparison));
+      }
+    } catch (vendorErr) {
+      console.warn("[VENDOR_TRUTH_COMPARISON] lookup failed:", (vendorErr as Error).message);
+    }
+
     if (simpleRoofTypeDebug.hip_roof && finalWriteLog.eave_ft > footprintPerimeterFt * 1.15) {
       finalWriteSanityFailures.push("eave_length_inflated");
     }
