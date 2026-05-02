@@ -532,19 +532,17 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
     const loadMeasurementData = async () => {
       try {
-        // Priority 1: Check roof_measurements (where start-ai-measurement writes)
-        const { data: roofMeasurement } = await supabase
-          .from('roof_measurements')
-          .select(`
-            id, total_area_adjusted_sqft, total_squares, predominant_pitch,
-            total_ridge_length, total_hip_length, total_valley_length,
-            total_eave_length, total_rake_length, waste_factor_percent,
-            total_area_flat_sqft
-          `)
-          .eq('customer_id', pipelineEntryId)
-          .order('created_at', { ascending: false })
+        // Priority 1: Check measurement_approvals (saved via "Save to Estimates" button)
+        const { data: approvedMeasurement } = await supabase
+          .from('measurement_approvals')
+          .select('id, approved_at, saved_tags, pipeline_entry_id, measurement_id, approval_notes')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('approved_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+        
+        // Extract roof data from approved measurement's saved_tags
+        const savedTags = (approvedMeasurement?.saved_tags as Record<string, any>) || null;
 
         // Priority 2: Fallback to legacy measurements table
         const { data: activeMeasurement } = await supabase
@@ -585,42 +583,42 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           let roofAreaSqFt = 0;
           let comprehensiveMeasurements: any = null;
           
-          // Priority 1: Use roof_measurements (AI measurement engine output)
-          if (roofMeasurement?.total_area_adjusted_sqft && roofMeasurement.total_area_adjusted_sqft > 0) {
-            roofAreaSqFt = roofMeasurement.total_area_adjusted_sqft;
+          // Priority 1: Use approved measurement (saved via "Save to Estimates" button)
+          if (savedTags && Number(savedTags['roof.total_sqft'] || 0) > 0) {
+            roofAreaSqFt = Number(savedTags['roof.total_sqft']);
+            const totalSquares = Number(savedTags['roof.squares'] || roofAreaSqFt / 100);
             comprehensiveMeasurements = {
               adjustedArea: roofAreaSqFt,
-              adjustedSquares: roofMeasurement.total_squares || roofAreaSqFt / 100,
+              adjustedSquares: totalSquares,
               summary: {
                 total_area_sqft: roofAreaSqFt,
-                total_squares: roofMeasurement.total_squares || roofAreaSqFt / 100,
-                waste_pct: roofMeasurement.waste_factor_percent || 10,
-                pitch: roofMeasurement.predominant_pitch || '6/12',
-                perimeter: (roofMeasurement.total_eave_length || 0) + (roofMeasurement.total_rake_length || 0),
-                ridge_ft: roofMeasurement.total_ridge_length || 0,
-                hip_ft: roofMeasurement.total_hip_length || 0,
-                valley_ft: roofMeasurement.total_valley_length || 0,
-                eave_ft: roofMeasurement.total_eave_length || 0,
-                rake_ft: roofMeasurement.total_rake_length || 0,
+                total_squares: totalSquares,
+                waste_pct: 10,
+                pitch: savedTags['roof.predominant_pitch'] || '6/12',
+                perimeter: Number(savedTags['lf.perimeter'] || 0),
+                ridge_ft: Number(savedTags['lf.ridge'] || 0),
+                hip_ft: Number(savedTags['lf.hip'] || 0),
+                valley_ft: Number(savedTags['lf.valley'] || 0),
+                eave_ft: Number(savedTags['lf.eave'] || 0),
+                rake_ft: Number(savedTags['lf.rake'] || 0),
               },
-              // Provide tags format for autoPopulateLineItems compatibility
               tags: {
-                'lf.ridge': roofMeasurement.total_ridge_length || 0,
-                'lf.hip': roofMeasurement.total_hip_length || 0,
-                'lf.valley': roofMeasurement.total_valley_length || 0,
-                'lf.eave': roofMeasurement.total_eave_length || 0,
-                'lf.rake': roofMeasurement.total_rake_length || 0,
+                'lf.ridge': Number(savedTags['lf.ridge'] || 0),
+                'lf.hip': Number(savedTags['lf.hip'] || 0),
+                'lf.valley': Number(savedTags['lf.valley'] || 0),
+                'lf.eave': Number(savedTags['lf.eave'] || 0),
+                'lf.rake': Number(savedTags['lf.rake'] || 0),
               },
               linear_features: {
-                ridge: roofMeasurement.total_ridge_length || 0,
-                hip: roofMeasurement.total_hip_length || 0,
-                valley: roofMeasurement.total_valley_length || 0,
-                eave: roofMeasurement.total_eave_length || 0,
-                rake: roofMeasurement.total_rake_length || 0,
+                ridge: Number(savedTags['lf.ridge'] || 0),
+                hip: Number(savedTags['lf.hip'] || 0),
+                valley: Number(savedTags['lf.valley'] || 0),
+                eave: Number(savedTags['lf.eave'] || 0),
+                rake: Number(savedTags['lf.rake'] || 0),
               },
-              pitch: roofMeasurement.predominant_pitch || '6/12',
+              pitch: savedTags['roof.predominant_pitch'] || '6/12',
             };
-            console.log('✅ Using AI roof_measurements:', roofAreaSqFt, 'sq ft, pitch:', roofMeasurement.predominant_pitch);
+            console.log('✅ Using approved measurement:', roofAreaSqFt, 'sq ft, pitch:', savedTags['roof.predominant_pitch']);
           }
           // Priority 2: Legacy measurements table
           else {
