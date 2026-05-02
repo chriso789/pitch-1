@@ -1602,7 +1602,9 @@ async function processJob(input: any) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
+    refreshSimpleRoofType("pre_coverage_gate");
     applyFootprintCoverageGate("pre_edge_classification");
+    refreshSimpleRoofType("pre_edge_classification");
 
     // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
     //    Build shared-boundary adjacency from the FINAL plane set, classify
@@ -1923,6 +1925,7 @@ async function processJob(input: any) {
       });
       const simpleGableEnabled = Boolean(
         roofBbox &&
+        !simpleRoofTypeDebug.hip_roof &&
         cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
         (reflexCorners === 0 || noisyReflexOnly) &&
         mostlyRectangular &&
@@ -2078,6 +2081,33 @@ async function processJob(input: any) {
       (globalThis as any).__simpleGableFinalOverride = simpleGableFinalDebug;
       console.log("[SIMPLE_GABLE_FINAL_OVERRIDE]", JSON.stringify(simpleGableFinalDebug));
     }
+
+    refreshSimpleRoofType("final_roof_type_authority");
+    if (simpleRoofTypeDebug.hip_roof) {
+      if (cleanPlanes.length < 3) {
+        applySyntheticHipRoofTopology("hip_roof_synthetic_final_recovery");
+        refreshSimpleRoofType("final_roof_type_recovered");
+      }
+      let convertedRakes = 0;
+      cleanEdges = cleanEdges.map((edge) => {
+        if (edge.edge_type !== "rake") return edge;
+        convertedRakes++;
+        return {
+          ...edge,
+          edge_type: "eave" as const,
+          source: edge.source || "hip_roof_rake_zero_guard",
+          debug_reason: [edge.debug_reason, "hip_roof_rake_forced_to_eave"].filter(Boolean).join("; "),
+        };
+      });
+      simpleRoofTypeDebug = {
+        ...simpleRoofTypeDebug,
+        hip_roof: true,
+        gable_roof: false,
+        rake_forced_zero: true,
+        converted_rake_edges: convertedRakes,
+      };
+    }
+    console.log("[SIMPLE_ROOF_TYPE]", JSON.stringify(simpleRoofTypeDebug));
 
     // Hard-fail log if edges are still 0 after all classification
     if (cleanEdges.length === 0 && footprint.length >= 3) {
