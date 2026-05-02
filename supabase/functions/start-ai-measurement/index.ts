@@ -1787,7 +1787,7 @@ async function processJob(input: any) {
     // ── PLANE CONSOLIDATION — drop tiny noise planes, merge near-duplicates,
     //    cap at maxPlanes. This collapses 47-plane over-splits into 4–10.
     let planeConsolidationStats: { before: number; after: number; dropped: number; merged: number } | null = null;
-    if (cleanPlanes.length > 0) {
+    if (cleanPlanes.length > 0 && !solverTopologyLocked) {
       const consolidated = consolidatePlanes(cleanPlanes, {
         minAreaPx: 400,
         maxPlanes: 12,
@@ -1811,6 +1811,13 @@ async function processJob(input: any) {
     //    exceed footprint_area * 1.08.
     let footprintConstraintStats: any = null;
     try {
+      if (solverTopologyLocked) {
+        footprintConstraintStats = {
+          skipped: true,
+          reason: "solver_topology_locked",
+          overall_rejected: false,
+        };
+      } else {
       const fcRidgeInput = (cleanEdges as any[])
         .filter((e) => e && (e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"))
         .map((e, i) => ({
@@ -1849,6 +1856,7 @@ async function processJob(input: any) {
           const eid = e.id != null ? String(e.id) : `edge_${i}`;
           return !rejectedRidgeIds.has(eid);
         }) as typeof cleanEdges;
+      }
       }
     } catch (e) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
