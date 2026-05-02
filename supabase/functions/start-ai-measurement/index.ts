@@ -1262,7 +1262,7 @@ async function processJob(input: any) {
             planes: hybridResult.planes.length,
             edges: hybridResult.edges.length,
             roofType: hybridResult.roofType,
-            ridgeLength: hybridResult.ridgeLine ? dist(hybridResult.ridgeLine.p1, hybridResult.ridgeLine.p2) : 0,
+            ridgeLength: hybridResult.ridgeLine ? Math.sqrt((hybridResult.ridgeLine.p1.x - hybridResult.ridgeLine.p2.x) ** 2 + (hybridResult.ridgeLine.p1.y - hybridResult.ridgeLine.p2.y) ** 2) : 0,
             debug: hybridResult.debug,
           }));
 
