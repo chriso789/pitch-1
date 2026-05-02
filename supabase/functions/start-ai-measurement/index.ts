@@ -2414,12 +2414,12 @@ async function processJob(input: any) {
 
     refreshSimpleRoofType("final_roof_type_authority");
     if (simpleRoofTypeDebug.hip_roof) {
-      if (cleanPlanes.length < 3) {
+      if (!solverTopologyLocked && cleanPlanes.length < 3) {
         applySyntheticHipRoofTopology("hip_roof_synthetic_final_recovery");
         refreshSimpleRoofType("final_roof_type_recovered");
       }
       let convertedRakes = 0;
-      cleanEdges = cleanEdges.map((edge) => {
+      cleanEdges = (solverTopologyLocked ? constraintSolverEdges : cleanEdges).map((edge) => {
         if (edge.edge_type !== "rake") return edge;
         convertedRakes++;
         return {
@@ -2429,6 +2429,7 @@ async function processJob(input: any) {
           debug_reason: [edge.debug_reason, "hip_roof_rake_forced_to_eave"].filter(Boolean).join("; "),
         };
       });
+      if (solverTopologyLocked) constraintSolverEdges = [...cleanEdges];
       simpleRoofTypeDebug = {
         ...simpleRoofTypeDebug,
         hip_roof: true,
