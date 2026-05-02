@@ -2931,26 +2931,31 @@ async function processJob(input: any) {
     // Block synthetic 4-plane topology when vendor confirms complex roof.
     let vendorTruthComparison: any = null;
     try {
-      const vendorQuery = supabase
-        .from("roof_reports")
-        .select("id, parsed, report_type, provider, total_area_sqft")
+      // Look up vendor ground truth from measurement_ground_truth table (Roofr, EagleView, etc.)
+      // Match by tenant_id and address proximity.
+      const { data: vendorReports } = await supabase
+        .from("measurement_ground_truth")
+        .select("id, source, total_area_sqft, facet_count, ridge_total_ft, hip_total_ft, valley_total_ft, eave_total_ft, rake_total_ft, pitch, raw_report_data, address")
+        .eq("tenant_id", input.tenant_id)
         .order("created_at", { ascending: false })
-        .limit(1);
-      if (input.lead_id) vendorQuery.eq("pipeline_entry_id", input.lead_id);
-      else if (input.project_id) vendorQuery.eq("project_id", input.project_id);
-      const { data: vendorReports } = await vendorQuery;
-      const vendorReport = vendorReports?.[0] ?? null;
+        .limit(10);
+
+      // Find a report matching this address (fuzzy: normalize and compare)
+      const normalizeAddr = (a: string) => (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const targetAddr = normalizeAddr(input.property_address || "");
+      const vendorReport = (vendorReports || []).find((r: any) =>
+        targetAddr && normalizeAddr(r.address || "").includes(targetAddr.slice(0, 20))
+      ) ?? (vendorReports || [])[0] ?? null;
 
       if (vendorReport) {
-        const p = vendorReport.parsed ?? {};
         const vendor = {
-          area: Number(p.total_area_sqft ?? p.area_sqft ?? vendorReport.total_area_sqft ?? 0),
-          facets: Number(p.facets ?? p.facet_count ?? p.total_facets ?? 0),
-          ridge: Number(p.ridges_ft ?? p.ridge_length_ft ?? p.total_ridge_length ?? p.ridge_ft ?? 0),
-          hip: Number(p.hips_ft ?? p.hip_length_ft ?? p.total_hip_length ?? p.hip_ft ?? 0),
-          valley: Number(p.valleys_ft ?? p.valley_length_ft ?? p.total_valley_length ?? p.valley_ft ?? 0),
-          eave: Number(p.eaves_ft ?? p.eave_length_ft ?? p.total_eave_length ?? p.eave_ft ?? 0),
-          rake: Number(p.rakes_ft ?? p.rake_length_ft ?? p.total_rake_length ?? p.rake_ft ?? 0),
+          area: Number(vendorReport.total_area_sqft ?? 0),
+          facets: Number(vendorReport.facet_count ?? 0),
+          ridge: Number(vendorReport.ridge_total_ft ?? 0),
+          hip: Number(vendorReport.hip_total_ft ?? 0),
+          valley: Number(vendorReport.valley_total_ft ?? 0),
+          eave: Number(vendorReport.eave_total_ft ?? 0),
+          rake: Number(vendorReport.rake_total_ft ?? 0),
         };
         const ai = {
           area: Number(totals.total_area_pitch_adjusted_sqft) || 0,
