@@ -532,7 +532,21 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
     const loadMeasurementData = async () => {
       try {
-        // First, check if there's an ACTIVE verified measurement in the measurements table
+        // Priority 1: Check roof_measurements (where start-ai-measurement writes)
+        const { data: roofMeasurement } = await supabase
+          .from('roof_measurements')
+          .select(`
+            id, total_area_adjusted_sqft, total_squares, predominant_pitch,
+            total_ridge_length, total_hip_length, total_valley_length,
+            total_eave_length, total_rake_length, waste_factor_percent,
+            total_area_flat_sqft
+          `)
+          .eq('customer_id', pipelineEntryId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        // Priority 2: Fallback to legacy measurements table
         const { data: activeMeasurement } = await supabase
           .from('measurements')
           .select('id, summary, linear_features')
@@ -568,26 +582,62 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           const metadata = (pipelineEntry.metadata as any) || {};
           const contact = pipelineEntry.contacts as any;
           
-          // CRITICAL FIX: Only use measurements if there's an ACTIVE measurement in the database
-          // Don't show cached/stale metadata if no active measurement exists
           let roofAreaSqFt = 0;
           let comprehensiveMeasurements: any = null;
           
-          const summary = activeMeasurement?.summary as any;
-          if (summary?.total_area_sqft) {
-            // Use verified measurement from database
-            roofAreaSqFt = summary.total_area_sqft;
-            const metaComprehensive = (metadata.comprehensive_measurements || {}) as any;
+          // Priority 1: Use roof_measurements (AI measurement engine output)
+          if (roofMeasurement?.total_area_adjusted_sqft && roofMeasurement.total_area_adjusted_sqft > 0) {
+            roofAreaSqFt = roofMeasurement.total_area_adjusted_sqft;
             comprehensiveMeasurements = {
-              ...metaComprehensive,
               adjustedArea: roofAreaSqFt,
-              adjustedSquares: roofAreaSqFt / 100,
-              ...summary
+              adjustedSquares: roofMeasurement.total_squares || roofAreaSqFt / 100,
+              summary: {
+                total_area_sqft: roofAreaSqFt,
+                total_squares: roofMeasurement.total_squares || roofAreaSqFt / 100,
+                waste_pct: roofMeasurement.waste_factor_percent || 10,
+                pitch: roofMeasurement.predominant_pitch || '6/12',
+                perimeter: (roofMeasurement.total_eave_length || 0) + (roofMeasurement.total_rake_length || 0),
+                ridge_ft: roofMeasurement.total_ridge_length || 0,
+                hip_ft: roofMeasurement.total_hip_length || 0,
+                valley_ft: roofMeasurement.total_valley_length || 0,
+                eave_ft: roofMeasurement.total_eave_length || 0,
+                rake_ft: roofMeasurement.total_rake_length || 0,
+              },
+              // Provide tags format for autoPopulateLineItems compatibility
+              tags: {
+                'lf.ridge': roofMeasurement.total_ridge_length || 0,
+                'lf.hip': roofMeasurement.total_hip_length || 0,
+                'lf.valley': roofMeasurement.total_valley_length || 0,
+                'lf.eave': roofMeasurement.total_eave_length || 0,
+                'lf.rake': roofMeasurement.total_rake_length || 0,
+              },
+              linear_features: {
+                ridge: roofMeasurement.total_ridge_length || 0,
+                hip: roofMeasurement.total_hip_length || 0,
+                valley: roofMeasurement.total_valley_length || 0,
+                eave: roofMeasurement.total_eave_length || 0,
+                rake: roofMeasurement.total_rake_length || 0,
+              },
+              pitch: roofMeasurement.predominant_pitch || '6/12',
             };
-            console.log('✅ Using ACTIVE verified measurement:', roofAreaSqFt, 'sq ft');
-          } else {
-            // No active measurement - don't show stale cached data
-            console.log('⚠️ No active measurement found - not displaying stale cached data');
+            console.log('✅ Using AI roof_measurements:', roofAreaSqFt, 'sq ft, pitch:', roofMeasurement.predominant_pitch);
+          }
+          // Priority 2: Legacy measurements table
+          else {
+            const summary = activeMeasurement?.summary as any;
+            if (summary?.total_area_sqft) {
+              roofAreaSqFt = summary.total_area_sqft;
+              const metaComprehensive = (metadata.comprehensive_measurements || {}) as any;
+              comprehensiveMeasurements = {
+                ...metaComprehensive,
+                adjustedArea: roofAreaSqFt,
+                adjustedSquares: roofAreaSqFt / 100,
+                ...summary
+              };
+              console.log('✅ Using legacy ACTIVE measurement:', roofAreaSqFt, 'sq ft');
+            } else {
+              console.log('⚠️ No measurement found in roof_measurements or measurements table');
+            }
           }
           
           const hasValidMeasurements = roofAreaSqFt > 0;
