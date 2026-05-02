@@ -2479,6 +2479,7 @@ async function processJob(input: any) {
       });
       const simpleGableEnabled = Boolean(
         roofBbox &&
+        !solverTopologyLocked &&
         !simpleRoofTypeDebug.hip_roof &&
         cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
         (reflexCorners === 0 || noisyReflexOnly) &&
@@ -3016,6 +3017,27 @@ async function processJob(input: any) {
     });
 
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+    const legacyHardFailReason = topologySource !== REQUIRED_TOPOLOGY_SOURCE ? "legacy_topology_blocked" : null;
+    if (legacyHardFailReason) {
+      const failedDebug = {
+        ...(autonomousDebug || {}),
+        topology_source: topologySource,
+        solver_version: "autonomous_graph_solver_v3_prune_first",
+        fallback_used: true,
+        hard_fail_reason: legacyHardFailReason,
+        dsm_loaded: Boolean(autonomousDebug?.dsm_loaded),
+        mask_loaded: Boolean(autonomousDebug?.mask_loaded),
+        edge_filter_count_before: autonomousDebug?.edge_filter_count_before ?? 0,
+        edge_filter_count_after: autonomousDebug?.edge_filter_count_after ?? 0,
+        snapped_vertex_count: autonomousDebug?.snapped_vertex_count ?? 0,
+        rejected_fake_intersections: autonomousDebug?.rejected_fake_intersections ?? 0,
+        facet_validation_errors: autonomousDebug?.facet_validation_errors ?? 0,
+      };
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, legacyHardFailReason, failedDebug, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${legacyHardFailReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${legacyHardFailReason}`);
+      return;
+    }
     const finalWriteLog = {
       solverTopologyLocked,
       topology_source: topologySource,
