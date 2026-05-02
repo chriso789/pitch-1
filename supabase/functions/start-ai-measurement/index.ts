@@ -1094,9 +1094,9 @@ async function processJob(input: any) {
               ...e,
               confidence: 0.70,
             }));
-            topologySource = "hip_roof_generator";
+            topologySource = "hybrid_roof_solver";
             ridgeSplitPlaneCount = cleanPlanes.length;
-            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator" };
+            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hybrid_roof_solver" };
             footprintCoverageDebug = {
               ...footprintCoverageDebug,
               fallback_replaced_by_hip_generator: true,
@@ -1665,7 +1665,7 @@ async function processJob(input: any) {
                 ...e,
                 confidence: 0.70,
               }));
-              topologySource = "hip_roof_generator";
+              topologySource = "hybrid_roof_solver";
               ridgeSplitPlaneCount = cleanPlanes.length;
               simpleRoofTypeDebug = {
                 ...simpleRoofTypeDebug,
