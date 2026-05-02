@@ -1,15 +1,6 @@
 // supabase/functions/_shared/hybrid-roof-solver.ts
 // Constraint-based roof solver: Ridge defines planes, planes define edges.
-// Replaces centroid-fan and per-edge-plane approaches that explode vertex count.
-//
-// Core idea: For ANY footprint (4 vertices or 40), we:
-//   1. Find the dominant ridge axis (longest axis of footprint)
-//   2. Build a single inset ridge line
-//   3. Partition footprint vertices into 4 groups:
-//      - Left eave, Right eave, Hip-end-A, Hip-end-B
-//   4. Build exactly 4 planes: 2 trapezoids (eave sides) + 2 triangles (hip ends)
-//   5. Clip all planes to footprint polygon (Sutherland-Hodgman)
-//   6. Deduplicate edges
+// v3: Vertex snapping + exact edge adjacency for reliable ridge/hip/valley classification.
 
 type Point = { x: number; y: number };
 
@@ -35,6 +26,19 @@ type HybridSolverResult = {
 
 // ─── GEOMETRY HELPERS ───────────────────────────────
 
+const SNAP_GRID = 2; // px — all vertices snap to this grid
+
+function snap(p: Point): Point {
+  return {
+    x: Math.round(p.x / SNAP_GRID) * SNAP_GRID,
+    y: Math.round(p.y / SNAP_GRID) * SNAP_GRID,
+  };
+}
+
+function snapPoly(poly: Point[]): Point[] {
+  return poly.map(snap);
+}
+
 function dist(a: Point, b: Point): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
@@ -45,7 +49,6 @@ function centroid(poly: Point[]): Point {
   return { x: x / poly.length, y: y / poly.length };
 }
 
-/** Signed area of a polygon (positive = CCW) */
 function polygonArea(poly: Point[]): number {
   let area = 0;
   for (let i = 0; i < poly.length; i++) {
@@ -56,10 +59,6 @@ function polygonArea(poly: Point[]): number {
   return area / 2;
 }
 
-/**
- * Oriented Bounding Box: find the direction that minimizes the bounding
- * rectangle width. Returns the long-axis unit vector.
- */
 function obbLongAxis(poly: Point[]): { ux: number; uy: number } {
   let bestUx = 1, bestUy = 0, bestRatio = 0;
   const c = centroid(poly);
@@ -88,22 +87,13 @@ function obbLongAxis(poly: Point[]): { ux: number; uy: number } {
   return { ux: bestUx, uy: bestUy };
 }
 
-function projectOntoAxis(
-  poly: Point[],
-  c: Point,
-  ux: number,
-  uy: number
-): number[] {
+function projectOntoAxis(poly: Point[], c: Point, ux: number, uy: number): number[] {
   return poly.map((p) => (p.x - c.x) * ux + (p.y - c.y) * uy);
 }
 
 // ─── SUTHERLAND-HODGMAN POLYGON CLIPPING ────────────
 
-function clipPolygonByEdge(
-  polygon: Point[],
-  edgeA: Point,
-  edgeB: Point
-): Point[] {
+function clipPolygonByEdge(polygon: Point[], edgeA: Point, edgeB: Point): Point[] {
   if (polygon.length === 0) return [];
   const output: Point[] = [];
   const inside = (p: Point) =>
@@ -114,7 +104,6 @@ function clipPolygonByEdge(
     const next = polygon[(i + 1) % polygon.length];
     const curIn = inside(current);
     const nextIn = inside(next);
-
     if (curIn) output.push(current);
     if (curIn !== nextIn) {
       const ix = intersect(edgeA, edgeB, current, next);
@@ -133,47 +122,111 @@ function intersect(a1: Point, a2: Point, b1: Point, b2: Point): Point | null {
   return { x: a1.x + t * dx1, y: a1.y + t * dy1 };
 }
 
-/** Clip subject polygon to clip polygon using Sutherland-Hodgman */
 function clipPolygon(subject: Point[], clip: Point[]): Point[] {
   let output = [...subject];
   for (let i = 0; i < clip.length; i++) {
     if (output.length === 0) break;
-    const edgeA = clip[i];
-    const edgeB = clip[(i + 1) % clip.length];
-    output = clipPolygonByEdge(output, edgeA, edgeB);
+    output = clipPolygonByEdge(output, clip[i], clip[(i + 1) % clip.length]);
   }
   return output;
 }
 
-/** Ensure footprint is CCW for clipping */
 function ensureCCW(poly: Point[]): Point[] {
   if (polygonArea(poly) < 0) return [...poly].reverse();
   return poly;
 }
 
-// ─── EDGE DEDUPLICATION ─────────────────────────────
+// ─── CANONICAL EDGE KEY (EXACT MATCH AFTER SNAP) ────
 
-function edgeKey(a: Point, b: Point, tolerance: number = 4): string {
-  const r = (n: number) => Math.round(n / tolerance);
-  const k1 = `${r(a.x)},${r(a.y)}|${r(b.x)},${r(b.y)}`;
-  const k2 = `${r(b.x)},${r(b.y)}|${r(a.x)},${r(a.y)}`;
-  return k1 < k2 ? k1 : k2;
+function ptKey(p: Point): string {
+  return `${p.x},${p.y}`;
 }
 
-function deduplicateEdges(edges: GeneratedEdge[]): { deduped: GeneratedEdge[]; removed: number } {
-  const seen = new Set<string>();
-  const deduped: GeneratedEdge[] = [];
-  let removed = 0;
-  for (const e of edges) {
-    if (e.line_px.length < 2) { removed++; continue; }
-    const key = edgeKey(e.line_px[0], e.line_px[e.line_px.length - 1]);
-    if (seen.has(key)) { removed++; continue; }
-    // Drop zero-length edges
-    if (dist(e.line_px[0], e.line_px[e.line_px.length - 1]) < 2) { removed++; continue; }
-    seen.add(key);
-    deduped.push(e);
+function canonicalEdgeKey(a: Point, b: Point): string {
+  const ka = ptKey(a);
+  const kb = ptKey(b);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
+// ─── EDGE CLASSIFICATION VIA ADJACENCY GRAPH ────────
+
+function classifyEdgesFromPlanes(
+  planes: GeneratedPlane[],
+  ridgeP1: Point,
+  ridgeP2: Point,
+  source: string
+): GeneratedEdge[] {
+  // Build adjacency: for every edge segment, record which plane IDs touch it
+  const adjacency = new Map<string, Set<number>>();
+
+  for (const plane of planes) {
+    const verts = plane.polygon_px;
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % verts.length];
+      const key = canonicalEdgeKey(a, b);
+      if (!adjacency.has(key)) adjacency.set(key, new Set());
+      adjacency.get(key)!.add(plane.plane_index);
+    }
   }
-  return { deduped, removed };
+
+  const snappedR1 = snap(ridgeP1);
+  const snappedR2 = snap(ridgeP2);
+
+  const edges: GeneratedEdge[] = [];
+  const emittedKeys = new Set<string>();
+
+  for (const [key, planeIds] of adjacency.entries()) {
+    if (emittedKeys.has(key)) continue;
+    emittedKeys.add(key);
+
+    // Parse the two endpoints back out
+    const [partA, partB] = key.split("|");
+    const [ax, ay] = partA.split(",").map(Number);
+    const [bx, by] = partB.split(",").map(Number);
+    const a: Point = { x: ax, y: ay };
+    const b: Point = { x: bx, y: by };
+
+    // Skip zero-length
+    if (dist(a, b) < 1) continue;
+
+    if (planeIds.size >= 2) {
+      // Shared edge: ridge or hip
+      // Is it on the ridge line?
+      if (isOnRidgeLine(a, b, snappedR1, snappedR2, SNAP_GRID + 1)) {
+        edges.push({ edge_type: "ridge", line_px: [a, b], source });
+      } else {
+        edges.push({ edge_type: "hip", line_px: [a, b], source });
+      }
+    } else {
+      // Unshared edge = eave (boundary of single plane = exterior)
+      edges.push({ edge_type: "eave", line_px: [a, b], source });
+    }
+  }
+
+  console.log("[EDGE_ADJACENCY]", JSON.stringify({
+    total_unique_edges: adjacency.size,
+    shared_2plus: [...adjacency.values()].filter(s => s.size >= 2).length,
+    emitted: edges.length,
+    ridge: edges.filter(e => e.edge_type === "ridge").length,
+    hip: edges.filter(e => e.edge_type === "hip").length,
+    eave: edges.filter(e => e.edge_type === "eave").length,
+  }));
+
+  return edges;
+}
+
+function isOnRidgeLine(a: Point, b: Point, r1: Point, r2: Point, tol: number): boolean {
+  return distToSegment(a, r1, r2) < tol && distToSegment(b, r1, r2) < tol;
+}
+
+function distToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-10) return dist(p, a);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return dist(p, { x: a.x + t * dx, y: a.y + t * dy });
 }
 
 // ─── VERTEX PARTITION ───────────────────────────────
@@ -183,8 +236,6 @@ function partitionVertices(
   c: Point,
   ux: number,
   uy: number,
-  _ridgeP1: Point,
-  _ridgeP2: Point,
   insetFrac: number
 ): { leftEave: Point[]; rightEave: Point[]; hipA: Point[]; hipB: Point[] } {
   const nx = -uy, ny = ux;
@@ -200,8 +251,8 @@ function partitionVertices(
   const rightEave: Point[] = [];
   const hipA: Point[] = [];
   const hipB: Point[] = [];
-
   const eaveZone: { p: Point; cross: number }[] = [];
+
   for (let i = 0; i < poly.length; i++) {
     const p = poly[i];
     const proj = projections[i];
@@ -220,11 +271,8 @@ function partitionVertices(
     const crossValues = eaveZone.map((e) => e.cross).sort((a, b) => a - b);
     const medianCross = crossValues[Math.floor(crossValues.length / 2)];
     for (const e of eaveZone) {
-      if (e.cross < medianCross) {
-        leftEave.push(e.p);
-      } else {
-        rightEave.push(e.p);
-      }
+      if (e.cross < medianCross) leftEave.push(e.p);
+      else rightEave.push(e.p);
     }
   }
 
@@ -249,72 +297,6 @@ function partitionVertices(
   return { leftEave, rightEave, hipA, hipB };
 }
 
-// ─── BUILD EDGES FROM CLIPPED PLANES ────────────────
-
-function buildEdgesFromClippedPlanes(
-  planes: GeneratedPlane[],
-  ridgeP1: Point,
-  ridgeP2: Point,
-  source: string
-): GeneratedEdge[] {
-  const edges: GeneratedEdge[] = [];
-
-  // Ridge
-  edges.push({ edge_type: "ridge", line_px: [ridgeP1, ridgeP2], source });
-
-  // For each plane, walk its perimeter and classify edges
-  for (const plane of planes) {
-    const verts = plane.polygon_px;
-    for (let i = 0; i < verts.length; i++) {
-      const a = verts[i];
-      const b = verts[(i + 1) % verts.length];
-      
-      // Check if this edge segment lies on the ridge line
-      if (isOnRidgeLine(a, b, ridgeP1, ridgeP2, 4)) continue; // ridge already added
-      
-      // Check if this edge is shared between two planes (hip)
-      const shared = isSharedEdge(a, b, planes, plane.plane_index, 4);
-      if (shared) {
-        edges.push({ edge_type: "hip", line_px: [a, b], source });
-      } else {
-        edges.push({ edge_type: "eave", line_px: [a, b], source });
-      }
-    }
-  }
-
-  return edges;
-}
-
-function isOnRidgeLine(a: Point, b: Point, r1: Point, r2: Point, tol: number): boolean {
-  // Check if both endpoints are near the ridge line
-  return distToSegment(a, r1, r2) < tol && distToSegment(b, r1, r2) < tol;
-}
-
-function distToSegment(p: Point, a: Point, b: Point): number {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 < 1e-10) return dist(p, a);
-  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return dist(p, { x: a.x + t * dx, y: a.y + t * dy });
-}
-
-function isSharedEdge(a: Point, b: Point, planes: GeneratedPlane[], excludeIdx: number, tol: number): boolean {
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  for (const p of planes) {
-    if (p.plane_index === excludeIdx) continue;
-    // Check if midpoint of this edge is close to any edge of the other plane
-    for (let i = 0; i < p.polygon_px.length; i++) {
-      const c = p.polygon_px[i];
-      const d = p.polygon_px[(i + 1) % p.polygon_px.length];
-      if (distToSegment(mid, c, d) < tol && distToSegment(a, c, d) < tol * 2 && distToSegment(b, c, d) < tol * 2) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // ─── MAIN CONSTRAINT SOLVER ────────────────────────
 
 function solveConstraint(footprint: Point[]): HybridSolverResult {
@@ -329,20 +311,21 @@ function solveConstraint(footprint: Point[]): HybridSolverResult {
   const span = maxProj - minProj;
 
   const insetFrac = 0.25;
-  const ridgeP1: Point = {
+  // Snap ridge endpoints to the grid so they match clipped plane vertices
+  const ridgeP1 = snap({
     x: c.x + ux * (minProj + span * insetFrac),
     y: c.y + uy * (minProj + span * insetFrac),
-  };
-  const ridgeP2: Point = {
+  });
+  const ridgeP2 = snap({
     x: c.x + ux * (maxProj - span * insetFrac),
     y: c.y + uy * (maxProj - span * insetFrac),
-  };
+  });
 
   const { leftEave, rightEave, hipA, hipB } = partitionVertices(
-    ccwFootprint, c, ux, uy, ridgeP1, ridgeP2, insetFrac
+    ccwFootprint, c, ux, uy, insetFrac
   );
 
-  // Build raw planes (may extend past footprint)
+  // Build raw planes using snapped ridge points
   const rawPlanes: GeneratedPlane[] = [];
 
   if (leftEave.length >= 1) {
@@ -374,46 +357,34 @@ function solveConstraint(footprint: Point[]): HybridSolverResult {
     });
   }
 
-  // ─── CLIP ALL PLANES TO FOOTPRINT ──────────────
+  // ─── CLIP ALL PLANES TO FOOTPRINT, THEN SNAP ──────
   const footprintArea = Math.abs(polygonArea(ccwFootprint));
   const clippedPlanes: GeneratedPlane[] = [];
   let planesDiscarded = 0;
-  let beforeAreaTotal = 0;
   let afterAreaTotal = 0;
 
   for (const plane of rawPlanes) {
-    const beforeArea = Math.abs(polygonArea(plane.polygon_px));
-    beforeAreaTotal += beforeArea;
-
     const clipped = clipPolygon(plane.polygon_px, ccwFootprint);
     if (clipped.length < 3) { planesDiscarded++; continue; }
 
-    const afterArea = Math.abs(polygonArea(clipped));
+    // CRITICAL: Snap all clipped vertices to the grid so shared edges have identical coords
+    const snapped = snapPoly(clipped);
+    const afterArea = Math.abs(polygonArea(snapped));
     if (afterArea < footprintArea * 0.05) { planesDiscarded++; continue; }
 
     afterAreaTotal += afterArea;
-    clippedPlanes.push({ ...plane, polygon_px: clipped });
+    clippedPlanes.push({ ...plane, polygon_px: snapped });
   }
 
   console.log("[PLANE_CLIP]", JSON.stringify({
-    before_area: Math.round(beforeAreaTotal),
     after_area: Math.round(afterAreaTotal),
     footprint_area: Math.round(footprintArea),
     planes_kept: clippedPlanes.length,
     planes_discarded: planesDiscarded,
   }));
 
-  // ─── BUILD EDGES FROM CLIPPED PLANES ───────────
-  const rawEdges = buildEdgesFromClippedPlanes(clippedPlanes, ridgeP1, ridgeP2, source);
-
-  // ─── DEDUPLICATE EDGES ─────────────────────────
-  const { deduped, removed } = deduplicateEdges(rawEdges);
-
-  console.log("[EDGE_DEDUPE]", JSON.stringify({
-    raw_edges: rawEdges.length,
-    deduped_edges: deduped.length,
-    removed_duplicates: removed,
-  }));
+  // ─── CLASSIFY EDGES VIA EXACT ADJACENCY ────────
+  const edges = classifyEdgesFromPlanes(clippedPlanes, ridgeP1, ridgeP2, source);
 
   // ─── AREA CONSISTENCY CHECK ────────────────────
   const sumPlaneArea = clippedPlanes.reduce((s, p) => s + Math.abs(polygonArea(p.polygon_px)), 0);
@@ -425,14 +396,12 @@ function solveConstraint(footprint: Point[]): HybridSolverResult {
       ratio: areaRatio.toFixed(3),
     }));
   } else {
-    console.log("[AREA_CHECK] OK", JSON.stringify({
-      ratio: areaRatio.toFixed(3),
-    }));
+    console.log("[AREA_CHECK] OK", JSON.stringify({ ratio: areaRatio.toFixed(3) }));
   }
 
   return {
     planes: clippedPlanes,
-    edges: deduped,
+    edges,
     ridgeLine: { p1: ridgeP1, p2: ridgeP2 },
     roofType: clippedPlanes.length <= 2 ? "gable" : "hip",
     debug: {
@@ -441,7 +410,10 @@ function solveConstraint(footprint: Point[]): HybridSolverResult {
       planes: clippedPlanes.length,
       ridge_length: dist(ridgeP1, ridgeP2),
       area_ratio: areaRatio.toFixed(3),
-      edge_dedup: { raw: rawEdges.length, final: deduped.length, removed },
+      edges_total: edges.length,
+      edges_ridge: edges.filter(e => e.edge_type === "ridge").length,
+      edges_hip: edges.filter(e => e.edge_type === "hip").length,
+      edges_eave: edges.filter(e => e.edge_type === "eave").length,
       partition: {
         leftEave: leftEave.length,
         rightEave: rightEave.length,
@@ -469,12 +441,13 @@ export function solveHybridRoof(footprint: Point[]): HybridSolverResult {
 
   console.log("[CONSTRAINT_SOLVER]", JSON.stringify({
     roofType: result.roofType,
-    method: result.debug.method,
     planes: result.planes.length,
     edges: result.edges.length,
+    ridge: result.debug.edges_ridge,
+    hip: result.debug.edges_hip,
+    eave: result.debug.edges_eave,
     ridgeLength: result.ridgeLine ? dist(result.ridgeLine.p1, result.ridgeLine.p2) : 0,
     area_ratio: result.debug.area_ratio,
-    partition: result.debug.partition,
   }));
 
   return result;
