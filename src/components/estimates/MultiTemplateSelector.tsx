@@ -857,7 +857,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Fetch tenant info for company branding
       const { data: tenant } = await supabaseClient
         .from('tenants')
-        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms, established_year, brand_story, brand_mission, brand_certifications')
+        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms, established_year, brand_story, brand_mission, brand_certifications, proposal_template_style')
         .eq('id', tenantId)
         .single();
 
