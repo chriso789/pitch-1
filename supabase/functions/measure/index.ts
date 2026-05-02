@@ -9,7 +9,7 @@
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
-import { analyzeDSM, fetchDSMFromGoogleSolar, detectRidgeLinesFromDSM, detectValleyLinesFromDSM, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "./dsm-analyzer.ts";
+import { analyzeDSM, fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "./dsm-analyzer.ts";
 import { splitFootprintIntoFacets } from "./facet-splitter.ts";
 import { validateMeasurements } from "./qa-validator.ts";
 import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-schema.ts";
@@ -1537,13 +1537,25 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     console.log(`🧠 COMPLEX ROOF DETECTED: ${complexity.reasons.join('; ')} → expected ≥${complexity.expectedMinFacets} facets`);
   }
 
-  // Attempt autonomous graph solve with DSM evidence
+  // Attempt autonomous graph solve with DSM + mask evidence (DSM-first pipeline)
   let dsmGridForSolver = null;
+  let maskedDSMForSolver = null;
   if (GOOGLE_PLACES_API_KEY) {
     try {
-      dsmGridForSolver = await fetchDSMFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY);
+      // Fetch both DSM and mask in parallel for real data
+      const [dsmResult, maskResult] = await Promise.all([
+        fetchDSMFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY),
+        fetchRoofMaskFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY),
+      ]);
+      dsmGridForSolver = dsmResult;
+      
+      // Apply mask to DSM if both available
+      if (dsmGridForSolver && maskResult) {
+        maskedDSMForSolver = applyMaskToDSM(dsmGridForSolver, maskResult);
+        console.log('[providerGoogleSolar] DSM + mask fused for autonomous solver');
+      }
     } catch (dsmErr) {
-      console.warn('[providerGoogleSolar] DSM fetch failed (non-fatal):', dsmErr);
+      console.warn('[providerGoogleSolar] DSM/mask fetch failed (non-fatal):', dsmErr);
     }
   }
 
@@ -1555,7 +1567,8 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     footprintCoords: coords,
     solarSegments: roofSegments,
     dsmGrid: dsmGridForSolver,
-    skeletonEdges: skeleton.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'),
+    maskedDSM: maskedDSMForSolver,
+    skeletonEdges: complexity.isComplex ? [] : skeleton.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'),
     boundaryEdges: {
       eaveEdges: boundaryClass.eaveEdges,
       rakeEdges: boundaryClass.rakeEdges,
@@ -1564,10 +1577,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
 
   const autonomousResult = solveAutonomousGraph(autonomousInput);
 
-  // AUTONOMOUS VALIDATION GATE: Block 4-plane collapse on complex roofs
-  if (autonomousResult.validation_status === 'ai_failed_complex_topology') {
-    console.warn(`🚫 AUTONOMOUS FAILURE: ${autonomousResult.failure_reason}`);
-    console.warn(`   → NOT generating customer report. Status: needs_review`);
+  // AUTONOMOUS VALIDATION GATE: Block all hard failures (no synthetic fallbacks)
+  const isHardFail = ['ai_failed_complex_topology', 'insufficient_structural_signal', 'invalid_roof_graph'].includes(autonomousResult.validation_status);
+  if (isHardFail) {
+    console.warn(`🚫 AUTONOMOUS FAILURE [${autonomousResult.validation_status}]: ${autonomousResult.failure_reason}`);
+    console.warn(`   → NOT generating customer report. Requires human review.`);
     // Return a result marked as failed - caller must handle this
     const failResult = {
       property_id: "",
@@ -3697,6 +3711,9 @@ Deno.serve(async (req) => {
           // Step 5.5: AUTONOMOUS VALIDATION GATE for generate-overlay
           const overlayComplexity = detectComplexRoof(googleSolarSegments, coords);
           if (overlayComplexity.isComplex) {
+            const structuralEdgeCount = dsmAnalysis.refinedEdges.filter(e => 
+              e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'
+            ).length;
             const overlayValidation = validateAutonomousResult(
               {
                 facetCount: splitResult.facets.length,
@@ -3704,18 +3721,21 @@ Deno.serve(async (req) => {
                 ridgeCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'ridge').length,
                 hipCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'hip').length,
                 graphConnected: dsmAnalysis.refinedEdges.length > 0,
+                graphValid: dsmAnalysis.refinedEdges.length > 0,
                 coverageRatio: splitResult.facets.reduce((s, f) => s + f.planArea, 0) / polygonAreaSqftFromLngLat(coords),
+                structuralEdgeCount,
               },
               overlayComplexity
             );
 
-            if (overlayValidation.status === 'ai_failed_complex_topology') {
-              console.warn(`[generate-overlay] 🚫 AUTONOMOUS FAILURE: ${overlayValidation.reason}`);
+            const overlayHardFail = ['ai_failed_complex_topology', 'insufficient_structural_signal', 'invalid_roof_graph'].includes(overlayValidation.status);
+            if (overlayHardFail) {
+              console.warn(`[generate-overlay] 🚫 AUTONOMOUS FAILURE [${overlayValidation.status}]: ${overlayValidation.reason}`);
               return json({
                 ok: false,
-                error: 'Autonomous roof graph failed for complex topology',
+                error: `Autonomous roof graph failed: ${overlayValidation.status}`,
                 autonomousValidation: {
-                  status: 'ai_failed_complex_topology',
+                  status: overlayValidation.status,
                   reason: overlayValidation.reason,
                   complexity: overlayComplexity,
                 },
