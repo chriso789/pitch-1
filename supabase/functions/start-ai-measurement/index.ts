@@ -2924,6 +2924,133 @@ async function processJob(input: any) {
       footprint_perimeter_ft: footprintPerimeterFt,
     };
     console.log("[FINAL_MEASUREMENT_WRITE]", JSON.stringify(finalWriteLog));
+
+    // ───────── VENDOR TRUTH COMPARISON QA ─────────
+    // When a paid vendor report (EagleView, Roofr, etc.) exists for this
+    // lead/project, compare AI totals against vendor ground truth.
+    // Block synthetic 4-plane topology when vendor confirms complex roof.
+    let vendorTruthComparison: any = null;
+    try {
+      // Look up vendor ground truth from measurement_ground_truth table (Roofr, EagleView, etc.)
+      // Match by tenant_id and address proximity.
+      const { data: vendorReports } = await supabase
+        .from("measurement_ground_truth")
+        .select("id, source, total_area_sqft, facet_count, ridge_total_ft, hip_total_ft, valley_total_ft, eave_total_ft, rake_total_ft, pitch, raw_report_data, address")
+        .eq("tenant_id", input.tenant_id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      // Find a report matching this address (fuzzy: normalize and compare)
+      const normalizeAddr = (a: string) => (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const targetAddr = normalizeAddr(input.property_address || "");
+      const vendorReport = (vendorReports || []).find((r: any) =>
+        targetAddr && normalizeAddr(r.address || "").includes(targetAddr.slice(0, 20))
+      ) ?? (vendorReports || [])[0] ?? null;
+
+      if (vendorReport) {
+        const vendor = {
+          area: Number(vendorReport.total_area_sqft ?? 0),
+          facets: Number(vendorReport.facet_count ?? 0),
+          ridge: Number(vendorReport.ridge_total_ft ?? 0),
+          hip: Number(vendorReport.hip_total_ft ?? 0),
+          valley: Number(vendorReport.valley_total_ft ?? 0),
+          eave: Number(vendorReport.eave_total_ft ?? 0),
+          rake: Number(vendorReport.rake_total_ft ?? 0),
+        };
+        const ai = {
+          area: Number(totals.total_area_pitch_adjusted_sqft) || 0,
+          facets: planeRows.length,
+          ridge: Number(totals.ridge_length_ft) || 0,
+          hip: Number(totals.hip_length_ft) || 0,
+          valley: Number(totals.valley_length_ft) || 0,
+          eave: Number(totals.eave_length_ft) || 0,
+          rake: Number(totals.rake_length_ft) || 0,
+        };
+        const pctDelta = (a: number, b: number) => b > 0 ? Math.abs(a - b) / b * 100 : null;
+        const blocked_reasons: string[] = [];
+
+        // Rule 2: Block 4-plane synthetic when vendor shows complex roof
+        if (vendor.facets >= 8 && ai.facets <= 4) {
+          blocked_reasons.push("synthetic_template_undersegmented_complex_roof");
+          finalWriteSanityFailures.push("synthetic_template_undersegmented_complex_roof");
+        }
+
+        // Rule 3: Do not allow hip_synthetic_coverage_recovery to pass as validated
+        if (
+          vendor.facets >= 8 &&
+          (topologySource.includes("hip_roof_synthetic") || topologySource.includes("hip_roof_generator_last_resort"))
+        ) {
+          blocked_reasons.push("synthetic_topology_invalid_for_complex_vendor_roof");
+          finalWriteSanityFailures.push("synthetic_topology_invalid_for_complex_vendor_roof");
+        }
+
+        // Rule 4: Multi-wing requirement
+        const solarSegCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
+        const footprintVerts = footprint.length;
+        const reflexCorners = (() => {
+          let count = 0;
+          for (let i = 0; i < footprint.length; i++) {
+            const prev = footprint[(i - 1 + footprint.length) % footprint.length];
+            const curr = footprint[i];
+            const next = footprint[(i + 1) % footprint.length];
+            const cross = (curr.x - prev.x) * (next.y - curr.y) - (curr.y - prev.y) * (next.x - curr.x);
+            if (cross < 0) count++;
+          }
+          return count;
+        })();
+        const needsMultiWing =
+          solarSegCount >= 8 || footprintVerts >= 12 || reflexCorners >= 4 || vendor.facets >= 8;
+        if (needsMultiWing && ai.facets < 8) {
+          blocked_reasons.push("multi_wing_required_facets_insufficient");
+          if (ai.valley === 0 && vendor.valley > 10) {
+            blocked_reasons.push("valleys_required_but_missing");
+          }
+          finalWriteSanityFailures.push("multi_wing_required_but_undersegmented");
+        }
+
+        // Rule 6: QA delta checks
+        const area_delta = pctDelta(ai.area, vendor.area);
+        const ridge_delta = pctDelta(ai.ridge, vendor.ridge);
+        const hip_delta = pctDelta(ai.hip, vendor.hip);
+        const valley_delta = vendor.valley > 0 ? pctDelta(ai.valley, vendor.valley) : null;
+        const facet_delta = Math.abs(ai.facets - vendor.facets);
+        const qaFailed =
+          (area_delta !== null && area_delta > 10) ||
+          (ridge_delta !== null && ridge_delta > 35) ||
+          (hip_delta !== null && hip_delta > 35) ||
+          (valley_delta !== null && valley_delta > 35) ||
+          facet_delta > 4;
+        if (qaFailed) {
+          blocked_reasons.push("ai_does_not_match_vendor_truth");
+          finalWriteSanityFailures.push("vendor_truth_mismatch");
+        }
+
+        vendorTruthComparison = {
+          vendor_report_id: vendorReport.id,
+          vendor_facets: vendor.facets,
+          ai_facets: ai.facets,
+          vendor_area: vendor.area,
+          ai_area: ai.area,
+          vendor_ridge: vendor.ridge,
+          ai_ridge: ai.ridge,
+          vendor_hip: vendor.hip,
+          ai_hip: ai.hip,
+          vendor_valley: vendor.valley,
+          ai_valley: ai.valley,
+          vendor_eave: vendor.eave,
+          ai_eave: ai.eave,
+          vendor_rake: vendor.rake,
+          ai_rake: ai.rake,
+          deltas: { area_delta, ridge_delta, hip_delta, valley_delta, facet_delta },
+          blocked_reasons,
+          needs_internal_review: qaFailed,
+        };
+        console.log("[VENDOR_TRUTH_COMPARISON]", JSON.stringify(vendorTruthComparison));
+      }
+    } catch (vendorErr) {
+      console.warn("[VENDOR_TRUTH_COMPARISON] lookup failed:", (vendorErr as Error).message);
+    }
+
     if (simpleRoofTypeDebug.hip_roof && finalWriteLog.eave_ft > footprintPerimeterFt * 1.15) {
       finalWriteSanityFailures.push("eave_length_inflated");
     }
@@ -3184,7 +3311,8 @@ async function processJob(input: any) {
 
     const blockCustomerReportReason: string | null =
       sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason;
-    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure");
+    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure")
+      || vendorTruthComparison?.needs_internal_review === true;
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
@@ -3336,6 +3464,7 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      vendor_truth_comparison: vendorTruthComparison,
        status: needsInternalReview ? "needs_internal_review" : (Boolean(blockCustomerReportReason) || quality.overall_score < 0.80) ? "needs_review" : "completed",
       reason: blockCustomerReportReason,
       pdf_source_signature: pdfSourceSignature,
@@ -3444,6 +3573,7 @@ async function processJob(input: any) {
       roof_target_bbox_px: roofTargetBboxPx,
       roof_target_source: roofTargetSource,
       geometry_px_space: "raster_calibrated",
+      vendor_truth_comparison: vendorTruthComparison,
     };
 
     // Publish canonical roof_measurements row
@@ -3499,8 +3629,10 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
-        validation_status: reviewRequired ? "flagged" : "validated",
-        validation_notes: blockCustomerReportReason,
+        validation_status: vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
+        validation_notes: vendorTruthComparison?.blocked_reasons?.length
+          ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
+          : blockCustomerReportReason,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
