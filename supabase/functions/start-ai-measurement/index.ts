@@ -4558,6 +4558,73 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
     ...(status === "failed" ? { failure_reason: msg } : {}),
   }).eq("id", id);
 }
+
+async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
+  const aiDetectionData = {
+    topology_source: debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
+    solver_version: debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
+    fallback_used: Boolean(debug?.fallback_used),
+    hard_fail_reason: failureReason,
+    failure_reason: failureReason,
+    validation_status: "failed",
+    measurement_confidence: 0,
+    planes: [],
+    edges: [],
+    totals: { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
+    dsm_loaded: Boolean(debug?.dsm_loaded),
+    mask_loaded: Boolean(debug?.mask_loaded),
+    edge_filter_count_before: Number(debug?.edge_filter_count_before || 0),
+    edge_filter_count_after: Number(debug?.edge_filter_count_after || 0),
+    snapped_vertex_count: Number(debug?.snapped_vertex_count || 0),
+    rejected_fake_intersections: Number(debug?.rejected_fake_intersections || 0),
+    facet_validation_errors: Number(debug?.facet_validation_errors || 0),
+    debug,
+  };
+
+  const { data, error } = await supabase.from("roof_measurements").insert({
+    tenant_id: input.tenant_id,
+    customer_id: input.lead_id || null,
+    lead_id: input.lead_id,
+    project_id: input.project_id,
+    source_record_type: input.source_record_type,
+    source_record_id: input.source_record_id,
+    ai_measurement_job_id: input.ai_measurement_job_id,
+    property_address: input.property_address,
+    gps_coordinates: { lat: coords.lat, lng: coords.lng },
+    target_lat: coords.lat,
+    target_lng: coords.lng,
+    mapbox_image_url: imageUrl,
+    meters_per_pixel: mpp,
+    ai_detection_data: aiDetectionData,
+    ai_analysis: aiDetectionData,
+    ai_model_version: "autonomous_graph_solver_v3_prune_first",
+    detection_timestamp: new Date().toISOString(),
+    detection_confidence: 0,
+    measurement_confidence: 0,
+    geometry_quality_score: 0,
+    measurement_quality_score: 0,
+    requires_manual_review: true,
+    manual_review_recommended: true,
+    validation_status: "failed",
+    validation_notes: failureReason,
+    facet_count: 0,
+    edge_count: 0,
+    total_ridge_length: 0,
+    total_hip_length: 0,
+    total_valley_length: 0,
+    total_eave_length: 0,
+    total_rake_length: 0,
+    linear_features_wkt: [],
+    metadata: aiDetectionData,
+    gate_decision: "failed",
+    gate_reason: failureReason,
+    source_button: input.source_button,
+    engine_version: "autonomous_graph_solver_v3_prune_first",
+    engine_used: "autonomous_dsm_graph_solver",
+  }).select("id").single();
+  if (error) throw error;
+  return data.id as string;
+}
 function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0; }
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
