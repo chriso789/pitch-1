@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Plus, Edit, Trash2, GripVertical, ArrowUp, ArrowDown, Loader2, AlertTriangle, Palette } from 'lucide-react';
+import { Plus, Edit, Trash2, GripVertical, ArrowUp, ArrowDown, Loader2, AlertTriangle, Palette, ArrowRightCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -26,6 +27,7 @@ interface PipelineStage {
   stage_order: number;
   probability_percent: number;
   is_active: boolean;
+  is_conversion_point: boolean;
   color: string;
   auto_actions: unknown;
   created_at: string;
@@ -398,6 +400,42 @@ export const PipelineStageManager: React.FC = () => {
     }
   };
 
+  const toggleConversionPoint = async (stageId: string) => {
+    const stage = stages.find(s => s.id === stageId);
+    if (!stage) return;
+
+    const newValue = !stage.is_conversion_point;
+
+    try {
+      // If setting this stage as conversion point, clear any existing one first
+      if (newValue) {
+        await supabase
+          .from('pipeline_stages')
+          .update({ is_conversion_point: false, updated_at: new Date().toISOString() })
+          .eq('tenant_id', effectiveTenantId)
+          .eq('is_conversion_point', true);
+      }
+
+      const { error } = await supabase
+        .from('pipeline_stages')
+        .update({ is_conversion_point: newValue, updated_at: new Date().toISOString() })
+        .eq('id', stageId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: newValue
+          ? `"${stage.name}" is now the conversion point — leads reaching this stage become projects`
+          : `"${stage.name}" is no longer the conversion point`
+      });
+      fetchStages();
+    } catch (error) {
+      console.error('Error toggling conversion point:', error);
+      toast({ title: 'Error', description: 'Failed to update conversion point', variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -496,9 +534,37 @@ export const PipelineStageManager: React.FC = () => {
                       <Badge variant="outline" className="shrink-0">
                         {stage.probability_percent}%
                       </Badge>
+                      {stage.is_conversion_point && (
+                        <Badge className="shrink-0 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+                          <ArrowRightCircle className="h-3 w-3 mr-1" />
+                          Converts to Project
+                        </Badge>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-1">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={stage.is_conversion_point ? "default" : "ghost"}
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                stage.is_conversion_point && "bg-emerald-600 hover:bg-emerald-700 text-white"
+                              )}
+                              onClick={() => toggleConversionPoint(stage.id)}
+                            >
+                              <ArrowRightCircle className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {stage.is_conversion_point
+                              ? 'This stage converts leads to projects. Click to remove.'
+                              : 'Set as conversion point — leads reaching this stage become projects'}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                       <Button
                         variant="ghost"
                         size="icon"

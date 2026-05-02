@@ -24462,6 +24462,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean | null
+          is_conversion_point: boolean
           is_terminal: boolean | null
           key: string
           name: string
@@ -24479,6 +24480,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          is_conversion_point?: boolean
           is_terminal?: boolean | null
           key?: string
           name: string
@@ -24496,6 +24498,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          is_conversion_point?: boolean
           is_terminal?: boolean | null
           key?: string
           name?: string
