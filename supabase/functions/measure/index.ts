@@ -9,7 +9,7 @@
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
-import { analyzeDSM, fetchDSMFromGoogleSolar, detectRidgeLinesFromDSM, detectValleyLinesFromDSM, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "./dsm-analyzer.ts";
+import { analyzeDSM, fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "./dsm-analyzer.ts";
 import { splitFootprintIntoFacets } from "./facet-splitter.ts";
 import { validateMeasurements } from "./qa-validator.ts";
 import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-schema.ts";
