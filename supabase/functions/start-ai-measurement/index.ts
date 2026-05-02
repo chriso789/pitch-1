@@ -2662,21 +2662,93 @@ async function processJob(input: any) {
       2,
     );
     const finalWriteSanityFailures: string[] = [];
-    const dedupeFinalEdges = (edges: RoofEdge[]) => {
-      const seen = new Set<string>();
-      return edges.filter((edge) => {
-        const pts = edge.line_px || [];
-        if (pts.length < 2) return false;
-        const key = `${edge.edge_type}|${edgeKeyFor(pts[0], pts[pts.length - 1])}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+    // ── SMART EDGE DEDUP ─────────────────────────────────
+    // Group by edge_type + angle (±5°) + midpoint distance (<6px).
+    // Keep the longest segment in each group.
+    const smartDedupEdges = (edges: RoofEdge[]): RoofEdge[] => {
+      const valid = edges.filter((e) => (e.line_px || []).length >= 2);
+      const edgeAngle = (e: RoofEdge) => {
+        const [a, b] = [e.line_px[0], e.line_px[e.line_px.length - 1]];
+        let ang = Math.atan2(b.y - a.y, b.x - a.x) * (180 / Math.PI);
+        if (ang < 0) ang += 180; // normalize to [0, 180)
+        return ang;
+      };
+      const edgeMidpoint = (e: RoofEdge) => {
+        const [a, b] = [e.line_px[0], e.line_px[e.line_px.length - 1]];
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      };
+      const groups: RoofEdge[][] = [];
+      const assigned = new Set<number>();
+      for (let i = 0; i < valid.length; i++) {
+        if (assigned.has(i)) continue;
+        const group = [valid[i]];
+        assigned.add(i);
+        const angI = edgeAngle(valid[i]);
+        const midI = edgeMidpoint(valid[i]);
+        for (let j = i + 1; j < valid.length; j++) {
+          if (assigned.has(j)) continue;
+          if (valid[j].edge_type !== valid[i].edge_type) continue;
+          const angJ = edgeAngle(valid[j]);
+          const midJ = edgeMidpoint(valid[j]);
+          const angDiff = Math.min(Math.abs(angI - angJ), 180 - Math.abs(angI - angJ));
+          const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
+          if (angDiff <= 5 && midDist < 6) {
+            group.push(valid[j]);
+            assigned.add(j);
+          }
+        }
+        groups.push(group);
+      }
+      // Keep longest from each group
+      const result = groups.map((g) =>
+        g.reduce((best, e) => polylineLengthPx(e.line_px) > polylineLengthPx(best.line_px) ? e : best)
+      );
+      console.log("[EDGE_DEDUPE]", JSON.stringify({
+        before: valid.length,
+        after: result.length,
+        removed: valid.length - result.length,
+      }));
+      return result;
+    };
+
+    // ── RIDGE CLIP: clamp ridge endpoints to footprint ──
+    const clipRidgeToFootprint = (edges: RoofEdge[]): RoofEdge[] => {
+      if (footprint.length < 3) return edges;
+      // Find bounding extents of footprint along ridge direction
+      return edges.map((edge) => {
+        if (edge.edge_type !== "ridge") return edge;
+        const pts = edge.line_px;
+        if (pts.length < 2) return edge;
+        const [a, b] = [pts[0], pts[pts.length - 1]];
+        // Project ridge endpoints onto footprint edges, clamp if outside
+        const clampToFootprint = (p: Point): Point => {
+          // Find closest point on any footprint edge
+          let best = p;
+          let bestDist = Infinity;
+          for (let i = 0; i < footprint.length; i++) {
+            const fa = footprint[i];
+            const fb = footprint[(i + 1) % footprint.length];
+            const dx = fb.x - fa.x, dy = fb.y - fa.y;
+            const len2 = dx * dx + dy * dy;
+            if (len2 === 0) continue;
+            const t = Math.max(0, Math.min(1, ((p.x - fa.x) * dx + (p.y - fa.y) * dy) / len2));
+            const proj = { x: fa.x + t * dx, y: fa.y + t * dy };
+            const d = Math.hypot(proj.x - p.x, proj.y - p.y);
+            if (d < bestDist) { bestDist = d; best = proj; }
+          }
+          return best;
+        };
+        // Only clamp if endpoint is outside footprint
+        const clampedA = clampToFootprint(a);
+        const clampedB = clampToFootprint(b);
+        return { ...edge, line_px: [clampedA, clampedB] };
       });
     };
+
     const finalEdges: RoofEdge[] = (() => {
-      if (!solverTopologyLocked) return dedupeFinalEdges(cleanEdges);
+      if (!solverTopologyLocked) return smartDedupEdges(cleanEdges);
       const solverEdges = constraintSolverEdges.length ? constraintSolverEdges : cleanEdges;
-      if (!simpleRoofTypeDebug.hip_roof) return dedupeFinalEdges(solverEdges);
+      if (!simpleRoofTypeDebug.hip_roof) return smartDedupEdges(clipRidgeToFootprint(solverEdges));
       const structuralEdges = solverEdges.filter((edge) =>
         edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley"
       );
@@ -2690,7 +2762,7 @@ async function processJob(input: any) {
           debug_reason: "hip_roof_final_write:deduped_footprint_perimeter_eave",
         } as RoofEdge;
       }).filter((edge) => polylineLengthPx(edge.line_px || []) >= 4);
-      return dedupeFinalEdges([...structuralEdges, ...perimeterEaves]);
+      return smartDedupEdges(clipRidgeToFootprint([...structuralEdges, ...perimeterEaves]));
     })();
     cleanEdges = finalEdges;
     const finalEdgeSource = finalEdges[0]?.source || "none";
@@ -2741,6 +2813,23 @@ async function processJob(input: any) {
     console.log("[FINAL_MEASUREMENT_WRITE]", JSON.stringify(finalWriteLog));
     if (simpleRoofTypeDebug.hip_roof && finalWriteLog.eave_ft > footprintPerimeterFt * 1.15) {
       finalWriteSanityFailures.push("eave_length_inflated");
+    }
+    // Area conservation: sum of plane 2D areas should match footprint area within 5%
+    const footprintAreaSqft = Math.abs(footprint.reduce((sum, a, i) => {
+      const b = footprint[(i + 1) % footprint.length];
+      return sum + (a.x * b.y - b.x * a.y);
+    }, 0) / 2) * actualFpp * actualFpp;
+    const sumPlaneArea = planeRows.reduce((s, p) => s + Number(p.area_2d_sqft || 0), 0);
+    if (sumPlaneArea > 0 && footprintAreaSqft > 0) {
+      const areaRatio = sumPlaneArea / footprintAreaSqft;
+      console.log("[AREA_CONSERVATION]", JSON.stringify({
+        footprint_area_sqft: round(footprintAreaSqft, 2),
+        sum_plane_area_sqft: round(sumPlaneArea, 2),
+        ratio: round(areaRatio, 4),
+      }));
+      if (areaRatio < 0.95 || areaRatio > 1.05) {
+        finalWriteSanityFailures.push("area_not_conserved");
+      }
     }
 
     // Wipe any prior detail rows for this job (idempotency on retries)
