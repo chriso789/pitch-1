@@ -2763,6 +2763,9 @@ async function processJob(input: any) {
       if (planeRows.length > 1 && totalEdges === 0) {
         sanityFailures.push("plane_graph_has_no_classified_edges");
       }
+      if (planeRows.length >= 4 && totalEdges === 0 && (solverTopologyLocked || isSolverTopologySource())) {
+        sanityFailures.push("solver_output_not_used");
+      }
       if (planeRows.length > 1 && structEdges === 0 && !isFlatRoof) {
         // Already covered by no_ridge_hip_valley but be explicit
         if (!sanityFailures.includes("no_ridge_hip_valley_on_pitched_roof")) {
