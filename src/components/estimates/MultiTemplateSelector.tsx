@@ -585,9 +585,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         .single();
 
       if (error || !estimate) {
+        console.error('[loadEstimateForEditing] Failed to load estimate:', estimateId, 'error:', error, 'data:', estimate);
         toast({
           title: 'Error',
-          description: 'Could not load estimate for editing',
+          description: `Could not load estimate for editing: ${error?.message || 'not found'}`,
           variant: 'destructive'
         });
         return;
