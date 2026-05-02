@@ -1948,6 +1948,7 @@ async function processJob(input: any) {
           rake_count: cleanEdges.filter((e) => e.edge_type === "rake").length,
         }));
 
+        } // end else (non-hybrid classifier path)
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
