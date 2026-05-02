@@ -585,7 +585,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] p-0">
+      <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4 flex flex-row items-center justify-between">
           <div>
             <DialogTitle>Measurement Report</DialogTitle>
@@ -642,7 +642,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     </>
                   )}
                   {blocked && (
-                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-xs break-all whitespace-normal max-w-full block">
                       blocked: {String(blocked)}
                     </span>
                   )}
