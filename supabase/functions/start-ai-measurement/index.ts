@@ -3306,7 +3306,8 @@ async function processJob(input: any) {
 
     const blockCustomerReportReason: string | null =
       sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason;
-    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure");
+    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure")
+      || vendorTruthComparison?.needs_internal_review === true;
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
