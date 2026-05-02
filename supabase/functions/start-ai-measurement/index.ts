@@ -838,6 +838,7 @@ async function processJob(input: any) {
     let planeEdgeClassifierDebug: any = null;
     let strictEdgeGraphDebug: any = null;
     let ridgeAlignmentDebug: any = null;
+    let solverTopologyLocked = false;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -887,6 +888,21 @@ async function processJob(input: any) {
       const ka = `${sa.x}:${sa.y}`;
       const kb = `${sb.x}:${sb.y}`;
       return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    };
+
+    const isSolverTopologySource = () =>
+      topologySource === "constraint_roof_solver" ||
+      topologySource.startsWith("hybrid_roof_solver") ||
+      topologySource === "hip_roof_generator_last_resort";
+
+    const lockSolverTopology = (solverUsed: string) => {
+      solverTopologyLocked = true;
+      topologySource = solverUsed;
+      cleanEdges = cleanEdges.map((edge) => ({
+        ...edge,
+        source: "constraint_solver_topology",
+        confidence: Math.max(Number(edge.confidence || 0), 0.78),
+      }));
     };
 
     const countAzimuthClusters = (angles: number[], toleranceDeg = 24) => {
