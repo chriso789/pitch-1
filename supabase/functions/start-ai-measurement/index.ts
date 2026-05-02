@@ -1554,9 +1554,9 @@ async function processJob(input: any) {
         }
       }
 
-      // B. Hip-roof detector: Sobel + Hough diagonal detection from raster.
-      //    If the footprint is large, pitched, and has diagonal gradients →
-      //    synthesize hip-roof planes from footprint corners + center ridge.
+      // B. Hip-roof generator (UPSTREAM — replaces fallback entirely for pitched roofs)
+      //    Uses the new geometry-based generator that creates proper multi-plane topology
+      //    from footprint corners + center ridge. No fallback to single plane.
       if (cleanPlanes.length < 2) {
         try {
           const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
@@ -1566,33 +1566,67 @@ async function processJob(input: any) {
             const pitches = segs.map((s: any) => Number(s?.pitchDegrees)).filter(Number.isFinite);
             return pitches.length > 0 ? pitches.reduce((a: number, b: number) => a + b, 0) / pitches.length : null;
           })();
-          const hipResult = detectHipRoof({
+
+          // Run hip-roof detector for evidence
+          const hipDetectResult = detectHipRoof({
             raster,
             footprint,
             solarPitchDeg: solarPitchDeg ?? undefined,
             footprintAreaSqft,
           });
-          hipRoofDetectorDebug = hipResult.debug;
-          console.log("[HIP_ROOF_DETECTOR]", JSON.stringify(hipResult.debug));
+          hipRoofDetectorDebug = hipDetectResult.debug;
+          console.log("[HIP_ROOF_DETECTOR]", JSON.stringify(hipDetectResult.debug));
 
-          if (hipResult.blockedSinglePlane || hipResult.isHipCandidate) {
-            simpleRoofTypeDebug = {
-              ...simpleRoofTypeDebug,
-              hip_roof: true,
-              gable_roof: false,
-              source: hipResult.isHipCandidate ? "hip_roof_diagonal_detector" : "large_pitched_roof_hip_guard",
-            };
-            applySyntheticHipRoofTopology("hip_roof_synthetic");
+          const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+          const isLargePitchedRoof = footprintAreaSqft > 1200 && pitchRise !== null && pitchRise > 2;
+
+          if (hipDetectResult.blockedSinglePlane || hipDetectResult.isHipCandidate || isLargePitchedRoof) {
+            // USE NEW HIP-ROOF GENERATOR (upstream, geometry-based)
+            const generated = generateHipRoofPlanes(footprint);
+            if (generated.planes.length >= 3) {
+              cleanPlanes = generated.planes.map((p) => ({
+                ...p,
+                confidence: 0.70,
+                pitch: null,
+                pitch_degrees: null,
+                azimuth: null,
+              }));
+              cleanEdges = generated.edges.map((e) => ({
+                ...e,
+                confidence: 0.70,
+              }));
+              topologySource = "hip_roof_generator";
+              ridgeSplitPlaneCount = cleanPlanes.length;
+              simpleRoofTypeDebug = {
+                ...simpleRoofTypeDebug,
+                hip_roof: true,
+                gable_roof: false,
+                source: hipDetectResult.isHipCandidate ? "hip_roof_diagonal_detector" : "hip_roof_generator",
+              };
+              console.log("[HIP_ROOF_GENERATOR] Upstream replacement applied", JSON.stringify({
+                planes: cleanPlanes.length,
+                edges: cleanEdges.length,
+                method: generated.debug.method,
+              }));
+            } else {
+              // Fallback to legacy synthetic
+              simpleRoofTypeDebug = {
+                ...simpleRoofTypeDebug,
+                hip_roof: true,
+                gable_roof: false,
+                source: hipDetectResult.isHipCandidate ? "hip_roof_diagonal_detector" : "large_pitched_roof_hip_guard",
+              };
+              applySyntheticHipRoofTopology("hip_roof_synthetic");
+            }
           }
         } catch (e) {
-          console.warn("[HIP_ROOF_DETECTOR] failed:", (e as Error).message);
+          console.warn("[HIP_ROOF_GENERATOR] failed:", (e as Error).message);
         }
       }
 
-      // D. Single-plane fallback — ONLY as last resort.
+      // D. Single-plane fallback — ONLY as last resort for SMALL, LOW-PITCH roofs.
       //    The applyFootprintCoverageGate in pre_edge_classification (below)
-      //    will assign single_plane_fallback. The hip-roof detector may have
-      //    already blocked this, which the QA gate enforces.
+      //    will assign single_plane_fallback ONLY if hip-roof generator didn't fire.
     }
 
     // 6. Refine with U-Net output ONLY if topology produced nothing AND U-Net did.
