@@ -182,6 +182,21 @@ export function EstimatePreviewPanel({
   allEstimates = [],
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
+  const [activeTemplateStyle, setActiveTemplateStyle] = useState<string>(templateStyle || 'bold-editorial');
+
+  // Sync from parent prop on open
+  useEffect(() => {
+    if (templateStyle) setActiveTemplateStyle(templateStyle);
+  }, [templateStyle]);
+
+  // Persist template style selection to tenant
+  const handleTemplateStyleChange = async (style: string) => {
+    setActiveTemplateStyle(style);
+    if (tenantId) {
+      await supabase.from('tenants').update({ proposal_template_style: style }).eq('id', tenantId);
+    }
+  };
+
   // Tenant-aware default overrides (e.g., O'Brien Contracting hides manufacturer warranty)
   const applyTenantDefaults = (opts: PDFComponentOptions): PDFComponentOptions => {
     const name = (companyInfo?.name || '').toLowerCase();
@@ -1033,6 +1048,28 @@ export function EstimatePreviewPanel({
                 </TabsContent>
               </Tabs>
 
+              {/* Template Style Picker */}
+              <div className="space-y-1.5">
+                <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                  <Layers className="h-3 w-3" />
+                  Proposal Style
+                </h4>
+                <Select value={activeTemplateStyle} onValueChange={handleTemplateStyleChange}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bold-editorial">Bold Editorial</SelectItem>
+                    <SelectItem value="classic-professional">Classic Professional</SelectItem>
+                    <SelectItem value="modern-minimal">Modern Minimal</SelectItem>
+                    <SelectItem value="warm-craftsman">Warm Craftsman</SelectItem>
+                    <SelectItem value="premium-dark">Premium Dark</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
               {/* Toggle Sections */}
               <div className="space-y-4">
                 {/* Header Section */}
@@ -1524,7 +1561,7 @@ export function EstimatePreviewPanel({
                     templateAttachments={[]}
                     jobPhotos={jobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
-                    templateStyle={templateStyle}
+                    templateStyle={activeTemplateStyle}
                   />
                   
                   {/* Additional selected estimates */}
@@ -1562,7 +1599,7 @@ export function EstimatePreviewPanel({
                           jobPhotos={jobPhotos}
                           skipCoverPage={true}
                           skipWarrantyAndTerms={!isLast}
-                          templateStyle={templateStyle}
+                          templateStyle={activeTemplateStyle}
                         />
                       );
                     });
