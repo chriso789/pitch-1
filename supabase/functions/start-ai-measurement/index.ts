@@ -2812,6 +2812,7 @@ async function processJob(input: any) {
       if (Array.isArray(stashed)) sanityFailures.push(...stashed);
       const strictTopologyFailures = (globalThis as any).__strictTopologyFailures;
       if (Array.isArray(strictTopologyFailures)) sanityFailures.push(...strictTopologyFailures);
+      sanityFailures.push(...finalWriteSanityFailures);
     }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
