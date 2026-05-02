@@ -2,7 +2,7 @@
  * Template Registry — maps ProposalTemplateStyle to concrete page components.
  */
 import React from 'react';
-import { type ProposalTemplateStyle, type CoverPageProps, type WhyChooseUsProps } from './types';
+import { type ProposalTemplateStyle, type CoverPageProps, type WhyChooseUsProps, type ProcessTimelineProps } from './types';
 
 // Bold Editorial (current/default)
 import { EstimateCoverPage } from '../EstimateCoverPage';
@@ -32,14 +32,14 @@ import { PremiumDarkProcessTimeline } from './PremiumDarkProcessTimeline';
 export interface TemplateComponents {
   CoverPage: React.FC<CoverPageProps>;
   WhyChooseUs: React.FC<WhyChooseUsProps>;
-  ProcessTimeline: React.FC;
+  ProcessTimeline: React.FC<ProcessTimelineProps>;
 }
 
 const REGISTRY: Record<ProposalTemplateStyle, TemplateComponents> = {
   'bold-editorial': {
     CoverPage: EstimateCoverPage,
     WhyChooseUs: WhyChooseUsPage,
-    ProcessTimeline: ProcessTimelinePage,
+    ProcessTimeline: ProcessTimelinePage as React.FC<ProcessTimelineProps>,
   },
   'classic-professional': {
     CoverPage: ClassicCoverPage,

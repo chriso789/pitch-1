@@ -1,6 +1,8 @@
 /**
  * Classic Professional Cover Page
- * Traditional layout: navy header band, centered logo, serif-inspired accents, gold rule.
+ * Formal, traditional layout with navy header, gold accents, serif typography.
+ * Designed for established companies that want a prestigious, trustworthy feel.
+ * Layout: Top branding bar → full-width photo → centered customer block → bottom info strip.
  */
 import React from 'react';
 import { CoverPageProps } from './types';
@@ -24,13 +26,16 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
     : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const logoUrl = companyLogo || companyInfo?.logo_url;
   const displayName = companyInfo?.name || companyName;
-  const yearStr = companyInfo?.established_year || new Date().getFullYear();
+  const yearStr = companyInfo?.established_year || '';
+  const yearsInBusiness = companyInfo?.established_year
+    ? Math.max(1, new Date().getFullYear() - companyInfo.established_year)
+    : null;
 
   const companyAddr = [
     companyInfo?.address_street,
     [companyInfo?.address_city, companyInfo?.address_state].filter(Boolean).join(', '),
     companyInfo?.address_zip,
-  ].filter(Boolean).join(' • ');
+  ].filter(Boolean).join(' · ');
 
   return (
     <div
@@ -38,49 +43,78 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
       className="relative bg-white text-black overflow-hidden"
       style={{ width: PAGE_WIDTH, minHeight: PAGE_HEIGHT, maxHeight: PAGE_HEIGHT, fontFamily: "'Georgia', 'Times New Roman', serif" }}
     >
-      {/* Navy header bar */}
-      <div className="bg-[#1B2A4A] text-white px-12 pt-10 pb-8 text-center">
-        {logoUrl ? (
-          <img src={logoUrl} alt={displayName} className="h-16 mx-auto mb-4 object-contain" />
-        ) : (
-          <h1 className="text-3xl font-bold mb-2 tracking-wide">{displayName}</h1>
-        )}
-        {logoUrl && <h1 className="text-2xl font-bold tracking-wide mb-1">{displayName}</h1>}
-        <p className="text-xs tracking-[0.3em] text-white/70 uppercase">
-          Established {yearStr}
-          {companyInfo?.license_number ? ` · License #${companyInfo.license_number}` : ''}
-        </p>
+      {/* Navy header bar with gold border */}
+      <div className="bg-[#1B2A4A] text-white px-10 pt-8 pb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {logoUrl && (
+              <img src={logoUrl} alt={displayName} className="h-16 object-contain" />
+            )}
+            <div>
+              <h1 className="text-2xl font-bold tracking-wide">{displayName}</h1>
+              {companyInfo?.brand_mission && (
+                <p className="text-[10px] text-white/60 italic mt-0.5 max-w-[300px]">{companyInfo.brand_mission}</p>
+              )}
+            </div>
+          </div>
+          <div className="text-right space-y-1">
+            {yearStr && (
+              <div className="text-[10px] tracking-[0.3em] text-[#C9A96E] font-bold">
+                ESTABLISHED {yearStr}
+              </div>
+            )}
+            {companyInfo?.license_number && (
+              <div className="text-[9px] text-white/50">License #{companyInfo.license_number}</div>
+            )}
+            {companyInfo?.brand_certifications && (
+              <div className="text-[9px] text-[#C9A96E]/80 max-w-[200px] text-right">{companyInfo.brand_certifications}</div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Gold accent line */}
       <div className="h-[4px]" style={{ background: 'linear-gradient(90deg, #C9A96E 0%, #E8D5A3 50%, #C9A96E 100%)' }} />
 
-      {/* Property photo - centered with margin */}
-      <div className="px-12 pt-8">
+      {/* Property photo */}
+      <div className="px-10 pt-6">
         {propertyPhoto ? (
-          <div className="w-full h-[320px] rounded-sm overflow-hidden border border-gray-200">
+          <div className="w-full h-[300px] overflow-hidden border-2 border-[#1B2A4A]/10">
             <img src={propertyPhoto} alt="Property" className="w-full h-full object-cover" />
           </div>
         ) : (
-          <div className="w-full h-[320px] rounded-sm bg-gradient-to-br from-[#1B2A4A] to-[#2D4A7A]" />
+          <div className="w-full h-[300px] bg-gradient-to-br from-[#1B2A4A] to-[#2D4A7A]" />
         )}
       </div>
 
-      {/* Centered proposal info */}
-      <div className="text-center px-12 pt-8">
-        <div className="text-[10px] tracking-[0.4em] text-[#C9A96E] font-bold mb-3 uppercase">
-          Project Proposal
-        </div>
+      {/* Decorative divider */}
+      <div className="flex items-center gap-4 px-10 py-5">
+        <div className="flex-1 h-[1px] bg-[#C9A96E]/40" />
+        <div className="text-[10px] tracking-[0.4em] text-[#C9A96E] font-bold">PROJECT PROPOSAL</div>
+        <div className="flex-1 h-[1px] bg-[#C9A96E]/40" />
+      </div>
+
+      {/* Customer info — formal centered layout */}
+      <div className="text-center px-10">
         <h2 className="text-4xl font-bold text-[#1B2A4A] mb-2" style={{ fontFamily: "'Georgia', serif" }}>
           {customerName}
         </h2>
-        <p className="text-sm text-gray-600 mb-1">{customerAddress}</p>
-        {estimateName && <p className="text-sm text-gray-500 italic mt-1">{estimateName}</p>}
+        <p className="text-sm text-gray-600">{customerAddress}</p>
+        {estimateName && <p className="text-sm text-[#C9A96E] italic mt-2">{estimateName}</p>}
       </div>
 
+      {/* Experience / About strip */}
+      {(companyInfo?.brand_story || yearsInBusiness) && (
+        <div className="mx-10 mt-6 px-6 py-4 bg-[#F8F6F1] border border-[#C9A96E]/20 text-center">
+          <p className="text-xs text-gray-600 leading-relaxed italic max-w-[500px] mx-auto">
+            {companyInfo?.brand_story || `With ${yearsInBusiness}+ years of industry experience, ${displayName} delivers premium craftsmanship backed by integrity and attention to detail.`}
+          </p>
+        </div>
+      )}
+
       {/* Bottom info bar */}
-      <div className="absolute bottom-0 left-0 right-0 px-12 py-6 border-t-2 border-[#C9A96E]">
-        <div className="flex justify-between items-end">
+      <div className="absolute bottom-0 left-0 right-0 border-t-2 border-[#C9A96E]">
+        <div className="px-10 py-5 flex justify-between items-end">
           <div>
             <div className="text-[9px] tracking-[0.3em] text-gray-400 uppercase mb-1">Proposal №</div>
             <div className="text-lg font-bold text-[#1B2A4A]">{estimateNumber}</div>
@@ -89,10 +123,10 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
             <div className="text-[9px] tracking-[0.3em] text-gray-400 uppercase mb-1">Issued</div>
             <div className="text-sm font-semibold text-[#1B2A4A]">{dateStr}</div>
           </div>
-          <div className="text-right">
-            {companyInfo?.phone && <div className="text-sm text-[#1B2A4A] font-semibold">{companyInfo.phone}</div>}
-            {companyInfo?.email && <div className="text-xs text-gray-500">{companyInfo.email}</div>}
-            {companyAddr && <div className="text-xs text-gray-400 mt-0.5">{companyAddr}</div>}
+          <div className="text-right text-xs">
+            {companyInfo?.phone && <div className="text-[#1B2A4A] font-semibold">{companyInfo.phone}</div>}
+            {companyInfo?.email && <div className="text-gray-500">{companyInfo.email}</div>}
+            {companyAddr && <div className="text-gray-400 mt-0.5 text-[10px]">{companyAddr}</div>}
           </div>
         </div>
       </div>

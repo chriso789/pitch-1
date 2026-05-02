@@ -4,7 +4,7 @@
  */
 
 export type ProposalTemplateStyle =
-  | 'bold-editorial'       // Current: magazine-style, oversized type, dark/primary
+  | 'bold-editorial'       // Magazine-style, oversized type, dark/primary hero
   | 'classic-professional'  // Traditional: clean lines, serif accents, navy/gold
   | 'modern-minimal'        // Whitespace-heavy, thin fonts, accent line only
   | 'warm-craftsman'        // Earthy tones, textured feel, handcraft vibe
@@ -47,6 +47,11 @@ export interface WhyChooseUsProps extends TemplatePageProps {
   brandStory?: string | null;
   brandMission?: string | null;
   brandCertifications?: string | null;
+}
+
+export interface ProcessTimelineProps {
+  companyName?: string;
+  companyInfo?: TemplatePageProps['companyInfo'];
 }
 
 export const TEMPLATE_META: Record<ProposalTemplateStyle, { label: string; description: string }> = {
