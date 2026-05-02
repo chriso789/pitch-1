@@ -400,6 +400,42 @@ export const PipelineStageManager: React.FC = () => {
     }
   };
 
+  const toggleConversionPoint = async (stageId: string) => {
+    const stage = stages.find(s => s.id === stageId);
+    if (!stage) return;
+
+    const newValue = !stage.is_conversion_point;
+
+    try {
+      // If setting this stage as conversion point, clear any existing one first
+      if (newValue) {
+        await supabase
+          .from('pipeline_stages')
+          .update({ is_conversion_point: false, updated_at: new Date().toISOString() })
+          .eq('tenant_id', effectiveTenantId)
+          .eq('is_conversion_point', true);
+      }
+
+      const { error } = await supabase
+        .from('pipeline_stages')
+        .update({ is_conversion_point: newValue, updated_at: new Date().toISOString() })
+        .eq('id', stageId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: newValue
+          ? `"${stage.name}" is now the conversion point — leads reaching this stage become projects`
+          : `"${stage.name}" is no longer the conversion point`
+      });
+      fetchStages();
+    } catch (error) {
+      console.error('Error toggling conversion point:', error);
+      toast({ title: 'Error', description: 'Failed to update conversion point', variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
