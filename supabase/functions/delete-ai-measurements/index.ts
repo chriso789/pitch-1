@@ -146,8 +146,7 @@ Deno.serve(async (req) => {
     const { error: unlinkEstimatesError } = await supabase
       .from('enhanced_estimates')
       .update({ measurement_report_id: null })
-      .in('measurement_report_id', foundMeasurementIds)
-      .eq('tenant_id', tenantId);
+      .in('measurement_report_id', foundMeasurementIds);
 
     if (unlinkEstimatesError) throw unlinkEstimatesError;
 
