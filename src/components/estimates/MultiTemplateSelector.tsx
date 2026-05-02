@@ -862,9 +862,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         .single();
 
       if (tenant) {
-        const { warranty_terms, ...companyData } = tenant;
+        const { warranty_terms, proposal_template_style, ...companyData } = tenant;
         setCompanyInfo(companyData as CompanyInfo);
         if (warranty_terms) setWarrantyTerms(warranty_terms);
+        setProposalTemplateStyle(proposal_template_style || 'bold-editorial');
       }
 
       // Fetch all company locations
