@@ -1315,13 +1315,73 @@ async function processJob(input: any) {
             console.warn("[EARLY_RIDGE_DETECTION] failed:", (e as Error).message);
           }
 
-          // ── STEP 2: Try multi-structure solver with ridge hints ──
+          // ── STEP 2: FOOTPRINT PARTITIONER (primary) ──
+          // Converts footprint + ridge split lines → exact planar subdivision.
+          // Planes are pieces of the footprint — corners align perfectly.
           let solverResult: any = null;
+          let partitionerUsed = false;
+
           if (earlyRidgeHints.length > 0) {
+            try {
+              // Convert footprint to {x,y} points
+              const fpPts = footprint.map((p: any) => ({ x: Number(p.x ?? p[0]), y: Number(p.y ?? p[1]) }));
+              // Convert ridge hints to edges
+              const ridgeEdges = earlyRidgeHints.map((r: any) => ({
+                a: { x: Number(r.p1?.[0] ?? r.x1 ?? r.start?.[0]), y: Number(r.p1?.[1] ?? r.y1 ?? r.start?.[1]) },
+                b: { x: Number(r.p2?.[0] ?? r.x2 ?? r.end?.[0]), y: Number(r.p2?.[1] ?? r.y2 ?? r.end?.[1]) },
+              }));
+
+              const faces = partitionFootprint(fpPts, ridgeEdges);
+              console.log("[FOOTPRINT_PARTITIONER] faces:", faces.length);
+
+              if (faces.length >= 3) {
+                // Build planes and edges from faces
+                const partPlanes = faces.map((f, i) => ({
+                  plane_index: i + 1,
+                  polygon_px: f.polygon.map(p => [p.x, p.y]),
+                  confidence: 0.85,
+                  source: "footprint_partitioner",
+                }));
+
+                // Derive edges: shared boundaries = ridges/hips, unshared = eaves
+                const edgeCount = new Map<string, { a: any; b: any; faces: number[] }>();
+                for (const f of faces) {
+                  for (let j = 0; j < f.polygon.length; j++) {
+                    const a = f.polygon[j];
+                    const b = f.polygon[(j + 1) % f.polygon.length];
+                    const k = [`${a.x}:${a.y}`, `${b.x}:${b.y}`].sort().join('|');
+                    if (!edgeCount.has(k)) edgeCount.set(k, { a, b, faces: [] });
+                    edgeCount.get(k)!.faces.push(f.id);
+                  }
+                }
+
+                const partEdges: any[] = [];
+                for (const [, info] of edgeCount) {
+                  const shared = info.faces.length >= 2;
+                  partEdges.push({
+                    edge_type: shared ? "ridge" : "eave",
+                    p1: [info.a.x, info.a.y],
+                    p2: [info.b.x, info.b.y],
+                    confidence: 0.85,
+                    source: "footprint_partitioner",
+                  });
+                }
+
+                solverResult = { planes: partPlanes, edges: partEdges, debug: { method: "footprint_partitioner", faces: faces.length } };
+                partitionerUsed = true;
+                console.log("[FOOTPRINT_PARTITIONER] ACCEPTED — planes:", partPlanes.length, "edges:", partEdges.length);
+              }
+            } catch (partErr) {
+              console.warn("[FOOTPRINT_PARTITIONER] failed:", (partErr as Error).message);
+            }
+          }
+
+          // ── STEP 2b: Fallback to multi-structure solver ──
+          if (!solverResult && earlyRidgeHints.length > 0) {
             const multiResult = solveMultiStructureRoof(footprint, earlyRidgeHints);
             if (multiResult.planes.length >= 3) {
               solverResult = multiResult;
-              console.log("[MULTI_STRUCTURE_SOLVER] ACCEPTED — ridge-hint-driven topology");
+              console.log("[MULTI_STRUCTURE_SOLVER] FALLBACK ACCEPTED");
             }
           }
 
@@ -1341,18 +1401,20 @@ async function processJob(input: any) {
 
             cleanPlanes = solverResult.planes.map((p: any) => ({
               ...p,
-              confidence: earlyRidgeHints.length > 0 ? 0.82 : 0.78,
+              confidence: partitionerUsed ? 0.88 : (earlyRidgeHints.length > 0 ? 0.82 : 0.78),
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
             }));
             cleanEdges = solverResult.edges.map((e: any) => ({
               ...e,
-              confidence: earlyRidgeHints.length > 0 ? 0.82 : 0.78,
+              confidence: partitionerUsed ? 0.88 : (earlyRidgeHints.length > 0 ? 0.82 : 0.78),
             }));
-            topologySource = earlyRidgeHints.length > 0
-              ? "multi_structure_solver_primary"
-              : "hybrid_roof_solver_primary";
+            topologySource = partitionerUsed
+              ? "footprint_partitioner_primary"
+              : earlyRidgeHints.length > 0
+                ? "multi_structure_solver_primary"
+                : "hybrid_roof_solver_primary";
             lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = {
@@ -1363,9 +1425,10 @@ async function processJob(input: any) {
             };
             singlePlaneFallbackForbidden = true;
             hybridSolverAccepted = true;
-            console.log("[HYBRID_SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length,
+            console.log("[SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length,
               "edges:", cleanEdges.length,
               "source:", topologySource,
+              "partitioner:", partitionerUsed,
               "ridge_hints:", earlyRidgeHints.length,
               "debug:", JSON.stringify(solverResult.debug));
           }
