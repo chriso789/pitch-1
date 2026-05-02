@@ -1,6 +1,8 @@
 /**
  * Modern Minimal Cover Page
- * Whitespace-heavy, thin sans-serif, single accent line, asymmetric layout.
+ * Extreme whitespace, ultra-thin sans-serif, asymmetric layout.
+ * Layout: Logo top-left → massive customer name → small photo inset bottom-right.
+ * Designed for companies that want a high-end architectural/design studio feel.
  */
 import React from 'react';
 import { CoverPageProps } from './types';
@@ -34,7 +36,7 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
       {/* Thin top accent */}
       <div className="h-[2px] bg-black" />
 
-      {/* Logo top-left */}
+      {/* Logo + date header */}
       <div className="px-16 pt-12 flex justify-between items-start">
         <div>
           {logoUrl ? (
@@ -43,15 +45,16 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
             <span className="text-lg font-light tracking-[0.15em] uppercase">{displayName}</span>
           )}
         </div>
-        <div className="text-right text-xs text-gray-400">
+        <div className="text-right text-[10px] text-gray-400 tracking-wider">
           <div>{dateStr}</div>
+          <div className="mt-0.5">{estimateNumber}</div>
         </div>
       </div>
 
       {/* Large vertical space + type */}
-      <div className="px-16 pt-24">
+      <div className="px-16 pt-20">
         <div className="text-[11px] tracking-[0.5em] text-gray-400 uppercase mb-6">Proposal</div>
-        <h1 className="text-6xl font-extralight text-gray-900 leading-tight tracking-tight mb-4">
+        <h1 className="text-6xl font-extralight text-gray-900 leading-[1.05] tracking-tight mb-4">
           {customerName}
         </h1>
         <div className="w-16 h-[1px] bg-black mb-6" />
@@ -59,18 +62,30 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
         {estimateName && <p className="text-sm text-gray-400 font-light mt-2">{estimateName}</p>}
       </div>
 
-      {/* Property photo - right-aligned smaller inset */}
+      {/* Company mission / story — subtle */}
+      {companyInfo?.brand_mission && (
+        <div className="px-16 mt-10">
+          <p className="text-xs text-gray-400 font-light leading-relaxed max-w-[400px] italic">
+            "{companyInfo.brand_mission}"
+          </p>
+        </div>
+      )}
+
+      {/* Property photo — right-aligned smaller inset */}
       {propertyPhoto && (
-        <div className="absolute right-16 bottom-[200px] w-[340px] h-[220px] overflow-hidden">
+        <div className="absolute right-16 bottom-[180px] w-[320px] h-[200px] overflow-hidden">
           <img src={propertyPhoto} alt="Property" className="w-full h-full object-cover" />
         </div>
       )}
 
       {/* Bottom strip */}
-      <div className="absolute bottom-0 left-0 right-0 px-16 py-8">
+      <div className="absolute bottom-0 left-0 right-0 px-16 py-8 border-t border-gray-100">
         <div className="flex justify-between items-end text-xs text-gray-400">
           <div>
-            <span className="text-black font-medium">{estimateNumber}</span>
+            <span className="text-black font-medium text-sm">{displayName}</span>
+            {companyInfo?.established_year && (
+              <span className="ml-3 text-[10px] text-gray-300">Est. {companyInfo.established_year}</span>
+            )}
           </div>
           <div className="text-right space-y-0.5">
             {companyInfo?.phone && <div>{companyInfo.phone}</div>}

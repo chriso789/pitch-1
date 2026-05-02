@@ -1,6 +1,7 @@
 /**
  * Modern Minimal Why Choose Us
- * Clean whitespace, thin type, subtle accent lines.
+ * Clean, editorial, whitespace-driven. Uses numbered list instead of icon grid.
+ * Focuses on the company narrative and commitments in flowing prose.
  */
 import React from 'react';
 import { WhyChooseUsProps } from './types';
@@ -14,10 +15,11 @@ export const ModernMinimalWhyChooseUs: React.FC<WhyChooseUsProps> = ({
   licenseNumber,
   establishedYear,
   brandStory,
+  brandMission,
   brandCertifications,
 }) => {
   const yearsInBusiness = establishedYear ? Math.max(1, new Date().getFullYear() - establishedYear) : null;
-  const heroBlurb = brandStory || "You're not just hiring a contractor — you're hiring a team obsessed with doing it right the first time.";
+  const heroBlurb = brandStory || `${companyName} was founded on a simple belief: homeowners deserve better. Better communication, better craftsmanship, and a better experience from start to finish.`;
 
   const commitments = [
     'Lifetime workmanship warranty on every project',
@@ -44,16 +46,22 @@ export const ModernMinimalWhyChooseUs: React.FC<WhyChooseUsProps> = ({
         </h2>
         <div className="w-16 h-[1px] bg-black mb-8" />
 
-        <p className="text-base text-gray-500 font-light max-w-[520px] leading-relaxed mb-12">
+        {/* Company narrative — prose style, not bullet points */}
+        <p className="text-base text-gray-500 font-light max-w-[520px] leading-relaxed mb-4">
           {heroBlurb}
         </p>
+        {brandMission && (
+          <p className="text-sm text-gray-400 font-light max-w-[480px] leading-relaxed mb-10 italic">
+            {brandMission}
+          </p>
+        )}
 
-        {/* Stats - minimal row */}
-        <div className="flex gap-16 mb-14">
+        {/* Stats — minimal horizontal row */}
+        <div className="flex gap-16 mb-12">
           {[
-            { value: yearsInBusiness ? `${yearsInBusiness}` : '20', label: 'years' },
-            { value: '5,000', label: 'projects' },
+            { value: yearsInBusiness ? `${yearsInBusiness}` : '—', label: 'years' },
             { value: '5.0', label: 'rating' },
+            { value: '100%', label: 'insured' },
           ].map((s, i) => (
             <div key={i}>
               <div className="text-4xl font-extralight text-black">{s.value}</div>
@@ -62,8 +70,8 @@ export const ModernMinimalWhyChooseUs: React.FC<WhyChooseUsProps> = ({
           ))}
         </div>
 
-        {/* Commitments - simple checklist */}
-        <div className="space-y-4">
+        {/* Commitments — simple checklist */}
+        <div className="space-y-3.5">
           {commitments.map((c, i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="w-5 h-5 rounded-full border border-black flex items-center justify-center shrink-0">
@@ -74,6 +82,7 @@ export const ModernMinimalWhyChooseUs: React.FC<WhyChooseUsProps> = ({
           ))}
         </div>
 
+        {/* Certifications — understated */}
         {brandCertifications && (
           <div className="mt-10 pt-6 border-t border-gray-100">
             <div className="text-[10px] tracking-[0.3em] text-gray-400 uppercase mb-2">Certifications</div>
