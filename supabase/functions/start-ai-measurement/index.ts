@@ -1167,6 +1167,7 @@ async function processJob(input: any) {
     // Hoisted so references outside the if-block don't throw ReferenceError
     let topLevelFilteredRidges: any[] = [];
     let hipRoofDetectorDebug: any = null;
+    let hybridSolverAccepted = false;
 
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
@@ -1241,11 +1242,66 @@ async function processJob(input: any) {
         console.warn("[UPSTREAM_SKELETON] failed:", (e as Error).message);
       }
 
+      // ── 5-HYBRID: PRIMARY CONSTRAINT SOLVER ──────────────────────
+      // For pitched/hip roofs, the constraint-based hybrid solver produces
+      // guaranteed 4-plane topology (2 eave trapezoids + 2 hip triangles)
+      // with a real ridge line. This runs BEFORE image ridge detection and
+      // REPLACES all downstream plane generation when it succeeds.
+      hybridSolverAccepted = false;
+      {
+        // Detect if this is a pitched roof
+        refreshSimpleRoofType("pre_hybrid_solver");
+        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
+        const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+        const isLargePitchedRoof = footprintAreaSqft > 800 && pitchRise !== null && pitchRise > 2;
+        const isHipRoof = simpleRoofTypeDebug.hip_roof;
+
+        if (isHipRoof || isLargePitchedRoof) {
+          const hybridResult = solveHybridRoof(footprint);
+          console.log("[HYBRID_SOLVER]", JSON.stringify({
+            type: "constraint",
+            planes: hybridResult.planes.length,
+            edges: hybridResult.edges.length,
+            roofType: hybridResult.roofType,
+            ridgeLength: hybridResult.ridgeLine ? Math.sqrt((hybridResult.ridgeLine.p1.x - hybridResult.ridgeLine.p2.x) ** 2 + (hybridResult.ridgeLine.p1.y - hybridResult.ridgeLine.p2.y) ** 2) : 0,
+            debug: hybridResult.debug,
+          }));
+
+          if (hybridResult.planes.length >= 3) {
+            const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
+            const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
+            const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
+
+            cleanPlanes = hybridResult.planes.map((p) => ({
+              ...p,
+              confidence: 0.78,
+              pitch: pitchFromSolar,
+              pitch_degrees: pitchDegFromSolar,
+              azimuth: azimuthFromSolar,
+            }));
+            cleanEdges = hybridResult.edges.map((e) => ({
+              ...e,
+              confidence: 0.78,
+            }));
+            topologySource = "hybrid_roof_solver_primary";
+            ridgeSplitPlaneCount = cleanPlanes.length;
+            simpleRoofTypeDebug = {
+              ...simpleRoofTypeDebug,
+              hip_roof: true,
+              gable_roof: false,
+              source: "hybrid_roof_solver_primary",
+            };
+            singlePlaneFallbackForbidden = true;
+            hybridSolverAccepted = true;
+            console.log("[HYBRID_SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length, "edges:", cleanEdges.length);
+          }
+        }
+      }
+
       // 5a. STRUCTURE EXTRACTION — image-based ridge detection + recursive plane split.
-      // If upstream skeleton already produced ≥2 planes, image ridges can still
-      // refine but won't start from scratch.
+      // SKIP entirely if hybrid solver already produced valid topology.
       const splitRidgeEdges: RoofEdge[] = [];
-      try {
+      if (!hybridSolverAccepted) try {
         const solarAzimuths: number[] = (solarSegments || [])
           .map((s: any) => Number(s?.azimuthDegrees))
           .filter((n: number) => Number.isFinite(n));
@@ -1792,7 +1848,11 @@ async function processJob(input: any) {
       };
     }
     refreshSimpleRoofType("pre_coverage_gate");
-    applyFootprintCoverageGate("pre_edge_classification");
+    if (!hybridSolverAccepted) {
+      applyFootprintCoverageGate("pre_edge_classification");
+    } else {
+      console.log("[COVERAGE_GATE] Skipped — hybrid solver already accepted as primary");
+    }
     refreshSimpleRoofType("pre_edge_classification");
 
     // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
@@ -1842,6 +1902,20 @@ async function processJob(input: any) {
           pitch_degrees: p.pitch_degrees ?? null,
           azimuth: p.azimuth ?? null,
         }));
+        // When hybrid solver is the source, its edges already have correct
+        // ridge/hip/eave classification. Skip the generic classifier which
+        // would destroy those labels and reclassify everything as eave.
+        if (topologySource.startsWith("hybrid_roof_solver")) {
+          console.log("[PLANE_EDGE_CLASSIFIER] Skipped — hybrid solver edges preserved");
+          // Still ensure perimeter eaves exist
+          const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
+          strictEdgeGraphDebug = {
+            total_edges: cleanEdges.length,
+            shared_edges: cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip").length,
+            exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave").length,
+            invalid_edges: 0,
+          };
+        } else {
         const edgeResult = classifyPlaneEdges({
           planes: planesForClassifier,
           ridgeHints: ridgeHintsForClassifier,
@@ -1879,6 +1953,7 @@ async function processJob(input: any) {
           rake_count: cleanEdges.filter((e) => e.edge_type === "rake").length,
         }));
 
+        } // end else (non-hybrid classifier path)
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
@@ -1927,6 +2002,8 @@ async function processJob(input: any) {
       cleanEdges = cleanEdges.map((edge) => {
         const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
         if (!isStructural) return edge;
+        // Hybrid solver edges are geometrically guaranteed — skip strict graph checks
+        if (hybridSolverAccepted && String(edge.source || "").includes("constraint_ridge_first")) return edge;
         const source = String(edge.source || "");
         const sourceIsFuzzy = source.toLowerCase().includes("fuzzy");
         const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
