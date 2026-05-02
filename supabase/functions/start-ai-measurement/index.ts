@@ -1167,6 +1167,7 @@ async function processJob(input: any) {
     // Hoisted so references outside the if-block don't throw ReferenceError
     let topLevelFilteredRidges: any[] = [];
     let hipRoofDetectorDebug: any = null;
+    let hybridSolverAccepted = false;
 
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
