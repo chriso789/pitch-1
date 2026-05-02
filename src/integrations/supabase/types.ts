@@ -39156,6 +39156,7 @@ export type Database = {
           payment_terms: string | null
           phone: string | null
           primary_color: string | null
+          proposal_template_style: string
           secondary_color: string | null
           settings: Json | null
           stripe_customer_id: string | null
@@ -39200,6 +39201,7 @@ export type Database = {
           payment_terms?: string | null
           phone?: string | null
           primary_color?: string | null
+          proposal_template_style?: string
           secondary_color?: string | null
           settings?: Json | null
           stripe_customer_id?: string | null
@@ -39244,6 +39246,7 @@ export type Database = {
           payment_terms?: string | null
           phone?: string | null
           primary_color?: string | null
+          proposal_template_style?: string
           secondary_color?: string | null
           settings?: Json | null
           stripe_customer_id?: string | null
