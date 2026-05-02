@@ -1,7 +1,13 @@
 // supabase/functions/_shared/hybrid-roof-solver.ts
-// Hybrid roof solver: type-aware topology generation.
-// Replaces centroid-fan starburst with proper ridge-based (gable)
-// or corner-based hip geometry depending on footprint shape.
+// Constraint-based roof solver: Ridge defines planes, planes define edges.
+// Replaces centroid-fan and per-edge-plane approaches that explode vertex count.
+//
+// Core idea: For ANY footprint (4 vertices or 40), we:
+//   1. Find the dominant ridge axis (longest axis of footprint)
+//   2. Build a single inset ridge line
+//   3. Partition footprint vertices into 4 groups:
+//      - Left eave, Right eave, Hip-end-A, Hip-end-B
+//   4. Build exactly 4 planes: 2 trapezoids (eave sides) + 2 triangles (hip ends)
 
 type Point = { x: number; y: number };
 
@@ -27,242 +33,257 @@ type HybridSolverResult = {
 
 // ─── GEOMETRY HELPERS ───────────────────────────────
 
+function dist(a: Point, b: Point): number {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
 function centroid(poly: Point[]): Point {
   let x = 0, y = 0;
   for (const p of poly) { x += p.x; y += p.y; }
   return { x: x / poly.length, y: y / poly.length };
 }
 
-function dist(a: Point, b: Point): number {
-  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-}
-
-function midpoint(a: Point, b: Point): Point {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-/** Find the two footprint vertices forming the longest diagonal. */
-function longestAxis(poly: Point[]): [Point, Point] {
-  let max = 0;
-  let best: [Point, Point] = [poly[0], poly[1]];
-  for (let i = 0; i < poly.length; i++) {
-    for (let j = i + 1; j < poly.length; j++) {
-      const d = dist(poly[i], poly[j]);
-      if (d > max) { max = d; best = [poly[i], poly[j]]; }
+/**
+ * Oriented Bounding Box: find the direction that minimizes the bounding
+ * rectangle width. Returns the long-axis unit vector.
+ */
+function obbLongAxis(poly: Point[]): { ux: number; uy: number } {
+  // Try angles 0-179° in 1° steps; pick the one giving the smallest min-width
+  let bestUx = 1, bestUy = 0, bestRatio = 0;
+  const c = centroid(poly);
+  for (let deg = 0; deg < 180; deg++) {
+    const rad = (deg * Math.PI) / 180;
+    const ux = Math.cos(rad), uy = Math.sin(rad);
+    const nx = -uy, ny = ux; // perpendicular
+    let minP = Infinity, maxP = -Infinity, minN = Infinity, maxN = -Infinity;
+    for (const p of poly) {
+      const dp = (p.x - c.x) * ux + (p.y - c.y) * uy;
+      const dn = (p.x - c.x) * nx + (p.y - c.y) * ny;
+      if (dp < minP) minP = dp;
+      if (dp > maxP) maxP = dp;
+      if (dn < minN) minN = dn;
+      if (dn > maxN) maxN = dn;
+    }
+    const spanP = maxP - minP;
+    const spanN = maxN - minN;
+    const ratio = spanP / (spanN || 1);
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      bestUx = ux;
+      bestUy = uy;
     }
   }
-  return best;
+  return { ux: bestUx, uy: bestUy };
 }
 
-// ─── ROOF TYPE DETECTION ───────────────────────────
-
-function detectRoofType(footprint: Point[]): "gable" | "hip" | "complex" {
-  // Simplify noisy footprints: if >8 vertices, treat as complex
-  if (footprint.length > 8) return "complex";
-  if (footprint.length === 4) return "gable";
-  if (footprint.length >= 5 && footprint.length <= 8) return "hip";
-  return "complex";
+/**
+ * Project all footprint vertices onto the ridge axis.
+ * Return the axis-aligned projection value for each vertex.
+ */
+function projectOntoAxis(
+  poly: Point[],
+  c: Point,
+  ux: number,
+  uy: number
+): number[] {
+  return poly.map((p) => (p.x - c.x) * ux + (p.y - c.y) * uy);
 }
 
-// ─── GABLE SOLVER (4-sided, ridge-based) ────────────
-
-function solveGable(footprint: Point[]): HybridSolverResult {
-  const source = "hybrid_gable";
-  const edges_arr = [
-    { a: footprint[0], b: footprint[1], len: dist(footprint[0], footprint[1]) },
-    { a: footprint[1], b: footprint[2], len: dist(footprint[1], footprint[2]) },
-    { a: footprint[2], b: footprint[3], len: dist(footprint[2], footprint[3]) },
-    { a: footprint[3], b: footprint[0], len: dist(footprint[3], footprint[0]) },
-  ];
-
-  // Longer opposite pair = eaves, shorter pair = gable ends
-  const pairA = edges_arr[0].len + edges_arr[2].len;
-  const pairB = edges_arr[1].len + edges_arr[3].len;
-
-  let eaveIdxs: [number, number];
-  let gableIdxs: [number, number];
-  if (pairA >= pairB) {
-    eaveIdxs = [0, 2];
-    gableIdxs = [1, 3];
-  } else {
-    eaveIdxs = [1, 3];
-    gableIdxs = [0, 2];
-  }
-
-  // Ridge runs between midpoints of the two gable (shorter) edges
-  const ridgeP1 = midpoint(edges_arr[gableIdxs[0]].a, edges_arr[gableIdxs[0]].b);
-  const ridgeP2 = midpoint(edges_arr[gableIdxs[1]].a, edges_arr[gableIdxs[1]].b);
-
-  // 2 planes: each eave edge → ridge
-  const e0 = edges_arr[eaveIdxs[0]];
-  const e2 = edges_arr[eaveIdxs[1]];
-
-  const planes: GeneratedPlane[] = [
-    { plane_index: 1, polygon_px: [e0.a, e0.b, ridgeP2, ridgeP1], source },
-    { plane_index: 2, polygon_px: [e2.a, e2.b, ridgeP1, ridgeP2], source },
-  ];
-
-  const genEdges: GeneratedEdge[] = [
-    { edge_type: "ridge", line_px: [ridgeP1, ridgeP2], source },
-    // Rakes at gable ends
-    { edge_type: "eave", line_px: [e0.a, e0.b], source },
-    { edge_type: "eave", line_px: [e2.a, e2.b], source },
-    { edge_type: "eave", line_px: [edges_arr[gableIdxs[0]].a, edges_arr[gableIdxs[0]].b], source },
-    { edge_type: "eave", line_px: [edges_arr[gableIdxs[1]].a, edges_arr[gableIdxs[1]].b], source },
-  ];
-
-  return {
-    planes,
-    edges: genEdges,
-    ridgeLine: { p1: ridgeP1, p2: ridgeP2 },
-    roofType: "gable",
-    debug: { method: "gable_ridge", planes: 2, ridge_length: dist(ridgeP1, ridgeP2) },
-  };
-}
-
-// ─── HIP SOLVER (4-sided with inset ridge + hip lines) ────────────
-
-function solveHip4(footprint: Point[]): HybridSolverResult {
-  const source = "hybrid_hip4";
-  const edges_arr = [
-    { a: footprint[0], b: footprint[1], len: dist(footprint[0], footprint[1]) },
-    { a: footprint[1], b: footprint[2], len: dist(footprint[1], footprint[2]) },
-    { a: footprint[2], b: footprint[3], len: dist(footprint[2], footprint[3]) },
-    { a: footprint[3], b: footprint[0], len: dist(footprint[3], footprint[0]) },
-  ];
-
-  const pairA = edges_arr[0].len + edges_arr[2].len;
-  const pairB = edges_arr[1].len + edges_arr[3].len;
-
-  let eaveIdxs: [number, number];
-  let hipIdxs: [number, number];
-  if (pairA >= pairB) {
-    eaveIdxs = [0, 2];
-    hipIdxs = [1, 3];
-  } else {
-    eaveIdxs = [1, 3];
-    hipIdxs = [0, 2];
-  }
-
-  // Ridge inset 30% from each hip end
-  const hipMid0 = midpoint(edges_arr[hipIdxs[0]].a, edges_arr[hipIdxs[0]].b);
-  const hipMid1 = midpoint(edges_arr[hipIdxs[1]].a, edges_arr[hipIdxs[1]].b);
-  const inset = 0.30;
-  const ridgeP1: Point = {
-    x: hipMid0.x + (hipMid1.x - hipMid0.x) * inset,
-    y: hipMid0.y + (hipMid1.y - hipMid0.y) * inset,
-  };
-  const ridgeP2: Point = {
-    x: hipMid1.x + (hipMid0.x - hipMid1.x) * inset,
-    y: hipMid1.y + (hipMid0.y - hipMid1.y) * inset,
-  };
-
-  // Determine which ridge point is closest to which hip edge
-  const nearR0 = dist(hipMid0, ridgeP1) <= dist(hipMid0, ridgeP2) ? ridgeP1 : ridgeP2;
-  const nearR1 = nearR0 === ridgeP1 ? ridgeP2 : ridgeP1;
-
-  const e0 = edges_arr[eaveIdxs[0]];
-  const e2 = edges_arr[eaveIdxs[1]];
-
-  const planes: GeneratedPlane[] = [
-    { plane_index: 1, polygon_px: [e0.a, e0.b, ridgeP2, ridgeP1], source },
-    { plane_index: 2, polygon_px: [e2.a, e2.b, ridgeP1, ridgeP2], source },
-    { plane_index: 3, polygon_px: [edges_arr[hipIdxs[0]].a, edges_arr[hipIdxs[0]].b, nearR0], source },
-    { plane_index: 4, polygon_px: [edges_arr[hipIdxs[1]].a, edges_arr[hipIdxs[1]].b, nearR1], source },
-  ];
-
-  const genEdges: GeneratedEdge[] = [
-    { edge_type: "ridge", line_px: [ridgeP1, ridgeP2], source },
-    { edge_type: "hip", line_px: [nearR0, edges_arr[hipIdxs[0]].a], source },
-    { edge_type: "hip", line_px: [nearR0, edges_arr[hipIdxs[0]].b], source },
-    { edge_type: "hip", line_px: [nearR1, edges_arr[hipIdxs[1]].a], source },
-    { edge_type: "hip", line_px: [nearR1, edges_arr[hipIdxs[1]].b], source },
-    ...edges_arr.map(e => ({ edge_type: "eave" as const, line_px: [e.a, e.b], source })),
-  ];
-
-  return {
-    planes,
-    edges: genEdges,
-    ridgeLine: { p1: ridgeP1, p2: ridgeP2 },
-    roofType: "hip",
-    debug: { method: "hip4_ridge_inset", planes: 4, ridge_length: dist(ridgeP1, ridgeP2) },
-  };
-}
-
-// ─── HIP SOLVER (N-sided, ridge + hip lines via OBB) ────────────
-
-function solveHipN(footprint: Point[]): HybridSolverResult {
-  const source = "hybrid_hipN";
-
-  // Find longest axis of the footprint to define the ridge direction
-  const [axA, axB] = longestAxis(footprint);
-  const c = centroid(footprint);
-
-  // Ridge runs through centroid, parallel to longest axis, inset 30% from ends
-  const dx = axB.x - axA.x;
-  const dy = axB.y - axA.y;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  const ux = dx / len;
-  const uy = dy / len;
-
-  // Project all vertices onto the ridge axis to find extent
-  const projections = footprint.map(p => (p.x - c.x) * ux + (p.y - c.y) * uy);
+/**
+ * Classify footprint vertices into 4 groups based on their position
+ * relative to the ridge axis:
+ *   - hipEndA: vertices near the low-projection end
+ *   - hipEndB: vertices near the high-projection end
+ *   - eaveSideLeft: vertices on the left side of the ridge (negative cross)
+ *   - eaveSideRight: vertices on the right side (positive cross)
+ *
+ * Returns ordered polygon vertices for each of the 4 planes.
+ */
+function partitionVertices(
+  poly: Point[],
+  c: Point,
+  ux: number,
+  uy: number,
+  ridgeP1: Point,
+  ridgeP2: Point,
+  insetFrac: number
+): { leftEave: Point[]; rightEave: Point[]; hipA: Point[]; hipB: Point[] } {
+  const nx = -uy, ny = ux; // perpendicular (cross-axis)
+  const projections = projectOntoAxis(poly, c, ux, uy);
   const minProj = Math.min(...projections);
   const maxProj = Math.max(...projections);
   const span = maxProj - minProj;
 
-  const inset = 0.25;
+  const hipThreshLow = minProj + span * insetFrac;
+  const hipThreshHigh = maxProj - span * insetFrac;
+
+  const leftEave: Point[] = [];
+  const rightEave: Point[] = [];
+  const hipA: Point[] = []; // low end
+  const hipB: Point[] = []; // high end
+
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const proj = projections[i];
+    const cross = (p.x - c.x) * nx + (p.y - c.y) * ny;
+
+    if (proj <= hipThreshLow) {
+      hipA.push(p);
+    } else if (proj >= hipThreshHigh) {
+      hipB.push(p);
+    } else if (cross < 0) {
+      leftEave.push(p);
+    } else {
+      rightEave.push(p);
+    }
+  }
+
+  // Sort eave vertices along the ridge axis so the polygon is ordered
+  const sortByProj = (a: Point, b: Point) => {
+    const pa = (a.x - c.x) * ux + (a.y - c.y) * uy;
+    const pb = (b.x - c.x) * ux + (b.y - c.y) * uy;
+    return pa - pb;
+  };
+  leftEave.sort(sortByProj);
+  rightEave.sort(sortByProj);
+
+  // Sort hip vertices angularly around their centroid for clean polygon
+  const sortAngular = (pts: Point[]) => {
+    if (pts.length <= 1) return;
+    const hc = centroid(pts);
+    pts.sort((a, b) => {
+      return Math.atan2(a.y - hc.y, a.x - hc.x) - Math.atan2(b.y - hc.y, b.x - hc.x);
+    });
+  };
+  sortAngular(hipA);
+  sortAngular(hipB);
+
+  return { leftEave, rightEave, hipA, hipB };
+}
+
+// ─── MAIN CONSTRAINT SOLVER ────────────────────────
+
+function solveConstraint(footprint: Point[]): HybridSolverResult {
+  const source = "constraint_ridge_first";
+  const c = centroid(footprint);
+  const { ux, uy } = obbLongAxis(footprint);
+
+  // Project footprint onto ridge axis to find extent
+  const projections = projectOntoAxis(footprint, c, ux, uy);
+  const minProj = Math.min(...projections);
+  const maxProj = Math.max(...projections);
+  const span = maxProj - minProj;
+
+  // Inset ridge 25% from each end
+  const insetFrac = 0.25;
   const ridgeP1: Point = {
-    x: c.x + ux * (minProj + span * inset),
-    y: c.y + uy * (minProj + span * inset),
+    x: c.x + ux * (minProj + span * insetFrac),
+    y: c.y + uy * (minProj + span * insetFrac),
   };
   const ridgeP2: Point = {
-    x: c.x + ux * (maxProj - span * inset),
-    y: c.y + uy * (maxProj - span * inset),
+    x: c.x + ux * (maxProj - span * insetFrac),
+    y: c.y + uy * (maxProj - span * insetFrac),
   };
 
-  // Classify each footprint vertex as "near ridgeP1 end" or "near ridgeP2 end" or "along eave"
-  // Create planes: each perimeter edge → nearest ridge endpoint or ridge segment
+  // Partition vertices
+  const { leftEave, rightEave, hipA, hipB } = partitionVertices(
+    footprint, c, ux, uy, ridgeP1, ridgeP2, insetFrac
+  );
+
   const planes: GeneratedPlane[] = [];
-  const genEdges: GeneratedEdge[] = [
-    { edge_type: "ridge", line_px: [ridgeP1, ridgeP2], source },
-  ];
+  const genEdges: GeneratedEdge[] = [];
 
-  for (let i = 0; i < footprint.length; i++) {
-    const a = footprint[i];
-    const b = footprint[(i + 1) % footprint.length];
-    const edgeMid = midpoint(a, b);
+  // Ridge edge
+  genEdges.push({ edge_type: "ridge", line_px: [ridgeP1, ridgeP2], source });
 
-    // Project edge midpoint onto ridge axis
-    const proj = (edgeMid.x - c.x) * ux + (edgeMid.y - c.y) * uy;
-    const relativePos = (proj - minProj) / span;
-
-    if (relativePos < inset) {
-      // Near ridgeP1 end → triangle (hip end)
-      planes.push({ plane_index: planes.length + 1, polygon_px: [a, b, ridgeP1], source });
-      genEdges.push({ edge_type: "hip", line_px: [ridgeP1, a], source });
-    } else if (relativePos > (1 - inset)) {
-      // Near ridgeP2 end → triangle (hip end)
-      planes.push({ plane_index: planes.length + 1, polygon_px: [a, b, ridgeP2], source });
-      genEdges.push({ edge_type: "hip", line_px: [ridgeP2, b], source });
-    } else {
-      // Along the eave → trapezoid to ridge segment
-      planes.push({ plane_index: planes.length + 1, polygon_px: [a, b, ridgeP2, ridgeP1], source });
+  // Plane 1: Left eave trapezoid (leftEave vertices + ridgeP1 + ridgeP2)
+  if (leftEave.length >= 1) {
+    planes.push({
+      plane_index: 1,
+      polygon_px: [...leftEave, ridgeP2, ridgeP1],
+      source,
+    });
+    // Eave edges along the left side
+    for (let i = 0; i < leftEave.length - 1; i++) {
+      genEdges.push({ edge_type: "eave", line_px: [leftEave[i], leftEave[i + 1]], source });
     }
+  }
 
-    genEdges.push({ edge_type: "eave", line_px: [a, b], source });
+  // Plane 2: Right eave trapezoid (rightEave vertices + ridgeP1 + ridgeP2)
+  if (rightEave.length >= 1) {
+    planes.push({
+      plane_index: 2,
+      polygon_px: [...rightEave, ridgeP1, ridgeP2],
+      source,
+    });
+    for (let i = 0; i < rightEave.length - 1; i++) {
+      genEdges.push({ edge_type: "eave", line_px: [rightEave[i], rightEave[i + 1]], source });
+    }
+  }
+
+  // Plane 3: Hip-end A triangle (hipA vertices + ridgeP1)
+  if (hipA.length >= 1) {
+    planes.push({
+      plane_index: 3,
+      polygon_px: [...hipA, ridgeP1],
+      source,
+    });
+    for (let i = 0; i < hipA.length - 1; i++) {
+      genEdges.push({ edge_type: "eave", line_px: [hipA[i], hipA[i + 1]], source });
+    }
+    // Hip lines from ridge endpoint to hip-end corners
+    genEdges.push({ edge_type: "hip", line_px: [ridgeP1, hipA[0]], source });
+    if (hipA.length > 1) {
+      genEdges.push({ edge_type: "hip", line_px: [ridgeP1, hipA[hipA.length - 1]], source });
+    }
+  }
+
+  // Plane 4: Hip-end B triangle (hipB vertices + ridgeP2)
+  if (hipB.length >= 1) {
+    planes.push({
+      plane_index: 4,
+      polygon_px: [...hipB, ridgeP2],
+      source,
+    });
+    for (let i = 0; i < hipB.length - 1; i++) {
+      genEdges.push({ edge_type: "eave", line_px: [hipB[i], hipB[i + 1]], source });
+    }
+    genEdges.push({ edge_type: "hip", line_px: [ridgeP2, hipB[0]], source });
+    if (hipB.length > 1) {
+      genEdges.push({ edge_type: "hip", line_px: [ridgeP2, hipB[hipB.length - 1]], source });
+    }
+  }
+
+  // Connect eave sides to hip ends (closing the perimeter)
+  if (leftEave.length > 0 && hipA.length > 0) {
+    genEdges.push({ edge_type: "eave", line_px: [hipA[hipA.length - 1], leftEave[0]], source });
+  }
+  if (leftEave.length > 0 && hipB.length > 0) {
+    genEdges.push({ edge_type: "eave", line_px: [leftEave[leftEave.length - 1], hipB[0]], source });
+  }
+  if (rightEave.length > 0 && hipA.length > 0) {
+    genEdges.push({ edge_type: "eave", line_px: [hipA[0], rightEave[0]], source });
+  }
+  if (rightEave.length > 0 && hipB.length > 0) {
+    genEdges.push({ edge_type: "eave", line_px: [rightEave[rightEave.length - 1], hipB[hipB.length - 1]], source });
   }
 
   return {
     planes,
     edges: genEdges,
     ridgeLine: { p1: ridgeP1, p2: ridgeP2 },
-    roofType: "hip",
+    roofType: planes.length <= 2 ? "gable" : "hip",
     debug: {
-      method: "hipN_obb_ridge",
+      method: "constraint_ridge_first",
       vertex_count: footprint.length,
       planes: planes.length,
       ridge_length: dist(ridgeP1, ridgeP2),
+      partition: {
+        leftEave: leftEave.length,
+        rightEave: rightEave.length,
+        hipA: hipA.length,
+        hipB: hipB.length,
+      },
     },
   };
 }
@@ -272,47 +293,23 @@ function solveHipN(footprint: Point[]): HybridSolverResult {
 export function solveHybridRoof(footprint: Point[]): HybridSolverResult {
   if (footprint.length < 3) {
     return {
-      planes: [], edges: [], ridgeLine: null, roofType: "complex",
+      planes: [],
+      edges: [],
+      ridgeLine: null,
+      roofType: "complex",
       debug: { error: "footprint_too_small" },
     };
   }
 
-  const type = detectRoofType(footprint);
+  const result = solveConstraint(footprint);
 
-  let result: HybridSolverResult;
-
-  if (type === "gable" && footprint.length === 4) {
-    // Check aspect ratio — very square = hip, elongated = gable
-    const edges = [
-      dist(footprint[0], footprint[1]),
-      dist(footprint[1], footprint[2]),
-      dist(footprint[2], footprint[3]),
-      dist(footprint[3], footprint[0]),
-    ];
-    const pairA = edges[0] + edges[2];
-    const pairB = edges[1] + edges[3];
-    const ratio = Math.max(pairA, pairB) / Math.min(pairA, pairB);
-
-    if (ratio < 1.3) {
-      // Nearly square → hip roof (pyramid-like)
-      result = solveHip4(footprint);
-    } else {
-      // Default 4-sided to hip (most residential roofs are hip)
-      result = solveHip4(footprint);
-    }
-  } else if (type === "hip") {
-    result = solveHipN(footprint);
-  } else {
-    // Complex: use N-sided hip solver as best approximation
-    result = solveHipN(footprint);
-  }
-
-  console.log("[HYBRID_SOLVER]", JSON.stringify({
+  console.log("[CONSTRAINT_SOLVER]", JSON.stringify({
     roofType: result.roofType,
     method: result.debug.method,
     planes: result.planes.length,
     edges: result.edges.length,
     ridgeLength: result.ridgeLine ? dist(result.ridgeLine.p1, result.ridgeLine.p2) : 0,
+    partition: result.debug.partition,
   }));
 
   return result;
