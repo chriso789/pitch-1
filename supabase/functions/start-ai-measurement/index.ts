@@ -3458,6 +3458,7 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      vendor_truth_comparison: vendorTruthComparison,
        status: needsInternalReview ? "needs_internal_review" : (Boolean(blockCustomerReportReason) || quality.overall_score < 0.80) ? "needs_review" : "completed",
       reason: blockCustomerReportReason,
       pdf_source_signature: pdfSourceSignature,
