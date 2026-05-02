@@ -841,6 +841,22 @@ async function processJob(input: any) {
       rejected: candidates.filter((c) => c.rejected_reason).map((c) => ({ source: c.source, reason: c.rejected_reason })),
     }));
 
+    // 5. Run deterministic topology on the selected footprint.
+    let cleanPlanes: RoofPlane[] = [];
+    let cleanEdges: RoofEdge[] = [];
+    let topologySource = "none";
+    let ridgeDetectionRan = false;
+    let ridgeDetectedCount = 0;
+    let ridgeSplitPlaneCount = 0;
+    let singlePlaneFallbackForbidden = false;
+    let planeMergeDebug: any = null;
+    let footprintCoverageDebug: any = null;
+    let planeEdgeClassifierDebug: any = null;
+    let strictEdgeGraphDebug: any = null;
+    let ridgeAlignmentDebug: any = null;
+    let solverTopologyLocked = false;
+    let constraintSolverEdges: RoofEdge[] = [];
+
     // HARD GATE: DSM graph is now the only publishable topology source.
     // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
     let autonomousDebug: any = null;
@@ -934,22 +950,6 @@ async function processJob(input: any) {
       ridgeSplitPlaneCount = cleanPlanes.length;
       console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
     }
-
-    // 5. Run deterministic topology on the selected footprint.
-    let cleanPlanes: RoofPlane[] = [];
-    let cleanEdges: RoofEdge[] = [];
-    let topologySource = "none";
-    let ridgeDetectionRan = false;
-    let ridgeDetectedCount = 0;
-    let ridgeSplitPlaneCount = 0;
-    let singlePlaneFallbackForbidden = false;
-    let planeMergeDebug: any = null;
-    let footprintCoverageDebug: any = null;
-    let planeEdgeClassifierDebug: any = null;
-    let strictEdgeGraphDebug: any = null;
-    let ridgeAlignmentDebug: any = null;
-    let solverTopologyLocked = false;
-    let constraintSolverEdges: RoofEdge[] = [];
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
