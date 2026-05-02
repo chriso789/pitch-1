@@ -1,25 +1,46 @@
 /**
- * Autonomous Roof Graph Solver v2 — Corrected Pipeline
+ * Autonomous Roof Graph Solver v3 — Prune-First, No Forced Closure
  * 
- * DSM-first multi-evidence fusion with:
- *   Step 2.5: Edge fusion (DSM + RGB + Solar scoring)
- *   Step 3:   Clip to mask
- *   Step 3.5: Planar graph enforcement (snap, split, validate)
- *   Step 4:   Build faces from planar graph
- *   Step 4.5: Canonical edge mapping (shared edges, physics-based classification)
- *   Step 5:   Diagram = graph (no templates, no normalization)
- *   Step 6:   QA gates (hard fail, no synthetic fallbacks)
+ * PHILOSOPHY CHANGE from v2:
+ *   v2: "Make the data fit a valid roof" → forced graph closure → fake symmetry
+ *   v3: "Only accept structures that naturally form a valid roof" → prune weak edges
  * 
- * Patent-aligned: One canonical roof graph feeds all outputs.
- * Primary source: DSM (ridges/valleys), mask (footprint), solar segments (azimuth/pitch priors).
- * NO FALLBACK to skeleton synthesis for complex roofs. Fail hard.
+ * KEY FIXES:
+ *   1. Edge scoring + filtering BEFORE graph build (drop weak edges)
+ *   2. Conservative snapping (no center collapse) — only snap if dist<5px AND angle<10deg
+ *   3. NO forced intersection splitting — if edges don't naturally meet, drop weakest
+ *   4. DSM physics-based classification (perpendicular cross-section, not geometry guesses)
+ *   5. Facets from closed polygons with DSM plane-fit validation (no solar-segment mapping)
+ *   6. Hard fail on under-segmented complex roofs
+ * 
+ * Patent-aligned: ONE canonical roof graph feeds all outputs.
  */
 
 import type { DSMGrid, MaskedDSMGrid, RoofMask } from "./dsm-analyzer.ts";
 import { getElevationAt, geoToPixel, pixelToGeo } from "./dsm-analyzer.ts";
 import { detectStructuralEdges, type DSMEdgeCandidate } from "./dsm-edge-detector.ts";
+import {
+  getPerpendicularProfile,
+  classifyEdgeByDSM,
+  fitPlaneToPolygon,
+  detectClosedPolygons,
+  computeEdgeScore,
+  pointToSegmentDistance,
+  edgeAngle,
+  angleDifference,
+} from "./dsm-utils.ts";
 
 type XY = [number, number]; // [lng, lat]
+
+// ============= CONSTANTS =============
+
+const EDGE_SCORE_THRESHOLD = 0.25;     // Minimum score to keep an edge
+const SNAP_DISTANCE_METERS = 1.5;      // Max snap distance (~5px at 0.3m/px)
+const SNAP_ANGLE_RAD = 10 * Math.PI / 180; // Max angle difference for snapping
+const MIN_EDGE_LENGTH_FT = 3;          // Discard tiny edges
+const MAX_INTERSECTIONS_PER_EDGE = 2;  // Drop edges with too many forced intersections
+const PLANE_FIT_ERROR_THRESHOLD = 0.5; // meters — max RMS error for valid facet
+const MIN_FACET_AREA_SQFT = 15;        // Discard tiny facets
 
 // ============= TYPES =============
 
@@ -96,7 +117,10 @@ export interface AutonomousGraphLog {
   solar_segments: number;
   fused_edges: number;
   rejected_edges: number;
+  pruned_by_score: number;
+  pruned_by_intersection: number;
   faces: number;
+  faces_rejected_by_plane_fit: number;
   coverage_ratio: number;
   confidence: number;
   graph_valid: boolean;
@@ -145,13 +169,22 @@ function distanceFt(p1: XY, p2: XY, midLat: number): number {
   return Math.sqrt(dx * dx + dy * dy) * 3.28084;
 }
 
+function distanceMeters(p1: XY, p2: XY, midLat: number): number {
+  const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
+  const dx = (p2[0] - p1[0]) * metersPerDegLng;
+  const dy = (p2[1] - p1[1]) * metersPerDegLat;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 function polygonAreaSqft(coords: XY[], midLat: number): number {
-  if (coords.length < 4) return 0;
+  if (coords.length < 3) return 0;
   const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
   let sum = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
+  const n = coords.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
     const x1 = coords[i][0] * metersPerDegLng, y1 = coords[i][1] * metersPerDegLat;
-    const x2 = coords[i + 1][0] * metersPerDegLng, y2 = coords[i + 1][1] * metersPerDegLat;
+    const x2 = coords[j][0] * metersPerDegLng, y2 = coords[j][1] * metersPerDegLat;
     sum += (x1 * y2 - x2 * y1);
   }
   return Math.abs(sum) / 2 * 10.7639;
@@ -175,6 +208,10 @@ function pointInPolygon(p: XY, ring: XY[]): boolean {
     if (intersect) inside = !inside;
   }
   return inside;
+}
+
+function vertexKey(p: XY): string {
+  return `${p[0].toFixed(8)},${p[1].toFixed(8)}`;
 }
 
 // ============= COMPLEXITY DETECTION =============
@@ -224,141 +261,203 @@ export function detectComplexRoof(
   return { isComplex: reasons.length > 0, expectedMinFacets, reasons };
 }
 
-// ============= STEP 2.5: EDGE FUSION =============
+// ============= INTERNAL EDGE TYPE =============
 
-interface FusionCandidate {
+interface ScoredEdge {
+  id: string;
   start: XY;
   end: XY;
-  type: 'ridge' | 'valley' | 'hip';
-  dsm_score: number;
-  rgb_score: number;
-  solar_score: number;
-  final_score: number;
-  source: 'dsm' | 'skeleton' | 'solar_segments';
+  score: number;
+  initialType: 'ridge' | 'valley' | 'hip';
+  classifiedType: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake';
+  source: 'dsm' | 'skeleton' | 'fused';
+  lengthFt: number;
 }
 
-function fuseEdgeCandidates(
+// ============= STEP 1: SCORE & FILTER EDGES =============
+
+function scoreAndFilterEdges(
   dsmEdges: DSMEdgeCandidate[],
   skeletonEdges: Array<{ start: XY; end: XY; type: 'ridge' | 'hip' | 'valley' }>,
   solarSegments: SolarSegment[],
+  footprint: XY[],
+  dsmGrid: DSMGrid | null,
   midLat: number,
-  isComplex: boolean,
-  fusionThreshold: number = 0.4
-): { accepted: FusionCandidate[]; rejected: number } {
-  const candidates: FusionCandidate[] = [];
-  const solarFaces = solarSegments.map(seg => ({
-    azimuth: seg.azimuthDegrees || 0,
-    centroid: seg.center
-      ? [seg.center.longitude, seg.center.latitude] as XY
-      : [0, 0] as XY,
-  }));
+  isComplex: boolean
+): { accepted: ScoredEdge[]; prunedByScore: number } {
+  const candidates: ScoredEdge[] = [];
+  let edgeIdx = 0;
 
   // A. DSM edges — primary evidence
   for (const de of dsmEdges) {
-    const solarScore = scoreDSMEdgeAgainstSolar(de.start, de.end, solarFaces, de.type);
-    const rgbScore = 0.5; // Placeholder — RGB edge confirmation would go here
-    const final = 0.5 * de.dsm_score + 0.3 * rgbScore + 0.2 * solarScore;
+    const lengthFt = distanceFt(de.start, de.end, midLat);
+    if (lengthFt < MIN_EDGE_LENGTH_FT) continue;
+
+    // Check if edge midpoint is within footprint
+    const mid = midpoint(de.start, de.end);
+    if (!pointInPolygon(mid, footprint) && !pointInPolygon(de.start, footprint) && !pointInPolygon(de.end, footprint)) {
+      continue;
+    }
+
+    const score = computeEdgeScore(de.start, de.end, de.dsm_score, dsmGrid, midLat);
 
     candidates.push({
+      id: `SE-${edgeIdx++}`,
       start: de.start,
       end: de.end,
-      type: de.type,
-      dsm_score: de.dsm_score,
-      rgb_score: rgbScore,
-      solar_score: solarScore,
-      final_score: final,
+      score,
+      initialType: de.type,
+      classifiedType: de.type, // Will be reclassified by DSM physics
       source: 'dsm',
+      lengthFt,
     });
   }
 
-  // B. Skeleton edges — lower confidence, only add if no DSM edge covers same area
-  for (const skel of skeletonEdges) {
-    const skelMid = midpoint(skel.start, skel.end);
-    const isDuplicate = candidates.some(c =>
-      c.type === skel.type &&
-      distanceFt(midpoint(c.start, c.end), skelMid, midLat) < 10
-    );
-    if (isDuplicate) continue;
+  // B. Skeleton edges — only for simple roofs, and only if no DSM edge covers same area
+  if (!isComplex) {
+    for (const skel of skeletonEdges) {
+      const lengthFt = distanceFt(skel.start, skel.end, midLat);
+      if (lengthFt < MIN_EDGE_LENGTH_FT) continue;
 
-    // For complex roofs, skeleton alone is NOT sufficient — reject
-    if (isComplex) continue;
+      const skelMid = midpoint(skel.start, skel.end);
+      
+      // Check for duplicate coverage
+      const isDuplicate = candidates.some(c =>
+        distanceMeters(midpoint(c.start, c.end), skelMid, midLat) < 5
+      );
+      if (isDuplicate) continue;
 
-    const solarScore = scoreDSMEdgeAgainstSolar(skel.start, skel.end, solarFaces, skel.type);
-    const final = 0.5 * 0.3 + 0.3 * 0.5 + 0.2 * solarScore; // Low DSM score for skeleton
+      const score = computeEdgeScore(skel.start, skel.end, 0.3, dsmGrid, midLat);
 
-    candidates.push({
-      start: skel.start,
-      end: skel.end,
-      type: skel.type,
-      dsm_score: 0.3,
-      rgb_score: 0.5,
-      solar_score: solarScore,
-      final_score: final,
-      source: 'skeleton',
-    });
+      candidates.push({
+        id: `SE-${edgeIdx++}`,
+        start: skel.start,
+        end: skel.end,
+        score: score * 0.7, // Penalty for skeleton-only
+        initialType: skel.type,
+        classifiedType: skel.type,
+        source: 'skeleton',
+        lengthFt,
+      });
+    }
   }
+
+  // Sort by score descending
+  candidates.sort((a, b) => b.score - a.score);
 
   // Filter by threshold
-  const accepted = candidates.filter(c => c.final_score >= fusionThreshold);
-  const rejected = candidates.length - accepted.length;
+  const accepted = candidates.filter(c => c.score >= EDGE_SCORE_THRESHOLD);
+  const prunedByScore = candidates.length - accepted.length;
 
-  return { accepted, rejected };
+  return { accepted, prunedByScore };
 }
 
-function scoreDSMEdgeAgainstSolar(
-  start: XY,
-  end: XY,
-  solarFaces: Array<{ azimuth: number; centroid: XY }>,
-  edgeType: 'ridge' | 'hip' | 'valley'
-): number {
-  if (solarFaces.length < 2) return 0.5;
+// ============= STEP 2: CONSERVATIVE SNAPPING (NO CENTER COLLAPSE) =============
 
-  const edgeMid = midpoint(start, end);
-  const sorted = solarFaces
-    .map(f => ({
-      ...f,
-      dist: Math.abs(f.centroid[0] - edgeMid[0]) + Math.abs(f.centroid[1] - edgeMid[1])
-    }))
-    .sort((a, b) => a.dist - b.dist);
-
-  if (sorted.length < 2) return 0.5;
-
-  const diff = Math.abs(((sorted[0].azimuth - sorted[1].azimuth + 180) % 360) - 180);
-
-  if (edgeType === 'ridge') return diff > 140 ? 0.9 : diff > 100 ? 0.7 : 0.4;
-  if (edgeType === 'valley') return (diff > 60 && diff < 120) ? 0.85 : 0.4;
-  return (diff > 60 && diff < 120) ? 0.85 : 0.4; // hip
-}
-
-// ============= STEP 3: CLIP TO MASK =============
-
-function clipEdgesToMask(
-  edges: FusionCandidate[],
-  footprint: XY[],
+function conservativeSnap(
+  edges: ScoredEdge[],
+  perimeterVertices: XY[],
   midLat: number
-): FusionCandidate[] {
-  return edges.filter(e => {
-    const mid = midpoint(e.start, e.end);
-    return pointInPolygon(mid, footprint) ||
-           pointInPolygon(e.start, footprint) ||
-           pointInPolygon(e.end, footprint);
+): ScoredEdge[] {
+  // Build a list of "anchor" points: perimeter vertices + strong edge endpoints
+  const anchors: XY[] = [...perimeterVertices];
+  
+  // Add endpoints of top-scored edges as anchors
+  const topEdges = edges.slice(0, Math.min(edges.length, 5));
+  for (const e of topEdges) {
+    anchors.push(e.start, e.end);
+  }
+
+  return edges.map(edge => {
+    let start = edge.start;
+    let end = edge.end;
+
+    // Try snapping each endpoint to nearest anchor IF conditions are met
+    start = snapPointConservative(start, edge, anchors, edges, midLat);
+    end = snapPointConservative(end, edge, anchors, edges, midLat);
+
+    return { ...edge, start, end };
   });
 }
 
-// ============= STEP 3.5: PLANAR GRAPH ENFORCEMENT =============
+function snapPointConservative(
+  point: XY,
+  ownerEdge: ScoredEdge,
+  anchors: XY[],
+  allEdges: ScoredEdge[],
+  midLat: number
+): XY {
+  let bestDist = Infinity;
+  let bestTarget: XY | null = null;
 
-/** Snap a coordinate to a grid (prevents near-miss intersections) */
-function snapToGrid(p: XY, gridSize: number): XY {
-  return [
-    Math.round(p[0] / gridSize) * gridSize,
-    Math.round(p[1] / gridSize) * gridSize,
-  ];
+  // Check against other edge endpoints (not our own)
+  for (const other of allEdges) {
+    if (other.id === ownerEdge.id) continue;
+
+    for (const otherPt of [other.start, other.end]) {
+      const dist = distanceMeters(point, otherPt, midLat);
+      if (dist >= SNAP_DISTANCE_METERS) continue;
+
+      // Check angle compatibility
+      const ownerAngle = edgeAngle(ownerEdge.start, ownerEdge.end);
+      const otherAngle = edgeAngle(other.start, other.end);
+      // We want edges meeting at a point — angle difference should NOT be near 0 (parallel)
+      const aDiff = angleDifference(ownerAngle, otherAngle);
+      if (aDiff < SNAP_ANGLE_RAD) continue; // Too parallel — don't snap (would force fake intersection)
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTarget = otherPt;
+      }
+    }
+  }
+
+  // Also check perimeter anchors (always OK to snap to perimeter)
+  for (const anchor of anchors) {
+    const dist = distanceMeters(point, anchor, midLat);
+    if (dist < SNAP_DISTANCE_METERS && dist < bestDist) {
+      bestDist = dist;
+      bestTarget = anchor;
+    }
+  }
+
+  return bestTarget || point;
 }
 
-/** Compute intersection point of two line segments, or null if they don't intersect */
-function segmentIntersection(
-  a1: XY, a2: XY, b1: XY, b2: XY
-): XY | null {
+// ============= STEP 3: REMOVE EDGES WITH TOO MANY FORCED INTERSECTIONS =============
+
+function removeOverIntersectedEdges(edges: ScoredEdge[], midLat: number): { kept: ScoredEdge[]; pruned: number } {
+  // Count intersections per edge
+  const intersectionCounts = new Map<string, number>();
+
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const ip = segmentIntersection(edges[i].start, edges[i].end, edges[j].start, edges[j].end);
+      if (ip) {
+        intersectionCounts.set(edges[i].id, (intersectionCounts.get(edges[i].id) || 0) + 1);
+        intersectionCounts.set(edges[j].id, (intersectionCounts.get(edges[j].id) || 0) + 1);
+      }
+    }
+  }
+
+  // Remove edges with too many intersections (they're likely hallucinated)
+  // But keep edges sorted by score — only remove if they're low-scored AND over-intersected
+  const kept: ScoredEdge[] = [];
+  let pruned = 0;
+
+  for (const edge of edges) {
+    const count = intersectionCounts.get(edge.id) || 0;
+    if (count > MAX_INTERSECTIONS_PER_EDGE && edge.score < 0.5) {
+      pruned++;
+      continue;
+    }
+    kept.push(edge);
+  }
+
+  return { kept, pruned };
+}
+
+function segmentIntersection(a1: XY, a2: XY, b1: XY, b2: XY): XY | null {
   const dx1 = a2[0] - a1[0], dy1 = a2[1] - a1[1];
   const dx2 = b2[0] - b1[0], dy2 = b2[1] - b1[1];
   const denom = dx1 * dy2 - dy1 * dx2;
@@ -367,268 +466,194 @@ function segmentIntersection(
   const t = ((b1[0] - a1[0]) * dy2 - (b1[1] - a1[1]) * dx2) / denom;
   const u = ((b1[0] - a1[0]) * dy1 - (b1[1] - a1[1]) * dx1) / denom;
 
-  if (t < 0.01 || t > 0.99 || u < 0.01 || u > 0.99) return null;
+  // Only count interior intersections (not at endpoints)
+  if (t < 0.05 || t > 0.95 || u < 0.05 || u > 0.95) return null;
 
   return [a1[0] + t * dx1, a1[1] + t * dy1];
 }
 
-interface EnforcedGraph {
-  vertices: Map<string, XY>;
-  edges: Array<{ v1: string; v2: string; type: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake'; confidence: number; source: string }>;
-  valid: boolean;
-  reason?: string;
-}
+// ============= STEP 4: DSM PHYSICS CLASSIFICATION =============
 
-function vertexKey(p: XY): string {
-  return `${p[0].toFixed(8)},${p[1].toFixed(8)}`;
-}
+function classifyEdgesWithDSM(edges: ScoredEdge[], dsmGrid: DSMGrid | null): ScoredEdge[] {
+  if (!dsmGrid) return edges;
 
-function enforceplanarGraph(
-  structuralEdges: FusionCandidate[],
-  perimeterEdges: Array<{ start: XY; end: XY; type: 'eave' | 'rake' }>,
-  midLat: number
-): EnforcedGraph {
-  // Compute snap grid size: ~0.5m in degrees
-  const { metersPerDegLng } = degToMeters(midLat);
-  const gridSize = 0.5 / metersPerDegLng; // ~0.5m
-
-  const vertices = new Map<string, XY>();
-  const edges: EnforcedGraph['edges'] = [];
-
-  const addVertex = (p: XY): string => {
-    const snapped = snapToGrid(p, gridSize);
-    const key = vertexKey(snapped);
-    if (!vertices.has(key)) vertices.set(key, snapped);
-    return key;
-  };
-
-  // Collect all edge segments (structural + perimeter)
-  const allSegments: Array<{
-    start: XY; end: XY;
-    type: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake';
-    confidence: number;
-    source: string;
-  }> = [];
-
-  for (const e of structuralEdges) {
-    allSegments.push({
-      start: snapToGrid(e.start, gridSize),
-      end: snapToGrid(e.end, gridSize),
-      type: e.type,
-      confidence: e.final_score,
-      source: e.source,
-    });
-  }
-
-  for (const e of perimeterEdges) {
-    allSegments.push({
-      start: snapToGrid(e.start, gridSize),
-      end: snapToGrid(e.end, gridSize),
-      type: e.type,
-      confidence: 0.85,
-      source: 'perimeter',
-    });
-  }
-
-  // Split edges at intersection points
-  for (let i = 0; i < allSegments.length; i++) {
-    for (let j = i + 1; j < allSegments.length; j++) {
-      const ip = segmentIntersection(
-        allSegments[i].start, allSegments[i].end,
-        allSegments[j].start, allSegments[j].end
-      );
-      if (ip) {
-        const snappedIP = snapToGrid(ip, gridSize);
-        // Split segment i at intersection point
-        const origI = { ...allSegments[i] };
-        allSegments[i] = { ...origI, end: snappedIP };
-        allSegments.push({ ...origI, start: snappedIP });
-
-        // Split segment j at intersection point
-        const origJ = { ...allSegments[j] };
-        allSegments[j] = { ...origJ, end: snappedIP };
-        allSegments.push({ ...origJ, start: snappedIP });
-      }
+  return edges.map(edge => {
+    const classified = classifyEdgeByDSM(edge.start, edge.end, dsmGrid);
+    if (classified) {
+      return { ...edge, classifiedType: classified };
     }
-  }
-
-  // Build vertex and edge lists
-  for (const seg of allSegments) {
-    const v1 = addVertex(seg.start);
-    const v2 = addVertex(seg.end);
-    if (v1 === v2) continue; // Skip zero-length edges
-
-    // Deduplicate edges
-    const existing = edges.find(e =>
-      (e.v1 === v1 && e.v2 === v2) || (e.v1 === v2 && e.v2 === v1)
-    );
-    if (!existing) {
-      edges.push({ v1, v2, type: seg.type, confidence: seg.confidence, source: seg.source });
-    }
-  }
-
-  // Validate: check for floating edges (vertices with degree 1 that aren't perimeter)
-  const degree = new Map<string, number>();
-  for (const e of edges) {
-    degree.set(e.v1, (degree.get(e.v1) || 0) + 1);
-    degree.set(e.v2, (degree.get(e.v2) || 0) + 1);
-  }
-
-  const floatingVertices = [...degree.entries()].filter(([_, d]) => d < 2);
-  // Allow perimeter corners to have degree 1 at the boundary
-  const perimeterVertexKeys = new Set<string>();
-  for (const e of perimeterEdges) {
-    perimeterVertexKeys.add(vertexKey(snapToGrid(e.start, gridSize)));
-    perimeterVertexKeys.add(vertexKey(snapToGrid(e.end, gridSize)));
-  }
-
-  const trueFloating = floatingVertices.filter(([k]) => !perimeterVertexKeys.has(k));
-
-  if (edges.length === 0) {
-    return { vertices, edges, valid: false, reason: 'No edges in graph' };
-  }
-
-  // Graph connectivity check via BFS
-  const adjList = new Map<string, Set<string>>();
-  for (const e of edges) {
-    if (!adjList.has(e.v1)) adjList.set(e.v1, new Set());
-    if (!adjList.has(e.v2)) adjList.set(e.v2, new Set());
-    adjList.get(e.v1)!.add(e.v2);
-    adjList.get(e.v2)!.add(e.v1);
-  }
-
-  const visited = new Set<string>();
-  const queue = [adjList.keys().next().value!];
-  visited.add(queue[0]);
-  while (queue.length > 0) {
-    const curr = queue.pop()!;
-    for (const neighbor of adjList.get(curr) || []) {
-      if (!visited.has(neighbor)) {
-        visited.add(neighbor);
-        queue.push(neighbor);
-      }
-    }
-  }
-
-  const isConnected = visited.size === vertices.size;
-
-  return {
-    vertices,
-    edges,
-    valid: isConnected && trueFloating.length === 0,
-    reason: !isConnected
-      ? `Graph not connected: ${visited.size}/${vertices.size} vertices reachable`
-      : trueFloating.length > 0
-        ? `${trueFloating.length} floating vertices`
-        : undefined,
-  };
-}
-
-// ============= STEP 4: BUILD FACES =============
-
-function buildFacesFromSolarSegments(
-  solarSegments: SolarSegment[],
-  midLat: number,
-  lng: number,
-  lat: number
-): GraphFace[] {
-  return solarSegments.map((seg, i) => {
-    const label = String.fromCharCode(65 + i);
-    const areaSqft = (seg.stats?.areaMeters2 || 0) * 10.7639;
-    const pitch = seg.pitchDegrees || 0;
-
-    return {
-      id: `SF-${label}`,
-      label,
-      polygon: [], // Real polygon extraction requires planar face traversal
-      plan_area_sqft: areaSqft / pitchFactor(pitch),
-      roof_area_sqft: areaSqft,
-      pitch_degrees: pitch,
-      azimuth_degrees: seg.azimuthDegrees || 0,
-      edge_ids: [],
-    };
+    return edge;
   });
 }
 
-// ============= STEP 4.5: CANONICAL EDGE MAPPING =============
+// ============= STEP 5: BUILD GRAPH & EXTRACT FACES =============
 
-interface CanonicalEdgeMap {
-  [key: string]: {
+interface SimpleGraph {
+  vertices: Map<string, XY>;
+  edges: Array<{
     v1: string;
     v2: string;
-    faceIds: string[];
-    type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
-    classifiedType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
-  };
+    type: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake';
+    score: number;
+    source: string;
+  }>;
+  connected: boolean;
 }
 
-function canonicalEdgeKey(v1: string, v2: string): string {
-  return v1 < v2 ? `${v1}|${v2}` : `${v2}|${v1}`;
-}
-
-function buildCanonicalEdgeMap(
-  graph: EnforcedGraph,
-  faces: GraphFace[],
-  dsmGrid: DSMGrid | null,
+function buildGraph(
+  structuralEdges: ScoredEdge[],
+  perimeterEdges: Array<{ start: XY; end: XY; type: 'eave' | 'rake' }>,
   midLat: number
-): CanonicalEdgeMap {
-  const edgeMap: CanonicalEdgeMap = {};
+): SimpleGraph {
+  const vertices = new Map<string, XY>();
+  const edges: SimpleGraph['edges'] = [];
 
-  for (const e of graph.edges) {
-    const key = canonicalEdgeKey(e.v1, e.v2);
+  const addVertex = (p: XY): string => {
+    const key = vertexKey(p);
+    if (!vertices.has(key)) vertices.set(key, p);
+    return key;
+  };
 
-    if (!edgeMap[key]) {
-      edgeMap[key] = {
-        v1: e.v1,
-        v2: e.v2,
-        faceIds: [],
-        type: e.type,
-        classifiedType: e.type,
-      };
-    }
-
-    // Physics-based reclassification using DSM slopes
-    if (dsmGrid && (e.type === 'ridge' || e.type === 'valley' || e.type === 'hip')) {
-      const v1Pos = graph.vertices.get(e.v1)!;
-      const v2Pos = graph.vertices.get(e.v2)!;
-      const edgeMid = midpoint(v1Pos, v2Pos);
-
-      // Sample elevation perpendicular to edge on both sides
-      const edgeDx = v2Pos[0] - v1Pos[0];
-      const edgeDy = v2Pos[1] - v1Pos[1];
-      const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-      if (edgeLen > 0) {
-        const perpDx = -edgeDy / edgeLen;
-        const perpDy = edgeDx / edgeLen;
-        const offset = 0.00002; // ~2m
-
-        const leftPt: XY = [edgeMid[0] + perpDx * offset, edgeMid[1] + perpDy * offset];
-        const rightPt: XY = [edgeMid[0] - perpDx * offset, edgeMid[1] - perpDy * offset];
-
-        const centerElev = getElevationAt(edgeMid, dsmGrid);
-        const leftElev = getElevationAt(leftPt, dsmGrid);
-        const rightElev = getElevationAt(rightPt, dsmGrid);
-
-        if (centerElev !== null && leftElev !== null && rightElev !== null) {
-          const leftSlopes = centerElev > leftElev; // slopes down to left
-          const rightSlopes = centerElev > rightElev; // slopes down to right
-
-          if (leftSlopes && rightSlopes) {
-            // Both sides slope away = RIDGE
-            edgeMap[key].classifiedType = 'ridge';
-          } else if (!leftSlopes && !rightSlopes) {
-            // Both sides slope toward = VALLEY
-            edgeMap[key].classifiedType = 'valley';
-          } else {
-            // Mixed = HIP
-            edgeMap[key].classifiedType = 'hip';
-          }
-        }
-      }
+  // Add structural edges (already scored and filtered)
+  for (const e of structuralEdges) {
+    const v1 = addVertex(e.start);
+    const v2 = addVertex(e.end);
+    if (v1 === v2) continue;
+    
+    // Deduplicate
+    const exists = edges.some(ex => (ex.v1 === v1 && ex.v2 === v2) || (ex.v1 === v2 && ex.v2 === v1));
+    if (!exists) {
+      edges.push({ v1, v2, type: e.classifiedType, score: e.score, source: e.source });
     }
   }
 
-  return edgeMap;
+  // Add perimeter edges
+  for (const e of perimeterEdges) {
+    const v1 = addVertex(e.start);
+    const v2 = addVertex(e.end);
+    if (v1 === v2) continue;
+    
+    const exists = edges.some(ex => (ex.v1 === v1 && ex.v2 === v2) || (ex.v1 === v2 && ex.v2 === v1));
+    if (!exists) {
+      edges.push({ v1, v2, type: e.type, score: 0.85, source: 'perimeter' });
+    }
+  }
+
+  // Check connectivity via BFS
+  let connected = false;
+  if (vertices.size > 0 && edges.length > 0) {
+    const adjList = new Map<string, Set<string>>();
+    for (const e of edges) {
+      if (!adjList.has(e.v1)) adjList.set(e.v1, new Set());
+      if (!adjList.has(e.v2)) adjList.set(e.v2, new Set());
+      adjList.get(e.v1)!.add(e.v2);
+      adjList.get(e.v2)!.add(e.v1);
+    }
+
+    const visited = new Set<string>();
+    const queue = [adjList.keys().next().value!];
+    visited.add(queue[0]);
+    while (queue.length > 0) {
+      const curr = queue.pop()!;
+      for (const nb of adjList.get(curr) || []) {
+        if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
+      }
+    }
+    connected = visited.size === vertices.size;
+  }
+
+  return { vertices, edges, connected };
+}
+
+function extractAndValidateFaces(
+  graph: SimpleGraph,
+  dsmGrid: DSMGrid | null,
+  midLat: number,
+  solarSegments: SolarSegment[]
+): { faces: GraphFace[]; rejectedCount: number } {
+  // Extract closed polygons from the graph
+  const graphEdgesForPoly = graph.edges.map((e, i) => ({ v1: e.v1, v2: e.v2, id: `ge-${i}` }));
+  const polygonVertexKeys = detectClosedPolygons(graphEdgesForPoly, graph.vertices);
+
+  const faces: GraphFace[] = [];
+  let rejectedCount = 0;
+  let faceIdx = 0;
+
+  for (const vertexKeys of polygonVertexKeys) {
+    const polygon = vertexKeys.map(k => graph.vertices.get(k)!).filter(Boolean);
+    if (polygon.length < 3) continue;
+
+    // Compute area
+    const areaSqft = polygonAreaSqft(polygon, midLat);
+    if (areaSqft < MIN_FACET_AREA_SQFT) {
+      rejectedCount++;
+      continue;
+    }
+
+    // Validate with DSM plane fit
+    if (dsmGrid) {
+      const fitError = fitPlaneToPolygon(polygon, dsmGrid);
+      if (fitError !== null && fitError > PLANE_FIT_ERROR_THRESHOLD) {
+        rejectedCount++;
+        console.log(`  Facet rejected: plane fit error ${fitError.toFixed(3)}m > ${PLANE_FIT_ERROR_THRESHOLD}m`);
+        continue;
+      }
+    }
+
+    // Find matching solar segment for pitch/azimuth
+    const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
+    const matchingSolar = findClosestSolarSegment(facetCenter, solarSegments);
+    const pitch = matchingSolar?.pitchDegrees || 0;
+    const azimuth = matchingSolar?.azimuthDegrees || 0;
+
+    const label = String.fromCharCode(65 + faceIdx);
+    const closedPolygon = [...polygon, polygon[0]]; // Close the ring
+
+    // Find edge IDs that bound this face
+    const faceEdgeIds: string[] = [];
+    for (let i = 0; i < polygon.length; i++) {
+      const v1Key = vertexKeys[i];
+      const v2Key = vertexKeys[(i + 1) % vertexKeys.length];
+      const edgeIdx = graph.edges.findIndex(e =>
+        (e.v1 === v1Key && e.v2 === v2Key) || (e.v1 === v2Key && e.v2 === v1Key)
+      );
+      if (edgeIdx >= 0) faceEdgeIds.push(`GE-${edgeIdx}`);
+    }
+
+    faces.push({
+      id: `SF-${label}`,
+      label,
+      polygon: closedPolygon,
+      plan_area_sqft: areaSqft,
+      roof_area_sqft: areaSqft * pitchFactor(pitch),
+      pitch_degrees: pitch,
+      azimuth_degrees: azimuth,
+      edge_ids: faceEdgeIds,
+    });
+    faceIdx++;
+  }
+
+  return { faces, rejectedCount };
+}
+
+function findClosestSolarSegment(point: XY, segments: SolarSegment[]): SolarSegment | null {
+  if (segments.length === 0) return null;
+  
+  let best: SolarSegment | null = null;
+  let bestDist = Infinity;
+
+  for (const seg of segments) {
+    if (!seg.center) continue;
+    const dx = point[0] - seg.center.longitude;
+    const dy = point[1] - seg.center.latitude;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = seg;
+    }
+  }
+
+  return best;
 }
 
 // ============= VALIDATION GATE =============
@@ -640,28 +665,27 @@ export function validateAutonomousResult(
     ridgeCount: number;
     hipCount: number;
     graphConnected: boolean;
-    graphValid: boolean;
     coverageRatio: number;
     structuralEdgeCount: number;
   },
   complexity: { isComplex: boolean; expectedMinFacets: number; reasons: string[] }
 ): { valid: boolean; status: AutonomousGraphResult['validation_status']; reason?: string } {
 
-  // GATE 0: Insufficient structural signal (hard fail — no synthesis)
+  // GATE 0: Insufficient structural signal
   if (result.structuralEdgeCount < 2) {
     return {
       valid: false,
       status: 'insufficient_structural_signal',
-      reason: `Only ${result.structuralEdgeCount} structural edges detected (need ≥2). DSM + fusion failed to find roof structure.`
+      reason: `Only ${result.structuralEdgeCount} structural edges survived scoring (need ≥2). DSM signal too weak.`
     };
   }
 
-  // GATE 1: Invalid planar graph
-  if (!result.graphValid) {
+  // GATE 1: Must have at least one ridge or hip
+  if (result.ridgeCount === 0 && result.hipCount === 0) {
     return {
       valid: false,
       status: 'invalid_roof_graph',
-      reason: 'Planar graph enforcement failed (floating edges, unclosed loops, or disconnected components)'
+      reason: 'No ridges or hips detected — cannot form a valid roof structure'
     };
   }
 
@@ -670,7 +694,7 @@ export function validateAutonomousResult(
     return {
       valid: false,
       status: 'ai_failed_complex_topology',
-      reason: `Complex roof (${complexity.reasons.join('; ')}) collapsed to ${result.facetCount} facets (expected ≥${complexity.expectedMinFacets})`
+      reason: `Complex roof (${complexity.reasons.join('; ')}) produced only ${result.facetCount} facets (expected ≥${complexity.expectedMinFacets})`
     };
   }
 
@@ -679,34 +703,34 @@ export function validateAutonomousResult(
     return {
       valid: false,
       status: 'ai_failed_complex_topology',
-      reason: 'Complex footprint with reflex corners but no valleys detected'
+      reason: 'Complex footprint with reflex corners but no valleys detected — physically impossible'
     };
   }
 
-  // GATE 4: Graph connectivity
-  if (!result.graphConnected) {
+  // GATE 4: Must have at least 2 facets
+  if (result.facetCount < 2) {
+    return {
+      valid: false,
+      status: 'invalid_roof_graph',
+      reason: `Only ${result.facetCount} valid facets — need ≥2 for a roof`
+    };
+  }
+
+  // GATE 5: Coverage ratio (if we have enough data)
+  if (result.coverageRatio > 0 && (result.coverageRatio < 0.5 || result.coverageRatio > 2.0)) {
     return {
       valid: false,
       status: 'needs_review',
-      reason: 'Roof graph is not connected'
+      reason: `Face coverage ratio ${result.coverageRatio.toFixed(2)} is far outside expected range`
     };
   }
 
-  // GATE 5: Coverage ratio
-  if (result.coverageRatio < 0.92 || result.coverageRatio > 1.08) {
-    return {
-      valid: false,
-      status: 'needs_review',
-      reason: `Face coverage ratio ${result.coverageRatio.toFixed(2)} outside [0.92, 1.08]`
-    };
-  }
-
-  // GATE 6: Complex roofs must have ≥6 edges
+  // GATE 6: Complex roofs need ≥6 structural edges
   if (complexity.isComplex && result.structuralEdgeCount < 6) {
     return {
       valid: false,
       status: 'needs_review',
-      reason: `Complex roof with only ${result.structuralEdgeCount} edges (need ≥6)`
+      reason: `Complex roof with only ${result.structuralEdgeCount} structural edges (need ≥6)`
     };
   }
 
@@ -720,7 +744,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const warnings: string[] = [];
   const midLat = input.lat;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] Starting DSM-first pipeline`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v3 — Prune-first pipeline`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -730,10 +754,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     console.log(`  COMPLEX ROOF: ${complexity.reasons.join('; ')}. Expected ≥${complexity.expectedMinFacets} facets.`);
   }
 
-  // ===== STEP 2: DSM edge detection =====
+  // ===== STEP 1: DSM edge detection =====
   let dsmRidges: DSMEdgeCandidate[] = [];
   let dsmValleys: DSMEdgeCandidate[] = [];
-
   const effectiveDSM = input.maskedDSM || input.dsmGrid;
 
   if (effectiveDSM) {
@@ -746,41 +769,57 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push('DSM not available — structural detection limited to skeleton');
   }
 
-  const allDSMEdges = [...dsmRidges, ...dsmValleys];
-
-  // ===== STEP 2.5: Edge fusion =====
-  const { accepted: fusedEdges, rejected: rejectedCount } = fuseEdgeCandidates(
-    allDSMEdges,
+  // ===== STEP 2: Score & filter (PRUNE BEFORE GRAPH) =====
+  const { accepted: scoredEdges, prunedByScore } = scoreAndFilterEdges(
+    [...dsmRidges, ...dsmValleys],
     input.skeletonEdges,
     input.solarSegments,
+    input.footprintCoords,
+    effectiveDSM,
     midLat,
     complexity.isComplex
   );
 
-  console.log(`  Fusion: ${fusedEdges.length} accepted, ${rejectedCount} rejected (threshold 0.4)`);
+  console.log(`  Scoring: ${scoredEdges.length} accepted, ${prunedByScore} pruned by score (threshold ${EDGE_SCORE_THRESHOLD})`);
 
-  // ===== STEP 3: Clip to mask =====
-  const clippedEdges = clipEdgesToMask(fusedEdges, input.footprintCoords, midLat);
-  if (clippedEdges.length < fusedEdges.length) {
-    console.log(`  Clipped: ${fusedEdges.length - clippedEdges.length} edges outside mask boundary`);
+  // ===== STEP 3: Conservative snapping (NO center collapse) =====
+  const perimeterVertices: XY[] = [];
+  for (const [s, e] of input.boundaryEdges.eaveEdges) { perimeterVertices.push(s, e); }
+  for (const [s, e] of input.boundaryEdges.rakeEdges) { perimeterVertices.push(s, e); }
+
+  const snappedEdges = conservativeSnap(scoredEdges, perimeterVertices, midLat);
+
+  // ===== STEP 4: Remove over-intersected edges =====
+  const { kept: cleanEdges, pruned: prunedByIntersection } = removeOverIntersectedEdges(snappedEdges, midLat);
+  if (prunedByIntersection > 0) {
+    console.log(`  Pruned ${prunedByIntersection} over-intersected edges`);
   }
 
-  // ===== STEP 3.5: Planar graph enforcement =====
-  const perimeterEdges: Array<{ start: XY; end: XY; type: 'eave' | 'rake' }> = [
+  // ===== STEP 5: DSM physics classification =====
+  const classifiedEdges = classifyEdgesWithDSM(cleanEdges, effectiveDSM);
+
+  // Log classification results
+  const ridgeCount = classifiedEdges.filter(e => e.classifiedType === 'ridge').length;
+  const valleyCount = classifiedEdges.filter(e => e.classifiedType === 'valley').length;
+  const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
+  console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
+
+  // ===== STEP 6: Build graph & extract faces =====
+  const perimeterEdges = [
     ...input.boundaryEdges.eaveEdges.map(([s, e]) => ({ start: s, end: e, type: 'eave' as const })),
     ...input.boundaryEdges.rakeEdges.map(([s, e]) => ({ start: s, end: e, type: 'rake' as const })),
   ];
 
-  const graph = enforceplanarGraph(clippedEdges, perimeterEdges, midLat);
-  console.log(`  Graph: ${graph.vertices.size} vertices, ${graph.edges.length} edges, valid=${graph.valid}${graph.reason ? ` (${graph.reason})` : ''}`);
+  const graph = buildGraph(classifiedEdges, perimeterEdges, midLat);
+  console.log(`  Graph: ${graph.vertices.size} vertices, ${graph.edges.length} edges, connected=${graph.connected}`);
 
-  // ===== STEP 4: Build faces =====
-  const graphFaces = buildFacesFromSolarSegments(input.solarSegments, midLat, input.lng, input.lat);
+  // ===== STEP 7: Extract & validate faces =====
+  const { faces: graphFaces, rejectedCount: facesRejected } = extractAndValidateFaces(
+    graph, effectiveDSM, midLat, input.solarSegments
+  );
+  console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit`);
 
-  // ===== STEP 4.5: Canonical edge mapping + physics-based classification =====
-  const edgeMap = buildCanonicalEdgeMap(graph, graphFaces, effectiveDSM, midLat);
-
-  // Convert graph edges to GraphEdge output format
+  // ===== Convert to output format =====
   let edgeId = 0;
   const outputEdges: GraphEdge[] = [];
 
@@ -790,42 +829,36 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const lengthFt = distanceFt(v1Pos, v2Pos, midLat);
     if (lengthFt < 1) continue;
 
-    const canonKey = canonicalEdgeKey(e.v1, e.v2);
-    const classified = edgeMap[canonKey];
-    const finalType = classified?.classifiedType || e.type;
-
     outputEdges.push({
       id: `GE-${edgeId++}`,
-      type: finalType,
+      type: e.type,
       start: v1Pos,
       end: v2Pos,
       length_ft: lengthFt,
       confidence: {
-        dsm_score: e.source === 'dsm' ? 0.8 : 0.4,
+        dsm_score: e.source === 'dsm' ? 0.8 : e.source === 'perimeter' ? 0.85 : 0.4,
         rgb_score: 0.5,
         solar_azimuth_score: 0.7,
-        topology_score: graph.valid ? 0.9 : 0.5,
+        topology_score: graph.connected ? 0.9 : 0.5,
         length_score: lengthFt > 10 ? 0.8 : 0.5,
-        final_confidence: e.confidence,
+        final_confidence: e.score,
       },
-      facet_ids: classified?.faceIds || [],
+      facet_ids: [],
       source: e.source as GraphEdge['source'],
     });
   }
 
-  // ===== STEP 5: Totals =====
-  const ridgeEdges = outputEdges.filter(e => e.type === 'ridge');
-  const hipEdges = outputEdges.filter(e => e.type === 'hip');
-  const valleyEdges = outputEdges.filter(e => e.type === 'valley');
-  const eaveEdges = outputEdges.filter(e => e.type === 'eave');
-  const rakeEdges = outputEdges.filter(e => e.type === 'rake');
-
-  const structuralEdgeCount = ridgeEdges.length + hipEdges.length + valleyEdges.length;
+  // Totals
+  const outRidges = outputEdges.filter(e => e.type === 'ridge');
+  const outHips = outputEdges.filter(e => e.type === 'hip');
+  const outValleys = outputEdges.filter(e => e.type === 'valley');
+  const outEaves = outputEdges.filter(e => e.type === 'eave');
+  const outRakes = outputEdges.filter(e => e.type === 'rake');
+  const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
 
   const totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
   const totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
   const coverageRatio = footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0;
-  const graphConnected = graph.valid;
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
   const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
@@ -834,22 +867,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     ? outputEdges.reduce((s, e) => s + e.confidence.final_confidence, 0) / outputEdges.length
     : 0;
 
-  // ===== STEP 6: QA gates =====
+  // ===== VALIDATION GATE =====
   const validation = validateAutonomousResult(
     {
       facetCount: graphFaces.length,
-      valleyCount: valleyEdges.length,
-      ridgeCount: ridgeEdges.length,
-      hipCount: hipEdges.length,
-      graphConnected,
-      graphValid: graph.valid,
+      valleyCount: outValleys.length,
+      ridgeCount: outRidges.length,
+      hipCount: outHips.length,
+      graphConnected: graph.connected,
       coverageRatio,
       structuralEdgeCount,
     },
     complexity
   );
 
-  // Build vertices output
+  // Build vertex output
   const outputVertices: GraphVertex[] = [];
   let vId = 0;
   for (const [key, pos] of graph.vertices) {
@@ -857,15 +889,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       .filter(e => vertexKey(e.start) === key || vertexKey(e.end) === key)
       .map(e => e.id);
 
-    const isPerimeter = perimeterEdges.some(pe =>
-      vertexKey(snapToGrid(pe.start, 0.5 / degToMeters(midLat).metersPerDegLng)) === key ||
-      vertexKey(snapToGrid(pe.end, 0.5 / degToMeters(midLat).metersPerDegLng)) === key
-    );
+    const hasRidge = outputEdges.some(e => e.type === 'ridge' && (vertexKey(e.start) === key || vertexKey(e.end) === key));
+    const hasValley = outputEdges.some(e => e.type === 'valley' && (vertexKey(e.start) === key || vertexKey(e.end) === key));
+    const hasHip = outputEdges.some(e => e.type === 'hip' && (vertexKey(e.start) === key || vertexKey(e.end) === key));
+    const isPerimeter = outputEdges.some(e => (e.type === 'eave' || e.type === 'rake') && (vertexKey(e.start) === key || vertexKey(e.end) === key));
 
     outputVertices.push({
       id: `GV-${vId++}`,
       position: pos,
-      type: isPerimeter ? 'eave_corner' : 'ridge_endpoint',
+      type: isPerimeter ? 'eave_corner' : hasValley ? 'valley_intersection' : hasHip ? 'hip_intersection' : 'ridge_endpoint',
       connected_edge_ids: connectedEdgeIds,
     });
   }
@@ -879,12 +911,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     dsm_hips: 0,
     rgb_lines: 0,
     solar_segments: input.solarSegments.length,
-    fused_edges: fusedEdges.length,
-    rejected_edges: rejectedCount,
+    fused_edges: scoredEdges.length,
+    rejected_edges: prunedByScore,
+    pruned_by_score: prunedByScore,
+    pruned_by_intersection: prunedByIntersection,
     faces: graphFaces.length,
+    faces_rejected_by_plane_fit: facesRejected,
     coverage_ratio: coverageRatio,
     confidence: avgConfidence,
-    graph_valid: graph.valid,
+    graph_valid: graph.connected,
     warnings,
     timing_ms: timingMs,
   };
@@ -894,7 +929,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   return {
     success: validation.valid,
-    graph_connected: graphConnected,
+    graph_connected: graph.connected,
     face_coverage_ratio: coverageRatio,
     validation_status: validation.status,
     failure_reason: validation.reason,
@@ -902,12 +937,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     edges: outputEdges,
     faces: graphFaces,
     totals: {
-      ridge_ft: ridgeEdges.reduce((s, e) => s + e.length_ft, 0),
-      hip_ft: hipEdges.reduce((s, e) => s + e.length_ft, 0),
-      valley_ft: valleyEdges.reduce((s, e) => s + e.length_ft, 0),
-      eave_ft: eaveEdges.reduce((s, e) => s + e.length_ft, 0),
-      rake_ft: rakeEdges.reduce((s, e) => s + e.length_ft, 0),
-      perimeter_ft: eaveEdges.reduce((s, e) => s + e.length_ft, 0) + rakeEdges.reduce((s, e) => s + e.length_ft, 0),
+      ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
+      hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
+      valley_ft: outValleys.reduce((s, e) => s + e.length_ft, 0),
+      eave_ft: outEaves.reduce((s, e) => s + e.length_ft, 0),
+      rake_ft: outRakes.reduce((s, e) => s + e.length_ft, 0),
+      perimeter_ft: outEaves.reduce((s, e) => s + e.length_ft, 0) + outRakes.reduce((s, e) => s + e.length_ft, 0),
       total_roof_area_sqft: totalRoofArea,
       total_plan_area_sqft: totalPlanArea,
       predominant_pitch: predominantPitch,

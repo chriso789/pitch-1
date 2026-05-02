@@ -3721,7 +3721,6 @@ Deno.serve(async (req) => {
                 ridgeCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'ridge').length,
                 hipCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'hip').length,
                 graphConnected: dsmAnalysis.refinedEdges.length > 0,
-                graphValid: dsmAnalysis.refinedEdges.length > 0,
                 coverageRatio: splitResult.facets.reduce((s, f) => s + f.planArea, 0) / polygonAreaSqftFromLngLat(coords),
                 structuralEdgeCount,
               },
