@@ -69,6 +69,10 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Use the pipeline entry's tenant_id for all operations — critical for master users
+    // who may have a different profile.tenant_id than the entry they're editing
+    const entryTenantId = pipelineEntry.tenant_id;
+
     // Determine if user has manager-level permissions using correct app_role values
     const isManager = MANAGER_ROLES.includes(profile.role);
     console.log(`[pipeline-drag-handler] isManager: ${isManager} (role: ${profile.role})`);
