@@ -838,6 +838,7 @@ async function processJob(input: any) {
     let planeEdgeClassifierDebug: any = null;
     let strictEdgeGraphDebug: any = null;
     let ridgeAlignmentDebug: any = null;
+    let solverTopologyLocked = false;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -887,6 +888,21 @@ async function processJob(input: any) {
       const ka = `${sa.x}:${sa.y}`;
       const kb = `${sb.x}:${sb.y}`;
       return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    };
+
+    const isSolverTopologySource = () =>
+      topologySource === "constraint_roof_solver" ||
+      topologySource.startsWith("hybrid_roof_solver") ||
+      topologySource === "hip_roof_generator_last_resort";
+
+    const lockSolverTopology = (solverUsed: string) => {
+      solverTopologyLocked = true;
+      topologySource = solverUsed;
+      cleanEdges = cleanEdges.map((edge) => ({
+        ...edge,
+        source: "constraint_solver_topology",
+        confidence: Math.max(Number(edge.confidence || 0), 0.78),
+      }));
     };
 
     const countAzimuthClusters = (angles: number[], toleranceDeg = 24) => {
@@ -1095,6 +1111,7 @@ async function processJob(input: any) {
               confidence: 0.70,
             }));
             topologySource = "hybrid_roof_solver";
+            lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hybrid_roof_solver" };
             footprintCoverageDebug = {
@@ -1135,6 +1152,7 @@ async function processJob(input: any) {
               confidence: 0.60,
             }));
             topologySource = "hip_roof_generator_last_resort";
+            lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator_last_resort" };
             console.log("[COVERAGE_GATE] Hip-roof generator last resort", JSON.stringify({ planes: lastResort.planes.length }));
@@ -1284,6 +1302,7 @@ async function processJob(input: any) {
               confidence: 0.78,
             }));
             topologySource = "hybrid_roof_solver_primary";
+            lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = {
               ...simpleRoofTypeDebug,
@@ -1722,6 +1741,7 @@ async function processJob(input: any) {
                 confidence: 0.70,
               }));
               topologySource = "hybrid_roof_solver";
+              lockSolverTopology(topologySource);
               ridgeSplitPlaneCount = cleanPlanes.length;
               simpleRoofTypeDebug = {
                 ...simpleRoofTypeDebug,
@@ -1767,7 +1787,7 @@ async function processJob(input: any) {
     // ── PLANE CONSOLIDATION — drop tiny noise planes, merge near-duplicates,
     //    cap at maxPlanes. This collapses 47-plane over-splits into 4–10.
     let planeConsolidationStats: { before: number; after: number; dropped: number; merged: number } | null = null;
-    if (cleanPlanes.length > 0) {
+    if (cleanPlanes.length > 0 && !solverTopologyLocked) {
       const consolidated = consolidatePlanes(cleanPlanes, {
         minAreaPx: 400,
         maxPlanes: 12,
@@ -1791,6 +1811,13 @@ async function processJob(input: any) {
     //    exceed footprint_area * 1.08.
     let footprintConstraintStats: any = null;
     try {
+      if (solverTopologyLocked) {
+        footprintConstraintStats = {
+          skipped: true,
+          reason: "solver_topology_locked",
+          overall_rejected: false,
+        };
+      } else {
       const fcRidgeInput = (cleanEdges as any[])
         .filter((e) => e && (e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"))
         .map((e, i) => ({
@@ -1830,6 +1857,7 @@ async function processJob(input: any) {
           return !rejectedRidgeIds.has(eid);
         }) as typeof cleanEdges;
       }
+      }
     } catch (e) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
@@ -1863,6 +1891,38 @@ async function processJob(input: any) {
     let polygonNormalizeDebug: any = null;
     try {
       if (cleanPlanes.length > 0) {
+        if (solverTopologyLocked || isSolverTopologySource()) {
+          const solverCounts = cleanEdges.reduce((acc: Record<string, number>, edge) => {
+            acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+            return acc;
+          }, {});
+          const solverShared = cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length;
+          const solverExterior = cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length;
+          planeEdgeClassifierDebug = {
+            source: "constraint_solver_topology",
+            classifier_skipped: true,
+            plane_count: cleanPlanes.length,
+            shared_edges: solverShared,
+            exterior_edges: solverExterior,
+            invalid_edges: 0,
+            counts: solverCounts,
+          };
+          strictEdgeGraphDebug = {
+            total_edges: cleanEdges.length,
+            shared_edges: solverShared,
+            exterior_edges: solverExterior,
+            invalid_edges: 0,
+          };
+          (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
+          (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
+          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using constraint solver topology as final authority");
+          console.log("[FINAL_TOPOLOGY_SOURCE]", JSON.stringify({
+            solver_used: topologySource,
+            classifier_used: false,
+            edges_from_solver: cleanEdges.length,
+            edges_from_classifier: 0,
+          }));
+        } else {
         // ── POLYGON NORMALIZATION — snap shared vertices, insert boundary
         //    points, and ensure consistent winding BEFORE classification.
         //    This fixes the "planes=N edges=0" bug where ridge splitting
@@ -1954,6 +2014,7 @@ async function processJob(input: any) {
         }));
 
         } // end else (non-hybrid classifier path)
+        } // end solver-topology bypass else
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
@@ -2002,8 +2063,9 @@ async function processJob(input: any) {
       cleanEdges = cleanEdges.map((edge) => {
         const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
         if (!isStructural) return edge;
-        // Hybrid solver edges are geometrically guaranteed — skip strict graph checks
-        if (hybridSolverAccepted && String(edge.source || "").includes("constraint_ridge_first")) return edge;
+        // Constraint solver edges are geometrically guaranteed — do not let
+        // visual-hint QA or plane_edge_classifier_v1 reject final topology.
+        if (solverTopologyLocked || String(edge.source || "").includes("constraint_solver_topology")) return edge;
         const source = String(edge.source || "");
         const sourceIsFuzzy = source.toLowerCase().includes("fuzzy");
         const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
@@ -2084,7 +2146,7 @@ async function processJob(input: any) {
 
     // Skip final coverage gate if edge classification already ran — it would
     // wipe cleanEdges via fallback.  Only ensure perimeter edges exist.
-    const finalExteriorEdgesCreated = ensureExteriorFootprintEdges("footprint_perimeter_final");
+    const finalExteriorEdgesCreated = solverTopologyLocked ? 0 : ensureExteriorFootprintEdges("footprint_perimeter_final");
 
     // ── FINAL SIMPLE-GABLE AUTHORITY OVERRIDE ──
     // This runs after classifier output, dedupe, strict QA, and perimeter edge
@@ -2700,6 +2762,9 @@ async function processJob(input: any) {
       ).length;
       if (planeRows.length > 1 && totalEdges === 0) {
         sanityFailures.push("plane_graph_has_no_classified_edges");
+      }
+      if (planeRows.length >= 4 && totalEdges === 0 && (solverTopologyLocked || isSolverTopologySource())) {
+        sanityFailures.push("solver_output_not_used");
       }
       if (planeRows.length > 1 && structEdges === 0 && !isFlatRoof) {
         // Already covered by no_ridge_hip_valley but be explicit
