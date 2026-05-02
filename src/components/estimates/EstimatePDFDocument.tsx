@@ -7,10 +7,8 @@
 import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
-import { EstimateCoverPage } from './EstimateCoverPage';
-import { ProcessTimelinePage } from './ProcessTimelinePage';
-import { WhyChooseUsPage } from './WhyChooseUsPage';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
+import { getTemplateComponents } from './templates/registry';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
