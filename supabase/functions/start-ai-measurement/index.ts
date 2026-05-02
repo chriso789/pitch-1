@@ -1171,10 +1171,79 @@ async function processJob(input: any) {
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
 
+      // ── 5-PRE. UPSTREAM SKELETON — run straight skeleton FIRST so
+      //    solvePlanesFromFootprint has real structural ridges to decompose
+      //    the footprint into sub-regions before image ridge detection.
+      let upstreamSkeletonSegments: Array<{ p1: Point; p2: Point; type: string }> = [];
+      let upstreamSkeletonRan = false;
+      try {
+        const skEdges = computeStraightSkeleton(
+          footprint.map((p) => [p.x, p.y] as [number, number]),
+        );
+        if (skEdges && skEdges.length > 0) {
+          for (const se of skEdges as any[]) {
+            const a = se.a ?? se.p1 ?? se.start ?? se[0];
+            const b = se.b ?? se.p2 ?? se.end ?? se[1];
+            const ax = Array.isArray(a) ? a[0] : a?.x;
+            const ay = Array.isArray(a) ? a[1] : a?.y;
+            const bx = Array.isArray(b) ? b[0] : b?.x;
+            const by = Array.isArray(b) ? b[1] : b?.y;
+            if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
+              const t = String(se.type || "ridge").toLowerCase();
+              upstreamSkeletonSegments.push({ p1: { x: ax, y: ay }, p2: { x: bx, y: by }, type: t });
+            }
+          }
+          upstreamSkeletonRan = true;
+          console.log("[UPSTREAM_SKELETON]", JSON.stringify({
+            total_segments: upstreamSkeletonSegments.length,
+            ridges: upstreamSkeletonSegments.filter(s => s.type === "ridge").length,
+            hips: upstreamSkeletonSegments.filter(s => s.type === "hip").length,
+            valleys: upstreamSkeletonSegments.filter(s => s.type === "valley").length,
+          }));
+
+          // Attempt to decompose footprint using skeleton segments BEFORE
+          // image ridge detection. This gives the solver real geometry so
+          // it doesn't collapse to a single plane.
+          const skeletonDecomp = rebuildPlanesFromSkeletonSegments(
+            footprint,
+            upstreamSkeletonSegments.map((s) => ({ p1: s.p1, p2: s.p2 })),
+          );
+          console.log("[UPSTREAM_SKELETON_DECOMP]", JSON.stringify(skeletonDecomp.stats));
+
+          if (skeletonDecomp.planes.length >= 2 && skeletonDecomp.adjacency.shared_boundary_count > 0) {
+            cleanPlanes = skeletonDecomp.planes.map((p, i) => ({
+              plane_index: i + 1,
+              polygon_px: p.polygon,
+              confidence: 0.74,
+              pitch: null,
+              pitch_degrees: null,
+              azimuth: null,
+              source: "upstream_skeleton_decomp",
+            }));
+            topologySource = "upstream_skeleton_decomp";
+            ridgeSplitPlaneCount = cleanPlanes.length;
+            // Also inject the skeleton edges into cleanEdges
+            for (const seg of upstreamSkeletonSegments) {
+              const edgeType = (seg.type === "hip" || seg.type === "valley" || seg.type === "ridge") ? seg.type as any : "ridge";
+              cleanEdges.push({
+                edge_type: edgeType,
+                line_px: [seg.p1, seg.p2],
+                confidence: 0.74,
+                source: "upstream_skeleton",
+              });
+            }
+            console.log("[UPSTREAM_SKELETON_DECOMP] Accepted", cleanPlanes.length, "planes —",
+              "ridges:", upstreamSkeletonSegments.filter(s => s.type === "ridge").length,
+              "hips:", upstreamSkeletonSegments.filter(s => s.type === "hip").length);
+          }
+        }
+      } catch (e) {
+        console.warn("[UPSTREAM_SKELETON] failed:", (e as Error).message);
+      }
+
       // 5a. STRUCTURE EXTRACTION — image-based ridge detection + recursive plane split.
-      // straight_skeleton alone only produces medial-axis lines; on a smoothed
-      // hull it collapses to one plane. We must inject real structural ridges
-      // BEFORE the skeleton step so the footprint is decomposed into facets.
+      // If upstream skeleton already produced ≥2 planes, image ridges can still
+      // refine but won't start from scratch.
       const splitRidgeEdges: RoofEdge[] = [];
       try {
         const solarAzimuths: number[] = (solarSegments || [])
