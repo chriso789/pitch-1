@@ -122,6 +122,8 @@ function partitionVertices(
   const hipA: Point[] = []; // low end
   const hipB: Point[] = []; // high end
 
+  // First pass: classify hip-end vs eave-zone vertices
+  const eaveZone: { p: Point; cross: number }[] = [];
   for (let i = 0; i < poly.length; i++) {
     const p = poly[i];
     const proj = projections[i];
@@ -131,10 +133,21 @@ function partitionVertices(
       hipA.push(p);
     } else if (proj >= hipThreshHigh) {
       hipB.push(p);
-    } else if (cross < 0) {
-      leftEave.push(p);
     } else {
-      rightEave.push(p);
+      eaveZone.push({ p, cross });
+    }
+  }
+
+  // Use median cross value to split left/right (robust against skewed footprints)
+  if (eaveZone.length > 0) {
+    const crossValues = eaveZone.map((e) => e.cross).sort((a, b) => a - b);
+    const medianCross = crossValues[Math.floor(crossValues.length / 2)];
+    for (const e of eaveZone) {
+      if (e.cross < medianCross) {
+        leftEave.push(e.p);
+      } else {
+        rightEave.push(e.p);
+      }
     }
   }
 
