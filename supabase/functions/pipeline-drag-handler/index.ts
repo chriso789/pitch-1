@@ -69,6 +69,10 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Use the pipeline entry's tenant_id for all operations — critical for master users
+    // who may have a different profile.tenant_id than the entry they're editing
+    const entryTenantId = pipelineEntry.tenant_id;
+
     // Determine if user has manager-level permissions using correct app_role values
     const isManager = MANAGER_ROLES.includes(profile.role);
     console.log(`[pipeline-drag-handler] isManager: ${isManager} (role: ${profile.role})`);
@@ -77,7 +81,7 @@ Deno.serve(async (req) => {
     const { data: transitionRules } = await supabase
       .from('transition_rules')
       .select('*')
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', entryTenantId)
       .eq('from_status', fromStatus)
       .eq('to_status', newStatus)
       .eq('is_active', true);
@@ -190,7 +194,7 @@ Deno.serve(async (req) => {
     const { data: validations } = await supabase
       .from('transition_validations')
       .select('*')
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', entryTenantId)
       .eq('applies_to_status', newStatus)
       .eq('is_active', true);
 
@@ -252,7 +256,7 @@ Deno.serve(async (req) => {
           const { data: newProject, error: projectError } = await supabase
             .from('projects')
             .insert({
-              tenant_id: profile.tenant_id,
+              tenant_id: entryTenantId,
               pipeline_entry_id: pipelineEntryId,
               location_id: fullEntry.location_id,
               name: projectName,
@@ -287,7 +291,7 @@ Deno.serve(async (req) => {
             await supabase
               .from('production_workflows')
               .insert({
-                tenant_id: profile.tenant_id,
+                tenant_id: entryTenantId,
                 project_id: newProject.id,
                 status: 'scheduled',
                 workflow_data: { initialized_from: 'pipeline_drag' }
@@ -300,7 +304,7 @@ Deno.serve(async (req) => {
           await supabase
             .from('communication_history')
             .insert({
-              tenant_id: profile.tenant_id,
+              tenant_id: entryTenantId,
               contact_id: fullEntry.contact_id,
               communication_type: 'system',
               direction: 'internal',
@@ -329,7 +333,7 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', pipelineEntryId)
-      .eq('tenant_id', profile.tenant_id);
+      .eq('tenant_id', entryTenantId);
 
     if (updateError) {
       console.error('Error updating pipeline entry:', updateError);
@@ -348,14 +352,14 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', pipelineEntry.contact_id)
-        .eq('tenant_id', profile.tenant_id);
+        .eq('tenant_id', entryTenantId);
     }
 
     // Log status transition history
     await supabase
       .from('status_transition_history')
       .insert({
-        tenant_id: profile.tenant_id,
+        tenant_id: entryTenantId,
         pipeline_entry_id: pipelineEntryId,
         from_status: fromStatus,
         to_status: newStatus,
@@ -373,7 +377,7 @@ Deno.serve(async (req) => {
     await supabase
       .from('pipeline_activities')
       .insert({
-        tenant_id: profile.tenant_id,
+        tenant_id: entryTenantId,
         pipeline_entry_id: pipelineEntryId,
         contact_id: pipelineEntry?.contact_id,
         activity_type: 'status_change',
@@ -390,7 +394,7 @@ Deno.serve(async (req) => {
       await supabase
         .from('project_approval_requests')
         .insert({
-          tenant_id: profile.tenant_id,
+          tenant_id: entryTenantId,
           pipeline_entry_id: pipelineEntryId,
           requested_by: user.id,
           notes: `Approval requested by ${profile.first_name} ${profile.last_name}`
@@ -419,7 +423,7 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             event_name: capiMapping.event,
-            tenant_id: profile.tenant_id,
+            tenant_id: entryTenantId,
             contact_id: pipelineEntry.contact_id,
             event_time: Math.floor(Date.now() / 1000),
             custom_data: {
