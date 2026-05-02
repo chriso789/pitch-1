@@ -220,7 +220,7 @@ export const Settings = () => {
       const isSystemOwner = currentUser?.email?.toLowerCase() === SYSTEM_OWNER_EMAIL;
       if (!isSystemOwner) {
         filteredTabs = filteredTabs.filter(
-          tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system'
+          tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system' && TAB_TO_CATEGORY[tab.tab_key] !== 'platform'
         );
       }
 
