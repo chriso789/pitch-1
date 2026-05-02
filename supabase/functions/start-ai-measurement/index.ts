@@ -1525,13 +1525,14 @@ async function processJob(input: any) {
       }
 
       try {
-        // 5b. Skeleton — used as fallback OR to add minor interior structure.
-        if (cleanPlanes.length < 2) {
+        // 5b. Skeleton — secondary fallback. If upstream skeleton already decomposed
+        //     the footprint, skip re-running. Only run if we still have < 2 planes
+        //     AND the upstream skeleton didn't already execute.
+        if (cleanPlanes.length < 2 && !upstreamSkeletonRan) {
           const skeletonEdges = computeStraightSkeleton(
             footprint.map((p) => [p.x, p.y] as [number, number]),
           );
           if (skeletonEdges && skeletonEdges.length > 0) {
-            // Parse skeleton segments into Point pairs for edges AND plane rebuild.
             const parsedSegments: Array<{ p1: Point; p2: Point; type: string }> = [];
             for (const se of skeletonEdges as any[]) {
               const a = se.a ?? se.p1 ?? se.start ?? se[0];
@@ -1542,11 +1543,7 @@ async function processJob(input: any) {
               const by = Array.isArray(b) ? b[1] : b?.y;
               if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
                 const t = String(se.type || "ridge").toLowerCase();
-                parsedSegments.push({
-                  p1: { x: ax, y: ay },
-                  p2: { x: bx, y: by },
-                  type: t,
-                });
+                parsedSegments.push({ p1: { x: ax, y: ay }, p2: { x: bx, y: by }, type: t });
                 cleanEdges.push({
                   edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
                   line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
@@ -1557,11 +1554,6 @@ async function processJob(input: any) {
             }
             if (topologySource === "none") topologySource = "straight_skeleton";
 
-            // 5b-ii. Rebuild planes from skeleton segments — this is the
-            // critical step that was MISSING. The skeleton produces edges but
-            // we weren't using them to actually split the footprint into
-            // multiple planes. rebuildPlanesFromSkeletonSegments feeds them
-            // back through the footprint solver as high-confidence ridge hints.
             if (parsedSegments.length > 0 && cleanPlanes.length < 2) {
               try {
                 const skeletonRebuild = rebuildPlanesFromSkeletonSegments(
@@ -1569,17 +1561,12 @@ async function processJob(input: any) {
                   parsedSegments.map((s) => ({ p1: s.p1, p2: s.p2 })),
                 );
                 console.log("[SKELETON_PLANE_REBUILD]", JSON.stringify(skeletonRebuild.stats));
-                if (
-                  skeletonRebuild.planes.length >= 2 &&
-                  skeletonRebuild.adjacency.shared_boundary_count > 0
-                ) {
+                if (skeletonRebuild.planes.length >= 2 && skeletonRebuild.adjacency.shared_boundary_count > 0) {
                   cleanPlanes = skeletonRebuild.planes.map((p, i) => ({
                     plane_index: i + 1,
                     polygon_px: p.polygon,
                     confidence: 0.72,
-                    pitch: null,
-                    pitch_degrees: null,
-                    azimuth: null,
+                    pitch: null, pitch_degrees: null, azimuth: null,
                     source: "skeleton_plane_rebuild",
                   }));
                   topologySource = "skeleton_plane_rebuild";
@@ -1590,6 +1577,20 @@ async function processJob(input: any) {
               }
             }
           }
+        } else if (cleanPlanes.length < 2 && upstreamSkeletonRan && upstreamSkeletonSegments.length > 0) {
+          // Upstream skeleton ran but didn't produce ≥2 planes. Add its edges anyway.
+          for (const seg of upstreamSkeletonSegments) {
+            const edgeType = (seg.type === "hip" || seg.type === "valley" || seg.type === "ridge") ? seg.type as any : "ridge";
+            if (!cleanEdges.some(e => e.source === "upstream_skeleton" && e.edge_type === edgeType)) {
+              cleanEdges.push({
+                edge_type: edgeType,
+                line_px: [seg.p1, seg.p2],
+                confidence: 0.7,
+                source: "topology_engine_v2_skeleton_from_upstream",
+              });
+            }
+          }
+          if (topologySource === "none") topologySource = "straight_skeleton";
         }
 
         // 5c. Triangulation eaves/rakes — perimeter-only support.
