@@ -1562,6 +1562,7 @@ export function EstimatePreviewPanel({
                           jobPhotos={jobPhotos}
                           skipCoverPage={true}
                           skipWarrantyAndTerms={!isLast}
+                          templateStyle={templateStyle}
                         />
                       );
                     });
