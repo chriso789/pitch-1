@@ -3694,6 +3694,36 @@ Deno.serve(async (req) => {
           );
           console.log('Facets split:', splitResult.facets.length, 'quality:', splitResult.splitQuality);
 
+          // Step 5.5: AUTONOMOUS VALIDATION GATE for generate-overlay
+          const overlayComplexity = detectComplexRoof(googleSolarSegments, coords);
+          if (overlayComplexity.isComplex) {
+            const overlayValidation = validateAutonomousResult(
+              {
+                facetCount: splitResult.facets.length,
+                valleyCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'valley').length,
+                ridgeCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'ridge').length,
+                hipCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'hip').length,
+                graphConnected: dsmAnalysis.refinedEdges.length > 0,
+                coverageRatio: splitResult.facets.reduce((s, f) => s + f.planArea, 0) / polygonAreaSqftFromLngLat(coords),
+              },
+              overlayComplexity
+            );
+
+            if (overlayValidation.status === 'ai_failed_complex_topology') {
+              console.warn(`[generate-overlay] 🚫 AUTONOMOUS FAILURE: ${overlayValidation.reason}`);
+              return json({
+                ok: false,
+                error: 'Autonomous roof graph failed for complex topology',
+                autonomousValidation: {
+                  status: 'ai_failed_complex_topology',
+                  reason: overlayValidation.reason,
+                  complexity: overlayComplexity,
+                },
+                manualReviewRecommended: true,
+              }, corsHeaders, 422);
+            }
+          }
+
           // Step 6: Build edge arrays for validation
           const edges = {
             ridges: dsmAnalysis.refinedEdges.filter(e => e.type === 'ridge').map(e => ({ start: e.start, end: e.end })),
