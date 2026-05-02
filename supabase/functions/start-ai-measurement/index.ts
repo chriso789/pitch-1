@@ -893,12 +893,15 @@ async function processJob(input: any) {
 
     const isSolverTopologySource = () =>
       topologySource === "constraint_roof_solver" ||
+      topologySource.includes("constraint_solver_topology") ||
       topologySource.startsWith("hybrid_roof_solver") ||
       topologySource === "hip_roof_generator_last_resort";
 
     const lockSolverTopology = (solverUsed: string) => {
       solverTopologyLocked = true;
-      topologySource = solverUsed;
+      topologySource = solverUsed.includes("constraint") || solverUsed.includes("hybrid")
+        ? solverUsed
+        : `constraint_solver_topology:${solverUsed}`;
       constraintSolverEdges = cleanEdges.map((edge) => ({
         ...edge,
         source: "constraint_solver_topology",
@@ -975,13 +978,12 @@ async function processJob(input: any) {
         azimuth: null,
         source,
       }));
-      cleanEdges = cleanEdges.filter((e) => e.edge_type !== "rake");
-      cleanEdges.push({
+      const syntheticEdges: RoofEdge[] = [{
         edge_type: "ridge",
         line_px: [synthetic.ridgeLine.p1, synthetic.ridgeLine.p2],
         confidence: 0.70,
         source: `${source}_ridge`,
-      });
+      }];
       const bb = bboxOf(footprint);
       if (bb) {
         const corners = [
@@ -993,7 +995,7 @@ async function processJob(input: any) {
             Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
             ? synthetic.ridgeLine.p1
             : synthetic.ridgeLine.p2;
-          cleanEdges.push({
+          syntheticEdges.push({
             edge_type: "hip",
             line_px: [ridgeEnd, c],
             confidence: 0.65,
@@ -1001,7 +1003,9 @@ async function processJob(input: any) {
           });
         }
       }
+      cleanEdges = syntheticEdges;
       topologySource = source;
+      lockSolverTopology(source);
       ridgeSplitPlaneCount = cleanPlanes.length;
       simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source };
       console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({ planes: cleanPlanes.length, source }));
