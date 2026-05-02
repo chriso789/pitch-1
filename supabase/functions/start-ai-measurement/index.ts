@@ -2505,6 +2505,7 @@ async function processJob(input: any) {
       plane_merge: _planeMergeDebug,
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
+      hip_roof_detector: hipRoofDetectorDebug,
     }));
 
     const quality = scoreQuality({
