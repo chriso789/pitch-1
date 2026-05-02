@@ -532,19 +532,17 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
     const loadMeasurementData = async () => {
       try {
-        // Priority 1: Check roof_measurements (where start-ai-measurement writes)
-        const { data: roofMeasurement } = await supabase
-          .from('roof_measurements')
-          .select(`
-            id, total_area_adjusted_sqft, total_squares, predominant_pitch,
-            total_ridge_length, total_hip_length, total_valley_length,
-            total_eave_length, total_rake_length, waste_factor_percent,
-            total_area_flat_sqft
-          `)
-          .eq('customer_id', pipelineEntryId)
-          .order('created_at', { ascending: false })
+        // Priority 1: Check measurement_approvals (saved via "Save to Estimates" button)
+        const { data: approvedMeasurement } = await supabase
+          .from('measurement_approvals')
+          .select('id, approved_at, saved_tags, pipeline_entry_id, measurement_id, approval_notes')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('approved_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+        
+        // Extract roof data from approved measurement's saved_tags
+        const savedTags = (approvedMeasurement?.saved_tags as Record<string, any>) || null;
 
         // Priority 2: Fallback to legacy measurements table
         const { data: activeMeasurement } = await supabase
