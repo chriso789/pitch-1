@@ -607,7 +607,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const usedDeterministic = grj.used_deterministic_topology === true;
               const blocked = grj.block_customer_report_reason || null;
               return (
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground max-w-full overflow-hidden">
                   <span
                     className={`px-1.5 py-0.5 rounded ${
                       usedDeterministic ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted'
