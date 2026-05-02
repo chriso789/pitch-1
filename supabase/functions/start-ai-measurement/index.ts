@@ -839,6 +839,7 @@ async function processJob(input: any) {
     let strictEdgeGraphDebug: any = null;
     let ridgeAlignmentDebug: any = null;
     let solverTopologyLocked = false;
+    let constraintSolverEdges: RoofEdge[] = [];
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -898,11 +899,12 @@ async function processJob(input: any) {
     const lockSolverTopology = (solverUsed: string) => {
       solverTopologyLocked = true;
       topologySource = solverUsed;
-      cleanEdges = cleanEdges.map((edge) => ({
+      constraintSolverEdges = cleanEdges.map((edge) => ({
         ...edge,
         source: "constraint_solver_topology",
         confidence: Math.max(Number(edge.confidence || 0), 0.78),
       }));
+      cleanEdges = [...constraintSolverEdges];
     };
 
     const countAzimuthClusters = (angles: number[], toleranceDeg = 24) => {
