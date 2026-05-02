@@ -82,7 +82,7 @@ export const CLJSearchBar = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
-  const { activeTenantId } = useActiveTenantId();
+  const activeTenantId = useEffectiveTenantId();
 
   // Re-resolve cached recent items against the live DB so renames (e.g. a
   // contact renamed from "Reed Alter" to "Brittany Jones", or a lead/project
