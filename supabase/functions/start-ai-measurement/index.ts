@@ -893,12 +893,15 @@ async function processJob(input: any) {
 
     const isSolverTopologySource = () =>
       topologySource === "constraint_roof_solver" ||
+      topologySource.includes("constraint_solver_topology") ||
       topologySource.startsWith("hybrid_roof_solver") ||
       topologySource === "hip_roof_generator_last_resort";
 
     const lockSolverTopology = (solverUsed: string) => {
       solverTopologyLocked = true;
-      topologySource = solverUsed;
+      topologySource = solverUsed.includes("constraint") || solverUsed.includes("hybrid")
+        ? solverUsed
+        : `constraint_solver_topology:${solverUsed}`;
       constraintSolverEdges = cleanEdges.map((edge) => ({
         ...edge,
         source: "constraint_solver_topology",
@@ -975,13 +978,12 @@ async function processJob(input: any) {
         azimuth: null,
         source,
       }));
-      cleanEdges = cleanEdges.filter((e) => e.edge_type !== "rake");
-      cleanEdges.push({
+      const syntheticEdges: RoofEdge[] = [{
         edge_type: "ridge",
         line_px: [synthetic.ridgeLine.p1, synthetic.ridgeLine.p2],
         confidence: 0.70,
         source: `${source}_ridge`,
-      });
+      }];
       const bb = bboxOf(footprint);
       if (bb) {
         const corners = [
@@ -993,7 +995,7 @@ async function processJob(input: any) {
             Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
             ? synthetic.ridgeLine.p1
             : synthetic.ridgeLine.p2;
-          cleanEdges.push({
+          syntheticEdges.push({
             edge_type: "hip",
             line_px: [ridgeEnd, c],
             confidence: 0.65,
@@ -1001,7 +1003,9 @@ async function processJob(input: any) {
           });
         }
       }
+      cleanEdges = syntheticEdges;
       topologySource = source;
+      lockSolverTopology(source);
       ridgeSplitPlaneCount = cleanPlanes.length;
       simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source };
       console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({ planes: cleanPlanes.length, source }));
@@ -2689,9 +2693,9 @@ async function processJob(input: any) {
       return dedupeFinalEdges([...structuralEdges, ...perimeterEaves]);
     })();
     cleanEdges = finalEdges;
-    const finalEdgeSource = solverTopologyLocked ? "constraint_solver_topology" : (finalEdges[0]?.source || "none");
+    const finalEdgeSource = finalEdges[0]?.source || "none";
     if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdgeSource !== "constraint_solver_topology") {
-      throw new Error("solver_topology_not_used_in_final_write");
+      throw new Error("WRONG_FINAL_EDGE_SOURCE");
     }
 
     const planeRows = buildPlaneRows({
@@ -2722,6 +2726,7 @@ async function processJob(input: any) {
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
     const finalWriteLog = {
       solverTopologyLocked,
+      topology_source: topologySource,
       final_edge_source: finalEdgeSource,
       final_edges_count: finalEdges.length,
       ridge_ft: Number(totals.ridge_length_ft) || 0,
@@ -3208,6 +3213,7 @@ async function processJob(input: any) {
       source_button: input.source_button,
       engine_version: "geometry_first_v2",
       geometry_source: resolvedGeometrySource,
+      final_edge_source: finalEdgeSource,
       footprint_source: footprintSource,
       topology_source: topologySource,
       block_customer_report_reason: blockCustomerReportReason,
@@ -3239,6 +3245,21 @@ async function processJob(input: any) {
     };
 
     // Publish canonical roof_measurements row
+    const finalWriteSourceAssert = {
+      topology_source: topologySource,
+      edge_source: finalEdges?.[0]?.source,
+      final_edges_count: finalEdges?.length,
+      ridge_ft: Number(totals.ridge_length_ft) || 0,
+      hip_ft: Number(totals.hip_length_ft) || 0,
+      valley_ft: Number(totals.valley_length_ft) || 0,
+      eave_ft: Number(totals.eave_length_ft) || 0,
+      rake_ft: Number(totals.rake_length_ft) || 0,
+    };
+    console.log("[FINAL_WRITE_SOURCE_ASSERT]", JSON.stringify(finalWriteSourceAssert));
+    if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdges?.[0]?.source !== "constraint_solver_topology") {
+      throw new Error("WRONG_FINAL_EDGE_SOURCE");
+    }
+
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
       .insert({
