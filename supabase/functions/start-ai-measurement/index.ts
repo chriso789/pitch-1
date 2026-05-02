@@ -2063,8 +2063,9 @@ async function processJob(input: any) {
       cleanEdges = cleanEdges.map((edge) => {
         const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
         if (!isStructural) return edge;
-        // Hybrid solver edges are geometrically guaranteed — skip strict graph checks
-        if (hybridSolverAccepted && String(edge.source || "").includes("constraint_ridge_first")) return edge;
+        // Constraint solver edges are geometrically guaranteed — do not let
+        // visual-hint QA or plane_edge_classifier_v1 reject final topology.
+        if (solverTopologyLocked || String(edge.source || "").includes("constraint_solver_topology")) return edge;
         const source = String(edge.source || "");
         const sourceIsFuzzy = source.toLowerCase().includes("fuzzy");
         const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
@@ -2145,7 +2146,7 @@ async function processJob(input: any) {
 
     // Skip final coverage gate if edge classification already ran — it would
     // wipe cleanEdges via fallback.  Only ensure perimeter edges exist.
-    const finalExteriorEdgesCreated = ensureExteriorFootprintEdges("footprint_perimeter_final");
+    const finalExteriorEdgesCreated = solverTopologyLocked ? 0 : ensureExteriorFootprintEdges("footprint_perimeter_final");
 
     // ── FINAL SIMPLE-GABLE AUTHORITY OVERRIDE ──
     // This runs after classifier output, dedupe, strict QA, and perimeter edge
