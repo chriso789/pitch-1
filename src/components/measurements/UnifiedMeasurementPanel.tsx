@@ -881,7 +881,7 @@ export function UnifiedMeasurementPanel({
                     </Badge>
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {format(new Date(ai.created_at), 'MMM d, yyyy')}
+                    {format(new Date(ai.created_at), 'MMM d, yyyy h:mm a')}
                   </span>
                 </div>
 
@@ -1233,7 +1233,7 @@ function MeasurementCard({
           )}
         </div>
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {format(new Date(measurement.approved_at), 'MMM d, yyyy')}
+          {format(new Date(measurement.approved_at), 'MMM d, yyyy h:mm a')}
         </span>
       </div>
 
@@ -1825,7 +1825,7 @@ function MeasurementHistorySection({
                     {hasValidData ? `${sqft.toLocaleString()} sqft` : 'No valid data'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {format(new Date(report.created_at), 'MMM d, yyyy')}
+                    {format(new Date(report.created_at), 'MMM d, yyyy h:mm a')}
                   </p>
                   {report.address && (
                     <p className="text-xs text-muted-foreground truncate max-w-[150px]">
@@ -1909,7 +1909,7 @@ function MeasurementHistorySection({
                     {sqft.toLocaleString()} sqft
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {format(new Date(measurement.created_at), 'MMM d, yyyy')}
+                    {format(new Date(measurement.created_at), 'MMM d, yyyy h:mm a')}
                   </p>
                   {getMeasurementReviewReason(measurement) && (
                     <p className="mt-1 flex items-center gap-1 text-xs text-warning">
