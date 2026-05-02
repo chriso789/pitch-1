@@ -1577,10 +1577,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
 
   const autonomousResult = solveAutonomousGraph(autonomousInput);
 
-  // AUTONOMOUS VALIDATION GATE: Block 4-plane collapse on complex roofs
-  if (autonomousResult.validation_status === 'ai_failed_complex_topology') {
-    console.warn(`🚫 AUTONOMOUS FAILURE: ${autonomousResult.failure_reason}`);
-    console.warn(`   → NOT generating customer report. Status: needs_review`);
+  // AUTONOMOUS VALIDATION GATE: Block all hard failures (no synthetic fallbacks)
+  const isHardFail = ['ai_failed_complex_topology', 'insufficient_structural_signal', 'invalid_roof_graph'].includes(autonomousResult.validation_status);
+  if (isHardFail) {
+    console.warn(`🚫 AUTONOMOUS FAILURE [${autonomousResult.validation_status}]: ${autonomousResult.failure_reason}`);
+    console.warn(`   → NOT generating customer report. Requires human review.`);
     // Return a result marked as failed - caller must handle this
     const failResult = {
       property_id: "",
