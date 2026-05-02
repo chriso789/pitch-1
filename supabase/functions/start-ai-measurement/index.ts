@@ -1060,8 +1060,52 @@ async function processJob(input: any) {
         solar_segment_exempt: isSolarSegmentSource,
       };
       if (fallbackRequired) {
+        // ── UPSTREAM HIP-ROOF GENERATOR — replaces single-plane fallback entirely ──
+        // If we already have hip-roof topology, NEVER downgrade to single plane.
+        if (topologySource.includes("hip_roof")) {
+          footprintCoverageDebug = {
+            ...footprintCoverageDebug,
+            fallback_blocked_by_existing_hip_topology: true,
+            topology_source_preserved: topologySource,
+          };
+          console.log("[COVERAGE_GATE] Preserving existing hip-roof topology, blocking single-plane fallback");
+          return false;
+        }
+
         refreshSimpleRoofType("coverage_gate_before_fallback");
-        if (simpleRoofTypeDebug.hip_roof) {
+
+        // Try the new hip-roof generator FIRST (upstream, not downstream)
+        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
+        const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+        const isLargePitchedRoof = footprintAreaSqft > 1200 && pitchRise !== null && pitchRise > 2;
+
+        if (simpleRoofTypeDebug.hip_roof || isLargePitchedRoof) {
+          // Use the new upstream hip-roof generator
+          const hipResult = generateHipRoofPlanes(footprint);
+          if (hipResult.planes.length >= 3) {
+            cleanPlanes = hipResult.planes.map((p) => ({
+              ...p,
+              confidence: 0.70,
+              pitch: null,
+              pitch_degrees: null,
+              azimuth: null,
+            }));
+            cleanEdges = hipResult.edges.map((e) => ({
+              ...e,
+              confidence: 0.70,
+            }));
+            topologySource = "hip_roof_generator";
+            ridgeSplitPlaneCount = cleanPlanes.length;
+            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator" };
+            footprintCoverageDebug = {
+              ...footprintCoverageDebug,
+              fallback_replaced_by_hip_generator: true,
+              hip_generator_planes: cleanPlanes.length,
+            };
+            console.log("[COVERAGE_GATE] Hip-roof generator replaced fallback", JSON.stringify({ planes: cleanPlanes.length, edges: cleanEdges.length }));
+            return false;
+          }
+          // If generator failed, try the legacy synthetic approach
           const recovered = applySyntheticHipRoofTopology("hip_roof_synthetic_coverage_recovery");
           footprintCoverageDebug = {
             ...footprintCoverageDebug,
@@ -1070,13 +1114,35 @@ async function processJob(input: any) {
           };
           if (recovered) return false;
         }
-        if (singlePlaneFallbackForbidden) {
+
+        if (singlePlaneFallbackForbidden || isLargePitchedRoof) {
           footprintCoverageDebug = {
             ...footprintCoverageDebug,
             fallback_blocked_for_large_pitched_roof: true,
           };
+          // Last resort: force hip generator even without detection
+          const lastResort = generateHipRoofPlanes(footprint);
+          if (lastResort.planes.length >= 3) {
+            cleanPlanes = lastResort.planes.map((p) => ({
+              ...p,
+              confidence: 0.60,
+              pitch: null,
+              pitch_degrees: null,
+              azimuth: null,
+            }));
+            cleanEdges = lastResort.edges.map((e) => ({
+              ...e,
+              confidence: 0.60,
+            }));
+            topologySource = "hip_roof_generator_last_resort";
+            ridgeSplitPlaneCount = cleanPlanes.length;
+            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator_last_resort" };
+            console.log("[COVERAGE_GATE] Hip-roof generator last resort", JSON.stringify({ planes: lastResort.planes.length }));
+          }
           return false;
         }
+
+        // ── SINGLE-PLANE FALLBACK — only for small, low-pitch, non-hip roofs ──
         const prior = cleanPlanes[0] || null;
         cleanPlanes = [{
           plane_index: 1,
@@ -1087,9 +1153,6 @@ async function processJob(input: any) {
           azimuth: prior?.azimuth ?? null,
           source: "single_plane_fallback",
         }];
-        // CRITICAL: Do NOT wipe cleanEdges here — edge classification may have
-        // already populated them. Only reset planes; edges will be rebuilt by
-        // ensureExteriorFootprintEdges if needed.
         topologySource = "single_plane_fallback";
       }
       console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
