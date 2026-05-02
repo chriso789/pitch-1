@@ -27,6 +27,7 @@ interface PipelineStage {
   stage_order: number;
   probability_percent: number;
   is_active: boolean;
+  is_conversion_point: boolean;
   color: string;
   auto_actions: unknown;
   created_at: string;
