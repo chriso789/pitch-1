@@ -3711,6 +3711,9 @@ Deno.serve(async (req) => {
           // Step 5.5: AUTONOMOUS VALIDATION GATE for generate-overlay
           const overlayComplexity = detectComplexRoof(googleSolarSegments, coords);
           if (overlayComplexity.isComplex) {
+            const structuralEdgeCount = dsmAnalysis.refinedEdges.filter(e => 
+              e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'
+            ).length;
             const overlayValidation = validateAutonomousResult(
               {
                 facetCount: splitResult.facets.length,
@@ -3718,7 +3721,9 @@ Deno.serve(async (req) => {
                 ridgeCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'ridge').length,
                 hipCount: dsmAnalysis.refinedEdges.filter(e => e.type === 'hip').length,
                 graphConnected: dsmAnalysis.refinedEdges.length > 0,
+                graphValid: dsmAnalysis.refinedEdges.length > 0,
                 coverageRatio: splitResult.facets.reduce((s, f) => s + f.planArea, 0) / polygonAreaSqftFromLngLat(coords),
+                structuralEdgeCount,
               },
               overlayComplexity
             );
