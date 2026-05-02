@@ -1610,6 +1610,19 @@ async function processJob(input: any) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
+    const preCoveragePitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+    singlePlaneFallbackForbidden =
+      polygonAreaPx(footprint) * actualFpp * actualFpp > 1200 &&
+      preCoveragePitchRise !== null &&
+      preCoveragePitchRise > 2;
+    if (singlePlaneFallbackForbidden) {
+      simpleRoofTypeDebug = {
+        ...simpleRoofTypeDebug,
+        hip_roof: true,
+        gable_roof: false,
+        source: "large_pitched_roof_single_plane_forbidden",
+      };
+    }
     refreshSimpleRoofType("pre_coverage_gate");
     applyFootprintCoverageGate("pre_edge_classification");
     refreshSimpleRoofType("pre_edge_classification");
