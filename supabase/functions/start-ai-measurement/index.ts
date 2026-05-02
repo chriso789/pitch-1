@@ -6,6 +6,7 @@
 import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
+import { detectHipRoof, synthesizeHipPlanesFromFootprint } from "../_shared/hip-roof-detector.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
@@ -981,6 +982,7 @@ async function processJob(input: any) {
 
     // Hoisted so references outside the if-block don't throw ReferenceError
     let topLevelFilteredRidges: any[] = [];
+    let hipRoofDetectorDebug: any = null;
 
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
@@ -1276,6 +1278,8 @@ async function processJob(input: any) {
             footprint.map((p) => [p.x, p.y] as [number, number]),
           );
           if (skeletonEdges && skeletonEdges.length > 0) {
+            // Parse skeleton segments into Point pairs for edges AND plane rebuild.
+            const parsedSegments: Array<{ p1: Point; p2: Point; type: string }> = [];
             for (const se of skeletonEdges as any[]) {
               const a = se.a ?? se.p1 ?? se.start ?? se[0];
               const b = se.b ?? se.p2 ?? se.end ?? se[1];
@@ -1285,6 +1289,11 @@ async function processJob(input: any) {
               const by = Array.isArray(b) ? b[1] : b?.y;
               if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
                 const t = String(se.type || "ridge").toLowerCase();
+                parsedSegments.push({
+                  p1: { x: ax, y: ay },
+                  p2: { x: bx, y: by },
+                  type: t,
+                });
                 cleanEdges.push({
                   edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
                   line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
@@ -1294,6 +1303,39 @@ async function processJob(input: any) {
               }
             }
             if (topologySource === "none") topologySource = "straight_skeleton";
+
+            // 5b-ii. Rebuild planes from skeleton segments — this is the
+            // critical step that was MISSING. The skeleton produces edges but
+            // we weren't using them to actually split the footprint into
+            // multiple planes. rebuildPlanesFromSkeletonSegments feeds them
+            // back through the footprint solver as high-confidence ridge hints.
+            if (parsedSegments.length > 0 && cleanPlanes.length < 2) {
+              try {
+                const skeletonRebuild = rebuildPlanesFromSkeletonSegments(
+                  footprint,
+                  parsedSegments.map((s) => ({ p1: s.p1, p2: s.p2 })),
+                );
+                console.log("[SKELETON_PLANE_REBUILD]", JSON.stringify(skeletonRebuild.stats));
+                if (
+                  skeletonRebuild.planes.length >= 2 &&
+                  skeletonRebuild.adjacency.shared_boundary_count > 0
+                ) {
+                  cleanPlanes = skeletonRebuild.planes.map((p, i) => ({
+                    plane_index: i + 1,
+                    polygon_px: p.polygon,
+                    confidence: 0.72,
+                    pitch: null,
+                    pitch_degrees: null,
+                    azimuth: null,
+                    source: "skeleton_plane_rebuild",
+                  }));
+                  topologySource = "skeleton_plane_rebuild";
+                  console.log("[SKELETON_PLANE_REBUILD] accepted", cleanPlanes.length, "planes");
+                }
+              } catch (e) {
+                console.warn("[SKELETON_PLANE_REBUILD] failed:", (e as Error).message);
+              }
+            }
           }
         }
 
@@ -1318,6 +1360,8 @@ async function processJob(input: any) {
         console.warn("[geometry-first] topology engine failed:", (e as Error).message);
       }
 
+      // ── FALLBACK HIERARCHY (ordered A→D) ──
+      // A. Solar segment planes if >1 segment
       if (cleanPlanes.length < 2 || !cleanEdges.some((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley")) {
         const solarStructured = addSolarSegmentStructure();
         if (solarStructured) {
@@ -1325,6 +1369,98 @@ async function processJob(input: any) {
           console.log("[SOLAR_SEGMENT_STRUCTURE]", JSON.stringify({ planes: cleanPlanes.length, edges: cleanEdges.length, topology_source: topologySource }));
         }
       }
+
+      // B. Hip-roof detector: Sobel + Hough diagonal detection from raster.
+      //    If the footprint is large, pitched, and has diagonal gradients →
+      //    synthesize hip-roof planes from footprint corners + center ridge.
+      if (cleanPlanes.length < 2) {
+        try {
+          const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
+          const solarPitchDeg = (() => {
+            const segs = (solarSegments || []) as any[];
+            if (segs.length === 0) return null;
+            const pitches = segs.map((s: any) => Number(s?.pitchDegrees)).filter(Number.isFinite);
+            return pitches.length > 0 ? pitches.reduce((a: number, b: number) => a + b, 0) / pitches.length : null;
+          })();
+          const hipResult = detectHipRoof({
+            raster,
+            footprint,
+            solarPitchDeg: solarPitchDeg ?? undefined,
+            footprintAreaSqft,
+          });
+          hipRoofDetectorDebug = hipResult.debug;
+          console.log("[HIP_ROOF_DETECTOR]", JSON.stringify(hipResult.debug));
+
+          if (hipResult.blockedSinglePlane || hipResult.isHipCandidate) {
+            // C. Hip-roof synthetic topology from footprint corners + detected diagonals
+            const synthetic = synthesizeHipPlanesFromFootprint(footprint);
+            if (synthetic && synthetic.planes.length >= 2) {
+              cleanPlanes = synthetic.planes.map((sp, i) => ({
+                plane_index: i + 1,
+                polygon_px: sp.polygon_px,
+                confidence: 0.68,
+                pitch: null,
+                pitch_degrees: null,
+                azimuth: null,
+                source: "hip_roof_synthetic",
+              }));
+              // Add the synthetic ridge
+              cleanEdges.push({
+                edge_type: "ridge",
+                line_px: [synthetic.ridgeLine.p1, synthetic.ridgeLine.p2],
+                confidence: 0.70,
+                source: "hip_roof_synthetic_ridge",
+              });
+              // Add hip edges from ridge endpoints to footprint corners
+              const bb = (() => {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of footprint) {
+                  if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+                  if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
+                }
+                return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+              })();
+              const isHz = bb.w >= bb.h;
+              // Hip lines connect ridge endpoints to the nearest short-side corners
+              const corners = isHz
+                ? [
+                    { x: bb.minX, y: bb.minY }, { x: bb.minX, y: bb.maxY },
+                    { x: bb.maxX, y: bb.minY }, { x: bb.maxX, y: bb.maxY },
+                  ]
+                : [
+                    { x: bb.minX, y: bb.minY }, { x: bb.maxX, y: bb.minY },
+                    { x: bb.minX, y: bb.maxY }, { x: bb.maxX, y: bb.maxY },
+                  ];
+              for (const c of corners) {
+                const ridgeEnd = Math.hypot(c.x - synthetic.ridgeLine.p1.x, c.y - synthetic.ridgeLine.p1.y) <
+                  Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
+                  ? synthetic.ridgeLine.p1
+                  : synthetic.ridgeLine.p2;
+                cleanEdges.push({
+                  edge_type: "hip",
+                  line_px: [ridgeEnd, c],
+                  confidence: 0.65,
+                  source: "hip_roof_synthetic_hip",
+                });
+              }
+              topologySource = "hip_roof_synthetic";
+              ridgeSplitPlaneCount = cleanPlanes.length;
+              console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({
+                planes: cleanPlanes.length,
+                ridge: synthetic.ridgeLine,
+                hip_edges: corners.length,
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn("[HIP_ROOF_DETECTOR] failed:", (e as Error).message);
+        }
+      }
+
+      // D. Single-plane fallback — ONLY as last resort.
+      //    The applyFootprintCoverageGate in pre_edge_classification (below)
+      //    will assign single_plane_fallback. The hip-roof detector may have
+      //    already blocked this, which the QA gate enforces.
     }
 
     // 6. Refine with U-Net output ONLY if topology produced nothing AND U-Net did.
@@ -2237,6 +2373,29 @@ async function processJob(input: any) {
           : "single_plane_for_large_footprint",
       );
     }
+    // QA: Block single-plane on pitched roofs >1200 sqft — these are
+    // almost certainly multi-plane roofs where the detector failed.
+    if (
+      usedSinglePlaneFallback &&
+      finalFootprintAreaSqft > 1200 &&
+      !isFlatRoof &&
+      planeRows.length === 1
+    ) {
+      if (!sanityFailures.includes("single_plane_invalid_for_pitched_roof")) {
+        sanityFailures.push("single_plane_invalid_for_pitched_roof");
+      }
+    }
+    // QA: Hip-roof detector confirmed multi-plane but we still ended up
+    // with single plane — hard block.
+    if (
+      hipRoofDetectorDebug?.enabled &&
+      (hipRoofDetectorDebug?.diagonal_lines_kept >= 2 || hipRoofDetectorDebug?.reason?.includes("large_pitched")) &&
+      planeRows.length < 2
+    ) {
+      if (!sanityFailures.includes("hip_roof_detected_but_single_plane")) {
+        sanityFailures.push("hip_roof_detected_but_single_plane");
+      }
+    }
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
     }
@@ -2346,6 +2505,7 @@ async function processJob(input: any) {
       plane_merge: _planeMergeDebug,
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
+      hip_roof_detector: hipRoofDetectorDebug,
     }));
 
     const quality = scoreQuality({
