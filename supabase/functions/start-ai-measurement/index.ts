@@ -1247,7 +1247,7 @@ async function processJob(input: any) {
       // guaranteed 4-plane topology (2 eave trapezoids + 2 hip triangles)
       // with a real ridge line. This runs BEFORE image ridge detection and
       // REPLACES all downstream plane generation when it succeeds.
-      let hybridSolverAccepted = false;
+      hybridSolverAccepted = false;
       {
         // Detect if this is a pitched roof
         refreshSimpleRoofType("pre_hybrid_solver");
