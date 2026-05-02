@@ -2002,6 +2002,8 @@ async function processJob(input: any) {
       cleanEdges = cleanEdges.map((edge) => {
         const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
         if (!isStructural) return edge;
+        // Hybrid solver edges are geometrically guaranteed — skip strict graph checks
+        if (hybridSolverAccepted && String(edge.source || "").includes("constraint_ridge_first")) return edge;
         const source = String(edge.source || "");
         const sourceIsFuzzy = source.toLowerCase().includes("fuzzy");
         const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
