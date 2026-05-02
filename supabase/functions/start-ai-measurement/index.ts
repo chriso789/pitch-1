@@ -13,6 +13,7 @@ import { partitionFootprint } from "../_shared/footprint-partitioner.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
+import { validateAerialStructuralMatch, assertDiagramUsesAerialGeometry } from "../_shared/aerial-structural-diagram.ts";
 import { detectRidgesInPolygon } from "../_shared/image-ridge-detector.ts";
 import { splitPlanesFromRidges, type Line as RidgeLine } from "../_shared/ridge-plane-splitter.ts";
 import {
@@ -3540,6 +3541,17 @@ async function processJob(input: any) {
     // ai_measurement_diagrams, which made the report dialog show "No diagrams available".
     try {
       if (!blockCustomerReportReason && planeRows.length > 0) {
+        // ── AERIAL STRUCTURAL DIAGRAM QA ──
+        const diagramQA = validateAerialStructuralMatch({
+          solverPlanes: planeRows.map((p: any) => ({ polygon_px: p.polygon_px, source: p.source })),
+          solverEdges: edgeRows.map((e: any) => ({ line_px: e.line_px, edge_type: e.edge_type, source: e.source })),
+          footprintPx: footprint,
+          rasterWidth: raster.width,
+          rasterHeight: raster.height,
+          topologySource,
+        });
+        assertDiagramUsesAerialGeometry(diagramQA, false);
+
         const diagrams = generateRoofDiagrams({
           propertyAddress: input.property_address || "Unknown property",
           jobId: input.ai_measurement_job_id,
