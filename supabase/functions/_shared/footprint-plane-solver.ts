@@ -161,7 +161,7 @@ function splitPolygonByChord(
 
 // ─── RIDGE VALIDATION ─────────────────────────────────────────────
 
-function ridgeValid(ridge: SolverRidge, footprint: Point[]): boolean {
+function ridgeValid(ridge: SolverRidge, footprint: Point[], relaxLength = false): boolean {
   const l = Math.hypot(
     ridge.p2.x - ridge.p1.x,
     ridge.p2.y - ridge.p1.y,
@@ -169,7 +169,11 @@ function ridgeValid(ridge: SolverRidge, footprint: Point[]): boolean {
   const xs = footprint.map((p) => p.x);
   const fpWidth = Math.max(...xs) - Math.min(...xs);
 
-  if (l > fpWidth * 0.6) return false;
+  // Skeleton-derived ridges ARE the structural lines — they may span the
+  // full footprint width. Only enforce the 60% cap for image-detected ridges.
+  if (!relaxLength && l > fpWidth * 0.6) return false;
+  // For skeleton ridges, still reject absurdly long ones (>1.5× footprint)
+  if (relaxLength && l > fpWidth * 1.5) return false;
   if (
     !insideFootprint(ridge.p1, footprint) ||
     !insideFootprint(ridge.p2, footprint)
