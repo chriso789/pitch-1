@@ -2810,6 +2810,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         customerPhone={customerInfo?.phone}
         customerEmail={customerInfo?.email}
         companyInfo={companyInfo}
+        templateStyle={proposalTemplateStyle}
         materialItems={materialItems}
         laborItems={laborItems}
         breakdown={breakdown}
