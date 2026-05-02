@@ -7,10 +7,8 @@
 import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
-import { EstimateCoverPage } from './EstimateCoverPage';
-import { ProcessTimelinePage } from './ProcessTimelinePage';
-import { WhyChooseUsPage } from './WhyChooseUsPage';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
+import { getTemplateComponents } from './templates/registry';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -125,6 +123,8 @@ interface EstimatePDFDocumentProps {
   // Multi-estimate deduplication flags
   skipCoverPage?: boolean;
   skipWarrantyAndTerms?: boolean;
+  // Per-company template style
+  templateStyle?: string | null;
 }
 
 const formatCurrency = (amount: number) => {
@@ -496,8 +496,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   templateAttachments,
   skipCoverPage = false,
   skipWarrantyAndTerms = false,
+  templateStyle,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
+  const tmpl = getTemplateComponents(templateStyle);
 
   const dateStr = createdAt 
     ? new Date(createdAt).toLocaleDateString('en-US', { 
@@ -559,8 +561,9 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Cover page (if enabled and not skipped for multi-estimate dedup)
     if (opts.showCoverPage && !skipCoverPage) {
       currentPage++;
+      const CoverPage = tmpl.CoverPage;
       pageList.push(
-        <EstimateCoverPage
+        <CoverPage
           key="cover-page"
           companyInfo={companyInfo}
           companyLogo={companyLogo}
@@ -574,11 +577,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         />
       );
 
-      // Trust / Why-Choose-Us page (only when cover is shown — i.e. customer-facing)
+      // Trust / Why-Choose-Us page
       currentPage++;
       totalPageCount++;
+      const WhyChooseUs = tmpl.WhyChooseUs;
       pageList.push(
-        <WhyChooseUsPage
+        <WhyChooseUs
           key="why-choose-us-page"
           companyName={companyInfo?.name || companyName}
           licenseNumber={companyInfo?.license_number}
@@ -592,7 +596,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       // Process Timeline page
       currentPage++;
       totalPageCount++;
-      pageList.push(<ProcessTimelinePage key="process-timeline-page" />);
+      const ProcessTimeline = tmpl.ProcessTimeline;
+      pageList.push(<ProcessTimeline key="process-timeline-page" />);
     }
 
     // Page 1: Customer info + first chunk of items + summary

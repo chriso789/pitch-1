@@ -98,6 +98,7 @@ interface EstimatePreviewPanelProps {
   customerPhone?: string | null;
   customerEmail?: string | null;
   companyInfo?: CompanyInfo | null;
+  templateStyle?: string | null;
   materialItems: LineItem[];
   laborItems: LineItem[];
   breakdown: {
@@ -163,6 +164,7 @@ export function EstimatePreviewPanel({
   customerPhone,
   customerEmail,
   companyInfo,
+  templateStyle,
   materialItems,
   laborItems,
   breakdown,
@@ -1522,6 +1524,7 @@ export function EstimatePreviewPanel({
                     templateAttachments={[]}
                     jobPhotos={jobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
+                    templateStyle={templateStyle}
                   />
                   
                   {/* Additional selected estimates */}
@@ -1559,6 +1562,7 @@ export function EstimatePreviewPanel({
                           jobPhotos={jobPhotos}
                           skipCoverPage={true}
                           skipWarrantyAndTerms={!isLast}
+                          templateStyle={templateStyle}
                         />
                       );
                     });

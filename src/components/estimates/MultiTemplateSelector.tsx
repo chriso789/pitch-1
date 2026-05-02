@@ -201,6 +201,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
   const [warrantyTerms, setWarrantyTerms] = useState<string | undefined>(undefined);
+  const [proposalTemplateStyle, setProposalTemplateStyle] = useState<string>('bold-editorial');
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
   const [contactId, setContactId] = useState<string | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -857,14 +858,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Fetch tenant info for company branding
       const { data: tenant } = await supabaseClient
         .from('tenants')
-        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms, established_year, brand_story, brand_mission, brand_certifications')
+        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms, established_year, brand_story, brand_mission, brand_certifications, proposal_template_style')
         .eq('id', tenantId)
         .single();
 
       if (tenant) {
-        const { warranty_terms, ...companyData } = tenant;
+        const { warranty_terms, proposal_template_style, ...companyData } = tenant;
         setCompanyInfo(companyData as CompanyInfo);
         if (warranty_terms) setWarrantyTerms(warranty_terms);
+        setProposalTemplateStyle(proposal_template_style || 'bold-editorial');
       }
 
       // Fetch all company locations
@@ -2808,6 +2810,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         customerPhone={customerInfo?.phone}
         customerEmail={customerInfo?.email}
         companyInfo={companyInfo}
+        templateStyle={proposalTemplateStyle}
         materialItems={materialItems}
         laborItems={laborItems}
         breakdown={breakdown}
