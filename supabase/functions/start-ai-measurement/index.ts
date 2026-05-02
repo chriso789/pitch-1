@@ -1241,9 +1241,64 @@ async function processJob(input: any) {
         console.warn("[UPSTREAM_SKELETON] failed:", (e as Error).message);
       }
 
+      // ── 5-HYBRID: PRIMARY CONSTRAINT SOLVER ──────────────────────
+      // For pitched/hip roofs, the constraint-based hybrid solver produces
+      // guaranteed 4-plane topology (2 eave trapezoids + 2 hip triangles)
+      // with a real ridge line. This runs BEFORE image ridge detection and
+      // REPLACES all downstream plane generation when it succeeds.
+      let hybridSolverAccepted = false;
+      if (topologySource !== "upstream_skeleton_decomp") {
+        // Detect if this is a pitched roof
+        refreshSimpleRoofType("pre_hybrid_solver");
+        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
+        const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+        const isLargePitchedRoof = footprintAreaSqft > 800 && pitchRise !== null && pitchRise > 2;
+        const isHipRoof = simpleRoofTypeDebug.hip_roof;
+
+        if (isHipRoof || isLargePitchedRoof) {
+          const hybridResult = solveHybridRoof(footprint);
+          console.log("[HYBRID_SOLVER]", JSON.stringify({
+            type: "constraint",
+            planes: hybridResult.planes.length,
+            edges: hybridResult.edges.length,
+            roofType: hybridResult.roofType,
+            ridgeLength: hybridResult.ridgeLine ? dist(hybridResult.ridgeLine.p1, hybridResult.ridgeLine.p2) : 0,
+            debug: hybridResult.debug,
+          }));
+
+          if (hybridResult.planes.length >= 3) {
+            const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
+            const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
+            const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
+
+            cleanPlanes = hybridResult.planes.map((p) => ({
+              ...p,
+              confidence: 0.78,
+              pitch: pitchFromSolar,
+              pitch_degrees: pitchDegFromSolar,
+              azimuth: azimuthFromSolar,
+            }));
+            cleanEdges = hybridResult.edges.map((e) => ({
+              ...e,
+              confidence: 0.78,
+            }));
+            topologySource = "hybrid_roof_solver_primary";
+            ridgeSplitPlaneCount = cleanPlanes.length;
+            simpleRoofTypeDebug = {
+              ...simpleRoofTypeDebug,
+              hip_roof: true,
+              gable_roof: false,
+              source: "hybrid_roof_solver_primary",
+            };
+            singlePlaneFallbackForbidden = true;
+            hybridSolverAccepted = true;
+            console.log("[HYBRID_SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length, "edges:", cleanEdges.length);
+          }
+        }
+      }
+
       // 5a. STRUCTURE EXTRACTION — image-based ridge detection + recursive plane split.
-      // If upstream skeleton already produced ≥2 planes, image ridges can still
-      // refine but won't start from scratch.
+      // SKIP entirely if hybrid solver already produced valid topology.
       const splitRidgeEdges: RoofEdge[] = [];
       try {
         const solarAzimuths: number[] = (solarSegments || [])
