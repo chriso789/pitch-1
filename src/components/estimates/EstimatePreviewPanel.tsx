@@ -1048,6 +1048,28 @@ export function EstimatePreviewPanel({
                 </TabsContent>
               </Tabs>
 
+              {/* Template Style Picker */}
+              <div className="space-y-1.5">
+                <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                  <Layers className="h-3 w-3" />
+                  Proposal Style
+                </h4>
+                <Select value={activeTemplateStyle} onValueChange={handleTemplateStyleChange}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bold-editorial">Bold Editorial</SelectItem>
+                    <SelectItem value="classic-professional">Classic Professional</SelectItem>
+                    <SelectItem value="modern-minimal">Modern Minimal</SelectItem>
+                    <SelectItem value="warm-craftsman">Warm Craftsman</SelectItem>
+                    <SelectItem value="premium-dark">Premium Dark</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
               {/* Toggle Sections */}
               <div className="space-y-4">
                 {/* Header Section */}
