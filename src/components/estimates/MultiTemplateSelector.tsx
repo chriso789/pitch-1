@@ -201,6 +201,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
   const [warrantyTerms, setWarrantyTerms] = useState<string | undefined>(undefined);
+  const [proposalTemplateStyle, setProposalTemplateStyle] = useState<string>('bold-editorial');
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
   const [contactId, setContactId] = useState<string | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
