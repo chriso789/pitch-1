@@ -182,6 +182,21 @@ export function EstimatePreviewPanel({
   allEstimates = [],
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
+  const [activeTemplateStyle, setActiveTemplateStyle] = useState<string>(templateStyle || 'bold-editorial');
+
+  // Sync from parent prop on open
+  useEffect(() => {
+    if (templateStyle) setActiveTemplateStyle(templateStyle);
+  }, [templateStyle]);
+
+  // Persist template style selection to tenant
+  const handleTemplateStyleChange = async (style: string) => {
+    setActiveTemplateStyle(style);
+    if (tenantId) {
+      await supabase.from('tenants').update({ proposal_template_style: style }).eq('id', tenantId);
+    }
+  };
+
   // Tenant-aware default overrides (e.g., O'Brien Contracting hides manufacturer warranty)
   const applyTenantDefaults = (opts: PDFComponentOptions): PDFComponentOptions => {
     const name = (companyInfo?.name || '').toLowerCase();
