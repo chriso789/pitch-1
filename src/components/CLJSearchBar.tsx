@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, User, Briefcase, Target, Building2, Clock, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -82,7 +82,7 @@ export const CLJSearchBar = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
-  const { activeTenantId } = useActiveTenantId();
+  const activeTenantId = useEffectiveTenantId();
 
   // Re-resolve cached recent items against the live DB so renames (e.g. a
   // contact renamed from "Reed Alter" to "Brittany Jones", or a lead/project
