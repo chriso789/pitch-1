@@ -1537,13 +1537,25 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     console.log(`🧠 COMPLEX ROOF DETECTED: ${complexity.reasons.join('; ')} → expected ≥${complexity.expectedMinFacets} facets`);
   }
 
-  // Attempt autonomous graph solve with DSM evidence
+  // Attempt autonomous graph solve with DSM + mask evidence (DSM-first pipeline)
   let dsmGridForSolver = null;
+  let maskedDSMForSolver = null;
   if (GOOGLE_PLACES_API_KEY) {
     try {
-      dsmGridForSolver = await fetchDSMFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY);
+      // Fetch both DSM and mask in parallel for real data
+      const [dsmResult, maskResult] = await Promise.all([
+        fetchDSMFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY),
+        fetchRoofMaskFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY),
+      ]);
+      dsmGridForSolver = dsmResult;
+      
+      // Apply mask to DSM if both available
+      if (dsmGridForSolver && maskResult) {
+        maskedDSMForSolver = applyMaskToDSM(dsmGridForSolver, maskResult);
+        console.log('[providerGoogleSolar] DSM + mask fused for autonomous solver');
+      }
     } catch (dsmErr) {
-      console.warn('[providerGoogleSolar] DSM fetch failed (non-fatal):', dsmErr);
+      console.warn('[providerGoogleSolar] DSM/mask fetch failed (non-fatal):', dsmErr);
     }
   }
 
@@ -1555,7 +1567,8 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     footprintCoords: coords,
     solarSegments: roofSegments,
     dsmGrid: dsmGridForSolver,
-    skeletonEdges: skeleton.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'),
+    maskedDSM: maskedDSMForSolver,
+    skeletonEdges: complexity.isComplex ? [] : skeleton.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'),
     boundaryEdges: {
       eaveEdges: boundaryClass.eaveEdges,
       rakeEdges: boundaryClass.rakeEdges,
