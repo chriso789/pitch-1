@@ -7,6 +7,7 @@ interface MaterialQuantities {
   dripEdge: number;
   valleyMaterial: number;
   penetrationFlashings: number;
+  underlaymentRolls: number;
 }
 
 interface MeasurementData {
@@ -18,6 +19,33 @@ interface MeasurementData {
   eaveLength: number;
   rakeLength: number;
   wastePercentage: number;
+}
+
+/**
+ * Convert a roof_measurements row into the MeasurementData shape
+ * used by calculateMaterialQuantities.
+ */
+export function fromRoofMeasurement(row: {
+  total_area_adjusted_sqft?: number | null;
+  total_ridge_length?: number | null;
+  total_hip_length?: number | null;
+  total_valley_length?: number | null;
+  total_eave_length?: number | null;
+  total_rake_length?: number | null;
+  waste_factor_percent?: number | null;
+}): MeasurementData {
+  const eave = row.total_eave_length ?? 0;
+  const rake = row.total_rake_length ?? 0;
+  return {
+    totalArea: row.total_area_adjusted_sqft ?? 0,
+    perimeter: eave + rake,
+    ridgeLength: row.total_ridge_length ?? 0,
+    hipLength: row.total_hip_length ?? 0,
+    valleyLength: row.total_valley_length ?? 0,
+    eaveLength: eave,
+    rakeLength: rake,
+    wastePercentage: row.waste_factor_percent ?? 10,
+  };
 }
 
 export function calculateMaterialQuantities(
@@ -60,6 +88,9 @@ export function calculateMaterialQuantities(
   // Penetration flashings (estimate 1 per 500 sq ft)
   const penetrationFlashings = Math.max(1, Math.ceil(totalArea / 500));
 
+  // Underlayment rolls (4 sq per roll / 400 sq ft coverage)
+  const underlaymentRolls = Math.max(1, Math.ceil(adjustedArea / 400));
+
   return {
     shingleBundles,
     shingleSquares: parseFloat(squares.toFixed(2)),
@@ -69,6 +100,7 @@ export function calculateMaterialQuantities(
     dripEdge,
     valleyMaterial,
     penetrationFlashings,
+    underlaymentRolls,
   };
 }
 
@@ -86,5 +118,6 @@ export function formatMaterialList(quantities: MaterialQuantities): Array<{
     { item: 'Drip Edge', quantity: quantities.dripEdge, unit: 'linear ft' },
     { item: 'Valley Material', quantity: quantities.valleyMaterial, unit: 'linear ft' },
     { item: 'Penetration Flashings', quantity: quantities.penetrationFlashings, unit: 'pieces' },
+    { item: 'Underlayment', quantity: quantities.underlaymentRolls, unit: 'rolls' },
   ];
 }
