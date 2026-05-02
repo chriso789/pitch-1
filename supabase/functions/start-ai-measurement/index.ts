@@ -33,6 +33,8 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "../_shared/dsm-analyzer.ts";
+import { solveAutonomousGraph, detectComplexRoof, type AutonomousGraphInput } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -89,6 +91,7 @@ const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
 const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
 const UNET_ENDPOINT = Deno.env.get("PITCH_UNET_ENDPOINT") || Deno.env.get("INTERNAL_UNET_URL") || "";
 const UNET_API_KEY = Deno.env.get("PITCH_UNET_API_KEY") || Deno.env.get("INTERNAL_UNET_KEY") || "";
+const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -853,6 +856,100 @@ async function processJob(input: any) {
     let ridgeAlignmentDebug: any = null;
     let solverTopologyLocked = false;
     let constraintSolverEdges: RoofEdge[] = [];
+
+    // HARD GATE: DSM graph is now the only publishable topology source.
+    // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
+    let autonomousDebug: any = null;
+    {
+      let dsmGrid: any = null;
+      let roofMask: any = null;
+      let maskedDSM: any = null;
+      try {
+        if (GOOGLE_SOLAR_API_KEY) {
+          [dsmGrid, roofMask] = await Promise.all([
+            fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+            fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+          ]);
+          maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
+        }
+      } catch (e) {
+        console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
+      }
+
+      const footprintGeo = footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+      const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
+      const graphInput: AutonomousGraphInput = {
+        lat: coords.lat,
+        lng: coords.lng,
+        footprintCoords: footprintGeo,
+        solarSegments,
+        dsmGrid,
+        maskedDSM,
+        skeletonEdges: [],
+        boundaryEdges: { eaveEdges: perimeterEdges, rakeEdges: [] },
+      };
+      const graph = solveAutonomousGraph(graphInput);
+      const complexity = detectComplexRoof(solarSegments, footprintGeo);
+      autonomousDebug = {
+        topology_source: REQUIRED_TOPOLOGY_SOURCE,
+        solver_version: "autonomous_graph_solver_v3_prune_first",
+        fallback_used: false,
+        hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
+        dsm_loaded: !!dsmGrid,
+        mask_loaded: !!roofMask,
+        edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
+        edge_filter_count_after: graph.logs?.fused_edges || 0,
+        snapped_vertex_count: graph.vertices.length,
+        rejected_fake_intersections: graph.logs?.pruned_by_intersection || 0,
+        facet_validation_errors: graph.logs?.faces_rejected_by_plane_fit || 0,
+        edge_count: graph.edges.length,
+        ridge_count: graph.edges.filter((e) => e.type === "ridge").length,
+        valley_count: graph.edges.filter((e) => e.type === "valley").length,
+        hip_count: graph.edges.filter((e) => e.type === "hip").length,
+        facet_count: graph.faces.length,
+        status: graph.validation_status,
+        complexity,
+      };
+
+      const failReason = graph.validation_status !== "validated"
+        ? graph.validation_status
+        : complexity.isComplex && graph.faces.length <= 4
+          ? "ai_failed_complex_topology"
+          : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
+            ? "invalid_roof_graph"
+            : null;
+      if (failReason) {
+        autonomousDebug.hard_fail_reason = failReason;
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
+        return;
+      }
+
+      cleanPlanes = graph.faces.map((f, i) => ({
+        plane_index: i + 1,
+        polygon_px: f.polygon.map(([lng, lat]) => lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)),
+        confidence: 0.9,
+        pitch: Math.tan((f.pitch_degrees * Math.PI) / 180) * 12,
+        pitch_degrees: f.pitch_degrees,
+        azimuth: f.azimuth_degrees,
+        source: REQUIRED_TOPOLOGY_SOURCE,
+      }));
+      cleanEdges = graph.edges.map((e) => ({
+        edge_type: e.type,
+        line_px: [
+          lngLatToPx(e.start[1], e.start[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+          lngLatToPx(e.end[1], e.end[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+        ],
+        confidence: e.confidence.final_confidence,
+        source: REQUIRED_TOPOLOGY_SOURCE,
+      } as RoofEdge));
+      topologySource = REQUIRED_TOPOLOGY_SOURCE;
+      solverTopologyLocked = true;
+      constraintSolverEdges = [...cleanEdges];
+      ridgeSplitPlaneCount = cleanPlanes.length;
+      console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
+    }
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -2382,6 +2479,7 @@ async function processJob(input: any) {
       });
       const simpleGableEnabled = Boolean(
         roofBbox &&
+        !solverTopologyLocked &&
         !simpleRoofTypeDebug.hip_roof &&
         cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
         (reflexCorners === 0 || noisyReflexOnly) &&
@@ -2919,6 +3017,27 @@ async function processJob(input: any) {
     });
 
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+    const legacyHardFailReason = topologySource !== REQUIRED_TOPOLOGY_SOURCE ? "legacy_topology_blocked" : null;
+    if (legacyHardFailReason) {
+      const failedDebug = {
+        ...(autonomousDebug || {}),
+        topology_source: topologySource,
+        solver_version: "autonomous_graph_solver_v3_prune_first",
+        fallback_used: true,
+        hard_fail_reason: legacyHardFailReason,
+        dsm_loaded: Boolean(autonomousDebug?.dsm_loaded),
+        mask_loaded: Boolean(autonomousDebug?.mask_loaded),
+        edge_filter_count_before: autonomousDebug?.edge_filter_count_before ?? 0,
+        edge_filter_count_after: autonomousDebug?.edge_filter_count_after ?? 0,
+        snapped_vertex_count: autonomousDebug?.snapped_vertex_count ?? 0,
+        rejected_fake_intersections: autonomousDebug?.rejected_fake_intersections ?? 0,
+        facet_validation_errors: autonomousDebug?.facet_validation_errors ?? 0,
+      };
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, legacyHardFailReason, failedDebug, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${legacyHardFailReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${legacyHardFailReason}`);
+      return;
+    }
     const finalWriteLog = {
       solverTopologyLocked,
       topology_source: topologySource,
@@ -4438,6 +4557,73 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
     } : {}),
     ...(status === "failed" ? { failure_reason: msg } : {}),
   }).eq("id", id);
+}
+
+async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
+  const aiDetectionData = {
+    topology_source: debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
+    solver_version: debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
+    fallback_used: Boolean(debug?.fallback_used),
+    hard_fail_reason: failureReason,
+    failure_reason: failureReason,
+    validation_status: "failed",
+    measurement_confidence: 0,
+    planes: [],
+    edges: [],
+    totals: { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
+    dsm_loaded: Boolean(debug?.dsm_loaded),
+    mask_loaded: Boolean(debug?.mask_loaded),
+    edge_filter_count_before: Number(debug?.edge_filter_count_before || 0),
+    edge_filter_count_after: Number(debug?.edge_filter_count_after || 0),
+    snapped_vertex_count: Number(debug?.snapped_vertex_count || 0),
+    rejected_fake_intersections: Number(debug?.rejected_fake_intersections || 0),
+    facet_validation_errors: Number(debug?.facet_validation_errors || 0),
+    debug,
+  };
+
+  const { data, error } = await supabase.from("roof_measurements").insert({
+    tenant_id: input.tenant_id,
+    customer_id: input.lead_id || null,
+    lead_id: input.lead_id,
+    project_id: input.project_id,
+    source_record_type: input.source_record_type,
+    source_record_id: input.source_record_id,
+    ai_measurement_job_id: input.ai_measurement_job_id,
+    property_address: input.property_address,
+    gps_coordinates: { lat: coords.lat, lng: coords.lng },
+    target_lat: coords.lat,
+    target_lng: coords.lng,
+    mapbox_image_url: imageUrl,
+    meters_per_pixel: mpp,
+    ai_detection_data: aiDetectionData,
+    ai_analysis: aiDetectionData,
+    ai_model_version: "autonomous_graph_solver_v3_prune_first",
+    detection_timestamp: new Date().toISOString(),
+    detection_confidence: 0,
+    measurement_confidence: 0,
+    geometry_quality_score: 0,
+    measurement_quality_score: 0,
+    requires_manual_review: true,
+    manual_review_recommended: true,
+    validation_status: "failed",
+    validation_notes: failureReason,
+    facet_count: 0,
+    edge_count: 0,
+    total_ridge_length: 0,
+    total_hip_length: 0,
+    total_valley_length: 0,
+    total_eave_length: 0,
+    total_rake_length: 0,
+    linear_features_wkt: [],
+    metadata: aiDetectionData,
+    gate_decision: "failed",
+    gate_reason: failureReason,
+    source_button: input.source_button,
+    engine_version: "autonomous_graph_solver_v3_prune_first",
+    engine_used: "autonomous_dsm_graph_solver",
+  }).select("id").single();
+  if (error) throw error;
+  return data.id as string;
 }
 function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0; }
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
