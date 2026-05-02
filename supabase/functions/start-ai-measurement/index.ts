@@ -2399,6 +2399,7 @@ async function processJob(input: any) {
     const ridgeFt = Number(totals.ridge_length_ft) || 0;
     const hipFt = Number(totals.hip_length_ft) || 0;
     const valleyFt = Number(totals.valley_length_ft) || 0;
+    const rakeFt = Number(totals.rake_length_ft) || 0;
     const dominantPitchRise = Number(totals.dominant_pitch) || 0;
     const isFlatRoof = dominantPitchRise > 0 && dominantPitchRise < 1.5;
 
@@ -2485,6 +2486,12 @@ async function processJob(input: any) {
       if (!sanityFailures.includes("hip_roof_detected_but_single_plane")) {
         sanityFailures.push("hip_roof_detected_but_single_plane");
       }
+    }
+    if (simpleRoofTypeDebug?.hip_roof && planeRows.length < 3) {
+      sanityFailures.push("hip_roof_requires_multi_plane");
+    }
+    if (simpleRoofTypeDebug?.hip_roof && rakeFt > 0) {
+      sanityFailures.push("hip_roof_has_invalid_rake");
     }
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
@@ -2596,6 +2603,7 @@ async function processJob(input: any) {
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
       hip_roof_detector: hipRoofDetectorDebug,
+      simple_roof_type: simpleRoofTypeDebug,
     }));
 
     const quality = scoreQuality({
@@ -2642,6 +2650,7 @@ async function processJob(input: any) {
         engine_version: "geometry_first_v2",
         footprint_source: footprintSource,
         topology_source: topologySource,
+        simple_roof_type: simpleRoofTypeDebug,
         unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
         block_customer_report_reason: blockCustomerReportReason,
         calibration: {
