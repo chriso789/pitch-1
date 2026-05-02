@@ -3568,6 +3568,7 @@ async function processJob(input: any) {
       roof_target_bbox_px: roofTargetBboxPx,
       roof_target_source: roofTargetSource,
       geometry_px_space: "raster_calibrated",
+      vendor_truth_comparison: vendorTruthComparison,
     };
 
     // Publish canonical roof_measurements row
