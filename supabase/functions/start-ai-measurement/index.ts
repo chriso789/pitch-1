@@ -2814,6 +2814,23 @@ async function processJob(input: any) {
     if (simpleRoofTypeDebug.hip_roof && finalWriteLog.eave_ft > footprintPerimeterFt * 1.15) {
       finalWriteSanityFailures.push("eave_length_inflated");
     }
+    // Area conservation: sum of plane 2D areas should match footprint area within 5%
+    const footprintAreaSqft = Math.abs(footprint.reduce((sum, a, i) => {
+      const b = footprint[(i + 1) % footprint.length];
+      return sum + (a.x * b.y - b.x * a.y);
+    }, 0) / 2) * actualFpp * actualFpp;
+    const sumPlaneArea = planeRows.reduce((s, p) => s + Number(p.area_2d_sqft || 0), 0);
+    if (sumPlaneArea > 0 && footprintAreaSqft > 0) {
+      const areaRatio = sumPlaneArea / footprintAreaSqft;
+      console.log("[AREA_CONSERVATION]", JSON.stringify({
+        footprint_area_sqft: round(footprintAreaSqft, 2),
+        sum_plane_area_sqft: round(sumPlaneArea, 2),
+        ratio: round(areaRatio, 4),
+      }));
+      if (areaRatio < 0.95 || areaRatio > 1.05) {
+        finalWriteSanityFailures.push("area_not_conserved");
+      }
+    }
 
     // Wipe any prior detail rows for this job (idempotency on retries)
     await supabase.from("ai_measurement_images").delete().eq("job_id", input.ai_measurement_job_id);
