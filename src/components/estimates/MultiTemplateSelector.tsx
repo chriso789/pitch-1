@@ -984,7 +984,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const fetchLineItems = async (templateId: string) => {
     setFetchingItems(true);
     try {
-      const { data, error } = await supabaseClient
+      let { data, error } = await supabaseClient
         .from('estimate_calc_template_items')
         .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order')
         .eq('calc_template_id', templateId)
@@ -993,6 +993,56 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         .order('sort_order');
 
       if (error) throw error;
+      
+      // Auto-repair: if template has 0 items, copy from a same-named template that has items
+      if (!data || data.length === 0) {
+        console.log('[TEMPLATE_REPAIR] Template has 0 items, looking for reference template...');
+        const { data: thisTemplate } = await supabaseClient
+          .from('estimate_calculation_templates')
+          .select('name')
+          .eq('id', templateId)
+          .single();
+        
+        if (thisTemplate?.name) {
+          // Find another template with the same name that has items
+          const { data: referenceTemplates } = await supabaseClient
+            .from('estimate_calculation_templates')
+            .select('id')
+            .eq('name', thisTemplate.name)
+            .neq('id', templateId);
+          
+          for (const ref of (referenceTemplates || [])) {
+            const { data: refItems } = await supabaseClient
+              .from('estimate_calc_template_items')
+              .select('item_name, description, unit, unit_cost, qty_formula, item_type, sort_order, active')
+              .eq('calc_template_id', ref.id)
+              .eq('active', true)
+              .order('sort_order');
+            
+            if (refItems && refItems.length > 0) {
+              console.log(`[TEMPLATE_REPAIR] Copying ${refItems.length} items from reference template ${ref.id}`);
+              // Copy items to the empty template
+              const itemsToInsert = refItems.map((item: any) => ({
+                ...item,
+                calc_template_id: templateId,
+              }));
+              const { data: inserted, error: insertErr } = await supabaseClient
+                .from('estimate_calc_template_items')
+                .insert(itemsToInsert)
+                .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order');
+              
+              if (!insertErr && inserted) {
+                data = inserted;
+                toast({
+                  title: 'Template Populated',
+                  description: `Loaded ${inserted.length} line items for ${thisTemplate.name}`,
+                });
+              }
+              break;
+            }
+          }
+        }
+      }
       
       // Calculate quantities using measurement context and convert to LineItem format
       const items: LineItem[] = (data || []).map((item: TemplateLineItem) => {
