@@ -1300,7 +1300,7 @@ async function processJob(input: any) {
       // 5a. STRUCTURE EXTRACTION — image-based ridge detection + recursive plane split.
       // SKIP entirely if hybrid solver already produced valid topology.
       const splitRidgeEdges: RoofEdge[] = [];
-      try {
+      if (!hybridSolverAccepted) try {
         const solarAzimuths: number[] = (solarSegments || [])
           .map((s: any) => Number(s?.azimuthDegrees))
           .filter((n: number) => Number.isFinite(n));
