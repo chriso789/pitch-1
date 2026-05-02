@@ -597,7 +597,13 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       currentPage++;
       totalPageCount++;
       const ProcessTimeline = tmpl.ProcessTimeline;
-      pageList.push(<ProcessTimeline key="process-timeline-page" />);
+      pageList.push(
+        <ProcessTimeline
+          key="process-timeline-page"
+          companyName={companyInfo?.name || companyName}
+          companyInfo={companyInfo}
+        />
+      );
     }
 
     // Page 1: Customer info + first chunk of items + summary
