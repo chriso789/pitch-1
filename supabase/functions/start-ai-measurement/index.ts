@@ -2373,6 +2373,29 @@ async function processJob(input: any) {
           : "single_plane_for_large_footprint",
       );
     }
+    // QA: Block single-plane on pitched roofs >1200 sqft — these are
+    // almost certainly multi-plane roofs where the detector failed.
+    if (
+      usedSinglePlaneFallback &&
+      finalFootprintAreaSqft > 1200 &&
+      !isFlatRoof &&
+      planeRows.length === 1
+    ) {
+      if (!sanityFailures.includes("single_plane_invalid_for_pitched_roof")) {
+        sanityFailures.push("single_plane_invalid_for_pitched_roof");
+      }
+    }
+    // QA: Hip-roof detector confirmed multi-plane but we still ended up
+    // with single plane — hard block.
+    if (
+      hipRoofDetectorDebug?.enabled &&
+      (hipRoofDetectorDebug?.diagonal_lines_kept >= 2 || hipRoofDetectorDebug?.reason?.includes("large_pitched")) &&
+      planeRows.length < 2
+    ) {
+      if (!sanityFailures.includes("hip_roof_detected_but_single_plane")) {
+        sanityFailures.push("hip_roof_detected_but_single_plane");
+      }
+    }
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
     }
