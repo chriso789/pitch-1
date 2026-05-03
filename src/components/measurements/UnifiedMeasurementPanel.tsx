@@ -832,6 +832,7 @@ export function UnifiedMeasurementPanel({
                 </p>
               </div>
             </div>
+          )}
 
           {/* Latest Unapproved AI Result — prominent card with roof diagram */}
           {!jobIsActive && latestUnapprovedAI && (() => {
