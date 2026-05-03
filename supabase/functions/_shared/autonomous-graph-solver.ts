@@ -1326,6 +1326,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   const totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
   const totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+  const attemptedAreaTotal = planar.faces.reduce((s: number, face: any) => {
+    const polygon = effectiveDSM ? face.polygon.map((p: { x: number; y: number }) => pxToGeoPoint(p, effectiveDSM)) : [];
+    return polygon.length >= 3 ? s + polygonAreaSqft(polygon, midLat) : s;
+  }, 0);
   const coverageRatio = planar.debug.face_coverage_ratio || (footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0);
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
@@ -1350,6 +1354,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     },
     complexity
   );
+  if (!validation.valid && planar.faces.length > 0 && graphFaces.length === 0) {
+    validation.status = 'faces_extracted_but_rejected';
+    validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
+  }
+  const invalidEdgeClassification = complexity.isComplex && outHips.reduce((s, e) => s + e.length_ft, 0) > 50 && outValleys.length === 0;
+  if (!validation.valid && invalidEdgeClassification) {
+    validation.status = 'invalid_edge_classification';
+    validation.reason = 'Complex roof has >50 LF of hips and 0 valleys after DSM classification';
+  }
 
   // Build vertex output
   const outputVertices: GraphVertex[] = [];
@@ -1409,6 +1422,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     face_count_before_merge: faceCountBeforeMerge,
     face_count_after_merge: faceCountAfterMerge,
     valid_faces: graphFaces.length,
+    attempted_area_total: attemptedAreaTotal,
+    attempted_face_count: planar.faces.length,
+    attempted_edge_count: outputEdges.length,
+    face_rejection_table: faceRejectionTable,
+    edge_classification_debug: edgeClassificationDebug,
     pitch_source: 'dsm_plane_fit',
     dsm_mask_valid: dsmMaskValid,
     topology_source: 'autonomous_dsm_graph_solver',
