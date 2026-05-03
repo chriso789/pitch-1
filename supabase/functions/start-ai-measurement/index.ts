@@ -1125,7 +1125,9 @@ async function processJob(input: any) {
       };
       const graph = solveAutonomousGraph(graphInput);
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
-      const graphValidated = graph.validation_status === "validated";
+      // Faces with valid plane fits should contribute to totals even if edge classification issues remain
+      const graphValidated = graph.validation_status === "validated" || 
+        (graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5);
       const attemptedRidgeLf = Number(graph.totals?.ridge_ft || 0);
       const attemptedHipLf = Number(graph.totals?.hip_ft || 0);
       const attemptedValleyLf = Number(graph.totals?.valley_ft || 0);
