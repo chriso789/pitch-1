@@ -104,13 +104,14 @@ export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
-  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid' | 'missing_valid_footprint' | 'footprint_coordinate_mismatch' | 'invalid_graph_no_perimeter' | 'graph_has_only_dangling_edges';
+  validation_status: 'validated' | 'ai_failed_complex_topology' | 'faces_extracted_but_rejected' | 'invalid_edge_classification' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid' | 'missing_valid_footprint' | 'footprint_coordinate_mismatch' | 'invalid_graph_no_perimeter' | 'graph_has_only_dangling_edges';
   failure_reason?: string;
   
   vertices: GraphVertex[];
   edges: GraphEdge[];
   faces: GraphFace[];
   rejected_edges: RejectedEdgeDebug[];
+  face_rejection_table?: Array<{ face_id: string; area_sqft: number; plane_rms: number | null; inside_footprint: boolean; mask_overlap: number | null; rejection_reason: string }>;
   
   totals: {
     ridge_ft: number;
@@ -165,6 +166,11 @@ export interface AutonomousGraphLog {
   face_count_before_merge: number;
   face_count_after_merge: number;
   valid_faces: number;
+  attempted_area_total: number;
+  attempted_face_count: number;
+  attempted_edge_count: number;
+  face_rejection_table?: Array<{ face_id: string; area_sqft: number; plane_rms: number | null; inside_footprint: boolean; mask_overlap: number | null; rejection_reason: string }>;
+  edge_classification_debug?: Record<string, unknown>;
   pitch_source: string;
   dsm_mask_valid: boolean;
   topology_source: 'autonomous_dsm_graph_solver';
