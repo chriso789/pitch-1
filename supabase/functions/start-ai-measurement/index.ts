@@ -951,11 +951,21 @@ async function processJob(input: any) {
             : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
-        // Don't hard-return. Fall through to legacy pipeline so users get a
-        // preliminary measurement they can review, while the DSM failure is
-        // recorded and blocks customer-facing report delivery.
-        console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver failed (${failReason}), falling through to legacy pipeline`);
+        // HARD FAIL: Do NOT fall through to legacy pipeline.
+        // Always persist debug data so internal debug reports are available.
+        console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
         dsmFailReason = failReason;
+        // Persist debug data into the measurement job before failing
+        if (jobId) {
+          await supabaseAdmin.from("ai_measurement_jobs").update({
+            status: "failed",
+            error: `DSM solver failed: ${failReason}`,
+            result_data: { autonomousDebug },
+          }).eq("id", jobId);
+        }
+        return new Response(JSON.stringify({ error: failReason, debug: autonomousDebug }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       } else {
 
       cleanPlanes = graph.faces.map((f, i) => ({
