@@ -1137,6 +1137,8 @@ async function processJob(input: any) {
         footprint_coordinate_space: "pixel",
         dsm_edge_coordinate_space: "pixel",
         coordinate_space_match: true,
+        dsm_coordinate_match: dsmCoordinateMatchDebug,
+        footprint_px: footprint.map(p => [p.x, p.y]),
         dsm_loaded: !!dsmGrid,
         mask_loaded: !!roofMask,
         dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
