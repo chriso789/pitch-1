@@ -384,9 +384,19 @@ function scoreAndFilterEdges(
 
   // Filter by threshold
   const accepted = candidates.filter(c => c.score >= EDGE_SCORE_THRESHOLD);
-  const prunedByScore = candidates.length - accepted.length;
+  const rejected = candidates.filter(c => c.score < EDGE_SCORE_THRESHOLD);
+  const prunedByScore = rejected.length;
 
-  return { accepted, prunedByScore };
+  const rejectedDebug: RejectedEdgeDebug[] = rejected.map(c => ({
+    start: c.start,
+    end: c.end,
+    score: c.score,
+    type: c.classifiedType,
+    source: c.source,
+    reason: `score_${c.score.toFixed(3)}_below_${EDGE_SCORE_THRESHOLD}`,
+  }));
+
+  return { accepted, prunedByScore, rejectedDebug };
 }
 
 // ============= STEP 2: CONSERVATIVE SNAPPING (NO CENTER COLLAPSE) =============
