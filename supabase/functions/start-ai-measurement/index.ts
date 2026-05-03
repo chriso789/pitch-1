@@ -498,7 +498,7 @@ async function processJob(input: any) {
     const geocodePx = { x: raster.width / 2, y: raster.height / 2 };
     const sqftPerPx2 = actualFpp * actualFpp;
     const RESIDENTIAL_MIN_SQFT = 800;
-    const MIN_COVERAGE_RATIO = 0.45;
+    const MIN_COVERAGE_RATIO = 0.20;
 
     type FootprintCandidate = {
       source: string;

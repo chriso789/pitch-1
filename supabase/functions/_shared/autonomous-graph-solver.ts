@@ -772,9 +772,14 @@ function classifyPlanarSegment(
 
 // ============= EDGE CLUSTERING (WEIGHTED MERGE WITH SPAN CAP) =============
 
-const CLUSTER_ANGLE_DEG = 8;
-const CLUSTER_MIDPOINT_DIST_PX = 15;
-const CLUSTER_MAX_SPAN_PX = 60;
+const CLUSTER_ANGLE_DEG = 10;
+const CLUSTER_MIDPOINT_DIST_PX = 25;
+const CLUSTER_MAX_SPAN_PX = 80;
+// Maximum interior edges passed to the planar solver. Even a complex cross-gable
+// roof rarely has more than 12 structural lines. Excess edges cause O(n²)
+// intersection splits → tiny sliver faces → coverage collapse.
+const MAX_INTERIOR_EDGES_FOR_SOLVER = 12;
+const MIN_EDGE_SCORE_FOR_SOLVER = 0.25;
 
 interface ClusterableEdge {
   a: { x: number; y: number };
@@ -1166,8 +1171,22 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   edgeCountAfterCluster = clusteredEdgesPx.length;
   console.log(`  Edge clustering: ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
 
+  // ===== STEP 6b: Cap interior edges to prevent solver overload =====
+  // Score each edge by confidence × length (longer structural lines matter more).
+  // Drop low-score edges entirely, then keep top-N by weighted score.
+  let dsmInteriorEdgesPx = clusteredEdgesPx
+    .filter((e) => e.score >= MIN_EDGE_SCORE_FOR_SOLVER);
+  if (dsmInteriorEdgesPx.length > MAX_INTERIOR_EDGES_FOR_SOLVER) {
+    dsmInteriorEdgesPx.sort((a, b) => {
+      const lenA = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y);
+      const lenB = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y);
+      return (b.score * lenB) - (a.score * lenA);
+    });
+    dsmInteriorEdgesPx = dsmInteriorEdgesPx.slice(0, MAX_INTERIOR_EDGES_FOR_SOLVER);
+  }
+  console.log(`  Edge cap: ${clusteredEdgesPx.length} → ${dsmInteriorEdgesPx.length} edges (max ${MAX_INTERIOR_EDGES_FOR_SOLVER})`);
+
   // ===== STEP 7: Planar graph with ordered intersection filtering =====
-  const dsmInteriorEdgesPx = clusteredEdgesPx;
   const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
     a: e.a, b: e.b, type: e.type, score: e.score,
   }));
