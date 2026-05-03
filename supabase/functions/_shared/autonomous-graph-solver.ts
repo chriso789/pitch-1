@@ -777,14 +777,9 @@ function classifyPlanarSegment(
 
 // ============= EDGE CLUSTERING (WEIGHTED MERGE WITH SPAN CAP) =============
 
-const CLUSTER_ANGLE_DEG = 10;
-const CLUSTER_MIDPOINT_DIST_PX = 25;
+// Constants imported from solver-config.ts:
+// CLUSTER_ANGLE_DEG, CLUSTER_MIDPOINT_DIST_PX, MAX_INTERIOR_EDGES_FOR_SOLVER, MIN_EDGE_SCORE_FOR_SOLVER
 const CLUSTER_MAX_SPAN_PX = 80;
-// Maximum interior edges passed to the planar solver. Even a complex cross-gable
-// roof rarely has more than 12 structural lines. Excess edges cause O(n²)
-// intersection splits → tiny sliver faces → coverage collapse.
-const MAX_INTERIOR_EDGES_FOR_SOLVER = 12;
-const MIN_EDGE_SCORE_FOR_SOLVER = 0.25;
 
 interface ClusterableEdge {
   a: { x: number; y: number };
