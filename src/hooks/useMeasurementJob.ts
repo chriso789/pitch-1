@@ -24,6 +24,17 @@ export function useMeasurementJob(pipelineEntryId: string) {
     const ageMs = Date.now() - new Date(startedAt).getTime();
     if (ageMs < 8 * 60 * 1000) return false;
 
+    const { data: refreshed } = await supabase
+      .from('measurement_jobs')
+      .select('id, status, progress_message, measurement_id, error, created_at, started_at, completed_at')
+      .eq('id', job.id)
+      .single();
+    if (refreshed && refreshed.status !== 'queued' && refreshed.status !== 'processing') {
+      queryClient.setQueryData(['measurement-job', pipelineEntryId], refreshed);
+      setActiveJobId(null);
+      return true;
+    }
+
     const failedJob: MeasurementJob = {
       ...job,
       status: 'failed',
