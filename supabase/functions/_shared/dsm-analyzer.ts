@@ -140,6 +140,7 @@ async function parseRealGeoTIFF(
     const tiepoint = image.getTiePoints();
     const pixelScale = image.getFileDirectory().ModelPixelScale;
     const geoKeys = image.getGeoKeys();
+    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}`);
 
     let bounds: DSMGrid['bounds'];
 
