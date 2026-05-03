@@ -13,6 +13,7 @@ import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
 import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
 import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
 
@@ -205,6 +206,7 @@ export function PullMeasurementsButton({
   const queryClient = useQueryClient();
   const imageCache = useImageCache();
   const navigate = useNavigate();
+  const effectiveTenantId = useEffectiveTenantId();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [verificationReady, setVerificationReady] = useState(false);
@@ -293,15 +295,7 @@ export function PullMeasurementsButton({
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      let tenantId = 'unknown';
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tenant_id')
-          .eq('id', user.id)
-          .single();
-        tenantId = profile?.tenant_id || 'unknown';
-      }
+      const tenantId = effectiveTenantId || 'unknown';
 
       // Start async job — returns immediately
       const jobId = await startJob({
