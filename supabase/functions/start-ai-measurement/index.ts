@@ -950,11 +950,12 @@ async function processJob(input: any) {
             : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
-        return;
-      }
+        // Don't hard-return. Fall through to legacy pipeline so users get a
+        // preliminary measurement they can review, while the DSM failure is
+        // recorded and blocks customer-facing report delivery.
+        console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver failed (${failReason}), falling through to legacy pipeline`);
+        blockCustomerReportReason = failReason;
+      } else {
 
       cleanPlanes = graph.faces.map((f, i) => ({
         plane_index: i + 1,
