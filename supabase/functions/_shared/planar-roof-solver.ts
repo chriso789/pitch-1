@@ -731,7 +731,7 @@ export function solveRoofPlanes(
   }
 
   // 8. Split with ordered intersection filtering
-  const { result: splitSegments, intersectionCount } = splitSegmentsWithFilteredIntersections(allSegments);
+  const { result: splitSegments, intersectionCount, intersectionFilterSkipped } = splitSegmentsWithFilteredIntersections(allSegments);
 
   // 9. Prune dangling + graph consistency
   const pruned = pruneDanglingInteriorSegments(splitSegments, footprint);
