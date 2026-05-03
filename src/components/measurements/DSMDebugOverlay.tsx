@@ -90,6 +90,20 @@ interface DSMDebugOverlayProps {
   debugGeometry?: any;
 }
 
+function parseRasterSizeFromUrl(url?: string | null): { width: number; height: number } | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const size = parsed.searchParams.get('size');
+    const scale = Number(parsed.searchParams.get('scale') || 1);
+    const match = size?.match(/^(\d+)x(\d+)$/);
+    if (match) return { width: Number(match[1]) * scale, height: Number(match[2]) * scale };
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 const EDGE_COLORS: Record<string, string> = {
   ridge: '#ff0000',
   valley: '#0066ff',
@@ -121,8 +135,9 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
   const data = overlayDebug;
   if (!data) return null;
 
-  const rasterW = data.raster_size?.width || 800;
-  const rasterH = data.raster_size?.height || 600;
+  const inferredRasterSize = data.raster_size || parseRasterSizeFromUrl(data.raster_url);
+  const rasterW = inferredRasterSize?.width || 1280;
+  const rasterH = inferredRasterSize?.height || 1280;
 
   const toggleLayer = (key: keyof typeof LAYER_DEFAULTS) => {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));

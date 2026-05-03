@@ -39,6 +39,7 @@ export function RasterOverlayDebugView({
   rasterSize,
   planes_px,
   edges_px,
+  footprint_px = [],
   overlayCalibration,
   roofTargetBboxPx,
   geometryPxSpace,
@@ -47,12 +48,14 @@ export function RasterOverlayDebugView({
   rasterSize: { width: number; height: number } | null | undefined;
   planes_px: PlanePx[];
   edges_px: EdgePx[];
+  footprint_px?: Pt[];
   overlayCalibration?: OverlayCalibration | null;
   roofTargetBboxPx?: Partial<OverlayBBox> | null;
   geometryPxSpace?: string | null;
 }) {
   const [showPlanes, setShowPlanes] = useState(true);
   const [showEdges, setShowEdges] = useState(true);
+  const [showFootprint, setShowFootprint] = useState(true);
   const [showRaster, setShowRaster] = useState(true);
 
   const viewBox = useMemo(() => {
@@ -71,13 +74,14 @@ export function RasterOverlayDebugView({
         { x: e.p1[0], y: e.p1[1] },
         { x: e.p2[0], y: e.p2[1] },
       ]),
+        ...footprint_px.map(([x, y]) => ({ x, y })),
     ];
     return computeOverlayTransform({
       rasterSize,
       geometryPoints,
       roofTargetBboxPx: roofTargetBboxPx || null,
     });
-  }, [edges_px, geometryPxSpace, overlayCalibration, planes_px, rasterSize, roofTargetBboxPx]);
+  }, [edges_px, footprint_px, geometryPxSpace, overlayCalibration, planes_px, rasterSize, roofTargetBboxPx]);
 
   const targetBbox = calibration?.roof_target_bbox_px || roofTargetBboxPx || null;
 
@@ -100,6 +104,14 @@ export function RasterOverlayDebugView({
       return { ...e, p1: [p1.x, p1.y] as Pt, p2: [p2.x, p2.y] as Pt };
     });
   }, [calibration, edges_px]);
+
+  const displayFootprint = useMemo(() => {
+    if (!calibration?.calibrated) return footprint_px;
+    return footprint_px.map(([x, y]) => {
+      const out = transformOverlayPoint({ x, y }, calibration);
+      return [out.x, out.y] as Pt;
+    });
+  }, [calibration, footprint_px]);
 
   if (!imageUrl || !rasterSize) {
     return (
@@ -137,6 +149,10 @@ export function RasterOverlayDebugView({
           <div className="flex items-center gap-2">
             <Switch id="edges" checked={showEdges} onCheckedChange={setShowEdges} />
             <Label htmlFor="edges" className="text-xs">Edges ({edges_px.length})</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch id="footprint" checked={showFootprint} onCheckedChange={setShowFootprint} />
+            <Label htmlFor="footprint" className="text-xs">Footprint ({footprint_px.length})</Label>
           </div>
         </div>
       </CardHeader>
@@ -198,6 +214,15 @@ export function RasterOverlayDebugView({
                   strokeLinecap="round"
                 />
               ))}
+            {showFootprint && displayFootprint.length >= 3 && (
+              <polygon
+                points={displayFootprint.map((pt) => `${pt[0]},${pt[1]}`).join(' ')}
+                fill="none"
+                stroke="#eab308"
+                strokeWidth={4}
+                strokeDasharray="12 8"
+              />
+            )}
           </svg>
         </div>
         <div className="flex flex-wrap gap-3 mt-3 text-[10px] font-mono text-muted-foreground">
