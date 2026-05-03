@@ -669,12 +669,13 @@ export function solveRoofPlanes(
   rawFootprint: Pt[],
   interiorLines: InteriorLine[],
 ): PlanarSolverResult {
-  const emptyDebug = {
+  const emptyDebug: PlanarSolverDebug = {
     input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0,
     collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0,
-    dangling_edges_removed: 0, perimeter_reinjected: 0,
+    intersection_filter_skipped: 0, dangling_edges_removed: 0, perimeter_reinjected: 0,
     total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0,
-    faces_with_area: 0, face_coverage_ratio: 0,
+    faces_with_area: 0, face_coverage_ratio: 0, fragment_merges: 0,
+    faces_rejected_by_area: 0, customer_block_reason: null,
   };
 
   if (rawFootprint.length < 3) {
