@@ -892,8 +892,20 @@ export function solveRoofPlanes(
     .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
     .map((polygon, i) => ({ id: i, polygon }));
   const facesRejectedByArea = rawFaces.length - allFaces.length;
-  const validFaces = filterRoofFaces(allFaces, footprint)
+  let validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
+
+  let polygonizerFallbackUsed = false;
+  if (validFaces.length < 2) {
+    const fallbackPolygons = polygonizeByStructuralDividers(footprint, graphSegments, minRawFaceArea * 2);
+    if (fallbackPolygons.length >= 2) {
+      polygonizerFallbackUsed = true;
+      validFaces = fallbackPolygons.map((polygon, i) => ({
+        id: i,
+        polygon: simplifyPolygon(polygon, SIMPLIFY_TOLERANCE_PX),
+      }));
+    }
+  }
 
   const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
   const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
@@ -915,8 +927,8 @@ export function solveRoofPlanes(
     faces_extracted: rawFaces.length,
     faces_with_area: validFaces.length,
     face_coverage_ratio: Number(faceCoverageRatio.toFixed(3)),
-    fragment_merges: 0, // tracked at autonomous-graph-solver level
-    faces_rejected_by_area: facesRejectedByArea,
+    fragment_merges: polygonizerFallbackUsed ? 1 : 0,
+    faces_rejected_by_area: polygonizerFallbackUsed ? 0 : facesRejectedByArea,
     customer_block_reason: customerBlockReason,
   };
 
