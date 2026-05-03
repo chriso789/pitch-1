@@ -16,7 +16,7 @@ import {
 import { 
   CheckCircle2, Trash2, Ruler, Star, Plus, ChevronDown,
   Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator, AlertTriangle,
-  Clock, ArrowRight
+  Clock, ArrowRight, Download, Bug
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
