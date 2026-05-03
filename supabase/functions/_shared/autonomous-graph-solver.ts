@@ -29,6 +29,7 @@ import {
   edgeAngle,
   angleDifference,
 } from "./dsm-utils.ts";
+import { solveRoofPlanes as planarSolveRoofPlanes } from "./planar-roof-solver.ts";
 
 type XY = [number, number]; // [lng, lat]
 
@@ -86,7 +87,7 @@ export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
-  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph';
+  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage';
   failure_reason?: string;
   
   vertices: GraphVertex[];
@@ -106,6 +107,9 @@ export interface AutonomousGraphResult {
   };
 
   logs: AutonomousGraphLog;
+  topology_source: 'autonomous_dsm_graph_solver';
+  facet_source: 'dsm_planar_graph_faces';
+  fallback_used: false;
 }
 
 export interface AutonomousGraphLog {
@@ -126,6 +130,18 @@ export interface AutonomousGraphLog {
   graph_valid: boolean;
   warnings: string[];
   timing_ms: number;
+  dsm_edges_detected: number;
+  dsm_edges_accepted: number;
+  interior_lines_used: number;
+  graph_nodes: number;
+  graph_segments: number;
+  intersections_split: number;
+  dangling_edges_removed: number;
+  faces_extracted: number;
+  valid_faces: number;
+  topology_source: 'autonomous_dsm_graph_solver';
+  facet_source: 'dsm_planar_graph_faces';
+  hard_fail_reason?: string | null;
 }
 
 export interface SolarSegment {
