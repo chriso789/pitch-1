@@ -195,6 +195,7 @@ export interface SolarSegment {
 export interface AutonomousGraphInput {
   lat: number;
   lng: number;
+  coordinateSpaceSolver?: 'dsm_px';
   footprintCoords: XY[];
   solarSegments: SolarSegment[];
   dsmGrid: DSMGrid | null;
@@ -1131,6 +1132,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   console.log(`[AUTONOMOUS_GRAPH_SOLVER] v4 — Production planar graph reconstruction`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
+
+  if (input.coordinateSpaceSolver !== 'dsm_px') {
+    throw new Error('coordinate_space_solver_must_be_dsm_px');
+  }
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
   const complexity = detectComplexRoof(input.solarSegments, input.footprintCoords);
