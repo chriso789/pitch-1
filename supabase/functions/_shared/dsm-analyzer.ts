@@ -215,14 +215,32 @@ async function parseRealGeoTIFF(
       if (bbox && bbox.length === 4) {
         const isProjected = Math.abs(bbox[0]) > 360 || Math.abs(bbox[1]) > 360;
         if (isProjected) {
-          console.warn('[DSM_ANALYZER] Projected bbox without tiepoints — cannot convert');
-          return null;
+          // Try to convert using geoKeys
+          const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
+          let utmZone = 0;
+          let isNorth = true;
+          if (projCRS >= 32601 && projCRS <= 32660) {
+            utmZone = projCRS - 32600; isNorth = true;
+          } else if (projCRS >= 32701 && projCRS <= 32760) {
+            utmZone = projCRS - 32700; isNorth = false;
+          }
+          if (utmZone > 0) {
+            const sw = utmToLatLng(bbox[0], bbox[1], utmZone, isNorth);
+            const ne = utmToLatLng(bbox[2], bbox[3], utmZone, isNorth);
+            bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
+            console.log(`[DSM_ANALYZER] Converted bbox UTM ${utmZone}${isNorth ? 'N' : 'S'} → [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+          } else {
+            console.warn('[DSM_ANALYZER] Projected bbox, unknown CRS — cannot convert');
+            return null;
+          }
+        } else {
+          bounds = { minLng: bbox[0], minLat: bbox[1], maxLng: bbox[2], maxLat: bbox[3] };
         }
-        bounds = {
-          minLng: bbox[0],
-          minLat: bbox[1],
-          maxLng: bbox[2],
-          maxLat: bbox[3],
+      } else {
+        console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
+        return null;
+      }
+    }
         };
       } else {
         console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
