@@ -550,18 +550,6 @@ function segmentIntersection(a1: XY, a2: XY, b1: XY, b2: XY): XY | null {
 
 // ============= STEP 4: DSM PHYSICS CLASSIFICATION =============
 
-function classifyEdgesWithDSM(edges: ScoredEdge[], dsmGrid: DSMGrid | null): ScoredEdge[] {
-  if (!dsmGrid) return edges;
-
-  return edges.map(edge => {
-    const classified = classifyEdgeByDSM(edge.start, edge.end, dsmGrid);
-    if (classified) {
-      return { ...edge, classifiedType: classified };
-    }
-    return edge;
-  });
-}
-
 function classifyEdgesWithDSMDebug(edges: ScoredEdge[], dsmGrid: DSMGrid | null): { edges: ScoredEdge[]; debug: Record<string, unknown> } {
   if (!dsmGrid) return { edges, debug: { skipped: true, reason: 'dsm_missing' } };
   const samples = edges.map((edge) => {
