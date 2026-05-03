@@ -606,4 +606,81 @@ function rasterizePolygonToGrid(poly: Array<{ x: number; y: number }>, grid: Uin
   }
 }
 
+// ============= MASK CONTOUR EXTRACTION =============
+
+/**
+ * Extract the largest connected contour from a RoofMask as geo coordinates [lng, lat].
+ * Uses simple boundary tracing (marching squares simplified).
+ * Returns the polygon in [lng, lat][] format, or empty array if no contour found.
+ */
+export function extractMaskContour(mask: RoofMask): XY[] {
+  const { data, width, height, bounds } = mask;
+  if (!data || width < 4 || height < 4) return [];
+
+  // Downsample to max 128px for speed
+  const maxDim = 128;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  const sw = Math.max(4, Math.round(width * scale));
+  const sh = Math.max(4, Math.round(height * scale));
+  const grid = new Uint8Array(sw * sh);
+
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const ox = Math.floor(x / scale);
+      const oy = Math.floor(y / scale);
+      if (ox < width && oy < height && data[oy * width + ox] > 0) {
+        grid[y * sw + x] = 1;
+      }
+    }
+  }
+
+  // Find boundary pixels (filled pixel adjacent to empty)
+  const boundary: Array<{ x: number; y: number }> = [];
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (grid[y * sw + x] === 0) continue;
+      const isEdge =
+        x === 0 || y === 0 || x === sw - 1 || y === sh - 1 ||
+        grid[y * sw + (x - 1)] === 0 ||
+        grid[y * sw + (x + 1)] === 0 ||
+        grid[(y - 1) * sw + x] === 0 ||
+        grid[(y + 1) * sw + x] === 0;
+      if (isEdge) boundary.push({ x, y });
+    }
+  }
+
+  if (boundary.length < 4) return [];
+
+  // Compute convex hull of boundary points
+  const pts = boundary.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: typeof pts = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: typeof pts = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  const hull = lower.concat(upper);
+
+  if (hull.length < 3) return [];
+
+  // Convert hull pixels to geo coordinates
+  const geoContour: XY[] = hull.map(p => {
+    const lng = bounds.minLng + ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+    const lat = bounds.maxLat - ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+    return [lng, lat] as XY;
+  });
+
+  console.log(`[DSM_ANALYZER] Mask contour extracted: ${geoContour.length} vertices from ${boundary.length} boundary pixels`);
+  return geoContour;
+}
+
 export type { };
