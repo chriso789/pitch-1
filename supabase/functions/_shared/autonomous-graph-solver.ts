@@ -60,7 +60,7 @@ export interface GraphEdge {
   length_ft: number;
   confidence: EdgeConfidence;
   facet_ids: string[];
-  source: 'dsm' | 'solar_segments' | 'skeleton' | 'fused';
+  source: 'dsm' | 'solar_segments' | 'skeleton' | 'fused' | 'perimeter';
 }
 
 export interface GraphFace {
