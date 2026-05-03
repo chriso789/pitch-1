@@ -121,7 +121,7 @@ function detectStructuralPixels(
   if (validMags.length < 10) return result;
 
   validMags.sort((a, b) => a - b);
-  const gradThreshold = validMags[Math.floor(validMags.length * 0.5)] || 0.1;
+  const gradThreshold = validMags[Math.floor(validMags.length * 0.15)] || 0.05;
 
   for (let y = 2; y < height - 2; y++) {
     for (let x = 2; x < width - 2; x++) {
