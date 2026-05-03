@@ -81,6 +81,15 @@ export interface GraphVertex {
   connected_edge_ids: string[];
 }
 
+export interface RejectedEdgeDebug {
+  start: XY;
+  end: XY;
+  score: number;
+  type: string;
+  source: string;
+  reason: string;
+}
+
 export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
@@ -91,6 +100,7 @@ export interface AutonomousGraphResult {
   vertices: GraphVertex[];
   edges: GraphEdge[];
   faces: GraphFace[];
+  rejected_edges: RejectedEdgeDebug[];
   
   totals: {
     ridge_ft: number;
