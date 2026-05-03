@@ -480,7 +480,10 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return (data || []).filter(isPlausibleRoofMeasurement);
+      return (data || []).filter((measurement: any) => (
+        isPlausibleRoofMeasurement(measurement) ||
+        Boolean(measurement?.geometry_report_json?.block_customer_report_reason || measurement?.gate_reason)
+      ));
     },
     enabled: !!pipelineEntryId,
   });
