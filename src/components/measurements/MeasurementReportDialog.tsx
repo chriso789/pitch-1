@@ -820,17 +820,43 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
               // Fallback: legacy SVG diagrams when no overlay is available
               if (diagrams.length === 0) {
+                const geoReport = effectiveMeasurement?.geometry_report_json as any;
+                const failReason = geoReport?.hard_fail_reason || (effectiveMeasurement as any)?.gate_reason || null;
+                const hasDebugData = geoReport && (geoReport.footprint_source || geoReport.debug_geometry || geoReport.overlay_debug);
+
                 return (
                   <div className="space-y-6">
                     {debugOverlay}
                     <MeasurementDataSummary m={effectiveMeasurement} />
-                    <Alert>
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>No diagrams available</AlertTitle>
-                      <AlertDescription>
-                        The roof report has not been generated for this measurement yet.
-                      </AlertDescription>
-                    </Alert>
+                    {hasDebugData ? (
+                      <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        <AlertTitle>INTERNAL DEBUG — NOT CUSTOMER READY</AlertTitle>
+                        <AlertDescription className="space-y-2">
+                          <p className="font-medium">Failure: {failReason || 'unknown'}</p>
+                          {geoReport?.footprint_source && (
+                            <p className="text-xs">Footprint source: {geoReport.footprint_source} | Valid: {String(geoReport.footprint_valid)} | Points: {geoReport.footprint_point_count ?? 0} | Area: {geoReport.footprint_area_sqft ?? 0} sqft</p>
+                          )}
+                          {geoReport?.debug_geometry && (
+                            <p className="text-xs">DSM edges detected: {geoReport.debug_geometry.dsm_edges_detected} | Accepted: {geoReport.debug_geometry.dsm_edges_accepted} | Faces: {geoReport.debug_geometry.faces_extracted} | Coverage: {((geoReport.debug_geometry.face_coverage_ratio || 0) * 100).toFixed(0)}%</p>
+                          )}
+                          {Array.isArray(geoReport?.rejection_reasons) && geoReport.rejection_reasons.length > 0 && (
+                            <details className="text-xs">
+                              <summary className="cursor-pointer font-medium">Rejection reasons ({geoReport.rejection_reasons.length})</summary>
+                              <pre className="mt-1 whitespace-pre-wrap text-muted-foreground">{JSON.stringify(geoReport.rejection_reasons, null, 2)}</pre>
+                            </details>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    ) : (
+                      <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>No diagrams available</AlertTitle>
+                        <AlertDescription>
+                          The roof report has not been generated for this measurement yet.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 );
               }

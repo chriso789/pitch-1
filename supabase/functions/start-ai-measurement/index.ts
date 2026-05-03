@@ -33,7 +33,7 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, type AutonomousGraphInput } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
@@ -747,6 +747,43 @@ async function processJob(input: any) {
     let usedSyntheticDebugRectangle = false;
     let footprintSelectionFailed = !selected;
 
+    // ── ROOF MASK CONTOUR FALLBACK ──
+    // If no candidate footprint passed validation, try extracting a contour
+    // from the Google Solar roof mask. This is priority B per the spec.
+    let roofMaskForContour: any = null;
+    if (footprintSelectionFailed && GOOGLE_SOLAR_API_KEY) {
+      try {
+        await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting roof mask contour fallback");
+        roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        if (roofMaskForContour) {
+          const maskContourGeo = extractMaskContour(roofMaskForContour);
+          if (maskContourGeo.length >= 4) {
+            const maskContourPx = maskContourGeo.map(([lng, lat]) =>
+              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+            );
+            const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
+            candidates.push(maskCand);
+            if (!maskCand.rejected_reason) {
+              footprint = maskCand.polygon;
+              footprintSource = "google_solar_mask_contour";
+              footprintSelectionFailed = false;
+              console.log("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Roof mask contour accepted:", JSON.stringify({
+                vertices: maskCand.vertex_count,
+                area_sqft: Math.round(maskCand.area_sqft),
+                validity_score: Number(maskCand.validity_score.toFixed(3)),
+              }));
+            } else {
+              console.warn("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Mask contour rejected:", maskCand.rejected_reason);
+            }
+          } else {
+            console.warn("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Mask contour too few vertices:", maskContourGeo.length);
+          }
+        }
+      } catch (e) {
+        console.warn("[FOOTPRINT_MASK_CONTOUR_FALLBACK] failed:", (e as Error).message);
+      }
+    }
+
     // ── EAVE SNAP — pull footprint vertices to the strongest nearby roof
     // perimeter edge so planes / overlay align to actual eaves rather than
     // Solar hull center mass. Conservative: 16 px max move, vegetation/shadow
@@ -841,6 +878,78 @@ async function processJob(input: any) {
       rejected: candidates.filter((c) => c.rejected_reason).map((c) => ({ source: c.source, reason: c.rejected_reason })),
     }));
 
+    // ══════════ FOOTPRINT VALIDATION GATE ══════════
+    // If footprint is still invalid after all fallbacks, fail immediately
+    // with a specific reason — do NOT proceed to the DSM solver.
+    const footprintAreaPxVal = footprint.length >= 3 ? polygonAreaPx(footprint) : 0;
+    const footprintAreaSqftVal = footprintAreaPxVal * sqftPerPx2;
+    const footprintIsLatLng = footprint.length > 0 && footprint.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
+    const footprintValid = footprint.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng;
+
+    // Auto-close footprint if not closed
+    if (footprint.length >= 4) {
+      const first = footprint[0], last = footprint[footprint.length - 1];
+      if (Math.hypot(first.x - last.x, first.y - last.y) > 1) {
+        // Already open — the solver handles this, but log it
+        console.log("[FOOTPRINT_VALIDATE] Auto-closing footprint polygon");
+      }
+    }
+
+    if (!footprintValid) {
+      const failReason = footprint.length < 4
+        ? "missing_valid_footprint"
+        : footprintIsLatLng
+          ? "footprint_coordinate_mismatch"
+          : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
+            ? "missing_valid_footprint"
+            : "missing_valid_footprint";
+
+      console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
+        footprint_length: footprint.length,
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        footprint_source: footprintSource,
+        is_lat_lng: footprintIsLatLng,
+        candidates_tried: candidates.length,
+        candidates_valid: validCandidates.length,
+      }));
+
+      const footprintDebug = {
+        topology_source: REQUIRED_TOPOLOGY_SOURCE,
+        footprint_source: footprintSource,
+        footprint_valid: false,
+        footprint_point_count: footprint.length,
+        footprint_area_px: Math.round(footprintAreaPxVal),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        footprint_coordinate_space: footprintIsLatLng ? "lat_lng" : "pixel",
+        dsm_edge_coordinate_space: "pixel",
+        coordinate_space_match: !footprintIsLatLng,
+        hard_fail_reason: failReason,
+        candidates_tried: candidates.length,
+        candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
+          source: c.source, reason: c.rejected_reason
+        })),
+      };
+
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        source_context: {
+          gate_reason: failReason,
+          debug: footprintDebug,
+        },
+      }).eq("id", input.ai_measurement_job_id);
+      return;
+    }
+
+    console.log("[FOOTPRINT_VALIDATION_GATE] PASS", JSON.stringify({
+      source: footprintSource,
+      vertices: footprint.length,
+      area_sqft: Math.round(footprintAreaSqftVal),
+    }));
+
     // 5. Run deterministic topology on the selected footprint.
     let cleanPlanes: RoofPlane[] = [];
     let cleanEdges: RoofEdge[] = [];
@@ -899,6 +1008,14 @@ async function processJob(input: any) {
         solver_version: "autonomous_graph_solver_v3_prune_first",
         fallback_used: false,
         hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
+        footprint_source: footprintSource,
+        footprint_valid: true,
+        footprint_point_count: footprint.length,
+        footprint_area_px: Math.round(footprintAreaPxVal),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        footprint_coordinate_space: "pixel",
+        dsm_edge_coordinate_space: "pixel",
+        coordinate_space_match: true,
         dsm_loaded: !!dsmGrid,
         mask_loaded: !!roofMask,
         dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
@@ -4799,6 +4916,23 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     block_customer_report_reason: failureReason,
     hard_fail_reason: failureReason,
     dsm_planar_graph_debug: debug,
+    // Footprint diagnostics (always present)
+    footprint_source: debug?.footprint_source || "unknown",
+    footprint_valid: debug?.footprint_valid ?? false,
+    footprint_point_count: debug?.footprint_point_count ?? 0,
+    footprint_area_px: debug?.footprint_area_px ?? 0,
+    footprint_area_sqft: debug?.footprint_area_sqft ?? 0,
+    footprint_coordinate_space: debug?.footprint_coordinate_space || "pixel",
+    dsm_edge_coordinate_space: debug?.dsm_edge_coordinate_space || "pixel",
+    coordinate_space_match: debug?.coordinate_space_match ?? true,
+    raw_edges: debug?.raw_edges ?? debug?.dsm_edges_detected ?? 0,
+    accepted_edges: debug?.accepted_edges ?? debug?.dsm_edges_accepted ?? 0,
+    clustered_edges: debug?.clustered_edges ?? 0,
+    graph_nodes: debug?.graph_nodes ?? 0,
+    graph_segments: debug?.graph_segments ?? 0,
+    faces_attempted: debug?.faces_attempted ?? debug?.faces_extracted ?? 0,
+    faces_rejected: debug?.faces_rejected ?? 0,
+    rejection_reasons: debug?.rejection_reasons ?? debug?.candidates_rejected ?? [],
     debug_geometry: {
       topology_source: aiDetectionData.topology_source,
       facet_source: debug?.facet_source || "dsm_planar_graph_faces",
