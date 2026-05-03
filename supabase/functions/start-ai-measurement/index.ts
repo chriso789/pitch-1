@@ -2864,7 +2864,22 @@ async function processJob(input: any) {
         roofTargetBboxPx,
       });
 
-      // Coverage / center-error QA gate.
+      // ── REGISTRATION QUALITY (Patent Parity) ──
+      // Compute quantitative residuals, mask IoU, and enforce publish gate
+      const facetPolygonsPx = cleanPlanes
+        .filter((p: any) => p.polygon_px && p.polygon_px.length >= 3)
+        .map((p: any) => p.polygon_px as Array<{ x: number; y: number }>);
+
+      const registrationResult = computeRegistrationQuality({
+        calibration: overlayCalibration,
+        geometryPointsPx: geometryPoints,
+        roofMaskGrid: (globalThis as any).__roofMaskForQA || null,
+        facetPolygonsPx,
+      });
+
+      (overlayCalibration as any).registration_quality = registrationResult;
+
+      // Coverage / center-error QA gate (legacy + new registration gate).
       const cov = Math.min(
         Number(overlayCalibration.coverage_ratio_width || 0),
         Number(overlayCalibration.coverage_ratio_height || 0),
@@ -2876,6 +2891,9 @@ async function processJob(input: any) {
       }
       if (ctrErr > 60) {
         overlayFailures.push(`overlay_center_error_${Math.round(ctrErr)}px_gt_60px`);
+      }
+      if (registrationResult.block_reason) {
+        overlayFailures.push(`registration_gate:${registrationResult.block_reason}`);
       }
       (globalThis as any).__overlaySanityFailures = overlayFailures;
 
@@ -2889,6 +2907,14 @@ async function processJob(input: any) {
         coverage_ratio_width: overlayCalibration.coverage_ratio_width,
         coverage_ratio_height: overlayCalibration.coverage_ratio_height,
         center_error_px: overlayCalibration.center_error_px,
+        registration: {
+          rms_px: registrationResult.rms_px,
+          max_error_px: registrationResult.max_error_px,
+          mask_iou: registrationResult.mask_iou,
+          coverage_ratio: registrationResult.coverage_ratio,
+          publish_allowed: registrationResult.publish_allowed,
+          block_reason: registrationResult.block_reason,
+        },
       }));
     } catch (e) {
       console.warn("[OVERLAY_TRANSFORM] failed:", (e as Error).message);
