@@ -1024,6 +1024,92 @@ async function processJob(input: any) {
       const footprintGeo = selectedMaskContourGeo?.length
         ? selectedMaskContourGeo
         : footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+
+      // ══════════ DSM COORDINATE MATCH GATE ══════════
+      // Verify the footprint geo coords actually fall inside the DSM GeoTIFF grid.
+      // A footprint can be valid on the satellite raster but mis-registered vs DSM.
+      const effectiveDSMForMatch = maskedDSM || dsmGrid;
+      let dsmCoordinateMatch = true;
+      let dsmCoordinateMatchDebug: any = null;
+      if (effectiveDSMForMatch && footprintGeo.length >= 3) {
+        const dsmW = effectiveDSMForMatch.width;
+        const dsmH = effectiveDSMForMatch.height;
+        const fpDsmPx = footprintGeo.map((p: [number, number]) => {
+          const [px, py] = geoToPixel(p, effectiveDSMForMatch);
+          return { x: px, y: py };
+        });
+        const fpDsmBbox = bboxOf(fpDsmPx);
+        const dsmBboxRect = { minX: 0, minY: 0, maxX: dsmW, maxY: dsmH, width: dsmW, height: dsmH };
+        const tolerance = 5; // px
+        const insideX = fpDsmBbox && fpDsmBbox.maxX > -tolerance && fpDsmBbox.minX < dsmW + tolerance;
+        const insideY = fpDsmBbox && fpDsmBbox.maxY > -tolerance && fpDsmBbox.minY < dsmH + tolerance;
+        const overlapArea = fpDsmBbox ? bboxIntersect(fpDsmBbox, { minX: 0, minY: 0, maxX: dsmW, maxY: dsmH }) : 0;
+        const fpDsmArea = fpDsmBbox ? fpDsmBbox.area : 0;
+        const overlapRatio = fpDsmArea > 0 ? overlapArea / fpDsmArea : 0;
+        dsmCoordinateMatch = Boolean(insideX && insideY && overlapRatio > 0.5);
+        dsmCoordinateMatchDebug = {
+          footprint_dsm_bbox: fpDsmBbox ? { minX: Math.round(fpDsmBbox.minX), minY: Math.round(fpDsmBbox.minY), maxX: Math.round(fpDsmBbox.maxX), maxY: Math.round(fpDsmBbox.maxY) } : null,
+          dsm_bbox: { width: dsmW, height: dsmH },
+          overlap_ratio: Number(overlapRatio.toFixed(3)),
+          inside_x: insideX,
+          inside_y: insideY,
+          match: dsmCoordinateMatch,
+        };
+        console.log("[DSM_COORDINATE_MATCH]", JSON.stringify(dsmCoordinateMatchDebug));
+      }
+
+      // HARD BLOCK: if footprint source is unknown, do NOT call solveAutonomousGraph.
+      if (footprintSource === "none" || footprintSource === "unknown") {
+        const failReason = "missing_valid_footprint";
+        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} — blocking solver`);
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: false,
+          footprint_point_count: footprint.length,
+          footprint_area_px: Math.round(footprintAreaPxVal),
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          footprint_coordinate_space: "pixel",
+          coordinate_space_match: false,
+          dsm_coordinate_match: dsmCoordinateMatchDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map(p => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
+      // HARD BLOCK: if footprint does not overlap DSM grid, do NOT call solver.
+      if (!dsmCoordinateMatch) {
+        const failReason = "footprint_coordinate_mismatch";
+        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: true,
+          footprint_point_count: footprint.length,
+          footprint_area_px: Math.round(footprintAreaPxVal),
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          footprint_coordinate_space: "pixel",
+          coordinate_space_match: false,
+          dsm_coordinate_match: dsmCoordinateMatchDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map(p => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
       const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
