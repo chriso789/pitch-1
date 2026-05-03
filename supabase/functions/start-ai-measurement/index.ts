@@ -4012,6 +4012,10 @@ async function processJob(input: any) {
       fallback_used: autonomousDebug?.fallback_used ?? (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
       hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
       footprint_source: footprintSource,
+      footprint_valid: true,
+      footprint_point_count: footprint.length,
+      footprint_area_sqft: Math.round(footprintAreaSqftVal),
+      dsm_coordinate_match: dsmCoordinateMatchDebug,
       inference_source: resolvedGeometrySource,
       used_deterministic_topology:
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
