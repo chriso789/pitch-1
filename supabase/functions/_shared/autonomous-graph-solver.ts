@@ -560,6 +560,36 @@ function classifyEdgesWithDSM(edges: ScoredEdge[], dsmGrid: DSMGrid | null): Sco
   });
 }
 
+function classifyEdgesWithDSMDebug(edges: ScoredEdge[], dsmGrid: DSMGrid | null): { edges: ScoredEdge[]; debug: Record<string, unknown> } {
+  if (!dsmGrid) return { edges, debug: { skipped: true, reason: 'dsm_missing' } };
+  const samples = edges.map((edge) => {
+    const profile = getPerpendicularProfile(edge.start, edge.end, dsmGrid, 7, 3, 3);
+    const classified = classifyEdgeByDSM(edge.start, edge.end, dsmGrid);
+    return {
+      edge_id: edge.id,
+      initial_type: edge.initialType,
+      classified_type: classified || edge.classifiedType,
+      sample_count: profile.sampleCount,
+      left_slope: Number(profile.leftSlope.toFixed(3)),
+      right_slope: Number(profile.rightSlope.toFixed(3)),
+      center_avg: Number(profile.centerAvg.toFixed(3)),
+      height_delta: Number(profile.heightDelta.toFixed(3)),
+    };
+  });
+  return {
+    edges: edges.map((edge, idx) => ({ ...edge, classifiedType: (samples[idx].classified_type as ScoredEdge['classifiedType']) || edge.classifiedType })),
+    debug: {
+      rule: 'ridge=both_sides_down,valley=both_sides_up,hip=mixed_descending_planes,eave_rake=footprint_boundary',
+      samples,
+      counts: samples.reduce((acc: Record<string, number>, s) => {
+        const key = String(s.classified_type || 'unknown');
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+    },
+  };
+}
+
 // ============= STEP 5: BUILD GRAPH & EXTRACT FACES =============
 
 interface SimpleGraph {
