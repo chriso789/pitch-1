@@ -187,11 +187,46 @@ const getMeasurementReviewReason = (measurement: any): string | null => {
   const grj = measurement?.geometry_report_json || {};
   const reason = grj?.block_customer_report_reason || measurement?.gate_reason;
   if (reason) return String(reason).split('|')[0].replace(/_/g, ' ');
+  if (measurement?.history_kind === 'job') {
+    const jobReason = measurement?.failure_reason || measurement?.error || measurement?.status_message;
+    return jobReason ? String(jobReason).replace(/_/g, ' ') : 'Job record only';
+  }
   if (measurement?.requires_manual_review || measurement?.validation_status === 'needs_internal_review') {
     return 'Needs review before customer delivery';
   }
   return null;
 };
+
+const getAiHistoryStatus = (measurement: any): string | null => (
+  measurement?.job_status || measurement?.validation_status || measurement?.status || null
+);
+
+const buildJobOnlyHistoryRow = (job: any) => ({
+  id: `job-${job.id}`,
+  history_kind: 'job',
+  ai_measurement_job_id: job.id,
+  customer_id: job.lead_id || job.source_record_id,
+  created_at: job.created_at,
+  completed_at: job.completed_at,
+  total_area_flat_sqft: null,
+  total_area_adjusted_sqft: null,
+  total_squares: null,
+  predominant_pitch: null,
+  facet_count: null,
+  total_ridge_length: null,
+  total_hip_length: null,
+  total_valley_length: null,
+  total_eave_length: null,
+  total_rake_length: null,
+  validation_status: job.status === 'failed' ? 'failed' : job.status,
+  job_status: job.status,
+  status_message: job.status_message,
+  failure_reason: job.failure_reason,
+  report_pdf_url: job.report_pdf_url,
+  report_pdf_path: job.report_pdf_path,
+  requires_manual_review: job.status !== 'completed',
+  internal_debug_report_ready: true,
+});
 
 const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
   const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
