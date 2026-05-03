@@ -907,9 +907,10 @@ async function processJob(input: any) {
     // ══════════ FOOTPRINT VALIDATION GATE ══════════
     // If footprint is still invalid after all fallbacks, fail immediately
     // with a specific reason — do NOT proceed to the DSM solver.
-    const footprintForDsmPx = selectedMaskContourGeo?.length && roofMaskForContour
-      ? selectedMaskContourGeo.map(([lng, lat]) => lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp))
-      : footprint;
+     // Use the selected candidate footprint (already in satellite pixel space).
+     // Do NOT override with selectedMaskContourGeo — that is the raw mask tile
+     // boundary (all roof pixels in the GeoTIFF), not the building footprint.
+     const footprintForDsmPx = footprint;
     const footprintAreaPxVal = footprintForDsmPx.length >= 3 ? polygonAreaPx(footprintForDsmPx) : 0;
     const footprintAreaSqftVal = footprintAreaPxVal * sqftPerPx2;
     const footprintIsLatLng = footprintForDsmPx.length > 0 && footprintForDsmPx.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
