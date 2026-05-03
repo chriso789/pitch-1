@@ -57,30 +57,29 @@ function sobelGradient(
   const gy = new Float32Array(len);
   const mag = new Float32Array(len);
 
-  const get = (x: number, y: number): number => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return noData;
+  // Get pixel value, substituting center value for noData neighbors
+  // so roof-edge pixels aren't zeroed out by off-roof noData
+  const getOrCenter = (x: number, y: number, center: number): number => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return center;
     const v = data[y * width + x];
-    return v === noData || isNaN(v) ? noData : v;
+    return (v === noData || isNaN(v)) ? center : v;
   };
 
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      // Get 3x3 neighborhood
-      const tl = get(x - 1, y - 1);
-      const tc = get(x, y - 1);
-      const tr = get(x + 1, y - 1);
-      const ml = get(x - 1, y);
-      const mr = get(x + 1, y);
-      const bl = get(x - 1, y + 1);
-      const bc = get(x, y + 1);
-      const br = get(x + 1, y + 1);
+      const centerVal = data[y * width + x];
+      // Skip if center is noData
+      if (centerVal === noData || isNaN(centerVal)) continue;
 
-      // Skip if center or any neighbor is noData
-      if (tl === noData || tc === noData || tr === noData ||
-          ml === noData || mr === noData ||
-          bl === noData || bc === noData || br === noData) {
-        continue;
-      }
+      // Get 3x3 neighborhood — noData neighbors get center value (zero gradient contribution)
+      const tl = getOrCenter(x - 1, y - 1, centerVal);
+      const tc = getOrCenter(x, y - 1, centerVal);
+      const tr = getOrCenter(x + 1, y - 1, centerVal);
+      const ml = getOrCenter(x - 1, y, centerVal);
+      const mr = getOrCenter(x + 1, y, centerVal);
+      const bl = getOrCenter(x - 1, y + 1, centerVal);
+      const bc = getOrCenter(x, y + 1, centerVal);
+      const br = getOrCenter(x + 1, y + 1, centerVal);
 
       const idx = y * width + x;
       gx[idx] = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
