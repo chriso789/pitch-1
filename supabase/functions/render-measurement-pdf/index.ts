@@ -387,9 +387,10 @@ function drawGeometry(page: any, ctx: any, box: Box, mode: 'raster' | 'bbox', op
   const allPlaneVerts: PointTuple[] = ctx.planes.flatMap((p: any) => p.polygon)
   const footprintHull = convexHull(allPlaneVerts)
 
+  // Use only plane vertices for bbox (not raw edge endpoints which may extend beyond perimeter)
   const mapper = mode === 'raster'
     ? rasterMapper(ctx.rasterSize, box)
-    : bboxMapper([...allPlaneVerts, ...ctx.edges.flatMap((e: any) => [e.p1, e.p2])], box)
+    : bboxMapper(allPlaneVerts, box)
 
   if (opts.fillPlanes) {
     ctx.planes.forEach((plane: any, idx: number) => {
