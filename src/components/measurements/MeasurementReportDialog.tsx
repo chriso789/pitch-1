@@ -599,13 +599,23 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             )}
             {(() => {
               const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+              const overlayDbg = grj.overlay_debug || {};
+              const debugGeom = grj.debug_geometry || {};
+              const dsmDbg = grj.dsm_planar_graph_debug || {};
               const footprintSource =
-                (effectiveMeasurement as any)?.footprint_source ?? grj.footprint_source ?? 'unknown';
+                (effectiveMeasurement as any)?.footprint_source
+                ?? grj.footprint_source
+                ?? debugGeom.footprint_source
+                ?? dsmDbg.footprint_source
+                ?? overlayDbg.footprint_source
+                ?? 'unknown';
               const inferenceSource =
                 (effectiveMeasurement as any)?.inference_source ?? grj.inference_source ?? 'unknown';
               const topologySource = grj.topology_source ?? grj.geometry_source ?? 'unknown';
               const usedDeterministic = grj.used_deterministic_topology === true;
               const blocked = grj.block_customer_report_reason || null;
+              const coordMatch = grj.dsm_coordinate_match ?? overlayDbg.dsm_coordinate_match ?? dsmDbg.dsm_coordinate_match ?? null;
+              const coordMatchOk = coordMatch?.match ?? null;
               return (
                 <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground max-w-full overflow-hidden">
                   <span
@@ -616,9 +626,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                   >
                     topology: {String(topologySource)}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded bg-muted" title="Building footprint provider">
+                  <span className={`px-1.5 py-0.5 rounded ${footprintSource === 'unknown' || footprintSource === 'none' ? 'bg-destructive text-destructive-foreground' : 'bg-muted'}`} title="Building footprint provider">
                     footprint: {String(footprintSource)}
                   </span>
+                  {coordMatchOk !== null && (
+                    <span className={`px-1.5 py-0.5 rounded ${coordMatchOk ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-destructive text-destructive-foreground'}`} title="Footprint overlaps DSM grid">
+                      coord_match: {coordMatchOk ? 'true' : 'false'}
+                    </span>
+                  )}
                   <span className="px-1.5 py-0.5 rounded bg-muted" title="Inference source for plane detection">
                     inference: {String(inferenceSource)}
                   </span>
