@@ -323,7 +323,12 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
                             dist(inter.point, segments[i].b) < NEAR_ENDPOINT_TOL;
       const nearEndpointJ = dist(inter.point, segments[j].a) < NEAR_ENDPOINT_TOL ||
                             dist(inter.point, segments[j].b) < NEAR_ENDPOINT_TOL;
-      if (nearEndpointI || nearEndpointJ) { intersectionFilterSkipped++; continue; }
+
+      // Only skip a true shared endpoint. A T-junction is exactly the case we
+      // must split: one line ends on another line's interior. Previously these
+      // were counted as "near endpoint" and skipped, leaving fragmented graphs
+      // that produced only tiny sliver cycles.
+      if (nearEndpointI && nearEndpointJ) { intersectionFilterSkipped++; continue; }
 
       intersectionCount++;
       pointsBySeg[i].push(inter.point);
