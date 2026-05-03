@@ -33,7 +33,7 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, geoToPixel } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, type AutonomousGraphInput } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
