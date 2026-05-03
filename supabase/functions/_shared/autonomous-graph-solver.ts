@@ -886,7 +886,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   // ===== STEP 2: Score & filter (PRUNE BEFORE GRAPH) =====
-  const { accepted: scoredEdges, prunedByScore } = scoreAndFilterEdges(
+  const { accepted: scoredEdges, prunedByScore, rejectedDebug: rejectedEdgesDebug } = scoreAndFilterEdges(
     [...dsmRidges, ...dsmValleys],
     input.skeletonEdges,
     input.solarSegments,
