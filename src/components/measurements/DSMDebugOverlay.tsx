@@ -317,6 +317,56 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
               <Badge variant="secondary">Facets: {facetCount}</Badge>
             </div>
 
+            {/* Expanded solver metrics (Patent Parity) */}
+            <div className="flex flex-wrap gap-2 text-[10px]">
+              {data.intersections_split != null && <Badge variant="outline">Splits: {data.intersections_split}</Badge>}
+              {data.intersection_filter_skipped != null && <Badge variant="outline">Skipped: {data.intersection_filter_skipped}</Badge>}
+              {data.collinear_merges != null && <Badge variant="outline">Collinear: {data.collinear_merges}</Badge>}
+              {data.cluster_merges != null && <Badge variant="outline">Clusters: {data.cluster_merges}</Badge>}
+              {data.fragment_merges != null && <Badge variant="outline">Fragments: {data.fragment_merges}</Badge>}
+              {data.dangling_edges_removed != null && <Badge variant="outline">Dangling: {data.dangling_edges_removed}</Badge>}
+              {data.face_count_before_merge != null && <Badge variant="outline">Pre-merge: {data.face_count_before_merge}</Badge>}
+              {data.face_count_after_merge != null && <Badge variant="outline">Post-merge: {data.face_count_after_merge}</Badge>}
+              {data.faces_rejected_by_plane_fit != null && <Badge variant="destructive" className="text-[10px]">Fit rejected: {data.faces_rejected_by_plane_fit}</Badge>}
+              {data.faces_rejected_by_area != null && <Badge variant="destructive" className="text-[10px]">Area rejected: {data.faces_rejected_by_area}</Badge>}
+              {data.coverage_ratio != null && (
+                <Badge variant={data.coverage_ratio >= 0.85 ? "secondary" : "destructive"} className="text-[10px]">
+                  Coverage: {Math.round(data.coverage_ratio * 100)}%
+                </Badge>
+              )}
+            </div>
+
+            {/* Registration quality metrics */}
+            {data.overlay_calibration?.registration_quality && (
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <Badge variant={data.overlay_calibration.registration_quality.publish_allowed ? "secondary" : "destructive"}>
+                  RMS: {data.overlay_calibration.registration_quality.rms_px ?? '?'}px
+                </Badge>
+                <Badge variant="outline">
+                  Max err: {data.overlay_calibration.registration_quality.max_error_px ?? '?'}px
+                </Badge>
+                {data.overlay_calibration.registration_quality.mask_iou != null && (
+                  <Badge variant={data.overlay_calibration.registration_quality.mask_iou >= 0.85 ? "secondary" : "destructive"}>
+                    Mask IoU: {Math.round((data.overlay_calibration.registration_quality.mask_iou ?? 0) * 100)}%
+                  </Badge>
+                )}
+                <Badge variant={data.overlay_calibration.registration_quality.publish_allowed ? "secondary" : "destructive"}>
+                  {data.overlay_calibration.registration_quality.publish_allowed ? '✓ Publish OK' : '✗ Blocked'}
+                </Badge>
+                {data.overlay_calibration.registration_quality.block_reason && (
+                  <Badge variant="destructive" className="text-[10px]">
+                    {data.overlay_calibration.registration_quality.block_reason}
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            {data.customer_block_reason && (
+              <div className="text-[10px] text-destructive font-medium">
+                Block reason: {data.customer_block_reason}
+              </div>
+            )}
+
             {/* Edge classification breakdown */}
             <div className="flex flex-wrap gap-2 text-[10px]">
               <span className="flex items-center gap-1">
