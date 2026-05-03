@@ -1269,6 +1269,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       valleyCount: outValleys.length,
       ridgeCount: outRidges.length,
       hipCount: outHips.length,
+      hipFt: outHips.reduce((s, e) => s + e.length_ft, 0),
       graphConnected: graphFaces.length >= 2 && coverageRatio >= 0.85,
       coverageRatio,
       structuralEdgeCount,
