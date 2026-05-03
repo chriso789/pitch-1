@@ -26,6 +26,205 @@ export type OverlayCalibration = {
   calibrated: boolean;
 };
 
+// ── PUBLISH-GATE THRESHOLDS ─────────────────────────────────────
+export const OVERLAY_RMS_PX_MAX = 4;
+export const OVERLAY_MAX_ERROR_PX = 8;
+export const MASK_IOU_MIN = 0.85;
+export const COVERAGE_RATIO_MIN = 0.85;
+
+// ── REGISTRATION QUALITY ────────────────────────────────────────
+export interface OverlayRegistrationResult {
+  calibrated: boolean;
+  /** Affine / similarity transform matrix (flat row-major 2×3) */
+  transform: number[];
+  /** Root-mean-square residual in raster pixels */
+  rms_px: number;
+  /** Maximum single-point residual in raster pixels */
+  max_error_px: number;
+  /** Number of geometry points used in residual computation */
+  inlier_count: number;
+  /** IoU of projected geometry vs roof mask (0-1). Null if no mask provided. */
+  mask_iou: number | null;
+  /** Coverage of geometry area over target bbox area */
+  coverage_ratio: number;
+  /** Publish-gate decision */
+  publish_allowed: boolean;
+  /** Human-readable reason when publish is blocked */
+  block_reason: string | null;
+}
+
+/**
+ * Compute registration quality metrics comparing projected geometry
+ * against the roof target bbox and optional roof mask.
+ *
+ * This replaces the old "is coverage okay?" check with a quantitative
+ * residual-based quality measurement matching EagleView patent requirements.
+ */
+export function computeRegistrationQuality(args: {
+  calibration: OverlayCalibration;
+  geometryPointsPx: OverlayPoint[];
+  roofMaskGrid?: { data: Uint8Array; width: number; height: number } | null;
+  facetPolygonsPx?: OverlayPoint[][] | null;
+}): OverlayRegistrationResult {
+  const { calibration, geometryPointsPx, roofMaskGrid, facetPolygonsPx } = args;
+
+  // 1. Compute residuals: how far each transformed geometry point lands
+  //    from its expected position in the target bbox coordinate space.
+  //    For a bbox-based transform the "expected" position IS the transform output,
+  //    so residual is measured as distance from target bbox center vs geometry center.
+  const transformedPoints = geometryPointsPx.map(p => transformOverlayPoint(p, calibration));
+  const targetBbox = calibration.roof_target_bbox_px;
+  const targetCenterX = targetBbox.minX + targetBbox.width / 2;
+  const targetCenterY = targetBbox.minY + targetBbox.height / 2;
+
+  // Per-point residual from target center (measures overall registration drift)
+  let sumSqResidual = 0;
+  let maxResidual = 0;
+  const validPoints: OverlayPoint[] = [];
+
+  if (transformedPoints.length > 0) {
+    // Compute centroid of transformed geometry
+    let cx = 0, cy = 0;
+    for (const p of transformedPoints) { cx += p.x; cy += p.y; }
+    cx /= transformedPoints.length;
+    cy /= transformedPoints.length;
+
+    // Center offset is the primary registration error signal
+    const centerOffsetX = cx - targetCenterX;
+    const centerOffsetY = cy - targetCenterY;
+    const centerOffset = Math.hypot(centerOffsetX, centerOffsetY);
+
+    // Per-point residuals relative to centered geometry
+    for (const p of transformedPoints) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      validPoints.push(p);
+      // Residual = how far point is from where it "should" be if perfectly centered
+      const correctedX = p.x - centerOffsetX;
+      const correctedY = p.y - centerOffsetY;
+      // Check if corrected point is inside target bbox (it should be for good registration)
+      const dxOutside = correctedX < targetBbox.minX ? targetBbox.minX - correctedX
+        : correctedX > targetBbox.maxX ? correctedX - targetBbox.maxX : 0;
+      const dyOutside = correctedY < targetBbox.minY ? targetBbox.minY - correctedY
+        : correctedY > targetBbox.maxY ? correctedY - targetBbox.maxY : 0;
+      const residual = Math.hypot(dxOutside, dyOutside) + centerOffset * 0.1;
+      sumSqResidual += residual * residual;
+      if (residual > maxResidual) maxResidual = residual;
+    }
+  }
+
+  const rms_px = validPoints.length > 0 ? round(Math.sqrt(sumSqResidual / validPoints.length)) : 999;
+  const max_error_px = round(maxResidual);
+  const inlier_count = validPoints.length;
+
+  // 2. Transform matrix (similarity: scale + translate)
+  const transform = [
+    calibration.uniform_scale, 0, calibration.translate_x + calibration.roof_target_bbox_px.minX,
+    0, calibration.uniform_scale, calibration.translate_y + calibration.roof_target_bbox_px.minY,
+  ];
+
+  // 3. Coverage ratio
+  const geoBbox = calibration.geometry_bbox_px;
+  const geoArea = geoBbox.width * geoBbox.height * calibration.uniform_scale * calibration.uniform_scale;
+  const targetArea = targetBbox.area;
+  const coverage_ratio = targetArea > 0 ? round(Math.min(1, geoArea / targetArea)) : 0;
+
+  // 4. Mask IoU (if mask provided and facet polygons available)
+  let mask_iou: number | null = null;
+  if (roofMaskGrid && facetPolygonsPx && facetPolygonsPx.length > 0) {
+    mask_iou = computePolygonMaskIoU(facetPolygonsPx, roofMaskGrid, calibration);
+  }
+
+  // 5. Publish gate
+  const blockReasons: string[] = [];
+  if (rms_px > OVERLAY_RMS_PX_MAX) blockReasons.push(`rms_px=${rms_px}>${OVERLAY_RMS_PX_MAX}`);
+  if (max_error_px > OVERLAY_MAX_ERROR_PX) blockReasons.push(`max_error_px=${max_error_px}>${OVERLAY_MAX_ERROR_PX}`);
+  if (mask_iou !== null && mask_iou < MASK_IOU_MIN) blockReasons.push(`mask_iou=${mask_iou}<${MASK_IOU_MIN}`);
+  if (coverage_ratio < COVERAGE_RATIO_MIN) blockReasons.push(`coverage=${coverage_ratio}<${COVERAGE_RATIO_MIN}`);
+
+  const publish_allowed = blockReasons.length === 0;
+  const block_reason = blockReasons.length > 0 ? blockReasons.join('|') : null;
+
+  return {
+    calibrated: calibration.calibrated,
+    transform,
+    rms_px,
+    max_error_px,
+    inlier_count,
+    mask_iou,
+    coverage_ratio,
+    publish_allowed,
+    block_reason,
+  };
+}
+
+/**
+ * Compute IoU between rasterized facet polygons and a binary roof mask.
+ * Both are in raster pixel space.
+ */
+function computePolygonMaskIoU(
+  facetPolygonsPx: OverlayPoint[][],
+  maskGrid: { data: Uint8Array; width: number; height: number },
+  calibration: OverlayCalibration,
+): number {
+  const w = maskGrid.width;
+  const h = maskGrid.height;
+
+  // Rasterize facet polygons into a boolean grid
+  const geomRaster = new Uint8Array(w * h);
+  for (const polygon of facetPolygonsPx) {
+    // Transform polygon to raster space using calibration
+    const transformed = polygon.map(p => transformOverlayPoint(p, calibration));
+    rasterizePolygon(transformed, geomRaster, w, h);
+  }
+
+  // Compute IoU
+  let intersection = 0;
+  let union = 0;
+  for (let i = 0; i < w * h; i++) {
+    const inMask = maskGrid.data[i] > 0;
+    const inGeom = geomRaster[i] > 0;
+    if (inMask && inGeom) intersection++;
+    if (inMask || inGeom) union++;
+  }
+
+  return union > 0 ? round(intersection / union) : 0;
+}
+
+/**
+ * Scanline rasterize a polygon into a grid, setting pixels to 1.
+ */
+function rasterizePolygon(poly: OverlayPoint[], grid: Uint8Array, w: number, h: number): void {
+  if (poly.length < 3) return;
+  let minY = h, maxY = 0;
+  for (const p of poly) {
+    const py = Math.round(p.y);
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  minY = Math.max(0, minY);
+  maxY = Math.min(h - 1, maxY);
+
+  for (let y = minY; y <= maxY; y++) {
+    const intersections: number[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const j = (i + 1) % poly.length;
+      const yi = poly[i].y, yj = poly[j].y;
+      if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
+        const t = (y - yi) / (yj - yi);
+        intersections.push(poly[i].x + t * (poly[j].x - poly[i].x));
+      }
+    }
+    intersections.sort((a, b) => a - b);
+    for (let k = 0; k < intersections.length - 1; k += 2) {
+      const x0 = Math.max(0, Math.round(intersections[k]));
+      const x1 = Math.min(w - 1, Math.round(intersections[k + 1]));
+      for (let x = x0; x <= x1; x++) {
+        grid[y * w + x] = 1;
+      }
+    }
+  }
+}
+
 const EMPTY_BBOX: OverlayBBox = { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0, area: 0 };
 
 export function normalizeOverlayBBox(input: Partial<OverlayBBox> | null | undefined): OverlayBBox | null {

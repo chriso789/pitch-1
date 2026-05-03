@@ -1,231 +1,95 @@
 
-# Production Planar Graph Reconstruction + Overlay Registration + Debug System
+# EagleView Patent Parity Implementation Plan
 
-## Pipeline
-
-```text
-DSM -> mask -> gradient -> edges
-  -> edge clustering (weighted merge, max span 60px)
-  -> collinear merge
-  -> intersection filtering (ordered: collinear > angle > distance > endpoint)
-  -> intersection splitting
-  -> snap endpoints (tol 12px)
-  -> remove dangling nodes (degree < 2)
-  -> perimeter re-injection (hard guarantee)
-  -> build planar graph
-  -> extract faces
-  -> merge adjacent faces (structural guard)
-  -> validate faces (conditional plane fit)
-  -> canonical edge mapping
-  -> polygon simplification (2px tolerance)
-  -> pitch extraction from DSM plane fit
-  -> satellite overlay registration + validation
-  -> consistency checks
-  -> coverage >= 0.85 ? PASS : FAIL
-  -> ALWAYS generate internal debug report
-```
-
-## Files Modified
-
-| File | Summary |
-|------|---------|
-| `supabase/functions/start-ai-measurement/index.ts` | Remove legacy fallback, hard-fail for customer reports, always generate internal debug report |
-| `supabase/functions/_shared/planar-roof-solver.ts` | Ordered intersection filtering, collinear merge, snap 12px, perimeter re-injection, graph consistency, dynamic segment filtering, polygon simplification |
-| `supabase/functions/_shared/autonomous-graph-solver.ts` | DSM resolution gate, edge clustering with span cap, face merge, conditional plane fit, canonical edge mapping, pitch extraction, overlay registration, consistency checks, full debug metrics |
-| `supabase/functions/_shared/face-filter.ts` | Overlap removal with normal check, safe fallback |
-| `src/components/measurements/UnifiedMeasurementPanel.tsx` | Failure banner with debug buttons |
+Based on the comprehensive review, the system already has strong structural building blocks. The work focuses on five areas: registration quality, failure persistence, solver observability, mask-based QA, and legacy cleanup.
 
 ---
 
-## Part A: Graph Reconstruction (4 files)
+## Phase 1: Overlay Registration Hardening (highest priority)
 
-### 1. Hard Fail for Customer Reports, Always Debug
+**Problem:** `overlay-transform.ts` is a bbox-based scale+center transform. It has no feature-level residual measurement, no control-point support, and no RMS error metric. This is the largest parity gap.
 
-**File:** `start-ai-measurement/index.ts` (~line 952-958)
-
-When `failReason` is set:
-- Set measurement job status to `failed` with reason
-- Set `customer_report_ready = false`
-- Still persist all debug data (DSM metrics, edge counts, face counts, overlay stats) into `ai_detection_data` so the internal debug report is always available
-- No legacy solar-segment geometry runs
-
-### 2. DSM Resolution + Mask Gate
-
-**File:** `autonomous-graph-solver.ts` (early in solve)
-
-```text
-if dsm.width < 128 OR roof_pixel_ratio < 0.05 -> FAIL("dsm_insufficient_resolution")
-if mask is all-true -> flag warning "mask_invalid" in debug, proceed cautiously
-```
-
-### 3. Edge Clustering with Span Cap
-
-**File:** `autonomous-graph-solver.ts` (before planar solver call)
-
-- Group: angle diff < 8 deg AND midpoint distance < 15px
-- Weighted merge: averaged direction by length, projected endpoints to max span, highest confidence
-- If cluster span > 60px, split into subclusters at largest gap
-- Log `edge_count_after_cluster`
-
-### 4. Ordered Intersection Filtering
-
-**File:** `planar-roof-solver.ts` (in `splitSegmentsAtAllIntersections`)
-
-Exact order:
-1. Collinear (angle < 5 deg) -> skip
-2. Crossing angle < 15 deg -> skip
-3. Min segment distance > 6px -> skip
-4. Intersection near endpoint (within ENDPOINT_SNAP_TOL_PX) -> skip
-5. Else -> accept
-
-### 5. Collinear Merge + Snap Increase
-
-**File:** `planar-roof-solver.ts`
-
-- `ENDPOINT_SNAP_TOL_PX` 8 -> 12
-- Merge edges with angle < 5 deg and overlapping projections into single spanning edge
-
-### 6. Dynamic Segment Filtering
-
-**File:** `planar-roof-solver.ts`
-
-Extend interior line input to carry `type` and `score`. Filter:
-- ridge/valley: always keep
-- hip: keep if > 2px OR connects to ridge/valley node
-- eave: keep if > 3px
-- unclassified: > 8px AND low overlap with structural edges
-
-### 7. Graph Consistency + Perimeter Re-injection
-
-**File:** `planar-roof-solver.ts`
-
-- After pruning: remove edges on nodes with degree < 2 not on footprint
-- Tag footprint segments immune to removal
-- After all pruning, re-inject any missing footprint edges unconditionally
-
-### 8. Face Merge with Structural Guard
-
-**File:** `autonomous-graph-solver.ts`
-
-- Merge adjacent faces if normals < 10 deg AND RMS acceptable
-- RMS: merged < 150sqft requires < 0.5m, else up to 0.6m
-- Never merge across ridge/valley edges
-- Log before/after counts
-
-### 9. Conditional Plane Fit
-
-**File:** `autonomous-graph-solver.ts`
-
-- Faces > 200 sqft: 0.8m RMS max
-- Faces <= 200 sqft: 0.5m strict
-
-### 10. Overlap Removal
-
-**File:** `face-filter.ts`
-
-Remove only if centroid inside larger face AND normals < 5 deg. If normals unavailable, do not remove.
-
-### 11. Canonical Edge Mapping
-
-**File:** `autonomous-graph-solver.ts`
-
-Assign unique IDs. Shared boundaries between faces reference same edge object. Prevents duplicate drawing.
-
-### 12. Polygon Simplification
-
-**File:** `planar-roof-solver.ts` or `autonomous-graph-solver.ts`
-
-Douglas-Peucker at 2px tolerance. Optional angle snapping to 0/45/90/135 within 3 deg.
-
-### 13. Pitch Extraction from DSM
-
-**File:** `autonomous-graph-solver.ts`
-
-For each face: fit plane to DSM elevations, compute pitch_degrees and azimuth_degrees directly from gradient. Replace solar-segment pitch lookup.
-
-### 14. Ridge Continuity + Eave Refinement
-
-**File:** `autonomous-graph-solver.ts`
-
-- Merge ridge segments sharing endpoints with same direction (< 10 deg)
-- Eave: edge on footprint boundary AND DSM slope drops outward -> classify eave
+**Changes:**
+- **`supabase/functions/_shared/overlay-transform.ts`** — Extend `OverlayCalibration` type to include `rms_px`, `max_error_px`, `mask_iou`, `inlier_count`, and a `transform` matrix. Add a `computeRegistrationQuality()` function that takes geometry points + roof mask and computes actual residuals instead of just bbox coverage ratios.
+- **`supabase/functions/start-ai-measurement/index.ts`** — After computing overlay calibration, call the new registration quality function and store full metrics in the measurement row's `overlay_calibration` JSON field. Enforce publish gate: `rms_px <= 4`, `max_error_px <= 8`, `mask_iou >= 0.85`, `coverage_ratio >= 0.85`. Fail customer PDF but still persist debug data when thresholds are not met.
 
 ---
 
-## Part B: Satellite Overlay Registration (new)
+## Phase 2: Always-Persist Debug Reports for Failed Runs
 
-### 15. Overlay Transform Validation
+**Problem:** When measurement jobs fail early, no debug artifact is persisted, making the hardest failures the least inspectable.
 
-**File:** `autonomous-graph-solver.ts` (new section after geometry)
-
-After geometry is built, validate coordinate transforms:
-
-```text
-DSM pixel -> GeoTIFF affine -> lat/lng -> satellite tile pixel
-```
-
-Validation gates:
-- `if !dsm_to_world_transform_valid -> FAIL("dsm_transform_invalid")`
-- `if !world_to_tile_transform_valid -> FAIL("tile_transform_invalid")`
-- `if overlay_rms_px > 4 -> FAIL("satellite_overlay_alignment_failed")`
-- `if roof_mask_iou < 0.85 -> FAIL("roof_mask_alignment_failed")`
-- `if scale_error_percent > 3 -> FAIL("diagram_scale_mismatch")`
-
-### 16. Overlay Registration Metrics
-
-Compute and persist:
-- `overlay_rms_px` (RMS of footprint vertex reprojection error)
-- `roof_mask_iou` (IoU between DSM mask and reprojected footprint)
-- `scale_error_percent` (ratio of DSM-derived vs tile-derived footprint dimensions)
-- `rotation_correction_degrees`
-- `translation_correction_px`
+**Changes:**
+- **`supabase/functions/start-ai-measurement/index.ts`** — Wrap the entire pipeline in a try/catch that guarantees: (1) a `roof_measurements` row with `validation_status = 'needs_internal_review'` and `geometry_report_json.block_customer_report_reason`, (2) `ai_measurement_diagrams` rows for a debug report, and (3) `measurement_jobs.error` linked to the debug artifact. Every run produces at least a debug bundle with overlay metrics, solver metrics, and block reason.
+- **`src/components/measurements/MeasurementReportDialog.tsx`** — When a measurement has `validation_status = 'needs_internal_review'`, open the Internal Debug Report view by default instead of the customer report.
+- **`src/components/measurements/UnifiedMeasurementPanel.tsx`** — Show a distinct "Debug Report Available" link for blocked measurements instead of just the error banner.
 
 ---
 
-## Part C: Consistency Gates
+## Phase 3: Formalize Solver Contract and Observability
 
-### 17. Final Validation
+**Problem:** The planar solver has the right thresholds but doesn't expose all diagnostic counters, and the contract isn't formally typed for testing.
 
-```text
-if coverage < 0.85 -> FAIL("incomplete_facet_coverage")
-if hips > 50ft AND valleys == 0 -> FAIL("invalid_roof_graph")
-if sum(face_areas) deviates > 10% from footprint area -> FAIL("area_mismatch")
-```
-
----
-
-## Part D: Debug System + UI
-
-### 18. Full Debug Output
-
-Always persist to `ai_detection_data` regardless of pass/fail:
-
-```text
-dsm_loaded, mask_loaded, dsm_mask_valid, topology_source, fallback_used,
-edge_count_raw, edge_count_accepted, edge_count_after_cluster,
-intersection_count, face_count_before_merge, face_count_after_merge,
-coverage, overlay_rms_px, roof_mask_iou, scale_error_percent,
-rotation_correction_degrees, translation_correction_px,
-hard_fail_reason, failed_validation_gates, pitch_source
-```
-
-### 19. UI Updates
-
-**File:** `src/components/measurements/UnifiedMeasurementPanel.tsx`
-
-When job fails:
-- Red banner with failure reason
-- "View Debug Overlay" button (opens DSMDebugOverlay already built)
-- "Download Debug JSON" button (exports ai_detection_data)
-- Label: "INTERNAL DEBUG -- NOT CUSTOMER READY"
+**Changes:**
+- **`supabase/functions/_shared/planar-roof-solver.ts`** — Export explicit `PlanarRoofSolverInput` and `PlanarRoofSolverOutput` types. Add missing metrics to output: `cluster_merges`, `collinear_merges`, `intersection_filter_skipped`, `fragment_merges`, `face_count_before_merge`, `face_count_after_merge`, `faces_rejected_by_plane_fit`, `faces_rejected_by_area`. Document threshold invariants as named constants.
+- **`supabase/functions/_shared/autonomous-graph-solver.ts`** — Surface the expanded solver metrics in the `AutonomousGraphResult.debug` object. Add `customer_block_reason` field. Pass expanded metrics through to the measurement row.
+- **`src/components/measurements/DSMDebugOverlay.tsx`** — Display the new solver metrics (cluster merges, fragment merges, intersection filter stats, per-face RMS labels, edge source coloring by confidence).
 
 ---
 
-## Expected Results for 4063 Fonsica
+## Phase 4: Mask IoU as First-Class Publish Gate
 
+**Problem:** Google Solar provides a roof mask, but it's only used for DSM filtering, not as a publish-time validator.
+
+**Changes:**
+- **`supabase/functions/_shared/dsm-analyzer.ts`** — Export a `computeMaskIoU(facetPolygonsPx, roofMaskGrid)` function that rasterizes final geometry polygons and computes intersection-over-union against the Solar building mask.
+- **`supabase/functions/start-ai-measurement/index.ts`** — Call `computeMaskIoU` after face extraction. Include result in overlay calibration metrics. Block customer report when `mask_iou < 0.85`.
+- **`supabase/functions/_shared/footprint-constraint-validator.ts`** — Add mask IoU to the validation result alongside existing footprint checks.
+
+---
+
+## Phase 5: Legacy Path Removal and Source Tagging
+
+**Problem:** `measure-roof/`, `measure/`, and other legacy functions still exist and could re-enter the runtime path.
+
+**Changes:**
+- **`supabase/functions/start-ai-measurement/index.ts`** — Ensure every customer-publishable `roof_measurements` row includes `geometry_source = 'autonomous_dsm_graph_solver'`, `topology_source = 'autonomous_dsm_graph_solver'`, `fallback_used = false`. Block publish if these fields are missing.
+- **Legacy functions** (`measure-roof`, `measure`, etc.) — Add deprecation headers and logging. These will not be deleted yet (to avoid breaking any external references) but will log warnings when invoked and return a deprecation notice in responses.
+
+---
+
+## Technical Details
+
+### New types added to overlay-transform.ts:
 ```text
-Before: 31 edges -> 129 splits -> 25 faces -> 3 valid -> 19% coverage
-After:  31 edges -> 14-17 clustered -> 18-30 splits -> 8-12 faces -> 5-8 valid -> 85-95% coverage
+OverlayRegistrationResult {
+  calibrated, transform[], rms_px, max_error_px,
+  inlier_count, mask_iou?, coverage_ratio, reason?
+}
 ```
 
-Customer report only if all gates pass. Debug report always generated.
+### Publish gate constants:
+```text
+OVERLAY_RMS_PX_MAX = 4
+OVERLAY_MAX_ERROR_PX = 8
+MASK_IOU_MIN = 0.85
+COVERAGE_RATIO_MIN = 0.85
+```
+
+### Files touched (estimated):
+- `supabase/functions/_shared/overlay-transform.ts` — registration quality
+- `supabase/functions/_shared/planar-roof-solver.ts` — typed contract + metrics
+- `supabase/functions/_shared/autonomous-graph-solver.ts` — expanded debug output
+- `supabase/functions/_shared/dsm-analyzer.ts` — mask IoU computation
+- `supabase/functions/_shared/footprint-constraint-validator.ts` — mask IoU gate
+- `supabase/functions/start-ai-measurement/index.ts` — orchestration + fail persistence
+- `src/components/measurements/DSMDebugOverlay.tsx` — expanded metrics display
+- `src/components/measurements/MeasurementReportDialog.tsx` — debug-first for blocked runs
+- `src/components/measurements/UnifiedMeasurementPanel.tsx` — debug report link
+
+### Edge functions to deploy:
+- `start-ai-measurement`
+
+### Memory updates:
+- Update `mem://features/measurement-system/visualization-and-reporting` with new overlay registration contract
+- Create `mem://features/measurement-system/overlay-registration-contract` for publish gate thresholds

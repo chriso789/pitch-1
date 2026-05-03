@@ -304,37 +304,27 @@ function filterByClassificationPriority(segments: Seg[], footprint: Pt[]): Seg[]
 }
 
 // ── ORDERED INTERSECTION FILTERING + SPLITTING ───────────
-function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[]; intersectionCount: number } {
+function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[]; intersectionCount: number; intersectionFilterSkipped: number } {
   const pointsBySeg: Pt[][] = segments.map((s) => [s.a, s.b]);
   let intersectionCount = 0;
+  let intersectionFilterSkipped = 0;
 
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
       const inter = rawSegmentIntersection(segments[i].a, segments[i].b, segments[j].a, segments[j].b);
       if (!inter) continue;
 
-      // ORDERED INTERSECTION FILTERING:
-
-      // 1. Collinear check (angle < 5°) → skip immediately
       const angleDiff = angleBetweenSegs(segments[i], segments[j]);
-      if (angleDiff < COLLINEAR_ANGLE_DEG) continue;
+      if (angleDiff < COLLINEAR_ANGLE_DEG) { intersectionFilterSkipped++; continue; }
+      if (angleDiff < INTERSECTION_MIN_ANGLE_DEG) { intersectionFilterSkipped++; continue; }
 
-      // 2. Crossing angle < 15° → skip (near-parallel grazing intersections)
-      if (angleDiff < INTERSECTION_MIN_ANGLE_DEG) continue;
-
-      // 3. REMOVED: minDistBetweenSegments filter was rejecting real crossings
-      //    rawSegmentIntersection already proves t,u ∈ [0,1] — segments truly cross
-
-      // 4. Near endpoint → snap instead of skip (reduced tolerance from 12px to 4px)
       const NEAR_ENDPOINT_TOL = 4;
       const nearEndpointI = dist(inter.point, segments[i].a) < NEAR_ENDPOINT_TOL ||
                             dist(inter.point, segments[i].b) < NEAR_ENDPOINT_TOL;
       const nearEndpointJ = dist(inter.point, segments[j].a) < NEAR_ENDPOINT_TOL ||
                             dist(inter.point, segments[j].b) < NEAR_ENDPOINT_TOL;
-      if (nearEndpointI || nearEndpointJ) continue;
+      if (nearEndpointI || nearEndpointJ) { intersectionFilterSkipped++; continue; }
 
-      // 5. Accept split — always add to both segments (no pointOnSegment re-check;
-      //    rawSegmentIntersection already guarantees the point is on both segments)
       intersectionCount++;
       pointsBySeg[i].push(inter.point);
       pointsBySeg[j].push(inter.point);
@@ -362,7 +352,7 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
     for (let k = 0; k < pts.length - 1; k++) add(pts[k], pts[k + 1], s);
   }
 
-  return { result: out, intersectionCount };
+  return { result: out, intersectionCount, intersectionFilterSkipped };
 }
 
 // ── PRUNE DANGLING + GRAPH CONSISTENCY ───────────────────
@@ -626,36 +616,56 @@ export interface InteriorLine {
   score?: number;
 }
 
+// ── FORMAL SOLVER CONTRACT (Patent Parity) ──────────────────────
+// Threshold invariants documented here for testability:
+//   ENDPOINT_SNAP_TOL_PX = 12     — max distance for endpoint snapping
+//   INTERSECTION_MIN_ANGLE_DEG = 15 — skip splits below this angle
+//   COLLINEAR_ANGLE_DEG = 5       — merge segments within this angle
+//   MIN_SEGMENT_LENGTH_PX = 3     — structural short segments allowed down to 3px
+//   SIMPLIFY_TOLERANCE_PX = 2     — Douglas-Peucker simplification
+//
+// Required invariants for customer publication:
+//   face_coverage_ratio >= 0.85
+//   All coordinates in raster pixel space
+//   Perimeter always preserved (re-injection guarantee)
+
+export interface PlanarSolverDebug {
+  input_footprint_vertices: number;
+  input_interior_lines: number;
+  snapped_interior_lines: number;
+  collinear_merges: number;
+  filtered_by_priority: number;
+  intersections_split: number;
+  intersection_filter_skipped: number;
+  dangling_edges_removed: number;
+  perimeter_reinjected: number;
+  total_graph_segments: number;
+  total_graph_nodes: number;
+  faces_extracted: number;
+  faces_with_area: number;
+  face_coverage_ratio: number;
+  fragment_merges: number;
+  faces_rejected_by_area: number;
+  customer_block_reason: string | null;
+}
+
 export interface PlanarSolverResult {
   faces: Array<{ id: number; polygon: Pt[] }>;
   edges: Seg[];
-  debug: {
-    input_footprint_vertices: number;
-    input_interior_lines: number;
-    snapped_interior_lines: number;
-    collinear_merges: number;
-    filtered_by_priority: number;
-    intersections_split: number;
-    dangling_edges_removed: number;
-    perimeter_reinjected: number;
-    total_graph_segments: number;
-    total_graph_nodes: number;
-    faces_extracted: number;
-    faces_with_area: number;
-    face_coverage_ratio: number;
-  };
+  debug: PlanarSolverDebug;
 }
 
 export function solveRoofPlanes(
   rawFootprint: Pt[],
   interiorLines: InteriorLine[],
 ): PlanarSolverResult {
-  const emptyDebug = {
+  const emptyDebug: PlanarSolverDebug = {
     input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0,
     collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0,
-    dangling_edges_removed: 0, perimeter_reinjected: 0,
+    intersection_filter_skipped: 0, dangling_edges_removed: 0, perimeter_reinjected: 0,
     total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0,
-    faces_with_area: 0, face_coverage_ratio: 0,
+    faces_with_area: 0, face_coverage_ratio: 0, fragment_merges: 0,
+    faces_rejected_by_area: 0, customer_block_reason: null,
   };
 
   if (rawFootprint.length < 3) {
@@ -721,7 +731,7 @@ export function solveRoofPlanes(
   }
 
   // 8. Split with ordered intersection filtering
-  const { result: splitSegments, intersectionCount } = splitSegmentsWithFilteredIntersections(allSegments);
+  const { result: splitSegments, intersectionCount, intersectionFilterSkipped } = splitSegmentsWithFilteredIntersections(allSegments);
 
   // 9. Prune dangling + graph consistency
   const pruned = pruneDanglingInteriorSegments(splitSegments, footprint);
@@ -739,6 +749,7 @@ export function solveRoofPlanes(
   const allFaces = rawFaces
     .filter((f) => Math.abs(signedArea(f)) > 50)
     .map((polygon, i) => ({ id: i, polygon }));
+  const facesRejectedByArea = rawFaces.length - allFaces.length;
   const validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
 
@@ -746,13 +757,16 @@ export function solveRoofPlanes(
   const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
   const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
 
-  const debug = {
+  const customerBlockReason = faceCoverageRatio < 0.85 ? `coverage_${Math.round(faceCoverageRatio * 100)}pct_lt_85pct` : null;
+
+  const debug: PlanarSolverDebug = {
     input_footprint_vertices: rawFootprint.length,
     input_interior_lines: interiorLines.length,
     snapped_interior_lines: interiorFragments.length,
     collinear_merges: collinearMerges,
     filtered_by_priority: filteredByPriority,
     intersections_split: intersectionCount,
+    intersection_filter_skipped: intersectionFilterSkipped,
     dangling_edges_removed: pruned.removed,
     perimeter_reinjected: perimeterReinjected,
     total_graph_segments: graphSegments.length,
@@ -760,6 +774,9 @@ export function solveRoofPlanes(
     faces_extracted: rawFaces.length,
     faces_with_area: validFaces.length,
     face_coverage_ratio: Number(faceCoverageRatio.toFixed(3)),
+    fragment_merges: 0, // tracked at autonomous-graph-solver level
+    faces_rejected_by_area: facesRejectedByArea,
+    customer_block_reason: customerBlockReason,
   };
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));

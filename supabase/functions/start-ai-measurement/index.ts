@@ -30,10 +30,10 @@ import {
 } from "../_shared/footprint-plane-solver.ts";
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
-import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
+import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, type AutonomousGraphInput } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
@@ -872,6 +872,8 @@ async function processJob(input: any) {
             fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
           ]);
           maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
+          // Store roof mask for downstream registration quality check
+          if (roofMask) (globalThis as any).__roofMaskForQA = roofMask;
         }
       } catch (e) {
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
@@ -951,11 +953,79 @@ async function processJob(input: any) {
             : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
-        // HARD FAIL: Do NOT fall through to legacy pipeline.
-        // Always persist debug data so internal debug reports are available.
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
         dsmFailReason = failReason;
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
+
+        // ── ALWAYS-PERSIST DEBUG DIAGRAMS (Patent Parity Phase 2) ──
+        // Even on hard failures, generate debug diagrams so internal report is viewable
+        try {
+          const failedPlanesPx = graph.faces.map((f: any, i: number) => ({
+            plane_index: i + 1,
+            polygon_px: f.polygon.map(([lng, lat]: [number, number]) =>
+              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)),
+            pitch_degrees: f.pitch_degrees || 0,
+            area_2d_sqft: f.plan_area_sqft || 0,
+            area_pitch_adjusted_sqft: f.roof_area_sqft || 0,
+            confidence: 0.3,
+          }));
+          const failedEdgesPx = graph.edges.map((e: any) => ({
+            edge_type: e.type,
+            line_px: [
+              lngLatToPx(e.start[1], e.start[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+              lngLatToPx(e.end[1], e.end[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+            ],
+            length_ft: e.length_ft || 0,
+            confidence: e.confidence?.final_confidence || 0.3,
+          }));
+          if (failedPlanesPx.length > 0 || failedEdgesPx.length > 0) {
+            const debugDiagrams = generateRoofDiagrams({
+              propertyAddress: input.property_address || "Unknown property",
+              jobId: input.ai_measurement_job_id,
+              generatedAt: new Date().toISOString(),
+              confidence: 0,
+              engineVersion: "debug_failed_dsm_graph",
+              planes: failedPlanesPx,
+              edges: failedEdgesPx,
+              totals: { ridge_length_ft: 0, hip_length_ft: 0, valley_length_ft: 0,
+                eave_length_ft: 0, rake_length_ft: 0, total_area_2d_sqft: 0,
+                total_area_pitch_adjusted_sqft: 0, roof_square_count: 0, waste_adjusted_squares: 0 },
+              satelliteImageUrl: imageUrl,
+              sourceImageWidth: raster.width,
+              sourceImageHeight: raster.height,
+              roofTargetBboxPx: null,
+              overlayCalibration: null,
+            });
+            if (debugDiagrams.length > 0) {
+              await supabase.from("ai_measurement_diagrams").insert(
+                debugDiagrams.map((d: any) => ({
+                  ai_measurement_job_id: input.ai_measurement_job_id,
+                  roof_measurement_id: failedId,
+                  lead_id: input.lead_id,
+                  project_id: input.project_id,
+                  tenant_id: input.tenant_id,
+                  company_id: input.company_id,
+                  diagram_type: d.diagram_type,
+                  title: `[DEBUG] ${d.title}`,
+                  page_number: d.page_number,
+                  svg_markup: d.svg_markup,
+                  diagram_json: {
+                    generated_from: "debug_failed_dsm_graph",
+                    failure_reason: failReason,
+                    autonomousDebug,
+                  },
+                  render_version: "debug_failed_dsm_graph",
+                  width: 850,
+                  height: 1100,
+                }))
+              );
+              console.log(`[DEBUG_DIAGRAMS] Persisted ${debugDiagrams.length} debug diagrams for failed job`);
+            }
+          }
+        } catch (diagErr) {
+          console.warn("[DEBUG_DIAGRAMS] Failed to persist debug diagrams:", (diagErr as Error).message);
+        }
+
         await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
         await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
         await supabase.from("ai_measurement_jobs").update({
@@ -2864,7 +2934,22 @@ async function processJob(input: any) {
         roofTargetBboxPx,
       });
 
-      // Coverage / center-error QA gate.
+      // ── REGISTRATION QUALITY (Patent Parity) ──
+      // Compute quantitative residuals, mask IoU, and enforce publish gate
+      const facetPolygonsPx = cleanPlanes
+        .filter((p: any) => p.polygon_px && p.polygon_px.length >= 3)
+        .map((p: any) => p.polygon_px as Array<{ x: number; y: number }>);
+
+      const registrationResult = computeRegistrationQuality({
+        calibration: overlayCalibration,
+        geometryPointsPx: geometryPoints,
+        roofMaskGrid: (globalThis as any).__roofMaskForQA || null,
+        facetPolygonsPx,
+      });
+
+      (overlayCalibration as any).registration_quality = registrationResult;
+
+      // Coverage / center-error QA gate (legacy + new registration gate).
       const cov = Math.min(
         Number(overlayCalibration.coverage_ratio_width || 0),
         Number(overlayCalibration.coverage_ratio_height || 0),
@@ -2876,6 +2961,9 @@ async function processJob(input: any) {
       }
       if (ctrErr > 60) {
         overlayFailures.push(`overlay_center_error_${Math.round(ctrErr)}px_gt_60px`);
+      }
+      if (registrationResult.block_reason) {
+        overlayFailures.push(`registration_gate:${registrationResult.block_reason}`);
       }
       (globalThis as any).__overlaySanityFailures = overlayFailures;
 
@@ -2889,6 +2977,14 @@ async function processJob(input: any) {
         coverage_ratio_width: overlayCalibration.coverage_ratio_width,
         coverage_ratio_height: overlayCalibration.coverage_ratio_height,
         center_error_px: overlayCalibration.center_error_px,
+        registration: {
+          rms_px: registrationResult.rms_px,
+          max_error_px: registrationResult.max_error_px,
+          mask_iou: registrationResult.mask_iou,
+          coverage_ratio: registrationResult.coverage_ratio,
+          publish_allowed: registrationResult.publish_allowed,
+          block_reason: registrationResult.block_reason,
+        },
       }));
     } catch (e) {
       console.warn("[OVERLAY_TRANSFORM] failed:", (e as Error).message);
