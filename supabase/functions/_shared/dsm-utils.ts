@@ -8,8 +8,8 @@
  *   - Extracting closed polygons from edge graphs
  */
 
-import type { DSMGrid } from "./dsm-analyzer.ts";
-import { getElevationAt } from "./dsm-analyzer.ts";
+import type { DSMGrid, MaskedDSMGrid } from "./dsm-analyzer.ts";
+import { getElevationAt, geoToPixel } from "./dsm-analyzer.ts";
 
 type XY = [number, number]; // [lng, lat]
 
