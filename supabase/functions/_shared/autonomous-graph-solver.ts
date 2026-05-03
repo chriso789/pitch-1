@@ -17,15 +17,13 @@
  */
 
 import type { DSMGrid, MaskedDSMGrid, RoofMask } from "./dsm-analyzer.ts";
-import { getElevationAt, geoToPixel, pixelToGeo } from "./dsm-analyzer.ts";
+import { geoToPixel, pixelToGeo } from "./dsm-analyzer.ts";
 import { detectStructuralEdges, type DSMEdgeCandidate } from "./dsm-edge-detector.ts";
 import {
-  getPerpendicularProfile,
   classifyEdgeByDSM,
   fitPlaneToPolygon,
   detectClosedPolygons,
   computeEdgeScore,
-  pointToSegmentDistance,
   edgeAngle,
   angleDifference,
 } from "./dsm-utils.ts";
