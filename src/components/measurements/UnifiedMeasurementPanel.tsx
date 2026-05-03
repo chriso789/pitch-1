@@ -485,6 +485,19 @@ export function UnifiedMeasurementPanel({
     enabled: !!pipelineEntryId,
   });
 
+  const latestAiMeasurementTime = useMemo(() => {
+    return Math.max(0, ...(aiMeasurements || []).map((measurement: any) => getTimeMs(measurement.created_at)));
+  }, [aiMeasurements]);
+
+  const visibleFailedJob = useMemo(() => {
+    const job = activeJob as MeasurementJobSummary | null;
+    if (!job || job.status !== 'failed') return null;
+    const jobTime = getTimeMs(job.completed_at || job.created_at);
+    if (job.measurement_id && latestAiMeasurementTime >= jobTime - 1000) return null;
+    if (latestAiMeasurementTime > jobTime) return null;
+    return job;
+  }, [activeJob, latestAiMeasurementTime]);
+
   const handleSetActive = async (approvalId: string) => {
     setIsSettingActive(true);
     try {
