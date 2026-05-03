@@ -768,7 +768,7 @@ export function solveRoofPlanes(
 
   // 12. Face filtering
   const footprintArea = Math.abs(signedArea(footprint));
-  const minRawFaceArea = Math.max(30, footprintArea * 0.005);
+  const minRawFaceArea = Math.max(30, footprintArea * 0.001);
   const allFaces = rawFaces
     .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
     .map((polygon, i) => ({ id: i, polygon }));
