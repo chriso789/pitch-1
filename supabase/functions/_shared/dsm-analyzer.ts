@@ -537,4 +537,73 @@ export function detectValleyLinesFromDSM(_dsmGrid: DSMGrid): Array<{ start: XY; 
   return [];
 }
 
+/**
+ * Compute IoU between projected facet polygons (in geo coords) and the roof mask.
+ * Returns 0-1 value. Null if mask is not available.
+ */
+export function computeMaskIoU(
+  facetPolygonsGeo: Array<Array<{ lat: number; lng: number }>>,
+  roofMask: RoofMask,
+): number {
+  if (!roofMask || !roofMask.data || roofMask.width === 0 || roofMask.height === 0) return 0;
+  if (facetPolygonsGeo.length === 0) return 0;
+
+  const w = roofMask.width;
+  const h = roofMask.height;
+  const geomRaster = new Uint8Array(w * h);
+
+  for (const polygon of facetPolygonsGeo) {
+    const pxPoly = polygon.map(p => {
+      const px = geoToPixel([p.lng, p.lat], roofMask as unknown as DSMGrid);
+      return { x: px[0], y: px[1] };
+    });
+    rasterizePolygonToGrid(pxPoly, geomRaster, w, h);
+  }
+
+  let intersection = 0;
+  let union = 0;
+  for (let i = 0; i < w * h; i++) {
+    const inMask = roofMask.data[i] > 0;
+    const inGeom = geomRaster[i] > 0;
+    if (inMask && inGeom) intersection++;
+    if (inMask || inGeom) union++;
+  }
+
+  const iou = union > 0 ? intersection / union : 0;
+  console.log(`[DSM_ANALYZER] Mask IoU: ${iou.toFixed(3)} (intersection=${intersection}, union=${union})`);
+  return Number(iou.toFixed(3));
+}
+
+function rasterizePolygonToGrid(poly: Array<{ x: number; y: number }>, grid: Uint8Array, w: number, h: number): void {
+  if (poly.length < 3) return;
+  let minY = h, maxY = 0;
+  for (const p of poly) {
+    const py = Math.round(p.y);
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  minY = Math.max(0, minY);
+  maxY = Math.min(h - 1, maxY);
+
+  for (let y = minY; y <= maxY; y++) {
+    const intersections: number[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const j = (i + 1) % poly.length;
+      const yi = poly[i].y, yj = poly[j].y;
+      if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
+        const t = (y - yi) / (yj - yi);
+        intersections.push(poly[i].x + t * (poly[j].x - poly[i].x));
+      }
+    }
+    intersections.sort((a, b) => a - b);
+    for (let k = 0; k < intersections.length - 1; k += 2) {
+      const x0 = Math.max(0, Math.round(intersections[k]));
+      const x1 = Math.min(w - 1, Math.round(intersections[k + 1]));
+      for (let x = x0; x <= x1; x++) {
+        grid[y * w + x] = 1;
+      }
+    }
+  }
+}
+
 export type { };
