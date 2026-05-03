@@ -954,7 +954,7 @@ async function processJob(input: any) {
         // preliminary measurement they can review, while the DSM failure is
         // recorded and blocks customer-facing report delivery.
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver failed (${failReason}), falling through to legacy pipeline`);
-        blockCustomerReportReason = failReason;
+        dsmFailReason = failReason;
       } else {
 
       cleanPlanes = graph.faces.map((f, i) => ({
