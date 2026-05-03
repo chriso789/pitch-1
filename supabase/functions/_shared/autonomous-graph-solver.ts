@@ -70,7 +70,7 @@ export interface GraphEdge {
   length_ft: number;
   confidence: EdgeConfidence;
   facet_ids: string[];
-  source: 'dsm' | 'solar_segments' | 'skeleton' | 'fused' | 'perimeter';
+  source: 'dsm' | 'solar_segments' | 'skeleton' | 'fused' | 'perimeter' | 'footprint';
 }
 
 export interface GraphFace {
@@ -104,7 +104,7 @@ export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
-  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid';
+  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid' | 'missing_valid_footprint' | 'footprint_coordinate_mismatch' | 'invalid_graph_no_perimeter' | 'graph_has_only_dangling_edges';
   failure_reason?: string;
   
   vertices: GraphVertex[];

@@ -736,7 +736,33 @@ async function processJob(input: any) {
       bbox_area_sqft: solarSegmentsDebug.bbox_area_sqft,
     }));
 
-    // 4. Pick best valid candidate.
+    // 4. Google Solar building mask contour is the primary verified footprint
+    // source because it shares Solar/DSM geo-registration. It must be tried
+    // before ranking secondary sources like OSM/U-Net/segment hulls.
+    let roofMaskForContour: any = null;
+    let selectedMaskContourGeo: Array<[number, number]> | null = null;
+    if (GOOGLE_SOLAR_API_KEY) {
+      try {
+        await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
+        roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        if (roofMaskForContour) {
+          const maskContourGeo = extractMaskContour(roofMaskForContour);
+          if (maskContourGeo.length >= 4) {
+            const maskContourPx = maskContourGeo.map(([lng, lat]) =>
+              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+            );
+            const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
+            maskCand.polygon_shape_score = Math.min(1, maskCand.polygon_shape_score + 0.45);
+            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.6));
+            candidates.push(maskCand);
+            if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
+          }
+        }
+      } catch (e) {
+        console.warn("[FOOTPRINT_MASK_CONTOUR_PRIMARY] failed:", (e as Error).message);
+      }
+    }
+
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
@@ -750,11 +776,10 @@ async function processJob(input: any) {
     // ── ROOF MASK CONTOUR FALLBACK ──
     // If no candidate footprint passed validation, try extracting a contour
     // from the Google Solar roof mask. This is priority B per the spec.
-    let roofMaskForContour: any = null;
     if (footprintSelectionFailed && GOOGLE_SOLAR_API_KEY) {
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting roof mask contour fallback");
-        roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        roofMaskForContour = roofMaskForContour || await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
           const maskContourGeo = extractMaskContour(roofMaskForContour);
           if (maskContourGeo.length >= 4) {
@@ -766,6 +791,7 @@ async function processJob(input: any) {
             if (!maskCand.rejected_reason) {
               footprint = maskCand.polygon;
               footprintSource = "google_solar_mask_contour";
+              selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
               footprintSelectionFailed = false;
               console.log("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Roof mask contour accepted:", JSON.stringify({
                 vertices: maskCand.vertex_count,
@@ -881,10 +907,15 @@ async function processJob(input: any) {
     // ══════════ FOOTPRINT VALIDATION GATE ══════════
     // If footprint is still invalid after all fallbacks, fail immediately
     // with a specific reason — do NOT proceed to the DSM solver.
-    const footprintAreaPxVal = footprint.length >= 3 ? polygonAreaPx(footprint) : 0;
+    const footprintForDsmPx = selectedMaskContourGeo?.length && roofMaskForContour
+      ? selectedMaskContourGeo.map(([lng, lat]) => lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp))
+      : footprint;
+    const footprintAreaPxVal = footprintForDsmPx.length >= 3 ? polygonAreaPx(footprintForDsmPx) : 0;
     const footprintAreaSqftVal = footprintAreaPxVal * sqftPerPx2;
-    const footprintIsLatLng = footprint.length > 0 && footprint.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
-    const footprintValid = footprint.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng;
+    const footprintIsLatLng = footprintForDsmPx.length > 0 && footprintForDsmPx.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
+    const footprintBbox = bboxOf(footprintForDsmPx);
+    const footprintCoordinateSpaceMatch = Boolean(footprintBbox && footprintBbox.maxX > 1 && footprintBbox.maxY > 1 && footprintBbox.minX >= -2 && footprintBbox.minY >= -2 && footprintBbox.maxX <= raster.width + 2 && footprintBbox.maxY <= raster.height + 2);
+    const footprintValid = footprintForDsmPx.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng && footprintCoordinateSpaceMatch;
 
     // Auto-close footprint if not closed
     if (footprint.length >= 4) {
@@ -905,7 +936,7 @@ async function processJob(input: any) {
             : "missing_valid_footprint";
 
       console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
-        footprint_length: footprint.length,
+        footprint_length: footprintForDsmPx.length,
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
         footprint_source: footprintSource,
         is_lat_lng: footprintIsLatLng,
@@ -917,12 +948,12 @@ async function processJob(input: any) {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
         footprint_source: footprintSource,
         footprint_valid: false,
-        footprint_point_count: footprint.length,
+        footprint_point_count: footprintForDsmPx.length,
         footprint_area_px: Math.round(footprintAreaPxVal),
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
         footprint_coordinate_space: footprintIsLatLng ? "lat_lng" : "pixel",
         dsm_edge_coordinate_space: "pixel",
-        coordinate_space_match: !footprintIsLatLng,
+        coordinate_space_match: footprintCoordinateSpaceMatch,
         hard_fail_reason: failReason,
         candidates_tried: candidates.length,
         candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
@@ -943,6 +974,8 @@ async function processJob(input: any) {
       }).eq("id", input.ai_measurement_job_id);
       return;
     }
+
+    footprint = footprintForDsmPx;
 
     console.log("[FOOTPRINT_VALIDATION_GATE] PASS", JSON.stringify({
       source: footprintSource,
@@ -988,7 +1021,9 @@ async function processJob(input: any) {
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
       }
 
-      const footprintGeo = footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+      const footprintGeo = selectedMaskContourGeo?.length
+        ? selectedMaskContourGeo
+        : footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
       const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
@@ -1020,12 +1055,18 @@ async function processJob(input: any) {
         mask_loaded: !!roofMask,
         dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
         dsm_edges_accepted: graph.logs?.dsm_edges_accepted ?? (graph.logs?.fused_edges || 0),
+        raw_edges: graph.logs?.dsm_edges_detected ?? 0,
+        accepted_edges: graph.logs?.dsm_edges_accepted ?? 0,
+        clustered_edges: graph.logs?.edge_count_after_cluster ?? 0,
         interior_lines_used: graph.logs?.interior_lines_used ?? 0,
         graph_nodes: graph.logs?.graph_nodes ?? graph.vertices.length,
         graph_segments: graph.logs?.graph_segments ?? graph.edges.length,
         intersections_split: graph.logs?.intersections_split ?? 0,
         dangling_edges_removed: graph.logs?.dangling_edges_removed ?? 0,
         faces_extracted: graph.logs?.faces_extracted ?? graph.faces.length,
+        faces_attempted: graph.logs?.faces_extracted ?? graph.faces.length,
+        faces_rejected: (graph.logs?.faces_rejected_by_plane_fit || 0) + (graph.logs?.faces_rejected_by_area || 0),
+        rejection_reasons: graph.failure_reason ? [graph.failure_reason] : [],
         valid_faces: graph.logs?.valid_faces ?? graph.faces.length,
         face_coverage_ratio: graph.face_coverage_ratio,
         edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
@@ -4062,6 +4103,8 @@ async function processJob(input: any) {
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
         validation_status: vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
+        customer_report_ready: !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        internal_debug_report_ready: reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
           : blockCustomerReportReason,
@@ -4998,6 +5041,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     metadata: aiDetectionData,
     gate_decision: "failed",
     gate_reason: failureReason,
+    customer_report_ready: false,
+    internal_debug_report_ready: true,
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
     engine_used: "autonomous_dsm_graph_solver",
