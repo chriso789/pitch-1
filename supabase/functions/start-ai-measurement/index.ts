@@ -860,6 +860,7 @@ async function processJob(input: any) {
     // HARD GATE: DSM graph is now the only publishable topology source.
     // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
     let autonomousDebug: any = null;
+    let dsmFailReason: string | null = null;
     {
       let dsmGrid: any = null;
       let roofMask: any = null;
@@ -950,11 +951,12 @@ async function processJob(input: any) {
             : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
-        return;
-      }
+        // Don't hard-return. Fall through to legacy pipeline so users get a
+        // preliminary measurement they can review, while the DSM failure is
+        // recorded and blocks customer-facing report delivery.
+        console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver failed (${failReason}), falling through to legacy pipeline`);
+        dsmFailReason = failReason;
+      } else {
 
       cleanPlanes = graph.faces.map((f, i) => ({
         plane_index: i + 1,
@@ -999,6 +1001,7 @@ async function processJob(input: any) {
       (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
       (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
       console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
+      } // end else (DSM solver succeeded)
     }
 
     const addSolarSegmentStructure = () => {
@@ -3489,7 +3492,7 @@ async function processJob(input: any) {
     }
 
     const blockCustomerReportReason: string | null =
-      sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason;
+      dsmFailReason ? dsmFailReason : (sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason);
     const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure")
       || vendorTruthComparison?.needs_internal_review === true;
 
