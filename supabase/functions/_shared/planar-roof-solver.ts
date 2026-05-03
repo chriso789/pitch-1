@@ -182,13 +182,10 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
   while (changed) {
     changed = false;
     const degree = new Map<string, number>();
-    const points = new Map<string, Pt>();
     for (const seg of current) {
       const ka = ptKey(seg.a), kb = ptKey(seg.b);
       degree.set(ka, (degree.get(ka) || 0) + 1);
       degree.set(kb, (degree.get(kb) || 0) + 1);
-      points.set(ka, seg.a);
-      points.set(kb, seg.b);
     }
 
     const next = current.filter((seg) => {
