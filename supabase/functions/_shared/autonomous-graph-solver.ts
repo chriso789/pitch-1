@@ -1492,10 +1492,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     validation.status = 'faces_extracted_but_rejected';
     validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
   }
-  const invalidEdgeClassification = complexity.isComplex && outHips.reduce((s, e) => s + e.length_ft, 0) > 50 && outValleys.length === 0;
+  // Only flag invalid_edge_classification when there are truly 0 structural edges AND faces exist
+  const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
   if (!validation.valid && invalidEdgeClassification) {
     validation.status = 'invalid_edge_classification';
-    validation.reason = 'Complex roof has >50 LF of hips and 0 valleys after DSM classification';
+    validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency reclassification';
   }
 
   // Build vertex output
