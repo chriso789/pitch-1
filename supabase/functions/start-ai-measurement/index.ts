@@ -1031,7 +1031,6 @@ async function processJob(input: any) {
       // A footprint can be valid on the satellite raster but mis-registered vs DSM.
       const effectiveDSMForMatch = maskedDSM || dsmGrid;
       let dsmCoordinateMatch = true;
-      let dsmCoordinateMatchDebug: any = null;
       if (effectiveDSMForMatch && footprintGeo.length >= 3) {
         const dsmW = effectiveDSMForMatch.width;
         const dsmH = effectiveDSMForMatch.height;
