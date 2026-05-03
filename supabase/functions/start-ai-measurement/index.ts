@@ -4154,6 +4154,9 @@ async function processJob(input: any) {
         ridge_alignment_qa: (globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug,
       },
       overlay_debug: {
+        coordinate_space: "satellite_px",
+        coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "dsm_px",
+        coordinate_space_renderer: "satellite_px",
         raster_url: imageUrl,
         raster_size,
         planes_px,
@@ -4172,8 +4175,11 @@ async function processJob(input: any) {
         dsm_coordinate_match: dsmCoordinateMatchDebug,
         // DSM debug overlay data
         rejected_edges_geo: autonomousDebug?.rejected_edges_geo ?? [],
+        rejected_edges_dsm_px: autonomousDebug?.rejected_edges_dsm_px ?? [],
         graph_vertices_geo: autonomousDebug?.graph_vertices_geo ?? [],
+        graph_vertices_dsm_px: autonomousDebug?.graph_vertices_dsm_px ?? [],
         accepted_edges_geo: autonomousDebug?.accepted_edges_geo ?? [],
+        accepted_edges_dsm_px: autonomousDebug?.accepted_edges_dsm_px ?? [],
         dsm_edges_detected: autonomousDebug?.dsm_edges_detected ?? 0,
         dsm_edges_accepted: autonomousDebug?.dsm_edges_accepted ?? 0,
         validation_status: autonomousDebug?.status ?? null,
