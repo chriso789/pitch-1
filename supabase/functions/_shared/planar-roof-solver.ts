@@ -25,7 +25,7 @@ type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge'
 
 const ENDPOINT_SNAP_TOL_PX = 12;
 const FOOTPRINT_TOUCH_TOL_PX = 10;
-const MIN_SEGMENT_LENGTH_PX = 3;
+const MIN_SEGMENT_LENGTH_PX = 5;
 const COLLINEAR_ANGLE_DEG = 5;
 const INTERSECTION_MIN_ANGLE_DEG = 20;
 const INTERSECTION_MIN_DISTANCE_PX = 6;
