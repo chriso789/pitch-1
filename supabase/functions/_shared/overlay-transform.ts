@@ -26,11 +26,13 @@ export type OverlayCalibration = {
   calibrated: boolean;
 };
 
-// ── PUBLISH-GATE THRESHOLDS ─────────────────────────────────────
-export const OVERLAY_RMS_PX_MAX = 4;
-export const OVERLAY_MAX_ERROR_PX = 8;
-export const MASK_IOU_MIN = 0.85;
-export const COVERAGE_RATIO_MIN = 0.85;
+// ── PUBLISH-GATE THRESHOLDS (re-exported from canonical config) ──
+export {
+  OVERLAY_RMS_PX_MAX,
+  OVERLAY_MAX_ERROR_PX,
+  MASK_IOU_MIN,
+  COVERAGE_RATIO_MIN,
+} from "./solver-config.ts";
 
 // ── REGISTRATION QUALITY ────────────────────────────────────────
 export interface OverlayRegistrationResult {

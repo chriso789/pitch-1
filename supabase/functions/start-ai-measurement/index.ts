@@ -4118,6 +4118,32 @@ async function processJob(input: any) {
   } catch (error) {
     const message = getErrorMessage(error);
     console.error("processJob error:", error);
+
+    // ── GUARANTEED DEBUG PERSISTENCE (Patent Parity Phase 2) ──
+    // The outer catch must ALWAYS persist a debug measurement row before
+    // marking the job failed. Without this, hard crashes leave zero
+    // diagnosable artifacts and the UI shows a stale "Processing" state.
+    try {
+      const coords: GeoPoint = { lat: Number(input.latitude || 0), lng: Number(input.longitude || 0) };
+      await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        `processJob_crash: ${message}`,
+        {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          solver_version: "autonomous_graph_solver_v3_prune_first",
+          fallback_used: false,
+          hard_fail_reason: `processJob_crash: ${message}`,
+          dsm_loaded: false,
+          mask_loaded: false,
+        },
+        null,
+        0,
+      );
+    } catch (persistErr) {
+      console.error("Failed to persist debug measurement on outer catch:", persistErr);
+    }
+
     await setMeasurementJobStatus(input.measurement_job_id, "failed", message);
     await setAiJobStatus(input.ai_measurement_job_id, "failed", message);
   }

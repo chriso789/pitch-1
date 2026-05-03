@@ -19,20 +19,69 @@
  */
 
 import { filterRoofFaces } from "./face-filter.ts";
+import {
+  ENDPOINT_SNAP_TOL_PX,
+  FOOTPRINT_TOUCH_TOL_PX,
+  MIN_SEGMENT_LENGTH_PX,
+  COLLINEAR_ANGLE_DEG,
+  INTERSECTION_MIN_ANGLE_DEG,
+  INTERSECTION_MIN_DISTANCE_PX,
+  SIMPLIFY_TOLERANCE_PX,
+  GRID_SNAP_PX,
+  MIN_FACE_AREA_RATIO,
+  MIN_FACE_AREA_ABS_PX,
+} from "./solver-config.ts";
 
 type Pt = { x: number; y: number };
 type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number };
 
-const ENDPOINT_SNAP_TOL_PX = 12;
-const FOOTPRINT_TOUCH_TOL_PX = 10;
-const MIN_SEGMENT_LENGTH_PX = 5;
-const COLLINEAR_ANGLE_DEG = 5;
-const INTERSECTION_MIN_ANGLE_DEG = 20;
-const INTERSECTION_MIN_DISTANCE_PX = 6;
-const SIMPLIFY_TOLERANCE_PX = 2;
+// ── FORMALIZED SOLVER CONTRACT ─────────────────────────────────────
+export interface PlanarRoofSolverInput {
+  footprintPx: Array<[number, number]>;
+  interiorLines: InteriorLine[];
+  rasterWidth?: number;
+  rasterHeight?: number;
+  footprintAreaPx?: number;
+}
+
+export interface PlanarRoofSolverOutput {
+  status: 'validated' | 'failed';
+  failReason?: string;
+  faces: Array<{
+    id: number;
+    polygon: Pt[];
+    areaPx: number;
+  }>;
+  structuralEdges: Array<{
+    type: string;
+    a: Pt;
+    b: Pt;
+    lengthPx: number;
+    source: string;
+    confidence: number;
+  }>;
+  metrics: PlanarSolverMetrics;
+}
+
+export interface PlanarSolverMetrics {
+  input_interior_count: number;
+  footprint_edge_count: number;
+  collinear_merges: number;
+  intersection_filter_skipped: number;
+  intersections_split: number;
+  dangling_edges_removed: number;
+  faces_extracted: number;
+  fragment_merges: number;
+  face_count_before_merge: number;
+  face_count_after_merge: number;
+  faces_rejected_by_area: number;
+  valid_faces: number;
+  coverage_ratio: number;
+  polygonizer_fallback_used: boolean;
+}
 
 // ── GRID SNAP ──────────────────────────────────────────────
-function snap(p: Pt, grid = 2): Pt {
+function snap(p: Pt, grid = GRID_SNAP_PX): Pt {
   return {
     x: Math.round(p.x / grid) * grid,
     y: Math.round(p.y / grid) * grid,

@@ -198,41 +198,50 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
     // Classified edges from edges_px (accepted, final)
     if (layers.classifiedEdgesPx && data.edges_px) {
       for (const edge of data.edges_px) {
-        const color = EDGE_COLORS[edge.type] || '#ffffff';
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        const baseColor = EDGE_COLORS[edge.type] || '#ffffff';
+        // Confidence-based opacity: stronger edges are more opaque
+        const confidence = (edge as any).confidence ?? 1;
+        const alpha = Math.max(0.3, Math.min(1, confidence));
+        ctx.strokeStyle = baseColor;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = edge.source === 'dsm' ? 3 : edge.source === 'skeleton' ? 2 : 3;
         ctx.beginPath();
         ctx.moveTo(edge.p1[0], edge.p1[1]);
         ctx.lineTo(edge.p2[0], edge.p2[1]);
         ctx.stroke();
+        ctx.globalAlpha = 1.0;
 
-        // Label at midpoint
+        // Label at midpoint with type + source
         const mx = (edge.p1[0] + edge.p2[0]) / 2;
         const my = (edge.p1[1] + edge.p2[1]) / 2;
-        ctx.fillStyle = color;
+        ctx.fillStyle = baseColor;
         ctx.font = '10px monospace';
-        ctx.fillText(edge.type, mx + 3, my - 3);
+        const label = edge.source ? `${edge.type}(${edge.source})` : edge.type;
+        ctx.fillText(label, mx + 3, my - 3);
       }
     }
 
     // Graph nodes
-    if (layers.graphNodes && data.graph_vertices_geo && data.graph_vertices_geo.length > 0) {
-      // These are geo coords — we can't draw them on the px canvas directly
-      // But we CAN mark intersections from edges_px endpoints
-      const nodeSet = new Set<string>();
-      if (data.edges_px) {
-        for (const e of data.edges_px) {
-          nodeSet.add(`${Math.round(e.p1[0])},${Math.round(e.p1[1])}`);
-          nodeSet.add(`${Math.round(e.p2[0])},${Math.round(e.p2[1])}`);
-        }
+    if (layers.graphNodes && data.edges_px) {
+      // Compute node degree from edge endpoints
+      const nodeDegree = new Map<string, number>();
+      for (const e of data.edges_px) {
+        const k1 = `${Math.round(e.p1[0])},${Math.round(e.p1[1])}`;
+        const k2 = `${Math.round(e.p2[0])},${Math.round(e.p2[1])}`;
+        nodeDegree.set(k1, (nodeDegree.get(k1) || 0) + 1);
+        nodeDegree.set(k2, (nodeDegree.get(k2) || 0) + 1);
       }
-      ctx.fillStyle = '#00ffff';
-      const nodeKeys = Array.from(nodeSet);
-      for (const key of nodeKeys) {
+      for (const [key, degree] of nodeDegree) {
         const [x, y] = key.split(',').map(Number);
+        // Color by degree: dangling=red, normal=cyan, high-degree=yellow
+        ctx.fillStyle = degree === 1 ? '#ff4444' : degree >= 4 ? '#ffff00' : '#00ffff';
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, degree === 1 ? 5 : 4, 0, Math.PI * 2);
         ctx.fill();
+        // Degree label
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 8px monospace';
+        ctx.fillText(String(degree), x - 3, y + 3);
       }
     }
   }, [data, layers]);

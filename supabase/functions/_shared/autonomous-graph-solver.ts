@@ -36,15 +36,20 @@ import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./p
 
 type XY = [number, number]; // [lng, lat]
 
-// ============= CONSTANTS =============
-
-const EDGE_SCORE_THRESHOLD = 0.15;     // Minimum score to keep an edge (lowered from 0.25 to allow weaker DSM signals)
-const SNAP_DISTANCE_METERS = 1.5;      // Max snap distance (~5px at 0.3m/px)
-const SNAP_ANGLE_RAD = 10 * Math.PI / 180; // Max angle difference for snapping
-const MIN_EDGE_LENGTH_FT = 3;          // Discard tiny edges
-const MAX_INTERSECTIONS_PER_EDGE = 2;  // Drop edges with too many forced intersections
-const PLANE_FIT_ERROR_THRESHOLD = 0.5; // meters — max RMS error for valid facet
-const MIN_FACET_AREA_SQFT = 15;        // Discard tiny facets
+import {
+  EDGE_SCORE_THRESHOLD,
+  SNAP_DISTANCE_METERS,
+  SNAP_ANGLE_RAD,
+  MIN_EDGE_LENGTH_FT,
+  MAX_INTERSECTIONS_PER_EDGE,
+  PLANE_FIT_ERROR_THRESHOLD,
+  MIN_FACET_AREA_SQFT,
+  MAX_INTERIOR_EDGES_FOR_SOLVER,
+  MIN_EDGE_SCORE_FOR_SOLVER,
+  CLUSTER_MIDPOINT_DIST_PX,
+  CLUSTER_ANGLE_DEG,
+  COVERAGE_RATIO_MIN,
+} from "./solver-config.ts";
 
 // ============= TYPES =============
 
@@ -772,14 +777,9 @@ function classifyPlanarSegment(
 
 // ============= EDGE CLUSTERING (WEIGHTED MERGE WITH SPAN CAP) =============
 
-const CLUSTER_ANGLE_DEG = 10;
-const CLUSTER_MIDPOINT_DIST_PX = 25;
+// Constants imported from solver-config.ts:
+// CLUSTER_ANGLE_DEG, CLUSTER_MIDPOINT_DIST_PX, MAX_INTERIOR_EDGES_FOR_SOLVER, MIN_EDGE_SCORE_FOR_SOLVER
 const CLUSTER_MAX_SPAN_PX = 80;
-// Maximum interior edges passed to the planar solver. Even a complex cross-gable
-// roof rarely has more than 12 structural lines. Excess edges cause O(n²)
-// intersection splits → tiny sliver faces → coverage collapse.
-const MAX_INTERIOR_EDGES_FOR_SOLVER = 12;
-const MIN_EDGE_SCORE_FOR_SOLVER = 0.25;
 
 interface ClusterableEdge {
   a: { x: number; y: number };
