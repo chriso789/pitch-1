@@ -1,13 +1,19 @@
 /**
- * DSM Edge Detector — Gradient-based ridge/valley/hip detection at any angle
+ * DSM Edge Detector v2 — Hessian curvature-based ridge/valley detection
  * 
- * Step 2 of the corrected pipeline:
- *   - Sobel gradient on DSM → detect local height maxima (ridges) and minima (valleys)
- *   - Connected-component analysis groups gradient-response pixels into line segments
- *   - Least-squares fit through each component → candidate structural edges at any angle
- *   - Edges scored by DSM gradient strength
+ * KEY FIX: v1 used non-maximum suppression on raw elevation, which fails on
+ * smooth slopes (a pixel is never a local max on a planar surface).
  * 
- * This replaces the old axis-aligned findLinearRuns() which only found horizontal/vertical lines.
+ * v2 uses the Hessian matrix (second derivatives) to detect curvature:
+ *   Ridge = negative curvature (concave DOWN in cross-section)
+ *   Valley = positive curvature (concave UP in cross-section)
+ * 
+ * Pipeline:
+ *   1. Smooth DSM with Gaussian to suppress noise
+ *   2. Compute Hessian eigenvalues at each pixel
+ *   3. Ridge pixels: min eigenvalue < -threshold (strong negative curvature)
+ *   4. Valley pixels: max eigenvalue > threshold (strong positive curvature)
+ *   5. Connected component analysis → line fit → geographic edges
  */
 
 import type { DSMGrid, MaskedDSMGrid } from "./dsm-analyzer.ts";
@@ -18,11 +24,11 @@ type XY = [number, number];
 export interface DSMEdgeCandidate {
   start: XY;            // [lng, lat]
   end: XY;              // [lng, lat]
-  startPx: [number, number]; // [x, y] in DSM pixel coords
+  startPx: [number, number];
   endPx: [number, number];
   type: 'ridge' | 'valley';
-  dsm_score: number;    // 0–1 confidence from gradient strength
-  pixelCount: number;   // how many pixels in the connected component
+  dsm_score: number;    // 0–1
+  pixelCount: number;
   avgGradientMag: number;
 }
 
@@ -37,135 +43,227 @@ export interface EdgeDetectionResult {
     ridgeCandidates: number;
     valleyCandidates: number;
     processingMs: number;
+    elevRange: string;
+    curvatureRange: string;
   };
 }
 
-// ============= SOBEL GRADIENT =============
+// ============= GAUSSIAN SMOOTHING =============
 
 /**
- * Compute Sobel gradient magnitude and direction for each pixel.
- * Returns { gx, gy, mag } arrays (flat, row-major).
+ * Apply 5x5 Gaussian blur to reduce noise before computing second derivatives.
+ * Only operates on valid (non-noData) pixels; output inherits noData.
  */
-function sobelGradient(
+function gaussianSmooth(
   data: Float32Array,
   width: number,
   height: number,
-  noData: number
-): { gx: Float32Array; gy: Float32Array; mag: Float32Array } {
-  const len = width * height;
-  const gx = new Float32Array(len);
-  const gy = new Float32Array(len);
-  const mag = new Float32Array(len);
+  noData: number,
+  mask: Uint8Array | null
+): Float32Array {
+  // 5x5 Gaussian kernel (sigma ≈ 1.0)
+  const k = [
+    1, 4, 7, 4, 1,
+    4, 16, 26, 16, 4,
+    7, 26, 41, 26, 7,
+    4, 16, 26, 16, 4,
+    1, 4, 7, 4, 1,
+  ];
+  const kSum = 273;
+  const r = 2; // radius
 
-  // Get pixel value, substituting center value for noData neighbors
-  // so roof-edge pixels aren't zeroed out by off-roof noData
-  const getOrCenter = (x: number, y: number, center: number): number => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return center;
-    const v = data[y * width + x];
-    return (v === noData || isNaN(v)) ? center : v;
+  const out = new Float32Array(data.length);
+  out.fill(noData);
+
+  for (let y = r; y < height - r; y++) {
+    for (let x = r; x < width - r; x++) {
+      const idx = y * width + x;
+      if (mask && mask[idx] === 0) continue;
+      if (data[idx] === noData || isNaN(data[idx])) continue;
+
+      let sum = 0, wSum = 0;
+      for (let ky = -r; ky <= r; ky++) {
+        for (let kx = -r; kx <= r; kx++) {
+          const ni = (y + ky) * width + (x + kx);
+          const v = data[ni];
+          if (v === noData || isNaN(v)) continue;
+          if (mask && mask[ni] === 0) continue;
+          const w = k[(ky + r) * 5 + (kx + r)];
+          sum += v * w;
+          wSum += w;
+        }
+      }
+      if (wSum > 0) out[idx] = sum / wSum;
+    }
+  }
+  return out;
+}
+
+// ============= HESSIAN (SECOND DERIVATIVES) =============
+
+/**
+ * Compute Hessian eigenvalues at each pixel.
+ * Hxx = d²z/dx², Hyy = d²z/dy², Hxy = d²z/dxdy
+ * Returns min and max eigenvalues (lambda1 <= lambda2).
+ * 
+ * Ridge: lambda1 << 0 (strong negative curvature perpendicular to ridge)
+ * Valley: lambda2 >> 0 (strong positive curvature perpendicular to valley)
+ */
+function computeHessianEigenvalues(
+  data: Float32Array,
+  width: number,
+  height: number,
+  noData: number,
+  mask: Uint8Array | null
+): { minEig: Float32Array; maxEig: Float32Array } {
+  const len = width * height;
+  const minEig = new Float32Array(len); // lambda1 (most negative)
+  const maxEig = new Float32Array(len); // lambda2 (most positive)
+
+  const valid = (x: number, y: number): number | null => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return null;
+    const idx = y * width + x;
+    if (mask && mask[idx] === 0) return null;
+    const v = data[idx];
+    if (v === noData || isNaN(v)) return null;
+    return v;
   };
 
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      const centerVal = data[y * width + x];
-      // Skip if center is noData
-      if (centerVal === noData || isNaN(centerVal)) continue;
-
-      // Get 3x3 neighborhood — noData neighbors get center value (zero gradient contribution)
-      const tl = getOrCenter(x - 1, y - 1, centerVal);
-      const tc = getOrCenter(x, y - 1, centerVal);
-      const tr = getOrCenter(x + 1, y - 1, centerVal);
-      const ml = getOrCenter(x - 1, y, centerVal);
-      const mr = getOrCenter(x + 1, y, centerVal);
-      const bl = getOrCenter(x - 1, y + 1, centerVal);
-      const bc = getOrCenter(x, y + 1, centerVal);
-      const br = getOrCenter(x + 1, y + 1, centerVal);
-
       const idx = y * width + x;
-      gx[idx] = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
-      gy[idx] = (bl + 2 * bc + br) - (tl + 2 * tc + tr);
-      mag[idx] = Math.sqrt(gx[idx] * gx[idx] + gy[idx] * gy[idx]);
+      if (mask && mask[idx] === 0) continue;
+      
+      const c = valid(x, y);
+      const l = valid(x - 1, y);
+      const r = valid(x + 1, y);
+      const t = valid(x, y - 1);
+      const b = valid(x, y + 1);
+      const tl = valid(x - 1, y - 1);
+      const tr = valid(x + 1, y - 1);
+      const bl = valid(x - 1, y + 1);
+      const br = valid(x + 1, y + 1);
+
+      if (c === null || l === null || r === null || t === null || b === null) continue;
+
+      // Second derivatives
+      const Hxx = l - 2 * c + r;
+      const Hyy = t - 2 * c + b;
+
+      // Mixed partial: use Sobel-style cross derivative if all corners valid
+      let Hxy = 0;
+      if (tl !== null && tr !== null && bl !== null && br !== null) {
+        Hxy = (br - bl - tr + tl) / 4;
+      }
+
+      // Eigenvalues of 2x2 symmetric matrix [[Hxx, Hxy], [Hxy, Hyy]]
+      const trace = Hxx + Hyy;
+      const det = Hxx * Hyy - Hxy * Hxy;
+      const disc = Math.sqrt(Math.max(0, trace * trace / 4 - det));
+
+      minEig[idx] = trace / 2 - disc;
+      maxEig[idx] = trace / 2 + disc;
     }
   }
 
-  return { gx, gy, mag };
+  return { minEig, maxEig };
 }
 
-// ============= RIDGE/VALLEY PIXEL DETECTION =============
+// ============= STRUCTURAL PIXEL DETECTION =============
 
-/**
- * Detect ridge pixels: local height maxima along the gradient direction.
- * A pixel is a ridge pixel if its elevation is higher than both neighbors
- * along the gradient direction (non-maximum suppression on elevation).
- */
 function detectStructuralPixels(
-  data: Float32Array,
-  gx: Float32Array,
-  gy: Float32Array,
-  mag: Float32Array,
+  minEig: Float32Array,
+  maxEig: Float32Array,
   width: number,
   height: number,
-  noData: number,
   mask: Uint8Array | null,
   type: 'ridge' | 'valley'
 ): Uint8Array {
   const result = new Uint8Array(width * height);
 
-  // Compute gradient magnitude threshold (adaptive: top 20% of gradient values)
-  const validMags: number[] = [];
-  for (let i = 0; i < mag.length; i++) {
-    if (mag[i] > 0 && data[i] !== noData && (!mask || mask[i] > 0)) {
-      validMags.push(mag[i]);
+  // Collect curvature values to compute adaptive threshold
+  const curvatureValues: number[] = [];
+  for (let i = 0; i < minEig.length; i++) {
+    if (mask && mask[i] === 0) continue;
+    if (type === 'ridge' && minEig[i] < 0) {
+      curvatureValues.push(-minEig[i]); // magnitude
+    } else if (type === 'valley' && maxEig[i] > 0) {
+      curvatureValues.push(maxEig[i]);
     }
   }
-  if (validMags.length < 10) return result;
 
-  validMags.sort((a, b) => a - b);
-  const gradThreshold = validMags[Math.floor(validMags.length * 0.15)] || 0.05;
+  if (curvatureValues.length < 10) return result;
 
+  curvatureValues.sort((a, b) => a - b);
+
+  // Use top 5% as strong curvature threshold for candidate pixels
+  // This captures only the strongest curvature changes (actual ridges/valleys)
+  const pctIdx = Math.floor(curvatureValues.length * 0.92);
+  const threshold = curvatureValues[pctIdx] || 0.001;
+
+  let count = 0;
   for (let y = 2; y < height - 2; y++) {
     for (let x = 2; x < width - 2; x++) {
       const idx = y * width + x;
       if (mask && mask[idx] === 0) continue;
-      if (data[idx] === noData || isNaN(data[idx])) continue;
-      if (mag[idx] < gradThreshold) continue;
-
-      // Gradient direction
-      const angle = Math.atan2(gy[idx], gx[idx]);
-      // Sample perpendicular to the gradient for ridge/valley detection
-      // Ridge: max elevation perpendicular to gradient → the gradient points
-      //        away from the ridge on both sides
-      // Valley: min elevation perpendicular to gradient
-
-      // Step along gradient direction to check if this is a local max/min
-      const dx = Math.cos(angle);
-      const dy = Math.sin(angle);
-
-      // Sample 2 pixels in each direction along gradient
-      const x1 = Math.round(x + dx);
-      const y1 = Math.round(y + dy);
-      const x2 = Math.round(x - dx);
-      const y2 = Math.round(y - dy);
-
-      if (x1 < 0 || x1 >= width || y1 < 0 || y1 >= height) continue;
-      if (x2 < 0 || x2 >= width || y2 < 0 || y2 >= height) continue;
-
-      const v0 = data[idx];
-      const v1 = data[y1 * width + x1];
-      const v2 = data[y2 * width + x2];
-
-      if (v1 === noData || v2 === noData) continue;
 
       if (type === 'ridge') {
-        // Ridge: this pixel is higher than both neighbors along gradient
-        if (v0 > v1 && v0 > v2) {
+        // Ridge: strong negative curvature (surface curves DOWN from this point)
+        if (-minEig[idx] >= threshold) {
           result[idx] = 1;
+          count++;
         }
       } else {
-        // Valley: this pixel is lower than both neighbors along gradient
-        if (v0 < v1 && v0 < v2) {
+        // Valley: strong positive curvature (surface curves UP from this point)
+        if (maxEig[idx] >= threshold) {
           result[idx] = 1;
+          count++;
         }
+      }
+    }
+  }
+
+  return result;
+}
+
+// ============= NON-MAXIMUM SUPPRESSION ON CURVATURE =============
+
+/**
+ * Thin detected pixels to 1-pixel wide lines by suppressing non-maxima
+ * along the curvature gradient direction.
+ */
+function nonMaximumSuppression(
+  bitmap: Uint8Array,
+  curvature: Float32Array,
+  width: number,
+  height: number
+): Uint8Array {
+  const result = new Uint8Array(width * height);
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x;
+      if (bitmap[idx] === 0) continue;
+
+      const val = Math.abs(curvature[idx]);
+      
+      // Check 8 neighbors — keep only if this is the local max of curvature magnitude
+      let isMax = true;
+      // Only suppress along the gradient of curvature (approximate with 4-connectivity)
+      const neighbors = [
+        curvature[(y - 1) * width + x],
+        curvature[(y + 1) * width + x],
+        curvature[y * width + (x - 1)],
+        curvature[y * width + (x + 1)],
+      ];
+
+      // Simple: keep if stronger than at least 2 of the 4 cardinal neighbors
+      let strongerCount = 0;
+      for (const n of neighbors) {
+        if (val >= Math.abs(n)) strongerCount++;
+      }
+      if (strongerCount >= 2) {
+        result[idx] = 1;
       }
     }
   }
@@ -176,25 +274,21 @@ function detectStructuralPixels(
 // ============= CONNECTED COMPONENTS =============
 
 interface Component {
-  pixels: Array<[number, number]>; // [x, y]
+  pixels: Array<[number, number]>;
   sumX: number;
   sumY: number;
   sumXX: number;
   sumXY: number;
   sumYY: number;
-  avgGradMag: number;
+  avgCurvature: number;
 }
 
-/**
- * Extract connected components from a binary pixel map using 8-connectivity.
- * Returns components with at least minPixels pixels.
- */
 function extractConnectedComponents(
   bitmap: Uint8Array,
+  curvature: Float32Array,
   width: number,
   height: number,
-  mag: Float32Array,
-  minPixels: number = 3
+  minPixels: number
 ): Component[] {
   const visited = new Uint8Array(width * height);
   const components: Component[] = [];
@@ -204,18 +298,16 @@ function extractConnectedComponents(
       const idx = y * width + x;
       if (bitmap[idx] === 0 || visited[idx]) continue;
 
-      // BFS flood fill
       const queue: Array<[number, number]> = [[x, y]];
       const pixels: Array<[number, number]> = [];
-      let sumGrad = 0;
+      let sumCurv = 0;
       visited[idx] = 1;
 
       while (queue.length > 0) {
         const [cx, cy] = queue.pop()!;
         pixels.push([cx, cy]);
-        sumGrad += mag[cy * width + cx];
+        sumCurv += Math.abs(curvature[cy * width + cx]);
 
-        // 8-connectivity
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
@@ -233,7 +325,6 @@ function extractConnectedComponents(
 
       if (pixels.length < minPixels) continue;
 
-      // Compute statistics for least-squares line fit
       let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0, sumYY = 0;
       for (const [px, py] of pixels) {
         sumX += px;
@@ -245,12 +336,8 @@ function extractConnectedComponents(
 
       components.push({
         pixels,
-        sumX,
-        sumY,
-        sumXX,
-        sumXY,
-        sumYY,
-        avgGradMag: sumGrad / pixels.length,
+        sumX, sumY, sumXX, sumXY, sumYY,
+        avgCurvature: sumCurv / pixels.length,
       });
     }
   }
@@ -260,10 +347,6 @@ function extractConnectedComponents(
 
 // ============= LEAST-SQUARES LINE FIT =============
 
-/**
- * Fit a line to a connected component using PCA (principal axis).
- * Returns the two extreme points projected onto the principal axis.
- */
 function fitLineToComponent(
   comp: Component
 ): { startPx: [number, number]; endPx: [number, number]; fitness: number } | null {
@@ -273,23 +356,19 @@ function fitLineToComponent(
   const mx = comp.sumX / n;
   const my = comp.sumY / n;
 
-  // Covariance matrix
   const cxx = comp.sumXX / n - mx * mx;
   const cxy = comp.sumXY / n - mx * my;
   const cyy = comp.sumYY / n - my * my;
 
-  // Principal eigenvector via analytic formula for 2x2 symmetric matrix
   const trace = cxx + cyy;
   const det = cxx * cyy - cxy * cxy;
   const disc = Math.sqrt(Math.max(0, trace * trace / 4 - det));
   const lambda1 = trace / 2 + disc;
   const lambda2 = trace / 2 - disc;
 
-  // Fitness: how "line-like" is the component (ratio of eigenvalues)
   const fitness = lambda1 > 0 ? 1 - (lambda2 / lambda1) : 0;
-  if (fitness < 0.35) return null; // Too blobby, not a line
+  if (fitness < 0.3) return null; // Too blobby
 
-  // Principal direction
   let dx: number, dy: number;
   if (Math.abs(cxy) > 1e-10) {
     dx = lambda1 - cyy;
@@ -303,7 +382,6 @@ function fitLineToComponent(
   dx /= len;
   dy /= len;
 
-  // Project all pixels onto principal axis
   let minT = Infinity, maxT = -Infinity;
   for (const [px, py] of comp.pixels) {
     const t = (px - mx) * dx + (py - my) * dy;
@@ -318,20 +396,8 @@ function fitLineToComponent(
   };
 }
 
-// ============= MAIN DETECTION FUNCTION =============
+// ============= MAIN DETECTION =============
 
-/**
- * Detect structural edges (ridges and valleys) from DSM using gradient analysis.
- * Works at any angle — no axis-aligned restriction.
- * 
- * Pipeline:
- *   1. Sobel gradient on DSM
- *   2. Non-maximum suppression to find ridge/valley pixels
- *   3. Connected component analysis
- *   4. Least-squares line fit per component
- *   5. Convert pixel coords to geographic coords
- *   6. Score by gradient magnitude and line fitness
- */
 export function detectStructuralEdges(
   dsmGrid: DSMGrid,
   mask: Uint8Array | null = null
@@ -339,26 +405,46 @@ export function detectStructuralEdges(
   const startMs = Date.now();
   const { data, width, height, noDataValue } = dsmGrid;
 
-  // Count roof pixels
   let roofPixels = 0;
-  if (mask) {
-    for (let i = 0; i < mask.length; i++) {
-      if (mask[i] > 0) roofPixels++;
-    }
-  } else {
-    for (let i = 0; i < data.length; i++) {
-      if (data[i] !== noDataValue && !isNaN(data[i])) roofPixels++;
+  let elevMin = Infinity, elevMax = -Infinity;
+  for (let i = 0; i < data.length; i++) {
+    const inRoof = mask ? mask[i] > 0 : (data[i] !== noDataValue && !isNaN(data[i]));
+    if (inRoof) {
+      roofPixels++;
+      if (data[i] < elevMin) elevMin = data[i];
+      if (data[i] > elevMax) elevMax = data[i];
     }
   }
 
-  console.log(`[DSM_EDGE_DETECTOR] Grid ${width}x${height}, ${roofPixels} roof pixels`);
+  console.log(`[DSM_EDGE_DETECTOR] Grid ${width}x${height}, ${roofPixels} roof pixels, elev range: ${elevMin.toFixed(2)}-${elevMax.toFixed(2)}m (${(elevMax - elevMin).toFixed(2)}m)`);
 
-  // Step 1: Sobel gradient
-  const { gx, gy, mag } = sobelGradient(data, width, height, noDataValue);
+  if (roofPixels < 50 || (elevMax - elevMin) < 0.1) {
+    console.log(`[DSM_EDGE_DETECTOR] Insufficient data: ${roofPixels} pixels, ${(elevMax - elevMin).toFixed(2)}m range`);
+    return emptyResult(width, height, roofPixels, Date.now() - startMs);
+  }
 
-  // Step 2: Detect ridge and valley pixels
-  const ridgeBitmap = detectStructuralPixels(data, gx, gy, mag, width, height, noDataValue, mask, 'ridge');
-  const valleyBitmap = detectStructuralPixels(data, gx, gy, mag, width, height, noDataValue, mask, 'valley');
+  // Step 1: Gaussian smooth to reduce noise
+  const smoothed = gaussianSmooth(data, width, height, noDataValue, mask);
+
+  // Step 2: Compute Hessian eigenvalues (curvature)
+  const { minEig, maxEig } = computeHessianEigenvalues(smoothed, width, height, noDataValue, mask);
+
+  // Log curvature statistics
+  let curvMin = 0, curvMax = 0;
+  for (let i = 0; i < minEig.length; i++) {
+    if (mask && mask[i] === 0) continue;
+    if (minEig[i] < curvMin) curvMin = minEig[i];
+    if (maxEig[i] > curvMax) curvMax = maxEig[i];
+  }
+  console.log(`[DSM_EDGE_DETECTOR] Curvature range: min_eig=${curvMin.toFixed(6)}, max_eig=${curvMax.toFixed(6)}`);
+
+  // Step 3: Detect ridge and valley pixels from curvature
+  const ridgeBitmapRaw = detectStructuralPixels(minEig, maxEig, width, height, mask, 'ridge');
+  const valleyBitmapRaw = detectStructuralPixels(minEig, maxEig, width, height, mask, 'valley');
+
+  // Step 4: Non-maximum suppression to thin to 1-pixel lines
+  const ridgeBitmap = nonMaximumSuppression(ridgeBitmapRaw, minEig, width, height);
+  const valleyBitmap = nonMaximumSuppression(valleyBitmapRaw, maxEig, width, height);
 
   let ridgePixelCount = 0, valleyPixelCount = 0;
   for (let i = 0; i < ridgeBitmap.length; i++) {
@@ -366,21 +452,25 @@ export function detectStructuralEdges(
     if (valleyBitmap[i]) valleyPixelCount++;
   }
 
-  // Step 3: Connected components
-  const minComponentPixels = Math.max(3, Math.floor(Math.min(width, height) * 0.015));
-  const ridgeComponents = extractConnectedComponents(ridgeBitmap, width, height, mag, minComponentPixels);
-  const valleyComponents = extractConnectedComponents(valleyBitmap, width, height, mag, minComponentPixels);
+  console.log(`[DSM_EDGE_DETECTOR] Ridge pixels: ${ridgePixelCount}, Valley pixels: ${valleyPixelCount}`);
 
-  // Step 4 & 5: Line fit and convert to geographic
+  // Step 5: Connected components with minimum size
+  // At ~0.1m/pixel, a 3m ridge is ~30 pixels. Use 1% of smallest dimension.
+  const minComponentPixels = Math.max(5, Math.floor(Math.min(width, height) * 0.01));
+  const ridgeComponents = extractConnectedComponents(ridgeBitmap, minEig, width, height, minComponentPixels);
+  const valleyComponents = extractConnectedComponents(valleyBitmap, maxEig, width, height, minComponentPixels);
+
+  console.log(`[DSM_EDGE_DETECTOR] Components: ${ridgeComponents.length} ridge, ${valleyComponents.length} valley (min ${minComponentPixels}px)`);
+
+  // Step 6: Line fit and convert to geographic
   const ridges: DSMEdgeCandidate[] = [];
   const valleys: DSMEdgeCandidate[] = [];
 
-  // Compute max gradient for normalization
-  let maxGrad = 0;
+  let maxCurv = 0;
   for (const c of [...ridgeComponents, ...valleyComponents]) {
-    if (c.avgGradMag > maxGrad) maxGrad = c.avgGradMag;
+    if (c.avgCurvature > maxCurv) maxCurv = c.avgCurvature;
   }
-  if (maxGrad === 0) maxGrad = 1;
+  if (maxCurv === 0) maxCurv = 1;
 
   for (const comp of ridgeComponents) {
     const line = fitLineToComponent(comp);
@@ -389,9 +479,8 @@ export function detectStructuralEdges(
     const start = pixelToGeo(line.startPx[0], line.startPx[1], dsmGrid);
     const end = pixelToGeo(line.endPx[0], line.endPx[1], dsmGrid);
 
-    // DSM score: combination of gradient magnitude and line fitness
-    const gradScore = Math.min(1, comp.avgGradMag / maxGrad);
-    const dsmScore = 0.5 * gradScore + 0.5 * line.fitness;
+    const curvScore = Math.min(1, comp.avgCurvature / maxCurv);
+    const dsmScore = 0.4 * curvScore + 0.3 * line.fitness + 0.3 * Math.min(1, comp.pixels.length / 50);
 
     ridges.push({
       start, end,
@@ -400,7 +489,7 @@ export function detectStructuralEdges(
       type: 'ridge',
       dsm_score: dsmScore,
       pixelCount: comp.pixels.length,
-      avgGradientMag: comp.avgGradMag,
+      avgGradientMag: comp.avgCurvature,
     });
   }
 
@@ -411,8 +500,8 @@ export function detectStructuralEdges(
     const start = pixelToGeo(line.startPx[0], line.startPx[1], dsmGrid);
     const end = pixelToGeo(line.endPx[0], line.endPx[1], dsmGrid);
 
-    const gradScore = Math.min(1, comp.avgGradMag / maxGrad);
-    const dsmScore = 0.5 * gradScore + 0.5 * line.fitness;
+    const curvScore = Math.min(1, comp.avgCurvature / maxCurv);
+    const dsmScore = 0.4 * curvScore + 0.3 * line.fitness + 0.3 * Math.min(1, comp.pixels.length / 50);
 
     valleys.push({
       start, end,
@@ -421,11 +510,10 @@ export function detectStructuralEdges(
       type: 'valley',
       dsm_score: dsmScore,
       pixelCount: comp.pixels.length,
-      avgGradientMag: comp.avgGradMag,
+      avgGradientMag: comp.avgCurvature,
     });
   }
 
-  // Sort by score descending
   ridges.sort((a, b) => b.dsm_score - a.dsm_score);
   valleys.sort((a, b) => b.dsm_score - a.dsm_score);
 
@@ -444,6 +532,26 @@ export function detectStructuralEdges(
       ridgeCandidates: ridges.length,
       valleyCandidates: valleys.length,
       processingMs,
+      elevRange: `${elevMin.toFixed(2)}-${elevMax.toFixed(2)}m`,
+      curvatureRange: `${curvMin.toFixed(6)} to ${curvMax.toFixed(6)}`,
+    },
+  };
+}
+
+function emptyResult(width: number, height: number, roofPixels: number, ms: number): EdgeDetectionResult {
+  return {
+    ridges: [],
+    valleys: [],
+    stats: {
+      gridSize: `${width}x${height}`,
+      roofPixels,
+      ridgePixels: 0,
+      valleyPixels: 0,
+      ridgeCandidates: 0,
+      valleyCandidates: 0,
+      processingMs: ms,
+      elevRange: 'N/A',
+      curvatureRange: 'N/A',
     },
   };
 }
