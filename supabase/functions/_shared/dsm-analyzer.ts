@@ -241,12 +241,6 @@ async function parseRealGeoTIFF(
         return null;
       }
     }
-        };
-      } else {
-        console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
-        return null;
-      }
-    }
 
     // Get nodata value
     const fileDir = image.getFileDirectory();
