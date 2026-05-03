@@ -1,24 +1,35 @@
 /**
- * Planar Roof Solver — topology-first plane construction.
+ * Planar Roof Solver v2 — Production-grade topology reconstruction.
  *
- * Instead of splitting a footprint recursively and hoping polygons align,
- * this solver builds a planar graph from footprint edges + interior ridge/
- * skeleton lines, then extracts faces (planes) via minimal-cycle traversal.
+ * Pipeline:
+ *   1. Snap footprint + interior edges
+ *   2. Collinear merge (angle < 5°, overlapping projections)
+ *   3. Dynamic segment filtering (by classification priority)
+ *   4. Ordered intersection filtering + splitting
+ *   5. Graph consistency (dangling removal)
+ *   6. Perimeter re-injection (hard guarantee)
+ *   7. Build adjacency + extract minimal cycles
+ *   8. Face filtering
+ *   9. Polygon simplification (Douglas-Peucker 2px)
  *
  * Guarantees:
- *   • Every plane edge is EITHER a shared boundary (2 planes) or exterior (1 plane)
- *   • Planes are a partition of the footprint — no overlaps, no gaps
- *   • Edge classification can simply count face adjacency
+ *   • Every face edge is EITHER shared (2 faces) or exterior (1 face)
+ *   • Footprint edges are NEVER pruned — re-injected unconditionally
+ *   • Intersection splits only occur when geometrically justified
  */
 
 import { filterRoofFaces } from "./face-filter.ts";
 
 type Pt = { x: number; y: number };
-type Seg = { a: Pt; b: Pt };
+type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number };
 
-const ENDPOINT_SNAP_TOL_PX = 8;
+const ENDPOINT_SNAP_TOL_PX = 12;
 const FOOTPRINT_TOUCH_TOL_PX = 10;
 const MIN_SEGMENT_LENGTH_PX = 3;
+const COLLINEAR_ANGLE_DEG = 5;
+const INTERSECTION_MIN_ANGLE_DEG = 15;
+const INTERSECTION_MIN_DISTANCE_PX = 6;
+const SIMPLIFY_TOLERANCE_PX = 2;
 
 // ── GRID SNAP ──────────────────────────────────────────────
 function snap(p: Pt, grid = 2): Pt {
@@ -53,16 +64,26 @@ function cross(a: Pt, b: Pt): number {
   return a.x * b.y - a.y * b.x;
 }
 
-function segmentIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
-  const r = sub(b, a);
-  const s = sub(d, c);
-  const den = cross(r, s);
-  if (Math.abs(den) < 1e-9) return null;
-  const qp = sub(c, a);
-  const t = cross(qp, s) / den;
-  const u = cross(qp, r) / den;
-  if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
-  return snap({ x: a.x + r.x * t, y: a.y + r.y * t });
+function segAngleRad(s: Seg): number {
+  return Math.atan2(s.b.y - s.a.y, s.b.x - s.a.x);
+}
+
+function angleBetweenSegs(s1: Seg, s2: Seg): number {
+  const a1 = segAngleRad(s1);
+  const a2 = segAngleRad(s2);
+  let diff = Math.abs(a1 - a2);
+  if (diff > Math.PI) diff = 2 * Math.PI - diff;
+  if (diff > Math.PI / 2) diff = Math.PI - diff; // treat opposite directions as same
+  return diff * 180 / Math.PI; // degrees
+}
+
+// ── POINT ON SEGMENT ─────────────────────────────────────
+function projectPointOnSegment(p: Pt, a: Pt, b: Pt): Pt | null {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1) return null;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return { x: a.x + t * dx, y: a.y + t * dy };
 }
 
 function pointOnSegment(p: Pt, a: Pt, b: Pt, tol = 2.5): boolean {
@@ -80,6 +101,55 @@ function pointNearFootprint(p: Pt, footprint: Pt[], tol = FOOTPRINT_TOUCH_TOL_PX
   return false;
 }
 
+function snapToFootprint(p: Pt, footprint: Pt[], tol = 6): Pt {
+  let best = p;
+  let bestD = tol;
+  for (const v of footprint) {
+    const d = Math.hypot(v.x - p.x, v.y - p.y);
+    if (d < bestD) { bestD = d; best = v; }
+  }
+  for (let i = 0; i < footprint.length; i++) {
+    const a = footprint[i];
+    const b = footprint[(i + 1) % footprint.length];
+    const proj = projectPointOnSegment(p, a, b);
+    if (proj) {
+      const d = Math.hypot(proj.x - p.x, proj.y - p.y);
+      if (d < bestD) { bestD = d; best = snap(proj); }
+    }
+  }
+  return best;
+}
+
+// ── SEGMENT INTERSECTION ─────────────────────────────────
+function rawSegmentIntersection(a: Pt, b: Pt, c: Pt, d: Pt): { point: Pt; t: number; u: number } | null {
+  const r = sub(b, a);
+  const s = sub(d, c);
+  const den = cross(r, s);
+  if (Math.abs(den) < 1e-9) return null;
+  const qp = sub(c, a);
+  const t = cross(qp, s) / den;
+  const u = cross(qp, r) / den;
+  if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
+  return { point: snap({ x: a.x + r.x * t, y: a.y + r.y * t }), t, u };
+}
+
+// ── MINIMUM DISTANCE BETWEEN SEGMENTS ────────────────────
+function minDistBetweenSegments(s1: Seg, s2: Seg): number {
+  // Approximate: check endpoints of each against the other segment
+  const dists: number[] = [];
+  const proj1a = projectPointOnSegment(s1.a, s2.a, s2.b);
+  if (proj1a) dists.push(dist(s1.a, proj1a));
+  const proj1b = projectPointOnSegment(s1.b, s2.a, s2.b);
+  if (proj1b) dists.push(dist(s1.b, proj1b));
+  const proj2a = projectPointOnSegment(s2.a, s1.a, s1.b);
+  if (proj2a) dists.push(dist(s2.a, proj2a));
+  const proj2b = projectPointOnSegment(s2.b, s1.a, s1.b);
+  if (proj2b) dists.push(dist(s2.b, proj2b));
+  dists.push(dist(s1.a, s2.a), dist(s1.a, s2.b), dist(s1.b, s2.a), dist(s1.b, s2.b));
+  return Math.min(...dists);
+}
+
+// ── SNAP INTERIOR FRAGMENTS ──────────────────────────────
 function snapInteriorFragmentsToGraph(rawLines: Seg[], footprint: Pt[]): Seg[] {
   const anchors: Pt[] = [...footprint];
   const snapEndpoint = (p: Pt): Pt => {
@@ -102,11 +172,12 @@ function snapInteriorFragmentsToGraph(rawLines: Seg[], footprint: Pt[]): Seg[] {
     const k = segKey(a, b);
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ a, b });
+    out.push({ a, b, source: 'interior', edgeType: line.edgeType || 'unclassified', edgeScore: line.edgeScore });
   }
   return out;
 }
 
+// ── EXTEND LINE TO FOOTPRINT ─────────────────────────────
 function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
   const dir = sub(seg.b, seg.a);
   if (Math.hypot(dir.x, dir.y) < 4) return null;
@@ -130,34 +201,153 @@ function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
     if (!unique.some((u) => dist(u.point, h.point) < 3)) unique.push(h);
   }
   if (unique.length >= 2) {
-    return { a: unique[0].point, b: unique[unique.length - 1].point };
+    return { ...seg, a: unique[0].point, b: unique[unique.length - 1].point };
   }
 
   const a = snapToFootprint(seg.a, footprint, 12);
   const b = snapToFootprint(seg.b, footprint, 12);
-  return ptKey(a) !== ptKey(b) ? { a, b } : null;
+  return ptKey(a) !== ptKey(b) ? { ...seg, a, b } : null;
 }
 
-function splitSegmentsAtAllIntersections(segments: Seg[]): Seg[] {
-  const pointsBySeg = segments.map((s) => [s.a, s.b]);
+// ── COLLINEAR MERGE ──────────────────────────────────────
+function mergeCollinearSegments(segments: Seg[]): Seg[] {
+  const merged: Seg[] = [];
+  const used = new Set<number>();
+
+  for (let i = 0; i < segments.length; i++) {
+    if (used.has(i)) continue;
+    let current = segments[i];
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      for (let j = 0; j < segments.length; j++) {
+        if (i === j || used.has(j)) continue;
+        const angleDiff = angleBetweenSegs(current, segments[j]);
+        if (angleDiff > COLLINEAR_ANGLE_DEG) continue;
+
+        // Check if they overlap or are adjacent (project onto shared axis)
+        const dir = sub(current.b, current.a);
+        const len = Math.hypot(dir.x, dir.y);
+        if (len < 1) continue;
+        const nx = dir.x / len, ny = dir.y / len;
+
+        const project = (p: Pt) => (p.x - current.a.x) * nx + (p.y - current.a.y) * ny;
+        const t1 = 0, t2 = len;
+        const t3 = project(segments[j].a), t4 = project(segments[j].b);
+        const minT = Math.min(t3, t4), maxT = Math.max(t3, t4);
+
+        // Check perpendicular distance
+        const midJ = { x: (segments[j].a.x + segments[j].b.x) / 2, y: (segments[j].a.y + segments[j].b.y) / 2 };
+        const projMid = projectPointOnSegment(midJ, current.a, current.b);
+        const perpDist = projMid ? dist(midJ, projMid) : 999;
+        if (perpDist > 15) continue; // too far apart
+
+        // Overlapping or adjacent (gap < 10px)
+        if (minT <= t2 + 10 && maxT >= t1 - 10) {
+          const allT = [t1, t2, minT, maxT];
+          const globalMin = Math.min(...allT);
+          const globalMax = Math.max(...allT);
+          const newA = snap({ x: current.a.x + nx * globalMin, y: current.a.y + ny * globalMin });
+          const newB = snap({ x: current.a.x + nx * globalMax, y: current.a.y + ny * globalMax });
+          // Preserve higher priority type
+          const bestType = priorityType(current.edgeType, segments[j].edgeType);
+          const bestScore = Math.max(current.edgeScore || 0, segments[j].edgeScore || 0);
+          current = { a: newA, b: newB, source: current.source, edgeType: bestType, edgeScore: bestScore };
+          used.add(j);
+          changed = true;
+        }
+      }
+    }
+    merged.push(current);
+  }
+
+  return merged;
+}
+
+function priorityType(a?: string, b?: string): 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified' {
+  const priority: Record<string, number> = { ridge: 4, valley: 4, hip: 3, eave: 2, unclassified: 0 };
+  const pa = priority[a || 'unclassified'] || 0;
+  const pb = priority[b || 'unclassified'] || 0;
+  return (pa >= pb ? a : b) as any || 'unclassified';
+}
+
+// ── DYNAMIC SEGMENT FILTERING ────────────────────────────
+function filterByClassificationPriority(segments: Seg[], footprint: Pt[]): Seg[] {
+  // Build set of nodes connected to ridge/valley
+  const structuralNodes = new Set<string>();
+  for (const s of segments) {
+    if (s.edgeType === 'ridge' || s.edgeType === 'valley') {
+      structuralNodes.add(ptKey(s.a));
+      structuralNodes.add(ptKey(s.b));
+    }
+  }
+
+  return segments.filter(seg => {
+    if (seg.source === 'footprint') return true; // never drop footprint
+    const len = segmentLength(seg);
+    const type = seg.edgeType || 'unclassified';
+
+    switch (type) {
+      case 'ridge':
+      case 'valley':
+        return true; // always keep
+      case 'hip':
+        // keep if > 2px OR connects to ridge/valley
+        return len > 2 || structuralNodes.has(ptKey(seg.a)) || structuralNodes.has(ptKey(seg.b));
+      case 'eave':
+        return len > 3;
+      default: // unclassified
+        return len > 8;
+    }
+  });
+}
+
+// ── ORDERED INTERSECTION FILTERING + SPLITTING ───────────
+function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[]; intersectionCount: number } {
+  const pointsBySeg: Pt[][] = segments.map((s) => [s.a, s.b]);
+  let intersectionCount = 0;
 
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
-      const inter = segmentIntersection(segments[i].a, segments[i].b, segments[j].a, segments[j].b);
+      const inter = rawSegmentIntersection(segments[i].a, segments[i].b, segments[j].a, segments[j].b);
       if (!inter) continue;
-      if (pointOnSegment(inter, segments[i].a, segments[i].b)) pointsBySeg[i].push(inter);
-      if (pointOnSegment(inter, segments[j].a, segments[j].b)) pointsBySeg[j].push(inter);
+
+      // ORDERED INTERSECTION FILTERING:
+
+      // 1. Collinear check (angle < 5°) → skip immediately
+      const angleDiff = angleBetweenSegs(segments[i], segments[j]);
+      if (angleDiff < COLLINEAR_ANGLE_DEG) continue;
+
+      // 2. Crossing angle < 15° → skip
+      if (angleDiff < INTERSECTION_MIN_ANGLE_DEG) continue;
+
+      // 3. Min distance between segments > 6px → skip
+      const segDist = minDistBetweenSegments(segments[i], segments[j]);
+      if (segDist > INTERSECTION_MIN_DISTANCE_PX) continue;
+
+      // 4. Near endpoint → skip (already handled by snapping)
+      const nearEndpointI = dist(inter.point, segments[i].a) < ENDPOINT_SNAP_TOL_PX ||
+                            dist(inter.point, segments[i].b) < ENDPOINT_SNAP_TOL_PX;
+      const nearEndpointJ = dist(inter.point, segments[j].a) < ENDPOINT_SNAP_TOL_PX ||
+                            dist(inter.point, segments[j].b) < ENDPOINT_SNAP_TOL_PX;
+      if (nearEndpointI || nearEndpointJ) continue;
+
+      // 5. Accept split
+      intersectionCount++;
+      if (pointOnSegment(inter.point, segments[i].a, segments[i].b)) pointsBySeg[i].push(inter.point);
+      if (pointOnSegment(inter.point, segments[j].a, segments[j].b)) pointsBySeg[j].push(inter.point);
     }
   }
 
   const out: Seg[] = [];
   const seen = new Set<string>();
-  const add = (a: Pt, b: Pt) => {
+  const add = (a: Pt, b: Pt, parent: Seg) => {
     if (ptKey(a) === ptKey(b) || dist(a, b) < 3) return;
     const k = segKey(a, b);
     if (seen.has(k)) return;
     seen.add(k);
-    out.push({ a, b });
+    out.push({ a, b, source: parent.source, edgeType: parent.edgeType, edgeScore: parent.edgeScore });
   };
 
   for (let i = 0; i < segments.length; i++) {
@@ -168,12 +358,13 @@ function splitSegmentsAtAllIntersections(segments: Seg[]): Seg[] {
       .map(snap)
       .filter((p, idx, arr) => arr.findIndex((q) => ptKey(q) === ptKey(p)) === idx)
       .sort((p, q) => (((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / len2) - (((q.x - s.a.x) * dx + (q.y - s.a.y) * dy) / len2));
-    for (let k = 0; k < pts.length - 1; k++) add(pts[k], pts[k + 1]);
+    for (let k = 0; k < pts.length - 1; k++) add(pts[k], pts[k + 1], s);
   }
 
-  return out;
+  return { result: out, intersectionCount };
 }
 
+// ── PRUNE DANGLING + GRAPH CONSISTENCY ───────────────────
 function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept: Seg[]; removed: number } {
   let current = segments;
   let removed = 0;
@@ -189,10 +380,14 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
     }
 
     const next = current.filter((seg) => {
+      // Footprint segments are immune to removal
+      if (seg.source === 'footprint') return true;
+
       const aBoundary = pointNearFootprint(seg.a, footprint, 3);
       const bBoundary = pointNearFootprint(seg.b, footprint, 3);
       const footprintEdge = aBoundary && bBoundary && pointNearFootprint({ x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 }, footprint, 3);
       if (footprintEdge) return true;
+
       const aDangling = (degree.get(ptKey(seg.a)) || 0) <= 1 && !aBoundary;
       const bDangling = (degree.get(ptKey(seg.b)) || 0) <= 1 && !bBoundary;
       if (aDangling || bDangling) {
@@ -206,58 +401,79 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
     current = next;
   }
 
+  // Final graph consistency pass: remove edges on nodes with degree < 2 not on boundary
+  const finalDegree = new Map<string, number>();
+  for (const seg of current) {
+    const ka = ptKey(seg.a), kb = ptKey(seg.b);
+    finalDegree.set(ka, (finalDegree.get(ka) || 0) + 1);
+    finalDegree.set(kb, (finalDegree.get(kb) || 0) + 1);
+  }
+  
+  current = current.filter(seg => {
+    if (seg.source === 'footprint') return true;
+    const degA = finalDegree.get(ptKey(seg.a)) || 0;
+    const degB = finalDegree.get(ptKey(seg.b)) || 0;
+    const aBound = pointNearFootprint(seg.a, footprint, 3);
+    const bBound = pointNearFootprint(seg.b, footprint, 3);
+    if (degA < 2 && !aBound) { removed++; return false; }
+    if (degB < 2 && !bBound) { removed++; return false; }
+    return true;
+  });
+
   return { kept: current, removed };
 }
 
-// ── INTERSECT interior segments with footprint edges ──────
-// Clip ridge endpoints to the nearest footprint vertex/edge when they
-// are close but not exactly on the boundary.
-function snapToFootprint(p: Pt, footprint: Pt[], tol = 6): Pt {
-  let best = p;
-  let bestD = tol;
-  // Snap to vertex
-  for (const v of footprint) {
-    const d = Math.hypot(v.x - p.x, v.y - p.y);
-    if (d < bestD) { bestD = d; best = v; }
+// ── PERIMETER RE-INJECTION ───────────────────────────────
+function reinjectPerimeter(graphSegments: Seg[], footprint: Pt[]): Seg[] {
+  const segSet = new Set<string>();
+  for (const seg of graphSegments) {
+    segSet.add(segKey(seg.a, seg.b));
   }
-  // Snap to edge
+
+  const result = [...graphSegments];
   for (let i = 0; i < footprint.length; i++) {
     const a = footprint[i];
     const b = footprint[(i + 1) % footprint.length];
-    const proj = projectPointOnSegment(p, a, b);
-    if (proj) {
-      const d = Math.hypot(proj.x - p.x, proj.y - p.y);
-      if (d < bestD) { bestD = d; best = snap(proj); }
+    const k = segKey(a, b);
+    if (!segSet.has(k)) {
+      // Check if this edge is covered by sub-segments
+      const dir = sub(b, a);
+      const len = Math.hypot(dir.x, dir.y);
+      if (len < 2) continue;
+
+      // Check coverage by existing segments
+      let covered = false;
+      for (const seg of graphSegments) {
+        if (seg.source !== 'footprint') continue;
+        const midSeg = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
+        if (pointOnSegment(midSeg, a, b, 3)) {
+          covered = true;
+          break;
+        }
+      }
+      if (!covered) {
+        result.push({ a, b, source: 'footprint', edgeType: 'eave', edgeScore: 0.85 });
+        segSet.add(k);
+      }
     }
   }
-  return best;
+
+  return result;
 }
 
-function projectPointOnSegment(p: Pt, a: Pt, b: Pt): Pt | null {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 < 1) return null;
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
-  return { x: a.x + t * dx, y: a.y + t * dy };
-}
-
-// ── INSERT intersection points into footprint edges ───────
-// When an interior line endpoint lands on a footprint edge (not vertex),
-// we must split that footprint edge so the planar graph is fully connected.
+// ── INSERT MIDPOINTS INTO FOOTPRINT ──────────────────────
 function insertMidpointsIntoFootprint(footprint: Pt[], midpoints: Pt[]): Pt[] {
   const result: Pt[] = [];
   for (let i = 0; i < footprint.length; i++) {
     const a = footprint[i];
     const b = footprint[(i + 1) % footprint.length];
     result.push(a);
-    // Find midpoints that lie on segment a→b
     const onEdge = midpoints.filter(mp => {
       if (ptKey(mp) === ptKey(a) || ptKey(mp) === ptKey(b)) return false;
       const proj = projectPointOnSegment(mp, a, b);
       if (!proj) return false;
       return Math.hypot(proj.x - mp.x, proj.y - mp.y) < 2;
     });
-    // Sort by parameter along the edge
     const dx = b.x - a.x, dy = b.y - a.y;
     const len2 = dx * dx + dy * dy;
     onEdge.sort((p, q) => {
@@ -270,7 +486,7 @@ function insertMidpointsIntoFootprint(footprint: Pt[], midpoints: Pt[]): Pt[] {
   return result;
 }
 
-// ── BUILD HALF-EDGE ADJACENCY ─────────────────────────────
+// ── BUILD HALF-EDGE ADJACENCY ────────────────────────────
 type AdjMap = Map<string, Map<string, Pt>>;
 
 function buildAdjacency(segments: Seg[]): AdjMap {
@@ -285,10 +501,14 @@ function buildAdjacency(segments: Seg[]): AdjMap {
   return adj;
 }
 
-// ── MINIMAL CYCLE (FACE) EXTRACTION ───────────────────────
-// Walk the planar graph using the "next edge by smallest CCW angle" rule.
+// ── MINIMAL CYCLE (FACE) EXTRACTION ──────────────────────
 function angle(from: Pt, to: Pt): number {
   return Math.atan2(to.y - from.y, to.x - from.x);
+}
+
+function parsePtKey(k: string): Pt {
+  const [x, y] = k.split(":").map(Number);
+  return { x, y };
 }
 
 function extractMinimalCycles(adj: AdjMap): Pt[][] {
@@ -300,7 +520,6 @@ function extractMinimalCycles(adj: AdjMap): Pt[][] {
       const dirKey = `${nodeKey}->${neighborKey}`;
       if (usedDirected.has(dirKey)) continue;
 
-      // Walk
       const cycle: Pt[] = [];
       let curKey = nodeKey;
       let nextKey = neighborKey;
@@ -318,16 +537,14 @@ function extractMinimalCycles(adj: AdjMap): Pt[][] {
 
         cycle.push(parsePtKey(curKey));
 
-        // Find next edge: smallest CW angle from incoming direction
         const inAngle = angle(parsePtKey(nextKey), parsePtKey(curKey));
         let bestKey: string | null = null;
         let bestAngle = Infinity;
 
         for (const [candKey] of nextNeighbors) {
-          if (candKey === curKey) continue; // don't go back
+          if (candKey === curKey) continue;
           const candAngle = angle(parsePtKey(nextKey), parsePtKey(candKey));
           let diff = candAngle - inAngle;
-          // Normalize to (0, 2π]
           while (diff <= 0) diff += 2 * Math.PI;
           while (diff > 2 * Math.PI) diff -= 2 * Math.PI;
           if (diff < bestAngle) {
@@ -337,11 +554,7 @@ function extractMinimalCycles(adj: AdjMap): Pt[][] {
         }
 
         if (!bestKey) {
-          // Dead end — try going back if it's the only option
-          if (nextNeighbors.has(curKey) && nextNeighbors.size === 1) {
-            break; // leaf edge, not a face
-          }
-          // Pick any unused
+          if (nextNeighbors.has(curKey) && nextNeighbors.size === 1) break;
           for (const [candKey] of nextNeighbors) {
             const dk2 = `${nextKey}->${candKey}`;
             if (!usedDirected.has(dk2)) { bestKey = candKey; break; }
@@ -353,8 +566,8 @@ function extractMinimalCycles(adj: AdjMap): Pt[][] {
         nextKey = bestKey;
         steps++;
 
-        if (curKey === nodeKey && nextKey === neighborKey) break; // closed
-        if (curKey === nodeKey) break; // back to start
+        if (curKey === nodeKey && nextKey === neighborKey) break;
+        if (curKey === nodeKey) break;
       }
 
       if (cycle.length >= 3) {
@@ -364,11 +577,6 @@ function extractMinimalCycles(adj: AdjMap): Pt[][] {
   }
 
   return faces;
-}
-
-function parsePtKey(k: string): Pt {
-  const [x, y] = k.split(":").map(Number);
-  return { x, y };
 }
 
 function signedArea(poly: Pt[]): number {
@@ -381,7 +589,44 @@ function signedArea(poly: Pt[]): number {
   return area / 2;
 }
 
-// ── MAIN SOLVER ───────────────────────────────────────────
+// ── POLYGON SIMPLIFICATION (Douglas-Peucker) ─────────────
+function simplifyPolygon(poly: Pt[], tolerance: number): Pt[] {
+  if (poly.length <= 3) return poly;
+
+  function rdp(pts: Pt[], start: number, end: number, tol: number, keep: boolean[]): void {
+    if (end - start < 2) return;
+    let maxDist = 0;
+    let maxIdx = start;
+    const a = pts[start], b = pts[end];
+    for (let i = start + 1; i < end; i++) {
+      const proj = projectPointOnSegment(pts[i], a, b);
+      const d = proj ? dist(pts[i], proj) : dist(pts[i], a);
+      if (d > maxDist) { maxDist = d; maxIdx = i; }
+    }
+    if (maxDist > tol) {
+      keep[maxIdx] = true;
+      rdp(pts, start, maxIdx, tol, keep);
+      rdp(pts, maxIdx, end, tol, keep);
+    }
+  }
+
+  const keep = new Array(poly.length).fill(false);
+  keep[0] = true;
+  keep[poly.length - 1] = true;
+  rdp(poly, 0, poly.length - 1, tolerance, keep);
+
+  const result = poly.filter((_, i) => keep[i]);
+  return result.length >= 3 ? result : poly;
+}
+
+// ── MAIN SOLVER ──────────────────────────────────────────
+export interface InteriorLine {
+  a: Pt;
+  b: Pt;
+  type?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified';
+  score?: number;
+}
+
 export interface PlanarSolverResult {
   faces: Array<{ id: number; polygon: Pt[] }>;
   edges: Seg[];
@@ -389,8 +634,11 @@ export interface PlanarSolverResult {
     input_footprint_vertices: number;
     input_interior_lines: number;
     snapped_interior_lines: number;
+    collinear_merges: number;
+    filtered_by_priority: number;
     intersections_split: number;
     dangling_edges_removed: number;
+    perimeter_reinjected: number;
     total_graph_segments: number;
     total_graph_nodes: number;
     faces_extracted: number;
@@ -401,21 +649,33 @@ export interface PlanarSolverResult {
 
 export function solveRoofPlanes(
   rawFootprint: Pt[],
-  interiorLines: Seg[],
+  interiorLines: InteriorLine[],
 ): PlanarSolverResult {
+  const emptyDebug = {
+    input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0,
+    collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0,
+    dangling_edges_removed: 0, perimeter_reinjected: 0,
+    total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0,
+    faces_with_area: 0, face_coverage_ratio: 0,
+  };
+
   if (rawFootprint.length < 3) {
-    return { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, intersections_split: 0, dangling_edges_removed: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+    return { faces: [], edges: [], debug: emptyDebug };
   }
 
-  // 1. Snap everything
+  // 1. Snap footprint
   const footprint = rawFootprint.map(p => snap(p));
 
-  // 2. DSM edge fragments are evidence, not synthetic topology. Snap nearby
-  //    endpoints and only extend lines that already touch or nearly touch the
-  //    footprint. Floating fragments must connect naturally or be pruned.
+  // 2. Convert interior lines with metadata
   const snappedInterior: Seg[] = interiorLines
-    .map((seg) => ({ a: snap(seg.a), b: snap(seg.b) }))
+    .map((seg) => ({
+      a: snap(seg.a), b: snap(seg.b),
+      source: 'interior' as const,
+      edgeType: (seg.type || 'unclassified') as Seg['edgeType'],
+      edgeScore: seg.score || 0.5,
+    }))
     .filter((seg) => segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
+
   const interiorFragments = snapInteriorFragmentsToGraph(snappedInterior, footprint)
     .map((seg) => {
       const touchesFootprint = pointNearFootprint(seg.a, footprint) || pointNearFootprint(seg.b, footprint);
@@ -423,49 +683,66 @@ export function solveRoofPlanes(
     })
     .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b) && segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 
-  // 3. Collect all unique endpoints from interior lines that land on footprint edges
-  const interiorEndpoints = interiorFragments.flatMap(s => [s.a, s.b]);
+  // 3. Collinear merge
+  const beforeMerge = interiorFragments.length;
+  const mergedInterior = mergeCollinearSegments(interiorFragments);
+  const collinearMerges = beforeMerge - mergedInterior.length;
 
-  // 4. Insert midpoints into footprint to ensure connectivity
+  // 4. Dynamic segment filtering by classification priority
+  const beforeFilter = mergedInterior.length;
+  const filteredInterior = filterByClassificationPriority(mergedInterior, footprint);
+  const filteredByPriority = beforeFilter - filteredInterior.length;
+
+  // 5. Collect interior endpoints on footprint
+  const interiorEndpoints = filteredInterior.flatMap(s => [s.a, s.b]);
+
+  // 6. Insert midpoints into footprint
   const augFootprint = insertMidpointsIntoFootprint(footprint, interiorEndpoints);
 
-  // 5. Build all graph segments
+  // 7. Build all segments (footprint + interior)
   const allSegments: Seg[] = [];
   const segSet = new Set<string>();
 
-  const addSeg = (a: Pt, b: Pt) => {
+  const addSeg = (a: Pt, b: Pt, source: Seg['source'], edgeType?: Seg['edgeType'], edgeScore?: number) => {
     const k = segKey(a, b);
     if (segSet.has(k)) return;
     if (ptKey(a) === ptKey(b)) return;
     segSet.add(k);
-    allSegments.push({ a, b });
+    allSegments.push({ a, b, source, edgeType, edgeScore });
   };
 
-  // Footprint edges (with midpoints inserted)
+  // Footprint edges (immune to removal)
   for (let i = 0; i < augFootprint.length; i++) {
-    addSeg(augFootprint[i], augFootprint[(i + 1) % augFootprint.length]);
+    addSeg(augFootprint[i], augFootprint[(i + 1) % augFootprint.length], 'footprint', 'eave', 0.85);
   }
 
   // Interior lines
-  for (const seg of interiorFragments) {
-    addSeg(seg.a, seg.b);
+  for (const seg of filteredInterior) {
+    addSeg(seg.a, seg.b, 'interior', seg.edgeType, seg.edgeScore);
   }
 
-  // 6. Split every segment at every graph intersection. Without this, crossing
-  //    ridge/hip lines visually overlap but do not share exact topology.
-  const splitSegments = splitSegmentsAtAllIntersections(allSegments);
+  // 8. Split with ordered intersection filtering
+  const { result: splitSegments, intersectionCount } = splitSegmentsWithFilteredIntersections(allSegments);
+
+  // 9. Prune dangling + graph consistency
   const pruned = pruneDanglingInteriorSegments(splitSegments, footprint);
-  const graphSegments = pruned.kept;
+
+  // 10. Perimeter re-injection (hard guarantee)
+  const beforeReinject = pruned.kept.length;
+  const graphSegments = reinjectPerimeter(pruned.kept, footprint);
+  const perimeterReinjected = graphSegments.length - beforeReinject;
+
+  // 11. Build adjacency + extract faces
   const adj = buildAdjacency(graphSegments);
   const rawFaces = extractMinimalCycles(adj);
 
-  // 7. Face filtering: remove outer/duplicate/sliver/non-roof faces before
-  //    edge classification. Raw half-edge cycles include geometry noise.
+  // 12. Face filtering
   const allFaces = rawFaces
     .filter((f) => Math.abs(signedArea(f)) > 50)
     .map((polygon, i) => ({ id: i, polygon }));
   const validFaces = filterRoofFaces(allFaces, footprint)
-    .map((face, i) => ({ id: i, polygon: face.polygon }));
+    .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
+
   const footprintArea = Math.abs(signedArea(footprint));
   const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
   const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
@@ -474,8 +751,11 @@ export function solveRoofPlanes(
     input_footprint_vertices: rawFootprint.length,
     input_interior_lines: interiorLines.length,
     snapped_interior_lines: interiorFragments.length,
-    intersections_split: Math.max(0, splitSegments.length - allSegments.length),
+    collinear_merges: collinearMerges,
+    filtered_by_priority: filteredByPriority,
+    intersections_split: intersectionCount,
     dangling_edges_removed: pruned.removed,
+    perimeter_reinjected: perimeterReinjected,
     total_graph_segments: graphSegments.length,
     total_graph_nodes: adj.size,
     faces_extracted: rawFaces.length,

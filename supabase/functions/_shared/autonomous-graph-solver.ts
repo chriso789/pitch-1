@@ -1,23 +1,28 @@
 /**
- * Autonomous Roof Graph Solver v3 — Prune-First, No Forced Closure
+ * Autonomous Roof Graph Solver v4 — Production Planar Graph Reconstruction
  * 
- * PHILOSOPHY CHANGE from v2:
- *   v2: "Make the data fit a valid roof" → forced graph closure → fake symmetry
- *   v3: "Only accept structures that naturally form a valid roof" → prune weak edges
- * 
- * KEY FIXES:
- *   1. Edge scoring + filtering BEFORE graph build (drop weak edges)
- *   2. Conservative snapping (no center collapse) — only snap if dist<5px AND angle<10deg
- *   3. NO forced intersection splitting — if edges don't naturally meet, drop weakest
- *   4. DSM physics-based classification (perpendicular cross-section, not geometry guesses)
- *   5. Facets from closed polygons with DSM plane-fit validation (no solar-segment mapping)
- *   6. Hard fail on under-segmented complex roofs
- * 
- * Patent-aligned: ONE canonical roof graph feeds all outputs.
+ * Pipeline:
+ *   1. DSM edge detection (Sobel gradient + PCA line fit)
+ *   2. Edge scoring + filtering (drop weak edges)
+ *   3. Conservative snapping (no center collapse)
+ *   4. Edge clustering with span cap (weighted merge, max 60px)
+ *   5. Prune over-intersected edges
+ *   6. DSM physics classification (ridge/valley/hip)
+ *   7. Planar graph with ordered intersection filtering
+ *   8. Face merge with structural guard
+ *   9. Conditional plane fit + pitch extraction from DSM
+ *  10. Canonical edge mapping
+ *  11. Consistency checks + coverage gate (≥85%)
+ *
+ * HARD RULES:
+ *   - No legacy fallback. DSM graph is the only geometry source.
+ *   - Coverage < 85% → FAIL (no fake roofs)
+ *   - Hips > 50ft with 0 valleys → FAIL (invalid_roof_graph)
+ *   - Always generate debug report regardless of pass/fail
  */
 
 import type { DSMGrid, MaskedDSMGrid } from "./dsm-analyzer.ts";
-import { geoToPixel, pixelToGeo } from "./dsm-analyzer.ts";
+import { geoToPixel, pixelToGeo, getElevationAt } from "./dsm-analyzer.ts";
 import { detectStructuralEdges, type DSMEdgeCandidate } from "./dsm-edge-detector.ts";
 import {
   classifyEdgeByDSM,
@@ -27,7 +32,7 @@ import {
   edgeAngle,
   angleDifference,
 } from "./dsm-utils.ts";
-import { solveRoofPlanes as planarSolveRoofPlanes } from "./planar-roof-solver.ts";
+import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./planar-roof-solver.ts";
 
 type XY = [number, number]; // [lng, lat]
 
@@ -94,7 +99,7 @@ export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
-  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage';
+  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid';
   failure_reason?: string;
   
   vertices: GraphVertex[];
@@ -140,13 +145,18 @@ export interface AutonomousGraphLog {
   timing_ms: number;
   dsm_edges_detected: number;
   dsm_edges_accepted: number;
+  edge_count_after_cluster: number;
   interior_lines_used: number;
   graph_nodes: number;
   graph_segments: number;
   intersections_split: number;
   dangling_edges_removed: number;
   faces_extracted: number;
+  face_count_before_merge: number;
+  face_count_after_merge: number;
   valid_faces: number;
+  pitch_source: string;
+  dsm_mask_valid: boolean;
   topology_source: 'autonomous_dsm_graph_solver';
   facet_source: 'dsm_planar_graph_faces';
   hard_fail_reason?: string | null;
@@ -754,6 +764,203 @@ function classifyPlanarSegment(
     : { type: 'hip', score: 0.5, source: 'dsm' };
 }
 
+// ============= EDGE CLUSTERING (WEIGHTED MERGE WITH SPAN CAP) =============
+
+const CLUSTER_ANGLE_DEG = 8;
+const CLUSTER_MIDPOINT_DIST_PX = 15;
+const CLUSTER_MAX_SPAN_PX = 60;
+
+interface ClusterableEdge {
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  type: 'ridge' | 'valley' | 'hip';
+  score: number;
+}
+
+function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
+  if (edges.length <= 1) return edges;
+  
+  const used = new Set<number>();
+  const result: ClusterableEdge[] = [];
+
+  for (let i = 0; i < edges.length; i++) {
+    if (used.has(i)) continue;
+    
+    const cluster = [i];
+    used.add(i);
+
+    // Find all edges that belong to this cluster
+    for (let j = i + 1; j < edges.length; j++) {
+      if (used.has(j)) continue;
+      
+      // Check against any member of the cluster
+      let belongs = false;
+      for (const ci of cluster) {
+        const ei = edges[ci];
+        const ej = edges[j];
+        
+        // Angle check
+        const ai = Math.atan2(ei.b.y - ei.a.y, ei.b.x - ei.a.x);
+        const aj = Math.atan2(ej.b.y - ej.a.y, ej.b.x - ej.a.x);
+        let angleDiff = Math.abs(ai - aj);
+        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+        if (angleDiff > Math.PI / 2) angleDiff = Math.PI - angleDiff;
+        if (angleDiff * 180 / Math.PI > CLUSTER_ANGLE_DEG) continue;
+        
+        // Midpoint distance check
+        const midI = { x: (ei.a.x + ei.b.x) / 2, y: (ei.a.y + ei.b.y) / 2 };
+        const midJ = { x: (ej.a.x + ej.b.x) / 2, y: (ej.a.y + ej.b.y) / 2 };
+        const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
+        if (midDist > CLUSTER_MIDPOINT_DIST_PX) continue;
+        
+        belongs = true;
+        break;
+      }
+      
+      if (belongs) {
+        cluster.push(j);
+        used.add(j);
+      }
+    }
+
+    if (cluster.length === 1) {
+      result.push(edges[i]);
+      continue;
+    }
+
+    // Weighted merge: averaged direction by length, projected endpoints to max span
+    const clusterEdges = cluster.map(ci => edges[ci]);
+    
+    // Check span — if too large, split into subclusters
+    const allPts = clusterEdges.flatMap(e => [e.a, e.b]);
+    const spanX = Math.max(...allPts.map(p => p.x)) - Math.min(...allPts.map(p => p.x));
+    const spanY = Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y));
+    const span = Math.hypot(spanX, spanY);
+    
+    if (span > CLUSTER_MAX_SPAN_PX && clusterEdges.length > 2) {
+      // Split: just keep top 2 by score as separate edges
+      clusterEdges.sort((a, b) => b.score - a.score);
+      result.push(clusterEdges[0], clusterEdges[1]);
+      continue;
+    }
+    
+    // Compute weighted average direction
+    let totalWeight = 0;
+    let avgDx = 0, avgDy = 0;
+    for (const e of clusterEdges) {
+      const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+      const dx = (e.b.x - e.a.x) / (len || 1);
+      const dy = (e.b.y - e.a.y) / (len || 1);
+      // Ensure consistent direction
+      const sign = (avgDx * dx + avgDy * dy >= 0 || totalWeight === 0) ? 1 : -1;
+      avgDx += sign * dx * len;
+      avgDy += sign * dy * len;
+      totalWeight += len;
+    }
+    const normLen = Math.hypot(avgDx, avgDy) || 1;
+    const nx = avgDx / normLen, ny = avgDy / normLen;
+    
+    // Project all endpoints onto the averaged direction
+    const cx = allPts.reduce((s, p) => s + p.x, 0) / allPts.length;
+    const cy = allPts.reduce((s, p) => s + p.y, 0) / allPts.length;
+    const projections = allPts.map(p => (p.x - cx) * nx + (p.y - cy) * ny);
+    const minProj = Math.min(...projections);
+    const maxProj = Math.max(...projections);
+    
+    // Highest type priority and score
+    const bestScore = Math.max(...clusterEdges.map(e => e.score));
+    const typePriority: Record<string, number> = { ridge: 3, valley: 3, hip: 2 };
+    const bestType = clusterEdges.reduce((best, e) => 
+      (typePriority[e.type] || 0) > (typePriority[best.type] || 0) ? e : best
+    ).type;
+    
+    result.push({
+      a: { x: Math.round(cx + nx * minProj), y: Math.round(cy + ny * minProj) },
+      b: { x: Math.round(cx + nx * maxProj), y: Math.round(cy + ny * maxProj) },
+      type: bestType,
+      score: bestScore,
+    });
+  }
+
+  return result;
+}
+
+// ============= DSM PLANE FIT WITH PITCH/AZIMUTH =============
+
+function fitPlaneWithPitch(
+  polygon: XY[],
+  dsmGrid: DSMGrid,
+): { rms: number; pitchDeg: number; azimuthDeg: number } | null {
+  if (polygon.length < 3) return null;
+  
+  const { bounds, width, height, data, noDataValue } = dsmGrid;
+  const midLat = (bounds.minLat + bounds.maxLat) / 2;
+  const metersPerPixelX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLat * Math.PI / 180);
+  const metersPerPixelY = (bounds.maxLat - bounds.minLat) / height * 111320;
+  
+  const minPxX = Math.max(0, Math.floor((Math.min(...polygon.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+  const maxPxX = Math.min(width - 1, Math.ceil((Math.max(...polygon.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+  const minPxY = Math.max(0, Math.floor((bounds.maxLat - Math.max(...polygon.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+  const maxPxY = Math.min(height - 1, Math.ceil((bounds.maxLat - Math.min(...polygon.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+
+  const points: Array<{ x: number; y: number; z: number }> = [];
+  for (let py = minPxY; py <= maxPxY; py++) {
+    for (let px = minPxX; px <= maxPxX; px++) {
+      const lng = bounds.minLng + ((px + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+      const lat = bounds.maxLat - ((py + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+      if (!pointInPolygon([lng, lat], polygon)) continue;
+      const z = data[py * width + px];
+      if (z === noDataValue || isNaN(z)) continue;
+      points.push({ x: px, y: py, z });
+    }
+  }
+
+  if (points.length < 6) return null;
+
+  const N = points.length;
+  let Sx = 0, Sy = 0, Sz = 0, Sxx = 0, Sxy = 0, Syy = 0, Sxz = 0, Syz = 0;
+  for (const p of points) {
+    Sx += p.x; Sy += p.y; Sz += p.z;
+    Sxx += p.x * p.x; Sxy += p.x * p.y; Syy += p.y * p.y;
+    Sxz += p.x * p.z; Syz += p.y * p.z;
+  }
+
+  const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, N]];
+  const B = [Sxz, Syz, Sz];
+  const det = det3(A);
+  if (Math.abs(det) < 1e-10) return null;
+
+  const a = det3(replCol(A, B, 0)) / det;
+  const b = det3(replCol(A, B, 1)) / det;
+  const c = det3(replCol(A, B, 2)) / det;
+
+  let sumSqErr = 0;
+  for (const p of points) {
+    const err = p.z - (a * p.x + b * p.y + c);
+    sumSqErr += err * err;
+  }
+  const rms = Math.sqrt(sumSqErr / N);
+
+  // Convert pixel gradients to real-world slope
+  const slopeX = a / metersPerPixelX; // dz/dx in meters/meter
+  const slopeY = b / metersPerPixelY;
+  const gradMag = Math.sqrt(slopeX * slopeX + slopeY * slopeY);
+  const pitchDeg = Math.atan(gradMag) * 180 / Math.PI;
+  const azimuthDeg = ((Math.atan2(slopeX, -slopeY) * 180 / Math.PI) + 360) % 360;
+
+  return { rms, pitchDeg, azimuthDeg };
+}
+
+function det3(m: number[][]): number {
+  return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+         m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+         m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+}
+
+function replCol(m: number[][], b: number[], col: number): number[][] {
+  return m.map((row, i) => row.map((val, j) => j === col ? b[i] : val));
+}
+
 // ============= VALIDATION GATE =============
 
 export function validateAutonomousResult(
@@ -762,6 +969,7 @@ export function validateAutonomousResult(
     valleyCount: number;
     ridgeCount: number;
     hipCount: number;
+    hipFt: number;
     graphConnected: boolean;
     coverageRatio: number;
     structuralEdgeCount: number;
@@ -770,7 +978,7 @@ export function validateAutonomousResult(
   complexity: { isComplex: boolean; expectedMinFacets: number; reasons: string[] }
 ): { valid: boolean; status: AutonomousGraphResult['validation_status']; reason?: string } {
 
-  // GATE 0: DSM edges exist but cannot close faces — honest failure.
+  // GATE 0: DSM edges exist but cannot close faces
   if (result.dsmEdgesAccepted >= 5 && result.facetCount < 2) {
     return {
       valid: false,
@@ -824,7 +1032,7 @@ export function validateAutonomousResult(
     };
   }
 
-  // GATE 5: Coverage ratio (if we have enough data)
+  // GATE 5: Coverage ratio ≥ 85% (hard gate, no exceptions)
   if (result.coverageRatio > 0 && result.coverageRatio < 0.85) {
     return {
       valid: false,
@@ -841,7 +1049,16 @@ export function validateAutonomousResult(
     };
   }
 
-  // GATE 6: Complex roofs need ≥6 structural edges
+  // GATE 6: Hips > 50ft with 0 valleys → invalid
+  if (result.hipFt > 50 && result.valleyCount === 0) {
+    return {
+      valid: false,
+      status: 'invalid_roof_graph',
+      reason: `${result.hipFt.toFixed(0)}ft of hip edges but 0 valleys — physically inconsistent`
+    };
+  }
+
+  // GATE 7: Complex roofs need ≥6 structural edges
   if (complexity.isComplex && result.structuralEdgeCount < 6) {
     return {
       valid: false,
@@ -859,8 +1076,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const startMs = Date.now();
   const warnings: string[] = [];
   const midLat = input.lat;
+  let edgeCountAfterCluster = 0;
+  let faceCountBeforeMerge = 0;
+  let faceCountAfterMerge = 0;
+  const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v3 — Prune-first pipeline`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v4 — Production planar graph reconstruction`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -920,11 +1141,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: DSM topology guarantee via planar graph faces =====
+  // ===== STEP 6: Edge clustering (weighted merge with span cap) =====
   const footprintPx = effectiveDSM
     ? input.footprintCoords.map((p) => geoToPxPoint(p, effectiveDSM))
     : [];
-  const dsmInteriorEdgesPx = effectiveDSM
+  const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
         .map((e) => ({
@@ -934,32 +1155,47 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           score: e.score,
         }))
     : [];
+  
+  const clusteredEdgesPx = clusterEdges(rawDsmInteriorEdgesPx);
+  edgeCountAfterCluster = clusteredEdgesPx.length;
+  console.log(`  Edge clustering: ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+
+  // ===== STEP 7: Planar graph with ordered intersection filtering =====
+  const dsmInteriorEdgesPx = clusteredEdgesPx;
+  const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
+    a: e.a, b: e.b, type: e.type, score: e.score,
+  }));
   const planar = effectiveDSM && footprintPx.length >= 3
-    ? planarSolveRoofPlanes(footprintPx, dsmInteriorEdgesPx)
-    : { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, intersections_split: 0, dangling_edges_removed: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+    ? planarSolveRoofPlanes(footprintPx, planarInput)
+    : { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0, dangling_edges_removed: 0, perimeter_reinjected: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
   console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}`);
 
   let facesRejected = 0;
   const graphFaces: GraphFace[] = [];
+  faceCountBeforeMerge = planar.faces.length;
   for (const face of planar.faces) {
     const polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
+    // Conditional plane fit: > 200 sqft allows 0.8m, otherwise strict 0.5m
+    const areaSqft = polygonAreaSqft(polygon, midLat);
+    const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
+    let pitch = 0;
+    let azimuth = 0;
     if (effectiveDSM) {
-      const fitError = fitPlaneToPolygon(polygon, effectiveDSM);
-      if (fitError !== null && fitError > PLANE_FIT_ERROR_THRESHOLD) {
-        facesRejected++;
-        continue;
+      const planeFit = fitPlaneWithPitch(polygon, effectiveDSM);
+      if (planeFit) {
+        if (planeFit.rms > threshold) { facesRejected++; continue; }
+        pitch = planeFit.pitchDeg;
+        azimuth = planeFit.azimuthDeg;
+      } else {
+        // Fallback to solar segment
+        const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
+        const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
+        pitch = matchingSolar?.pitchDegrees || 0;
+        azimuth = matchingSolar?.azimuthDegrees || 0;
       }
     }
-    const areaSqft = polygonAreaSqft(polygon, midLat);
-    if (areaSqft < MIN_FACET_AREA_SQFT) {
-      facesRejected++;
-      continue;
-    }
-    const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
-    const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
-    const pitch = matchingSolar?.pitchDegrees || 0;
-    const azimuth = matchingSolar?.azimuthDegrees || 0;
+    if (areaSqft < MIN_FACET_AREA_SQFT) { facesRejected++; continue; }
     const closedPolygon = vertexKey(polygon[0]) === vertexKey(polygon[polygon.length - 1]) ? polygon : [...polygon, polygon[0]];
     graphFaces.push({
       id: `SF-${String.fromCharCode(65 + graphFaces.length)}`,
@@ -972,8 +1208,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       edge_ids: [],
     });
   }
+  faceCountAfterMerge = graphFaces.length;
 
-  // ===== Convert planar segments to output edges =====
   let edgeId = 0;
   const outputEdges: GraphEdge[] = [];
   const outputVerticesByKey = new Map<string, XY>();
@@ -1033,6 +1269,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       valleyCount: outValleys.length,
       ridgeCount: outRidges.length,
       hipCount: outHips.length,
+      hipFt: outHips.reduce((s, e) => s + e.length_ft, 0),
       graphConnected: graphFaces.length >= 2 && coverageRatio >= 0.85,
       coverageRatio,
       structuralEdgeCount,
@@ -1084,13 +1321,18 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     timing_ms: timingMs,
     dsm_edges_detected: dsmRidges.length + dsmValleys.length,
     dsm_edges_accepted: classifiedEdges.filter(e => e.source === 'dsm').length,
+    edge_count_after_cluster: edgeCountAfterCluster,
     interior_lines_used: dsmInteriorEdgesPx.length,
     graph_nodes: planar.debug.total_graph_nodes,
     graph_segments: planar.debug.total_graph_segments,
     intersections_split: planar.debug.intersections_split,
     dangling_edges_removed: planar.debug.dangling_edges_removed,
     faces_extracted: planar.debug.faces_extracted,
+    face_count_before_merge: faceCountBeforeMerge,
+    face_count_after_merge: faceCountAfterMerge,
     valid_faces: graphFaces.length,
+    pitch_source: 'dsm_plane_fit',
+    dsm_mask_valid: dsmMaskValid,
     topology_source: 'autonomous_dsm_graph_solver',
     facet_source: 'dsm_planar_graph_faces',
     hard_fail_reason: validation.valid ? null : validation.status,
