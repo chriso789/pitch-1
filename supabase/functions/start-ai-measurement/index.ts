@@ -920,6 +920,25 @@ async function processJob(input: any) {
         facet_count: graph.faces.length,
         status: graph.validation_status,
         complexity,
+        // Debug overlay data: rejected edges and graph vertices in geo coords
+        rejected_edges_geo: (graph.rejected_edges || []).map(e => ({
+          start: e.start,
+          end: e.end,
+          score: e.score,
+          type: e.type,
+          reason: e.reason,
+        })),
+        graph_vertices_geo: graph.vertices.map(v => ({
+          position: v.position,
+          type: v.type,
+        })),
+        accepted_edges_geo: graph.edges.map(e => ({
+          start: e.start,
+          end: e.end,
+          type: e.type,
+          confidence: e.confidence.final_confidence,
+          source: e.source,
+        })),
       };
 
       const failReason = graph.validation_status !== "validated"
