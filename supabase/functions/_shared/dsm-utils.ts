@@ -66,10 +66,15 @@ export function getPerpendicularProfile(
   // Use average offset scale for the perp vector
   const offsetScale = Math.sqrt(offsetLng * offsetLng * perpDx * perpDx + offsetLat * offsetLat * perpDy * perpDy);
 
+  // Check if this DSM has a mask (MaskedDSMGrid)
+  const mask: Uint8Array | null = (dsmGrid as MaskedDSMGrid).mask || null;
+
   let leftSum = 0, rightSum = 0, centerSum = 0;
   let leftCount = 0, rightCount = 0, centerCount = 0;
   let leftFarSum = 0, rightFarSum = 0;
   let leftFarCount = 0, rightFarCount = 0;
+  let leftMaskHits = 0, rightMaskHits = 0;
+  let leftMaskTotal = 0, rightMaskTotal = 0;
 
   for (let i = 0; i < samplesAlongEdge; i++) {
     const t = (i + 0.5) / samplesAlongEdge;
