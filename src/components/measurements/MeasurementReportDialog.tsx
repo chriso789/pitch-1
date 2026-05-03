@@ -732,18 +732,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           <div ref={reportContentRef}>
           {!previewGate.ok ? (
             (() => {
-              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
-              const rasterUrl =
-                (effectiveMeasurement as any)?.satellite_overlay_url ||
-                (effectiveMeasurement as any)?.google_maps_image_url ||
-                (effectiveMeasurement as any)?.mapbox_image_url ||
-                grj?.raster_image_url || null;
-              const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
-              const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
-              const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
-              const footprint_px_overlay = grj?.overlay_debug?.footprint_px || grj?.footprint_px || [];
-              const hasRasterOverlay =
-                Boolean(rasterUrl) && Boolean(rasterSize) && (planes_px.length > 0 || edges_px.length > 0 || footprint_px_overlay.length > 0);
+              const { grj, rasterUrl, rasterSize, planes_px, edges_px, footprint_px, hasRasterOverlay } = getRasterOverlayData(effectiveMeasurement);
 
               return (
                 <div className="space-y-4">
@@ -767,6 +756,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                           rasterSize={rasterSize}
                           planes_px={planes_px}
                           edges_px={edges_px}
+                          footprint_px={footprint_px}
                           overlayCalibration={grj?.overlay_calibration || null}
                           roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
                           geometryPxSpace={grj?.geometry_px_space || null}
@@ -788,18 +778,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             </div>
           ) : (
             (() => {
-              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
-              const rasterUrl =
-                (effectiveMeasurement as any)?.satellite_overlay_url ||
-                (effectiveMeasurement as any)?.google_maps_image_url ||
-                (effectiveMeasurement as any)?.mapbox_image_url ||
-                grj?.raster_image_url || null;
-              const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
-              const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
-              const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
-              const footprint_px_overlay = grj?.overlay_debug?.footprint_px || grj?.footprint_px || [];
-              const hasRasterOverlay =
-                Boolean(rasterUrl) && Boolean(rasterSize) && (planes_px.length > 0 || edges_px.length > 0 || footprint_px_overlay.length > 0);
+              const { grj, rasterUrl, rasterSize, planes_px, edges_px, footprint_px, hasRasterOverlay } = getRasterOverlayData(effectiveMeasurement);
               const showDebugOverlay = hasRasterOverlay;
 
               const debugOverlay = showDebugOverlay ? (
@@ -814,6 +793,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                       rasterSize={rasterSize}
                       planes_px={planes_px}
                       edges_px={edges_px}
+                      footprint_px={footprint_px}
                       overlayCalibration={grj?.overlay_calibration || null}
                       roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
                       geometryPxSpace={grj?.geometry_px_space || null}
