@@ -1,23 +1,28 @@
 /**
- * Autonomous Roof Graph Solver v3 — Prune-First, No Forced Closure
+ * Autonomous Roof Graph Solver v4 — Production Planar Graph Reconstruction
  * 
- * PHILOSOPHY CHANGE from v2:
- *   v2: "Make the data fit a valid roof" → forced graph closure → fake symmetry
- *   v3: "Only accept structures that naturally form a valid roof" → prune weak edges
- * 
- * KEY FIXES:
- *   1. Edge scoring + filtering BEFORE graph build (drop weak edges)
- *   2. Conservative snapping (no center collapse) — only snap if dist<5px AND angle<10deg
- *   3. NO forced intersection splitting — if edges don't naturally meet, drop weakest
- *   4. DSM physics-based classification (perpendicular cross-section, not geometry guesses)
- *   5. Facets from closed polygons with DSM plane-fit validation (no solar-segment mapping)
- *   6. Hard fail on under-segmented complex roofs
- * 
- * Patent-aligned: ONE canonical roof graph feeds all outputs.
+ * Pipeline:
+ *   1. DSM edge detection (Sobel gradient + PCA line fit)
+ *   2. Edge scoring + filtering (drop weak edges)
+ *   3. Conservative snapping (no center collapse)
+ *   4. Edge clustering with span cap (weighted merge, max 60px)
+ *   5. Prune over-intersected edges
+ *   6. DSM physics classification (ridge/valley/hip)
+ *   7. Planar graph with ordered intersection filtering
+ *   8. Face merge with structural guard
+ *   9. Conditional plane fit + pitch extraction from DSM
+ *  10. Canonical edge mapping
+ *  11. Consistency checks + coverage gate (≥85%)
+ *
+ * HARD RULES:
+ *   - No legacy fallback. DSM graph is the only geometry source.
+ *   - Coverage < 85% → FAIL (no fake roofs)
+ *   - Hips > 50ft with 0 valleys → FAIL (invalid_roof_graph)
+ *   - Always generate debug report regardless of pass/fail
  */
 
 import type { DSMGrid, MaskedDSMGrid } from "./dsm-analyzer.ts";
-import { geoToPixel, pixelToGeo } from "./dsm-analyzer.ts";
+import { geoToPixel, pixelToGeo, getElevationAt } from "./dsm-analyzer.ts";
 import { detectStructuralEdges, type DSMEdgeCandidate } from "./dsm-edge-detector.ts";
 import {
   classifyEdgeByDSM,
@@ -27,7 +32,7 @@ import {
   edgeAngle,
   angleDifference,
 } from "./dsm-utils.ts";
-import { solveRoofPlanes as planarSolveRoofPlanes } from "./planar-roof-solver.ts";
+import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./planar-roof-solver.ts";
 
 type XY = [number, number]; // [lng, lat]
 
