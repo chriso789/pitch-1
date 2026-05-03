@@ -736,7 +736,33 @@ async function processJob(input: any) {
       bbox_area_sqft: solarSegmentsDebug.bbox_area_sqft,
     }));
 
-    // 4. Pick best valid candidate.
+    // 4. Google Solar building mask contour is the primary verified footprint
+    // source because it shares Solar/DSM geo-registration. It must be tried
+    // before ranking secondary sources like OSM/U-Net/segment hulls.
+    let roofMaskForContour: any = null;
+    let selectedMaskContourGeo: Array<[number, number]> | null = null;
+    if (GOOGLE_SOLAR_API_KEY) {
+      try {
+        await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
+        roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        if (roofMaskForContour) {
+          const maskContourGeo = extractMaskContour(roofMaskForContour);
+          if (maskContourGeo.length >= 4) {
+            const maskContourPx = maskContourGeo.map(([lng, lat]) =>
+              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+            );
+            const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
+            maskCand.polygon_shape_score = Math.min(1, maskCand.polygon_shape_score + 0.45);
+            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.6));
+            candidates.push(maskCand);
+            if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
+          }
+        }
+      } catch (e) {
+        console.warn("[FOOTPRINT_MASK_CONTOUR_PRIMARY] failed:", (e as Error).message);
+      }
+    }
+
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
@@ -750,11 +776,10 @@ async function processJob(input: any) {
     // ── ROOF MASK CONTOUR FALLBACK ──
     // If no candidate footprint passed validation, try extracting a contour
     // from the Google Solar roof mask. This is priority B per the spec.
-    let roofMaskForContour: any = null;
     if (footprintSelectionFailed && GOOGLE_SOLAR_API_KEY) {
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting roof mask contour fallback");
-        roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        roofMaskForContour = roofMaskForContour || await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
           const maskContourGeo = extractMaskContour(roofMaskForContour);
           if (maskContourGeo.length >= 4) {
@@ -766,6 +791,7 @@ async function processJob(input: any) {
             if (!maskCand.rejected_reason) {
               footprint = maskCand.polygon;
               footprintSource = "google_solar_mask_contour";
+              selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
               footprintSelectionFailed = false;
               console.log("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Roof mask contour accepted:", JSON.stringify({
                 vertices: maskCand.vertex_count,
