@@ -729,7 +729,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                   )}
                   {/* Show raw debug metrics if available */}
                   {grj?.debug_pipeline && (
-                    <InternalReportCard measurement={effectiveMeasurement} />
+                    <MeasurementDataSummary m={effectiveMeasurement} />
                   )}
                 </div>
               );
