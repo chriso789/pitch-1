@@ -851,8 +851,8 @@ export function UnifiedMeasurementPanel({
           )}
 
           {/* Job Failure Banner — with debug info */}
-          {!jobIsActive && activeJob?.status === 'failed' && (() => {
-            const jobMeta = (activeJob as any)?.metadata || (activeJob as any)?.result || {};
+          {!jobIsActive && visibleFailedJob && (() => {
+            const jobMeta = (visibleFailedJob as any)?.metadata || (visibleFailedJob as any)?.result || {};
             const gateReason = jobMeta?.gate_reason || jobMeta?.autonomousDebug?.gate_reason || '';
             const debugData = jobMeta?.autonomousDebug || jobMeta?.debug || null;
             const coverage = debugData?.coverage_ratio ?? debugData?.coverage;
@@ -864,7 +864,7 @@ export function UnifiedMeasurementPanel({
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `debug-${activeJob.id || 'measurement'}.json`;
+              a.download = `debug-${visibleFailedJob.id || 'measurement'}.json`;
               a.click();
               URL.revokeObjectURL(url);
             };
@@ -876,7 +876,7 @@ export function UnifiedMeasurementPanel({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-sm text-destructive">AI Measurement Failed</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {activeJob.error || activeJob.progress_message || 'Unknown error — try again'}
+                      {visibleFailedJob.error || visibleFailedJob.progress_message || 'Unknown error — try again'}
                     </p>
                   </div>
                 </div>
