@@ -65,6 +65,12 @@ interface OverlayDebugData {
   fallback_used?: boolean;
   customer_report_ready?: boolean;
   internal_debug_report_ready?: boolean;
+  // Footprint diagnostics (Phase 6)
+  footprint_source?: string;
+  footprint_valid?: boolean;
+  footprint_point_count?: number;
+  footprint_area_sqft?: number;
+  dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: any; dsm_bbox: any } | null;
   // Registration quality metrics
   overlay_calibration?: {
     registration_quality?: {
