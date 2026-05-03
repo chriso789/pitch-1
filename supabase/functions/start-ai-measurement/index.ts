@@ -1021,7 +1021,9 @@ async function processJob(input: any) {
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
       }
 
-      const footprintGeo = footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+      const footprintGeo = selectedMaskContourGeo?.length
+        ? selectedMaskContourGeo
+        : footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
       const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
@@ -1053,12 +1055,18 @@ async function processJob(input: any) {
         mask_loaded: !!roofMask,
         dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
         dsm_edges_accepted: graph.logs?.dsm_edges_accepted ?? (graph.logs?.fused_edges || 0),
+        raw_edges: graph.logs?.dsm_edges_detected ?? 0,
+        accepted_edges: graph.logs?.dsm_edges_accepted ?? 0,
+        clustered_edges: graph.logs?.edge_count_after_cluster ?? 0,
         interior_lines_used: graph.logs?.interior_lines_used ?? 0,
         graph_nodes: graph.logs?.graph_nodes ?? graph.vertices.length,
         graph_segments: graph.logs?.graph_segments ?? graph.edges.length,
         intersections_split: graph.logs?.intersections_split ?? 0,
         dangling_edges_removed: graph.logs?.dangling_edges_removed ?? 0,
         faces_extracted: graph.logs?.faces_extracted ?? graph.faces.length,
+        faces_attempted: graph.logs?.faces_extracted ?? graph.faces.length,
+        faces_rejected: (graph.logs?.faces_rejected_by_plane_fit || 0) + (graph.logs?.faces_rejected_by_area || 0),
+        rejection_reasons: graph.failure_reason ? [graph.failure_reason] : [],
         valid_faces: graph.logs?.valid_faces ?? graph.faces.length,
         face_coverage_ratio: graph.face_coverage_ratio,
         edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
