@@ -16,6 +16,10 @@ import { filterRoofFaces } from "./face-filter.ts";
 type Pt = { x: number; y: number };
 type Seg = { a: Pt; b: Pt };
 
+const ENDPOINT_SNAP_TOL_PX = 8;
+const FOOTPRINT_TOUCH_TOL_PX = 10;
+const MIN_SEGMENT_LENGTH_PX = 3;
+
 // ── GRID SNAP ──────────────────────────────────────────────
 function snap(p: Pt, grid = 2): Pt {
   return {
@@ -35,6 +39,10 @@ function segKey(a: Pt, b: Pt): string {
 
 function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function segmentLength(seg: Seg): number {
+  return dist(seg.a, seg.b);
 }
 
 function sub(a: Pt, b: Pt): Pt {
@@ -63,6 +71,40 @@ function pointOnSegment(p: Pt, a: Pt, b: Pt, tol = 2.5): boolean {
   const minX = Math.min(a.x, b.x) - tol, maxX = Math.max(a.x, b.x) + tol;
   const minY = Math.min(a.y, b.y) - tol, maxY = Math.max(a.y, b.y) + tol;
   return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+}
+
+function pointNearFootprint(p: Pt, footprint: Pt[], tol = FOOTPRINT_TOUCH_TOL_PX): boolean {
+  for (let i = 0; i < footprint.length; i++) {
+    if (pointOnSegment(p, footprint[i], footprint[(i + 1) % footprint.length], tol)) return true;
+  }
+  return false;
+}
+
+function snapInteriorFragmentsToGraph(rawLines: Seg[], footprint: Pt[]): Seg[] {
+  const anchors: Pt[] = [...footprint];
+  const snapEndpoint = (p: Pt): Pt => {
+    const fp = snapToFootprint(p, footprint, FOOTPRINT_TOUCH_TOL_PX);
+    if (dist(fp, p) <= FOOTPRINT_TOUCH_TOL_PX) return fp;
+    for (const anchor of anchors) {
+      if (dist(anchor, p) <= ENDPOINT_SNAP_TOL_PX) return anchor;
+    }
+    const sp = snap(p);
+    anchors.push(sp);
+    return sp;
+  };
+
+  const out: Seg[] = [];
+  const seen = new Set<string>();
+  for (const line of rawLines) {
+    const a = snapEndpoint(snap(line.a));
+    const b = snapEndpoint(snap(line.b));
+    if (ptKey(a) === ptKey(b) || dist(a, b) < MIN_SEGMENT_LENGTH_PX) continue;
+    const k = segKey(a, b);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ a, b });
+  }
+  return out;
 }
 
 function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
@@ -130,6 +172,41 @@ function splitSegmentsAtAllIntersections(segments: Seg[]): Seg[] {
   }
 
   return out;
+}
+
+function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept: Seg[]; removed: number } {
+  let current = segments;
+  let removed = 0;
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const degree = new Map<string, number>();
+    for (const seg of current) {
+      const ka = ptKey(seg.a), kb = ptKey(seg.b);
+      degree.set(ka, (degree.get(ka) || 0) + 1);
+      degree.set(kb, (degree.get(kb) || 0) + 1);
+    }
+
+    const next = current.filter((seg) => {
+      const aBoundary = pointNearFootprint(seg.a, footprint, 3);
+      const bBoundary = pointNearFootprint(seg.b, footprint, 3);
+      const footprintEdge = aBoundary && bBoundary && pointNearFootprint({ x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 }, footprint, 3);
+      if (footprintEdge) return true;
+      const aDangling = (degree.get(ptKey(seg.a)) || 0) <= 1 && !aBoundary;
+      const bDangling = (degree.get(ptKey(seg.b)) || 0) <= 1 && !bBoundary;
+      if (aDangling || bDangling) {
+        removed++;
+        changed = true;
+        return false;
+      }
+      return true;
+    });
+
+    current = next;
+  }
+
+  return { kept: current, removed };
 }
 
 // ── INTERSECT interior segments with footprint edges ──────
@@ -311,10 +388,14 @@ export interface PlanarSolverResult {
   debug: {
     input_footprint_vertices: number;
     input_interior_lines: number;
+    snapped_interior_lines: number;
+    intersections_split: number;
+    dangling_edges_removed: number;
     total_graph_segments: number;
     total_graph_nodes: number;
     faces_extracted: number;
     faces_with_area: number;
+    face_coverage_ratio: number;
   };
 }
 
@@ -323,21 +404,27 @@ export function solveRoofPlanes(
   interiorLines: Seg[],
 ): PlanarSolverResult {
   if (rawFootprint.length < 3) {
-    return { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0 } };
+    return { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, intersections_split: 0, dangling_edges_removed: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
   }
 
   // 1. Snap everything
   const footprint = rawFootprint.map(p => snap(p));
 
-  // 2. Convert every ridge/skeleton hint into a full boundary-to-boundary chord.
-  //    Floating interior hints do not create closed faces; extending them to the
-  //    snapped footprint makes the plane graph the source of truth.
+  // 2. DSM edge fragments are evidence, not synthetic topology. Snap nearby
+  //    endpoints and only extend lines that already touch or nearly touch the
+  //    footprint. Floating fragments must connect naturally or be pruned.
   const snappedInterior: Seg[] = interiorLines
-    .map((seg) => extendLineToFootprint({ a: snap(seg.a), b: snap(seg.b) }, footprint))
-    .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b));
+    .map((seg) => ({ a: snap(seg.a), b: snap(seg.b) }))
+    .filter((seg) => segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
+  const interiorFragments = snapInteriorFragmentsToGraph(snappedInterior, footprint)
+    .map((seg) => {
+      const touchesFootprint = pointNearFootprint(seg.a, footprint) || pointNearFootprint(seg.b, footprint);
+      return touchesFootprint ? extendLineToFootprint(seg, footprint) || seg : seg;
+    })
+    .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b) && segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 
   // 3. Collect all unique endpoints from interior lines that land on footprint edges
-  const interiorEndpoints = snappedInterior.flatMap(s => [s.a, s.b]);
+  const interiorEndpoints = interiorFragments.flatMap(s => [s.a, s.b]);
 
   // 4. Insert midpoints into footprint to ensure connectivity
   const augFootprint = insertMidpointsIntoFootprint(footprint, interiorEndpoints);
@@ -360,13 +447,15 @@ export function solveRoofPlanes(
   }
 
   // Interior lines
-  for (const seg of snappedInterior) {
+  for (const seg of interiorFragments) {
     addSeg(seg.a, seg.b);
   }
 
   // 6. Split every segment at every graph intersection. Without this, crossing
   //    ridge/hip lines visually overlap but do not share exact topology.
-  const graphSegments = splitSegmentsAtAllIntersections(allSegments);
+  const splitSegments = splitSegmentsAtAllIntersections(allSegments);
+  const pruned = pruneDanglingInteriorSegments(splitSegments, footprint);
+  const graphSegments = pruned.kept;
   const adj = buildAdjacency(graphSegments);
   const rawFaces = extractMinimalCycles(adj);
 
@@ -377,14 +466,21 @@ export function solveRoofPlanes(
     .map((polygon, i) => ({ id: i, polygon }));
   const validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: face.polygon }));
+  const footprintArea = Math.abs(signedArea(footprint));
+  const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
+  const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
 
   const debug = {
     input_footprint_vertices: rawFootprint.length,
     input_interior_lines: interiorLines.length,
+    snapped_interior_lines: interiorFragments.length,
+    intersections_split: Math.max(0, splitSegments.length - allSegments.length),
+    dangling_edges_removed: pruned.removed,
     total_graph_segments: graphSegments.length,
     total_graph_nodes: adj.size,
     faces_extracted: rawFaces.length,
     faces_with_area: validFaces.length,
+    face_coverage_ratio: Number(faceCoverageRatio.toFixed(3)),
   };
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));

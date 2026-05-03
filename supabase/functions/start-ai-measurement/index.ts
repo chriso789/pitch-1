@@ -892,11 +892,22 @@ async function processJob(input: any) {
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
       autonomousDebug = {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
+        facet_source: graph.facet_source || "dsm_planar_graph_faces",
         solver_version: "autonomous_graph_solver_v3_prune_first",
         fallback_used: false,
         hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
         dsm_loaded: !!dsmGrid,
         mask_loaded: !!roofMask,
+        dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
+        dsm_edges_accepted: graph.logs?.dsm_edges_accepted ?? (graph.logs?.fused_edges || 0),
+        interior_lines_used: graph.logs?.interior_lines_used ?? 0,
+        graph_nodes: graph.logs?.graph_nodes ?? graph.vertices.length,
+        graph_segments: graph.logs?.graph_segments ?? graph.edges.length,
+        intersections_split: graph.logs?.intersections_split ?? 0,
+        dangling_edges_removed: graph.logs?.dangling_edges_removed ?? 0,
+        faces_extracted: graph.logs?.faces_extracted ?? graph.faces.length,
+        valid_faces: graph.logs?.valid_faces ?? graph.faces.length,
+        face_coverage_ratio: graph.face_coverage_ratio,
         edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
         edge_filter_count_after: graph.logs?.fused_edges || 0,
         snapped_vertex_count: graph.vertices.length,
@@ -948,6 +959,26 @@ async function processJob(input: any) {
       solverTopologyLocked = true;
       constraintSolverEdges = [...cleanEdges];
       ridgeSplitPlaneCount = cleanPlanes.length;
+      planeEdgeClassifierDebug = {
+        source: "dsm_planar_graph_faces",
+        classifier_skipped: true,
+        plane_count: cleanPlanes.length,
+        shared_edges: cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length,
+        exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length,
+        invalid_edges: 0,
+        counts: cleanEdges.reduce((acc: Record<string, number>, edge) => {
+          acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+          return acc;
+        }, {}),
+      };
+      strictEdgeGraphDebug = {
+        total_edges: cleanEdges.length,
+        shared_edges: planeEdgeClassifierDebug.shared_edges,
+        exterior_edges: planeEdgeClassifierDebug.exterior_edges,
+        invalid_edges: 0,
+      };
+      (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
+      (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
       console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
     }
 
@@ -2125,7 +2156,7 @@ async function processJob(input: any) {
           const solverShared = cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length;
           const solverExterior = cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length;
           planeEdgeClassifierDebug = {
-            source: "constraint_solver_topology",
+            source: topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : "constraint_solver_topology",
             classifier_skipped: true,
             plane_count: cleanPlanes.length,
             shared_edges: solverShared,
@@ -2141,7 +2172,7 @@ async function processJob(input: any) {
           };
           (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
           (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
-          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using constraint solver topology as final authority");
+          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using locked solver topology as final authority");
           console.log("[FINAL_TOPOLOGY_SOURCE]", JSON.stringify({
             solver_used: topologySource,
             classifier_used: false,
@@ -3581,12 +3612,16 @@ async function processJob(input: any) {
       edges: edgeRows,
       totals,
       quality,
+      dsm_planar_graph_debug: autonomousDebug,
       // Dev overlay payload — matches RasterOverlayDebugView contract.
       planes_px,
       edges_px,
       raster_size,
       raster_image_url: imageUrl,
       topology_source: topologySource,
+      facet_source: autonomousDebug?.facet_source ?? (topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : null),
+      fallback_used: autonomousDebug?.fallback_used ?? (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
+      hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
       footprint_source: footprintSource,
       inference_source: resolvedGeometrySource,
       used_deterministic_topology:
@@ -3633,6 +3668,18 @@ async function processJob(input: any) {
           eave_ft: Number(totals.eave_length_ft) || 0, rake_ft: Number(totals.rake_length_ft) || 0,
         },
         topology_source: topologySource,
+        facet_source: autonomousDebug?.facet_source ?? (topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : null),
+        dsm_edges_detected: autonomousDebug?.dsm_edges_detected ?? 0,
+        dsm_edges_accepted: autonomousDebug?.dsm_edges_accepted ?? 0,
+        interior_lines_used: autonomousDebug?.interior_lines_used ?? 0,
+        graph_nodes: autonomousDebug?.graph_nodes ?? 0,
+        graph_segments: autonomousDebug?.graph_segments ?? 0,
+        intersections_split: autonomousDebug?.intersections_split ?? 0,
+        dangling_edges_removed: autonomousDebug?.dangling_edges_removed ?? 0,
+        faces_extracted: autonomousDebug?.faces_extracted ?? 0,
+        valid_faces: autonomousDebug?.valid_faces ?? planeRows.length,
+        face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
+        hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
         footprint_source: footprintSource,
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
