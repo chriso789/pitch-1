@@ -1,95 +1,83 @@
+## Problem
 
-# EagleView Patent Parity Implementation Plan
+Database evidence from 4063 Fonsica shows all failed runs have:
+- `footprint_source: null`
+- `grj_footprint_valid: null`  
+- `grj_coordinate_match: null`
+- `internal_debug_report_ready: false`
+- `gate_reason: dsm_edges_found_no_closed_faces` or `ai_failed_complex_topology`
 
-Based on the comprehensive review, the system already has strong structural building blocks. The work focuses on five areas: registration quality, failure persistence, solver observability, mask-based QA, and legacy cleanup.
+The footprint diagnostics are never persisted, and the UI shows "footprint: unknown" + "No diagrams available". The solver runs even when the footprint doesn't overlap the DSM grid.
 
----
+## Changes
 
-## Phase 1: Overlay Registration Hardening (highest priority)
+### 1. DSM Coordinate Match Gate (`start-ai-measurement/index.ts`, ~lines 1020-1038)
 
-**Problem:** `overlay-transform.ts` is a bbox-based scale+center transform. It has no feature-level residual measurement, no control-point support, and no RMS error metric. This is the largest parity gap.
+After DSM/mask loads and before `solveAutonomousGraph`:
+- Convert footprint geo coords to DSM pixel space via `geoToPixel()`
+- Compute footprint bbox in DSM pixels and check overlap with DSM grid dimensions
+- Require >50% overlap with 5px tolerance
 
-**Changes:**
-- **`supabase/functions/_shared/overlay-transform.ts`** — Extend `OverlayCalibration` type to include `rms_px`, `max_error_px`, `mask_iou`, `inlier_count`, and a `transform` matrix. Add a `computeRegistrationQuality()` function that takes geometry points + roof mask and computes actual residuals instead of just bbox coverage ratios.
-- **`supabase/functions/start-ai-measurement/index.ts`** — After computing overlay calibration, call the new registration quality function and store full metrics in the measurement row's `overlay_calibration` JSON field. Enforce publish gate: `rms_px <= 4`, `max_error_px <= 8`, `mask_iou >= 0.85`, `coverage_ratio >= 0.85`. Fail customer PDF but still persist debug data when thresholds are not met.
+Two hard blocks before the solver call:
+- `footprintSource === "none" || "unknown"` -> fail as `missing_valid_footprint`, do NOT call solver
+- `dsmCoordinateMatch === false` -> fail as `footprint_coordinate_mismatch`, do NOT call solver
 
----
+Both blocks persist a failed `roof_measurements` row with full debug payload including `footprint_px`, DSM bbox, coordinate match details, and set `internal_debug_report_ready = true`.
 
-## Phase 2: Always-Persist Debug Reports for Failed Runs
+### 2. Persist Footprint Diagnostics on All Rows (`start-ai-measurement/index.ts`)
 
-**Problem:** When measurement jobs fail early, no debug artifact is persisted, making the hardest failures the least inspectable.
+Update `insertFailedPreliminaryMeasurement` (~line 4946):
+- Always include `footprint_px` in `overlay_debug` from the debug payload
+- Always include `raster_url` from imageUrl parameter
+- Always include `raster_size` (needs to be passed or derived)
+- Set `internal_debug_report_ready = true` (already done on some paths but not all)
 
-**Changes:**
-- **`supabase/functions/start-ai-measurement/index.ts`** — Wrap the entire pipeline in a try/catch that guarantees: (1) a `roof_measurements` row with `validation_status = 'needs_internal_review'` and `geometry_report_json.block_customer_report_reason`, (2) `ai_measurement_diagrams` rows for a debug report, and (3) `measurement_jobs.error` linked to the debug artifact. Every run produces at least a debug bundle with overlay metrics, solver metrics, and block reason.
-- **`src/components/measurements/MeasurementReportDialog.tsx`** — When a measurement has `validation_status = 'needs_internal_review'`, open the Internal Debug Report view by default instead of the customer report.
-- **`src/components/measurements/UnifiedMeasurementPanel.tsx`** — Show a distinct "Debug Report Available" link for blocked measurements instead of just the error banner.
+Update `autonomousDebug` object (~line 1040):
+- Add `dsm_coordinate_match: dsmCoordinateMatchDebug`
+- Ensure `footprint_px` is always included in `overlay_debug` section
 
----
+Update the success path `geometryReportJson` (~line 3911):
+- Add `footprint_valid`, `footprint_point_count`, `footprint_area_sqft`, `footprint_bbox`, `dsm_coordinate_match` at the top level
 
-## Phase 3: Formalize Solver Contract and Observability
+### 3. Fix Debug UI — MeasurementReportDialog (`MeasurementReportDialog.tsx`, ~lines 600-860)
 
-**Problem:** The planar solver has the right thresholds but doesn't expose all diagnostic counters, and the contract isn't formally typed for testing.
+Fix "footprint: unknown" display:
+- Read footprint source from multiple fallback paths: `footprint_source`, `geometry_report_json.footprint_source`, `geometry_report_json.debug_geometry.footprint_source`, `geometry_report_json.dsm_planar_graph_debug.footprint_source`
+- Add coordinate_match badge to the header metadata
 
-**Changes:**
-- **`supabase/functions/_shared/planar-roof-solver.ts`** — Export explicit `PlanarRoofSolverInput` and `PlanarRoofSolverOutput` types. Add missing metrics to output: `cluster_merges`, `collinear_merges`, `intersection_filter_skipped`, `fragment_merges`, `face_count_before_merge`, `face_count_after_merge`, `faces_rejected_by_plane_fit`, `faces_rejected_by_area`. Document threshold invariants as named constants.
-- **`supabase/functions/_shared/autonomous-graph-solver.ts`** — Surface the expanded solver metrics in the `AutonomousGraphResult.debug` object. Add `customer_block_reason` field. Pass expanded metrics through to the measurement row.
-- **`src/components/measurements/DSMDebugOverlay.tsx`** — Display the new solver metrics (cluster merges, fragment merges, intersection filter stats, per-face RMS labels, edge source coloring by confidence).
+Fix "No diagrams available" for diagnostic reports:
+- Change the overlay display predicate from `planes_px.length > 0 || edges_px.length > 0` to also include `footprint_px exists`
+- When `internal_debug_report_ready = true` but `customer_report_ready = false`, always show diagnostic controls even with 0 planes/edges
+- Render footprint polygon from `overlay_debug.footprint_px` even when there are no faces
 
----
+### 4. Fix DSMDebugOverlay (`DSMDebugOverlay.tsx`)
 
-## Phase 4: Mask IoU as First-Class Publish Gate
+Add new fields to `OverlayDebugData` interface:
+- `footprint_source?: string`
+- `footprint_valid?: boolean`  
+- `footprint_point_count?: number`
+- `footprint_area_sqft?: number`
+- `dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: any; dsm_bbox: any }`
 
-**Problem:** Google Solar provides a roof mask, but it's only used for DSM filtering, not as a publish-time validator.
+Display these in the stats bar, including a coordinate_match badge (green/red).
 
-**Changes:**
-- **`supabase/functions/_shared/dsm-analyzer.ts`** — Export a `computeMaskIoU(facetPolygonsPx, roofMaskGrid)` function that rasterizes final geometry polygons and computes intersection-over-union against the Solar building mask.
-- **`supabase/functions/start-ai-measurement/index.ts`** — Call `computeMaskIoU` after face extraction. Include result in overlay calibration metrics. Block customer report when `mask_iou < 0.85`.
-- **`supabase/functions/_shared/footprint-constraint-validator.ts`** — Add mask IoU to the validation result alongside existing footprint checks.
+### 5. Backfill Failed Rows (SQL migration)
 
----
-
-## Phase 5: Legacy Path Removal and Source Tagging
-
-**Problem:** `measure-roof/`, `measure/`, and other legacy functions still exist and could re-enter the runtime path.
-
-**Changes:**
-- **`supabase/functions/start-ai-measurement/index.ts`** — Ensure every customer-publishable `roof_measurements` row includes `geometry_source = 'autonomous_dsm_graph_solver'`, `topology_source = 'autonomous_dsm_graph_solver'`, `fallback_used = false`. Block publish if these fields are missing.
-- **Legacy functions** (`measure-roof`, `measure`, etc.) — Add deprecation headers and logging. These will not be deleted yet (to avoid breaking any external references) but will log warnings when invoked and return a deprecation notice in responses.
-
----
-
-## Technical Details
-
-### New types added to overlay-transform.ts:
-```text
-OverlayRegistrationResult {
-  calibrated, transform[], rms_px, max_error_px,
-  inlier_count, mask_iou?, coverage_ratio, reason?
-}
+A small migration to update existing failed `roof_measurements` rows:
+```sql
+UPDATE roof_measurements 
+SET internal_debug_report_ready = true 
+WHERE validation_status = 'failed' 
+  AND internal_debug_report_ready = false 
+  AND gate_reason IS NOT NULL;
 ```
 
-### Publish gate constants:
-```text
-OVERLAY_RMS_PX_MAX = 4
-OVERLAY_MAX_ERROR_PX = 8
-MASK_IOU_MIN = 0.85
-COVERAGE_RATIO_MIN = 0.85
-```
+### 6. Deploy and Validate
 
-### Files touched (estimated):
-- `supabase/functions/_shared/overlay-transform.ts` — registration quality
-- `supabase/functions/_shared/planar-roof-solver.ts` — typed contract + metrics
-- `supabase/functions/_shared/autonomous-graph-solver.ts` — expanded debug output
-- `supabase/functions/_shared/dsm-analyzer.ts` — mask IoU computation
-- `supabase/functions/_shared/footprint-constraint-validator.ts` — mask IoU gate
-- `supabase/functions/start-ai-measurement/index.ts` — orchestration + fail persistence
-- `src/components/measurements/DSMDebugOverlay.tsx` — expanded metrics display
-- `src/components/measurements/MeasurementReportDialog.tsx` — debug-first for blocked runs
-- `src/components/measurements/UnifiedMeasurementPanel.tsx` — debug report link
+Deploy `start-ai-measurement` edge function. Check latest 4063 Fonsica logs for the new diagnostics.
 
-### Edge functions to deploy:
-- `start-ai-measurement`
+## Hard Rules Enforced
 
-### Memory updates:
-- Update `mem://features/measurement-system/visualization-and-reporting` with new overlay registration contract
-- Create `mem://features/measurement-system/overlay-registration-contract` for publish gate thresholds
+1. If `footprint_source` is `unknown` or `none` OR `coordinate_match` is `false`: do NOT call `solveAutonomousGraph`
+2. Even when `planes = 0` and `edges = 0`: render `footprint_px` + DSM bbox + failure reason in the debug overlay
+3. `internal_debug_report_ready = true` on every failed row regardless of failure type

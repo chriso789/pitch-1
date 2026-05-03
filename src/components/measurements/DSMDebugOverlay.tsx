@@ -65,6 +65,12 @@ interface OverlayDebugData {
   fallback_used?: boolean;
   customer_report_ready?: boolean;
   internal_debug_report_ready?: boolean;
+  // Footprint diagnostics (Phase 6)
+  footprint_source?: string;
+  footprint_valid?: boolean;
+  footprint_point_count?: number;
+  footprint_area_sqft?: number;
+  dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: any; dsm_bbox: any } | null;
   // Registration quality metrics
   overlay_calibration?: {
     registration_quality?: {
@@ -404,9 +410,28 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
                   {data.customer_report_ready ? '✓ Customer Report' : '✗ No Customer Report'}
                 </Badge>
               )}
+              {/* Footprint diagnostics (Phase 6) */}
+              {data.footprint_source && (
+                <Badge variant={data.footprint_source === 'unknown' || data.footprint_source === 'none' ? 'destructive' : 'secondary'} className="text-[9px]">
+                  FP: {data.footprint_source}
+                </Badge>
+              )}
+              {data.dsm_coordinate_match != null && (
+                <Badge variant={data.dsm_coordinate_match.match ? 'secondary' : 'destructive'} className="text-[9px]">
+                  DSM match: {data.dsm_coordinate_match.match ? '✓' : '✗'} ({Math.round((data.dsm_coordinate_match.overlap_ratio || 0) * 100)}%)
+                </Badge>
+              )}
+              {data.footprint_point_count != null && (
+                <Badge variant="outline" className="text-[9px]">
+                  FP pts: {data.footprint_point_count}
+                </Badge>
+              )}
+              {data.footprint_area_sqft != null && data.footprint_area_sqft > 0 && (
+                <Badge variant="outline" className="text-[9px]">
+                  FP area: {data.footprint_area_sqft} sqft
+                </Badge>
+              )}
             </div>
-
-            {/* Edge classification breakdown */}
             <div className="flex flex-wrap gap-2 text-[10px]">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-0.5 inline-block" style={{ backgroundColor: '#ff0000' }} /> Ridge: {ridgeEdges}

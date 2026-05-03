@@ -33,7 +33,7 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, geoToPixel } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, type AutonomousGraphInput } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
@@ -1003,6 +1003,7 @@ async function processJob(input: any) {
     // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
     let autonomousDebug: any = null;
     let dsmFailReason: string | null = null;
+    let dsmCoordinateMatchDebug: any = null;
     {
       let dsmGrid: any = null;
       let roofMask: any = null;
@@ -1024,6 +1025,91 @@ async function processJob(input: any) {
       const footprintGeo = selectedMaskContourGeo?.length
         ? selectedMaskContourGeo
         : footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+
+      // ══════════ DSM COORDINATE MATCH GATE ══════════
+      // Verify the footprint geo coords actually fall inside the DSM GeoTIFF grid.
+      // A footprint can be valid on the satellite raster but mis-registered vs DSM.
+      const effectiveDSMForMatch = maskedDSM || dsmGrid;
+      let dsmCoordinateMatch = true;
+      if (effectiveDSMForMatch && footprintGeo.length >= 3) {
+        const dsmW = effectiveDSMForMatch.width;
+        const dsmH = effectiveDSMForMatch.height;
+        const fpDsmPx = footprintGeo.map((p: [number, number]) => {
+          const [px, py] = geoToPixel(p, effectiveDSMForMatch);
+          return { x: px, y: py };
+        });
+        const fpDsmBbox = bboxOf(fpDsmPx);
+        const dsmBboxRect = { minX: 0, minY: 0, maxX: dsmW, maxY: dsmH, width: dsmW, height: dsmH };
+        const tolerance = 5; // px
+        const insideX = fpDsmBbox && fpDsmBbox.maxX > -tolerance && fpDsmBbox.minX < dsmW + tolerance;
+        const insideY = fpDsmBbox && fpDsmBbox.maxY > -tolerance && fpDsmBbox.minY < dsmH + tolerance;
+        const overlapArea = fpDsmBbox ? bboxIntersect(fpDsmBbox, { minX: 0, minY: 0, maxX: dsmW, maxY: dsmH }) : 0;
+        const fpDsmArea = fpDsmBbox ? fpDsmBbox.area : 0;
+        const overlapRatio = fpDsmArea > 0 ? overlapArea / fpDsmArea : 0;
+        dsmCoordinateMatch = Boolean(insideX && insideY && overlapRatio > 0.5);
+        dsmCoordinateMatchDebug = {
+          footprint_dsm_bbox: fpDsmBbox ? { minX: Math.round(fpDsmBbox.minX), minY: Math.round(fpDsmBbox.minY), maxX: Math.round(fpDsmBbox.maxX), maxY: Math.round(fpDsmBbox.maxY) } : null,
+          dsm_bbox: { width: dsmW, height: dsmH },
+          overlap_ratio: Number(overlapRatio.toFixed(3)),
+          inside_x: insideX,
+          inside_y: insideY,
+          match: dsmCoordinateMatch,
+        };
+        console.log("[DSM_COORDINATE_MATCH]", JSON.stringify(dsmCoordinateMatchDebug));
+      }
+
+      // HARD BLOCK: if footprint source is unknown, do NOT call solveAutonomousGraph.
+      if (footprintSource === "none" || footprintSource === "unknown") {
+        const failReason = "missing_valid_footprint";
+        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} — blocking solver`);
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: false,
+          footprint_point_count: footprint.length,
+          footprint_area_px: Math.round(footprintAreaPxVal),
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          footprint_coordinate_space: "pixel",
+          coordinate_space_match: false,
+          dsm_coordinate_match: dsmCoordinateMatchDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map(p => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
+      // HARD BLOCK: if footprint does not overlap DSM grid, do NOT call solver.
+      if (!dsmCoordinateMatch) {
+        const failReason = "footprint_coordinate_mismatch";
+        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: true,
+          footprint_point_count: footprint.length,
+          footprint_area_px: Math.round(footprintAreaPxVal),
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          footprint_coordinate_space: "pixel",
+          coordinate_space_match: false,
+          dsm_coordinate_match: dsmCoordinateMatchDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map(p => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
       const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
@@ -1051,6 +1137,8 @@ async function processJob(input: any) {
         footprint_coordinate_space: "pixel",
         dsm_edge_coordinate_space: "pixel",
         coordinate_space_match: true,
+        dsm_coordinate_match: dsmCoordinateMatchDebug,
+        footprint_px: footprint.map(p => [p.x, p.y]),
         dsm_loaded: !!dsmGrid,
         mask_loaded: !!roofMask,
         dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
@@ -3924,6 +4012,10 @@ async function processJob(input: any) {
       fallback_used: autonomousDebug?.fallback_used ?? (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
       hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
       footprint_source: footprintSource,
+      footprint_valid: true,
+      footprint_point_count: footprint.length,
+      footprint_area_sqft: Math.round(footprintAreaSqftVal),
+      dsm_coordinate_match: dsmCoordinateMatchDebug,
       inference_source: resolvedGeometrySource,
       used_deterministic_topology:
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
@@ -4000,6 +4092,12 @@ async function processJob(input: any) {
         overlay_calibration: overlayCalibration,
         roof_target_bbox_px: roofTargetBboxPx,
         roof_target_source: roofTargetSource,
+        // Footprint diagnostics
+        footprint_source: footprintSource,
+        footprint_valid: true,
+        footprint_point_count: footprint.length,
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        dsm_coordinate_match: dsmCoordinateMatchDebug,
         // DSM debug overlay data
         rejected_edges_geo: autonomousDebug?.rejected_edges_geo ?? [],
         graph_vertices_geo: autonomousDebug?.graph_vertices_geo ?? [],
@@ -5005,6 +5103,14 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     },
     overlay_debug: {
       coordinate_space: "geo",
+      raster_url: imageUrl,
+      raster_size: debug?.raster_size || null,
+      footprint_px: debug?.footprint_px || [],
+      footprint_source: debug?.footprint_source || "unknown",
+      footprint_valid: debug?.footprint_valid ?? false,
+      footprint_point_count: debug?.footprint_point_count ?? 0,
+      footprint_area_sqft: debug?.footprint_area_sqft ?? 0,
+      dsm_coordinate_match: debug?.dsm_coordinate_match || null,
       rejected_edges_geo: debug?.rejected_edges_geo || [],
       graph_vertices_geo: debug?.graph_vertices_geo || [],
       accepted_edges_geo: debug?.accepted_edges_geo || [],
