@@ -42,6 +42,7 @@ function normalizedFaceKey(poly: Point[]): string {
 }
 
 function removeOuterFace(faces: Face[]): Face[] {
+  if (faces.length <= 1) return faces;
   let maxArea = 0;
   let outerIndex = -1;
   for (let i = 0; i < faces.length; i++) {
