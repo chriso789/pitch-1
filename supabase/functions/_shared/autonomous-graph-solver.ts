@@ -902,49 +902,92 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: Build graph & extract faces =====
-  const perimeterEdges = [
-    ...input.boundaryEdges.eaveEdges.map(([s, e]) => ({ start: s, end: e, type: 'eave' as const })),
-    ...input.boundaryEdges.rakeEdges.map(([s, e]) => ({ start: s, end: e, type: 'rake' as const })),
-  ];
+  // ===== STEP 6: DSM topology guarantee via planar graph faces =====
+  const footprintPx = effectiveDSM
+    ? input.footprintCoords.map((p) => geoToPxPoint(p, effectiveDSM))
+    : [];
+  const dsmInteriorEdgesPx = effectiveDSM
+    ? classifiedEdges
+        .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
+        .map((e) => ({
+          a: geoToPxPoint(e.start, effectiveDSM),
+          b: geoToPxPoint(e.end, effectiveDSM),
+          type: e.classifiedType as 'ridge' | 'valley' | 'hip',
+          score: e.score,
+        }))
+    : [];
+  const planar = effectiveDSM && footprintPx.length >= 3
+    ? planarSolveRoofPlanes(footprintPx, dsmInteriorEdgesPx)
+    : { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, intersections_split: 0, dangling_edges_removed: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+  console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}`);
 
-  const graph = buildGraph(classifiedEdges, perimeterEdges, midLat);
-  console.log(`  Graph: ${graph.vertices.size} vertices, ${graph.edges.length} edges, connected=${graph.connected}`);
-
-  // ===== STEP 7: Extract & validate faces =====
-  const { faces: graphFaces, rejectedCount: facesRejected } = extractAndValidateFaces(
-    graph, effectiveDSM, midLat, input.solarSegments
-  );
-  console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit`);
-
-  // ===== Convert to output format =====
-  let edgeId = 0;
-  const outputEdges: GraphEdge[] = [];
-
-  for (const e of graph.edges) {
-    const v1Pos = graph.vertices.get(e.v1)!;
-    const v2Pos = graph.vertices.get(e.v2)!;
-    const lengthFt = distanceFt(v1Pos, v2Pos, midLat);
-    if (lengthFt < 1) continue;
-
-    outputEdges.push({
-      id: `GE-${edgeId++}`,
-      type: e.type,
-      start: v1Pos,
-      end: v2Pos,
-      length_ft: lengthFt,
-      confidence: {
-        dsm_score: e.source === 'dsm' ? 0.8 : e.source === 'perimeter' ? 0.85 : 0.4,
-        rgb_score: 0.5,
-        solar_azimuth_score: 0.7,
-        topology_score: graph.connected ? 0.9 : 0.5,
-        length_score: lengthFt > 10 ? 0.8 : 0.5,
-        final_confidence: e.score,
-      },
-      facet_ids: [],
-      source: e.source as GraphEdge['source'],
+  let facesRejected = 0;
+  const graphFaces: GraphFace[] = [];
+  for (const face of planar.faces) {
+    const polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
+    if (polygon.length < 3) continue;
+    if (effectiveDSM) {
+      const fitError = fitPlaneToPolygon(polygon, effectiveDSM);
+      if (fitError !== null && fitError > PLANE_FIT_ERROR_THRESHOLD) {
+        facesRejected++;
+        continue;
+      }
+    }
+    const areaSqft = polygonAreaSqft(polygon, midLat);
+    if (areaSqft < MIN_FACET_AREA_SQFT) {
+      facesRejected++;
+      continue;
+    }
+    const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
+    const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
+    const pitch = matchingSolar?.pitchDegrees || 0;
+    const azimuth = matchingSolar?.azimuthDegrees || 0;
+    const closedPolygon = vertexKey(polygon[0]) === vertexKey(polygon[polygon.length - 1]) ? polygon : [...polygon, polygon[0]];
+    graphFaces.push({
+      id: `SF-${String.fromCharCode(65 + graphFaces.length)}`,
+      label: String.fromCharCode(65 + graphFaces.length),
+      polygon: closedPolygon,
+      plan_area_sqft: areaSqft,
+      roof_area_sqft: areaSqft * pitchFactor(pitch),
+      pitch_degrees: pitch,
+      azimuth_degrees: azimuth,
+      edge_ids: [],
     });
   }
+
+  // ===== Convert planar segments to output edges =====
+  let edgeId = 0;
+  const outputEdges: GraphEdge[] = [];
+  const outputVerticesByKey = new Map<string, XY>();
+  const addVertex = (p: XY) => outputVerticesByKey.set(vertexKey(p), p);
+  for (const seg of planar.edges) {
+    if (!effectiveDSM) continue;
+    const start = pxToGeoPoint(seg.a, effectiveDSM);
+    const end = pxToGeoPoint(seg.b, effectiveDSM);
+    const lengthFt = distanceFt(start, end, midLat);
+    if (lengthFt < 1) continue;
+    const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
+    addVertex(start);
+    addVertex(end);
+    outputEdges.push({
+      id: `GE-${edgeId++}`,
+      type: classified.type,
+      start,
+      end,
+      length_ft: lengthFt,
+      confidence: {
+        dsm_score: classified.source === 'dsm' ? 0.85 : 0.8,
+        rgb_score: 0,
+        solar_azimuth_score: 0.5,
+        topology_score: planar.faces.length >= 2 ? 0.9 : 0.2,
+        length_score: lengthFt > 10 ? 0.8 : 0.5,
+        final_confidence: classified.score,
+      },
+      facet_ids: [],
+      source: classified.source,
+    });
+  }
+  console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit/area`);
 
   // Totals
   const outRidges = outputEdges.filter(e => e.type === 'ridge');
@@ -956,7 +999,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   const totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
   const totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
-  const coverageRatio = footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0;
+  const coverageRatio = planar.debug.face_coverage_ratio || (footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0);
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
   const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
@@ -975,6 +1018,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       graphConnected: graph.connected,
       coverageRatio,
       structuralEdgeCount,
+      dsmEdgesAccepted: classifiedEdges.filter(e => e.source === 'dsm').length,
     },
     complexity
   );
@@ -982,7 +1026,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   // Build vertex output
   const outputVertices: GraphVertex[] = [];
   let vId = 0;
-  for (const [key, pos] of graph.vertices) {
+  for (const [key, pos] of outputVerticesByKey) {
     const connectedEdgeIds = outputEdges
       .filter(e => vertexKey(e.start) === key || vertexKey(e.end) === key)
       .map(e => e.id);
@@ -1017,9 +1061,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     faces_rejected_by_plane_fit: facesRejected,
     coverage_ratio: coverageRatio,
     confidence: avgConfidence,
-    graph_valid: graph.connected,
+    graph_valid: graphFaces.length >= 2 && coverageRatio >= 0.85,
     warnings,
     timing_ms: timingMs,
+    dsm_edges_detected: dsmRidges.length + dsmValleys.length,
+    dsm_edges_accepted: classifiedEdges.filter(e => e.source === 'dsm').length,
+    interior_lines_used: dsmInteriorEdgesPx.length,
+    graph_nodes: planar.debug.total_graph_nodes,
+    graph_segments: planar.debug.total_graph_segments,
+    intersections_split: planar.debug.intersections_split,
+    dangling_edges_removed: planar.debug.dangling_edges_removed,
+    faces_extracted: planar.debug.faces_extracted,
+    valid_faces: graphFaces.length,
+    topology_source: 'autonomous_dsm_graph_solver',
+    facet_source: 'dsm_planar_graph_faces',
+    hard_fail_reason: validation.valid ? null : validation.status,
   };
 
   console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
@@ -1027,7 +1083,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   return {
     success: validation.valid,
-    graph_connected: graph.connected,
+    graph_connected: graphFaces.length >= 2 && coverageRatio >= 0.85,
     face_coverage_ratio: coverageRatio,
     validation_status: validation.status,
     failure_reason: validation.reason,
@@ -1046,6 +1102,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       predominant_pitch: predominantPitch,
     },
     logs,
+    topology_source: 'autonomous_dsm_graph_solver',
+    facet_source: 'dsm_planar_graph_faces',
+    fallback_used: false,
   };
 }
 
