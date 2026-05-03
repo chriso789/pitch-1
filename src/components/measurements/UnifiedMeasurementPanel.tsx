@@ -957,6 +957,71 @@ export function UnifiedMeasurementPanel({
             );
           })()}
 
+          {/* Latest Debug AI Result — failed QA still produces a viewable internal report */}
+          {!jobIsActive && latestDebugAI && (() => {
+            const debugMeasurement = latestDebugAI as any;
+            const grj = debugMeasurement.geometry_report_json || {};
+            const overlayDebug = grj.overlay_debug || {};
+            const reviewReason = getMeasurementReviewReason(debugMeasurement) || debugMeasurement.validation_notes || debugMeasurement.last_failure_reason || 'Needs review before customer delivery';
+            const coordMatch = overlayDebug?.dsm_coordinate_match?.match;
+            const footprintSource = debugMeasurement.footprint_source || overlayDebug.footprint_source || grj.footprint_source || 'unknown';
+
+            return (
+              <div className="p-3 rounded-lg border border-warning/30 bg-warning/5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Bug className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-sm">Latest AI Debug Report</span>
+                        <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/30">
+                          Internal Review
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">
+                        {String(reviewReason).replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {format(new Date(debugMeasurement.created_at), 'MMM d, yyyy h:mm a')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-xs border-t border-warning/20 pt-2">
+                  <div>
+                    <span className="text-muted-foreground">Footprint</span>
+                    <p className="font-mono truncate">{String(footprintSource).replace(/_/g, ' ')}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">DSM Match</span>
+                    <p className={coordMatch === false ? 'font-medium text-destructive' : 'font-medium text-success'}>
+                      {coordMatch === false ? 'false' : coordMatch === true ? 'true' : 'unknown'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Points</span>
+                    <p className="font-medium">{overlayDebug.footprint_point_count || overlayDebug.footprint_px?.length || 0}</p>
+                  </div>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setReportState({
+                    open: true,
+                    measurement: buildReportMeasurementFromRoofMeasurement(debugMeasurement, pipelineEntryId),
+                    tags: buildReportTagsFromRoofMeasurement(debugMeasurement),
+                  })}
+                >
+                  <Eye className="h-4 w-4 mr-1.5" />
+                  View Debug Report
+                </Button>
+              </div>
+            );
+          })()}
+
           {/* Latest Unapproved AI Result — prominent card with roof diagram */}
           {!jobIsActive && latestUnapprovedAI && (() => {
             const ai = latestUnapprovedAI as any;
