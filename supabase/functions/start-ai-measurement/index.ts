@@ -4472,6 +4472,32 @@ async function processJob(input: any) {
       roofMeasurement.id,
     );
     await setAiJobStatus(input.ai_measurement_job_id, finalAiStatus, finalJobMessage, quality);
+
+    // Produce the persisted PDF URL immediately after a validated measurement
+    // completes. The UI can still render diagrams directly, but report history
+    // expects report_pdf_url/report_pdf_path to populate without a second manual
+    // server call.
+    if (finalAiStatus === "completed") {
+      try {
+        const pdfResponse = await fetch(`${SUPABASE_URL}/functions/v1/render-measurement-pdf`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${SERVICE_ROLE}`,
+            "apikey": SERVICE_ROLE,
+          },
+          body: JSON.stringify({ ai_measurement_job_id: input.ai_measurement_job_id }),
+        });
+        if (!pdfResponse.ok) {
+          const detail = await pdfResponse.text().catch(() => "");
+          console.warn("[REPORT_PDF_AUTO_RENDER] failed", pdfResponse.status, detail.slice(0, 500));
+        } else {
+          console.log("[REPORT_PDF_AUTO_RENDER] complete", await pdfResponse.text().catch(() => ""));
+        }
+      } catch (pdfError) {
+        console.warn("[REPORT_PDF_AUTO_RENDER] error", pdfError);
+      }
+    }
   } catch (error) {
     const message = getErrorMessage(error);
     console.error("processJob error:", error);
