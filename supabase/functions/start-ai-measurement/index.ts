@@ -4534,22 +4534,62 @@ async function processJob(input: any) {
 
 async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | null; project_id: string | null }) {
   if (lead_id) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pipeline_entries")
-      .select("id, tenant_id, address, company_id")
+      .select(`
+        id,
+        tenant_id,
+        contact_id,
+        contacts!pipeline_entries_contact_id_fkey(
+          address_street,
+          address_city,
+          address_state,
+          address_zip,
+          verified_address,
+          latitude,
+          longitude
+        )
+      `)
       .eq("id", lead_id)
       .maybeSingle();
-    if (data) return data;
+    if (error) {
+      console.warn("resolveSourceRecord lead lookup failed", error);
+    }
+    if (data) {
+      const contact = Array.isArray((data as any).contacts) ? (data as any).contacts[0] : (data as any).contacts;
+      return {
+        id: data.id,
+        tenant_id: data.tenant_id,
+        company_id: null,
+        address: buildContactAddress(contact),
+      };
+    }
   }
   if (project_id) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("projects")
-      .select("id, tenant_id, address, company_id")
+      .select("id, tenant_id, pipeline_entry_id")
       .eq("id", project_id)
       .maybeSingle();
-    if (data) return data;
+    if (error) {
+      console.warn("resolveSourceRecord project lookup failed", error);
+    }
+    if ((data as any)?.pipeline_entry_id) {
+      const linkedLead = await resolveSourceRecord({ lead_id: (data as any).pipeline_entry_id, project_id: null });
+      if (linkedLead) return linkedLead;
+    }
+    if (data) return { id: data.id, tenant_id: data.tenant_id, company_id: null, address: null };
   }
   return null;
+}
+
+function buildContactAddress(contact: any): string | null {
+  const formatted = contact?.verified_address?.formatted_address;
+  if (typeof formatted === "string" && formatted.trim()) return formatted.trim();
+  const parts = [contact?.address_street, contact?.address_city, contact?.address_state, contact?.address_zip]
+    .filter((part) => typeof part === "string" && part.trim())
+    .map((part) => part.trim());
+  return parts.length ? parts.join(", ") : null;
 }
 
 function sniffRasterFormat(buf: Uint8Array): "png" | "jpeg" | "unknown" {
