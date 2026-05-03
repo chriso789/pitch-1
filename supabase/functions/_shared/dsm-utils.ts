@@ -160,12 +160,16 @@ export function getPerpendicularProfile(
 }
 
 /**
- * Classify an edge using DSM physics.
+ * Classify an edge using DSM physics with mask awareness.
  * 
  * RIDGE:  edge is higher than both sides (both slopes positive = both sides drop away)
  * VALLEY: edge is lower than both sides (both slopes negative = both sides rise away)
  * HIP:    mixed slopes (one side drops, other rises or similar)
  * EAVE:   one side has no roof data (perimeter)
+ * 
+ * KEY FIX: When one side samples ground (off-roof or >3m drop), that side is
+ * excluded from classification. An edge where one side is ground and the other
+ * slopes down is a ridge, not a hip.
  */
 export function classifyEdgeByDSM(
   start: XY,
@@ -183,6 +187,28 @@ export function classifyEdgeByDSM(
   const leftRises = profile.leftSlope < -minDelta;   // edge lower than left
   const rightRises = profile.rightSlope < -minDelta;  // edge lower than right
 
+  // ── MASK-AWARE CLASSIFICATION ──
+  // If one side is off-roof (not on mask) or has a ground-level drop (>3m),
+  // treat that side as "unknown" rather than using its slope for classification.
+  const leftIsGround = !profile.leftOnRoof || profile.leftGroundDrop;
+  const rightIsGround = !profile.rightOnRoof || profile.rightGroundDrop;
+
+  // Both sides are ground/off-roof → ambiguous
+  if (leftIsGround && rightIsGround) return null;
+
+  // One side is ground: classify based on the valid side only
+  if (leftIsGround && !rightIsGround) {
+    if (rightDrops) return 'ridge';  // edge is peak, valid side slopes down
+    if (rightRises) return 'eave';   // edge is boundary, valid side slopes up
+    return null;
+  }
+  if (rightIsGround && !leftIsGround) {
+    if (leftDrops) return 'ridge';
+    if (leftRises) return 'eave';
+    return null;
+  }
+
+  // ── STANDARD CLASSIFICATION (both sides confirmed on roof) ──
   if (leftDrops && rightDrops) return 'ridge';
   if (leftRises && rightRises) return 'valley';
   if ((leftDrops && rightRises) || (leftRises && rightDrops)) return 'hip';
