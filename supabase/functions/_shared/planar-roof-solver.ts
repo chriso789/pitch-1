@@ -749,6 +749,7 @@ export function solveRoofPlanes(
   const allFaces = rawFaces
     .filter((f) => Math.abs(signedArea(f)) > 50)
     .map((polygon, i) => ({ id: i, polygon }));
+  const facesRejectedByArea = rawFaces.length - allFaces.length;
   const validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
 
@@ -756,13 +757,16 @@ export function solveRoofPlanes(
   const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
   const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
 
-  const debug = {
+  const customerBlockReason = faceCoverageRatio < 0.85 ? `coverage_${Math.round(faceCoverageRatio * 100)}pct_lt_85pct` : null;
+
+  const debug: PlanarSolverDebug = {
     input_footprint_vertices: rawFootprint.length,
     input_interior_lines: interiorLines.length,
     snapped_interior_lines: interiorFragments.length,
     collinear_merges: collinearMerges,
     filtered_by_priority: filteredByPriority,
     intersections_split: intersectionCount,
+    intersection_filter_skipped: intersectionFilterSkipped,
     dangling_edges_removed: pruned.removed,
     perimeter_reinjected: perimeterReinjected,
     total_graph_segments: graphSegments.length,
@@ -770,6 +774,9 @@ export function solveRoofPlanes(
     faces_extracted: rawFaces.length,
     faces_with_area: validFaces.length,
     face_coverage_ratio: Number(faceCoverageRatio.toFixed(3)),
+    fragment_merges: 0, // tracked at autonomous-graph-solver level
+    faces_rejected_by_area: facesRejectedByArea,
+    customer_block_reason: customerBlockReason,
   };
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));
