@@ -568,14 +568,19 @@ export function PullMeasurementsButton({
     } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
       setShouldNotifyJobStatus(false);
       setVerificationReady(false);
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
       const errMsg = job.error || "AI measurement could not complete.";
+      const savedDebugRow = Boolean(job.measurement_id);
       const isInternalReview = /internal review|needs_internal_review/i.test(errMsg);
       toast({
-        title: isInternalReview ? "Flagged for Internal Review" : "Analysis Failed",
-        description: isInternalReview
-          ? "Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review — no customer-facing report will be generated."
-          : errMsg,
-        variant: isInternalReview ? "default" : "destructive",
+        title: savedDebugRow || isInternalReview ? "AI Measurement Saved to History" : "Analysis Failed",
+        description: savedDebugRow
+          ? "The run finished with issues and was added as an internal report. Open Measurement History to view it."
+          : isInternalReview
+            ? "Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review."
+            : errMsg,
+        variant: savedDebugRow || isInternalReview ? "default" : "destructive",
       });
     }
     

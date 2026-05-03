@@ -4508,7 +4508,7 @@ async function processJob(input: any) {
     // diagnosable artifacts and the UI shows a stale "Processing" state.
     try {
       const coords: GeoPoint = { lat: Number(input.latitude || 0), lng: Number(input.longitude || 0) };
-      await insertFailedPreliminaryMeasurement(
+      const failedId = await insertFailedPreliminaryMeasurement(
         input,
         coords,
         `processJob_crash: ${message}`,
@@ -4523,11 +4523,11 @@ async function processJob(input: any) {
         null,
         0,
       );
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", message, failedId);
     } catch (persistErr) {
       console.error("Failed to persist debug measurement on outer catch:", persistErr);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", message);
     }
-
-    await setMeasurementJobStatus(input.measurement_job_id, "failed", message);
     await setAiJobStatus(input.ai_measurement_job_id, "failed", message);
   }
 }
@@ -5141,14 +5141,15 @@ async function setMeasurementJobStatus(id: string, status: string, msg: string, 
   if (error) console.error("setMeasurementJobStatus failed", { id, status, legacyStatus, error });
 }
 async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
+  const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement"].includes(status);
   await supabase.from("ai_measurement_jobs").update({
     status, status_message: msg,
     updated_at: new Date().toISOString(),
+    ...(terminal ? { completed_at: new Date().toISOString() } : {}),
     ...(quality ? {
       confidence_score: quality.overall_score,
       geometry_quality_score: quality.geometry_score,
       measurement_quality_score: quality.measurement_score,
-      completed_at: new Date().toISOString(),
     } : {}),
     ...(status === "failed" ? { failure_reason: msg } : {}),
   }).eq("id", id);
