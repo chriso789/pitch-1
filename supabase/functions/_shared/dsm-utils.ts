@@ -51,7 +51,7 @@ export function getPerpendicularProfile(
   const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
   
   if (edgeLen < 1e-10) {
-    return { leftAvg: 0, rightAvg: 0, leftSlope: 0, rightSlope: 0, centerAvg: 0, heightDelta: 0, sampleCount: 0 };
+    return { leftAvg: 0, rightAvg: 0, leftSlope: 0, rightSlope: 0, centerAvg: 0, heightDelta: 0, sampleCount: 0, leftOnRoof: false, rightOnRoof: false, leftGroundDrop: false, rightGroundDrop: false };
   }
 
   // Perpendicular unit vector (in geographic degrees)
