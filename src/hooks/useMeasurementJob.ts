@@ -129,6 +129,18 @@ export function useMeasurementJob(pipelineEntryId: string) {
     if (!jobId) throw new Error(data?.error || 'Failed to start measurement job');
 
     setActiveJobId(jobId);
+    // Immediately replace any stale failed job in the UI while the new query refetches.
+    queryClient.setQueryData(['measurement-job', pipelineEntryId], {
+      id: jobId,
+      status: 'queued',
+      progress_message: 'Queued for AI measurement',
+      measurement_id: null,
+      error: null,
+      created_at: new Date().toISOString(),
+      started_at: null,
+      completed_at: null,
+    } satisfies MeasurementJob);
+    await queryClient.invalidateQueries({ queryKey: ['measurement-job', pipelineEntryId] });
     // Immediately refetch to show the new job
     queryClient.invalidateQueries({ queryKey: ['roof_measurements'] });
     queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });

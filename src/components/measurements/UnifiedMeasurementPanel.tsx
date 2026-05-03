@@ -53,6 +53,17 @@ interface SavedMeasurement {
   report_document_id?: string | null;
 }
 
+type MeasurementJobSummary = {
+  id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress_message: string | null;
+  measurement_id: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 interface UnifiedMeasurementPanelProps {
   pipelineEntryId: string;
   latitude?: number;
@@ -143,6 +154,11 @@ const isPlausibleSavedMeasurement = (measurement: SavedMeasurement): boolean => 
 const isPlausibleRoofMeasurement = (measurement: any): boolean => (
   isPlausibleRoofSqft(measurement?.total_area_adjusted_sqft || measurement?.total_area_flat_sqft)
 );
+
+const getTimeMs = (value?: string | null): number => {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
 
 // Stricter than isPlausibleRoofMeasurement: also rejects rows the backend
 // flagged for internal review, placeholder geometry, and Solar bbox-only
@@ -468,6 +484,19 @@ export function UnifiedMeasurementPanel({
     },
     enabled: !!pipelineEntryId,
   });
+
+  const latestAiMeasurementTime = useMemo(() => {
+    return Math.max(0, ...(aiMeasurements || []).map((measurement: any) => getTimeMs(measurement.created_at)));
+  }, [aiMeasurements]);
+
+  const visibleFailedJob = useMemo(() => {
+    const job = activeJob as MeasurementJobSummary | null;
+    if (!job || job.status !== 'failed') return null;
+    const jobTime = getTimeMs(job.completed_at || job.created_at);
+    if (job.measurement_id && latestAiMeasurementTime >= jobTime - 1000) return null;
+    if (latestAiMeasurementTime > jobTime) return null;
+    return job;
+  }, [activeJob, latestAiMeasurementTime]);
 
   const handleSetActive = async (approvalId: string) => {
     setIsSettingActive(true);
@@ -822,8 +851,8 @@ export function UnifiedMeasurementPanel({
           )}
 
           {/* Job Failure Banner — with debug info */}
-          {!jobIsActive && activeJob?.status === 'failed' && (() => {
-            const jobMeta = (activeJob as any)?.metadata || (activeJob as any)?.result || {};
+          {!jobIsActive && visibleFailedJob && (() => {
+            const jobMeta = (visibleFailedJob as any)?.metadata || (visibleFailedJob as any)?.result || {};
             const gateReason = jobMeta?.gate_reason || jobMeta?.autonomousDebug?.gate_reason || '';
             const debugData = jobMeta?.autonomousDebug || jobMeta?.debug || null;
             const coverage = debugData?.coverage_ratio ?? debugData?.coverage;
@@ -835,7 +864,7 @@ export function UnifiedMeasurementPanel({
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `debug-${activeJob.id || 'measurement'}.json`;
+              a.download = `debug-${visibleFailedJob.id || 'measurement'}.json`;
               a.click();
               URL.revokeObjectURL(url);
             };
@@ -847,7 +876,7 @@ export function UnifiedMeasurementPanel({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-sm text-destructive">AI Measurement Failed</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {activeJob.error || activeJob.progress_message || 'Unknown error — try again'}
+                      {visibleFailedJob.error || visibleFailedJob.progress_message || 'Unknown error — try again'}
                     </p>
                   </div>
                 </div>
