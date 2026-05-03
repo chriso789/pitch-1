@@ -1728,7 +1728,7 @@ function MeasurementHistorySection({
   const handleSelectAll = () => {
     const allIds = [
       ...vendorReports.map(r => r.id),
-      ...aiMeasurements.map(m => m.id)
+      ...aiMeasurements.filter((m: any) => m.history_kind !== 'job').map(m => m.id)
     ];
     setSelectedIds(new Set(allIds));
   };
@@ -2008,7 +2008,8 @@ function MeasurementHistorySection({
     }
   };
 
-  const allSelected = selectedIds.size === totalHistoryCount && totalHistoryCount > 0;
+  const selectableHistoryCount = vendorReports.length + aiMeasurements.filter((m: any) => m.history_kind !== 'job').length;
+  const allSelected = selectedIds.size === selectableHistoryCount && selectableHistoryCount > 0;
 
   return (
     <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -2151,6 +2152,8 @@ function MeasurementHistorySection({
         {aiMeasurements.map((measurement) => {
           const sqft = measurement.total_area_adjusted_sqft || 0;
           const reviewReason = getMeasurementReviewReason(measurement);
+          const historyStatus = getAiHistoryStatus(measurement);
+          const isJobOnly = (measurement as any).history_kind === 'job';
           const isManualEntry = measurement.footprint_source === 'manual_entry' || measurement.detection_method === 'manual_entry';
           const isSelected = selectedIds.has(measurement.id);
           
@@ -2162,7 +2165,7 @@ function MeasurementHistorySection({
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                {selectMode && (
+                {selectMode && !isJobOnly && (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleSelection(measurement.id)}
@@ -2173,6 +2176,11 @@ function MeasurementHistorySection({
                   <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/30 shrink-0">
                     <Pencil className="h-3 w-3 mr-1" />
                     Manual Entry
+                  </Badge>
+                ) : isJobOnly ? (
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 shrink-0">
+                    <Clock className="h-3 w-3 mr-1" />
+                    AI Pull
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="bg-info/10 text-info border-info/30 shrink-0">
