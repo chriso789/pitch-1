@@ -696,12 +696,10 @@ function polygonizeByStructuralDividers(footprint: Pt[], dividers: Seg[], minAre
 
   for (const divider of primaryDividers) {
     const next: Pt[][] = [];
-    let used = false;
     for (const cell of cells) {
-      const split = used ? null : splitPolygonByDivider(cell, divider, minArea);
+      const split = splitPolygonByDivider(cell, divider, minArea);
       if (split) {
         next.push(...split);
-        used = true;
       } else {
         next.push(cell);
       }
@@ -897,7 +895,7 @@ export function solveRoofPlanes(
 
   let polygonizerFallbackUsed = false;
   if (validFaces.length < 2) {
-    const fallbackPolygons = polygonizeByStructuralDividers(footprint, graphSegments, minRawFaceArea * 2);
+    const fallbackPolygons = polygonizeByStructuralDividers(footprint, filteredInterior, minRawFaceArea * 2);
     if (fallbackPolygons.length >= 2) {
       polygonizerFallbackUsed = true;
       validFaces = fallbackPolygons.map((polygon, i) => ({
