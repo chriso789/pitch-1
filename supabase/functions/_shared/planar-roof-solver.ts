@@ -594,6 +594,125 @@ function signedArea(poly: Pt[]): number {
   return area / 2;
 }
 
+function polygonBoundaryHit(p: Pt, poly: Pt[], tol = 3): boolean {
+  for (let i = 0; i < poly.length; i++) {
+    if (pointOnSegment(p, poly[i], poly[(i + 1) % poly.length], tol)) return true;
+  }
+  return false;
+}
+
+function pointInPolygonStrict(p: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = yi > p.y !== yj > p.y &&
+      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function splitPolygonByDivider(poly: Pt[], divider: Seg, minArea: number): Pt[][] | null {
+  if (poly.length < 3 || segmentLength(divider) < MIN_SEGMENT_LENGTH_PX) return null;
+  const mid = { x: (divider.a.x + divider.b.x) / 2, y: (divider.a.y + divider.b.y) / 2 };
+  if (polygonBoundaryHit(mid, poly, 4) || !pointInPolygonStrict(mid, poly)) return null;
+
+  const hits: Array<{ point: Pt; edgeIndex: number; edgeT: number; lineT: number }> = [];
+  const addHit = (point: Pt, edgeIndex: number, edgeT: number, lineT: number) => {
+    const p = snap(point);
+    if (hits.some((h) => dist(h.point, p) < 3)) return;
+    hits.push({ point: p, edgeIndex, edgeT, lineT });
+  };
+
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const inter = rawSegmentIntersection(divider.a, divider.b, a, b);
+    if (inter) addHit(inter.point, i, inter.u, inter.t);
+    for (const endpoint of [divider.a, divider.b]) {
+      if (!pointOnSegment(endpoint, a, b, 3)) continue;
+      const edgeLen2 = Math.max((b.x - a.x) ** 2 + (b.y - a.y) ** 2, 1e-9);
+      const edgeT = ((endpoint.x - a.x) * (b.x - a.x) + (endpoint.y - a.y) * (b.y - a.y)) / edgeLen2;
+      const lineLen2 = Math.max((divider.b.x - divider.a.x) ** 2 + (divider.b.y - divider.a.y) ** 2, 1e-9);
+      const lineT = ((endpoint.x - divider.a.x) * (divider.b.x - divider.a.x) + (endpoint.y - divider.a.y) * (divider.b.y - divider.a.y)) / lineLen2;
+      addHit(endpoint, i, edgeT, lineT);
+    }
+  }
+
+  if (hits.length < 2) return null;
+  hits.sort((a, b) => a.lineT - b.lineT);
+  const h1 = hits[0];
+  const h2 = hits[hits.length - 1];
+  if (dist(h1.point, h2.point) < MIN_SEGMENT_LENGTH_PX) return null;
+
+  const byEdge = new Map<number, typeof hits>();
+  for (const h of [h1, h2]) {
+    if (!byEdge.has(h.edgeIndex)) byEdge.set(h.edgeIndex, []);
+    byEdge.get(h.edgeIndex)!.push(h);
+  }
+
+  const augmented: Pt[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    augmented.push(poly[i]);
+    const edgeHits = (byEdge.get(i) || []).sort((a, b) => a.edgeT - b.edgeT);
+    for (const h of edgeHits) {
+      if (h.edgeT > 1e-3 && h.edgeT < 1 - 1e-3 && !augmented.some((p) => dist(p, h.point) < 2)) {
+        augmented.push(h.point);
+      }
+    }
+  }
+
+  const idx1 = augmented.findIndex((p) => dist(p, h1.point) < 3);
+  const idx2 = augmented.findIndex((p) => dist(p, h2.point) < 3);
+  if (idx1 < 0 || idx2 < 0 || idx1 === idx2) return null;
+
+  const walk = (from: number, to: number): Pt[] => {
+    const out: Pt[] = [];
+    let i = from;
+    while (true) {
+      out.push(augmented[i]);
+      if (i === to) break;
+      i = (i + 1) % augmented.length;
+      if (out.length > augmented.length + 1) break;
+    }
+    return out.filter((p, i, arr) => i === 0 || dist(p, arr[i - 1]) >= 2);
+  };
+
+  const p1 = walk(idx1, idx2);
+  const p2 = walk(idx2, idx1);
+  const a1 = Math.abs(signedArea(p1));
+  const a2 = Math.abs(signedArea(p2));
+  const originalArea = Math.abs(signedArea(poly));
+  if (p1.length < 3 || p2.length < 3 || a1 < minArea || a2 < minArea) return null;
+  if (Math.abs((a1 + a2) - originalArea) > Math.max(10, originalArea * 0.03)) return null;
+  return [p1, p2];
+}
+
+function polygonizeByStructuralDividers(footprint: Pt[], dividers: Seg[], minArea: number): Pt[][] {
+  let cells: Pt[][] = [footprint];
+  const primaryDividers = dividers
+    .filter((seg) => seg.edgeType === 'ridge' || seg.edgeType === 'valley' || seg.edgeType === 'hip')
+    .sort((a, b) => ((b.edgeScore || 0.5) * segmentLength(b)) - ((a.edgeScore || 0.5) * segmentLength(a)));
+
+  for (const divider of primaryDividers) {
+    const next: Pt[][] = [];
+    let used = false;
+    for (const cell of cells) {
+      const split = used ? null : splitPolygonByDivider(cell, divider, minArea);
+      if (split) {
+        next.push(...split);
+        used = true;
+      } else {
+        next.push(cell);
+      }
+    }
+    cells = next;
+    if (cells.length >= 24) break;
+  }
+
+  return cells.filter((cell) => Math.abs(signedArea(cell)) >= minArea);
+}
+
 // ── POLYGON SIMPLIFICATION (Douglas-Peucker) ─────────────
 function simplifyPolygon(poly: Pt[], tolerance: number): Pt[] {
   if (poly.length <= 3) return poly;
