@@ -202,7 +202,8 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
         }
       }
       ctx.fillStyle = '#00ffff';
-      for (const key of nodeSet) {
+      const nodeKeys = Array.from(nodeSet);
+      for (const key of nodeKeys) {
         const [x, y] = key.split(',').map(Number);
         ctx.beginPath();
         ctx.arc(x, y, 4, 0, Math.PI * 2);
