@@ -903,10 +903,36 @@ export function UnifiedMeasurementPanel({
                   </div>
                 )}
                 {debugData && (
-                  <Button size="sm" variant="outline" className="w-full text-xs" onClick={handleDownloadDebug}>
-                    <Download className="h-3.5 w-3.5 mr-1.5" />
-                    Download Debug JSON
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={handleDownloadDebug}>
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                      Download Debug JSON
+                    </Button>
+                    {/* Open debug report for the linked measurement row */}
+                    {(() => {
+                      const linkedMeasurement = (aiMeasurements || []).find(
+                        (m: any) => m.ai_measurement_job_id === visibleFailedJob.id
+                      );
+                      if (!linkedMeasurement) return null;
+                      return (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="flex-1 text-xs"
+                          onClick={() => {
+                            setReportState({
+                              open: true,
+                              measurement: buildReportMeasurementFromRoofMeasurement(linkedMeasurement, pipelineEntryId),
+                              tags: buildReportTagsFromRoofMeasurement(linkedMeasurement),
+                            });
+                          }}
+                        >
+                          <Bug className="h-3.5 w-3.5 mr-1.5" />
+                          View Debug Report
+                        </Button>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             );

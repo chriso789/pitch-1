@@ -3638,7 +3638,8 @@ async function processJob(input: any) {
     });
 
     const resolvedGeometrySource =
-      topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
+      topologySource === REQUIRED_TOPOLOGY_SOURCE ? "autonomous_dsm_graph_solver"
+      : topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
       : topologySource === "google_solar_segment_structure" ? "google_solar_segment_structure"
       : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
       : topologySource === "triangulation" ? "deterministic_triangulation"
