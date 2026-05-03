@@ -4103,6 +4103,8 @@ async function processJob(input: any) {
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
         validation_status: vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
+        customer_report_ready: !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        internal_debug_report_ready: reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
           : blockCustomerReportReason,
@@ -5039,6 +5041,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     metadata: aiDetectionData,
     gate_decision: "failed",
     gate_reason: failureReason,
+    customer_report_ready: false,
+    internal_debug_report_ready: true,
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
     engine_used: "autonomous_dsm_graph_solver",
