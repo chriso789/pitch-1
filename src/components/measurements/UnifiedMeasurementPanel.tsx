@@ -16,7 +16,7 @@ import {
 import { 
   CheckCircle2, Trash2, Ruler, Star, Plus, ChevronDown,
   Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator, AlertTriangle,
-  Clock, ArrowRight
+  Clock, ArrowRight, Download, Bug
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
@@ -821,18 +821,67 @@ export function UnifiedMeasurementPanel({
             </div>
           )}
 
-          {/* Job Failure Banner */}
-          {!jobIsActive && activeJob?.status === 'failed' && (
-            <div className="flex items-center gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
-              <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-              <div className="min-w-0">
-                <p className="font-medium text-sm text-destructive">AI Measurement Failed</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {activeJob.error || activeJob.progress_message || 'Unknown error — try again'}
-                </p>
+          {/* Job Failure Banner — with debug info */}
+          {!jobIsActive && activeJob?.status === 'failed' && (() => {
+            const jobMeta = (activeJob as any)?.metadata || (activeJob as any)?.result || {};
+            const gateReason = jobMeta?.gate_reason || jobMeta?.autonomousDebug?.gate_reason || '';
+            const debugData = jobMeta?.autonomousDebug || jobMeta?.debug || null;
+            const coverage = debugData?.coverage_ratio ?? debugData?.coverage;
+            const faceCount = debugData?.face_count_after_merge ?? debugData?.face_count;
+
+            const handleDownloadDebug = () => {
+              if (!debugData) return;
+              const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `debug-${activeJob.id || 'measurement'}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            };
+
+            return (
+              <div className="p-4 rounded-lg border border-destructive/30 bg-destructive/5 space-y-2">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm text-destructive">AI Measurement Failed</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {activeJob.error || activeJob.progress_message || 'Unknown error — try again'}
+                    </p>
+                  </div>
+                </div>
+                {(gateReason || coverage !== undefined) && (
+                  <div className="grid grid-cols-3 gap-2 text-xs border-t border-destructive/20 pt-2">
+                    {gateReason && (
+                      <div className="col-span-3">
+                        <span className="text-muted-foreground">Gate: </span>
+                        <span className="font-mono text-destructive">{String(gateReason).replace(/_/g, ' ')}</span>
+                      </div>
+                    )}
+                    {coverage !== undefined && (
+                      <div>
+                        <span className="text-muted-foreground">Coverage: </span>
+                        <span className="font-medium">{(Number(coverage) * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+                    {faceCount !== undefined && (
+                      <div>
+                        <span className="text-muted-foreground">Faces: </span>
+                        <span className="font-medium">{faceCount}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {debugData && (
+                  <Button size="sm" variant="outline" className="w-full text-xs" onClick={handleDownloadDebug}>
+                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                    Download Debug JSON
+                  </Button>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Latest Unapproved AI Result — prominent card with roof diagram */}
           {!jobIsActive && latestUnapprovedAI && (() => {
