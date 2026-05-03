@@ -790,13 +790,19 @@ export function UnifiedMeasurementPanel({
   // run that was already saved, or an earlier inaccurate attempt).
   const latestUnapprovedAI = useMemo(() => {
     if (!aiMeasurements?.length) return null;
-    if (approvals && approvals.length > 0) return null;
     const latest = aiMeasurements[0];
-    if (latest?.total_area_adjusted_sqft && latest.total_area_adjusted_sqft > 0) {
+    if (hasCustomerSafeGeometry(latest) && !(approvals || []).some((approval) => getApprovalMeasurementId(approval) === latest.id)) {
       return latest;
     }
     return null;
   }, [aiMeasurements, approvals]);
+
+  const latestDebugAI = useMemo(() => {
+    if (!aiMeasurements?.length) return null;
+    const latest = aiMeasurements[0];
+    if (hasCustomerSafeGeometry(latest)) return null;
+    return hasDebugRoofReport(latest) ? latest : null;
+  }, [aiMeasurements]);
 
   if (isLoading) {
     return (
