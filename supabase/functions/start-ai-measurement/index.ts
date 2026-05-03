@@ -1233,13 +1233,15 @@ async function processJob(input: any) {
         })) : [],
       };
 
-      const failReason = graph.validation_status !== "validated"
-        ? graph.validation_status
-        : complexity.isComplex && graph.faces.length <= 4
-          ? "ai_failed_complex_topology"
-          : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
-            ? "invalid_roof_graph"
-            : null;
+      const failReason = graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
+        ? "invalid_edge_classification"
+        : graph.validation_status !== "validated"
+          ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
+          : complexity.isComplex && graph.faces.length <= 4
+            ? "ai_failed_complex_topology"
+            : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
+              ? "invalid_edge_classification"
+              : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
