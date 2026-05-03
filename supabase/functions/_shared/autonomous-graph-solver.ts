@@ -245,8 +245,8 @@ export function detectComplexRoof(
   }
 
   const vertexCount = footprintCoords.length;
-  if (vertexCount > 8) {
-    reasons.push(`${vertexCount} footprint vertices (>8)`);
+  if (vertexCount > 4) {
+    reasons.push(`${vertexCount} footprint vertices (non-rectangular/complex footprint)`);
     expectedMinFacets = Math.max(expectedMinFacets, 6);
   }
 
@@ -696,6 +696,7 @@ export function validateAutonomousResult(
     graphConnected: boolean;
     coverageRatio: number;
     structuralEdgeCount: number;
+    dsmEdgesAccepted: number;
   },
   complexity: { isComplex: boolean; expectedMinFacets: number; reasons: string[] }
 ): { valid: boolean; status: AutonomousGraphResult['validation_status']; reason?: string } {
@@ -706,6 +707,15 @@ export function validateAutonomousResult(
       valid: false,
       status: 'insufficient_structural_signal',
       reason: `Only ${result.structuralEdgeCount} structural edges survived scoring (need ≥2). DSM signal too weak.`
+    };
+  }
+
+  // GATE 0B: DSM edges exist but cannot close faces — honest failure.
+  if (result.dsmEdgesAccepted >= 5 && result.facetCount < 2) {
+    return {
+      valid: false,
+      status: 'dsm_edges_found_no_closed_faces',
+      reason: `${result.dsmEdgesAccepted} accepted DSM structural edges found, but planar graph extracted only ${result.facetCount} valid faces`
     };
   }
 
@@ -746,11 +756,19 @@ export function validateAutonomousResult(
   }
 
   // GATE 5: Coverage ratio (if we have enough data)
-  if (result.coverageRatio > 0 && (result.coverageRatio < 0.5 || result.coverageRatio > 2.0)) {
+  if (result.coverageRatio > 0 && result.coverageRatio < 0.85) {
+    return {
+      valid: false,
+      status: 'incomplete_facet_coverage',
+      reason: `DSM planar faces cover only ${(result.coverageRatio * 100).toFixed(1)}% of footprint (need ≥85%)`
+    };
+  }
+
+  if (result.coverageRatio > 1.15) {
     return {
       valid: false,
       status: 'needs_review',
-      reason: `Face coverage ratio ${result.coverageRatio.toFixed(2)} is far outside expected range`
+      reason: `Face coverage ratio ${result.coverageRatio.toFixed(2)} exceeds footprint bounds`
     };
   }
 
