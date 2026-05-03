@@ -1124,12 +1124,22 @@ async function processJob(input: any) {
       };
       const graph = solveAutonomousGraph(graphInput);
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
+      const graphValidated = graph.validation_status === "validated";
+      const attemptedRidgeLf = Number(graph.totals?.ridge_ft || 0);
+      const attemptedHipLf = Number(graph.totals?.hip_ft || 0);
+      const attemptedValleyLf = Number(graph.totals?.valley_ft || 0);
+      const attemptedAreaTotal = Number(graph.logs?.attempted_area_total || graph.totals?.total_roof_area_sqft || 0);
       autonomousDebug = {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
         facet_source: graph.facet_source || "dsm_planar_graph_faces",
         solver_version: "autonomous_graph_solver_v3_prune_first",
         fallback_used: false,
         hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
+        coordinate_space_input: "geo_from_selected_footprint",
+        coordinate_space_solver: "dsm_px",
+        coordinate_space_renderer: "satellite_px",
+        dsm_pixel_transform_valid: Boolean(dsmCoordinateMatch),
+        geo_to_dsm_px_success: Boolean(dsmCoordinateMatch),
         footprint_source: footprintSource,
         footprint_valid: true,
         footprint_point_count: footprint.length,
@@ -1156,7 +1166,20 @@ async function processJob(input: any) {
         faces_attempted: graph.logs?.faces_extracted ?? graph.faces.length,
         faces_rejected: (graph.logs?.faces_rejected_by_plane_fit || 0) + (graph.logs?.faces_rejected_by_area || 0),
         rejection_reasons: graph.failure_reason ? [graph.failure_reason] : [],
-        valid_faces: graph.logs?.valid_faces ?? graph.faces.length,
+        attempted_faces: graph.logs?.attempted_face_count ?? graph.logs?.faces_extracted ?? graph.faces.length,
+        attempted_edges: graph.logs?.attempted_edge_count ?? graph.edges.length,
+        attempted_area_total: Math.round(attemptedAreaTotal),
+        attempted_ridge_lf: Number(attemptedRidgeLf.toFixed(2)),
+        attempted_hip_lf: Number(attemptedHipLf.toFixed(2)),
+        attempted_valley_lf: Number(attemptedValleyLf.toFixed(2)),
+        validated_faces: graphValidated ? graph.faces.length : 0,
+        validated_edges: graphValidated ? graph.edges.length : 0,
+        validated_ridge_lf: graphValidated ? Number(attemptedRidgeLf.toFixed(2)) : 0,
+        validated_hip_lf: graphValidated ? Number(attemptedHipLf.toFixed(2)) : 0,
+        validated_valley_lf: graphValidated ? Number(attemptedValleyLf.toFixed(2)) : 0,
+        face_rejection_table: graph.face_rejection_table || graph.logs?.face_rejection_table || [],
+        edge_classification_debug: graph.logs?.edge_classification_debug || null,
+        valid_faces: graphValidated ? (graph.logs?.valid_faces ?? graph.faces.length) : 0,
         face_coverage_ratio: graph.face_coverage_ratio,
         edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
         edge_filter_count_after: graph.logs?.fused_edges || 0,
