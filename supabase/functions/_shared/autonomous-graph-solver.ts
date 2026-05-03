@@ -36,15 +36,20 @@ import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./p
 
 type XY = [number, number]; // [lng, lat]
 
-// ============= CONSTANTS =============
-
-const EDGE_SCORE_THRESHOLD = 0.15;     // Minimum score to keep an edge (lowered from 0.25 to allow weaker DSM signals)
-const SNAP_DISTANCE_METERS = 1.5;      // Max snap distance (~5px at 0.3m/px)
-const SNAP_ANGLE_RAD = 10 * Math.PI / 180; // Max angle difference for snapping
-const MIN_EDGE_LENGTH_FT = 3;          // Discard tiny edges
-const MAX_INTERSECTIONS_PER_EDGE = 2;  // Drop edges with too many forced intersections
-const PLANE_FIT_ERROR_THRESHOLD = 0.5; // meters — max RMS error for valid facet
-const MIN_FACET_AREA_SQFT = 15;        // Discard tiny facets
+import {
+  EDGE_SCORE_THRESHOLD,
+  SNAP_DISTANCE_METERS,
+  SNAP_ANGLE_RAD,
+  MIN_EDGE_LENGTH_FT,
+  MAX_INTERSECTIONS_PER_EDGE,
+  PLANE_FIT_ERROR_THRESHOLD,
+  MIN_FACET_AREA_SQFT,
+  MAX_INTERIOR_EDGES_FOR_SOLVER,
+  MIN_EDGE_SCORE_FOR_SOLVER,
+  CLUSTER_MIDPOINT_DIST_PX,
+  CLUSTER_ANGLE_DEG,
+  COVERAGE_RATIO_MIN,
+} from "./solver-config.ts";
 
 // ============= TYPES =============
 
