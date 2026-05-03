@@ -15,27 +15,18 @@ function polygonArea(poly: Point[]): number {
 }
 
 function centroid(poly: Point[]): Point {
-  let x = 0;
-  let y = 0;
-  for (const p of poly) {
-    x += p.x;
-    y += p.y;
-  }
+  let x = 0, y = 0;
+  for (const p of poly) { x += p.x; y += p.y; }
   return { x: x / poly.length, y: y / poly.length };
 }
 
 function pointInPolygon(p: Point, poly: Point[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x;
-    const yi = poly[i].y;
-    const xj = poly[j].x;
-    const yj = poly[j].y;
-
-    const intersect =
-      yi > p.y !== yj > p.y &&
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = yi > p.y !== yj > p.y &&
       p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi;
-
     if (intersect) inside = !inside;
   }
   return inside;
@@ -53,20 +44,16 @@ function normalizedFaceKey(poly: Point[]): string {
 function removeOuterFace(faces: Face[]): Face[] {
   let maxArea = 0;
   let outerIndex = -1;
-
   for (let i = 0; i < faces.length; i++) {
     const area = polygonArea(faces[i].polygon);
-    if (area > maxArea) {
-      maxArea = area;
-      outerIndex = i;
-    }
+    if (area > maxArea) { maxArea = area; outerIndex = i; }
   }
-
   return faces.filter((_, i) => i !== outerIndex);
 }
 
 function removeTinyFaces(faces: Face[], footprintArea: number): Face[] {
-  return faces.filter((f) => polygonArea(f.polygon) > footprintArea * 0.02);
+  // Lowered from 2% to 1% — tiny face removal happens BEFORE merge
+  return faces.filter((f) => polygonArea(f.polygon) > footprintArea * 0.01);
 }
 
 function removeDuplicateFaces(faces: Face[]): Face[] {
@@ -93,6 +80,13 @@ function removeOverlaps(faces: Face[]): Face[] {
         const ai = polygonArea(faces[i].polygon);
         const aj = polygonArea(faces[j].polygon);
         if (ai < aj) {
+          // Only remove if normals are similar (< 5 deg) — but we don't have
+          // normals at this stage, so use a safe fallback: DO NOT remove if
+          // the smaller face is > 30% the size of the larger (likely a real adjacent plane)
+          if (ai > aj * 0.3) {
+            // Likely a real adjacent plane, not an overlap — keep it
+            continue;
+          }
           keep = false;
           break;
         }
