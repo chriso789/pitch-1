@@ -138,6 +138,7 @@ export interface AutonomousGraphLog {
   pruned_by_intersection: number;
   faces: number;
   faces_rejected_by_plane_fit: number;
+  faces_rejected_by_area: number;
   coverage_ratio: number;
   confidence: number;
   graph_valid: boolean;
@@ -150,6 +151,10 @@ export interface AutonomousGraphLog {
   graph_nodes: number;
   graph_segments: number;
   intersections_split: number;
+  intersection_filter_skipped: number;
+  cluster_merges: number;
+  collinear_merges: number;
+  fragment_merges: number;
   dangling_edges_removed: number;
   faces_extracted: number;
   face_count_before_merge: number;
@@ -160,6 +165,7 @@ export interface AutonomousGraphLog {
   topology_source: 'autonomous_dsm_graph_solver';
   facet_source: 'dsm_planar_graph_faces';
   hard_fail_reason?: string | null;
+  customer_block_reason?: string | null;
 }
 
 export interface SolarSegment {
