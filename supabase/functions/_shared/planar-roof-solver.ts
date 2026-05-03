@@ -16,6 +16,10 @@ import { filterRoofFaces } from "./face-filter.ts";
 type Pt = { x: number; y: number };
 type Seg = { a: Pt; b: Pt };
 
+const ENDPOINT_SNAP_TOL_PX = 8;
+const FOOTPRINT_TOUCH_TOL_PX = 10;
+const MIN_SEGMENT_LENGTH_PX = 3;
+
 // ── GRID SNAP ──────────────────────────────────────────────
 function snap(p: Pt, grid = 2): Pt {
   return {
@@ -35,6 +39,10 @@ function segKey(a: Pt, b: Pt): string {
 
 function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function segmentLength(seg: Seg): number {
+  return dist(seg.a, seg.b);
 }
 
 function sub(a: Pt, b: Pt): Pt {
@@ -63,6 +71,40 @@ function pointOnSegment(p: Pt, a: Pt, b: Pt, tol = 2.5): boolean {
   const minX = Math.min(a.x, b.x) - tol, maxX = Math.max(a.x, b.x) + tol;
   const minY = Math.min(a.y, b.y) - tol, maxY = Math.max(a.y, b.y) + tol;
   return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+}
+
+function pointNearFootprint(p: Pt, footprint: Pt[], tol = FOOTPRINT_TOUCH_TOL_PX): boolean {
+  for (let i = 0; i < footprint.length; i++) {
+    if (pointOnSegment(p, footprint[i], footprint[(i + 1) % footprint.length], tol)) return true;
+  }
+  return false;
+}
+
+function snapInteriorFragmentsToGraph(rawLines: Seg[], footprint: Pt[]): Seg[] {
+  const anchors: Pt[] = [...footprint];
+  const snapEndpoint = (p: Pt): Pt => {
+    const fp = snapToFootprint(p, footprint, FOOTPRINT_TOUCH_TOL_PX);
+    if (dist(fp, p) <= FOOTPRINT_TOUCH_TOL_PX) return fp;
+    for (const anchor of anchors) {
+      if (dist(anchor, p) <= ENDPOINT_SNAP_TOL_PX) return anchor;
+    }
+    const sp = snap(p);
+    anchors.push(sp);
+    return sp;
+  };
+
+  const out: Seg[] = [];
+  const seen = new Set<string>();
+  for (const line of rawLines) {
+    const a = snapEndpoint(snap(line.a));
+    const b = snapEndpoint(snap(line.b));
+    if (ptKey(a) === ptKey(b) || dist(a, b) < MIN_SEGMENT_LENGTH_PX) continue;
+    const k = segKey(a, b);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ a, b });
+  }
+  return out;
 }
 
 function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
