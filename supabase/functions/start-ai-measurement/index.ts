@@ -955,18 +955,19 @@ async function processJob(input: any) {
         // Always persist debug data so internal debug reports are available.
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
         dsmFailReason = failReason;
-        // Persist debug data into the measurement job before failing
-        const aiJobId = input.ai_measurement_job_id;
-        if (aiJobId) {
-          await supabaseAdmin.from("ai_measurement_jobs").update({
-            status: "failed",
-            failure_reason: `DSM solver failed: ${failReason}`,
-            status_message: `DSM solver failed: ${failReason}`,
-          }).eq("id", aiJobId);
-        }
-        return new Response(JSON.stringify({ error: failReason, debug: autonomousDebug }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: {
+            gate_reason: failReason,
+            autonomousDebug,
+            debug: autonomousDebug,
+          },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
       } else {
 
       cleanPlanes = graph.faces.map((f, i) => ({
