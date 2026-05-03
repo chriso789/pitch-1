@@ -59,6 +59,12 @@ interface OverlayDebugData {
   faces_rejected_by_area?: number;
   coverage_ratio?: number;
   customer_block_reason?: string;
+  // Source tagging (Phase 5)
+  geometry_source?: string;
+  topology_source?: string;
+  fallback_used?: boolean;
+  customer_report_ready?: boolean;
+  internal_debug_report_ready?: boolean;
   // Registration quality metrics
   overlay_calibration?: {
     registration_quality?: {
@@ -375,6 +381,30 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
                 Block reason: {data.customer_block_reason}
               </div>
             )}
+
+            {/* Source Tagging (Phase 5) */}
+            <div className="flex flex-wrap gap-1">
+              {data.geometry_source && (
+                <Badge variant="outline" className="text-[9px]">
+                  Geo: {data.geometry_source}
+                </Badge>
+              )}
+              {data.topology_source && (
+                <Badge variant={data.topology_source === 'autonomous_dsm_graph_solver' ? 'secondary' : 'destructive'} className="text-[9px]">
+                  Topo: {data.topology_source}
+                </Badge>
+              )}
+              {data.fallback_used != null && (
+                <Badge variant={data.fallback_used ? 'destructive' : 'secondary'} className="text-[9px]">
+                  {data.fallback_used ? '⚠ Fallback' : '✓ No fallback'}
+                </Badge>
+              )}
+              {data.customer_report_ready != null && (
+                <Badge variant={data.customer_report_ready ? 'secondary' : 'destructive'} className="text-[9px]">
+                  {data.customer_report_ready ? '✓ Customer Report' : '✗ No Customer Report'}
+                </Badge>
+              )}
+            </div>
 
             {/* Edge classification breakdown */}
             <div className="flex flex-wrap gap-2 text-[10px]">

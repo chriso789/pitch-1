@@ -14,6 +14,17 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // ── DEPRECATION NOTICE ──
+  // This function is deprecated. Use start-ai-measurement instead.
+  console.warn('[DEPRECATED] measure-roof invoked — this function is deprecated. Use start-ai-measurement.');
+  const deprecationHeaders = {
+    ...corsHeaders,
+    'Content-Type': 'application/json',
+    'Deprecation': 'true',
+    'Sunset': '2026-08-01',
+    'Link': '</functions/v1/start-ai-measurement>; rel="successor-version"',
+  };
+
   try {
     const body = await req.json()
     const { lead_id, address, lat, lng, user_id, tenant_id, pitch_override } = body

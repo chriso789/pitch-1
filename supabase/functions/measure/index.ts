@@ -2248,6 +2248,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // ── DEPRECATION NOTICE ──
+  // This function is deprecated. Use start-ai-measurement for new AI measurements.
+  console.warn('[DEPRECATED] measure function invoked — this function is deprecated. Use start-ai-measurement for AI roof measurements.');
+
   const authHeader = req.headers.get('authorization');
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     global: { headers: { Authorization: authHeader || '' } }
