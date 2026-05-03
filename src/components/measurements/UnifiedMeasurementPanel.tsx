@@ -2195,6 +2195,11 @@ function MeasurementHistorySection({
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(measurement.created_at), 'MMM d, yyyy h:mm a')}
                   </p>
+                  {historyStatus && (
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {String(historyStatus).replace(/_/g, ' ')}
+                    </p>
+                  )}
                   {reviewReason && (
                     <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                       <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -2209,6 +2214,7 @@ function MeasurementHistorySection({
                     size="sm"
                     variant="outline"
                     onClick={() => onViewAiReport(measurement)}
+                    disabled={isJobOnly}
                     title="View aerial trace report"
                   >
                     <Eye className="h-4 w-4 mr-1" />
@@ -2237,6 +2243,7 @@ function MeasurementHistorySection({
                       setDeleteConfirmId(measurement.id);
                       setDeleteType('ai');
                     }}
+                    disabled={isJobOnly}
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     title="Delete from history"
                   >
