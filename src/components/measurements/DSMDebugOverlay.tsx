@@ -46,6 +46,31 @@ interface OverlayDebugData {
   dsm_edges_accepted?: number;
   validation_status?: string;
   hard_fail_reason?: string;
+  // Expanded solver metrics (Patent Parity Phase 3)
+  intersections_split?: number;
+  intersection_filter_skipped?: number;
+  cluster_merges?: number;
+  collinear_merges?: number;
+  fragment_merges?: number;
+  dangling_edges_removed?: number;
+  face_count_before_merge?: number;
+  face_count_after_merge?: number;
+  faces_rejected_by_plane_fit?: number;
+  faces_rejected_by_area?: number;
+  coverage_ratio?: number;
+  customer_block_reason?: string;
+  // Registration quality metrics
+  overlay_calibration?: {
+    registration_quality?: {
+      rms_px?: number;
+      max_error_px?: number;
+      mask_iou?: number | null;
+      coverage_ratio?: number;
+      publish_allowed?: boolean;
+      block_reason?: string | null;
+    };
+    [key: string]: any;
+  };
 }
 
 interface DSMDebugOverlayProps {
