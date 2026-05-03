@@ -145,13 +145,18 @@ export interface AutonomousGraphLog {
   timing_ms: number;
   dsm_edges_detected: number;
   dsm_edges_accepted: number;
+  edge_count_after_cluster: number;
   interior_lines_used: number;
   graph_nodes: number;
   graph_segments: number;
   intersections_split: number;
   dangling_edges_removed: number;
   faces_extracted: number;
+  face_count_before_merge: number;
+  face_count_after_merge: number;
   valid_faces: number;
+  pitch_source: string;
+  dsm_mask_valid: boolean;
   topology_source: 'autonomous_dsm_graph_solver';
   facet_source: 'dsm_planar_graph_faces';
   hard_fail_reason?: string | null;
