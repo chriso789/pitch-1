@@ -920,6 +920,25 @@ async function processJob(input: any) {
         facet_count: graph.faces.length,
         status: graph.validation_status,
         complexity,
+        // Debug overlay data: rejected edges and graph vertices in geo coords
+        rejected_edges_geo: (graph.rejected_edges || []).map(e => ({
+          start: e.start,
+          end: e.end,
+          score: e.score,
+          type: e.type,
+          reason: e.reason,
+        })),
+        graph_vertices_geo: graph.vertices.map(v => ({
+          position: v.position,
+          type: v.type,
+        })),
+        accepted_edges_geo: graph.edges.map(e => ({
+          start: e.start,
+          end: e.end,
+          type: e.type,
+          confidence: e.confidence.final_confidence,
+          source: e.source,
+        })),
       };
 
       const failReason = graph.validation_status !== "validated"
@@ -3699,6 +3718,14 @@ async function processJob(input: any) {
         overlay_calibration: overlayCalibration,
         roof_target_bbox_px: roofTargetBboxPx,
         roof_target_source: roofTargetSource,
+        // DSM debug overlay data
+        rejected_edges_geo: autonomousDebug?.rejected_edges_geo ?? [],
+        graph_vertices_geo: autonomousDebug?.graph_vertices_geo ?? [],
+        accepted_edges_geo: autonomousDebug?.accepted_edges_geo ?? [],
+        dsm_edges_detected: autonomousDebug?.dsm_edges_detected ?? 0,
+        dsm_edges_accepted: autonomousDebug?.dsm_edges_accepted ?? 0,
+        validation_status: autonomousDebug?.status ?? null,
+        hard_fail_reason: autonomousDebug?.hard_fail_reason ?? null,
       },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({

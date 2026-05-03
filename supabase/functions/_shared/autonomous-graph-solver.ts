@@ -81,6 +81,15 @@ export interface GraphVertex {
   connected_edge_ids: string[];
 }
 
+export interface RejectedEdgeDebug {
+  start: XY;
+  end: XY;
+  score: number;
+  type: string;
+  source: string;
+  reason: string;
+}
+
 export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
@@ -91,6 +100,7 @@ export interface AutonomousGraphResult {
   vertices: GraphVertex[];
   edges: GraphEdge[];
   faces: GraphFace[];
+  rejected_edges: RejectedEdgeDebug[];
   
   totals: {
     ridge_ft: number;
@@ -298,7 +308,7 @@ function scoreAndFilterEdges(
   dsmGrid: DSMGrid | null,
   midLat: number,
   isComplex: boolean
-): { accepted: ScoredEdge[]; prunedByScore: number } {
+): { accepted: ScoredEdge[]; prunedByScore: number; rejectedDebug: RejectedEdgeDebug[] } {
   const candidates: ScoredEdge[] = [];
   let edgeIdx = 0;
   let skippedByLength = 0, skippedByFootprint = 0;
@@ -374,9 +384,19 @@ function scoreAndFilterEdges(
 
   // Filter by threshold
   const accepted = candidates.filter(c => c.score >= EDGE_SCORE_THRESHOLD);
-  const prunedByScore = candidates.length - accepted.length;
+  const rejected = candidates.filter(c => c.score < EDGE_SCORE_THRESHOLD);
+  const prunedByScore = rejected.length;
 
-  return { accepted, prunedByScore };
+  const rejectedDebug: RejectedEdgeDebug[] = rejected.map(c => ({
+    start: c.start,
+    end: c.end,
+    score: c.score,
+    type: c.classifiedType,
+    source: c.source,
+    reason: `score_${c.score.toFixed(3)}_below_${EDGE_SCORE_THRESHOLD}`,
+  }));
+
+  return { accepted, prunedByScore, rejectedDebug };
 }
 
 // ============= STEP 2: CONSERVATIVE SNAPPING (NO CENTER COLLAPSE) =============
@@ -866,7 +886,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   // ===== STEP 2: Score & filter (PRUNE BEFORE GRAPH) =====
-  const { accepted: scoredEdges, prunedByScore } = scoreAndFilterEdges(
+  const { accepted: scoredEdges, prunedByScore, rejectedDebug: rejectedEdgesDebug } = scoreAndFilterEdges(
     [...dsmRidges, ...dsmValleys],
     input.skeletonEdges,
     input.solarSegments,
@@ -1088,6 +1108,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     vertices: outputVertices,
     edges: outputEdges,
     faces: graphFaces,
+    rejected_edges: rejectedEdgesDebug,
     totals: {
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),

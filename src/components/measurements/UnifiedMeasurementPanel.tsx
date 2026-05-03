@@ -29,6 +29,7 @@ import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/
 import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
 // RoofDiagramViewer intentionally not rendered inline — diagrams only show in the View Report dialog
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
+import { DSMDebugOverlay } from '@/components/measurements/DSMDebugOverlay';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
@@ -1161,6 +1162,21 @@ export function UnifiedMeasurementPanel({
           pipelineEntryId={pipelineEntryId}
         />
       )}
+
+      {/* DSM Debug Overlay — uses most recent AI measurement */}
+      {(() => {
+        const latestAi = aiMeasurements?.[0];
+        const grj = (latestAi as any)?.geometry_report_json;
+        if (!grj?.overlay_debug) return null;
+        return (
+          <div className="mt-3">
+            <DSMDebugOverlay
+              overlayDebug={grj.overlay_debug}
+              debugGeometry={grj.debug_geometry}
+            />
+          </div>
+        );
+      })()}
     </>
   );
 }
