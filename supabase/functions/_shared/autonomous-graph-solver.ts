@@ -1181,7 +1181,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   // ===== STEP 5: DSM physics classification =====
-  const classifiedEdges = classifyEdgesWithDSM(cleanEdges, effectiveDSM);
+  const classificationResult = classifyEdgesWithDSMDebug(cleanEdges, effectiveDSM);
+  const classifiedEdges = classificationResult.edges;
+  const edgeClassificationDebug = classificationResult.debug;
 
   // Log classification results
   const ridgeCount = classifiedEdges.filter(e => e.classifiedType === 'ridge').length;
@@ -1233,9 +1235,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}`);
 
   let facesRejected = 0;
+  const faceRejectionTable: NonNullable<AutonomousGraphResult['face_rejection_table']> = [];
   const graphFaces: GraphFace[] = [];
   faceCountBeforeMerge = planar.faces.length;
-  for (const face of planar.faces) {
+  for (const [faceIdx, face] of planar.faces.entries()) {
     const polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
     // Conditional plane fit: > 200 sqft allows 0.8m, otherwise strict 0.5m
@@ -1246,7 +1249,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     if (effectiveDSM) {
       const planeFit = fitPlaneWithPitch(polygon, effectiveDSM);
       if (planeFit) {
-        if (planeFit.rms > threshold) { facesRejected++; continue; }
+        if (planeFit.rms > threshold) {
+          facesRejected++;
+          faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          continue;
+        }
         pitch = planeFit.pitchDeg;
         azimuth = planeFit.azimuthDeg;
       } else {
@@ -1257,7 +1264,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         azimuth = matchingSolar?.azimuthDegrees || 0;
       }
     }
-    if (areaSqft < MIN_FACET_AREA_SQFT) { facesRejected++; continue; }
+    if (areaSqft < MIN_FACET_AREA_SQFT) {
+      facesRejected++;
+      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: null, inside_footprint: true, mask_overlap: null, rejection_reason: `area_below_${MIN_FACET_AREA_SQFT}_sqft` });
+      continue;
+    }
     const closedPolygon = vertexKey(polygon[0]) === vertexKey(polygon[polygon.length - 1]) ? polygon : [...polygon, polygon[0]];
     graphFaces.push({
       id: `SF-${String.fromCharCode(65 + graphFaces.length)}`,
