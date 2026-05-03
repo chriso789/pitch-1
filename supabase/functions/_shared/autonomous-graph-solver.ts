@@ -16,7 +16,7 @@
  * Patent-aligned: ONE canonical roof graph feeds all outputs.
  */
 
-import type { DSMGrid, MaskedDSMGrid, RoofMask } from "./dsm-analyzer.ts";
+import type { DSMGrid, MaskedDSMGrid } from "./dsm-analyzer.ts";
 import { geoToPixel, pixelToGeo } from "./dsm-analyzer.ts";
 import { detectStructuralEdges, type DSMEdgeCandidate } from "./dsm-edge-detector.ts";
 import {
