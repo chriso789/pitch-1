@@ -375,8 +375,8 @@ export function UnifiedMeasurementPanel({
     enabled: !!pipelineEntryId,
   });
 
-  // REALTIME: Auto-refresh when new measurements are saved
-  // This ensures UI updates immediately when AI analysis completes
+  // REALTIME: Auto-refresh when new measurements are saved or AI rows finish.
+  // Failed/internal AI runs may only create roof_measurements, not approvals.
   useEffect(() => {
     const channel = supabase
       .channel(`measurement-updates-${pipelineEntryId}`)
@@ -388,6 +388,15 @@ export function UnifiedMeasurementPanel({
       }, (payload) => {
         console.log('📊 New measurement detected via Realtime:', payload);
         refetch();
+        queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'roof_measurements',
+        filter: `customer_id=eq.${pipelineEntryId}`
+      }, () => {
         queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
         queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
       })
@@ -487,10 +496,7 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return (data || []).filter((measurement: any) => (
-        isPlausibleRoofMeasurement(measurement) ||
-        hasDebugRoofReport(measurement)
-      ));
+      return data || [];
     },
     enabled: !!pipelineEntryId,
   });
