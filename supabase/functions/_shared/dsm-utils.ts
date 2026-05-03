@@ -23,6 +23,10 @@ export interface PerpendicularProfile {
   centerAvg: number;
   heightDelta: number;  // |leftAvg - rightAvg|
   sampleCount: number;
+  leftOnRoof: boolean;  // whether left samples landed on roof mask
+  rightOnRoof: boolean; // whether right samples landed on roof mask
+  leftGroundDrop: boolean; // whether left side shows ground-level drop (>3m below center)
+  rightGroundDrop: boolean; // whether right side shows ground-level drop (>3m below center)
 }
 
 /**
