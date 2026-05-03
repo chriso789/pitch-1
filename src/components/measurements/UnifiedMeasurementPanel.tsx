@@ -480,7 +480,10 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return (data || []).filter(isPlausibleRoofMeasurement);
+      return (data || []).filter((measurement: any) => (
+        isPlausibleRoofMeasurement(measurement) ||
+        Boolean(measurement?.geometry_report_json?.block_customer_report_reason || measurement?.gate_reason)
+      ));
     },
     enabled: !!pipelineEntryId,
   });
@@ -2011,6 +2014,7 @@ function MeasurementHistorySection({
         {/* AI Measurements */}
         {aiMeasurements.map((measurement) => {
           const sqft = measurement.total_area_adjusted_sqft || 0;
+          const reviewReason = getMeasurementReviewReason(measurement);
           const isManualEntry = measurement.footprint_source === 'manual_entry' || measurement.detection_method === 'manual_entry';
           const isSelected = selectedIds.has(measurement.id);
           
@@ -2042,15 +2046,15 @@ function MeasurementHistorySection({
                 )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">
-                    {sqft.toLocaleString()} sqft
+                    {sqft > 0 ? `${sqft.toLocaleString()} sqft` : 'Debug report only'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(measurement.created_at), 'MMM d, yyyy h:mm a')}
                   </p>
-                  {getMeasurementReviewReason(measurement) && (
+                  {reviewReason && (
                     <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                       <AlertTriangle className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{getMeasurementReviewReason(measurement)}</span>
+                      <span className="truncate">{reviewReason}</span>
                     </p>
                   )}
                 </div>

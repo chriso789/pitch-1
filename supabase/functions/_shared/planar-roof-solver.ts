@@ -704,7 +704,12 @@ export function solveRoofPlanes(
   const interiorFragments = snapInteriorFragmentsToGraph(snappedInterior, footprint)
     .map((seg) => {
       const touchesFootprint = pointNearFootprint(seg.a, footprint) || pointNearFootprint(seg.b, footprint);
-      return touchesFootprint ? extendLineToFootprint(seg, footprint) || seg : seg;
+      const isPrimaryDivider = seg.edgeType === 'ridge' || seg.edgeType === 'valley' || (seg.edgeType === 'hip' && (seg.edgeScore || 0) >= 0.35);
+      // DSM ridge/valley/hip detections often stop short of the eave because
+      // the edge detector sees only the high-gradient core. A planar roof graph
+      // cannot form closed facets from floating chords, so extend trustworthy
+      // structural dividers to the footprint before intersection splitting.
+      return (touchesFootprint || isPrimaryDivider) ? extendLineToFootprint(seg, footprint) || seg : seg;
     })
     .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b) && segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 
@@ -762,14 +767,15 @@ export function solveRoofPlanes(
   const rawFaces = extractMinimalCycles(adj);
 
   // 12. Face filtering
+  const footprintArea = Math.abs(signedArea(footprint));
+  const minRawFaceArea = Math.max(20, footprintArea * 0.0015);
   const allFaces = rawFaces
-    .filter((f) => Math.abs(signedArea(f)) > 50)
+    .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
     .map((polygon, i) => ({ id: i, polygon }));
   const facesRejectedByArea = rawFaces.length - allFaces.length;
   const validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
 
-  const footprintArea = Math.abs(signedArea(footprint));
   const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
   const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
 

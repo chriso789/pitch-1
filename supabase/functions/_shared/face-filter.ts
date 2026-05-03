@@ -53,8 +53,11 @@ function removeOuterFace(faces: Face[]): Face[] {
 }
 
 function removeTinyFaces(faces: Face[], footprintArea: number): Face[] {
-  // Lowered from 2% to 1% — tiny face removal happens BEFORE merge
-  return faces.filter((f) => polygonArea(f.polygon) > footprintArea * 0.01);
+  // Keep real sub-facets on complex roofs. A 1% footprint threshold can delete
+  // legitimate dormer/wing facets before coverage is computed; use a small
+  // absolute floor instead and let downstream coverage/plane-fit gates decide.
+  const minArea = Math.max(20, footprintArea * 0.0015);
+  return faces.filter((f) => polygonArea(f.polygon) > minArea);
 }
 
 function removeDuplicateFaces(faces: Face[]): Face[] {
