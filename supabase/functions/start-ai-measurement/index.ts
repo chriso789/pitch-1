@@ -1115,6 +1115,7 @@ async function processJob(input: any) {
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
         lng: coords.lng,
+        coordinateSpaceSolver: "dsm_px",
         footprintCoords: footprintGeo,
         solarSegments,
         dsmGrid,
@@ -1124,12 +1125,22 @@ async function processJob(input: any) {
       };
       const graph = solveAutonomousGraph(graphInput);
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
+      const graphValidated = graph.validation_status === "validated";
+      const attemptedRidgeLf = Number(graph.totals?.ridge_ft || 0);
+      const attemptedHipLf = Number(graph.totals?.hip_ft || 0);
+      const attemptedValleyLf = Number(graph.totals?.valley_ft || 0);
+      const attemptedAreaTotal = Number(graph.logs?.attempted_area_total || graph.totals?.total_roof_area_sqft || 0);
       autonomousDebug = {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
         facet_source: graph.facet_source || "dsm_planar_graph_faces",
         solver_version: "autonomous_graph_solver_v3_prune_first",
         fallback_used: false,
         hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
+        coordinate_space_input: "geo_from_selected_footprint",
+        coordinate_space_solver: "dsm_px",
+        coordinate_space_renderer: "satellite_px",
+        dsm_pixel_transform_valid: Boolean(dsmCoordinateMatch),
+        geo_to_dsm_px_success: Boolean(dsmCoordinateMatch),
         footprint_source: footprintSource,
         footprint_valid: true,
         footprint_point_count: footprint.length,
@@ -1156,7 +1167,20 @@ async function processJob(input: any) {
         faces_attempted: graph.logs?.faces_extracted ?? graph.faces.length,
         faces_rejected: (graph.logs?.faces_rejected_by_plane_fit || 0) + (graph.logs?.faces_rejected_by_area || 0),
         rejection_reasons: graph.failure_reason ? [graph.failure_reason] : [],
-        valid_faces: graph.logs?.valid_faces ?? graph.faces.length,
+        attempted_faces: graph.logs?.attempted_face_count ?? graph.logs?.faces_extracted ?? graph.faces.length,
+        attempted_edges: graph.logs?.attempted_edge_count ?? graph.edges.length,
+        attempted_area_total: Math.round(attemptedAreaTotal),
+        attempted_ridge_lf: Number(attemptedRidgeLf.toFixed(2)),
+        attempted_hip_lf: Number(attemptedHipLf.toFixed(2)),
+        attempted_valley_lf: Number(attemptedValleyLf.toFixed(2)),
+        validated_faces: graphValidated ? graph.faces.length : 0,
+        validated_edges: graphValidated ? graph.edges.length : 0,
+        validated_ridge_lf: graphValidated ? Number(attemptedRidgeLf.toFixed(2)) : 0,
+        validated_hip_lf: graphValidated ? Number(attemptedHipLf.toFixed(2)) : 0,
+        validated_valley_lf: graphValidated ? Number(attemptedValleyLf.toFixed(2)) : 0,
+        face_rejection_table: graph.face_rejection_table || graph.logs?.face_rejection_table || [],
+        edge_classification_debug: graph.logs?.edge_classification_debug || null,
+        valid_faces: graphValidated ? (graph.logs?.valid_faces ?? graph.faces.length) : 0,
         face_coverage_ratio: graph.face_coverage_ratio,
         edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
         edge_filter_count_after: graph.logs?.fused_edges || 0,
@@ -1178,10 +1202,21 @@ async function processJob(input: any) {
           type: e.type,
           reason: e.reason,
         })),
+        rejected_edges_dsm_px: effectiveDSMForMatch ? (graph.rejected_edges || []).map(e => ({
+          start: geoToPixel(e.start, effectiveDSMForMatch),
+          end: geoToPixel(e.end, effectiveDSMForMatch),
+          score: e.score,
+          type: e.type,
+          reason: e.reason,
+        })) : [],
         graph_vertices_geo: graph.vertices.map(v => ({
           position: v.position,
           type: v.type,
         })),
+        graph_vertices_dsm_px: effectiveDSMForMatch ? graph.vertices.map(v => ({
+          position: geoToPixel(v.position, effectiveDSMForMatch),
+          type: v.type,
+        })) : [],
         accepted_edges_geo: graph.edges.map(e => ({
           start: e.start,
           end: e.end,
@@ -1189,15 +1224,24 @@ async function processJob(input: any) {
           confidence: e.confidence.final_confidence,
           source: e.source,
         })),
+        accepted_edges_dsm_px: effectiveDSMForMatch ? graph.edges.map(e => ({
+          start: geoToPixel(e.start, effectiveDSMForMatch),
+          end: geoToPixel(e.end, effectiveDSMForMatch),
+          type: e.type,
+          confidence: e.confidence.final_confidence,
+          source: e.source,
+        })) : [],
       };
 
-      const failReason = graph.validation_status !== "validated"
-        ? graph.validation_status
-        : complexity.isComplex && graph.faces.length <= 4
-          ? "ai_failed_complex_topology"
-          : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
-            ? "invalid_roof_graph"
-            : null;
+      const failReason = graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
+        ? "invalid_edge_classification"
+        : graph.validation_status !== "validated"
+          ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
+          : complexity.isComplex && graph.faces.length <= 4
+            ? "ai_failed_complex_topology"
+            : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
+              ? "invalid_edge_classification"
+              : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
@@ -1234,14 +1278,23 @@ async function processJob(input: any) {
               engineVersion: "debug_failed_dsm_graph",
               planes: failedPlanesPx,
               edges: failedEdgesPx,
-              totals: { ridge_length_ft: 0, hip_length_ft: 0, valley_length_ft: 0,
-                eave_length_ft: 0, rake_length_ft: 0, total_area_2d_sqft: 0,
-                total_area_pitch_adjusted_sqft: 0, roof_square_count: 0, waste_adjusted_squares: 0 },
+              totals: {
+                ridge_length_ft: autonomousDebug.attempted_ridge_lf || 0,
+                hip_length_ft: autonomousDebug.attempted_hip_lf || 0,
+                valley_length_ft: autonomousDebug.attempted_valley_lf || 0,
+                eave_length_ft: graph.totals?.eave_ft || 0,
+                rake_length_ft: graph.totals?.rake_ft || 0,
+                total_area_2d_sqft: graph.totals?.total_plan_area_sqft || autonomousDebug.attempted_area_total || 0,
+                total_area_pitch_adjusted_sqft: graph.totals?.total_roof_area_sqft || autonomousDebug.attempted_area_total || 0,
+                roof_square_count: (graph.totals?.total_roof_area_sqft || autonomousDebug.attempted_area_total || 0) / 100,
+                waste_adjusted_squares: 0,
+              },
               satelliteImageUrl: imageUrl,
               sourceImageWidth: raster.width,
               sourceImageHeight: raster.height,
               roofTargetBboxPx: null,
               overlayCalibration: null,
+              debugWatermarkText: "INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY",
             });
             if (debugDiagrams.length > 0) {
               await supabase.from("ai_measurement_diagrams").insert(
@@ -4012,6 +4065,24 @@ async function processJob(input: any) {
       facet_source: autonomousDebug?.facet_source ?? (topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : null),
       fallback_used: autonomousDebug?.fallback_used ?? (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
       hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
+      coordinate_space_input: autonomousDebug?.coordinate_space_input || "geo_from_selected_footprint",
+      coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "dsm_px",
+      coordinate_space_renderer: "satellite_px",
+      dsm_pixel_transform_valid: Boolean(autonomousDebug?.dsm_pixel_transform_valid ?? dsmCoordinateMatchDebug?.match ?? true),
+      geo_to_dsm_px_success: Boolean(autonomousDebug?.geo_to_dsm_px_success ?? dsmCoordinateMatchDebug?.match ?? true),
+      attempted_faces: autonomousDebug?.attempted_faces ?? planeRows.length,
+      attempted_edges: autonomousDebug?.attempted_edges ?? edgeRows.length,
+      attempted_area_total: autonomousDebug?.attempted_area_total ?? Number(totals.total_area_pitch_adjusted_sqft || 0),
+      attempted_ridge_lf: autonomousDebug?.attempted_ridge_lf ?? ridgeFt,
+      attempted_hip_lf: autonomousDebug?.attempted_hip_lf ?? hipFt,
+      attempted_valley_lf: autonomousDebug?.attempted_valley_lf ?? valleyFt,
+      validated_faces: blockCustomerReportReason ? 0 : planeRows.length,
+      validated_edges: blockCustomerReportReason ? 0 : edgeRows.length,
+      validated_ridge_lf: blockCustomerReportReason ? 0 : ridgeFt,
+      validated_hip_lf: blockCustomerReportReason ? 0 : hipFt,
+      validated_valley_lf: blockCustomerReportReason ? 0 : valleyFt,
+      face_rejection_table: autonomousDebug?.face_rejection_table || [],
+      edge_classification_debug: autonomousDebug?.edge_classification_debug || null,
       footprint_source: footprintSource,
       footprint_valid: true,
       footprint_point_count: footprint.length,
@@ -4083,6 +4154,9 @@ async function processJob(input: any) {
         ridge_alignment_qa: (globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug,
       },
       overlay_debug: {
+        coordinate_space: "satellite_px",
+        coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "dsm_px",
+        coordinate_space_renderer: "satellite_px",
         raster_url: imageUrl,
         raster_size,
         planes_px,
@@ -4101,8 +4175,11 @@ async function processJob(input: any) {
         dsm_coordinate_match: dsmCoordinateMatchDebug,
         // DSM debug overlay data
         rejected_edges_geo: autonomousDebug?.rejected_edges_geo ?? [],
+        rejected_edges_dsm_px: autonomousDebug?.rejected_edges_dsm_px ?? [],
         graph_vertices_geo: autonomousDebug?.graph_vertices_geo ?? [],
+        graph_vertices_dsm_px: autonomousDebug?.graph_vertices_dsm_px ?? [],
         accepted_edges_geo: autonomousDebug?.accepted_edges_geo ?? [],
+        accepted_edges_dsm_px: autonomousDebug?.accepted_edges_dsm_px ?? [],
         dsm_edges_detected: autonomousDebug?.dsm_edges_detected ?? 0,
         dsm_edges_accepted: autonomousDebug?.dsm_edges_accepted ?? 0,
         validation_status: autonomousDebug?.status ?? null,
@@ -5069,6 +5146,25 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     fallback_used: aiDetectionData.fallback_used,
     block_customer_report_reason: failureReason,
     hard_fail_reason: failureReason,
+    coordinate_space_input: debug?.coordinate_space_input || "unknown",
+    coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
+    coordinate_space_renderer: debug?.coordinate_space_renderer || "satellite_px",
+    dsm_pixel_transform_valid: Boolean(debug?.dsm_pixel_transform_valid ?? debug?.coordinate_space_match ?? false),
+    geo_to_dsm_px_success: Boolean(debug?.geo_to_dsm_px_success ?? debug?.coordinate_space_match ?? false),
+    attempted_faces: Number(debug?.attempted_faces ?? debug?.faces_attempted ?? debug?.faces_extracted ?? 0),
+    attempted_edges: Number(debug?.attempted_edges ?? debug?.edge_count ?? 0),
+    attempted_area_total: Number(debug?.attempted_area_total ?? 0),
+    attempted_ridge_lf: Number(debug?.attempted_ridge_lf ?? 0),
+    attempted_hip_lf: Number(debug?.attempted_hip_lf ?? 0),
+    attempted_valley_lf: Number(debug?.attempted_valley_lf ?? 0),
+    validated_faces: 0,
+    validated_edges: 0,
+    validated_ridge_lf: 0,
+    validated_hip_lf: 0,
+    validated_valley_lf: 0,
+    face_rejection_table: debug?.face_rejection_table || [],
+    edge_classification_debug: debug?.edge_classification_debug || null,
+    validated_geometry: { faces: [], edges: [] },
     dsm_planar_graph_debug: debug,
     // Footprint diagnostics (always present)
     footprint_source: debug?.footprint_source || "unknown",
@@ -5103,7 +5199,9 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       hard_fail_reason: failureReason,
     },
     overlay_debug: {
-      coordinate_space: "geo",
+      coordinate_space: "satellite_px",
+      coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
+      coordinate_space_renderer: debug?.coordinate_space_renderer || "satellite_px",
       raster_url: imageUrl,
       raster_size: debug?.raster_size || null,
       footprint_px: debug?.footprint_px || [],
@@ -5113,8 +5211,11 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       footprint_area_sqft: debug?.footprint_area_sqft ?? 0,
       dsm_coordinate_match: debug?.dsm_coordinate_match || null,
       rejected_edges_geo: debug?.rejected_edges_geo || [],
+      rejected_edges_dsm_px: debug?.rejected_edges_dsm_px || [],
       graph_vertices_geo: debug?.graph_vertices_geo || [],
+      graph_vertices_dsm_px: debug?.graph_vertices_dsm_px || [],
       accepted_edges_geo: debug?.accepted_edges_geo || [],
+      accepted_edges_dsm_px: debug?.accepted_edges_dsm_px || [],
       dsm_edges_detected: Number(debug?.dsm_edges_detected || 0),
       dsm_edges_accepted: Number(debug?.dsm_edges_accepted || 0),
       validation_status: "failed",

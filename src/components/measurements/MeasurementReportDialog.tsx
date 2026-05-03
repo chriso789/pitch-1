@@ -124,6 +124,13 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const debugRows: { label: string; value: string }[] = [
     { label: 'Detection Method', value: String(m.detection_method ?? grj.detection_method ?? '—') },
     { label: 'Footprint Source', value: String(m.footprint_source ?? grj.footprint_source ?? '—') },
+    { label: 'Footprint Valid', value: String(grj.footprint_valid ?? '—') },
+    { label: 'Coordinate Match', value: String(grj.coordinate_space_match ?? grj.dsm_coordinate_match?.match ?? '—') },
+    { label: 'Solver Space', value: String(grj.coordinate_space_solver ?? grj.overlay_debug?.coordinate_space_solver ?? '—') },
+    { label: 'Attempted Faces', value: fmt(grj.attempted_faces ?? grj.faces_attempted) },
+    { label: 'Validated Faces', value: fmt(grj.validated_faces ?? grj.valid_faces) },
+    { label: 'Coverage', value: fmt(((grj.debug_geometry?.face_coverage_ratio ?? grj.face_coverage_ratio) || 0) * 100, '%') },
+    { label: 'Failure Reason', value: String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '—') },
     { label: 'Topology Source', value: String(grj.topology_source ?? grj.geometry_source ?? '—') },
     { label: 'Planes (saved)', value: fmt(dp.final_plane_count_saved) },
     { label: 'Edges (saved)', value: fmt(dp.final_edge_count_saved) },
@@ -135,6 +142,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   ];
 
   const blockReason = grj.block_customer_report_reason;
+  const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
@@ -191,6 +199,32 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
             ))}
           </div>
         </details>
+
+        {faceRejections.length > 0 && (
+          <details className="group rounded-md border bg-muted/20 p-3">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+              Face rejection table ({faceRejections.length}) ▸
+            </summary>
+            <div className="mt-2 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="text-muted-foreground">
+                  <tr><th className="text-left p-1">Face</th><th className="text-right p-1">Area</th><th className="text-right p-1">RMS</th><th className="text-left p-1">Inside</th><th className="text-left p-1">Reason</th></tr>
+                </thead>
+                <tbody>
+                  {faceRejections.map((r: any, i: number) => (
+                    <tr key={i} className="border-t">
+                      <td className="p-1 font-medium">{String(r.face_id ?? i + 1)}</td>
+                      <td className="p-1 text-right tabular-nums">{fmt(r.area_sqft, ' sqft')}</td>
+                      <td className="p-1 text-right tabular-nums">{fmt(r.plane_rms)}</td>
+                      <td className="p-1">{String(r.inside_footprint ?? '—')}</td>
+                      <td className="p-1">{String(r.rejection_reason ?? '—')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
 
         {/* Raw geometry_report_json dump for ChatGPT analysis */}
         <details className="group">
@@ -901,7 +935,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                           ? 'Footprint estimate'
                           : pdfGate.reason?.includes('single-plane')
                           ? 'Footprint estimate'
-                          : 'Preview only'}
+                          : 'INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY'}
                       </AlertTitle>
                       <AlertDescription>
                         {pdfGate.warning
@@ -935,6 +969,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     const safeSvg = DOMPurify.sanitize(normalized, {
                       USE_PROFILES: { svg: true, svgFilters: true },
                     });
+                    const showFailedWatermark = !pdfGate.ok && !pdfGate.warning;
                     return (
                       <div key={d.id} className="measurement-report-page border rounded-lg overflow-hidden bg-background">
                         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
@@ -943,8 +978,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                           </div>
                           <Badge variant="secondary">{d.diagram_type}</Badge>
                         </div>
+                        {showFailedWatermark && (
+                          <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-xs font-bold uppercase tracking-wide text-destructive">
+                            INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY
+                          </div>
+                        )}
                         <div
-                          className="w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[80vh] [&_svg]:block"
+                          className="relative w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[80vh] [&_svg]:block"
                           dangerouslySetInnerHTML={{ __html: safeSvg }}
                         />
                       </div>
