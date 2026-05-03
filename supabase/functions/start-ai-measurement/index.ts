@@ -3725,6 +3725,14 @@ async function processJob(input: any) {
     const rakeFt = Number(totals.rake_length_ft) || 0;
     const dominantPitchRise = Number(totals.dominant_pitch) || 0;
     const isFlatRoof = dominantPitchRise > 0 && dominantPitchRise < 1.5;
+    const resolvedGeometrySource =
+      topologySource === REQUIRED_TOPOLOGY_SOURCE ? "autonomous_dsm_graph_solver"
+      : topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
+      : topologySource === "google_solar_segment_structure" ? "google_solar_segment_structure"
+      : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
+      : topologySource === "triangulation" ? "deterministic_triangulation"
+      : topologySource === "unet_planes" ? "unet_optional_helper"
+      : "footprint_only";
 
     // Geometry bbox vs footprint bbox (overlay coverage of the roof target).
     const geometryUnionPoints: Point[] = [];
@@ -3954,15 +3962,6 @@ async function processJob(input: any) {
       totals,
       usedSinglePlaneFallback,
     });
-
-    const resolvedGeometrySource =
-      topologySource === REQUIRED_TOPOLOGY_SOURCE ? "autonomous_dsm_graph_solver"
-      : topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
-      : topologySource === "google_solar_segment_structure" ? "google_solar_segment_structure"
-      : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
-      : topologySource === "triangulation" ? "deterministic_triangulation"
-      : topologySource === "unet_planes" ? "unet_optional_helper"
-      : "footprint_only";
 
     await supabase.from("ai_measurement_results").insert({
       job_id: input.ai_measurement_job_id,
