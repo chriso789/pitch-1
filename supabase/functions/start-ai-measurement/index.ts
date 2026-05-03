@@ -1000,6 +1000,7 @@ async function processJob(input: any) {
       (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
       (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
       console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
+      } // end else (DSM solver succeeded)
     }
 
     const addSolarSegmentStructure = () => {
