@@ -19,6 +19,23 @@ export interface MeasurementJob {
 export function useMeasurementJob(pipelineEntryId: string) {
   const queryClient = useQueryClient();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const refreshMeasurementData = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['roof-measurement'] });
+    queryClient.invalidateQueries({ queryKey: ['roof_measurements'] });
+    queryClient.invalidateQueries({ queryKey: ['measurement'] });
+    queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
+  }, [pipelineEntryId, queryClient]);
+
+  const refreshMeasurementDataAfterCompletion = useCallback(() => {
+    refreshMeasurementData();
+    [1000, 4000, 8000].forEach((delay) => {
+      window.setTimeout(refreshMeasurementData, delay);
+    });
+  }, [refreshMeasurementData]);
+
   const markStaleJobFailed = useCallback(async (job: MeasurementJob) => {
     const startedAt = job.started_at || job.created_at;
     const ageMs = Date.now() - new Date(startedAt).getTime();
@@ -90,20 +107,13 @@ export function useMeasurementJob(pipelineEntryId: string) {
 
         if (data.status === 'completed' || data.status === 'failed') {
           setActiveJobId(null);
-          // Invalidate measurement queries so UI refreshes
-          queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
-          queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
-          queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
-          queryClient.invalidateQueries({ queryKey: ['roof-measurement'] });
-          queryClient.invalidateQueries({ queryKey: ['roof_measurements'] });
-          queryClient.invalidateQueries({ queryKey: ['measurement'] });
-          queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
+          refreshMeasurementDataAfterCompletion();
         }
       }
     }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(interval);
-  }, [activeJobId, pipelineEntryId, queryClient, latestJob, markStaleJobFailed]);
+  }, [activeJobId, pipelineEntryId, queryClient, latestJob, markStaleJobFailed, refreshMeasurementDataAfterCompletion]);
 
   const startJob = useCallback(async (params: {
     lat: number;
