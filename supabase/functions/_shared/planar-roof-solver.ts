@@ -304,37 +304,27 @@ function filterByClassificationPriority(segments: Seg[], footprint: Pt[]): Seg[]
 }
 
 // ── ORDERED INTERSECTION FILTERING + SPLITTING ───────────
-function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[]; intersectionCount: number } {
+function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[]; intersectionCount: number; intersectionFilterSkipped: number } {
   const pointsBySeg: Pt[][] = segments.map((s) => [s.a, s.b]);
   let intersectionCount = 0;
+  let intersectionFilterSkipped = 0;
 
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
       const inter = rawSegmentIntersection(segments[i].a, segments[i].b, segments[j].a, segments[j].b);
       if (!inter) continue;
 
-      // ORDERED INTERSECTION FILTERING:
-
-      // 1. Collinear check (angle < 5°) → skip immediately
       const angleDiff = angleBetweenSegs(segments[i], segments[j]);
-      if (angleDiff < COLLINEAR_ANGLE_DEG) continue;
+      if (angleDiff < COLLINEAR_ANGLE_DEG) { intersectionFilterSkipped++; continue; }
+      if (angleDiff < INTERSECTION_MIN_ANGLE_DEG) { intersectionFilterSkipped++; continue; }
 
-      // 2. Crossing angle < 15° → skip (near-parallel grazing intersections)
-      if (angleDiff < INTERSECTION_MIN_ANGLE_DEG) continue;
-
-      // 3. REMOVED: minDistBetweenSegments filter was rejecting real crossings
-      //    rawSegmentIntersection already proves t,u ∈ [0,1] — segments truly cross
-
-      // 4. Near endpoint → snap instead of skip (reduced tolerance from 12px to 4px)
       const NEAR_ENDPOINT_TOL = 4;
       const nearEndpointI = dist(inter.point, segments[i].a) < NEAR_ENDPOINT_TOL ||
                             dist(inter.point, segments[i].b) < NEAR_ENDPOINT_TOL;
       const nearEndpointJ = dist(inter.point, segments[j].a) < NEAR_ENDPOINT_TOL ||
                             dist(inter.point, segments[j].b) < NEAR_ENDPOINT_TOL;
-      if (nearEndpointI || nearEndpointJ) continue;
+      if (nearEndpointI || nearEndpointJ) { intersectionFilterSkipped++; continue; }
 
-      // 5. Accept split — always add to both segments (no pointOnSegment re-check;
-      //    rawSegmentIntersection already guarantees the point is on both segments)
       intersectionCount++;
       pointsBySeg[i].push(inter.point);
       pointsBySeg[j].push(inter.point);
@@ -362,7 +352,7 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
     for (let k = 0; k < pts.length - 1; k++) add(pts[k], pts[k + 1], s);
   }
 
-  return { result: out, intersectionCount };
+  return { result: out, intersectionCount, intersectionFilterSkipped };
 }
 
 // ── PRUNE DANGLING + GRAPH CONSISTENCY ───────────────────
