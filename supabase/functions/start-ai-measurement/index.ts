@@ -860,6 +860,7 @@ async function processJob(input: any) {
     // HARD GATE: DSM graph is now the only publishable topology source.
     // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
     let autonomousDebug: any = null;
+    let dsmFailReason: string | null = null;
     {
       let dsmGrid: any = null;
       let roofMask: any = null;
