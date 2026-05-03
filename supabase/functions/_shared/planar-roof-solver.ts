@@ -174,6 +174,44 @@ function splitSegmentsAtAllIntersections(segments: Seg[]): Seg[] {
   return out;
 }
 
+function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept: Seg[]; removed: number } {
+  let current = segments;
+  let removed = 0;
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const degree = new Map<string, number>();
+    const points = new Map<string, Pt>();
+    for (const seg of current) {
+      const ka = ptKey(seg.a), kb = ptKey(seg.b);
+      degree.set(ka, (degree.get(ka) || 0) + 1);
+      degree.set(kb, (degree.get(kb) || 0) + 1);
+      points.set(ka, seg.a);
+      points.set(kb, seg.b);
+    }
+
+    const next = current.filter((seg) => {
+      const aBoundary = pointNearFootprint(seg.a, footprint, 3);
+      const bBoundary = pointNearFootprint(seg.b, footprint, 3);
+      const footprintEdge = aBoundary && bBoundary && pointNearFootprint({ x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 }, footprint, 3);
+      if (footprintEdge) return true;
+      const aDangling = (degree.get(ptKey(seg.a)) || 0) <= 1 && !aBoundary;
+      const bDangling = (degree.get(ptKey(seg.b)) || 0) <= 1 && !bBoundary;
+      if (aDangling || bDangling) {
+        removed++;
+        changed = true;
+        return false;
+      }
+      return true;
+    });
+
+    current = next;
+  }
+
+  return { kept: current, removed };
+}
+
 // ── INTERSECT interior segments with footprint edges ──────
 // Clip ridge endpoints to the nearest footprint vertex/edge when they
 // are close but not exactly on the boundary.
@@ -353,10 +391,14 @@ export interface PlanarSolverResult {
   debug: {
     input_footprint_vertices: number;
     input_interior_lines: number;
+    snapped_interior_lines: number;
+    intersections_split: number;
+    dangling_edges_removed: number;
     total_graph_segments: number;
     total_graph_nodes: number;
     faces_extracted: number;
     faces_with_area: number;
+    face_coverage_ratio: number;
   };
 }
 
