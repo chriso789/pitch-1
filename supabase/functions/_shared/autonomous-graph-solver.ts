@@ -1108,6 +1108,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     vertices: outputVertices,
     edges: outputEdges,
     faces: graphFaces,
+    rejected_edges: rejectedEdgesDebug,
     totals: {
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
