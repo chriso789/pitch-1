@@ -959,6 +959,26 @@ async function processJob(input: any) {
       solverTopologyLocked = true;
       constraintSolverEdges = [...cleanEdges];
       ridgeSplitPlaneCount = cleanPlanes.length;
+      planeEdgeClassifierDebug = {
+        source: "dsm_planar_graph_faces",
+        classifier_skipped: true,
+        plane_count: cleanPlanes.length,
+        shared_edges: cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length,
+        exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length,
+        invalid_edges: 0,
+        counts: cleanEdges.reduce((acc: Record<string, number>, edge) => {
+          acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+          return acc;
+        }, {}),
+      };
+      strictEdgeGraphDebug = {
+        total_edges: cleanEdges.length,
+        shared_edges: planeEdgeClassifierDebug.shared_edges,
+        exterior_edges: planeEdgeClassifierDebug.exterior_edges,
+        invalid_edges: 0,
+      };
+      (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
+      (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
       console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
     }
 
