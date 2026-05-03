@@ -53,6 +53,17 @@ interface SavedMeasurement {
   report_document_id?: string | null;
 }
 
+type MeasurementJobSummary = {
+  id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress_message: string | null;
+  measurement_id: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 interface UnifiedMeasurementPanelProps {
   pipelineEntryId: string;
   latitude?: number;
@@ -143,6 +154,11 @@ const isPlausibleSavedMeasurement = (measurement: SavedMeasurement): boolean => 
 const isPlausibleRoofMeasurement = (measurement: any): boolean => (
   isPlausibleRoofSqft(measurement?.total_area_adjusted_sqft || measurement?.total_area_flat_sqft)
 );
+
+const getTimeMs = (value?: string | null): number => {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
 
 // Stricter than isPlausibleRoofMeasurement: also rejects rows the backend
 // flagged for internal review, placeholder geometry, and Solar bbox-only
