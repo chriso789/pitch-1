@@ -1320,6 +1320,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     pruned_by_intersection: prunedByIntersection,
     faces: graphFaces.length,
     faces_rejected_by_plane_fit: facesRejected,
+    faces_rejected_by_area: planar.debug.faces_rejected_by_area || 0,
     coverage_ratio: coverageRatio,
     confidence: avgConfidence,
     graph_valid: graphFaces.length >= 2 && coverageRatio >= 0.85,
@@ -1332,6 +1333,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     graph_nodes: planar.debug.total_graph_nodes,
     graph_segments: planar.debug.total_graph_segments,
     intersections_split: planar.debug.intersections_split,
+    intersection_filter_skipped: planar.debug.intersection_filter_skipped || 0,
+    cluster_merges: 0,
+    collinear_merges: planar.debug.collinear_merges || 0,
+    fragment_merges: planar.debug.fragment_merges || 0,
     dangling_edges_removed: planar.debug.dangling_edges_removed,
     faces_extracted: planar.debug.faces_extracted,
     face_count_before_merge: faceCountBeforeMerge,
@@ -1342,6 +1347,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     topology_source: 'autonomous_dsm_graph_solver',
     facet_source: 'dsm_planar_graph_faces',
     hard_fail_reason: validation.valid ? null : validation.status,
+    customer_block_reason: validation.valid ? (planar.debug.customer_block_reason || null) : validation.status,
   };
 
   console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
