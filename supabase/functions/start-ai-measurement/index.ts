@@ -1275,14 +1275,23 @@ async function processJob(input: any) {
               engineVersion: "debug_failed_dsm_graph",
               planes: failedPlanesPx,
               edges: failedEdgesPx,
-              totals: { ridge_length_ft: 0, hip_length_ft: 0, valley_length_ft: 0,
-                eave_length_ft: 0, rake_length_ft: 0, total_area_2d_sqft: 0,
-                total_area_pitch_adjusted_sqft: 0, roof_square_count: 0, waste_adjusted_squares: 0 },
+              totals: {
+                ridge_length_ft: autonomousDebug.attempted_ridge_lf || 0,
+                hip_length_ft: autonomousDebug.attempted_hip_lf || 0,
+                valley_length_ft: autonomousDebug.attempted_valley_lf || 0,
+                eave_length_ft: graph.totals?.eave_ft || 0,
+                rake_length_ft: graph.totals?.rake_ft || 0,
+                total_area_2d_sqft: graph.totals?.total_plan_area_sqft || autonomousDebug.attempted_area_total || 0,
+                total_area_pitch_adjusted_sqft: graph.totals?.total_roof_area_sqft || autonomousDebug.attempted_area_total || 0,
+                roof_square_count: (graph.totals?.total_roof_area_sqft || autonomousDebug.attempted_area_total || 0) / 100,
+                waste_adjusted_squares: 0,
+              },
               satelliteImageUrl: imageUrl,
               sourceImageWidth: raster.width,
               sourceImageHeight: raster.height,
               roofTargetBboxPx: null,
               overlayCalibration: null,
+              debugWatermarkText: "INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY",
             });
             if (debugDiagrams.length > 0) {
               await supabase.from("ai_measurement_diagrams").insert(
