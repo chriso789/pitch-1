@@ -4088,6 +4088,12 @@ async function processJob(input: any) {
         overlay_calibration: overlayCalibration,
         roof_target_bbox_px: roofTargetBboxPx,
         roof_target_source: roofTargetSource,
+        // Footprint diagnostics
+        footprint_source: footprintSource,
+        footprint_valid: true,
+        footprint_point_count: footprint.length,
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        dsm_coordinate_match: dsmCoordinateMatchDebug,
         // DSM debug overlay data
         rejected_edges_geo: autonomousDebug?.rejected_edges_geo ?? [],
         graph_vertices_geo: autonomousDebug?.graph_vertices_geo ?? [],
