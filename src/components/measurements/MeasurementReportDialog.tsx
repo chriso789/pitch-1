@@ -685,14 +685,55 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         <ScrollArea className="h-[calc(90vh-100px)] px-6 pb-6">
           <div ref={reportContentRef}>
           {!previewGate.ok ? (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Internal review required</AlertTitle>
-              <AlertDescription>
-                Automated roof geometry could not be verified. This measurement has been
-                routed to internal QA. ({previewGate.reason})
-              </AlertDescription>
-            </Alert>
+            (() => {
+              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+              const rasterUrl =
+                (effectiveMeasurement as any)?.satellite_overlay_url ||
+                (effectiveMeasurement as any)?.google_maps_image_url ||
+                (effectiveMeasurement as any)?.mapbox_image_url ||
+                grj?.raster_image_url || null;
+              const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
+              const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
+              const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
+              const hasRasterOverlay =
+                Boolean(rasterUrl) && Boolean(rasterSize) && (planes_px.length > 0 || edges_px.length > 0);
+
+              return (
+                <div className="space-y-4">
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Internal review required</AlertTitle>
+                    <AlertDescription>
+                      Automated roof geometry could not be verified. This measurement has been
+                      routed to internal QA. ({previewGate.reason})
+                    </AlertDescription>
+                  </Alert>
+                  {hasRasterOverlay && (
+                    <div className="measurement-report-page border rounded-lg overflow-hidden bg-background">
+                      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                        <div className="font-semibold text-sm">Debug Overlay</div>
+                        <Badge variant="destructive">internal only</Badge>
+                      </div>
+                      <div className="p-2 bg-white">
+                        <RasterOverlayDebugView
+                          imageUrl={rasterUrl}
+                          rasterSize={rasterSize}
+                          planes_px={planes_px}
+                          edges_px={edges_px}
+                          overlayCalibration={grj?.overlay_calibration || null}
+                          roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
+                          geometryPxSpace={grj?.geometry_px_space || null}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* Show raw debug metrics if available */}
+                  {grj?.debug_pipeline && (
+                    <InternalReportCard measurement={effectiveMeasurement} />
+                  )}
+                </div>
+              );
+            })()
           ) : loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 className="h-5 w-5 mr-2 animate-spin" />
