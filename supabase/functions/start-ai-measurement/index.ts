@@ -1201,10 +1201,21 @@ async function processJob(input: any) {
           type: e.type,
           reason: e.reason,
         })),
+        rejected_edges_dsm_px: effectiveDSMForMatch ? (graph.rejected_edges || []).map(e => ({
+          start: geoToPixel(e.start, effectiveDSMForMatch),
+          end: geoToPixel(e.end, effectiveDSMForMatch),
+          score: e.score,
+          type: e.type,
+          reason: e.reason,
+        })) : [],
         graph_vertices_geo: graph.vertices.map(v => ({
           position: v.position,
           type: v.type,
         })),
+        graph_vertices_dsm_px: effectiveDSMForMatch ? graph.vertices.map(v => ({
+          position: geoToPixel(v.position, effectiveDSMForMatch),
+          type: v.type,
+        })) : [],
         accepted_edges_geo: graph.edges.map(e => ({
           start: e.start,
           end: e.end,
@@ -1212,6 +1223,13 @@ async function processJob(input: any) {
           confidence: e.confidence.final_confidence,
           source: e.source,
         })),
+        accepted_edges_dsm_px: effectiveDSMForMatch ? graph.edges.map(e => ({
+          start: geoToPixel(e.start, effectiveDSMForMatch),
+          end: geoToPixel(e.end, effectiveDSMForMatch),
+          type: e.type,
+          confidence: e.confidence.final_confidence,
+          source: e.source,
+        })) : [],
       };
 
       const failReason = graph.validation_status !== "validated"
