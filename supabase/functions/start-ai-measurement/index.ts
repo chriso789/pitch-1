@@ -1742,7 +1742,7 @@ async function processJob(input: any) {
     let hipRoofDetectorDebug: any = null;
     let hybridSolverAccepted = false;
 
-    if (footprint.length >= 3) {
+    if (footprint.length >= 3 && topologySource !== REQUIRED_TOPOLOGY_SOURCE) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
 
       // ── 5-PRE. UPSTREAM SKELETON — run straight skeleton FIRST so
@@ -2541,8 +2541,10 @@ async function processJob(input: any) {
       };
     }
     refreshSimpleRoofType("pre_coverage_gate");
-    if (!hybridSolverAccepted) {
+    if (!hybridSolverAccepted && topologySource !== REQUIRED_TOPOLOGY_SOURCE) {
       applyFootprintCoverageGate("pre_edge_classification");
+    } else if (topologySource === REQUIRED_TOPOLOGY_SOURCE) {
+      console.log("[COVERAGE_GATE] Skipped — autonomous DSM graph already accepted as canonical");
     } else {
       console.log("[COVERAGE_GATE] Skipped — hybrid solver already accepted as primary");
     }
