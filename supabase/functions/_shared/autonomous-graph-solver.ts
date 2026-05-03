@@ -1076,8 +1076,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const startMs = Date.now();
   const warnings: string[] = [];
   const midLat = input.lat;
+  let edgeCountAfterCluster = 0;
+  let faceCountBeforeMerge = 0;
+  let faceCountAfterMerge = 0;
+  const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v3 — Prune-first pipeline`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v4 — Production planar graph reconstruction`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
