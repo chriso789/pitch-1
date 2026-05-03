@@ -1115,6 +1115,7 @@ async function processJob(input: any) {
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
         lng: coords.lng,
+        coordinateSpaceSolver: "dsm_px",
         footprintCoords: footprintGeo,
         solarSegments,
         dsmGrid,
