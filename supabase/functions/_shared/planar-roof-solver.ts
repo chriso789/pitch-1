@@ -513,71 +513,69 @@ function parsePtKey(k: string): Pt {
 }
 
 function extractMinimalCycles(adj: AdjMap): Pt[][] {
+  const sortedNeighbors = new Map<string, string[]>();
+  for (const [nodeKey, neighbors] of adj.entries()) {
+    const origin = parsePtKey(nodeKey);
+    sortedNeighbors.set(
+      nodeKey,
+      [...neighbors.keys()].sort((a, b) => angle(origin, parsePtKey(a)) - angle(origin, parsePtKey(b))),
+    );
+  }
+
   const usedDirected = new Set<string>();
   const faces: Pt[][] = [];
+  const seenFaces = new Set<string>();
 
   for (const [nodeKey, neighbors] of adj.entries()) {
     for (const [neighborKey] of neighbors) {
-      const dirKey = `${nodeKey}->${neighborKey}`;
-      if (usedDirected.has(dirKey)) continue;
+      const startU = nodeKey;
+      const startV = neighborKey;
+      if (usedDirected.has(`${startU}->${startV}`)) continue;
 
       const cycle: Pt[] = [];
-      let curKey = nodeKey;
-      let nextKey = neighborKey;
+      let curKey = startU;
+      let nextKey = startV;
       let steps = 0;
-      const maxSteps = adj.size * 2;
+      const maxSteps = Math.max(adj.size * 4, 12);
+      let closed = false;
 
       while (steps < maxSteps) {
         const dk = `${curKey}->${nextKey}`;
         if (usedDirected.has(dk)) break;
         usedDirected.add(dk);
 
-        const curNeighbors = adj.get(curKey);
-        const nextNeighbors = adj.get(nextKey);
-        if (!curNeighbors || !nextNeighbors) break;
-
         cycle.push(parsePtKey(curKey));
-
-        const inAngle = angle(parsePtKey(nextKey), parsePtKey(curKey));
-        let bestKey: string | null = null;
-        let bestAngle = Infinity;
-
-        for (const [candKey] of nextNeighbors) {
-          if (candKey === curKey) continue;
-          const candAngle = angle(parsePtKey(nextKey), parsePtKey(candKey));
-          let diff = candAngle - inAngle;
-          while (diff <= 0) diff += 2 * Math.PI;
-          while (diff > 2 * Math.PI) diff -= 2 * Math.PI;
-          if (diff < bestAngle) {
-            bestAngle = diff;
-            bestKey = candKey;
-          }
-        }
-
-        if (!bestKey) {
-          if (nextNeighbors.has(curKey) && nextNeighbors.size === 1) break;
-          for (const [candKey] of nextNeighbors) {
-            const dk2 = `${nextKey}->${candKey}`;
-            if (!usedDirected.has(dk2)) { bestKey = candKey; break; }
-          }
-          if (!bestKey) break;
-        }
+        const nextNeighbors = sortedNeighbors.get(nextKey);
+        if (!nextNeighbors?.length) break;
+        const incomingIdx = nextNeighbors.indexOf(curKey);
+        if (incomingIdx < 0) break;
+        const bestKey = nextNeighbors[(incomingIdx - 1 + nextNeighbors.length) % nextNeighbors.length];
 
         curKey = nextKey;
         nextKey = bestKey;
         steps++;
 
-        if (curKey === nodeKey && nextKey === neighborKey) break;
-        if (curKey === nodeKey) break;
+        if (curKey === startU && nextKey === startV) { closed = true; break; }
       }
 
-      if (cycle.length >= 3) {
+      if (closed && cycle.length >= 3) {
+        const key = normalizedCycleKey(cycle);
+        if (seenFaces.has(key)) continue;
+        seenFaces.add(key);
         faces.push(cycle);
       }
     }
   }
 
   return faces;
+}
+
+function normalizedCycleKey(poly: Pt[]): string {
+  const keys = poly.map(ptKey);
+  const rotations = keys.map((_, i) => [...keys.slice(i), ...keys.slice(0, i)].join("|"));
+  const reversed = [...keys].reverse();
+  const reverseRotations = reversed.map((_, i) => [...reversed.slice(i), ...reversed.slice(0, i)].join("|"));
+  return [...rotations, ...reverseRotations].sort()[0] || "";
 }
 
 function signedArea(poly: Pt[]): number {
