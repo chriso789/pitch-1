@@ -764,6 +764,203 @@ function classifyPlanarSegment(
     : { type: 'hip', score: 0.5, source: 'dsm' };
 }
 
+// ============= EDGE CLUSTERING (WEIGHTED MERGE WITH SPAN CAP) =============
+
+const CLUSTER_ANGLE_DEG = 8;
+const CLUSTER_MIDPOINT_DIST_PX = 15;
+const CLUSTER_MAX_SPAN_PX = 60;
+
+interface ClusterableEdge {
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  type: 'ridge' | 'valley' | 'hip';
+  score: number;
+}
+
+function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
+  if (edges.length <= 1) return edges;
+  
+  const used = new Set<number>();
+  const result: ClusterableEdge[] = [];
+
+  for (let i = 0; i < edges.length; i++) {
+    if (used.has(i)) continue;
+    
+    const cluster = [i];
+    used.add(i);
+
+    // Find all edges that belong to this cluster
+    for (let j = i + 1; j < edges.length; j++) {
+      if (used.has(j)) continue;
+      
+      // Check against any member of the cluster
+      let belongs = false;
+      for (const ci of cluster) {
+        const ei = edges[ci];
+        const ej = edges[j];
+        
+        // Angle check
+        const ai = Math.atan2(ei.b.y - ei.a.y, ei.b.x - ei.a.x);
+        const aj = Math.atan2(ej.b.y - ej.a.y, ej.b.x - ej.a.x);
+        let angleDiff = Math.abs(ai - aj);
+        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+        if (angleDiff > Math.PI / 2) angleDiff = Math.PI - angleDiff;
+        if (angleDiff * 180 / Math.PI > CLUSTER_ANGLE_DEG) continue;
+        
+        // Midpoint distance check
+        const midI = { x: (ei.a.x + ei.b.x) / 2, y: (ei.a.y + ei.b.y) / 2 };
+        const midJ = { x: (ej.a.x + ej.b.x) / 2, y: (ej.a.y + ej.b.y) / 2 };
+        const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
+        if (midDist > CLUSTER_MIDPOINT_DIST_PX) continue;
+        
+        belongs = true;
+        break;
+      }
+      
+      if (belongs) {
+        cluster.push(j);
+        used.add(j);
+      }
+    }
+
+    if (cluster.length === 1) {
+      result.push(edges[i]);
+      continue;
+    }
+
+    // Weighted merge: averaged direction by length, projected endpoints to max span
+    const clusterEdges = cluster.map(ci => edges[ci]);
+    
+    // Check span — if too large, split into subclusters
+    const allPts = clusterEdges.flatMap(e => [e.a, e.b]);
+    const spanX = Math.max(...allPts.map(p => p.x)) - Math.min(...allPts.map(p => p.x));
+    const spanY = Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y));
+    const span = Math.hypot(spanX, spanY);
+    
+    if (span > CLUSTER_MAX_SPAN_PX && clusterEdges.length > 2) {
+      // Split: just keep top 2 by score as separate edges
+      clusterEdges.sort((a, b) => b.score - a.score);
+      result.push(clusterEdges[0], clusterEdges[1]);
+      continue;
+    }
+    
+    // Compute weighted average direction
+    let totalWeight = 0;
+    let avgDx = 0, avgDy = 0;
+    for (const e of clusterEdges) {
+      const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+      const dx = (e.b.x - e.a.x) / (len || 1);
+      const dy = (e.b.y - e.a.y) / (len || 1);
+      // Ensure consistent direction
+      const sign = (avgDx * dx + avgDy * dy >= 0 || totalWeight === 0) ? 1 : -1;
+      avgDx += sign * dx * len;
+      avgDy += sign * dy * len;
+      totalWeight += len;
+    }
+    const normLen = Math.hypot(avgDx, avgDy) || 1;
+    const nx = avgDx / normLen, ny = avgDy / normLen;
+    
+    // Project all endpoints onto the averaged direction
+    const cx = allPts.reduce((s, p) => s + p.x, 0) / allPts.length;
+    const cy = allPts.reduce((s, p) => s + p.y, 0) / allPts.length;
+    const projections = allPts.map(p => (p.x - cx) * nx + (p.y - cy) * ny);
+    const minProj = Math.min(...projections);
+    const maxProj = Math.max(...projections);
+    
+    // Highest type priority and score
+    const bestScore = Math.max(...clusterEdges.map(e => e.score));
+    const typePriority: Record<string, number> = { ridge: 3, valley: 3, hip: 2 };
+    const bestType = clusterEdges.reduce((best, e) => 
+      (typePriority[e.type] || 0) > (typePriority[best.type] || 0) ? e : best
+    ).type;
+    
+    result.push({
+      a: { x: Math.round(cx + nx * minProj), y: Math.round(cy + ny * minProj) },
+      b: { x: Math.round(cx + nx * maxProj), y: Math.round(cy + ny * maxProj) },
+      type: bestType,
+      score: bestScore,
+    });
+  }
+
+  return result;
+}
+
+// ============= DSM PLANE FIT WITH PITCH/AZIMUTH =============
+
+function fitPlaneWithPitch(
+  polygon: XY[],
+  dsmGrid: DSMGrid,
+): { rms: number; pitchDeg: number; azimuthDeg: number } | null {
+  if (polygon.length < 3) return null;
+  
+  const { bounds, width, height, data, noDataValue } = dsmGrid;
+  const midLat = (bounds.minLat + bounds.maxLat) / 2;
+  const metersPerPixelX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLat * Math.PI / 180);
+  const metersPerPixelY = (bounds.maxLat - bounds.minLat) / height * 111320;
+  
+  const minPxX = Math.max(0, Math.floor((Math.min(...polygon.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+  const maxPxX = Math.min(width - 1, Math.ceil((Math.max(...polygon.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+  const minPxY = Math.max(0, Math.floor((bounds.maxLat - Math.max(...polygon.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+  const maxPxY = Math.min(height - 1, Math.ceil((bounds.maxLat - Math.min(...polygon.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+
+  const points: Array<{ x: number; y: number; z: number }> = [];
+  for (let py = minPxY; py <= maxPxY; py++) {
+    for (let px = minPxX; px <= maxPxX; px++) {
+      const lng = bounds.minLng + ((px + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+      const lat = bounds.maxLat - ((py + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+      if (!pointInPolygon([lng, lat], polygon)) continue;
+      const z = data[py * width + px];
+      if (z === noDataValue || isNaN(z)) continue;
+      points.push({ x: px, y: py, z });
+    }
+  }
+
+  if (points.length < 6) return null;
+
+  const N = points.length;
+  let Sx = 0, Sy = 0, Sz = 0, Sxx = 0, Sxy = 0, Syy = 0, Sxz = 0, Syz = 0;
+  for (const p of points) {
+    Sx += p.x; Sy += p.y; Sz += p.z;
+    Sxx += p.x * p.x; Sxy += p.x * p.y; Syy += p.y * p.y;
+    Sxz += p.x * p.z; Syz += p.y * p.z;
+  }
+
+  const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, N]];
+  const B = [Sxz, Syz, Sz];
+  const det = det3(A);
+  if (Math.abs(det) < 1e-10) return null;
+
+  const a = det3(replCol(A, B, 0)) / det;
+  const b = det3(replCol(A, B, 1)) / det;
+  const c = det3(replCol(A, B, 2)) / det;
+
+  let sumSqErr = 0;
+  for (const p of points) {
+    const err = p.z - (a * p.x + b * p.y + c);
+    sumSqErr += err * err;
+  }
+  const rms = Math.sqrt(sumSqErr / N);
+
+  // Convert pixel gradients to real-world slope
+  const slopeX = a / metersPerPixelX; // dz/dx in meters/meter
+  const slopeY = b / metersPerPixelY;
+  const gradMag = Math.sqrt(slopeX * slopeX + slopeY * slopeY);
+  const pitchDeg = Math.atan(gradMag) * 180 / Math.PI;
+  const azimuthDeg = ((Math.atan2(slopeX, -slopeY) * 180 / Math.PI) + 360) % 360;
+
+  return { rms, pitchDeg, azimuthDeg };
+}
+
+function det3(m: number[][]): number {
+  return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+         m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+         m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+}
+
+function replCol(m: number[][], b: number[], col: number): number[][] {
+  return m.map((row, i) => row.map((val, j) => j === col ? b[i] : val));
+}
+
 // ============= VALIDATION GATE =============
 
 export function validateAutonomousResult(
@@ -772,6 +969,7 @@ export function validateAutonomousResult(
     valleyCount: number;
     ridgeCount: number;
     hipCount: number;
+    hipFt: number;
     graphConnected: boolean;
     coverageRatio: number;
     structuralEdgeCount: number;
@@ -780,7 +978,7 @@ export function validateAutonomousResult(
   complexity: { isComplex: boolean; expectedMinFacets: number; reasons: string[] }
 ): { valid: boolean; status: AutonomousGraphResult['validation_status']; reason?: string } {
 
-  // GATE 0: DSM edges exist but cannot close faces — honest failure.
+  // GATE 0: DSM edges exist but cannot close faces
   if (result.dsmEdgesAccepted >= 5 && result.facetCount < 2) {
     return {
       valid: false,
@@ -834,7 +1032,7 @@ export function validateAutonomousResult(
     };
   }
 
-  // GATE 5: Coverage ratio (if we have enough data)
+  // GATE 5: Coverage ratio ≥ 85% (hard gate, no exceptions)
   if (result.coverageRatio > 0 && result.coverageRatio < 0.85) {
     return {
       valid: false,
@@ -851,7 +1049,16 @@ export function validateAutonomousResult(
     };
   }
 
-  // GATE 6: Complex roofs need ≥6 structural edges
+  // GATE 6: Hips > 50ft with 0 valleys → invalid
+  if (result.hipFt > 50 && result.valleyCount === 0) {
+    return {
+      valid: false,
+      status: 'invalid_roof_graph',
+      reason: `${result.hipFt.toFixed(0)}ft of hip edges but 0 valleys — physically inconsistent`
+    };
+  }
+
+  // GATE 7: Complex roofs need ≥6 structural edges
   if (complexity.isComplex && result.structuralEdgeCount < 6) {
     return {
       valid: false,
