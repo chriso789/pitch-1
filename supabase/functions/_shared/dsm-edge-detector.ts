@@ -57,30 +57,29 @@ function sobelGradient(
   const gy = new Float32Array(len);
   const mag = new Float32Array(len);
 
-  const get = (x: number, y: number): number => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return noData;
+  // Get pixel value, substituting center value for noData neighbors
+  // so roof-edge pixels aren't zeroed out by off-roof noData
+  const getOrCenter = (x: number, y: number, center: number): number => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return center;
     const v = data[y * width + x];
-    return v === noData || isNaN(v) ? noData : v;
+    return (v === noData || isNaN(v)) ? center : v;
   };
 
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      // Get 3x3 neighborhood
-      const tl = get(x - 1, y - 1);
-      const tc = get(x, y - 1);
-      const tr = get(x + 1, y - 1);
-      const ml = get(x - 1, y);
-      const mr = get(x + 1, y);
-      const bl = get(x - 1, y + 1);
-      const bc = get(x, y + 1);
-      const br = get(x + 1, y + 1);
+      const centerVal = data[y * width + x];
+      // Skip if center is noData
+      if (centerVal === noData || isNaN(centerVal)) continue;
 
-      // Skip if center or any neighbor is noData
-      if (tl === noData || tc === noData || tr === noData ||
-          ml === noData || mr === noData ||
-          bl === noData || bc === noData || br === noData) {
-        continue;
-      }
+      // Get 3x3 neighborhood — noData neighbors get center value (zero gradient contribution)
+      const tl = getOrCenter(x - 1, y - 1, centerVal);
+      const tc = getOrCenter(x, y - 1, centerVal);
+      const tr = getOrCenter(x + 1, y - 1, centerVal);
+      const ml = getOrCenter(x - 1, y, centerVal);
+      const mr = getOrCenter(x + 1, y, centerVal);
+      const bl = getOrCenter(x - 1, y + 1, centerVal);
+      const bc = getOrCenter(x, y + 1, centerVal);
+      const br = getOrCenter(x + 1, y + 1, centerVal);
 
       const idx = y * width + x;
       gx[idx] = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
@@ -122,7 +121,7 @@ function detectStructuralPixels(
   if (validMags.length < 10) return result;
 
   validMags.sort((a, b) => a - b);
-  const gradThreshold = validMags[Math.floor(validMags.length * 0.5)] || 0.1;
+  const gradThreshold = validMags[Math.floor(validMags.length * 0.15)] || 0.05;
 
   for (let y = 2; y < height - 2; y++) {
     for (let x = 2; x < width - 2; x++) {
@@ -288,7 +287,7 @@ function fitLineToComponent(
 
   // Fitness: how "line-like" is the component (ratio of eigenvalues)
   const fitness = lambda1 > 0 ? 1 - (lambda2 / lambda1) : 0;
-  if (fitness < 0.5) return null; // Too blobby, not a line
+  if (fitness < 0.35) return null; // Too blobby, not a line
 
   // Principal direction
   let dx: number, dy: number;
@@ -368,7 +367,7 @@ export function detectStructuralEdges(
   }
 
   // Step 3: Connected components
-  const minComponentPixels = Math.max(3, Math.floor(Math.min(width, height) * 0.05));
+  const minComponentPixels = Math.max(3, Math.floor(Math.min(width, height) * 0.015));
   const ridgeComponents = extractConnectedComponents(ridgeBitmap, width, height, mag, minComponentPixels);
   const valleyComponents = extractConnectedComponents(valleyBitmap, width, height, mag, minComponentPixels);
 
