@@ -1141,11 +1141,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: DSM topology guarantee via planar graph faces =====
+  // ===== STEP 6: Edge clustering (weighted merge with span cap) =====
   const footprintPx = effectiveDSM
     ? input.footprintCoords.map((p) => geoToPxPoint(p, effectiveDSM))
     : [];
-  const dsmInteriorEdgesPx = effectiveDSM
+  const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
         .map((e) => ({
@@ -1155,9 +1155,19 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           score: e.score,
         }))
     : [];
+  
+  const clusteredEdgesPx = clusterEdges(rawDsmInteriorEdgesPx);
+  edgeCountAfterCluster = clusteredEdgesPx.length;
+  console.log(`  Edge clustering: ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+
+  // ===== STEP 7: Planar graph with ordered intersection filtering =====
+  const dsmInteriorEdgesPx = clusteredEdgesPx;
+  const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
+    a: e.a, b: e.b, type: e.type, score: e.score,
+  }));
   const planar = effectiveDSM && footprintPx.length >= 3
-    ? planarSolveRoofPlanes(footprintPx, dsmInteriorEdgesPx)
-    : { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, intersections_split: 0, dangling_edges_removed: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+    ? planarSolveRoofPlanes(footprintPx, planarInput)
+    : { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0, dangling_edges_removed: 0, perimeter_reinjected: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
   console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}`);
 
   let facesRejected = 0;
