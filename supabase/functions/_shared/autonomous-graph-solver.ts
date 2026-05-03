@@ -750,21 +750,21 @@ export function validateAutonomousResult(
   complexity: { isComplex: boolean; expectedMinFacets: number; reasons: string[] }
 ): { valid: boolean; status: AutonomousGraphResult['validation_status']; reason?: string } {
 
-  // GATE 0: Insufficient structural signal
-  if (result.structuralEdgeCount < 2) {
-    return {
-      valid: false,
-      status: 'insufficient_structural_signal',
-      reason: `Only ${result.structuralEdgeCount} structural edges survived scoring (need ≥2). DSM signal too weak.`
-    };
-  }
-
-  // GATE 0B: DSM edges exist but cannot close faces — honest failure.
+  // GATE 0: DSM edges exist but cannot close faces — honest failure.
   if (result.dsmEdgesAccepted >= 5 && result.facetCount < 2) {
     return {
       valid: false,
       status: 'dsm_edges_found_no_closed_faces',
       reason: `${result.dsmEdgesAccepted} accepted DSM structural edges found, but planar graph extracted only ${result.facetCount} valid faces`
+    };
+  }
+
+  // GATE 0B: Insufficient structural signal
+  if (result.structuralEdgeCount < 2) {
+    return {
+      valid: false,
+      status: 'insufficient_structural_signal',
+      reason: `Only ${result.structuralEdgeCount} structural edges survived scoring (need ≥2). DSM signal too weak.`
     };
   }
 
