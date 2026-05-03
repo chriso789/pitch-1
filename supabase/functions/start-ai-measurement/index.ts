@@ -2156,7 +2156,7 @@ async function processJob(input: any) {
           const solverShared = cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length;
           const solverExterior = cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length;
           planeEdgeClassifierDebug = {
-            source: "constraint_solver_topology",
+            source: topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : "constraint_solver_topology",
             classifier_skipped: true,
             plane_count: cleanPlanes.length,
             shared_edges: solverShared,
@@ -2172,7 +2172,7 @@ async function processJob(input: any) {
           };
           (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
           (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
-          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using constraint solver topology as final authority");
+          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using locked solver topology as final authority");
           console.log("[FINAL_TOPOLOGY_SOURCE]", JSON.stringify({
             solver_used: topologySource,
             classifier_used: false,
