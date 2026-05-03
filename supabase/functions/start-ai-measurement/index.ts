@@ -3595,6 +3595,18 @@ async function processJob(input: any) {
       const strictTopologyFailures = (globalThis as any).__strictTopologyFailures;
       if (Array.isArray(strictTopologyFailures)) sanityFailures.push(...strictTopologyFailures);
       sanityFailures.push(...finalWriteSanityFailures);
+
+      // ── SOURCE TAGGING PUBLISH GATE (Phase 5) ──
+      // Block customer report if geometry/topology source fields are missing
+      if (!resolvedGeometrySource) {
+        sanityFailures.push("missing_geometry_source");
+      }
+      if (!topologySource) {
+        sanityFailures.push("missing_topology_source");
+      }
+      if (topologySource && topologySource !== REQUIRED_TOPOLOGY_SOURCE) {
+        sanityFailures.push(`topology_source_not_canonical:${topologySource}`);
+      }
     }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
