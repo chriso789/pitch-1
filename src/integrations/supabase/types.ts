@@ -31815,6 +31815,7 @@ export type Database = {
           confidence: number | null
           created_at: string | null
           customer_id: string | null
+          customer_report_ready: boolean
           detection_confidence: number | null
           detection_method: string | null
           detection_timestamp: string | null
@@ -31864,6 +31865,7 @@ export type Database = {
           imagery_sources_attempted: string[] | null
           inference_source: string | null
           interior_vertex_count: number | null
+          internal_debug_report_ready: boolean
           is_archived: boolean | null
           last_failure_reason: string | null
           last_failure_stage: string | null
@@ -31972,6 +31974,7 @@ export type Database = {
           confidence?: number | null
           created_at?: string | null
           customer_id?: string | null
+          customer_report_ready?: boolean
           detection_confidence?: number | null
           detection_method?: string | null
           detection_timestamp?: string | null
@@ -32021,6 +32024,7 @@ export type Database = {
           imagery_sources_attempted?: string[] | null
           inference_source?: string | null
           interior_vertex_count?: number | null
+          internal_debug_report_ready?: boolean
           is_archived?: boolean | null
           last_failure_reason?: string | null
           last_failure_stage?: string | null
@@ -32129,6 +32133,7 @@ export type Database = {
           confidence?: number | null
           created_at?: string | null
           customer_id?: string | null
+          customer_report_ready?: boolean
           detection_confidence?: number | null
           detection_method?: string | null
           detection_timestamp?: string | null
@@ -32178,6 +32183,7 @@ export type Database = {
           imagery_sources_attempted?: string[] | null
           inference_source?: string | null
           interior_vertex_count?: number | null
+          internal_debug_report_ready?: boolean
           is_archived?: boolean | null
           last_failure_reason?: string | null
           last_failure_stage?: string | null
