@@ -99,7 +99,7 @@ export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
-  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage';
+  validation_status: 'validated' | 'ai_failed_complex_topology' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid';
   failure_reason?: string;
   
   vertices: GraphVertex[];
