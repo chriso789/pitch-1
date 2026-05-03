@@ -1086,12 +1086,13 @@ export function validateAutonomousResult(
     };
   }
 
-  // GATE 6: Hips > 50ft with 0 valleys → invalid
-  if (result.hipFt > 50 && result.valleyCount === 0) {
+  // GATE 6: Hips > 50ft with 0 valleys AND 0 ridges → invalid
+  // (After face-adjacency reclassification, having ridges is fine even with no valleys)
+  if (result.hipFt > 50 && result.valleyCount === 0 && result.ridgeCount === 0) {
     return {
       valid: false,
       status: 'invalid_roof_graph',
-      reason: `${result.hipFt.toFixed(0)}ft of hip edges but 0 valleys — physically inconsistent`
+      reason: `${result.hipFt.toFixed(0)}ft of hip edges but 0 valleys and 0 ridges — physically inconsistent`
     };
   }
 
