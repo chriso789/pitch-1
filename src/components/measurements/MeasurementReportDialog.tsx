@@ -935,7 +935,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                           ? 'Footprint estimate'
                           : pdfGate.reason?.includes('single-plane')
                           ? 'Footprint estimate'
-                          : 'Preview only'}
+                          : 'INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY'}
                       </AlertTitle>
                       <AlertDescription>
                         {pdfGate.warning
@@ -969,6 +969,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     const safeSvg = DOMPurify.sanitize(normalized, {
                       USE_PROFILES: { svg: true, svgFilters: true },
                     });
+                    const showFailedWatermark = !pdfGate.ok && !pdfGate.warning;
                     return (
                       <div key={d.id} className="measurement-report-page border rounded-lg overflow-hidden bg-background">
                         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
@@ -977,8 +978,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                           </div>
                           <Badge variant="secondary">{d.diagram_type}</Badge>
                         </div>
+                        {showFailedWatermark && (
+                          <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-xs font-bold uppercase tracking-wide text-destructive">
+                            INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY
+                          </div>
+                        )}
                         <div
-                          className="w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[80vh] [&_svg]:block"
+                          className="relative w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[80vh] [&_svg]:block"
                           dangerouslySetInnerHTML={{ __html: safeSvg }}
                         />
                       </div>
