@@ -26,6 +26,7 @@ import { geoToPixel, pixelToGeo, getElevationAt } from "./dsm-analyzer.ts";
 import { detectStructuralEdges, type DSMEdgeCandidate } from "./dsm-edge-detector.ts";
 import {
   classifyEdgeByDSM,
+  getPerpendicularProfile,
   fitPlaneToPolygon,
   detectClosedPolygons,
   computeEdgeScore,
