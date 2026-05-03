@@ -352,6 +352,14 @@ export function PullMeasurementsButton({
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+      [1000, 4000, 8000].forEach((delay) => {
+        window.setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
+          queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+          queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+        }, delay);
+      });
+      onSuccess?.({}, {});
 
       // Fetch the latest AI measurement to validate it exists, but do not auto-open
       // the heavy verification/report UI after completion. Users can open the report
@@ -570,6 +578,13 @@ export function PullMeasurementsButton({
       setVerificationReady(false);
       queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+      [1000, 4000, 8000].forEach((delay) => {
+        window.setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+          queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+        }, delay);
+      });
+      onSuccess?.({}, {});
       const errMsg = job.error || "AI measurement could not complete.";
       const savedDebugRow = Boolean(job.measurement_id);
       const isInternalReview = /internal review|needs_internal_review/i.test(errMsg);
