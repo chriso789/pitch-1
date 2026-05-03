@@ -323,7 +323,12 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
                             dist(inter.point, segments[i].b) < NEAR_ENDPOINT_TOL;
       const nearEndpointJ = dist(inter.point, segments[j].a) < NEAR_ENDPOINT_TOL ||
                             dist(inter.point, segments[j].b) < NEAR_ENDPOINT_TOL;
-      if (nearEndpointI || nearEndpointJ) { intersectionFilterSkipped++; continue; }
+
+      // Only skip a true shared endpoint. A T-junction is exactly the case we
+      // must split: one line ends on another line's interior. Previously these
+      // were counted as "near endpoint" and skipped, leaving fragmented graphs
+      // that produced only tiny sliver cycles.
+      if (nearEndpointI && nearEndpointJ) { intersectionFilterSkipped++; continue; }
 
       intersectionCount++;
       pointsBySeg[i].push(inter.point);
@@ -425,25 +430,36 @@ function reinjectPerimeter(graphSegments: Seg[], footprint: Pt[]): Seg[] {
   for (let i = 0; i < footprint.length; i++) {
     const a = footprint[i];
     const b = footprint[(i + 1) % footprint.length];
-    const k = segKey(a, b);
-    if (!segSet.has(k)) {
-      // Check if this edge is covered by sub-segments
-      const dir = sub(b, a);
-      const len = Math.hypot(dir.x, dir.y);
-      if (len < 2) continue;
+    const dir = sub(b, a);
+    const len2 = dir.x * dir.x + dir.y * dir.y;
+    if (len2 < 4) continue;
 
-      // Check coverage by existing segments
-      let covered = false;
-      for (const seg of graphSegments) {
-        if (seg.source !== 'footprint') continue;
-        const midSeg = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
-        if (pointOnSegment(midSeg, a, b, 3)) {
-          covered = true;
-          break;
+    // Rebuild perimeter as non-overlapping subsegments using every existing
+    // graph node that lies on this footprint edge. Adding the original full
+    // edge on top of already-split perimeter segments creates duplicate
+    // collinear half-edges; the face walker then extracts only tiny sliver
+    // cycles instead of the true roof facets.
+    const pointsOnEdge = [a, b];
+    for (const seg of graphSegments) {
+      for (const p of [seg.a, seg.b]) {
+        if (pointOnSegment(p, a, b, 3) && !pointsOnEdge.some((q) => dist(q, p) < 2)) {
+          pointsOnEdge.push(p);
         }
       }
-      if (!covered) {
-        result.push({ a, b, source: 'footprint', edgeType: 'eave', edgeScore: 0.85 });
+    }
+
+    pointsOnEdge.sort((p, q) =>
+      (((p.x - a.x) * dir.x + (p.y - a.y) * dir.y) / len2) -
+      (((q.x - a.x) * dir.x + (q.y - a.y) * dir.y) / len2)
+    );
+
+    for (let j = 0; j < pointsOnEdge.length - 1; j++) {
+      const p1 = pointsOnEdge[j];
+      const p2 = pointsOnEdge[j + 1];
+      if (dist(p1, p2) < 3) continue;
+      const k = segKey(p1, p2);
+      if (!segSet.has(k)) {
+        result.push({ a: p1, b: p2, source: 'footprint', edgeType: 'eave', edgeScore: 0.85 });
         segSet.add(k);
       }
     }

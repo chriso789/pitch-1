@@ -493,7 +493,10 @@ export function UnifiedMeasurementPanel({
     const job = activeJob as MeasurementJobSummary | null;
     if (!job || job.status !== 'failed') return null;
     const jobTime = getTimeMs(job.completed_at || job.created_at);
-    if (job.measurement_id && latestAiMeasurementTime >= jobTime - 1000) return null;
+    // Failed DSM/topology jobs now persist a roof_measurements debug row. Once
+    // that row exists, don't keep showing the red failure banner forever; the
+    // row itself is the internal-review/debug artifact.
+    if (job.measurement_id) return null;
     if (latestAiMeasurementTime > jobTime) return null;
     return job;
   }, [activeJob, latestAiMeasurementTime]);
