@@ -367,7 +367,7 @@ export function detectStructuralEdges(
   }
 
   // Step 3: Connected components
-  const minComponentPixels = Math.max(3, Math.floor(Math.min(width, height) * 0.05));
+  const minComponentPixels = Math.max(3, Math.floor(Math.min(width, height) * 0.015));
   const ridgeComponents = extractConnectedComponents(ridgeBitmap, width, height, mag, minComponentPixels);
   const valleyComponents = extractConnectedComponents(valleyBitmap, width, height, mag, minComponentPixels);
 
