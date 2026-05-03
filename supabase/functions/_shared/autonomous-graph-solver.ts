@@ -1171,8 +1171,22 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   edgeCountAfterCluster = clusteredEdgesPx.length;
   console.log(`  Edge clustering: ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
 
+  // ===== STEP 6b: Cap interior edges to prevent solver overload =====
+  // Score each edge by confidence × length (longer structural lines matter more).
+  // Drop low-score edges entirely, then keep top-N by weighted score.
+  let dsmInteriorEdgesPx = clusteredEdgesPx
+    .filter((e) => e.score >= MIN_EDGE_SCORE_FOR_SOLVER);
+  if (dsmInteriorEdgesPx.length > MAX_INTERIOR_EDGES_FOR_SOLVER) {
+    dsmInteriorEdgesPx.sort((a, b) => {
+      const lenA = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y);
+      const lenB = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y);
+      return (b.score * lenB) - (a.score * lenA);
+    });
+    dsmInteriorEdgesPx = dsmInteriorEdgesPx.slice(0, MAX_INTERIOR_EDGES_FOR_SOLVER);
+  }
+  console.log(`  Edge cap: ${clusteredEdgesPx.length} → ${dsmInteriorEdgesPx.length} edges (max ${MAX_INTERIOR_EDGES_FOR_SOLVER})`);
+
   // ===== STEP 7: Planar graph with ordered intersection filtering =====
-  const dsmInteriorEdgesPx = clusteredEdgesPx;
   const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
     a: e.a, b: e.b, type: e.type, score: e.score,
   }));
