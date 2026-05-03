@@ -34,7 +34,7 @@ type XY = [number, number]; // [lng, lat]
 
 // ============= CONSTANTS =============
 
-const EDGE_SCORE_THRESHOLD = 0.25;     // Minimum score to keep an edge
+const EDGE_SCORE_THRESHOLD = 0.15;     // Minimum score to keep an edge (lowered from 0.25 to allow weaker DSM signals)
 const SNAP_DISTANCE_METERS = 1.5;      // Max snap distance (~5px at 0.3m/px)
 const SNAP_ANGLE_RAD = 10 * Math.PI / 180; // Max angle difference for snapping
 const MIN_EDGE_LENGTH_FT = 3;          // Discard tiny edges
