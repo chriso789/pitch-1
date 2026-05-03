@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -76,7 +77,28 @@ export function RoofDiagramViewer({
         <CardTitle>Roof Measurement Diagrams</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {diagrams.map((d) => (
+        {diagrams.map((d) => {
+          const showFailedWatermark = /debug|failed geometry|not customer ready/i.test(`${d.title} ${d.svg_markup || ""}`);
+          const normalized = (d.svg_markup || "").replace(
+            /<svg([^>]*)>/i,
+            (_m, attrs) => {
+              // Ensure viewBox exists; strip fixed width/height so CSS controls size
+              let a = attrs as string;
+              const hasViewBox = /viewBox=/.test(a);
+              const widthMatch = a.match(/\bwidth="(\d+(?:\.\d+)?)"/);
+              const heightMatch = a.match(/\bheight="(\d+(?:\.\d+)?)"/);
+              if (!hasViewBox && widthMatch && heightMatch) {
+                a += ` viewBox="0 0 ${widthMatch[1]} ${heightMatch[1]}"`;
+              }
+              a = a.replace(/\s(width|height)="[^"]*"/g, "");
+              if (!/preserveAspectRatio=/.test(a)) {
+                a += ' preserveAspectRatio="xMidYMid meet"';
+              }
+              return `<svg${a}>`;
+            }
+          );
+          const safeSvg = DOMPurify.sanitize(normalized, { USE_PROFILES: { svg: true, svgFilters: true } });
+          return (
           <div key={d.id} className="border rounded-lg overflow-hidden bg-background">
             <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
               <div className="font-semibold text-sm">
@@ -84,31 +106,18 @@ export function RoofDiagramViewer({
               </div>
               <Badge variant="secondary">{d.diagram_type}</Badge>
             </div>
+            {showFailedWatermark && (
+              <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-xs font-bold uppercase tracking-wide text-destructive">
+                INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY
+              </div>
+            )}
             <div
               className="w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[70vh] [&_svg]:block"
-              dangerouslySetInnerHTML={{
-                __html: (d.svg_markup || "").replace(
-                  /<svg([^>]*)>/i,
-                  (_m, attrs) => {
-                    // Ensure viewBox exists; strip fixed width/height so CSS controls size
-                    let a = attrs as string;
-                    const hasViewBox = /viewBox=/.test(a);
-                    const widthMatch = a.match(/\bwidth="(\d+(?:\.\d+)?)"/);
-                    const heightMatch = a.match(/\bheight="(\d+(?:\.\d+)?)"/);
-                    if (!hasViewBox && widthMatch && heightMatch) {
-                      a += ` viewBox="0 0 ${widthMatch[1]} ${heightMatch[1]}"`;
-                    }
-                    a = a.replace(/\s(width|height)="[^"]*"/g, "");
-                    if (!/preserveAspectRatio=/.test(a)) {
-                      a += ' preserveAspectRatio="xMidYMid meet"';
-                    }
-                    return `<svg${a}>`;
-                  }
-                ),
-              }}
+              dangerouslySetInnerHTML={{ __html: safeSvg }}
             />
           </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
