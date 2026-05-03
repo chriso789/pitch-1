@@ -626,24 +626,43 @@ export interface InteriorLine {
   score?: number;
 }
 
+// ── FORMAL SOLVER CONTRACT (Patent Parity) ──────────────────────
+// Threshold invariants documented here for testability:
+//   ENDPOINT_SNAP_TOL_PX = 12     — max distance for endpoint snapping
+//   INTERSECTION_MIN_ANGLE_DEG = 15 — skip splits below this angle
+//   COLLINEAR_ANGLE_DEG = 5       — merge segments within this angle
+//   MIN_SEGMENT_LENGTH_PX = 3     — structural short segments allowed down to 3px
+//   SIMPLIFY_TOLERANCE_PX = 2     — Douglas-Peucker simplification
+//
+// Required invariants for customer publication:
+//   face_coverage_ratio >= 0.85
+//   All coordinates in raster pixel space
+//   Perimeter always preserved (re-injection guarantee)
+
+export interface PlanarSolverDebug {
+  input_footprint_vertices: number;
+  input_interior_lines: number;
+  snapped_interior_lines: number;
+  collinear_merges: number;
+  filtered_by_priority: number;
+  intersections_split: number;
+  intersection_filter_skipped: number;
+  dangling_edges_removed: number;
+  perimeter_reinjected: number;
+  total_graph_segments: number;
+  total_graph_nodes: number;
+  faces_extracted: number;
+  faces_with_area: number;
+  face_coverage_ratio: number;
+  fragment_merges: number;
+  faces_rejected_by_area: number;
+  customer_block_reason: string | null;
+}
+
 export interface PlanarSolverResult {
   faces: Array<{ id: number; polygon: Pt[] }>;
   edges: Seg[];
-  debug: {
-    input_footprint_vertices: number;
-    input_interior_lines: number;
-    snapped_interior_lines: number;
-    collinear_merges: number;
-    filtered_by_priority: number;
-    intersections_split: number;
-    dangling_edges_removed: number;
-    perimeter_reinjected: number;
-    total_graph_segments: number;
-    total_graph_nodes: number;
-    faces_extracted: number;
-    faces_with_area: number;
-    face_coverage_ratio: number;
-  };
+  debug: PlanarSolverDebug;
 }
 
 export function solveRoofPlanes(
