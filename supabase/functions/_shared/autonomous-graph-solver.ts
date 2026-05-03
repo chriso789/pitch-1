@@ -308,7 +308,7 @@ function scoreAndFilterEdges(
   dsmGrid: DSMGrid | null,
   midLat: number,
   isComplex: boolean
-): { accepted: ScoredEdge[]; prunedByScore: number } {
+): { accepted: ScoredEdge[]; prunedByScore: number; rejectedDebug: RejectedEdgeDebug[] } {
   const candidates: ScoredEdge[] = [];
   let edgeIdx = 0;
   let skippedByLength = 0, skippedByFootprint = 0;
