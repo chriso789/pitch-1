@@ -872,6 +872,8 @@ async function processJob(input: any) {
             fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
           ]);
           maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
+          // Store roof mask for downstream registration quality check
+          if (roofMask) (globalThis as any).__roofMaskForQA = roofMask;
         }
       } catch (e) {
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
