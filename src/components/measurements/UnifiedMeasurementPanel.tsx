@@ -187,11 +187,46 @@ const getMeasurementReviewReason = (measurement: any): string | null => {
   const grj = measurement?.geometry_report_json || {};
   const reason = grj?.block_customer_report_reason || measurement?.gate_reason;
   if (reason) return String(reason).split('|')[0].replace(/_/g, ' ');
+  if (measurement?.history_kind === 'job') {
+    const jobReason = measurement?.failure_reason || measurement?.error || measurement?.status_message;
+    return jobReason ? String(jobReason).replace(/_/g, ' ') : 'Job record only';
+  }
   if (measurement?.requires_manual_review || measurement?.validation_status === 'needs_internal_review') {
     return 'Needs review before customer delivery';
   }
   return null;
 };
+
+const getAiHistoryStatus = (measurement: any): string | null => (
+  measurement?.job_status || measurement?.validation_status || measurement?.status || null
+);
+
+const buildJobOnlyHistoryRow = (job: any) => ({
+  id: `job-${job.id}`,
+  history_kind: 'job',
+  ai_measurement_job_id: job.id,
+  customer_id: job.lead_id || job.source_record_id,
+  created_at: job.created_at,
+  completed_at: job.completed_at,
+  total_area_flat_sqft: null,
+  total_area_adjusted_sqft: null,
+  total_squares: null,
+  predominant_pitch: null,
+  facet_count: null,
+  total_ridge_length: null,
+  total_hip_length: null,
+  total_valley_length: null,
+  total_eave_length: null,
+  total_rake_length: null,
+  validation_status: job.status === 'failed' ? 'failed' : job.status,
+  job_status: job.status,
+  status_message: job.status_message,
+  failure_reason: job.failure_reason,
+  report_pdf_url: job.report_pdf_url,
+  report_pdf_path: job.report_pdf_path,
+  requires_manual_review: job.status !== 'completed',
+  internal_debug_report_ready: true,
+});
 
 const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
   const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
@@ -486,7 +521,7 @@ export function UnifiedMeasurementPanel({
     queryKey: ['ai-measurements', pipelineEntryId],
     queryFn: async () => {
       // Include both AI-pulled and manual measurements so users see full history
-      const { data, error } = await supabase
+      const { data: roofRows, error } = await supabase
         .from('roof_measurements')
         .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, internal_debug_report_ready, customer_report_ready, gate_reason, validation_notes, last_failure_reason, overlay_schema, patent_model, solar_building_footprint_sqft, ai_detection_data')
         .eq('customer_id', pipelineEntryId)
@@ -496,7 +531,24 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return data || [];
+
+      const linkedJobIds = new Set((roofRows || []).map((row: any) => row.ai_measurement_job_id).filter(Boolean));
+      const { data: jobs, error: jobsError } = await supabase
+        .from('ai_measurement_jobs')
+        .select('id, lead_id, source_record_id, status, status_message, failure_reason, report_pdf_url, report_pdf_path, created_at, completed_at')
+        .or(`lead_id.eq.${pipelineEntryId},source_record_id.eq.${pipelineEntryId}`)
+        .order('created_at', { ascending: false });
+
+      if (jobsError) {
+        console.error('Error fetching AI measurement jobs:', jobsError);
+      }
+
+      const jobOnlyRows = (jobs || [])
+        .filter((job: any) => !linkedJobIds.has(job.id))
+        .map(buildJobOnlyHistoryRow);
+
+      return [...(roofRows || []), ...jobOnlyRows]
+        .sort((a: any, b: any) => getTimeMs(b.created_at) - getTimeMs(a.created_at));
     },
     enabled: !!pipelineEntryId,
   });
@@ -1676,7 +1728,7 @@ function MeasurementHistorySection({
   const handleSelectAll = () => {
     const allIds = [
       ...vendorReports.map(r => r.id),
-      ...aiMeasurements.map(m => m.id)
+      ...aiMeasurements.filter((m: any) => m.history_kind !== 'job').map(m => m.id)
     ];
     setSelectedIds(new Set(allIds));
   };
@@ -1956,7 +2008,8 @@ function MeasurementHistorySection({
     }
   };
 
-  const allSelected = selectedIds.size === totalHistoryCount && totalHistoryCount > 0;
+  const selectableHistoryCount = vendorReports.length + aiMeasurements.filter((m: any) => m.history_kind !== 'job').length;
+  const allSelected = selectedIds.size === selectableHistoryCount && selectableHistoryCount > 0;
 
   return (
     <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -2099,6 +2152,8 @@ function MeasurementHistorySection({
         {aiMeasurements.map((measurement) => {
           const sqft = measurement.total_area_adjusted_sqft || 0;
           const reviewReason = getMeasurementReviewReason(measurement);
+          const historyStatus = getAiHistoryStatus(measurement);
+          const isJobOnly = (measurement as any).history_kind === 'job';
           const isManualEntry = measurement.footprint_source === 'manual_entry' || measurement.detection_method === 'manual_entry';
           const isSelected = selectedIds.has(measurement.id);
           
@@ -2110,7 +2165,7 @@ function MeasurementHistorySection({
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                {selectMode && (
+                {selectMode && !isJobOnly && (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleSelection(measurement.id)}
@@ -2121,6 +2176,11 @@ function MeasurementHistorySection({
                   <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/30 shrink-0">
                     <Pencil className="h-3 w-3 mr-1" />
                     Manual Entry
+                  </Badge>
+                ) : isJobOnly ? (
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 shrink-0">
+                    <Clock className="h-3 w-3 mr-1" />
+                    AI Pull
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="bg-info/10 text-info border-info/30 shrink-0">
@@ -2135,6 +2195,11 @@ function MeasurementHistorySection({
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(measurement.created_at), 'MMM d, yyyy h:mm a')}
                   </p>
+                  {historyStatus && (
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {String(historyStatus).replace(/_/g, ' ')}
+                    </p>
+                  )}
                   {reviewReason && (
                     <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                       <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -2149,6 +2214,7 @@ function MeasurementHistorySection({
                     size="sm"
                     variant="outline"
                     onClick={() => onViewAiReport(measurement)}
+                    disabled={isJobOnly}
                     title="View aerial trace report"
                   >
                     <Eye className="h-4 w-4 mr-1" />
@@ -2177,6 +2243,7 @@ function MeasurementHistorySection({
                       setDeleteConfirmId(measurement.id);
                       setDeleteType('ai');
                     }}
+                    disabled={isJobOnly}
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     title="Delete from history"
                   >
