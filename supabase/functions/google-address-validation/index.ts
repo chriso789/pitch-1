@@ -62,17 +62,26 @@ Deno.serve(async (req) => {
 
     const data = await response.json();
 
+    const verdict = data.result?.verdict || {};
+    // Google doesn't always set addressComplete explicitly.
+    // A PREMISE or SUB_PREMISE granularity with no unconfirmed components is valid.
+    const granularity = verdict.validationGranularity || 'OTHER';
+    const highGranularity = ['PREMISE', 'SUB_PREMISE', 'ROUTE'].includes(granularity);
+    const hasUnconfirmed = verdict.hasUnconfirmedComponents === true;
+    const isAddressComplete = verdict.addressComplete === true;
+    const isValid = isAddressComplete || (highGranularity && !hasUnconfirmed);
+
     // Parse and structure the validation result
     const result = {
       result: data.result || {},
       responseId: data.responseId || null,
       validation: {
-        isValid: data.result?.verdict?.addressComplete || false,
-        hasUnconfirmedComponents: data.result?.verdict?.hasUnconfirmedComponents || false,
-        hasInferredComponents: data.result?.verdict?.hasInferredComponents || false,
-        hasReplacedComponents: data.result?.verdict?.hasReplacedComponents || false,
-        geocodeGranularity: data.result?.verdict?.geocodeGranularity || 'UNKNOWN',
-        validationGranularity: data.result?.verdict?.validationGranularity || 'UNKNOWN',
+        isValid,
+        hasUnconfirmedComponents: hasUnconfirmed,
+        hasInferredComponents: verdict.hasInferredComponents || false,
+        hasReplacedComponents: verdict.hasReplacedComponents || false,
+        geocodeGranularity: verdict.geocodeGranularity || 'UNKNOWN',
+        validationGranularity: granularity,
       },
       address: data.result?.address || {},
       geocode: data.result?.geocode || {},

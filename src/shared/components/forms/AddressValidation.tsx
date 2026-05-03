@@ -203,19 +203,20 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
         return { ...address, validation_status: 'unverified' };
       }
 
-      const result = data?.result;
-      if (result?.verdict?.addressComplete && result?.verdict?.hasUnconfirmedComponents === false) {
+      // Use the top-level validation object which has the corrected isValid logic
+      const validation = data?.validation;
+      if (validation?.isValid) {
         return {
           ...address,
           validated: true,
-          validation_status: 'valid',
-          // Update with corrected address if available
-          formatted_address: result.address?.formattedAddress || address.formatted_address
+          validation_status: validation.hasUnconfirmedComponents ? 'partial' : 'valid',
+          formatted_address: data?.address?.formattedAddress || address.formatted_address
         };
-      } else if (result?.verdict?.addressComplete) {
-        return { ...address, validated: true, validation_status: 'partial' };
-      } else {
+      } else if (validation && !validation.isValid && !validation.hasUnconfirmedComponents) {
+        // Truly invalid — no matching address found
         return { ...address, validated: false, validation_status: 'invalid' };
+      } else {
+        return { ...address, validated: true, validation_status: 'partial' };
       }
     } catch (error) {
       console.warn('Address validation error:', error);
