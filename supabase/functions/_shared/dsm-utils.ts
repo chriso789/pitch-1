@@ -8,8 +8,8 @@
  *   - Extracting closed polygons from edge graphs
  */
 
-import type { DSMGrid } from "./dsm-analyzer.ts";
-import { getElevationAt } from "./dsm-analyzer.ts";
+import type { DSMGrid, MaskedDSMGrid } from "./dsm-analyzer.ts";
+import { getElevationAt, geoToPixel } from "./dsm-analyzer.ts";
 
 type XY = [number, number]; // [lng, lat]
 
@@ -23,6 +23,10 @@ export interface PerpendicularProfile {
   centerAvg: number;
   heightDelta: number;  // |leftAvg - rightAvg|
   sampleCount: number;
+  leftOnRoof: boolean;  // whether left samples landed on roof mask
+  rightOnRoof: boolean; // whether right samples landed on roof mask
+  leftGroundDrop: boolean; // whether left side shows ground-level drop (>3m below center)
+  rightGroundDrop: boolean; // whether right side shows ground-level drop (>3m below center)
 }
 
 /**
@@ -47,7 +51,7 @@ export function getPerpendicularProfile(
   const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
   
   if (edgeLen < 1e-10) {
-    return { leftAvg: 0, rightAvg: 0, leftSlope: 0, rightSlope: 0, centerAvg: 0, heightDelta: 0, sampleCount: 0 };
+    return { leftAvg: 0, rightAvg: 0, leftSlope: 0, rightSlope: 0, centerAvg: 0, heightDelta: 0, sampleCount: 0, leftOnRoof: false, rightOnRoof: false, leftGroundDrop: false, rightGroundDrop: false };
   }
 
   // Perpendicular unit vector (in geographic degrees)
@@ -62,10 +66,15 @@ export function getPerpendicularProfile(
   // Use average offset scale for the perp vector
   const offsetScale = Math.sqrt(offsetLng * offsetLng * perpDx * perpDx + offsetLat * offsetLat * perpDy * perpDy);
 
+  // Check if this DSM has a mask (MaskedDSMGrid)
+  const mask: Uint8Array | null = (dsmGrid as MaskedDSMGrid).mask || null;
+
   let leftSum = 0, rightSum = 0, centerSum = 0;
   let leftCount = 0, rightCount = 0, centerCount = 0;
   let leftFarSum = 0, rightFarSum = 0;
   let leftFarCount = 0, rightFarCount = 0;
+  let leftMaskHits = 0, rightMaskHits = 0;
+  let leftMaskTotal = 0, rightMaskTotal = 0;
 
   for (let i = 0; i < samplesAlongEdge; i++) {
     const t = (i + 0.5) / samplesAlongEdge;
@@ -82,8 +91,28 @@ export function getPerpendicularProfile(
       const dx = perpDx * offsetScale * frac;
       const dy = perpDy * offsetScale * frac;
 
-      const leftE = getElevationAt([cx + dx, cy + dy], dsmGrid);
-      const rightE = getElevationAt([cx - dx, cy - dy], dsmGrid);
+      const leftPt: [number, number] = [cx + dx, cy + dy];
+      const rightPt: [number, number] = [cx - dx, cy - dy];
+
+      const leftE = getElevationAt(leftPt, dsmGrid);
+      const rightE = getElevationAt(rightPt, dsmGrid);
+
+      // Check mask for left/right sides
+      if (mask) {
+        leftMaskTotal++;
+        const lpx = Math.floor((leftPt[0] - dsmGrid.bounds.minLng) / (dsmGrid.bounds.maxLng - dsmGrid.bounds.minLng) * dsmGrid.width);
+        const lpy = Math.floor((dsmGrid.bounds.maxLat - leftPt[1]) / (dsmGrid.bounds.maxLat - dsmGrid.bounds.minLat) * dsmGrid.height);
+        if (lpx >= 0 && lpx < dsmGrid.width && lpy >= 0 && lpy < dsmGrid.height) {
+          if (mask[lpy * dsmGrid.width + lpx] === 1) leftMaskHits++;
+        }
+
+        rightMaskTotal++;
+        const rpx = Math.floor((rightPt[0] - dsmGrid.bounds.minLng) / (dsmGrid.bounds.maxLng - dsmGrid.bounds.minLng) * dsmGrid.width);
+        const rpy = Math.floor((dsmGrid.bounds.maxLat - rightPt[1]) / (dsmGrid.bounds.maxLat - dsmGrid.bounds.minLat) * dsmGrid.height);
+        if (rpx >= 0 && rpx < dsmGrid.width && rpy >= 0 && rpy < dsmGrid.height) {
+          if (mask[rpy * dsmGrid.width + rpx] === 1) rightMaskHits++;
+        }
+      }
 
       if (leftE !== null) {
         leftSum += leftE; leftCount++;
@@ -103,9 +132,17 @@ export function getPerpendicularProfile(
   const rightFarAvg = rightFarCount > 0 ? rightFarSum / rightFarCount : rightAvg;
 
   // Slope: positive means elevation drops away from edge (edge is higher)
-  // negative means elevation rises away from edge (edge is lower)
-  const leftSlope = centerAvg - leftFarAvg;   // positive = edge higher than left = slopes down to left
-  const rightSlope = centerAvg - rightFarAvg;  // positive = edge higher than right = slopes down to right
+  const leftSlope = centerAvg - leftFarAvg;
+  const rightSlope = centerAvg - rightFarAvg;
+
+  // Mask awareness: is each side on the roof?
+  const leftOnRoof = mask ? (leftMaskTotal > 0 && leftMaskHits / leftMaskTotal > 0.5) : true;
+  const rightOnRoof = mask ? (rightMaskTotal > 0 && rightMaskHits / rightMaskTotal > 0.5) : true;
+
+  // Ground drop detection: if one side drops >3m below center, it's likely ground
+  const GROUND_DROP_THRESHOLD = 3.0;
+  const leftGroundDrop = leftSlope > GROUND_DROP_THRESHOLD;
+  const rightGroundDrop = rightSlope > GROUND_DROP_THRESHOLD;
 
   return {
     leftAvg,
@@ -115,16 +152,24 @@ export function getPerpendicularProfile(
     centerAvg,
     heightDelta: Math.abs(leftAvg - rightAvg),
     sampleCount: leftCount + rightCount + centerCount,
+    leftOnRoof,
+    rightOnRoof,
+    leftGroundDrop,
+    rightGroundDrop,
   };
 }
 
 /**
- * Classify an edge using DSM physics.
+ * Classify an edge using DSM physics with mask awareness.
  * 
  * RIDGE:  edge is higher than both sides (both slopes positive = both sides drop away)
  * VALLEY: edge is lower than both sides (both slopes negative = both sides rise away)
  * HIP:    mixed slopes (one side drops, other rises or similar)
  * EAVE:   one side has no roof data (perimeter)
+ * 
+ * KEY FIX: When one side samples ground (off-roof or >3m drop), that side is
+ * excluded from classification. An edge where one side is ground and the other
+ * slopes down is a ridge, not a hip.
  */
 export function classifyEdgeByDSM(
   start: XY,
@@ -142,6 +187,28 @@ export function classifyEdgeByDSM(
   const leftRises = profile.leftSlope < -minDelta;   // edge lower than left
   const rightRises = profile.rightSlope < -minDelta;  // edge lower than right
 
+  // ── MASK-AWARE CLASSIFICATION ──
+  // If one side is off-roof (not on mask) or has a ground-level drop (>3m),
+  // treat that side as "unknown" rather than using its slope for classification.
+  const leftIsGround = !profile.leftOnRoof || profile.leftGroundDrop;
+  const rightIsGround = !profile.rightOnRoof || profile.rightGroundDrop;
+
+  // Both sides are ground/off-roof → ambiguous
+  if (leftIsGround && rightIsGround) return null;
+
+  // One side is ground: classify based on the valid side only
+  if (leftIsGround && !rightIsGround) {
+    if (rightDrops) return 'ridge';  // edge is peak, valid side slopes down
+    if (rightRises) return 'eave';   // edge is boundary, valid side slopes up
+    return null;
+  }
+  if (rightIsGround && !leftIsGround) {
+    if (leftDrops) return 'ridge';
+    if (leftRises) return 'eave';
+    return null;
+  }
+
+  // ── STANDARD CLASSIFICATION (both sides confirmed on roof) ──
   if (leftDrops && rightDrops) return 'ridge';
   if (leftRises && rightRises) return 'valley';
   if ((leftDrops && rightRises) || (leftRises && rightDrops)) return 'hip';

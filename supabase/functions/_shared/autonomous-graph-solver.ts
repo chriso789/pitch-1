@@ -1086,12 +1086,13 @@ export function validateAutonomousResult(
     };
   }
 
-  // GATE 6: Hips > 50ft with 0 valleys → invalid
-  if (result.hipFt > 50 && result.valleyCount === 0) {
+  // GATE 6: Hips > 50ft with 0 valleys AND 0 ridges → invalid
+  // (After face-adjacency reclassification, having ridges is fine even with no valleys)
+  if (result.hipFt > 50 && result.valleyCount === 0 && result.ridgeCount === 0) {
     return {
       valid: false,
       status: 'invalid_roof_graph',
-      reason: `${result.hipFt.toFixed(0)}ft of hip edges but 0 valleys — physically inconsistent`
+      reason: `${result.hipFt.toFixed(0)}ft of hip edges but 0 valleys and 0 ridges — physically inconsistent`
     };
   }
 
@@ -1309,6 +1310,146 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
   console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit/area`);
 
+  // ===== FACE-ADJACENCY EDGE RECLASSIFICATION =====
+  // Primary classification: use plane normals of adjacent faces to determine edge type.
+  // DSM perpendicular profile is secondary evidence only.
+  if (graphFaces.length >= 2 && effectiveDSM) {
+    // Build face plane data: for each face, compute slopeX and slopeY from DSM plane fit
+    const facePlanes: Array<{ slopeX: number; slopeY: number; centroid: XY } | null> = graphFaces.map(face => {
+      const poly = face.polygon;
+      if (poly.length < 3) return null;
+      const { bounds, width, height, data, noDataValue } = effectiveDSM;
+      const midLatLocal = (bounds.minLat + bounds.maxLat) / 2;
+      const metersPerPixelX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLatLocal * Math.PI / 180);
+      const metersPerPixelY = (bounds.maxLat - bounds.minLat) / height * 111320;
+      
+      const minPxX = Math.max(0, Math.floor((Math.min(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+      const maxPxX = Math.min(width - 1, Math.ceil((Math.max(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+      const minPxY = Math.max(0, Math.floor((bounds.maxLat - Math.max(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+      const maxPxY = Math.min(height - 1, Math.ceil((bounds.maxLat - Math.min(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+      
+      const points: Array<{ x: number; y: number; z: number }> = [];
+      for (let py = minPxY; py <= maxPxY; py++) {
+        for (let px = minPxX; px <= maxPxX; px++) {
+          const lng = bounds.minLng + ((px + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+          const lat = bounds.maxLat - ((py + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+          if (!pointInPolygon([lng, lat], poly)) continue;
+          const z = data[py * width + px];
+          if (z === noDataValue || isNaN(z)) continue;
+          points.push({ x: px, y: py, z });
+        }
+      }
+      if (points.length < 6) return null;
+      
+      const N = points.length;
+      let Sx = 0, Sy = 0, Sz = 0, Sxx = 0, Sxy = 0, Syy = 0, Sxz = 0, Syz = 0;
+      for (const p of points) {
+        Sx += p.x; Sy += p.y; Sz += p.z;
+        Sxx += p.x * p.x; Sxy += p.x * p.y; Syy += p.y * p.y;
+        Sxz += p.x * p.z; Syz += p.y * p.z;
+      }
+      const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, N]];
+      const B = [Sxz, Syz, Sz];
+      const detVal = det3(A);
+      if (Math.abs(detVal) < 1e-10) return null;
+      const a = det3(replCol(A, B, 0)) / detVal;
+      const b = det3(replCol(A, B, 1)) / detVal;
+      
+      const centroid: XY = [
+        poly.reduce((s, p) => s + p[0], 0) / poly.length,
+        poly.reduce((s, p) => s + p[1], 0) / poly.length,
+      ];
+      // slopeX/Y in meters/meter: dz/dx and dz/dy
+      return { slopeX: a / metersPerPixelX, slopeY: b / metersPerPixelY, centroid };
+    });
+
+    let reclassified = 0;
+    for (const edge of outputEdges) {
+      if (edge.type === 'eave' || edge.type === 'rake') continue; // Don't reclassify boundary edges
+
+      // Find adjacent faces: faces whose polygon contains both edge endpoints
+      const adjacentFaceIndices: number[] = [];
+      const edgeMid: XY = [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2];
+      
+      for (let fi = 0; fi < graphFaces.length; fi++) {
+        const poly = graphFaces[fi].polygon;
+        // Check if edge shares a boundary segment with this face
+        for (let pi = 0; pi < poly.length - 1; pi++) {
+          const segStart = poly[pi];
+          const segEnd = poly[pi + 1];
+          const dStartA = Math.hypot(segStart[0] - edge.start[0], segStart[1] - edge.start[1]);
+          const dStartB = Math.hypot(segStart[0] - edge.end[0], segStart[1] - edge.end[1]);
+          const dEndA = Math.hypot(segEnd[0] - edge.start[0], segEnd[1] - edge.start[1]);
+          const dEndB = Math.hypot(segEnd[0] - edge.end[0], segEnd[1] - edge.end[1]);
+          const snapThresh = 1e-7; // ~1cm in degrees
+          if ((dStartA < snapThresh && dEndB < snapThresh) || (dStartB < snapThresh && dEndA < snapThresh)) {
+            adjacentFaceIndices.push(fi);
+            break;
+          }
+        }
+      }
+
+      if (adjacentFaceIndices.length === 1) {
+        // Boundary edge with one face — check if on footprint boundary
+        // Already classified as eave/rake by classifyPlanarSegment, skip
+        continue;
+      }
+
+      if (adjacentFaceIndices.length >= 2) {
+        const planeA = facePlanes[adjacentFaceIndices[0]];
+        const planeB = facePlanes[adjacentFaceIndices[1]];
+        if (!planeA || !planeB) continue;
+
+        // Compute edge normal (perpendicular to edge direction)
+        const edgeDx = edge.end[0] - edge.start[0];
+        const edgeDy = edge.end[1] - edge.start[1];
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+        if (edgeLen < 1e-12) continue;
+        // Perpendicular: points from face A toward face B
+        const perpX = -edgeDy / edgeLen;
+        const perpY = edgeDx / edgeLen;
+
+        // Determine which face is on which side of the edge
+        const dotA = (planeA.centroid[0] - edgeMid[0]) * perpX + (planeA.centroid[1] - edgeMid[1]) * perpY;
+        const dotB = (planeB.centroid[0] - edgeMid[0]) * perpX + (planeB.centroid[1] - edgeMid[1]) * perpY;
+
+        // Downslope component perpendicular to edge for each face
+        // Positive slopeX/Y means z increases in +x/+y direction
+        // Downslope direction is negative gradient: (-slopeX, -slopeY)
+        // Project downslope onto edge perpendicular
+        const downslopeA_perp = -(planeA.slopeX * perpX + planeA.slopeY * perpY);
+        const downslopeB_perp = -(planeB.slopeX * perpX + planeB.slopeY * perpY);
+
+        // Ensure face A is on the positive-perp side, face B on negative
+        const slopeAwayA = dotA > 0 ? downslopeA_perp : -downslopeA_perp; // positive = face A descends away from edge
+        const slopeAwayB = dotB > 0 ? -downslopeB_perp : downslopeB_perp; // positive = face B descends away from edge
+
+        const slopeThreshold = 0.02; // meters/meter
+        const aDescends = slopeAwayA > slopeThreshold;
+        const bDescends = slopeAwayB > slopeThreshold;
+        const aAscends = slopeAwayA < -slopeThreshold;
+        const bAscends = slopeAwayB < -slopeThreshold;
+
+        let newType: 'ridge' | 'valley' | 'hip' | null = null;
+        if (aDescends && bDescends) {
+          newType = 'ridge'; // Both faces descend away from shared edge = peak
+        } else if (aAscends && bAscends) {
+          newType = 'valley'; // Both faces ascend away from shared edge = trough
+        } else if ((aDescends && bAscends) || (aAscends && bDescends)) {
+          newType = 'hip'; // Mixed = hip
+        }
+
+        if (newType && newType !== edge.type) {
+          reclassified++;
+          edge.type = newType;
+        }
+      }
+    }
+    if (reclassified > 0) {
+      console.log(`  Face-adjacency reclassification: ${reclassified} edges reclassified`);
+    }
+  }
+
   // Totals
   const outRidges = outputEdges.filter(e => e.type === 'ridge');
   const outHips = outputEdges.filter(e => e.type === 'hip');
@@ -1351,10 +1492,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     validation.status = 'faces_extracted_but_rejected';
     validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
   }
-  const invalidEdgeClassification = complexity.isComplex && outHips.reduce((s, e) => s + e.length_ft, 0) > 50 && outValleys.length === 0;
+  // Only flag invalid_edge_classification when there are truly 0 structural edges AND faces exist
+  const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
   if (!validation.valid && invalidEdgeClassification) {
     validation.status = 'invalid_edge_classification';
-    validation.reason = 'Complex roof has >50 LF of hips and 0 valleys after DSM classification';
+    validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency reclassification';
   }
 
   // Build vertex output

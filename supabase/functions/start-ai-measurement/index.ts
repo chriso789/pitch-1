@@ -1125,7 +1125,9 @@ async function processJob(input: any) {
       };
       const graph = solveAutonomousGraph(graphInput);
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
-      const graphValidated = graph.validation_status === "validated";
+      // Faces with valid plane fits should contribute to totals even if edge classification issues remain
+      const graphValidated = graph.validation_status === "validated" || 
+        (graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5);
       const attemptedRidgeLf = Number(graph.totals?.ridge_ft || 0);
       const attemptedHipLf = Number(graph.totals?.hip_ft || 0);
       const attemptedValleyLf = Number(graph.totals?.valley_ft || 0);
@@ -1136,9 +1138,11 @@ async function processJob(input: any) {
         solver_version: "autonomous_graph_solver_v3_prune_first",
         fallback_used: false,
         hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
-        coordinate_space_input: "geo_from_selected_footprint",
-        coordinate_space_solver: "dsm_px",
-        coordinate_space_renderer: "satellite_px",
+         coordinate_space_input: "geo_from_selected_footprint",
+         coordinate_space_solver: "dsm_px",
+         coordinate_space_output: "geo",
+         coordinate_space_solver_internal: "dsm_px",
+         coordinate_space_renderer: "satellite_px",
         dsm_pixel_transform_valid: Boolean(dsmCoordinateMatch),
         geo_to_dsm_px_success: Boolean(dsmCoordinateMatch),
         footprint_source: footprintSource,
@@ -1233,15 +1237,15 @@ async function processJob(input: any) {
         })) : [],
       };
 
-      const failReason = graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
-        ? "invalid_edge_classification"
-        : graph.validation_status !== "validated"
-          ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
-          : complexity.isComplex && graph.faces.length <= 4
-            ? "ai_failed_complex_topology"
-            : graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && graph.totals.ridge_ft > 20
-              ? "invalid_edge_classification"
-              : null;
+      // Failure waterfall — decoupled from edge classification when faces are validated
+      const hasValidFaces = graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5;
+      const failReason = !hasValidFaces && graph.validation_status !== "validated"
+        ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
+        : !hasValidFaces && complexity.isComplex && graph.faces.length <= 4
+          ? "ai_failed_complex_topology"
+          : graph.totals.ridge_ft === 0 && graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
+            ? "invalid_edge_classification"
+            : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
