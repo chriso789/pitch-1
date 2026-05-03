@@ -685,6 +685,57 @@ function findClosestSolarSegment(point: XY, segments: SolarSegment[]): SolarSegm
   return best;
 }
 
+function pxToGeoPoint(p: { x: number; y: number }, grid: DSMGrid): XY {
+  return pixelToGeo(p.x, p.y, grid);
+}
+
+function geoToPxPoint(p: XY, grid: DSMGrid): { x: number; y: number } {
+  const [x, y] = geoToPixel(p, grid);
+  return { x, y };
+}
+
+function ptKeyPx(p: { x: number; y: number }): string {
+  return `${Math.round(p.x)}:${Math.round(p.y)}`;
+}
+
+function pointNearPolyline(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }, tol = 6): boolean {
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const len2 = Math.max(abx * abx + aby * aby, 1e-9);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2));
+  const q = { x: a.x + abx * t, y: a.y + aby * t };
+  return Math.hypot(q.x - p.x, q.y - p.y) <= tol;
+}
+
+function classifyPlanarSegment(
+  seg: { a: { x: number; y: number }; b: { x: number; y: number } },
+  footprintPx: Array<{ x: number; y: number }>,
+  dsmInteriorEdgesPx: Array<{ a: { x: number; y: number }; b: { x: number; y: number }; type: 'ridge' | 'valley' | 'hip'; score: number }>,
+): { type: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake'; score: number; source: 'dsm' | 'perimeter' } {
+  const mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
+  for (let i = 0; i < footprintPx.length; i++) {
+    if (pointNearPolyline(mid, footprintPx[i], footprintPx[(i + 1) % footprintPx.length], 4)) {
+      return { type: 'eave', score: 0.85, source: 'perimeter' };
+    }
+  }
+
+  let best: typeof dsmInteriorEdgesPx[number] | null = null;
+  let bestDist = Infinity;
+  for (const edge of dsmInteriorEdgesPx) {
+    const d = Math.min(
+      pointNearPolyline(seg.a, edge.a, edge.b, 8) ? 0 : 999,
+      pointNearPolyline(seg.b, edge.a, edge.b, 8) ? 0 : 999,
+      Math.hypot(mid.x - (edge.a.x + edge.b.x) / 2, mid.y - (edge.a.y + edge.b.y) / 2),
+    );
+    if (d < bestDist) {
+      bestDist = d;
+      best = edge;
+    }
+  }
+  return best && bestDist < 20
+    ? { type: best.type, score: best.score, source: 'dsm' }
+    : { type: 'hip', score: 0.5, source: 'dsm' };
+}
+
 // ============= VALIDATION GATE =============
 
 export function validateAutonomousResult(
