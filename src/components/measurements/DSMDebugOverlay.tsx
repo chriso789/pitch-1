@@ -198,20 +198,26 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
     // Classified edges from edges_px (accepted, final)
     if (layers.classifiedEdgesPx && data.edges_px) {
       for (const edge of data.edges_px) {
-        const color = EDGE_COLORS[edge.type] || '#ffffff';
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        const baseColor = EDGE_COLORS[edge.type] || '#ffffff';
+        // Confidence-based opacity: stronger edges are more opaque
+        const confidence = (edge as any).confidence ?? 1;
+        const alpha = Math.max(0.3, Math.min(1, confidence));
+        ctx.strokeStyle = baseColor;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = edge.source === 'dsm' ? 3 : edge.source === 'skeleton' ? 2 : 3;
         ctx.beginPath();
         ctx.moveTo(edge.p1[0], edge.p1[1]);
         ctx.lineTo(edge.p2[0], edge.p2[1]);
         ctx.stroke();
+        ctx.globalAlpha = 1.0;
 
-        // Label at midpoint
+        // Label at midpoint with type + source
         const mx = (edge.p1[0] + edge.p2[0]) / 2;
         const my = (edge.p1[1] + edge.p2[1]) / 2;
-        ctx.fillStyle = color;
+        ctx.fillStyle = baseColor;
         ctx.font = '10px monospace';
-        ctx.fillText(edge.type, mx + 3, my - 3);
+        const label = edge.source ? `${edge.type}(${edge.source})` : edge.type;
+        ctx.fillText(label, mx + 3, my - 3);
       }
     }
 
