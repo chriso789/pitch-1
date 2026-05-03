@@ -59,6 +59,12 @@ interface OverlayDebugData {
   faces_rejected_by_area?: number;
   coverage_ratio?: number;
   customer_block_reason?: string;
+  // Source tagging (Phase 5)
+  geometry_source?: string;
+  topology_source?: string;
+  fallback_used?: boolean;
+  customer_report_ready?: boolean;
+  internal_debug_report_ready?: boolean;
   // Registration quality metrics
   overlay_calibration?: {
     registration_quality?: {
