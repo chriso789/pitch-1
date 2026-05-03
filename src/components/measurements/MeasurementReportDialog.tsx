@@ -710,8 +710,9 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
               const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
               const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
+              const footprint_px_overlay = grj?.overlay_debug?.footprint_px || grj?.footprint_px || [];
               const hasRasterOverlay =
-                Boolean(rasterUrl) && Boolean(rasterSize) && (planes_px.length > 0 || edges_px.length > 0);
+                Boolean(rasterUrl) && Boolean(rasterSize) && (planes_px.length > 0 || edges_px.length > 0 || footprint_px_overlay.length > 0);
 
               return (
                 <div className="space-y-4">
