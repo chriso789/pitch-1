@@ -1172,25 +1172,30 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   let facesRejected = 0;
   const graphFaces: GraphFace[] = [];
+  faceCountBeforeMerge = planar.faces.length;
   for (const face of planar.faces) {
     const polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
+    // Conditional plane fit: > 200 sqft allows 0.8m, otherwise strict 0.5m
+    const areaSqft = polygonAreaSqft(polygon, midLat);
+    const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
+    let pitch = 0;
+    let azimuth = 0;
     if (effectiveDSM) {
-      const fitError = fitPlaneToPolygon(polygon, effectiveDSM);
-      if (fitError !== null && fitError > PLANE_FIT_ERROR_THRESHOLD) {
-        facesRejected++;
-        continue;
+      const planeFit = fitPlaneWithPitch(polygon, effectiveDSM);
+      if (planeFit) {
+        if (planeFit.rms > threshold) { facesRejected++; continue; }
+        pitch = planeFit.pitchDeg;
+        azimuth = planeFit.azimuthDeg;
+      } else {
+        // Fallback to solar segment
+        const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
+        const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
+        pitch = matchingSolar?.pitchDegrees || 0;
+        azimuth = matchingSolar?.azimuthDegrees || 0;
       }
     }
-    const areaSqft = polygonAreaSqft(polygon, midLat);
-    if (areaSqft < MIN_FACET_AREA_SQFT) {
-      facesRejected++;
-      continue;
-    }
-    const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
-    const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
-    const pitch = matchingSolar?.pitchDegrees || 0;
-    const azimuth = matchingSolar?.azimuthDegrees || 0;
+    if (areaSqft < MIN_FACET_AREA_SQFT) { facesRejected++; continue; }
     const closedPolygon = vertexKey(polygon[0]) === vertexKey(polygon[polygon.length - 1]) ? polygon : [...polygon, polygon[0]];
     graphFaces.push({
       id: `SF-${String.fromCharCode(65 + graphFaces.length)}`,
