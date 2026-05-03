@@ -319,24 +319,25 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
       const angleDiff = angleBetweenSegs(segments[i], segments[j]);
       if (angleDiff < COLLINEAR_ANGLE_DEG) continue;
 
-      // 2. Crossing angle < 15° → skip
+      // 2. Crossing angle < 15° → skip (near-parallel grazing intersections)
       if (angleDiff < INTERSECTION_MIN_ANGLE_DEG) continue;
 
-      // 3. Min distance between segments > 6px → skip
-      const segDist = minDistBetweenSegments(segments[i], segments[j]);
-      if (segDist > INTERSECTION_MIN_DISTANCE_PX) continue;
+      // 3. REMOVED: minDistBetweenSegments filter was rejecting real crossings
+      //    rawSegmentIntersection already proves t,u ∈ [0,1] — segments truly cross
 
-      // 4. Near endpoint → skip (already handled by snapping)
-      const nearEndpointI = dist(inter.point, segments[i].a) < ENDPOINT_SNAP_TOL_PX ||
-                            dist(inter.point, segments[i].b) < ENDPOINT_SNAP_TOL_PX;
-      const nearEndpointJ = dist(inter.point, segments[j].a) < ENDPOINT_SNAP_TOL_PX ||
-                            dist(inter.point, segments[j].b) < ENDPOINT_SNAP_TOL_PX;
+      // 4. Near endpoint → snap instead of skip (reduced tolerance from 12px to 4px)
+      const NEAR_ENDPOINT_TOL = 4;
+      const nearEndpointI = dist(inter.point, segments[i].a) < NEAR_ENDPOINT_TOL ||
+                            dist(inter.point, segments[i].b) < NEAR_ENDPOINT_TOL;
+      const nearEndpointJ = dist(inter.point, segments[j].a) < NEAR_ENDPOINT_TOL ||
+                            dist(inter.point, segments[j].b) < NEAR_ENDPOINT_TOL;
       if (nearEndpointI || nearEndpointJ) continue;
 
-      // 5. Accept split
+      // 5. Accept split — always add to both segments (no pointOnSegment re-check;
+      //    rawSegmentIntersection already guarantees the point is on both segments)
       intersectionCount++;
-      if (pointOnSegment(inter.point, segments[i].a, segments[i].b)) pointsBySeg[i].push(inter.point);
-      if (pointOnSegment(inter.point, segments[j].a, segments[j].b)) pointsBySeg[j].push(inter.point);
+      pointsBySeg[i].push(inter.point);
+      pointsBySeg[j].push(inter.point);
     }
   }
 
