@@ -907,10 +907,15 @@ async function processJob(input: any) {
     // ══════════ FOOTPRINT VALIDATION GATE ══════════
     // If footprint is still invalid after all fallbacks, fail immediately
     // with a specific reason — do NOT proceed to the DSM solver.
-    const footprintAreaPxVal = footprint.length >= 3 ? polygonAreaPx(footprint) : 0;
+    const footprintForDsmPx = selectedMaskContourGeo?.length && roofMaskForContour
+      ? selectedMaskContourGeo.map(([lng, lat]) => lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp))
+      : footprint;
+    const footprintAreaPxVal = footprintForDsmPx.length >= 3 ? polygonAreaPx(footprintForDsmPx) : 0;
     const footprintAreaSqftVal = footprintAreaPxVal * sqftPerPx2;
-    const footprintIsLatLng = footprint.length > 0 && footprint.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
-    const footprintValid = footprint.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng;
+    const footprintIsLatLng = footprintForDsmPx.length > 0 && footprintForDsmPx.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
+    const footprintBbox = bboxOf(footprintForDsmPx);
+    const footprintCoordinateSpaceMatch = Boolean(footprintBbox && footprintBbox.maxX > 1 && footprintBbox.maxY > 1 && footprintBbox.minX >= -2 && footprintBbox.minY >= -2 && footprintBbox.maxX <= raster.width + 2 && footprintBbox.maxY <= raster.height + 2);
+    const footprintValid = footprintForDsmPx.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng && footprintCoordinateSpaceMatch;
 
     // Auto-close footprint if not closed
     if (footprint.length >= 4) {
@@ -931,7 +936,7 @@ async function processJob(input: any) {
             : "missing_valid_footprint";
 
       console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
-        footprint_length: footprint.length,
+        footprint_length: footprintForDsmPx.length,
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
         footprint_source: footprintSource,
         is_lat_lng: footprintIsLatLng,
@@ -943,12 +948,12 @@ async function processJob(input: any) {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
         footprint_source: footprintSource,
         footprint_valid: false,
-        footprint_point_count: footprint.length,
+        footprint_point_count: footprintForDsmPx.length,
         footprint_area_px: Math.round(footprintAreaPxVal),
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
         footprint_coordinate_space: footprintIsLatLng ? "lat_lng" : "pixel",
         dsm_edge_coordinate_space: "pixel",
-        coordinate_space_match: !footprintIsLatLng,
+        coordinate_space_match: footprintCoordinateSpaceMatch,
         hard_fail_reason: failReason,
         candidates_tried: candidates.length,
         candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
@@ -969,6 +974,8 @@ async function processJob(input: any) {
       }).eq("id", input.ai_measurement_job_id);
       return;
     }
+
+    footprint = footprintForDsmPx;
 
     console.log("[FOOTPRINT_VALIDATION_GATE] PASS", JSON.stringify({
       source: footprintSource,
