@@ -155,6 +155,13 @@ const isPlausibleRoofMeasurement = (measurement: any): boolean => (
   isPlausibleRoofSqft(measurement?.total_area_adjusted_sqft || measurement?.total_area_flat_sqft)
 );
 
+const hasDebugRoofReport = (measurement: any): boolean => Boolean(
+  measurement?.internal_debug_report_ready ||
+  measurement?.geometry_report_json?.overlay_debug ||
+  measurement?.geometry_report_json?.block_customer_report_reason ||
+  measurement?.gate_reason
+);
+
 const getTimeMs = (value?: string | null): number => {
   const time = value ? new Date(value).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
@@ -472,7 +479,7 @@ export function UnifiedMeasurementPanel({
       // Include both AI-pulled and manual measurements so users see full history
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, patent_model, solar_building_footprint_sqft, ai_detection_data')
+        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, internal_debug_report_ready, customer_report_ready, gate_reason, validation_notes, last_failure_reason, overlay_schema, patent_model, solar_building_footprint_sqft, ai_detection_data')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -482,7 +489,7 @@ export function UnifiedMeasurementPanel({
       }
       return (data || []).filter((measurement: any) => (
         isPlausibleRoofMeasurement(measurement) ||
-        Boolean(measurement?.geometry_report_json?.block_customer_report_reason || measurement?.gate_reason)
+        hasDebugRoofReport(measurement)
       ));
     },
     enabled: !!pipelineEntryId,
@@ -783,13 +790,19 @@ export function UnifiedMeasurementPanel({
   // run that was already saved, or an earlier inaccurate attempt).
   const latestUnapprovedAI = useMemo(() => {
     if (!aiMeasurements?.length) return null;
-    if (approvals && approvals.length > 0) return null;
     const latest = aiMeasurements[0];
-    if (latest?.total_area_adjusted_sqft && latest.total_area_adjusted_sqft > 0) {
+    if (hasCustomerSafeGeometry(latest) && !(approvals || []).some((approval) => getApprovalMeasurementId(approval) === latest.id)) {
       return latest;
     }
     return null;
   }, [aiMeasurements, approvals]);
+
+  const latestDebugAI = useMemo(() => {
+    if (!aiMeasurements?.length) return null;
+    const latest = aiMeasurements[0];
+    if (hasCustomerSafeGeometry(latest)) return null;
+    return hasDebugRoofReport(latest) ? latest : null;
+  }, [aiMeasurements]);
 
   if (isLoading) {
     return (
@@ -940,6 +953,71 @@ export function UnifiedMeasurementPanel({
                     })()}
                   </div>
                 )}
+              </div>
+            );
+          })()}
+
+          {/* Latest Debug AI Result — failed QA still produces a viewable internal report */}
+          {!jobIsActive && latestDebugAI && (() => {
+            const debugMeasurement = latestDebugAI as any;
+            const grj = debugMeasurement.geometry_report_json || {};
+            const overlayDebug = grj.overlay_debug || {};
+            const reviewReason = getMeasurementReviewReason(debugMeasurement) || debugMeasurement.validation_notes || debugMeasurement.last_failure_reason || 'Needs review before customer delivery';
+            const coordMatch = overlayDebug?.dsm_coordinate_match?.match;
+            const footprintSource = debugMeasurement.footprint_source || overlayDebug.footprint_source || grj.footprint_source || 'unknown';
+
+            return (
+              <div className="p-3 rounded-lg border border-warning/30 bg-warning/5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Bug className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-sm">Latest AI Debug Report</span>
+                        <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/30">
+                          Internal Review
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">
+                        {String(reviewReason).replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {format(new Date(debugMeasurement.created_at), 'MMM d, yyyy h:mm a')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-xs border-t border-warning/20 pt-2">
+                  <div>
+                    <span className="text-muted-foreground">Footprint</span>
+                    <p className="font-mono truncate">{String(footprintSource).replace(/_/g, ' ')}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">DSM Match</span>
+                    <p className={coordMatch === false ? 'font-medium text-destructive' : 'font-medium text-success'}>
+                      {coordMatch === false ? 'false' : coordMatch === true ? 'true' : 'unknown'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Points</span>
+                    <p className="font-medium">{overlayDebug.footprint_point_count || overlayDebug.footprint_px?.length || 0}</p>
+                  </div>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setReportState({
+                    open: true,
+                    measurement: buildReportMeasurementFromRoofMeasurement(debugMeasurement, pipelineEntryId),
+                    tags: buildReportTagsFromRoofMeasurement(debugMeasurement),
+                  })}
+                >
+                  <Eye className="h-4 w-4 mr-1.5" />
+                  View Debug Report
+                </Button>
               </div>
             );
           })()}
