@@ -91,8 +91,28 @@ export function getPerpendicularProfile(
       const dx = perpDx * offsetScale * frac;
       const dy = perpDy * offsetScale * frac;
 
-      const leftE = getElevationAt([cx + dx, cy + dy], dsmGrid);
-      const rightE = getElevationAt([cx - dx, cy - dy], dsmGrid);
+      const leftPt: [number, number] = [cx + dx, cy + dy];
+      const rightPt: [number, number] = [cx - dx, cy - dy];
+
+      const leftE = getElevationAt(leftPt, dsmGrid);
+      const rightE = getElevationAt(rightPt, dsmGrid);
+
+      // Check mask for left/right sides
+      if (mask) {
+        leftMaskTotal++;
+        const lpx = Math.floor((leftPt[0] - dsmGrid.bounds.minLng) / (dsmGrid.bounds.maxLng - dsmGrid.bounds.minLng) * dsmGrid.width);
+        const lpy = Math.floor((dsmGrid.bounds.maxLat - leftPt[1]) / (dsmGrid.bounds.maxLat - dsmGrid.bounds.minLat) * dsmGrid.height);
+        if (lpx >= 0 && lpx < dsmGrid.width && lpy >= 0 && lpy < dsmGrid.height) {
+          if (mask[lpy * dsmGrid.width + lpx] === 1) leftMaskHits++;
+        }
+
+        rightMaskTotal++;
+        const rpx = Math.floor((rightPt[0] - dsmGrid.bounds.minLng) / (dsmGrid.bounds.maxLng - dsmGrid.bounds.minLng) * dsmGrid.width);
+        const rpy = Math.floor((dsmGrid.bounds.maxLat - rightPt[1]) / (dsmGrid.bounds.maxLat - dsmGrid.bounds.minLat) * dsmGrid.height);
+        if (rpx >= 0 && rpx < dsmGrid.width && rpy >= 0 && rpy < dsmGrid.height) {
+          if (mask[rpy * dsmGrid.width + rpx] === 1) rightMaskHits++;
+        }
+      }
 
       if (leftE !== null) {
         leftSum += leftE; leftCount++;
@@ -112,9 +132,17 @@ export function getPerpendicularProfile(
   const rightFarAvg = rightFarCount > 0 ? rightFarSum / rightFarCount : rightAvg;
 
   // Slope: positive means elevation drops away from edge (edge is higher)
-  // negative means elevation rises away from edge (edge is lower)
-  const leftSlope = centerAvg - leftFarAvg;   // positive = edge higher than left = slopes down to left
-  const rightSlope = centerAvg - rightFarAvg;  // positive = edge higher than right = slopes down to right
+  const leftSlope = centerAvg - leftFarAvg;
+  const rightSlope = centerAvg - rightFarAvg;
+
+  // Mask awareness: is each side on the roof?
+  const leftOnRoof = mask ? (leftMaskTotal > 0 && leftMaskHits / leftMaskTotal > 0.5) : true;
+  const rightOnRoof = mask ? (rightMaskTotal > 0 && rightMaskHits / rightMaskTotal > 0.5) : true;
+
+  // Ground drop detection: if one side drops >3m below center, it's likely ground
+  const GROUND_DROP_THRESHOLD = 3.0;
+  const leftGroundDrop = leftSlope > GROUND_DROP_THRESHOLD;
+  const rightGroundDrop = rightSlope > GROUND_DROP_THRESHOLD;
 
   return {
     leftAvg,
@@ -124,6 +152,10 @@ export function getPerpendicularProfile(
     centerAvg,
     heightDelta: Math.abs(leftAvg - rightAvg),
     sampleCount: leftCount + rightCount + centerCount,
+    leftOnRoof,
+    rightOnRoof,
+    leftGroundDrop,
+    rightGroundDrop,
   };
 }
 
