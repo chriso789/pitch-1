@@ -956,12 +956,13 @@ async function processJob(input: any) {
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
         dsmFailReason = failReason;
         // Persist debug data into the measurement job before failing
-        if (jobId) {
+        const aiJobId = input.ai_measurement_job_id;
+        if (aiJobId) {
           await supabaseAdmin.from("ai_measurement_jobs").update({
             status: "failed",
-            error: `DSM solver failed: ${failReason}`,
-            result_data: { autonomousDebug },
-          }).eq("id", jobId);
+            failure_reason: `DSM solver failed: ${failReason}`,
+            status_message: `DSM solver failed: ${failReason}`,
+          }).eq("id", aiJobId);
         }
         return new Response(JSON.stringify({ error: failReason, debug: autonomousDebug }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
