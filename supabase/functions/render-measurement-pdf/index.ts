@@ -383,9 +383,13 @@ function newPage(ctx: any, title: string) {
 }
 
 function drawGeometry(page: any, ctx: any, box: Box, mode: 'raster' | 'bbox', opts: any) {
+  // Build footprint polygon (convex hull of all plane vertices) for clipping
+  const allPlaneVerts: PointTuple[] = ctx.planes.flatMap((p: any) => p.polygon)
+  const footprintHull = convexHull(allPlaneVerts)
+
   const mapper = mode === 'raster'
     ? rasterMapper(ctx.rasterSize, box)
-    : bboxMapper([...ctx.planes.flatMap((p: any) => p.polygon), ...ctx.edges.flatMap((e: any) => [e.p1, e.p2])], box)
+    : bboxMapper([...allPlaneVerts, ...ctx.edges.flatMap((e: any) => [e.p1, e.p2])], box)
 
   if (opts.fillPlanes) {
     ctx.planes.forEach((plane: any, idx: number) => {
@@ -397,16 +401,88 @@ function drawGeometry(page: any, ctx: any, box: Box, mode: 'raster' | 'bbox', op
     ctx.planes.forEach((plane: any) => drawPolygon(page, plane.polygon.map(mapper), undefined, rgb(0.35, 0.38, 0.42), 0.5))
   }
 
+  // Clip internal edges (ridge/hip/valley) to the footprint polygon so they
+  // don't extend outside the perimeter. Eave/rake are perimeter edges — draw as-is.
   ctx.edges.forEach((edge: any) => {
-    const p1 = mapper(edge.p1)
-    const p2 = mapper(edge.p2)
-    page.drawLine({ start: { x: p1[0], y: p1[1] }, end: { x: p2[0], y: p2[1] }, thickness: edgeThickness(edge.type), color: edgeColor(edge.type) })
+    const t = String(edge.type).toLowerCase()
+    let ep1: PointTuple = edge.p1
+    let ep2: PointTuple = edge.p2
+    if (['ridge', 'hip', 'valley'].includes(t) && footprintHull.length >= 3) {
+      const clipped = clipSegmentToConvexPolygon(ep1, ep2, footprintHull)
+      if (!clipped) return // fully outside
+      ep1 = clipped[0]
+      ep2 = clipped[1]
+    }
+    const p1 = mapper(ep1)
+    const p2 = mapper(ep2)
+    page.drawLine({ start: { x: p1[0], y: p1[1] }, end: { x: p2[0], y: p2[1] }, thickness: edgeThickness(t), color: edgeColor(t) })
     if (opts.showLabels && opts.labelMode === 'length') {
       const mx = (p1[0] + p2[0]) / 2
       const my = (p1[1] + p2[1]) / 2
-      page.drawText(String(Math.round(num(edge.length))), { x: mx + 3, y: my + 3, size: 7, font: ctx.bold, color: edgeColor(edge.type) })
+      page.drawText(String(Math.round(num(edge.length))), { x: mx + 3, y: my + 3, size: 7, font: ctx.bold, color: edgeColor(t) })
     }
   })
+}
+
+// ---- Convex hull (Andrew's monotone chain) ----
+function cross2d(o: PointTuple, a: PointTuple, b: PointTuple): number {
+  return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+}
+
+function convexHull(pts: PointTuple[]): PointTuple[] {
+  const sorted = pts.filter(validTuple).map(p => [Number(p[0]), Number(p[1])] as PointTuple)
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  if (sorted.length < 3) return sorted
+  const lower: PointTuple[] = []
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross2d(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+    lower.push(p)
+  }
+  const upper: PointTuple[] = []
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    while (upper.length >= 2 && cross2d(upper[upper.length - 2], upper[upper.length - 1], sorted[i]) <= 0) upper.pop()
+    upper.push(sorted[i])
+  }
+  lower.pop()
+  upper.pop()
+  return [...lower, ...upper]
+}
+
+// ---- Cyrus-Beck line-segment clipping against convex polygon ----
+function clipSegmentToConvexPolygon(a: PointTuple, b: PointTuple, poly: PointTuple[]): [PointTuple, PointTuple] | null {
+  let tMin = 0
+  let tMax = 1
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const n = poly.length
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    // outward normal of edge poly[i]→poly[j]
+    const ex = poly[j][0] - poly[i][0]
+    const ey = poly[j][1] - poly[i][1]
+    const nx = ey   // outward normal (assuming CCW winding, flip if needed)
+    const ny = -ex
+    const wx = a[0] - poly[i][0]
+    const wy = a[1] - poly[i][1]
+    const num_ = -(nx * wx + ny * wy)
+    const den = nx * dx + ny * dy
+    if (Math.abs(den) < 1e-10) {
+      // parallel — if outside this edge, reject
+      if (num_ < 0) return null
+    } else {
+      const t = num_ / den
+      if (den < 0) { if (t > tMin) tMin = t }
+      else { if (t < tMax) tMax = t }
+      if (tMin > tMax) return null
+    }
+  }
+  // Also try with flipped normals (handles CW winding)
+  // Quick check: if tMin==0 && tMax==1, both points already inside — return as is
+  if (tMin > tMax) return null
+  return [
+    [a[0] + tMin * dx, a[1] + tMin * dy],
+    [a[0] + tMax * dx, a[1] + tMax * dy],
+  ]
 }
 
 function drawPlaneLabel(page: any, ctx: any, pts: PointTuple[], plane: any, idx: number, mode: string) {
