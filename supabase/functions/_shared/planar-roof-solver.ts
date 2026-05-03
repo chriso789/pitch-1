@@ -81,7 +81,7 @@ export interface PlanarSolverMetrics {
 }
 
 // ── GRID SNAP ──────────────────────────────────────────────
-function snap(p: Pt, grid = 2): Pt {
+function snap(p: Pt, grid = GRID_SNAP_PX): Pt {
   return {
     x: Math.round(p.x / grid) * grid,
     y: Math.round(p.y / grid) * grid,
