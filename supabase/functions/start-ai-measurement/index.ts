@@ -1023,9 +1023,13 @@ async function processJob(input: any) {
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
       }
 
-      const footprintGeo = selectedMaskContourGeo?.length
-        ? selectedMaskContourGeo
-        : footprint.map((p) => pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]);
+      // Solver contract: use the final validated satellite-pixel footprint only.
+      // Do not substitute selectedMaskContourGeo here; it is raw Solar mask
+      // contour evidence and can be a different extent than the accepted roof
+      // footprint, which inflates face areas and blocks report production.
+      const footprintGeo = footprint.map((p) =>
+        pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]
+      );
 
       // ══════════ DSM COORDINATE MATCH GATE ══════════
       // Verify the footprint geo coords actually fall inside the DSM GeoTIFF grid.
