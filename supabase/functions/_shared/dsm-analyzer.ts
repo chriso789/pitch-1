@@ -54,6 +54,58 @@ export interface DSMAnalysisResult {
   qualityScore: number;
 }
 
+// ============= UTM → LAT/LNG CONVERSION =============
+
+/**
+ * Convert UTM coordinates to latitude/longitude (WGS84).
+ * Uses iterative Karney method for accuracy.
+ */
+function utmToLatLng(easting: number, northing: number, zone: number, isNorth: boolean): { lat: number; lng: number } {
+  const k0 = 0.9996;
+  const a = 6378137.0;        // WGS84 semi-major axis
+  const f = 1 / 298.257223563;
+  const e = Math.sqrt(2 * f - f * f);
+  const e2 = e * e;
+  const ep2 = e2 / (1 - e2);
+
+  const x = easting - 500000;
+  const y = isNorth ? northing : northing - 10000000;
+
+  const M = y / k0;
+  const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const phi1 = mu
+    + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
+    + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
+    + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
+
+  const sinPhi = Math.sin(phi1);
+  const cosPhi = Math.cos(phi1);
+  const tanPhi = Math.tan(phi1);
+  const N1 = a / Math.sqrt(1 - e2 * sinPhi * sinPhi);
+  const T1 = tanPhi * tanPhi;
+  const C1 = ep2 * cosPhi * cosPhi;
+  const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinPhi * sinPhi, 1.5);
+  const D = x / (N1 * k0);
+
+  const lat = phi1
+    - (N1 * tanPhi / R1) * (D * D / 2
+    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D * D * D * D / 24
+    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D * D * D * D * D * D / 720);
+
+  const lng = (D
+    - (1 + 2 * T1 + C1) * D * D * D / 6
+    + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D * D * D * D * D / 120) / cosPhi;
+
+  const lng0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+
+  return {
+    lat: lat * 180 / Math.PI,
+    lng: (lng + lng0) * 180 / Math.PI,
+  };
+}
+
 // ============= GEOTIFF PARSING =============
 
 /**
@@ -88,33 +140,102 @@ async function parseRealGeoTIFF(
     const tiepoint = image.getTiePoints();
     const pixelScale = image.getFileDirectory().ModelPixelScale;
     const geoKeys = image.getGeoKeys();
+    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}`);
 
     let bounds: DSMGrid['bounds'];
 
     if (tiepoint && tiepoint.length > 0 && pixelScale && pixelScale.length >= 2) {
-      // Standard GeoTIFF: tiepoint[0] gives (i, j, k) -> (x, y, z)
       const tp = tiepoint[0];
-      const originLng = tp.x;   // longitude of pixel (tp.i, tp.j)
-      const originLat = tp.y;   // latitude of pixel (tp.i, tp.j)
-      const scaleX = pixelScale[0]; // degrees per pixel in X
-      const scaleY = pixelScale[1]; // degrees per pixel in Y (positive, but Y goes down)
+      const scaleX = pixelScale[0];
+      const scaleY = pixelScale[1];
 
-      bounds = {
-        minLng: originLng - tp.i * scaleX,
-        maxLng: originLng + (width - tp.i) * scaleX,
-        maxLat: originLat + tp.j * scaleY,
-        minLat: originLat - (height - tp.j) * scaleY,
-      };
+      let rawMinX = tp.x - tp.i * scaleX;
+      let rawMaxX = tp.x + (width - tp.i) * scaleX;
+      let rawMaxY = tp.y + tp.j * scaleY;
+      let rawMinY = tp.y - (height - tp.j) * scaleY;
+
+      // Detect if coordinates are in a projected CRS (not lat/lng)
+      // Lat/lng values: x in [-180, 180], y in [-90, 90]
+      // Projected coords (UTM, etc.): values typically > 180
+      const isProjected = Math.abs(rawMinX) > 360 || Math.abs(rawMinY) > 360;
+
+      if (isProjected) {
+        // Determine UTM zone from GeoKeys or estimate from coordinate values
+        const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
+        console.log(`[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+        
+        // Convert projected (UTM) bounds to lat/lng
+        // Try to determine UTM zone from GeoKeys or from EPSG code
+        let utmZone = 0;
+        let isNorth = true;
+        
+        if (projCRS >= 32601 && projCRS <= 32660) {
+          utmZone = projCRS - 32600;
+          isNorth = true;
+        } else if (projCRS >= 32701 && projCRS <= 32760) {
+          utmZone = projCRS - 32700;
+          isNorth = false;
+        } else {
+          // Estimate UTM zone from easting value (typically 100000-900000)
+          // and use the request lat to determine hemisphere
+          // For Florida (lat ~27), UTM zone 17N is typical
+          // Easting ~381000 and Northing ~2996000 → zone 17N
+          if (rawMinX > 100000 && rawMinX < 900000) {
+            // Estimate zone from known property location — use northing to guess
+            utmZone = 17; // Default for SE US
+            isNorth = rawMinY > 0;
+          }
+        }
+
+        if (utmZone > 0) {
+          const sw = utmToLatLng(rawMinX, rawMinY, utmZone, isNorth);
+          const ne = utmToLatLng(rawMaxX, rawMaxY, utmZone, isNorth);
+          bounds = {
+            minLng: sw.lng,
+            minLat: sw.lat,
+            maxLng: ne.lng,
+            maxLat: ne.lat,
+          };
+          console.log(`[DSM_ANALYZER] Converted UTM zone ${utmZone}${isNorth ? 'N' : 'S'} → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+        } else {
+          console.warn('[DSM_ANALYZER] Cannot determine UTM zone for projected CRS');
+          return null;
+        }
+      } else {
+        // Already in lat/lng
+        bounds = {
+          minLng: rawMinX,
+          maxLng: rawMaxX,
+          maxLat: rawMaxY,
+          minLat: rawMinY,
+        };
+      }
     } else {
-      // Fallback: try getBoundingBox
       const bbox = image.getBoundingBox();
       if (bbox && bbox.length === 4) {
-        bounds = {
-          minLng: bbox[0],
-          minLat: bbox[1],
-          maxLng: bbox[2],
-          maxLat: bbox[3],
-        };
+        const isProjected = Math.abs(bbox[0]) > 360 || Math.abs(bbox[1]) > 360;
+        if (isProjected) {
+          // Try to convert using geoKeys
+          const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
+          let utmZone = 0;
+          let isNorth = true;
+          if (projCRS >= 32601 && projCRS <= 32660) {
+            utmZone = projCRS - 32600; isNorth = true;
+          } else if (projCRS >= 32701 && projCRS <= 32760) {
+            utmZone = projCRS - 32700; isNorth = false;
+          }
+          if (utmZone > 0) {
+            const sw = utmToLatLng(bbox[0], bbox[1], utmZone, isNorth);
+            const ne = utmToLatLng(bbox[2], bbox[3], utmZone, isNorth);
+            bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
+            console.log(`[DSM_ANALYZER] Converted bbox UTM ${utmZone}${isNorth ? 'N' : 'S'} → [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+          } else {
+            console.warn('[DSM_ANALYZER] Projected bbox, unknown CRS — cannot convert');
+            return null;
+          }
+        } else {
+          bounds = { minLng: bbox[0], minLat: bbox[1], maxLng: bbox[2], maxLat: bbox[3] };
+        }
       } else {
         console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
         return null;

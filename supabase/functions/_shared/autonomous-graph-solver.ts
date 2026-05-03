@@ -287,15 +287,26 @@ function scoreAndFilterEdges(
 ): { accepted: ScoredEdge[]; prunedByScore: number } {
   const candidates: ScoredEdge[] = [];
   let edgeIdx = 0;
+  let skippedByLength = 0, skippedByFootprint = 0;
+
+  // Log coordinate spaces for debugging
+  if (dsmEdges.length > 0) {
+    const sample = dsmEdges[0];
+    console.log(`[EDGE_SCORING] DSM edge sample: start=[${sample.start[0].toFixed(6)}, ${sample.start[1].toFixed(6)}]`);
+  }
+  if (footprint.length > 0) {
+    console.log(`[EDGE_SCORING] Footprint sample: [${footprint[0][0].toFixed(6)}, ${footprint[0][1].toFixed(6)}]`);
+  }
 
   // A. DSM edges — primary evidence
   for (const de of dsmEdges) {
     const lengthFt = distanceFt(de.start, de.end, midLat);
-    if (lengthFt < MIN_EDGE_LENGTH_FT) continue;
+    if (lengthFt < MIN_EDGE_LENGTH_FT) { skippedByLength++; continue; }
 
     // Check if edge midpoint is within footprint
     const mid = midpoint(de.start, de.end);
     if (!pointInPolygon(mid, footprint) && !pointInPolygon(de.start, footprint) && !pointInPolygon(de.end, footprint)) {
+      skippedByFootprint++;
       continue;
     }
 
@@ -307,11 +318,13 @@ function scoreAndFilterEdges(
       end: de.end,
       score,
       initialType: de.type,
-      classifiedType: de.type, // Will be reclassified by DSM physics
+      classifiedType: de.type,
       source: 'dsm',
       lengthFt,
     });
   }
+
+  console.log(`[EDGE_SCORING] DSM edges: ${dsmEdges.length} total, ${skippedByLength} too short, ${skippedByFootprint} outside footprint, ${candidates.length} candidates`);
 
   // B. Skeleton edges — only for simple roofs, and only if no DSM edge covers same area
   if (!isComplex) {
