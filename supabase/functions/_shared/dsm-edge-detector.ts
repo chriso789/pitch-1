@@ -287,7 +287,7 @@ function fitLineToComponent(
 
   // Fitness: how "line-like" is the component (ratio of eigenvalues)
   const fitness = lambda1 > 0 ? 1 - (lambda2 / lambda1) : 0;
-  if (fitness < 0.5) return null; // Too blobby, not a line
+  if (fitness < 0.35) return null; // Too blobby, not a line
 
   // Principal direction
   let dx: number, dy: number;
