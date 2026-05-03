@@ -953,11 +953,79 @@ async function processJob(input: any) {
             : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
-        // HARD FAIL: Do NOT fall through to legacy pipeline.
-        // Always persist debug data so internal debug reports are available.
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
         dsmFailReason = failReason;
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
+
+        // ── ALWAYS-PERSIST DEBUG DIAGRAMS (Patent Parity Phase 2) ──
+        // Even on hard failures, generate debug diagrams so internal report is viewable
+        try {
+          const failedPlanesPx = graph.faces.map((f: any, i: number) => ({
+            plane_index: i + 1,
+            polygon_px: f.polygon.map(([lng, lat]: [number, number]) =>
+              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)),
+            pitch_degrees: f.pitch_degrees || 0,
+            area_2d_sqft: f.plan_area_sqft || 0,
+            area_pitch_adjusted_sqft: f.roof_area_sqft || 0,
+            confidence: 0.3,
+          }));
+          const failedEdgesPx = graph.edges.map((e: any) => ({
+            edge_type: e.type,
+            line_px: [
+              lngLatToPx(e.start[1], e.start[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+              lngLatToPx(e.end[1], e.end[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+            ],
+            length_ft: e.length_ft || 0,
+            confidence: e.confidence?.final_confidence || 0.3,
+          }));
+          if (failedPlanesPx.length > 0 || failedEdgesPx.length > 0) {
+            const debugDiagrams = generateRoofDiagrams({
+              propertyAddress: input.property_address || "Unknown property",
+              jobId: input.ai_measurement_job_id,
+              generatedAt: new Date().toISOString(),
+              confidence: 0,
+              engineVersion: "debug_failed_dsm_graph",
+              planes: failedPlanesPx,
+              edges: failedEdgesPx,
+              totals: { ridge_length_ft: 0, hip_length_ft: 0, valley_length_ft: 0,
+                eave_length_ft: 0, rake_length_ft: 0, total_area_2d_sqft: 0,
+                total_area_pitch_adjusted_sqft: 0, roof_square_count: 0, waste_adjusted_squares: 0 },
+              satelliteImageUrl: imageUrl,
+              sourceImageWidth: raster.width,
+              sourceImageHeight: raster.height,
+              roofTargetBboxPx: null,
+              overlayCalibration: null,
+            });
+            if (debugDiagrams.length > 0) {
+              await supabase.from("ai_measurement_diagrams").insert(
+                debugDiagrams.map((d: any) => ({
+                  ai_measurement_job_id: input.ai_measurement_job_id,
+                  roof_measurement_id: failedId,
+                  lead_id: input.lead_id,
+                  project_id: input.project_id,
+                  tenant_id: input.tenant_id,
+                  company_id: input.company_id,
+                  diagram_type: d.diagram_type,
+                  title: `[DEBUG] ${d.title}`,
+                  page_number: d.page_number,
+                  svg_markup: d.svg_markup,
+                  diagram_json: {
+                    generated_from: "debug_failed_dsm_graph",
+                    failure_reason: failReason,
+                    autonomousDebug,
+                  },
+                  render_version: "debug_failed_dsm_graph",
+                  width: 850,
+                  height: 1100,
+                }))
+              );
+              console.log(`[DEBUG_DIAGRAMS] Persisted ${debugDiagrams.length} debug diagrams for failed job`);
+            }
+          }
+        } catch (diagErr) {
+          console.warn("[DEBUG_DIAGRAMS] Failed to persist debug diagrams:", (diagErr as Error).message);
+        }
+
         await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
         await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
         await supabase.from("ai_measurement_jobs").update({
