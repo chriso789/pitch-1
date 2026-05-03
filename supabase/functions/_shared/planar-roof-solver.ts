@@ -767,14 +767,15 @@ export function solveRoofPlanes(
   const rawFaces = extractMinimalCycles(adj);
 
   // 12. Face filtering
+  const footprintArea = Math.abs(signedArea(footprint));
+  const minRawFaceArea = Math.max(20, footprintArea * 0.0015);
   const allFaces = rawFaces
-    .filter((f) => Math.abs(signedArea(f)) > 50)
+    .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
     .map((polygon, i) => ({ id: i, polygon }));
   const facesRejectedByArea = rawFaces.length - allFaces.length;
   const validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
 
-  const footprintArea = Math.abs(signedArea(footprint));
   const validArea = validFaces.reduce((sum, face) => sum + Math.abs(signedArea(face.polygon)), 0);
   const faceCoverageRatio = footprintArea > 0 ? validArea / footprintArea : 0;
 
