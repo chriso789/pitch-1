@@ -1208,8 +1208,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       edge_ids: [],
     });
   }
+  faceCountAfterMerge = graphFaces.length;
 
-  // ===== Convert planar segments to output edges =====
   let edgeId = 0;
   const outputEdges: GraphEdge[] = [];
   const outputVerticesByKey = new Map<string, XY>();
