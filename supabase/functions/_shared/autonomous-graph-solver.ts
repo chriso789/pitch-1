@@ -1015,7 +1015,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       valleyCount: outValleys.length,
       ridgeCount: outRidges.length,
       hipCount: outHips.length,
-      graphConnected: graph.connected,
+      graphConnected: graphFaces.length >= 2 && coverageRatio >= 0.85,
       coverageRatio,
       structuralEdgeCount,
       dsmEdgesAccepted: classifiedEdges.filter(e => e.source === 'dsm').length,
