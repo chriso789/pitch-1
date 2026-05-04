@@ -162,14 +162,17 @@ export function getPerpendicularProfile(
 /**
  * Classify an edge using DSM physics with mask awareness.
  * 
- * RIDGE:  edge is higher than both sides (both slopes positive = both sides drop away)
+ * RIDGE:  edge is higher than both sides AND roughly level along its length
  * VALLEY: edge is lower than both sides (both slopes negative = both sides rise away)
- * HIP:    mixed slopes (one side drops, other rises or similar)
+ * HIP:    higher than both sides BUT descends significantly along its length,
+ *         OR mixed slopes (one side drops, other rises)
  * EAVE:   one side has no roof data (perimeter)
  * 
- * KEY FIX: When one side samples ground (off-roof or >3m drop), that side is
- * excluded from classification. An edge where one side is ground and the other
- * slopes down is a ridge, not a hip.
+ * KEY INSIGHT: Ridges are horizontal (endpoints at similar elevation).
+ * Hips slope downward from ridge to eave corner. Measuring the height
+ * gradient ALONG the edge disambiguates ridge vs hip when perpendicular
+ * profiles alone are ambiguous (e.g. near the perimeter where one side
+ * is off-roof).
  */
 export function classifyEdgeByDSM(
   start: XY,
@@ -187,29 +190,50 @@ export function classifyEdgeByDSM(
   const leftRises = profile.leftSlope < -minDelta;   // edge lower than left
   const rightRises = profile.rightSlope < -minDelta;  // edge lower than right
 
+  // ── ALONG-EDGE GRADIENT ──
+  // Sample elevation at both endpoints. Ridges are level; hips descend.
+  const startElev = getElevationAt(start, dsmGrid);
+  const endElev = getElevationAt(end, dsmGrid);
+  const alongEdgeDropM = (startElev !== null && endElev !== null)
+    ? Math.abs(startElev - endElev)
+    : null;
+
+  // If the edge drops > 0.6m along its length, it's sloped → likely a hip, not a ridge.
+  // Real ridges on residential roofs are nearly horizontal (<0.3m variance over their length).
+  const RIDGE_LEVEL_THRESHOLD_M = 0.6;
+  const edgeIsSloped = alongEdgeDropM !== null && alongEdgeDropM > RIDGE_LEVEL_THRESHOLD_M;
+
   // ── MASK-AWARE CLASSIFICATION ──
-  // If one side is off-roof (not on mask) or has a ground-level drop (>3m),
-  // treat that side as "unknown" rather than using its slope for classification.
   const leftIsGround = !profile.leftOnRoof || profile.leftGroundDrop;
   const rightIsGround = !profile.rightOnRoof || profile.rightGroundDrop;
 
   // Both sides are ground/off-roof → ambiguous
   if (leftIsGround && rightIsGround) return null;
 
-  // One side is ground: classify based on the valid side only
+  // One side is ground: the valid side slopes down.
+  // Use along-edge gradient to distinguish ridge (level) from hip (descending).
   if (leftIsGround && !rightIsGround) {
-    if (rightDrops) return 'ridge';  // edge is peak, valid side slopes down
-    if (rightRises) return 'eave';   // edge is boundary, valid side slopes up
+    if (rightDrops) {
+      // Both ridge and hip have one valid side dropping.
+      // If the edge is sloped along its length → hip (running from ridge to eave corner)
+      // If roughly level → ridge (at the roof apex)
+      return edgeIsSloped ? 'hip' : 'ridge';
+    }
+    if (rightRises) return 'eave';
     return null;
   }
   if (rightIsGround && !leftIsGround) {
-    if (leftDrops) return 'ridge';
+    if (leftDrops) return edgeIsSloped ? 'hip' : 'ridge';
     if (leftRises) return 'eave';
     return null;
   }
 
   // ── STANDARD CLASSIFICATION (both sides confirmed on roof) ──
-  if (leftDrops && rightDrops) return 'ridge';
+  if (leftDrops && rightDrops) {
+    // Both sides drop away → ridge OR hip.
+    // Ridges are level along their length; hips descend.
+    return edgeIsSloped ? 'hip' : 'ridge';
+  }
   if (leftRises && rightRises) return 'valley';
   if ((leftDrops && rightRises) || (leftRises && rightDrops)) return 'hip';
   if ((leftDrops || rightDrops) && !(leftRises || rightRises)) return 'hip'; // one side flat
