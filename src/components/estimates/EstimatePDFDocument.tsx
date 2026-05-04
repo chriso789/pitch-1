@@ -40,6 +40,13 @@ interface CompanyInfo {
   brand_story?: string | null;
   brand_mission?: string | null;
   brand_certifications?: string | null;
+  brand_tagline?: string | null;
+  brand_headline?: string | null;
+  brand_stats?: { value: string; label: string }[] | null;
+  brand_testimonial?: { quote: string; attribution: string } | null;
+  brand_commitments?: { title: string; body: string; icon?: string }[] | null;
+  brand_primary_color?: string | null;
+  brand_accent_color?: string | null;
 }
 
 interface CompanyLocation {
