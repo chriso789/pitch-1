@@ -349,6 +349,8 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
     draw();
   }, [isOpen, draw]);
 
+  if (!overlayDebug) return null;
+
   // Mouse handlers for pan/zoom
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
