@@ -15,6 +15,7 @@ import { CleanRoofDiagram } from './CleanRoofDiagram'
 import { toast } from 'sonner'
 import { useRoofOverlay, overlayToLinearFeatures, perimeterToWKT } from '@/hooks/useRoofOverlay'
 import { RoofLineOverlayEditor } from './RoofLineOverlayEditor'
+import { AITraceOverlay } from './AITraceOverlay'
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId'
 
 export interface RoofMeasurements {
