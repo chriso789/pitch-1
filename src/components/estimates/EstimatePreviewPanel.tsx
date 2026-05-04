@@ -1334,7 +1334,7 @@ export function EstimatePreviewPanel({
                                     : 'border-transparent hover:border-muted-foreground/30'
                                 }`}
                               >
-                                <img src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
+                                <SafeImage src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
                               </button>
                             ))}
                           </div>
@@ -1343,7 +1343,7 @@ export function EstimatePreviewPanel({
                         {/* Preview thumbnail */}
                         {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
                           <div className="rounded overflow-hidden border border-border">
-                            <img
+                            <SafeImage
                               src={options.coverPagePropertyPhoto}
                               alt="Cover photo preview"
                               className="w-full h-20 object-cover"
@@ -1583,7 +1583,7 @@ export function EstimatePreviewPanel({
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
                     templateAttachments={[]}
-                    jobPhotos={jobPhotos}
+                    jobPhotos={previewJobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                     templateStyle={activeTemplateStyle}
                   />
@@ -1620,7 +1620,7 @@ export function EstimatePreviewPanel({
                           options={options}
                           measurementSummary={measurementSummary || undefined}
                           createdAt={new Date().toISOString()}
-                          jobPhotos={jobPhotos}
+                          jobPhotos={previewJobPhotos}
                           skipCoverPage={true}
                           skipWarrantyAndTerms={!isLast}
                           templateStyle={activeTemplateStyle}
