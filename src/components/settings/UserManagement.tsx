@@ -26,7 +26,7 @@ import { RepPayStructureConfig } from './RepPayStructureConfig';
 import { EmailHealthCheck } from './EmailHealthCheck';
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { auditService } from "@/services/auditService";
-import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
+
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 
 interface User {
@@ -91,7 +91,7 @@ export const UserManagement = () => {
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { companies: availableCompanies, isLoading: companiesLoading } = useAvailableCompanies();
+  
   const { activeCompanyId } = useCompanySwitcher();
 
   const { data: userData, isLoading: loading } = useQuery({
