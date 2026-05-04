@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import heic2any from 'heic2any';
 import {
   Dialog,
   DialogContent,
