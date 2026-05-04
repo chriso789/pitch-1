@@ -155,7 +155,7 @@ const MobileJobPhotos = () => {
           >
             <X className="h-6 w-6" />
           </Button>
-          <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+          <SafeImage src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
         </div>
       )}
     </div>
