@@ -28,19 +28,25 @@ Deno.serve(async (req) => {
 
     // Build satellite image URL if not provided
     let satImageUrl = imageUrl;
+    const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
     if (!satImageUrl) {
-      const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
-      const zoomLevel = zoom || 20;
-      satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+      // Zoom 21 + scale=2 gives a tight, high-res crop centered on the property
+      const zoomLevel = zoom || 21;
+      satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
     }
 
     console.log("Tracing roof at", lat, lng, "using image:", satImageUrl.substring(0, 80));
 
-    const systemPrompt = `You are an expert roof measurement analyst. You will be shown a satellite/aerial image of a roof.
+    // With scale=2 the actual image is 1280x1280 pixels
+    const imgSize = 1280;
 
-Your job is to identify and trace ALL visible roof components with pixel coordinates on the 640x640 image.
+    const systemPrompt = `You are an expert roof measurement analyst. You will be shown a satellite/aerial image centered on a single property.
 
-For each component, provide the start and end pixel coordinates [x, y] where (0,0) is top-left.
+IMPORTANT: Trace ONLY the roof of the building at the CENTER of the image. Ignore all neighboring buildings, driveways, pools, trees, and other structures.
+
+The image is ${imgSize}x${imgSize} pixels. Provide all coordinates as pixel positions where (0,0) is top-left and (${imgSize},${imgSize}) is bottom-right.
+
+For each component, provide the start and end pixel coordinates [x, y].
 
 Identify these component types:
 - **ridges**: Horizontal peak lines where two roof planes meet at the top
@@ -52,12 +58,13 @@ Identify these component types:
 
 CRITICAL RULES:
 1. Trace the ACTUAL roof edges visible in the image, not imagined ones
-2. Every line must connect precisely to adjacent lines (vertices must be shared)
-3. Ridges run along the top peak. Hips slope downward from ridge endpoints to eave corners.
-4. Valleys are interior corners where planes meet going downward.
-5. Eaves are the lowest horizontal edges. Rakes are the sloped edges on gable ends.
-6. Include ALL visible components - don't miss small sections or dormers.
-7. Coordinates must be pixel positions on the 640x640 image.
+2. ONLY trace the CENTER building's roof — ignore all other buildings
+3. Every line must connect precisely to adjacent lines (vertices must be shared)
+4. Ridges run along the top peak. Hips slope downward from ridge endpoints to eave corners.
+5. Valleys are interior corners where planes meet going downward.
+6. Eaves are the lowest horizontal edges. Rakes are the sloped edges on gable ends.
+7. Include ALL visible components of the center roof including dormers and extensions.
+8. Coordinates must be pixel positions on the ${imgSize}x${imgSize} image.
 
 Return your response as a JSON object with this exact structure:
 {
@@ -99,7 +106,7 @@ Be precise with coordinates. Every ridge endpoint should connect to a hip or rak
             content: [
               {
                 type: "text",
-                text: `Analyze this satellite image of a roof at coordinates ${lat}, ${lng}. Trace all roof components (ridges, hips, valleys, eaves, rakes, step flashing) with precise pixel coordinates on this 640x640 image. Return JSON only.`
+                text: `Analyze this satellite image of a roof at coordinates ${lat}, ${lng}. Trace ONLY the roof of the building at the CENTER of this ${imgSize}x${imgSize} image. Return all component pixel coordinates. Return JSON only.`
               },
               {
                 type: "image_url",
@@ -275,7 +282,7 @@ Be precise with coordinates. Every ridge endpoint should connect to a hip or rak
       success: true,
       data: traceData,
       imageUrl: satImageUrl,
-      imageSize: 640,
+      imageSize: imgSize,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
