@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { lat, lng, imageUrl, zoom } = await req.json();
+    const { lat, lng, imageUrl, zoom, mapSize } = await req.json();
 
     if (!lat || !lng) {
       return new Response(JSON.stringify({ error: "lat and lng are required" }), {
@@ -26,26 +26,28 @@ Deno.serve(async (req) => {
       });
     }
 
+    const requestedMapSize = Number(mapSize) || 512;
+    const staticMapSize = Math.max(320, Math.min(640, requestedMapSize));
+    const zoomLevel = Math.max(21, Math.min(22, Number(zoom) || 22));
+    const imgSize = staticMapSize * 2;
+
     // Build satellite image URL if not provided
     let satImageUrl = imageUrl;
     const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
     if (!satImageUrl) {
-      // Zoom 22 + scale=2 gives a very tight crop centered on just the target property
-      const zoomLevel = zoom || 22;
-      satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+      // Zoom 22 + scale=2 + smaller map size gives a tight crop centered on just the target roof.
+      satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=${staticMapSize}x${staticMapSize}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
     }
 
     console.log("Tracing roof at", lat, lng, "using image:", satImageUrl.substring(0, 80));
 
-    // With scale=2 the actual image is 1280x1280 pixels
-    const imgSize = 1280;
-
     const systemPrompt = `You are an expert roof measurement analyst. You will be shown a high-zoom satellite image tightly centered on a SINGLE property.
 
-CRITICAL FOCUS RULE: The target building is the ONE structure closest to the absolute center of the image (pixel ${Math.round(imgSize/2)}, ${Math.round(imgSize/2)}). 
+CRITICAL FOCUS RULE: The target roof is the ONE roof directly under the absolute center crosshair of the image (pixel ${Math.round(imgSize/2)}, ${Math.round(imgSize/2)}). 
 - ONLY trace the roof of THIS center building. 
-- COMPLETELY IGNORE every other building, shed, pool, tree, driveway, fence, or structure in the image — even if they are partially visible.
+- COMPLETELY IGNORE every other building, shed, pool, tree, driveway, fence, or structure in the image — even if it is visible or connected visually by shadows.
 - If multiple buildings are near the center, pick the LARGEST residential building closest to the center point.
+- If a roof/object does not touch or enclose the center target roof footprint, do not trace it.
 
 The image is ${imgSize}x${imgSize} pixels. Provide all coordinates as pixel positions where (0,0) is top-left and (${imgSize},${imgSize}) is bottom-right.
 
@@ -66,6 +68,7 @@ GEOMETRY RULES:
 4. All eave lines together should roughly form the perimeter footprint of the roof.
 5. Include dormers, extensions, and all sub-sections of THIS ONE roof.
 6. Do NOT include any lines that trace parts of neighboring buildings.
+7. Keep every returned coordinate inside the visible center roof area. Avoid long lines extending into yards, trees, streets, or neighboring lots.
 
 Return your response as a JSON object with this exact structure:
 {
