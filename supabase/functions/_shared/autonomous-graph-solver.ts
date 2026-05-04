@@ -1440,6 +1440,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     let reclassified = 0;
     for (const edge of outputEdges) {
       if (edge.type === 'eave' || edge.type === 'rake') continue; // Don't reclassify boundary edges
+      // DO reclassify 'unclassified' edges via face-adjacency
 
       // Find adjacent faces: faces whose polygon contains both edge endpoints
       const adjacentFaceIndices: number[] = [];
