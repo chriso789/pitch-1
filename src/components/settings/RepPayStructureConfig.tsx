@@ -162,9 +162,9 @@ export const RepPayStructureConfig: React.FC<RepPayStructureConfigProps> = ({
           <>
             {/* Overhead Rate Selection */}
             <div className="space-y-3">
-              <Label className="text-base font-medium">Rep Overhead Rate</Label>
+              <Label className="text-base font-medium">Job Cost Overhead</Label>
               <p className="text-sm text-muted-foreground">
-                Percentage of total selling price charged as job cost overhead
+                Percentage of total selling price charged as job cost overhead (10% is standard for reps)
               </p>
               <Select
                 value={config.overhead_rate.toString()}
@@ -174,8 +174,11 @@ export const RepPayStructureConfig: React.FC<RepPayStructureConfigProps> = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="5">5% - Standard Rate</SelectItem>
-                  <SelectItem value="10">10% - Premium Rate</SelectItem>
+                  <SelectItem value="5">5%</SelectItem>
+                  <SelectItem value="10">10%</SelectItem>
+                  <SelectItem value="12">12%</SelectItem>
+                  <SelectItem value="15">15%</SelectItem>
+                  <SelectItem value="20">20%</SelectItem>
                 </SelectContent>
               </Select>
             </div>
