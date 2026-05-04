@@ -385,11 +385,12 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                   ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3'
                   : 'space-y-2'
               )}>
-                {filteredPhotos.map(photo => (
+                {filteredPhotos.map((photo, index) => (
                   <SortablePhotoItem
                     key={photo.id}
                     photo={photo}
                     viewMode={viewMode}
+                    imageLoading={index < 8 ? 'eager' : 'lazy'}
                     isSelected={selectedPhotos.has(photo.id)}
                     onSelect={() => toggleSelection(photo.id)}
                     onEdit={() => setEditingPhoto(photo)}
