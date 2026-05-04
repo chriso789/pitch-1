@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { 
   Loader2, Download, AlertCircle, CheckCircle, 
-  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage, Sparkles
+  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage, Sparkles, Scan
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,7 @@ import { CleanRoofDiagram } from './CleanRoofDiagram'
 import { toast } from 'sonner'
 import { useRoofOverlay, overlayToLinearFeatures, perimeterToWKT } from '@/hooks/useRoofOverlay'
 import { RoofLineOverlayEditor } from './RoofLineOverlayEditor'
+import { AITraceOverlay } from './AITraceOverlay'
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId'
 
 export interface RoofMeasurements {
@@ -350,6 +351,14 @@ export function RoofMeasurementTool({
         )}
       </Card>
 
+      {/* AI Trace - available even before full analysis */}
+      {!measurementData && (effectiveLat || effectiveLng) && (
+        <AITraceOverlay
+          lat={effectiveLat || 0}
+          lng={effectiveLng || 0}
+        />
+      )}
+
       {/* Results */}
       {measurementData && (
         <div className="space-y-6">
@@ -391,7 +400,11 @@ export function RoofMeasurementTool({
           </Card>
 
           <Tabs defaultValue="diagram" className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-8">
+              <TabsTrigger value="trace" className="flex items-center gap-1">
+                <Scan className="h-3.5 w-3.5" />
+                Trace
+              </TabsTrigger>
               <TabsTrigger value="diagram" className="flex items-center gap-1">
                 <Layers className="h-3.5 w-3.5" />
                 Diagram
@@ -406,6 +419,14 @@ export function RoofMeasurementTool({
               <TabsTrigger value="materials">Materials</TabsTrigger>
               <TabsTrigger value="images">Images</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="trace" className="space-y-4">
+              <AITraceOverlay
+                lat={effectiveLat || 0}
+                lng={effectiveLng || 0}
+                imageUrl={measurementData?.images?.google?.url || measurementData?.images?.mapbox?.url}
+              />
+            </TabsContent>
 
             <TabsContent value="overlay" className="space-y-4">
               {measurementData.measurementId && effectiveTenantId && effectiveLat && effectiveLng ? (
