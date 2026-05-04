@@ -11,7 +11,7 @@ interface SafeImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
  * Drop-in <img> replacement that auto-converts HEIC/HEIF URLs
  * to displayable JPEG blob URLs using heic2any.
  */
-export function SafeImage({ src, className, alt, loading = 'lazy', decoding = 'async', ...props }: SafeImageProps) {
+export function SafeImage({ src, className, alt, loading: imageLoading = 'lazy', decoding = 'async', ...props }: SafeImageProps) {
   const { displayUrl, loading } = useHeicUrl(src);
 
   if (loading) {
@@ -22,5 +22,5 @@ export function SafeImage({ src, className, alt, loading = 'lazy', decoding = 'a
     );
   }
 
-  return <img src={displayUrl} alt={alt} className={className} loading={loading} decoding={decoding} {...props} />;
+  return <img src={displayUrl} alt={alt} className={className} loading={imageLoading} decoding={decoding} {...props} />;
 }
