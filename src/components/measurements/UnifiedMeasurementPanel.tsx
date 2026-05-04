@@ -23,6 +23,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { BlueprintUploadButton } from './BlueprintUploadButton';
+import { TraceRoofButton } from './TraceRoofButton';
 
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
