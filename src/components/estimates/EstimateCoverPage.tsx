@@ -179,7 +179,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
           style={{
             height: '10px',
             background:
-              'linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary)) 65%, #1a1a2e 65%, #1a1a2e 100%)',
+              `linear-gradient(90deg, ${primaryColor} 0%, ${primaryColor} 65%, ${accentColor} 65%, ${accentColor} 100%)`,
           }}
         />
 
