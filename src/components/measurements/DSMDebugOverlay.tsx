@@ -309,6 +309,41 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
     }
   }, [data, layers]);
 
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(pan.x, pan.y);
+    ctx.scale(zoom, zoom);
+
+    if (layers.raster && data.raster_url) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(pan.x, pan.y);
+        ctx.scale(zoom, zoom);
+        ctx.globalAlpha = 0.7;
+        ctx.drawImage(img, 0, 0, rasterW, rasterH);
+        ctx.globalAlpha = 1.0;
+        drawOverlays(ctx);
+        ctx.restore();
+      };
+      img.src = data.raster_url;
+    } else {
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, rasterW, rasterH);
+      drawOverlays(ctx);
+    }
+
+    ctx.restore();
+  }, [data, drawOverlays, layers.raster, pan.x, pan.y, rasterH, rasterW, zoom]);
+
   useEffect(() => {
     if (!isOpen) return;
     draw();
