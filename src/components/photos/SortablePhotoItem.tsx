@@ -278,7 +278,13 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
             size="icon" 
             variant="ghost" 
             className="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (window.confirm('Delete this photo?')) {
+                onDelete();
+              }
+            }}
             title="Delete"
           >
             <Trash2 className="h-3.5 w-3.5" />
