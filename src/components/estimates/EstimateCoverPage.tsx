@@ -149,7 +149,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
         <div className="absolute bottom-0 left-0 right-0 px-10 pb-10">
           <div className="text-white">
             <div className="text-[11px] font-semibold tracking-[0.4em] opacity-80 mb-2">
-              PROJECT PROPOSAL
+              {eyebrow}
             </div>
             <h1
               className="font-black leading-[0.85] tracking-tight drop-shadow-xl"
@@ -159,10 +159,10 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
                 lineHeight: 0.85,
               }}
             >
-              YOUR
+              {headlineParts[0]}
               <br />
-              <span style={{ color: 'hsl(var(--primary))' }}>HOME.</span>{' '}
-              REIMAGINED.
+              <span style={{ color: primaryColor }}>{headlineParts[1] || ''}</span>{' '}
+              {headlineParts[2] || ''}
             </h1>
           </div>
         </div>
