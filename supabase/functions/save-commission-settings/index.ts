@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
 
     const planName = `${targetProfile.first_name} ${targetProfile.last_name} - Commission Plan`;
     const dbCommissionType = commission_type === 'profit_split' ? 'net_percent' : 'gross_percent';
-    const dbPaymentMethod = commission_type === 'profit_split' ? 'commission_after_costs' : 'percentage_selling_price';
+    const dbPaymentMethod = 'first_check';
 
     let planId: string;
 
