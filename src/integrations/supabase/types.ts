@@ -39142,9 +39142,16 @@ export type Database = {
           address_street: string | null
           address_zip: string | null
           billing_email: string | null
+          brand_accent_color: string | null
           brand_certifications: string | null
+          brand_commitments: Json | null
+          brand_headline: string | null
           brand_mission: string | null
+          brand_primary_color: string | null
+          brand_stats: Json | null
           brand_story: string | null
+          brand_tagline: string | null
+          brand_testimonial: Json | null
           company_overhead_rate: number | null
           created_at: string | null
           deleted_at: string | null
@@ -39187,9 +39194,16 @@ export type Database = {
           address_street?: string | null
           address_zip?: string | null
           billing_email?: string | null
+          brand_accent_color?: string | null
           brand_certifications?: string | null
+          brand_commitments?: Json | null
+          brand_headline?: string | null
           brand_mission?: string | null
+          brand_primary_color?: string | null
+          brand_stats?: Json | null
           brand_story?: string | null
+          brand_tagline?: string | null
+          brand_testimonial?: Json | null
           company_overhead_rate?: number | null
           created_at?: string | null
           deleted_at?: string | null
@@ -39232,9 +39246,16 @@ export type Database = {
           address_street?: string | null
           address_zip?: string | null
           billing_email?: string | null
+          brand_accent_color?: string | null
           brand_certifications?: string | null
+          brand_commitments?: Json | null
+          brand_headline?: string | null
           brand_mission?: string | null
+          brand_primary_color?: string | null
+          brand_stats?: Json | null
           brand_story?: string | null
+          brand_tagline?: string | null
+          brand_testimonial?: Json | null
           company_overhead_rate?: number | null
           created_at?: string | null
           deleted_at?: string | null
