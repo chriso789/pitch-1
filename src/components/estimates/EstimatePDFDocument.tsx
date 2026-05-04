@@ -597,6 +597,11 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           brandStory={companyInfo?.brand_story}
           brandMission={companyInfo?.brand_mission}
           brandCertifications={companyInfo?.brand_certifications}
+          brandStats={companyInfo?.brand_stats as any}
+          brandTestimonial={companyInfo?.brand_testimonial as any}
+          brandCommitments={companyInfo?.brand_commitments as any}
+          brandPrimaryColor={companyInfo?.brand_primary_color}
+          brandAccentColor={companyInfo?.brand_accent_color}
         />
       );
 
