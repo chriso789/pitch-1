@@ -264,8 +264,25 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
       return data.data;
     },
-    onSuccess: () => {
+    onMutate: async (photoIds) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previousPhotos = queryClient.getQueryData<CustomerPhoto[]>(queryKey);
+      queryClient.setQueryData<CustomerPhoto[]>(queryKey, (current = []) =>
+        current.filter((photo) => !photoIds.includes(photo.id))
+      );
+      return { previousPhotos };
+    },
+    onError: (_error, _photoIds, context) => {
+      if (context?.previousPhotos) {
+        queryClient.setQueryData(queryKey, context.previousPhotos);
+      }
+    },
+    onSuccess: (_data, photoIds) => {
+      queryClient.setQueryData<CustomerPhoto[]>(queryKey, (current = []) =>
+        current.filter((photo) => !photoIds.includes(photo.id))
+      );
       queryClient.invalidateQueries({ queryKey });
+      if (leadId) queryClient.invalidateQueries({ queryKey: ['lead-photos', leadId] });
       toast({
         title: 'Photos deleted',
         description: 'Selected photos have been deleted',

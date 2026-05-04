@@ -46,6 +46,24 @@ const PHOTO_CATEGORIES = [
   'inspection', 'general', 'other'
 ];
 
+function resolveCustomerPhotoStoragePath(photo: { file_name?: string | null; file_url?: string | null }): string | null {
+  const directPath = photo.file_name?.trim();
+  if (directPath && !/^https?:\/\//i.test(directPath)) {
+    return decodeURIComponent(directPath).replace(/^\/+/, '');
+  }
+
+  const urlValue = directPath || photo.file_url;
+  if (!urlValue) return null;
+
+  try {
+    const parsed = new URL(urlValue);
+    const match = parsed.pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/customer-photos\/(.+)$/);
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -450,12 +468,20 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        // Get file paths first
-        const { data: photos } = await supabaseAdmin
+        // Get storage paths first. customer_photos stores the bucket path in file_name.
+        const { data: photos, error: photosError } = await supabaseAdmin
           .from('customer_photos')
-          .select('id, file_path')
+          .select('id, file_name, file_url')
           .in('id', idsToDelete)
           .eq('tenant_id', effectiveTenantId);
+
+        if (photosError) {
+          console.error('[photo-upload] Delete lookup error:', photosError);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Failed to find photos for deletion' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         if (!photos?.length) {
           return new Response(
@@ -465,7 +491,9 @@ Deno.serve(async (req: Request) => {
         }
 
         // Delete from storage
-        const paths = photos.map(p => p.file_path).filter(Boolean);
+        const paths = photos
+          .map(resolveCustomerPhotoStoragePath)
+          .filter((path): path is string => Boolean(path));
         if (paths.length > 0) {
           await supabaseAdmin.storage.from('customer-photos').remove(paths);
         }
