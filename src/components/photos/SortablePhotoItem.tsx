@@ -214,7 +214,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
     >
       {/* Image */}
       <div className="aspect-square relative">
-        <img
+        <SafeImage
           src={photo.file_url}
           alt={photo.description || 'Photo'}
           className="w-full h-full object-cover"
