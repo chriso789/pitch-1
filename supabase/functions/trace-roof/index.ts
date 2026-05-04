@@ -282,7 +282,7 @@ Be precise with coordinates. Every ridge endpoint should connect to a hip or rak
       success: true,
       data: traceData,
       imageUrl: satImageUrl,
-      imageSize: 640,
+      imageSize: imgSize,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
