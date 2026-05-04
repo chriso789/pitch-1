@@ -73,12 +73,12 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      const traceData = data?.trace || data;
+      // The edge function returns { data: traceData, imageUrl, ... }
+      const traceData = data?.data?.components || data?.data || data?.trace || data;
       setTraceResult(traceData);
       
-      // Build the sat image URL for display
-      const googleKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-      const url = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=20&size=640x640&maptype=satellite&key=${googleKey}`;
+      // Use the image URL returned by the edge function (has server-side API key)
+      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=20&size=640x640&maptype=satellite`;
       setSatImageUrl(url);
       setDialogOpen(true);
 
