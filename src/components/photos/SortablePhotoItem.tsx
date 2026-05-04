@@ -191,7 +191,11 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
               Download
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onDelete} className="text-destructive">
+            <DropdownMenuItem onClick={() => {
+              if (window.confirm('Delete this photo?')) {
+                onDelete();
+              }
+            }} className="text-destructive">
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
             </DropdownMenuItem>
