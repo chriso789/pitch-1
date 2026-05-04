@@ -855,9 +855,12 @@ export function UnifiedMeasurementPanel({
   // so showing a duplicate raw AI row just creates noise (and is often the same
   // run that was already saved, or an earlier inaccurate attempt).
   const latestUnapprovedAI = useMemo(() => {
+    // If any measurement is already saved, don't show a separate AI card —
+    // the user only wants one measurement section, not two.
+    if ((approvals || []).length > 0) return null;
     if (!aiMeasurements?.length) return null;
     const latest = aiMeasurements[0];
-    if (!isManualRoofMeasurement(latest) && hasCustomerSafeGeometry(latest) && !(approvals || []).some((approval) => getApprovalMeasurementId(approval) === latest.id)) {
+    if (!isManualRoofMeasurement(latest) && hasCustomerSafeGeometry(latest)) {
       return latest;
     }
     return null;
