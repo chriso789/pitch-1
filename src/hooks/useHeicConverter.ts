@@ -32,7 +32,7 @@ async function resolveDisplayUrl(url: string): Promise<string> {
   const storageObject = parseSupabaseStorageUrl(url);
   if (!storageObject) return url;
 
-  if (storageObject.accessMode === 'public') {
+  if (storageObject.accessMode === 'public' || storageObject.accessMode === 'sign') {
     signedUrlCache.set(url, url);
     return url;
   }
