@@ -68,7 +68,7 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
     setIsTracing(true);
     try {
       const { data, error } = await supabase.functions.invoke('trace-roof', {
-        body: { lat, lng, zoom: 20 },
+        body: { lat, lng, zoom: 22, mapSize: 512 },
       });
 
       if (error) throw error;
@@ -76,14 +76,17 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
 
       // The edge function returns { data: { roofType, components: {...}, facets, ... }, imageUrl, imageSize }
       // We need the components object which has ridges/hips/valleys/eaves/rakes/step_flashing arrays
-      const traceData = data?.data?.components || data?.data || data;
+      const aiData = data?.data || data;
+      const traceData = aiData?.components
+        ? { ...aiData.components, facets: aiData.facets }
+        : aiData;
       setTraceResult(traceData);
       
       // Use the imageSize from the response (scale=2 means 1280px)
       setImageSize(data?.imageSize || 1280);
       
       // Use the image URL returned by the edge function (has server-side API key)
-      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=22&size=640x640&scale=2&maptype=satellite`;
+      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=22&size=512x512&scale=2&maptype=satellite`;
       setSatImageUrl(url);
       setDialogOpen(true);
 
