@@ -28,10 +28,11 @@ Deno.serve(async (req) => {
 
     // Build satellite image URL if not provided
     let satImageUrl = imageUrl;
+    const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
     if (!satImageUrl) {
-      const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
-      const zoomLevel = zoom || 20;
-      satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+      // Zoom 21 + scale=2 gives a tight, high-res crop centered on the property
+      const zoomLevel = zoom || 21;
+      satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
     }
 
     console.log("Tracing roof at", lat, lng, "using image:", satImageUrl.substring(0, 80));
