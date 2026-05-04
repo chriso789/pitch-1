@@ -127,7 +127,7 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
               <div className="relative w-full" style={{ maxWidth: 640 }}>
                 <img src={satImageUrl} alt="Satellite" className="w-full rounded-lg" crossOrigin="anonymous" />
                 <svg
-                  viewBox="0 0 640 640"
+                  viewBox={`0 0 ${imageSize} ${imageSize}`}
                   className="absolute inset-0 w-full h-full"
                   style={{ pointerEvents: 'none' }}
                 >
