@@ -685,7 +685,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) {
       const layout = opts.photoLayout || 'auto';
       const cols = getPhotoGridCols(jobPhotos.length, layout);
-      const photosPerPage = getPhotosPerPage(jobPhotos.length, layout, cols);
+      const photosPerPage = getPhotosPerPage(layout, cols);
       const photoChunks: typeof jobPhotos[] = [];
       for (let i = 0; i < jobPhotos.length; i += photosPerPage) {
         photoChunks.push(jobPhotos.slice(i, i + photosPerPage));
@@ -1232,7 +1232,7 @@ function getPhotoGridCols(count: number, layout: string): number {
   return 4;
 }
 
-function getPhotosPerPage(count: number, layout: string, cols: number): number {
+function getPhotosPerPage(layout: string, cols: number): number {
   if (layout === '1col') return 2;
   if (layout === '2col') return 4;
   if (layout === '3col') return 9;
