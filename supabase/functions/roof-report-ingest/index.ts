@@ -1364,12 +1364,13 @@ Deno.serve(async (req) => {
     const pdfHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     console.log("roof-report-ingest: Computed PDF hash:", pdfHash.substring(0, 16) + "...");
 
-    // Check for duplicate by hash
-    const { data: existingReport } = await supabase
+    // Check for duplicate by hash — scoped to tenant to avoid cross-tenant collisions
+    let dupQuery = supabase
       .from("roof_vendor_reports")
       .select("id, address, provider, created_at")
-      .eq("file_hash", pdfHash)
-      .maybeSingle();
+      .eq("file_hash", pdfHash);
+    if (resolvedTenantId) dupQuery = dupQuery.eq("tenant_id", resolvedTenantId);
+    const { data: existingReport } = await dupQuery.maybeSingle();
 
     if (existingReport) {
       console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
