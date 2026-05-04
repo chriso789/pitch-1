@@ -528,7 +528,6 @@ export function UnifiedMeasurementPanel({
   const { data: aiMeasurements } = useQuery({
     queryKey: ['ai-measurements', pipelineEntryId],
     queryFn: async () => {
-      // Include both AI-pulled and manual measurements so users see full history
       const { data: roofRows, error } = await supabase
         .from('roof_measurements')
         .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, internal_debug_report_ready, customer_report_ready, gate_reason, validation_notes, last_failure_reason, overlay_schema, patent_model, solar_building_footprint_sqft, ai_detection_data')
@@ -540,7 +539,8 @@ export function UnifiedMeasurementPanel({
         return [];
       }
 
-      const linkedJobIds = new Set((roofRows || []).map((row: any) => row.ai_measurement_job_id).filter(Boolean));
+      const aiRoofRows = (roofRows || []).filter((row: any) => !isManualRoofMeasurement(row));
+      const linkedJobIds = new Set(aiRoofRows.map((row: any) => row.ai_measurement_job_id).filter(Boolean));
       const { data: jobs, error: jobsError } = await supabase
         .from('ai_measurement_jobs')
         .select('id, lead_id, source_record_id, status, status_message, failure_reason, report_pdf_url, report_pdf_path, created_at, completed_at')
@@ -555,7 +555,7 @@ export function UnifiedMeasurementPanel({
         .filter((job: any) => !linkedJobIds.has(job.id))
         .map(buildJobOnlyHistoryRow);
 
-      return [...(roofRows || []), ...jobOnlyRows]
+      return [...aiRoofRows, ...jobOnlyRows]
         .sort((a: any, b: any) => getTimeMs(b.created_at) - getTimeMs(a.created_at));
     },
     enabled: !!pipelineEntryId,
