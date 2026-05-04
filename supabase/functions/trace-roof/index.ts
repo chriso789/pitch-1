@@ -106,7 +106,7 @@ Be precise with coordinates. Every ridge endpoint should connect to a hip or rak
             content: [
               {
                 type: "text",
-                text: `Analyze this satellite image of a roof at coordinates ${lat}, ${lng}. Trace all roof components (ridges, hips, valleys, eaves, rakes, step flashing) with precise pixel coordinates on this 640x640 image. Return JSON only.`
+                text: `Analyze this satellite image of a roof at coordinates ${lat}, ${lng}. Trace ONLY the roof of the building at the CENTER of this ${imgSize}x${imgSize} image. Return all component pixel coordinates. Return JSON only.`
               },
               {
                 type: "image_url",
