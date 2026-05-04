@@ -70,7 +70,7 @@ interface OverlayDebugData {
   footprint_valid?: boolean;
   footprint_point_count?: number;
   footprint_area_sqft?: number;
-  dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: any; dsm_bbox: any } | null;
+  dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: unknown; dsm_bbox: unknown } | null;
   // Registration quality metrics
   overlay_calibration?: {
     registration_quality?: {
@@ -81,13 +81,13 @@ interface OverlayDebugData {
       publish_allowed?: boolean;
       block_reason?: string | null;
     };
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
 interface DSMDebugOverlayProps {
   overlayDebug: OverlayDebugData | null;
-  debugGeometry?: any;
+  debugGeometry?: unknown;
 }
 
 function parseRasterSizeFromUrl(url?: string | null): { width: number; height: number } | null {
@@ -203,8 +203,7 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
 
-  const data = overlayDebug;
-  if (!data) return null;
+  const data = overlayDebug || {};
 
   const inferredRasterSize = data.raster_size || parseRasterSizeFromUrl(data.raster_url);
   const rasterW = inferredRasterSize?.width || 1280;
@@ -213,43 +212,6 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
   const toggleLayer = (key: keyof typeof LAYER_DEFAULTS) => {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
   };
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(pan.x, pan.y);
-    ctx.scale(zoom, zoom);
-
-    // Draw raster background
-    if (layers.raster && data.raster_url) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.translate(pan.x, pan.y);
-        ctx.scale(zoom, zoom);
-        ctx.globalAlpha = 0.7;
-        ctx.drawImage(img, 0, 0, rasterW, rasterH);
-        ctx.globalAlpha = 1.0;
-        drawOverlays(ctx);
-        ctx.restore();
-      };
-      img.src = data.raster_url;
-    } else {
-      // Dark background
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, rasterW, rasterH);
-      drawOverlays(ctx);
-    }
-
-    ctx.restore();
-  }, [data, layers, zoom, pan, rasterW, rasterH]);
 
   const drawOverlays = useCallback((ctx: CanvasRenderingContext2D) => {
     // Footprint
@@ -301,7 +263,7 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
       for (const edge of visibleEdges) {
         const baseColor = EDGE_COLORS[edge.type] || '#ffffff';
         // Confidence-based opacity: stronger edges are more opaque
-        const confidence = (edge as any).confidence ?? 1;
+        const confidence = (edge as OverlayEdge & { confidence?: number }).confidence ?? 1;
         const alpha = Math.max(0.3, Math.min(1, confidence));
         ctx.strokeStyle = baseColor;
         ctx.globalAlpha = alpha;
