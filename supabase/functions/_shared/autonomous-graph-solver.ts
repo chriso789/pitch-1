@@ -1525,18 +1525,59 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
   }
 
-  // Totals
+  // Totals — exclude 'unclassified' from official measurements
   const outRidges = outputEdges.filter(e => e.type === 'ridge');
   const outHips = outputEdges.filter(e => e.type === 'hip');
   const outValleys = outputEdges.filter(e => e.type === 'valley');
   const outEaves = outputEdges.filter(e => e.type === 'eave');
   const outRakes = outputEdges.filter(e => e.type === 'rake');
+  const outUnclassified = outputEdges.filter(e => e.type === 'unclassified');
   const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
+
+  // ===== FOOTPRINT BOUNDARY CHECK =====
+  // Check how many emitted edges have endpoints outside the footprint
+  let edgesOutsideFootprintCount = 0;
+  let maxEndpointDistanceOutsideFootprintPx = 0;
+  const footprintGeo = input.footprintCoords;
+  for (const edge of outputEdges) {
+    const startInside = pointInPolygon(edge.start, footprintGeo);
+    const endInside = pointInPolygon(edge.end, footprintGeo);
+    if (!startInside || !endInside) {
+      edgesOutsideFootprintCount++;
+      // Approximate distance outside in px (use DSM transform if available)
+      if (effectiveDSM) {
+        for (const pt of [edge.start, edge.end]) {
+          if (!pointInPolygon(pt, footprintGeo)) {
+            // Find min distance to footprint boundary
+            let minDist = Infinity;
+            for (let i = 0; i < footprintGeo.length; i++) {
+              const a = footprintGeo[i];
+              const b = footprintGeo[(i + 1) % footprintGeo.length];
+              const dx = b[0] - a[0], dy = b[1] - a[1];
+              const len2 = dx * dx + dy * dy;
+              let t = len2 > 0 ? ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / len2 : 0;
+              t = Math.max(0, Math.min(1, t));
+              const px = a[0] + t * dx, py = a[1] + t * dy;
+              const dist = Math.hypot(pt[0] - px, pt[1] - py);
+              if (dist < minDist) minDist = dist;
+            }
+            // Convert geo distance to approximate px
+            const pxDist = minDist * effectiveDSM.width / (effectiveDSM.bounds.maxLng - effectiveDSM.bounds.minLng);
+            if (pxDist > maxEndpointDistanceOutsideFootprintPx) {
+              maxEndpointDistanceOutsideFootprintPx = pxDist;
+            }
+          }
+        }
+      }
+    }
+  }
+  maxEndpointDistanceOutsideFootprintPx = Math.round(maxEndpointDistanceOutsideFootprintPx * 100) / 100;
 
   const totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
   const totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
-  const attemptedAreaTotal = planar.faces.reduce((s: number, face: any) => {
-    const polygon = effectiveDSM ? face.polygon.map((p: { x: number; y: number }) => pxToGeoPoint(p, effectiveDSM)) : [];
+  const attemptedAreaTotal = planar.faces.reduce((s: number, face: unknown) => {
+    const f = face as { polygon: Array<{ x: number; y: number }> };
+    const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     return polygon.length >= 3 ? s + polygonAreaSqft(polygon, midLat) : s;
   }, 0);
   const coverageRatio = planar.debug.face_coverage_ratio || (footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0);
@@ -1574,6 +1615,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency reclassification';
   }
 
+  // ===== HARD BLOCK: edges outside footprint =====
+  let customerBlockReason = validation.valid ? (planar.debug.customer_block_reason || null) : validation.status;
+  if (edgesOutsideFootprintCount > 0) {
+    customerBlockReason = customerBlockReason || 'edges_outside_footprint';
+    warnings.push(`${edgesOutsideFootprintCount} edges have endpoints outside footprint (max dist ${maxEndpointDistanceOutsideFootprintPx}px)`);
+  }
+
   // Build vertex output
   const outputVertices: GraphVertex[] = [];
   let vId = 0;
@@ -1596,6 +1644,24 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   const timingMs = Date.now() - startMs;
+
+  // ===== EDGE EMIT DIAGNOSTICS =====
+  const edgeEmitDiagnostics = {
+    edge_emit_policy: 'face_adjacency_filtered',
+    segments_input_total: planar.edges.length,
+    segments_skipped_no_faces: skippedNoFace,
+    segments_emitted_structural_2_faces: outputEdges.filter(e => e.source === 'dsm' && e.type !== 'eave' && e.type !== 'rake').length,
+    segments_emitted_boundary_1_face: outputEdges.filter(e => e.type === 'eave' || e.type === 'rake').length,
+    emitted_edges_total: outputEdges.length,
+    ridge_edges_total: outRidges.length,
+    hip_edges_total: outHips.length,
+    valley_edges_total: outValleys.length,
+    eave_edges_total: outEaves.length,
+    rake_edges_total: outRakes.length,
+    unclassified_edges_total: outUnclassified.length,
+    edges_outside_footprint_count: edgesOutsideFootprintCount,
+    max_endpoint_distance_outside_footprint_px: maxEndpointDistanceOutsideFootprintPx,
+  };
 
   const logs: AutonomousGraphLog = {
     mask_vertices: input.footprintCoords.length,
@@ -1636,14 +1702,18 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     attempted_face_count: planar.faces.length,
     attempted_edge_count: outputEdges.length,
     face_rejection_table: faceRejectionTable,
-    edge_classification_debug: edgeClassificationDebug,
+    edge_classification_debug: { ...edgeClassificationDebug, ...edgeEmitDiagnostics },
     pitch_source: 'dsm_plane_fit',
     dsm_mask_valid: dsmMaskValid,
     topology_source: 'autonomous_dsm_graph_solver',
     facet_source: 'dsm_planar_graph_faces',
     hard_fail_reason: validation.valid ? null : validation.status,
-    customer_block_reason: validation.valid ? (planar.debug.customer_block_reason || null) : validation.status,
+    customer_block_reason: customerBlockReason,
   };
+
+  console.log(`[EDGE_EMIT_DIAGNOSTICS] ${JSON.stringify(edgeEmitDiagnostics)}`);
+  console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
 
   console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
   console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
