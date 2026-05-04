@@ -33,10 +33,12 @@ export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps)
 
     setUploadingCategory(category);
     try {
-      for (const file of Array.from(files)) {
-        if (!file.type.startsWith('image/')) continue;
-        if (file.size > 10 * 1024 * 1024) {
-          toast({ title: 'File too large', description: `${file.name} exceeds 10MB limit`, variant: 'destructive' });
+      for (const rawFile of Array.from(files)) {
+        if (!rawFile.type.startsWith('image/') && !/\.(heic|heif)$/i.test(rawFile.name)) continue;
+        // Compress before size check — handles large drone/HEIC photos
+        const file = await compressImage(rawFile);
+        if (file.size > 25 * 1024 * 1024) {
+          toast({ title: 'File too large', description: `${rawFile.name} still exceeds 25MB after compression`, variant: 'destructive' });
           continue;
         }
         await uploadPhoto({ file, category, leadId, contactId });
