@@ -1,4 +1,5 @@
 import React from 'react';
+import { SafeImage } from '@/components/ui/safe-image';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Badge } from '@/components/ui/badge';
