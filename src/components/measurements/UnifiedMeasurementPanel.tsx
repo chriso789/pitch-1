@@ -156,6 +156,13 @@ const isPlausibleRoofMeasurement = (measurement: any): boolean => (
   isPlausibleRoofSqft(measurement?.total_area_adjusted_sqft || measurement?.total_area_flat_sqft)
 );
 
+const isManualRoofMeasurement = (measurement: any): boolean => {
+  const footprintSource = String(measurement?.footprint_source || '').toLowerCase();
+  const detectionMethod = String(measurement?.detection_method || '').toLowerCase();
+  const aiSource = String(measurement?.ai_detection_data?.source || '').toLowerCase();
+  return footprintSource.includes('manual') || detectionMethod.includes('manual') || aiSource.includes('manual');
+};
+
 const hasDebugRoofReport = (measurement: any): boolean => Boolean(
   measurement?.internal_debug_report_ready ||
   measurement?.geometry_report_json?.overlay_debug ||
