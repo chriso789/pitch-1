@@ -114,10 +114,22 @@ const EDGE_COLORS: Record<string, string> = {
 
 const EPS = 1e-6;
 
+function pointOnSegment(point: [number, number], a: [number, number], b: [number, number]): boolean {
+  const cross = (point[1] - a[1]) * (b[0] - a[0]) - (point[0] - a[0]) * (b[1] - a[1]);
+  if (Math.abs(cross) > EPS) return false;
+  return (
+    point[0] >= Math.min(a[0], b[0]) - EPS &&
+    point[0] <= Math.max(a[0], b[0]) + EPS &&
+    point[1] >= Math.min(a[1], b[1]) - EPS &&
+    point[1] <= Math.max(a[1], b[1]) + EPS
+  );
+}
+
 function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
   const [x, y] = point;
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    if (pointOnSegment(point, polygon[j], polygon[i])) return true;
     const [xi, yi] = polygon[i];
     const [xj, yj] = polygon[j];
     const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || EPS) + xi;
