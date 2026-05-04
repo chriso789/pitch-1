@@ -1358,6 +1358,13 @@ export function UnifiedMeasurementPanel({
                   pipelineEntryId={pipelineEntryId}
                   address={address}
                 />
+                <TraceRoofButton
+                  lat={latitude}
+                  lng={longitude}
+                  address={address}
+                  pipelineEntryId={pipelineEntryId}
+                  onSuccess={handleMeasurementSuccess}
+                />
               </div>
             </CollapsibleContent>
           </Collapsible>
