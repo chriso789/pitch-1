@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { SafeImage } from '@/components/ui/safe-image';
 import { logMobileActivity } from '@/lib/mobileActivityLogger';
 import { Camera, ArrowLeft, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -133,7 +134,7 @@ const MobileJobPhotos = () => {
                       onClick={() => setPreviewUrl(photo.file_url)}
                       className="aspect-square rounded-lg overflow-hidden border border-border bg-muted"
                     >
-                      <img src={photo.file_url} alt={label} className="w-full h-full object-cover" />
+                      <SafeImage src={photo.file_url} alt={label} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -154,7 +155,7 @@ const MobileJobPhotos = () => {
           >
             <X className="h-6 w-6" />
           </Button>
-          <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+          <SafeImage src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
         </div>
       )}
     </div>

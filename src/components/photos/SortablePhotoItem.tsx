@@ -1,4 +1,5 @@
 import React from 'react';
+import { SafeImage } from '@/components/ui/safe-image';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Badge } from '@/components/ui/badge';
@@ -110,7 +111,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
         <Checkbox checked={isSelected} onCheckedChange={onSelect} />
 
         <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
-          <img
+          <SafeImage
             src={photo.file_url}
             alt={photo.description || 'Photo'}
             className="w-full h-full object-cover"
@@ -213,7 +214,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
     >
       {/* Image */}
       <div className="aspect-square relative">
-        <img
+        <SafeImage
           src={photo.file_url}
           alt={photo.description || 'Photo'}
           className="w-full h-full object-cover"

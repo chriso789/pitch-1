@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { SafeImage } from '@/components/ui/safe-image';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -97,7 +98,7 @@ export function HousePhotoGallery({ photos, onUpload, isUploading }: HousePhotoG
         <CardContent className="p-0">
           {/* Main Image */}
           <div className="relative aspect-video bg-black">
-            <img
+            <SafeImage
               src={photos[currentIndex]?.file_url}
               alt={photos[currentIndex]?.file_name || 'Property photo'}
               className="w-full h-full object-contain"
@@ -166,7 +167,7 @@ export function HousePhotoGallery({ photos, onUpload, isUploading }: HousePhotoG
                       : "border-transparent hover:border-muted-foreground/30"
                   )}
                 >
-                  <img
+                  <SafeImage
                     src={photo.file_url}
                     alt={photo.file_name || 'Thumbnail'}
                     className="w-full h-full object-cover"
@@ -188,7 +189,7 @@ export function HousePhotoGallery({ photos, onUpload, isUploading }: HousePhotoG
             <X className="w-6 h-6" />
           </button>
           {fullscreenPhoto && (
-            <img
+            <SafeImage
               src={fullscreenPhoto.file_url}
               alt={fullscreenPhoto.file_name || 'Property photo'}
               className="w-full h-full object-contain"

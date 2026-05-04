@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { SafeImage } from '@/components/ui/safe-image';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -205,7 +206,7 @@ export function PropertyPhotoGallery() {
                 className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group"
                 onClick={() => setSelectedPhoto(photo)}
               >
-                <img
+                <SafeImage
                   src={photo.photo_url}
                   alt={photo.category}
                   className="w-full h-full object-cover transition-transform group-hover:scale-105"
@@ -246,7 +247,7 @@ export function PropertyPhotoGallery() {
                       className="w-32 h-24 rounded-lg overflow-hidden cursor-pointer shrink-0"
                       onClick={() => setSelectedPhoto(photo)}
                     >
-                      <img
+                      <SafeImage
                         src={photo.photo_url}
                         alt={photo.category}
                         className="w-full h-full object-cover"
@@ -328,7 +329,7 @@ export function PropertyPhotoGallery() {
         <DialogContent className="max-w-4xl p-0">
           {selectedPhoto && (
             <div className="relative">
-              <img
+              <SafeImage
                 src={selectedPhoto.photo_url}
                 alt={selectedPhoto.category}
                 className="w-full h-auto max-h-[80vh] object-contain"
