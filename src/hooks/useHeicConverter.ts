@@ -1,11 +1,44 @@
 import { useState, useEffect } from 'react';
 import heic2any from 'heic2any';
+import { supabase } from '@/integrations/supabase/client';
 
 const cache = new Map<string, string>();
+const signedUrlCache = new Map<string, string>();
 
 function isHeicUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return lower.includes('.heic') || lower.includes('.heif');
+}
+
+function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } | null {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const objectIndex = parts.findIndex((part, index) => part === 'object' && parts[index - 1] === 'v1');
+    const accessMode = objectIndex >= 0 ? parts[objectIndex + 1] : null;
+    const bucket = objectIndex >= 0 ? parts[objectIndex + 2] : null;
+    const path = objectIndex >= 0 ? parts.slice(objectIndex + 3).join('/') : null;
+
+    if (!bucket || !path || !['public', 'authenticated', 'sign'].includes(accessMode || '')) return null;
+    return { bucket, path };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveDisplayUrl(url: string): Promise<string> {
+  if (signedUrlCache.has(url)) return signedUrlCache.get(url)!;
+
+  const storageObject = parseSupabaseStorageUrl(url);
+  if (!storageObject) return url;
+
+  const { data, error } = await supabase.storage
+    .from(storageObject.bucket)
+    .createSignedUrl(storageObject.path, 60 * 60);
+
+  if (error || !data?.signedUrl) return url;
+  signedUrlCache.set(url, data.signedUrl);
+  return data.signedUrl;
 }
 
 /**
@@ -19,7 +52,6 @@ export function useHeicUrl(url: string | undefined | null): { displayUrl: string
 
   useEffect(() => {
     if (!url) { setDisplayUrl(''); return; }
-    if (!isHeicUrl(url)) { setDisplayUrl(url); return; }
     if (cache.has(url)) { setDisplayUrl(cache.get(url)!); return; }
 
     let cancelled = false;
@@ -27,7 +59,14 @@ export function useHeicUrl(url: string | undefined | null): { displayUrl: string
 
     (async () => {
       try {
-        const resp = await fetch(url);
+        const resolvedUrl = await resolveDisplayUrl(url);
+
+        if (!isHeicUrl(url)) {
+          if (!cancelled) setDisplayUrl(resolvedUrl);
+          return;
+        }
+
+        const resp = await fetch(resolvedUrl);
         if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
         const blob = await resp.blob();
         const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
