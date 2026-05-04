@@ -193,6 +193,8 @@ const LAYER_DEFAULTS = {
   facets: false,
 };
 
+const EMPTY_OVERLAY_DEBUG_DATA: OverlayDebugData = {};
+
 export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlayProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [layers, setLayers] = useState(LAYER_DEFAULTS);
@@ -203,7 +205,7 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
 
-  const data = overlayDebug || {};
+  const data = overlayDebug || EMPTY_OVERLAY_DEBUG_DATA;
 
   const inferredRasterSize = data.raster_size || parseRasterSizeFromUrl(data.raster_url);
   const rasterW = inferredRasterSize?.width || 1280;
