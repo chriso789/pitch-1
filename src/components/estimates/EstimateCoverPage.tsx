@@ -72,6 +72,14 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
 
   const logoUrl = companyLogo || companyInfo?.logo_url;
   const displayCompanyName = companyInfo?.name || companyName;
+  const primaryColor = companyInfo?.brand_primary_color || 'hsl(var(--primary))';
+  const accentColor = companyInfo?.brand_accent_color || '#1a1a2e';
+  const eyebrow = companyInfo?.brand_tagline || 'PROJECT PROPOSAL';
+
+  // Parse headline: use pipe-separated parts "LINE1|ACCENT|LINE2"
+  const headlineParts = companyInfo?.brand_headline
+    ? companyInfo.brand_headline.split('|').map(s => s.trim())
+    : ['YOUR', 'HOME.', 'REIMAGINED.'];
 
   return (
     <div
