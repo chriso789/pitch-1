@@ -1,0 +1,1 @@
+UPDATE roof_measurements SET report_pdf_url = NULL, report_pdf_path = NULL WHERE ai_measurement_job_id = '801652d4-3247-4ed5-b273-a86387b7dab5';
