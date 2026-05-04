@@ -78,33 +78,51 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      // Set canvas size to match image
-      const maxWidth = Math.min(800, window.innerWidth - 100);
-      const maxHeight = window.innerHeight - 300;
-      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+    const loadImage = async () => {
+      let imgSrc = photo.file_url;
       
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Save initial state
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      setHistory([imageData]);
-      setHistoryIndex(0);
-      setImageLoaded(true);
+      // Convert HEIC/HEIF to blob URL
+      const lower = imgSrc.toLowerCase();
+      if (lower.includes('.heic') || lower.includes('.heif')) {
+        try {
+          const resp = await fetch(imgSrc);
+          const blob = await resp.blob();
+          const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
+          const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+          imgSrc = URL.createObjectURL(jpegBlob);
+        } catch (err) {
+          console.warn('[PhotoMarkupEditor] HEIC conversion failed:', err);
+        }
+      }
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const maxWidth = Math.min(800, window.innerWidth - 100);
+        const maxHeight = window.innerHeight - 300;
+        const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+        
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        setHistory([imageData]);
+        setHistoryIndex(0);
+        setImageLoaded(true);
+      };
+      img.onerror = () => {
+        toast({
+          title: 'Failed to load image',
+          description: 'Could not load the photo for editing',
+          variant: 'destructive',
+        });
+      };
+      img.src = imgSrc;
     };
-    img.onerror = () => {
-      toast({
-        title: 'Failed to load image',
-        description: 'Could not load the photo for editing',
-        variant: 'destructive',
-      });
-    };
-    img.src = photo.file_url;
+
+    loadImage();
 
     return () => {
       setImageLoaded(false);
