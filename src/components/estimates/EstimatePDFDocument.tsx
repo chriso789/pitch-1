@@ -680,11 +680,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Job photos page(s) - may need multiple pages for large grids
+    // Job photos page(s) - layout labels represent the intended grid size
+    // (2×2 = 4 photos, 3×3 = 9 photos, 4×4 = 16 photos per page).
     if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) {
-      const cols = getPhotoGridCols(jobPhotos.length, opts.photoLayout || 'auto');
-      // Each page can fit roughly: 2-col = 6, 3-col = 9, 4-col = 8, 1-col = 2
-      const photosPerPage = cols === 1 ? 2 : cols === 2 ? 4 : cols === 3 ? 6 : 8;
+      const layout = opts.photoLayout || 'auto';
+      const cols = getPhotoGridCols(jobPhotos.length, layout);
+      const photosPerPage = getPhotosPerPage(layout, cols);
       const photoChunks: typeof jobPhotos[] = [];
       for (let i = 0; i < jobPhotos.length; i += photosPerPage) {
         photoChunks.push(jobPhotos.slice(i, i + photosPerPage));
@@ -1231,11 +1232,19 @@ function getPhotoGridCols(count: number, layout: string): number {
   return 4;
 }
 
+function getPhotosPerPage(layout: string, cols: number): number {
+  if (layout === '1col') return 2;
+  if (layout === '2col') return 4;
+  if (layout === '3col') return 9;
+  if (layout === '4col') return 16;
+  return cols === 1 ? 2 : cols === 2 ? 4 : cols === 3 ? 9 : 16;
+}
+
 // Photos Page
 const PhotosPage: React.FC<{ jobPhotos: JobPhoto[]; cols: number; pageIndex: number; totalPhotoPages: number }> = ({ jobPhotos, cols, pageIndex, totalPhotoPages }) => {
   const gridClass = cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : cols === 3 ? 'grid-cols-3' : 'grid-cols-4';
   // Adjust image height based on grid density
-  const imgHeight = cols === 1 ? 'h-72' : cols === 2 ? 'h-48' : cols === 3 ? 'h-36' : 'h-28';
+  const imgHeight = cols === 1 ? 'h-72' : cols === 2 ? 'h-48' : cols === 3 ? 'h-36' : 'h-[9.75rem]';
   
   const isAerialOnly = jobPhotos.length === 1 && jobPhotos[0].category === 'aerial';
   const title = isAerialOnly ? 'Aerial View' : 'Project Photos';
