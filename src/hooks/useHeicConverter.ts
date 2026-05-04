@@ -62,16 +62,23 @@ async function persistConvertedHeic(originalUrl: string, jpegBlob: Blob): Promis
     .from(storageObject.bucket)
     .getPublicUrl(jpegPath);
 
+  const updatePayload = {
+    file_url: publicData.publicUrl,
+    file_name: jpegPath,
+    mime_type: 'image/jpeg',
+    file_size: jpegBlob.size,
+    description: jpegPath.split('/').pop() || 'photo.jpg',
+  };
+
   await supabase
     .from('customer_photos')
-    .update({
-      file_url: publicData.publicUrl,
-      file_name: jpegPath,
-      mime_type: 'image/jpeg',
-      file_size: jpegBlob.size,
-      description: jpegPath.split('/').pop() || 'photo.jpg',
-    })
+    .update(updatePayload)
     .eq('file_name', storageObject.path);
+
+  await supabase
+    .from('customer_photos')
+    .update(updatePayload)
+    .eq('file_url', originalUrl);
 
   const { data: signedData } = await supabase.storage
     .from(storageObject.bucket)
