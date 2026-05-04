@@ -680,11 +680,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Job photos page(s) - may need multiple pages for large grids
+    // Job photos page(s) - layout labels represent the intended grid size
+    // (2×2 = 4 photos, 3×3 = 9 photos, 4×4 = 16 photos per page).
     if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) {
-      const cols = getPhotoGridCols(jobPhotos.length, opts.photoLayout || 'auto');
-      // Each page can fit roughly: 2-col = 6, 3-col = 9, 4-col = 8, 1-col = 2
-      const photosPerPage = cols === 1 ? 2 : cols === 2 ? 4 : cols === 3 ? 6 : 8;
+      const layout = opts.photoLayout || 'auto';
+      const cols = getPhotoGridCols(jobPhotos.length, layout);
+      const photosPerPage = getPhotosPerPage(jobPhotos.length, layout, cols);
       const photoChunks: typeof jobPhotos[] = [];
       for (let i = 0; i < jobPhotos.length; i += photosPerPage) {
         photoChunks.push(jobPhotos.slice(i, i + photosPerPage));
