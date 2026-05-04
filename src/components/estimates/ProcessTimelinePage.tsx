@@ -1,6 +1,8 @@
 /**
  * ProcessTimelinePage — bold magazine-style "How it works" page.
  * Renders as a full letter-sized page in the estimate PDF + online viewer.
+ *
+ * Now fully dynamic — uses brand colors from companyInfo.
  */
 import React from 'react';
 import {
@@ -44,7 +46,21 @@ const STEPS = [
   },
 ];
 
-export const ProcessTimelinePage: React.FC = () => {
+interface ProcessTimelinePageProps {
+  companyName?: string;
+  companyInfo?: {
+    brand_primary_color?: string | null;
+    brand_accent_color?: string | null;
+    [key: string]: unknown;
+  };
+}
+
+export const ProcessTimelinePage: React.FC<ProcessTimelinePageProps> = ({
+  companyInfo,
+}) => {
+  const primaryColor = companyInfo?.brand_primary_color || 'hsl(var(--primary))';
+  const accentColor = companyInfo?.brand_accent_color || '#1a1a2e';
+
   return (
     <div
       data-report-page
@@ -65,7 +81,7 @@ export const ProcessTimelinePage: React.FC = () => {
           className="font-black leading-[0.9] mb-4"
           style={{ fontSize: '64px', letterSpacing: '-0.03em' }}
         >
-          From <span style={{ color: 'hsl(var(--primary))' }}>handshake</span>
+          From <span style={{ color: primaryColor }}>handshake</span>
           <br />
           to handoff.
         </h2>
@@ -83,7 +99,7 @@ export const ProcessTimelinePage: React.FC = () => {
             className="absolute left-[34px] top-2 bottom-2 w-[3px] rounded-full"
             style={{
               background:
-                'linear-gradient(180deg, hsl(var(--primary)) 0%, #1a1a2e 100%)',
+                `linear-gradient(180deg, ${primaryColor} 0%, ${accentColor} 100%)`,
             }}
           />
 
@@ -97,7 +113,7 @@ export const ProcessTimelinePage: React.FC = () => {
                     className="absolute left-0 top-0 w-[72px] h-[72px] rounded-full flex flex-col items-center justify-center text-white shadow-lg"
                     style={{
                       background:
-                        'linear-gradient(135deg, hsl(var(--primary)) 0%, #1a1a2e 100%)',
+                        `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`,
                     }}
                   >
                     <Icon className="w-5 h-5 mb-0.5" />
@@ -108,7 +124,7 @@ export const ProcessTimelinePage: React.FC = () => {
 
                   {/* Content card */}
                   <div className="bg-gray-50 border-l-4 rounded-r-lg p-5"
-                       style={{ borderColor: 'hsl(var(--primary))' }}>
+                       style={{ borderColor: primaryColor }}>
                     <h3
                       className="font-bold text-gray-900 mb-1.5"
                       style={{ fontSize: '22px', letterSpacing: '-0.01em' }}
@@ -129,14 +145,14 @@ export const ProcessTimelinePage: React.FC = () => {
       {/* Bottom accent block */}
       <div
         className="absolute bottom-0 left-0 right-0 px-12 py-5 text-white flex items-center justify-between"
-        style={{ background: '#1a1a2e' }}
+        style={{ background: accentColor }}
       >
         <div className="text-[10px] font-bold tracking-[0.4em] opacity-70">
           QUALITY · TRANSPARENCY · CRAFTSMANSHIP
         </div>
         <div
           className="text-[10px] font-bold tracking-[0.3em]"
-          style={{ color: 'hsl(var(--primary))' }}
+          style={{ color: primaryColor }}
         >
           NEXT → YOUR INVESTMENT
         </div>
