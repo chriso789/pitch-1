@@ -10,6 +10,22 @@ export type ProposalTemplateStyle =
   | 'warm-craftsman'        // Earthy tones, textured feel, handcraft vibe
   | 'premium-dark'          // Full dark theme, luxury feel, metallic accents
 
+export interface BrandStat {
+  value: string;
+  label: string;
+}
+
+export interface BrandTestimonial {
+  quote: string;
+  attribution: string;
+}
+
+export interface BrandCommitment {
+  title: string;
+  body: string;
+  icon?: string;
+}
+
 export interface TemplatePageProps {
   companyInfo?: {
     name: string;
@@ -25,6 +41,13 @@ export interface TemplatePageProps {
     brand_story?: string | null;
     brand_mission?: string | null;
     brand_certifications?: string | null;
+    brand_tagline?: string | null;
+    brand_headline?: string | null;
+    brand_stats?: BrandStat[] | null;
+    brand_testimonial?: BrandTestimonial | null;
+    brand_commitments?: BrandCommitment[] | null;
+    brand_primary_color?: string | null;
+    brand_accent_color?: string | null;
     primary_color?: string | null;
     secondary_color?: string | null;
   };
@@ -47,6 +70,11 @@ export interface WhyChooseUsProps extends TemplatePageProps {
   brandStory?: string | null;
   brandMission?: string | null;
   brandCertifications?: string | null;
+  brandStats?: BrandStat[] | null;
+  brandTestimonial?: BrandTestimonial | null;
+  brandCommitments?: BrandCommitment[] | null;
+  brandPrimaryColor?: string | null;
+  brandAccentColor?: string | null;
 }
 
 export interface ProcessTimelineProps {

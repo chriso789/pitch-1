@@ -40,6 +40,13 @@ interface CompanyInfo {
   brand_story?: string | null;
   brand_mission?: string | null;
   brand_certifications?: string | null;
+  brand_tagline?: string | null;
+  brand_headline?: string | null;
+  brand_stats?: { value: string; label: string }[] | null;
+  brand_testimonial?: { quote: string; attribution: string } | null;
+  brand_commitments?: { title: string; body: string; icon?: string }[] | null;
+  brand_primary_color?: string | null;
+  brand_accent_color?: string | null;
 }
 
 interface CompanyLocation {
@@ -590,6 +597,11 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           brandStory={companyInfo?.brand_story}
           brandMission={companyInfo?.brand_mission}
           brandCertifications={companyInfo?.brand_certifications}
+          brandStats={companyInfo?.brand_stats as any}
+          brandTestimonial={companyInfo?.brand_testimonial as any}
+          brandCommitments={companyInfo?.brand_commitments as any}
+          brandPrimaryColor={companyInfo?.brand_primary_color}
+          brandAccentColor={companyInfo?.brand_accent_color}
         />
       );
 

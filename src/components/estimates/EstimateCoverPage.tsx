@@ -24,6 +24,10 @@ interface CompanyInfo {
   brand_story?: string | null;
   brand_mission?: string | null;
   brand_certifications?: string | null;
+  brand_headline?: string | null;
+  brand_tagline?: string | null;
+  brand_primary_color?: string | null;
+  brand_accent_color?: string | null;
 }
 
 interface EstimateCoverPageProps {
@@ -68,6 +72,14 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
 
   const logoUrl = companyLogo || companyInfo?.logo_url;
   const displayCompanyName = companyInfo?.name || companyName;
+  const primaryColor = companyInfo?.brand_primary_color || 'hsl(var(--primary))';
+  const accentColor = companyInfo?.brand_accent_color || '#1a1a2e';
+  const eyebrow = companyInfo?.brand_tagline || 'PROJECT PROPOSAL';
+
+  // Parse headline: use pipe-separated parts "LINE1|ACCENT|LINE2"
+  const headlineParts = companyInfo?.brand_headline
+    ? companyInfo.brand_headline.split('|').map(s => s.trim())
+    : ['YOUR', 'HOME.', 'REIMAGINED.'];
 
   return (
     <div
@@ -93,7 +105,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
             className="w-full h-full"
             style={{
               background:
-                'linear-gradient(135deg, hsl(var(--primary)) 0%, #1a1a2e 100%)',
+                `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`,
             }}
           />
         )}
@@ -137,7 +149,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
         <div className="absolute bottom-0 left-0 right-0 px-10 pb-10">
           <div className="text-white">
             <div className="text-[11px] font-semibold tracking-[0.4em] opacity-80 mb-2">
-              PROJECT PROPOSAL
+              {eyebrow}
             </div>
             <h1
               className="font-black leading-[0.85] tracking-tight drop-shadow-xl"
@@ -147,10 +159,10 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
                 lineHeight: 0.85,
               }}
             >
-              YOUR
+              {headlineParts[0]}
               <br />
-              <span style={{ color: 'hsl(var(--primary))' }}>HOME.</span>{' '}
-              REIMAGINED.
+              <span style={{ color: primaryColor }}>{headlineParts[1] || ''}</span>{' '}
+              {headlineParts[2] || ''}
             </h1>
           </div>
         </div>
@@ -167,7 +179,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
           style={{
             height: '10px',
             background:
-              'linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary)) 65%, #1a1a2e 65%, #1a1a2e 100%)',
+              `linear-gradient(90deg, ${primaryColor} 0%, ${primaryColor} 65%, ${accentColor} 65%, ${accentColor} 100%)`,
           }}
         />
 

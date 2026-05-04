@@ -1,9 +1,12 @@
 /**
  * WhyChooseUsPage — bold trust-builder page. Stats, badges, guarantees.
  * Full letter-sized page rendered in the estimate PDF + online viewer.
+ * 
+ * All content is now fully dynamic — pulls from company brand settings.
  */
 import React from 'react';
 import { Award, ShieldCheck, Star, Wrench, Clock, ThumbsUp } from 'lucide-react';
+import type { BrandStat, BrandCommitment, BrandTestimonial } from './templates/types';
 
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -15,45 +18,59 @@ interface WhyChooseUsPageProps {
   brandStory?: string | null;
   brandMission?: string | null;
   brandCertifications?: string | null;
+  brandStats?: BrandStat[] | null;
+  brandTestimonial?: BrandTestimonial | null;
+  brandCommitments?: BrandCommitment[] | null;
+  brandPrimaryColor?: string | null;
+  brandAccentColor?: string | null;
 }
 
-const buildStats = (establishedYear?: number | null) => {
+const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
+  shield: ShieldCheck,
+  award: Award,
+  wrench: Wrench,
+  clock: Clock,
+};
+
+const DEFAULT_PROMISES: BrandCommitment[] = [
+  {
+    title: 'Lifetime Workmanship Warranty',
+    body: 'Every install is backed in writing — long after the trucks pull away.',
+    icon: 'shield',
+  },
+  {
+    title: 'Manufacturer-Certified Crews',
+    body: 'Factory-trained installers using OEM-approved methods and materials.',
+    icon: 'award',
+  },
+  {
+    title: 'Daily Clean-Up Standard',
+    body: 'Magnetic nail sweeps, debris removal, and a job-site you can live with.',
+    icon: 'wrench',
+  },
+  {
+    title: 'On-Time, On-Budget',
+    body: 'Clear schedules, fixed pricing, no surprise change-orders.',
+    icon: 'clock',
+  },
+];
+
+const buildDefaultStats = (establishedYear?: number | null): BrandStat[] => {
   const yearsInBusiness = establishedYear
     ? Math.max(1, new Date().getFullYear() - establishedYear)
     : null;
   return [
-    {
-      value: yearsInBusiness ? `${yearsInBusiness}+` : '20+',
-      label: 'Years\nin business',
-    },
+    { value: yearsInBusiness ? `${yearsInBusiness}+` : '20+', label: 'Years\nin business' },
     { value: '5,000+', label: 'Projects\ncompleted' },
     { value: '5.0★', label: 'Average\ncustomer rating' },
     { value: '100%', label: 'Licensed,\nbonded, insured' },
   ];
 };
 
-const PROMISES = [
-  {
-    icon: ShieldCheck,
-    title: 'Lifetime Workmanship Warranty',
-    body: 'Every install is backed in writing — long after the trucks pull away.',
-  },
-  {
-    icon: Award,
-    title: 'Manufacturer-Certified Crews',
-    body: 'Factory-trained installers using OEM-approved methods and materials.',
-  },
-  {
-    icon: Wrench,
-    title: 'Daily Clean-Up Standard',
-    body: 'Magnetic nail sweeps, debris removal, and a job-site you can live with.',
-  },
-  {
-    icon: Clock,
-    title: 'On-Time, On-Budget',
-    body: 'Clear schedules, fixed pricing, no surprise change-orders.',
-  },
-];
+const DEFAULT_TESTIMONIAL: BrandTestimonial = {
+  quote: 'They showed up when they said they would, did exactly what they promised, and the finished product looks unbelievable. Easiest home decision we\'ve ever made.',
+  attribution: 'VERIFIED HOMEOWNER REVIEW',
+};
 
 export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
   companyName = 'Our Team',
@@ -62,11 +79,22 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
   brandStory,
   brandMission,
   brandCertifications,
+  brandStats,
+  brandTestimonial,
+  brandCommitments,
+  brandPrimaryColor,
+  brandAccentColor,
 }) => {
-  const stats = buildStats(establishedYear);
+  const stats = (brandStats && brandStats.length > 0) ? brandStats : buildDefaultStats(establishedYear);
+  const commitments = (brandCommitments && brandCommitments.length > 0) ? brandCommitments : DEFAULT_PROMISES;
+  const testimonial = brandTestimonial || DEFAULT_TESTIMONIAL;
+  const primaryColor = brandPrimaryColor || 'hsl(var(--primary))';
+  const accentColor = brandAccentColor || '#1a1a2e';
+
   const heroBlurb = brandStory
     ? brandStory
     : "You're not just hiring a contractor — you're hiring a team obsessed with doing it right the first time.";
+
   return (
     <div
       data-report-page
@@ -82,13 +110,12 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
       <div
         className="relative px-12 pt-12 pb-10 text-white"
         style={{
-          background:
-            'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 60%, hsl(var(--primary)) 130%)',
+          background: `linear-gradient(135deg, ${accentColor} 0%, ${accentColor} 60%, ${primaryColor} 130%)`,
         }}
       >
         <div
           className="text-[10px] font-bold tracking-[0.4em] mb-3"
-          style={{ color: 'hsl(var(--primary))' }}
+          style={{ color: primaryColor }}
         >
           {establishedYear ? `EST. ${establishedYear} · ` : ''}WHY HOMEOWNERS CHOOSE {companyName.toUpperCase()}
         </div>
@@ -98,7 +125,7 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
         >
           Built on
           <br />
-          <span style={{ color: 'hsl(var(--primary))' }}>reputation.</span>
+          <span style={{ color: primaryColor }}>reputation.</span>
           <br />
           Backed by results.
         </h2>
@@ -117,7 +144,7 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
             <Star
               key={i}
               className="w-5 h-5"
-              style={{ color: 'hsl(var(--primary))', fill: 'hsl(var(--primary))' }}
+              style={{ color: primaryColor, fill: primaryColor }}
             />
           ))}
           <span className="ml-2 text-xs font-semibold tracking-wider text-white/80">
@@ -127,12 +154,12 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-4 border-b border-gray-200">
-        {stats.map((s, i) => (
+      <div className={`grid grid-cols-${Math.min(stats.length, 4)} border-b border-gray-200`}>
+        {stats.slice(0, 4).map((s, i) => (
           <div
             key={i}
             className={`px-4 py-7 text-center ${
-              i < 3 ? 'border-r border-gray-200' : ''
+              i < Math.min(stats.length, 4) - 1 ? 'border-r border-gray-200' : ''
             }`}
           >
             <div
@@ -140,7 +167,7 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
               style={{
                 fontSize: '40px',
                 letterSpacing: '-0.03em',
-                color: 'hsl(var(--primary))',
+                color: primaryColor,
               }}
             >
               {s.value}
@@ -158,8 +185,8 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
           OUR COMMITMENT
         </div>
         <div className="grid grid-cols-2 gap-5">
-          {PROMISES.map((p) => {
-            const Icon = p.icon;
+          {commitments.slice(0, 4).map((p) => {
+            const IconComponent = ICON_MAP[p.icon || 'shield'] || ShieldCheck;
             return (
               <div
                 key={p.title}
@@ -168,11 +195,10 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
                 <div
                   className="w-12 h-12 shrink-0 rounded-lg flex items-center justify-center text-white"
                   style={{
-                    background:
-                      'linear-gradient(135deg, hsl(var(--primary)) 0%, #1a1a2e 100%)',
+                    background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`,
                   }}
                 >
-                  <Icon className="w-6 h-6" />
+                  <IconComponent className="w-6 h-6" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-bold text-base text-gray-900 mb-1 leading-tight">
@@ -192,17 +218,15 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
       <div className="mx-12 mb-8 relative">
         <div
           className="absolute -top-3 -left-2 text-7xl font-black leading-none select-none"
-          style={{ color: 'hsl(var(--primary))', opacity: 0.25 }}
+          style={{ color: primaryColor, opacity: 0.25 }}
         >
-          “
+          "
         </div>
         <blockquote
           className="pl-10 pr-4 py-3 italic text-gray-700 leading-relaxed"
           style={{ fontSize: '17px' }}
         >
-          They showed up when they said they would, did exactly what they
-          promised, and the finished product looks unbelievable. Easiest home
-          decision we've ever made.
+          {testimonial.quote}
         </blockquote>
         <div className="pl-10 mt-2 flex items-center gap-3">
           <div className="flex">
@@ -210,22 +234,19 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
               <Star
                 key={i}
                 className="w-3.5 h-3.5"
-                style={{
-                  color: 'hsl(var(--primary))',
-                  fill: 'hsl(var(--primary))',
-                }}
+                style={{ color: primaryColor, fill: primaryColor }}
               />
             ))}
           </div>
           <span className="text-[11px] font-bold tracking-wider text-gray-500">
-            — VERIFIED HOMEOWNER REVIEW
+            — {testimonial.attribution}
           </span>
         </div>
       </div>
 
       {/* Brand certifications / affiliations strip */}
       {brandCertifications && (
-        <div className="mx-12 mb-16 px-5 py-3 bg-gray-50 border-l-4 rounded-sm" style={{ borderColor: 'hsl(var(--primary))' }}>
+        <div className="mx-12 mb-16 px-5 py-3 bg-gray-50 border-l-4 rounded-sm" style={{ borderColor: primaryColor }}>
           <div className="text-[9px] font-bold tracking-[0.3em] text-gray-500 mb-1">
             CERTIFICATIONS & AFFILIATIONS
           </div>
@@ -238,13 +259,10 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
       {/* Footer guarantee bar */}
       <div
         className="absolute bottom-0 left-0 right-0 px-12 py-4 flex items-center justify-between text-white"
-        style={{ background: '#1a1a2e' }}
+        style={{ background: accentColor }}
       >
         <div className="flex items-center gap-2">
-          <ThumbsUp
-            className="w-4 h-4"
-            style={{ color: 'hsl(var(--primary))' }}
-          />
+          <ThumbsUp className="w-4 h-4" style={{ color: primaryColor }} />
           <span className="text-[11px] font-bold tracking-[0.25em]">
             100% SATISFACTION GUARANTEE
           </span>
