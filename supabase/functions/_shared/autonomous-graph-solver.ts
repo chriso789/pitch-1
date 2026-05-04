@@ -1337,7 +1337,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     if (lengthFt < 1) continue;
 
     // Use face adjacency count to determine edge type
-    let edgeType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+    let edgeType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'unclassified';
     let edgeSource: 'dsm' | 'perimeter' = 'dsm';
     let edgeScore = 0.8;
 
@@ -1346,8 +1346,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       // Classify using DSM interior edge matching
       const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
       if (classified.type === 'eave' || classified.type === 'rake') {
-        // Even if near footprint, if shared between 2 faces it's structural
-        edgeType = 'hip'; // default structural type
+        // Shared between 2 faces but can't determine structural type → unclassified
+        edgeType = 'unclassified';
       } else {
         edgeType = classified.type;
       }
