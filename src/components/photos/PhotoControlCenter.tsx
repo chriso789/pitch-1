@@ -398,7 +398,11 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                       toggleEstimateInclusion({ photoId: photo.id, include })
                     }
                     onDelete={async () => {
-                      await deletePhotos([photo.id]);
+                      try {
+                        await deletePhotos([photo.id]);
+                      } catch (err) {
+                        console.error('[PhotoControlCenter] Delete failed:', err);
+                      }
                     }}
                     onUpdateCategory={async (category) => {
                       await updatePhoto({ photoId: photo.id, category });
