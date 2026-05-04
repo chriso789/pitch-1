@@ -10,7 +10,7 @@ function isHeicUrl(url: string): boolean {
   return lower.includes('.heic') || lower.includes('.heif');
 }
 
-function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } | null {
+function parseSupabaseStorageUrl(url: string): { bucket: string; path: string; accessMode: string } | null {
   try {
     const parsed = new URL(url);
     const parts = parsed.pathname.split('/').filter(Boolean);
@@ -20,7 +20,7 @@ function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } 
     const path = objectIndex >= 0 ? parts.slice(objectIndex + 3).join('/') : null;
 
     if (!bucket || !path || !['public', 'authenticated', 'sign'].includes(accessMode || '')) return null;
-    return { bucket, path };
+    return { bucket, path, accessMode: accessMode! };
   } catch {
     return null;
   }
@@ -31,6 +31,11 @@ async function resolveDisplayUrl(url: string): Promise<string> {
 
   const storageObject = parseSupabaseStorageUrl(url);
   if (!storageObject) return url;
+
+  if (storageObject.accessMode === 'public' || storageObject.accessMode === 'sign') {
+    signedUrlCache.set(url, url);
+    return url;
+  }
 
   const { data, error } = await supabase.storage
     .from(storageObject.bucket)

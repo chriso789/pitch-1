@@ -60,6 +60,7 @@ interface SortablePhotoItemProps {
   onToggleEstimate: (include: boolean) => void;
   onDelete: () => void;
   onUpdateCategory: (category: PhotoCategory) => void;
+  imageLoading?: 'eager' | 'lazy';
 }
 
 export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
@@ -72,6 +73,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
   onToggleEstimate,
   onDelete,
   onUpdateCategory,
+  imageLoading = 'lazy',
 }) => {
   const {
     attributes,
@@ -115,6 +117,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
             src={photo.file_url}
             alt={photo.description || 'Photo'}
             className="w-full h-full object-cover"
+            loading={imageLoading}
           />
         </div>
 
@@ -222,6 +225,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
           src={photo.file_url}
           alt={photo.description || 'Photo'}
           className="w-full h-full object-cover"
+          loading={imageLoading}
         />
 
         {/* Drag handle & checkbox on hover */}

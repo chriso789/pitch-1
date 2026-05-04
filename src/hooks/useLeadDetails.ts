@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 export interface LeadDetailsData {
   id: string;
@@ -226,11 +227,15 @@ async function fetchDynamicRequirements(tenantId: string | undefined, pipelineEn
 }
 
 // Fetch photos from customer_photos table (canonical source)
-async function fetchPhotos(id: string) {
+async function fetchPhotos(id: string, tenantId: string | null) {
+  if (!tenantId) return [];
+
   const { data, error } = await supabase
     .from('customer_photos')
-    .select('*')
+    .select('id, tenant_id, contact_id, lead_id, project_id, file_url, file_name, original_filename, file_size, mime_type, category, description, display_order, uploaded_by, gps_latitude, gps_longitude, taken_at, include_in_estimate, is_primary, uploaded_at')
+    .eq('tenant_id', tenantId)
     .eq('lead_id', id)
+    .order('display_order', { ascending: true, nullsFirst: false })
     .order('uploaded_at', { ascending: false });
 
   if (error) throw error;
@@ -367,6 +372,7 @@ export interface ProjectData {
 // Main hook - fetches ALL data in PARALLEL with caching
 export function useLeadDetails(id: string | undefined) {
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
 
   // Lead details - primary data
   const leadQuery = useQuery({
@@ -389,9 +395,9 @@ export function useLeadDetails(id: string | undefined) {
 
   // Photos - parallel
   const photosQuery = useQuery({
-    queryKey: ['lead-photos', id],
-    queryFn: () => fetchPhotos(id!),
-    enabled: !!id,
+    queryKey: ['lead-photos', id, effectiveTenantId],
+    queryFn: () => fetchPhotos(id!, effectiveTenantId),
+    enabled: !!id && !!effectiveTenantId,
     staleTime: 30000,
   });
 
@@ -475,6 +481,7 @@ export function useLeadDetails(id: string | undefined) {
 // Prefetch function for hover prefetching
 export function usePrefetchLeadDetails() {
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
 
   return (id: string) => {
     // Prefetch lead data
@@ -484,8 +491,8 @@ export function usePrefetchLeadDetails() {
       staleTime: 30000,
     });
     queryClient.prefetchQuery({
-      queryKey: ['lead-photos', id],
-      queryFn: () => fetchPhotos(id),
+      queryKey: ['lead-photos', id, effectiveTenantId],
+      queryFn: () => fetchPhotos(id, effectiveTenantId),
       staleTime: 30000,
     });
   };

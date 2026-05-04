@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { compressImage } from '@/lib/imageCompression';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 export type PhotoCategory = 
   | 'before' | 'during' | 'after' | 'damage' | 'materials' 
@@ -32,6 +33,7 @@ export interface CustomerPhoto {
   is_primary: boolean | null;
   annotations_json?: Record<string, unknown> | null;
   ai_analysis?: Record<string, unknown> | null;
+  uploaded_at?: string | null;
   created_at?: string;
   updated_at?: string | null;
 }
@@ -54,11 +56,15 @@ interface UploadPhotoOptions {
 
 export function usePhotos({ contactId, leadId, projectId, enabled = true }: UsePhotosOptions) {
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
   // Query key based on entity
-  const queryKey = ['customer-photos', contactId, leadId, projectId].filter(Boolean);
+  const queryKey = useMemo(
+    () => ['customer-photos', effectiveTenantId, contactId || null, leadId || null, projectId || null],
+    [effectiveTenantId, contactId, leadId, projectId]
+  );
 
   // Fetch photos
   const { data: photos = [], isLoading, error, refetch } = useQuery({
@@ -66,8 +72,10 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
     queryFn: async () => {
       let query = supabase
         .from('customer_photos')
-        .select('*')
-        .order('display_order', { ascending: true });
+        .select('id, tenant_id, contact_id, lead_id, project_id, file_url, file_name, original_filename, file_size, mime_type, category, description, display_order, uploaded_by, gps_latitude, gps_longitude, taken_at, include_in_estimate, is_primary, uploaded_at')
+        .eq('tenant_id', effectiveTenantId!)
+        .order('display_order', { ascending: true, nullsFirst: false })
+        .order('uploaded_at', { ascending: false });
 
       if (leadId) {
         query = query.eq('lead_id', leadId);
@@ -83,7 +91,9 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
       if (error) throw error;
       return (data || []) as unknown as CustomerPhoto[];
     },
-    enabled: enabled && !!(contactId || leadId || projectId),
+    enabled: enabled && !!effectiveTenantId && !!(contactId || leadId || projectId),
+    staleTime: 60_000,
+    initialData: leadId ? () => queryClient.getQueryData<CustomerPhoto[]>(['lead-photos', leadId, effectiveTenantId]) : undefined,
   });
 
   // Upload photo
@@ -282,7 +292,7 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
         current.filter((photo) => !photoIds.includes(photo.id))
       );
       queryClient.invalidateQueries({ queryKey });
-      if (leadId) queryClient.invalidateQueries({ queryKey: ['lead-photos', leadId] });
+      if (leadId) queryClient.invalidateQueries({ queryKey: ['lead-photos', leadId, effectiveTenantId] });
       toast({
         title: 'Photos deleted',
         description: 'Selected photos have been deleted',
