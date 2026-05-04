@@ -59,6 +59,8 @@ import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 import { useToast } from '@/hooks/use-toast';
 import { ShareEstimateDialog } from './ShareEstimateDialog';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
+import { getHeicDisplayUrl } from '@/hooks/useHeicConverter';
+import { SafeImage } from '@/components/ui/safe-image';
 
 interface CompanyInfo {
   name: string;
@@ -271,6 +273,7 @@ export function EstimatePreviewPanel({
     description?: string | null;
     category?: string | null;
   }>>([]);
+  const [previewJobPhotos, setPreviewJobPhotos] = useState<typeof jobPhotos>([]);
 
   useEffect(() => {
     if (!open || (!pipelineEntryId && !contactId)) return;
@@ -341,6 +344,20 @@ export function EstimatePreviewPanel({
     };
     fetchPhotos();
   }, [pipelineEntryId, contactId, open]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const resolvedPhotos = await Promise.all(
+        jobPhotos.map(async (photo) => ({
+          ...photo,
+          file_url: await getHeicDisplayUrl(photo.file_url).catch(() => photo.file_url),
+        }))
+      );
+      if (!cancelled) setPreviewJobPhotos(resolvedPhotos);
+    })();
+    return () => { cancelled = true; };
+  }, [jobPhotos]);
 
   // Aerial image fallback: if no job photos, pull from roof_measurements
   useEffect(() => {
@@ -490,7 +507,7 @@ export function EstimatePreviewPanel({
   useEffect(() => {
     let photoUrl: string | undefined;
     if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
-      const photo = jobPhotos.find(p => p.id === selectedUploadedPhotoId);
+      const photo = previewJobPhotos.find(p => p.id === selectedUploadedPhotoId);
       photoUrl = photo?.file_url;
     } else if (coverPhotoSource === 'streetview') {
       photoUrl = streetViewUrl || aerialUrl || undefined;
@@ -498,7 +515,7 @@ export function EstimatePreviewPanel({
       photoUrl = aerialUrl || streetViewUrl || undefined;
     }
     setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
-  }, [coverPhotoSource, selectedUploadedPhotoId, jobPhotos, streetViewUrl, aerialUrl]);
+  }, [coverPhotoSource, selectedUploadedPhotoId, previewJobPhotos, streetViewUrl, aerialUrl]);
 
   // Fetch additional estimate data when selected
   const handleToggleEstimate = useCallback(async (estId: string) => {
@@ -1317,7 +1334,7 @@ export function EstimatePreviewPanel({
                                     : 'border-transparent hover:border-muted-foreground/30'
                                 }`}
                               >
-                                <img src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
+                                <SafeImage src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
                               </button>
                             ))}
                           </div>
@@ -1326,7 +1343,7 @@ export function EstimatePreviewPanel({
                         {/* Preview thumbnail */}
                         {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
                           <div className="rounded overflow-hidden border border-border">
-                            <img
+                            <SafeImage
                               src={options.coverPagePropertyPhoto}
                               alt="Cover photo preview"
                               className="w-full h-20 object-cover"
@@ -1566,7 +1583,7 @@ export function EstimatePreviewPanel({
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
                     templateAttachments={[]}
-                    jobPhotos={jobPhotos}
+                    jobPhotos={previewJobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                     templateStyle={activeTemplateStyle}
                   />
@@ -1603,7 +1620,7 @@ export function EstimatePreviewPanel({
                           options={options}
                           measurementSummary={measurementSummary || undefined}
                           createdAt={new Date().toISOString()}
-                          jobPhotos={jobPhotos}
+                          jobPhotos={previewJobPhotos}
                           skipCoverPage={true}
                           skipWarrantyAndTerms={!isLast}
                           templateStyle={activeTemplateStyle}
