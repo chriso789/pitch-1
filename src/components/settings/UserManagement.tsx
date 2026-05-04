@@ -26,7 +26,7 @@ import { RepPayStructureConfig } from './RepPayStructureConfig';
 import { EmailHealthCheck } from './EmailHealthCheck';
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { auditService } from "@/services/auditService";
-import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
+
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 
 interface User {
@@ -91,7 +91,7 @@ export const UserManagement = () => {
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { companies: availableCompanies, isLoading: companiesLoading } = useAvailableCompanies();
+  
   const { activeCompanyId } = useCompanySwitcher();
 
   const { data: userData, isLoading: loading } = useQuery({
@@ -309,7 +309,7 @@ export const UserManagement = () => {
           phone: newUser.phone || undefined,
           role: newUser.role,
           companyName: newUser.company_name,
-          assignedTenantId: newUser.selected_tenant_id || undefined,
+          assignedTenantId: activeCompanyId || newUser.selected_tenant_id || undefined,
           title: newUser.title,
           payType: payStructure.pay_type,
           hourlyRate: payStructure.pay_type === 'hourly' ? payStructure.hourly_rate : undefined,
@@ -791,62 +791,17 @@ export const UserManagement = () => {
                       </div>
                     </div>
 
-                    {/* Company Assignment - Master users only see dropdown */}
-                    {currentUser?.role === 'master' ? (
-                      <div className="space-y-2">
-                        <Label htmlFor="company">Assign to Company</Label>
-                        <Select 
-                          value={newUser.selected_tenant_id} 
-                          onValueChange={(value) => {
-                            const company = availableCompanies.find(c => c.id === value);
-                            setNewUser({ 
-                              ...newUser, 
-                              selected_tenant_id: value,
-                              company_name: company?.name || ''
-                            });
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a company..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {companiesLoading ? (
-                              <SelectItem value="loading" disabled>Loading companies...</SelectItem>
-                            ) : availableCompanies.length === 0 ? (
-                              <SelectItem value="none" disabled>No companies available</SelectItem>
-                            ) : (
-                              availableCompanies.map((company) => (
-                                <SelectItem key={company.id} value={company.id}>
-                                  <div className="flex items-center gap-2">
-                                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                                    <span>{company.name}</span>
-                                    {company.subdomain && (
-                                      <span className="text-xs text-muted-foreground">
-                                        ({company.subdomain})
-                                      </span>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          User will only appear in this company's directory
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <Label>Company</Label>
-                        <div className="flex items-center gap-2 p-2 border rounded-md bg-muted">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{currentUser?.resolved_company_name || 'Your Company'}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          New user will be added to your company
-                        </p>
-                      </div>
-                    )}
+                     {/* Company Assignment - always assign to current company */}
+                     <div className="space-y-2">
+                       <Label>Company</Label>
+                       <div className="flex items-center gap-2 p-2 border rounded-md bg-muted">
+                         <Building2 className="h-4 w-4 text-muted-foreground" />
+                         <span className="text-sm">{currentUser?.resolved_company_name || 'Your Company'}</span>
+                       </div>
+                       <p className="text-xs text-muted-foreground">
+                         New user will be added to this company
+                       </p>
+                     </div>
 
                     {/* Location Assignment */}
                     {newUser.selected_tenant_id && (
