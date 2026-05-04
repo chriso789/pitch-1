@@ -392,7 +392,11 @@ export function RoofMeasurementTool({
           </Card>
 
           <Tabs defaultValue="diagram" className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-8">
+              <TabsTrigger value="trace" className="flex items-center gap-1">
+                <Scan className="h-3.5 w-3.5" />
+                Trace
+              </TabsTrigger>
               <TabsTrigger value="diagram" className="flex items-center gap-1">
                 <Layers className="h-3.5 w-3.5" />
                 Diagram
@@ -407,6 +411,14 @@ export function RoofMeasurementTool({
               <TabsTrigger value="materials">Materials</TabsTrigger>
               <TabsTrigger value="images">Images</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="trace" className="space-y-4">
+              <AITraceOverlay
+                lat={effectiveLat || 0}
+                lng={effectiveLng || 0}
+                imageUrl={measurementData?.images?.google?.url || measurementData?.images?.mapbox?.url}
+              />
+            </TabsContent>
 
             <TabsContent value="overlay" className="space-y-4">
               {measurementData.measurementId && effectiveTenantId && effectiveLat && effectiveLng ? (
