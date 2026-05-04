@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
     let satImageUrl = imageUrl;
     const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
     if (!satImageUrl) {
-      // Zoom 21 + scale=2 gives a tight, high-res crop centered on the property
-      const zoomLevel = zoom || 21;
+      // Zoom 22 + scale=2 gives a very tight crop centered on just the target property
+      const zoomLevel = zoom || 22;
       satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
     }
 
@@ -40,31 +40,32 @@ Deno.serve(async (req) => {
     // With scale=2 the actual image is 1280x1280 pixels
     const imgSize = 1280;
 
-    const systemPrompt = `You are an expert roof measurement analyst. You will be shown a satellite/aerial image centered on a single property.
+    const systemPrompt = `You are an expert roof measurement analyst. You will be shown a high-zoom satellite image tightly centered on a SINGLE property.
 
-IMPORTANT: Trace ONLY the roof of the building at the CENTER of the image. Ignore all neighboring buildings, driveways, pools, trees, and other structures.
+CRITICAL FOCUS RULE: The target building is the ONE structure closest to the absolute center of the image (pixel ${Math.round(imgSize/2)}, ${Math.round(imgSize/2)}). 
+- ONLY trace the roof of THIS center building. 
+- COMPLETELY IGNORE every other building, shed, pool, tree, driveway, fence, or structure in the image — even if they are partially visible.
+- If multiple buildings are near the center, pick the LARGEST residential building closest to the center point.
 
 The image is ${imgSize}x${imgSize} pixels. Provide all coordinates as pixel positions where (0,0) is top-left and (${imgSize},${imgSize}) is bottom-right.
 
-For each component, provide the start and end pixel coordinates [x, y].
+For each roof component, provide the start [x,y] and end [x,y] pixel coordinates.
 
-Identify these component types:
-- **ridges**: Horizontal peak lines where two roof planes meet at the top
-- **hips**: Sloped lines from ridge ends down to eave corners (exterior corners)
-- **valleys**: Lines where two roof planes meet forming an interior angle
-- **eaves**: Bottom horizontal edges of the roof
+Component types to identify:
+- **ridges**: Peak lines where two roof planes meet at the top (horizontal or near-horizontal)
+- **hips**: Sloped lines from ridge ends down to eave corners (exterior angles)
+- **valleys**: Lines where two roof planes meet forming an interior angle (going downward)
+- **eaves**: Bottom horizontal edges of the roof (the lowest edges, drip line)
 - **rakes**: Sloped gable edges (side edges on gable ends)
 - **step_flashing**: Where roof meets a vertical wall
 
-CRITICAL RULES:
-1. Trace the ACTUAL roof edges visible in the image, not imagined ones
-2. ONLY trace the CENTER building's roof — ignore all other buildings
-3. Every line must connect precisely to adjacent lines (vertices must be shared)
-4. Ridges run along the top peak. Hips slope downward from ridge endpoints to eave corners.
-5. Valleys are interior corners where planes meet going downward.
-6. Eaves are the lowest horizontal edges. Rakes are the sloped edges on gable ends.
-7. Include ALL visible components of the center roof including dormers and extensions.
-8. Coordinates must be pixel positions on the ${imgSize}x${imgSize} image.
+GEOMETRY RULES:
+1. Trace the ACTUAL roof edges you can SEE — do not guess or hallucinate edges hidden by trees.
+2. Every line endpoint must connect precisely to an adjacent line's endpoint (shared vertices). The traced lines must form a CLOSED, connected wireframe of the roof.
+3. Ridges run along the top. Hips slope downward from ridge endpoints to eave corners.
+4. All eave lines together should roughly form the perimeter footprint of the roof.
+5. Include dormers, extensions, and all sub-sections of THIS ONE roof.
+6. Do NOT include any lines that trace parts of neighboring buildings.
 
 Return your response as a JSON object with this exact structure:
 {
@@ -77,19 +78,10 @@ Return your response as a JSON object with this exact structure:
     "rakes": [{"start": [x1,y1], "end": [x2,y2], "lengthEstimateFt": number}],
     "step_flashing": [{"start": [x1,y1], "end": [x2,y2], "lengthEstimateFt": number}]
   },
-  "facets": [
-    {
-      "id": "F1",
-      "vertices": [[x,y], [x,y], ...],
-      "estimatedPitch": "6/12",
-      "estimatedAreaSqft": number
-    }
-  ],
+  "facets": [{"id": "F1", "vertices": [[x,y], ...], "estimatedPitch": "6/12", "estimatedAreaSqft": number}],
   "confidence": number,
   "notes": "string describing what you see"
-}
-
-Be precise with coordinates. Every ridge endpoint should connect to a hip or rake. Every hip should connect from a ridge to an eave corner. The geometry must be topologically consistent.`;
+}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
