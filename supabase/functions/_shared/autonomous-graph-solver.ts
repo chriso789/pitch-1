@@ -1281,33 +1281,107 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outputEdges: GraphEdge[] = [];
   const outputVerticesByKey = new Map<string, XY>();
   const addVertex = (p: XY) => outputVerticesByKey.set(vertexKey(p), p);
+
+  // ===== FACE-AWARE EDGE FILTERING =====
+  // Only emit edges that border at least one valid face.
+  // This prevents the "134 edges for 10 planes" explosion where every
+  // tiny planar graph segment was emitted as a hip by default.
+
+  // Build a set of face-boundary segments (using DSM px space) for fast lookup.
+  // For each valid face polygon, collect all consecutive-vertex pairs as edge keys.
+  const segKeyFromPts = (a: { x: number; y: number }, b: { x: number; y: number }): string => {
+    const ka = `${Math.round(a.x)}:${Math.round(a.y)}`;
+    const kb = `${Math.round(b.x)}:${Math.round(b.y)}`;
+    return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+  };
+
+  // Map: segKey → list of face indices that have this edge
+  const segFaceMap = new Map<string, number[]>();
+  for (let fi = 0; fi < planar.faces.length; fi++) {
+    const poly = planar.faces[fi].polygon;
+    for (let pi = 0; pi < poly.length; pi++) {
+      const a = poly[pi];
+      const b = poly[(pi + 1) % poly.length];
+      const key = segKeyFromPts(a, b);
+      const arr = segFaceMap.get(key) || [];
+      arr.push(fi);
+      segFaceMap.set(key, arr);
+    }
+  }
+
+  // Map planar.faces indices to graphFaces indices (some faces were rejected).
+  // graphFaces were built in order from planar.faces, skipping rejected ones.
+  // We need to know which planar face indices correspond to valid graphFaces.
+  // Since graphFaces are built from planar.faces in order, we can track this.
+  // But we don't have that mapping here — so instead, match by checking if
+  // a segment borders ANY planar face (valid or not). The key insight:
+  // if a segment borders 2 faces → it's a structural interior edge (ridge/hip/valley).
+  // if a segment borders 1 face and touches footprint → eave/rake.
+  // if a segment borders 0 faces → skip it entirely (dangling/noise).
+
+  let skippedNoFace = 0;
   for (const seg of planar.edges) {
     if (!effectiveDSM) continue;
+    const key = segKeyFromPts(seg.a, seg.b);
+    const adjacentFaces = segFaceMap.get(key) || [];
+
+    // Skip segments that don't border any face
+    if (adjacentFaces.length === 0) {
+      skippedNoFace++;
+      continue;
+    }
+
     const start = pxToGeoPoint(seg.a, effectiveDSM);
     const end = pxToGeoPoint(seg.b, effectiveDSM);
     const lengthFt = distanceFt(start, end, midLat);
     if (lengthFt < 1) continue;
-    const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
+
+    // Use face adjacency count to determine edge type
+    let edgeType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+    let edgeSource: 'dsm' | 'perimeter' = 'dsm';
+    let edgeScore = 0.8;
+
+    if (adjacentFaces.length >= 2) {
+      // Interior structural edge — shared between faces
+      // Classify using DSM interior edge matching
+      const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
+      if (classified.type === 'eave' || classified.type === 'rake') {
+        // Even if near footprint, if shared between 2 faces it's structural
+        edgeType = 'hip'; // default structural type
+      } else {
+        edgeType = classified.type;
+      }
+      edgeSource = 'dsm';
+      edgeScore = classified.score;
+    } else {
+      // Single-face boundary edge — should be eave or rake
+      const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
+      edgeType = classified.type;
+      edgeSource = classified.source;
+      edgeScore = classified.score;
+    }
+
     addVertex(start);
     addVertex(end);
     outputEdges.push({
       id: `GE-${edgeId++}`,
-      type: classified.type,
+      type: edgeType,
       start,
       end,
       length_ft: lengthFt,
       confidence: {
-        dsm_score: classified.source === 'dsm' ? 0.85 : 0.8,
+        dsm_score: edgeSource === 'dsm' ? 0.85 : 0.8,
         rgb_score: 0,
         solar_azimuth_score: 0.5,
         topology_score: planar.faces.length >= 2 ? 0.9 : 0.2,
         length_score: lengthFt > 10 ? 0.8 : 0.5,
-        final_confidence: classified.score,
+        final_confidence: edgeScore,
       },
       facet_ids: [],
-      source: classified.source,
+      source: edgeSource,
     });
   }
+  console.log(`  Edge output: ${outputEdges.length} emitted, ${skippedNoFace} skipped (no adjacent face)`);
   console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit/area`);
 
   // ===== FACE-ADJACENCY EDGE RECLASSIFICATION =====
