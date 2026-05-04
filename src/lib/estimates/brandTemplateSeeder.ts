@@ -375,6 +375,79 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { item_name: 'Cleanup/Haul', description: 'Complete job-site cleanup and haul all old tile, mortar, and debris to the dump (tile is heavier than other roofing materials)', unit: 'job', unit_cost: 500.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
     ],
   },
+  // 15. Tilcor Stone-Coated Steel Shingle
+  {
+    name: 'Tilcor Stone-Coated Steel Shingle',
+    description: 'Complete Tilcor stone-coated steel shingle panel system with battens, full flashing package, and ventilation.',
+    brand: 'Tilcor',
+    productLine: 'Shingle Profile',
+    roofType: 'stone_coated',
+    materials: [
+      // 1. Primary Roofing System
+      { item_name: 'Tilcor Shingle Panels', description: 'Stone-coated steel shingle panels providing the primary field coverage — lightweight, fire-resistant, and rated for high-wind zones', unit: 'panel', unit_cost: 52.00, qty_formula: '{{ ceil(waste.10pct.sqft / 5.4) }}', sku_pattern: 'TILCOR-SH-*', manufacturer: 'Tilcor', measurement_type: 'roof_area' },
+      { item_name: 'Tilcor Eave Starter Strip', description: 'First-course locking starter strip installed along the eave for proper panel alignment and wind uplift resistance', unit: 'piece', unit_cost: 16.00, qty_formula: '{{ ceil(lf.eave / 4) }}', sku_pattern: 'TILCOR-STRT', manufacturer: 'Tilcor', measurement_type: 'linear_eave' },
+      { item_name: 'Battens 1x2 Treated', description: 'Horizontal wood battens creating the fastening grid and airflow channel required by Tilcor installation specs', unit: 'lf', unit_cost: 0.55, qty_formula: '{{ ceil(roof.total_sqft / 10) }}', sku_pattern: 'BATTEN-1X2-T', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Counter Battens 1x2', description: 'Vertical battens installed under horizontal battens to create a ventilation and drainage plane beneath panels', unit: 'lf', unit_cost: 0.50, qty_formula: '{{ ceil(roof.total_sqft / 16) }}', sku_pattern: 'CBATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+
+      // 2. Underlayment System
+      { item_name: 'High-Temp Synthetic Underlayment', description: 'High-temperature synthetic underlayment required for metal/stone-coated systems — provides secondary weather barrier over entire deck', unit: 'roll', unit_cost: 95.00, qty_formula: '{{ ceil(roof.squares / 10) }}', sku_pattern: 'SYNTH-HT-UL', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Ice & Water Shield (Peel & Stick)', description: 'Self-adhered waterproof membrane applied at eaves, valleys, and penetrations — critical in Florida wind-driven rain zones', unit: 'roll', unit_cost: 135.00, qty_formula: '{{ ceil((lf.eave * 6 + lf.valley * 6) / 200) }}', sku_pattern: 'IWS-PS', manufacturer: 'Generic', measurement_type: 'linear_valley' },
+
+      // 3. Edge & Perimeter Metals
+      { item_name: 'Drip Edge - Eave', description: 'Metal drip edge flashing installed along the eave to direct water into gutters and protect the fascia board', unit: 'piece', unit_cost: 10.00, qty_formula: '{{ ceil(lf.eave / 10) }}', sku_pattern: 'DRP-EAVE-SC', manufacturer: 'Generic', measurement_type: 'linear_eave' },
+      { item_name: 'Drip Edge - Rake', description: 'Metal drip edge flashing installed along the rake (gable end) to seal the panel edges and protect against wind-driven rain', unit: 'piece', unit_cost: 10.00, qty_formula: '{{ ceil(lf.rake / 10) }}', sku_pattern: 'DRP-RAKE-SC', manufacturer: 'Generic', measurement_type: 'linear_rake' },
+      { item_name: 'Gable / Rake Trim', description: 'Finished metal trim covering panel edges on gable ends for a clean, weather-sealed appearance', unit: 'piece', unit_cost: 24.00, qty_formula: '{{ ceil(lf.rake / 10) }}', sku_pattern: 'TILCOR-RAKE', manufacturer: 'Tilcor', measurement_type: 'linear_rake' },
+      { item_name: 'Eave Apron / Starter Flashing', description: 'Transition flashing at the eave that directs water from the panel system into the gutter', unit: 'piece', unit_cost: 18.00, qty_formula: '{{ ceil(lf.eave / 10) }}', sku_pattern: 'TILCOR-EAPRON', manufacturer: 'Tilcor', measurement_type: 'linear_eave' },
+
+      // 4. Valley System
+      { item_name: 'Valley Metal (W-Valley)', description: 'Pre-finished wide metal valley channel installed where two roof slopes meet to handle high water volume without leaks', unit: 'piece', unit_cost: 28.00, qty_formula: '{{ ceil(lf.valley / 10) }}', sku_pattern: 'VLY-W-SC', manufacturer: 'Generic', measurement_type: 'linear_valley' },
+      { item_name: 'Valley Clips / Cleats', description: 'Hidden fastening clips that secure the valley metal without exposed screws for a cleaner, leak-free finish', unit: 'pack', unit_cost: 15.00, qty_formula: '{{ ceil(lf.valley / 3) }}', sku_pattern: 'VLY-CLIP', manufacturer: 'Generic', measurement_type: 'linear_valley' },
+
+      // 5. Ridge / Hip System
+      { item_name: 'Tilcor Ridge Caps', description: 'Stone-coated steel ridge caps matching the panel finish, installed along the roof peak for a watertight seal', unit: 'piece', unit_cost: 18.00, qty_formula: '{{ ceil(lf.ridge / 3) }}', sku_pattern: 'TILCOR-RDG', manufacturer: 'Tilcor', measurement_type: 'linear_ridge' },
+      { item_name: 'Tilcor Hip Caps', description: 'Stone-coated steel hip caps matching the panel finish, formed for hip line transitions where roof planes meet', unit: 'piece', unit_cost: 18.00, qty_formula: '{{ ceil(lf.hip / 3) }}', sku_pattern: 'TILCOR-HIP', manufacturer: 'Tilcor', measurement_type: 'linear_hip' },
+      { item_name: 'Metal Ridge Vent', description: 'Metal-compatible ridge ventilation system allowing hot attic air to escape — NOT a standard shingle ridge vent', unit: 'piece', unit_cost: 22.00, qty_formula: '{{ ceil(lf.ridge / 4) }}', sku_pattern: 'VENT-RDG-MTL', manufacturer: 'Generic', measurement_type: 'linear_ridge' },
+      { item_name: 'Vent Closure Foam', description: 'Closed-cell foam strips installed under ridge/hip caps to block insects and wind-driven rain while allowing airflow', unit: 'piece', unit_cost: 5.00, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 3) }}', sku_pattern: 'FOAM-VENT', manufacturer: 'Generic', measurement_type: 'linear_ridge' },
+
+      // 6. Flashings
+      { item_name: 'Sidewall Flashing', description: 'Metal flashing installed where the roof meets a vertical sidewall to prevent water intrusion behind siding', unit: 'piece', unit_cost: 14.00, qty_formula: '{{ ceil(lf.step / 4) }}', sku_pattern: 'FLASH-SIDE-SC', manufacturer: 'Generic', measurement_type: 'linear_step' },
+      { item_name: 'Headwall Flashing', description: 'Metal flashing installed where the roof meets a wall at the top — redirects water away from the wall-to-roof joint', unit: 'piece', unit_cost: 16.00, qty_formula: '{{ ceil(lf.wall / 4) }}', sku_pattern: 'FLASH-HEAD-SC', manufacturer: 'Generic', measurement_type: 'linear_wall' },
+      { item_name: 'Step Flashing (Metal-Compatible)', description: 'L-shaped metal step flashing woven into panels at roof-to-wall transitions — must be metal system compatible', unit: 'piece', unit_cost: 2.50, qty_formula: '{{ ceil(lf.step / 2) }}', sku_pattern: 'STEP-SC', manufacturer: 'Generic', measurement_type: 'linear_step' },
+
+      // 7. Penetration Components
+      { item_name: 'High-Temp Silicone Pipe Boot', description: 'High-temperature silicone pipe boot rated for metal roof heat — prevents leaks around plumbing vent penetrations', unit: 'each', unit_cost: 45.00, qty_formula: '{{ pen.pipe_vent }}', sku_pattern: 'BOOT-HT-SIL', manufacturer: 'Generic', measurement_type: 'penetrations' },
+      { item_name: 'Metal-Compatible Roof Vents', description: 'Static or turbine roof vents designed for metal/stone-coated systems with proper base flashing', unit: 'each', unit_cost: 65.00, qty_formula: '{{ pen.roof_vent }}', sku_pattern: 'VENT-MTL', manufacturer: 'Generic', measurement_type: 'penetrations' },
+
+      // 8. Fasteners
+      { item_name: 'Corrosion-Resistant Screws (Stainless)', description: 'Stainless steel screws at the correct length for batten/decking attachment — wrong screws void the Tilcor warranty', unit: 'box', unit_cost: 58.00, qty_formula: '{{ ceil(roof.squares * 80 / 250) }}', sku_pattern: 'SCR-SS-TILCOR', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Color-Matched Panel Fasteners', description: 'Color-matched fasteners for any exposed fastening points — ensures a seamless finished appearance', unit: 'box', unit_cost: 42.00, qty_formula: '{{ ceil(roof.squares / 8) }}', sku_pattern: 'FAST-CLR-TILCOR', manufacturer: 'Tilcor', measurement_type: 'roof_squares' },
+
+      // 9. Closures & Sealants
+      { item_name: 'Foam Closure Strips (Eave)', description: 'Profile-matched foam closures at the eave to seal the gap between panels and the starter, blocking wind and pests', unit: 'piece', unit_cost: 4.50, qty_formula: '{{ ceil(lf.eave / 3) }}', sku_pattern: 'CLS-EAVE-TILCOR', manufacturer: 'Tilcor', measurement_type: 'linear_eave' },
+      { item_name: 'Foam Closure Strips (Ridge)', description: 'Profile-matched foam closures at the ridge to seal the gap between panels and ridge cap', unit: 'piece', unit_cost: 4.50, qty_formula: '{{ ceil(lf.ridge / 3) }}', sku_pattern: 'CLS-RDG-TILCOR', manufacturer: 'Tilcor', measurement_type: 'linear_ridge' },
+      { item_name: 'Butyl Tape / Sealant', description: 'Adhesive butyl tape applied at panel overlaps and flashing joints for a watertight seal', unit: 'roll', unit_cost: 18.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'BTL-TAPE', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'High-Temp Roofing Sealant', description: 'UV-resistant, high-temperature sealant for all penetrations and termination points', unit: 'tube', unit_cost: 12.00, qty_formula: '{{ ceil(roof.squares / 10) }}', sku_pattern: 'SEAL-HT', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+
+      // 10. Ventilation System
+      { item_name: 'Soffit Intake Vent', description: 'Intake ventilation installed at the soffit to bring cool air into the attic — critical for Florida heat management', unit: 'piece', unit_cost: 8.00, qty_formula: '{{ ceil(lf.eave / 8) }}', sku_pattern: 'VENT-SOFFIT', manufacturer: 'Generic', measurement_type: 'linear_eave' },
+
+      // Misc
+      { item_name: 'Touch-Up Stone Chips', description: 'Matching stone granules to repair chips or scratches from cutting and handling during installation', unit: 'bag', unit_cost: 28.00, qty_formula: '{{ max(1, ceil(roof.squares / 35)) }}', sku_pattern: 'TILCOR-CHIP-*', manufacturer: 'Tilcor', measurement_type: 'roof_squares' },
+      { item_name: 'OSB 7/16 Sheets', description: 'Replacement plywood decking boards for any rotted or damaged sections discovered during tear-off', unit: 'sheet', unit_cost: 34.00, qty_formula: '{{ ceil(roof.total_sqft * 0.03 / 32) }}', sku_pattern: 'OSB-716', manufacturer: 'Generic', measurement_type: 'roof_area' },
+    ],
+    labor: [
+      { item_name: 'Tear Off', description: 'Remove and dispose of all existing roofing materials (shingles, tile, or metal) down to the bare deck', unit: 'sq', unit_cost: 60.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR', manufacturer: '' },
+      { item_name: 'Deck Prep & Repair', description: 'Inspect, repair, and prepare the roof deck — replace rotted sections and re-nail loose boards for a solid substrate', unit: 'sq', unit_cost: 22.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-PREP', manufacturer: '' },
+      { item_name: 'Underlayment Install', description: 'Install high-temp synthetic underlayment and ice & water shield at eaves, valleys, and penetrations', unit: 'sq', unit_cost: 18.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-UL', manufacturer: '' },
+      { item_name: 'Batten & Counter Batten Install', description: 'Install horizontal battens and vertical counter battens per Tilcor specifications for airflow and panel attachment', unit: 'sq', unit_cost: 35.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tilcor Panel Install', description: 'Professionally install Tilcor stone-coated steel shingle panels per manufacturer specifications for full warranty', unit: 'sq', unit_cost: 165.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILCOR', manufacturer: '' },
+      { item_name: 'Ridge/Hip Cap Install', description: 'Install stone-coated ridge and hip caps with foam closures along all peaks and hip lines', unit: 'lf', unit_cost: 6.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-SC', manufacturer: '' },
+      { item_name: 'Flashing & Detail Work', description: 'Install all flashings (sidewall, headwall, step, valley) and seal penetrations per metal-system requirements', unit: 'lf', unit_cost: 5.00, qty_formula: '{{ lf.step + lf.valley + lf.wall }}', sku_pattern: 'LABOR-FLASH-SC', manufacturer: '' },
+      { item_name: 'Trim Install (Eave & Rake)', description: 'Install eave apron, rake trim, and drip edge around the entire roof perimeter', unit: 'lf', unit_cost: 4.50, qty_formula: '{{ lf.eave + lf.rake }}', sku_pattern: 'LABOR-TRIM-SC', manufacturer: '' },
+      { item_name: 'Ventilation Install', description: 'Install ridge vent system and soffit intake vents for proper attic airflow', unit: 'job', unit_cost: 450.00, qty_formula: '1', sku_pattern: 'LABOR-VENT', manufacturer: '' },
+      { item_name: 'Cleanup / Haul / Dump', description: 'Complete job-site cleanup, magnetic nail sweep of yard and driveway, and haul all debris to the dump', unit: 'job', unit_cost: 425.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
+    ],
+  },
 ];
 
 /**
