@@ -118,7 +118,7 @@ export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps)
                   <input
                     ref={el => { fileInputRefs.current[step.key] = el; }}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif"
                     multiple
                     className="hidden"
                     onChange={e => handleFileSelect(e, step.key)}
