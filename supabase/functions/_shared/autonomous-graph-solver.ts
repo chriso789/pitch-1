@@ -65,7 +65,7 @@ export interface EdgeConfidence {
 
 export interface GraphEdge {
   id: string;
-  type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+  type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'unclassified';
   start: XY;
   end: XY;
   length_ft: number;
@@ -322,7 +322,7 @@ interface ScoredEdge {
   end: XY;
   score: number;
   initialType: 'ridge' | 'valley' | 'hip';
-  classifiedType: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake';
+  classifiedType: 'ridge' | 'valley' | 'hip' | 'eave' | 'rake' | 'unclassified';
   source: 'dsm' | 'skeleton' | 'fused';
   lengthFt: number;
 }
