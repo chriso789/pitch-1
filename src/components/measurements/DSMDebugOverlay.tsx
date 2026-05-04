@@ -112,6 +112,65 @@ const EDGE_COLORS: Record<string, string> = {
   rake: '#00cc44',
 };
 
+const EPS = 1e-6;
+
+function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || EPS) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function segmentPolygonIntersections(p1: [number, number], p2: [number, number], polygon: [number, number][]): number[] {
+  const [x1, y1] = p1;
+  const [x2, y2] = p2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const ts = [0, 1];
+  for (let i = 0; i < polygon.length; i++) {
+    const [x3, y3] = polygon[i];
+    const [x4, y4] = polygon[(i + 1) % polygon.length];
+    const sx = x4 - x3;
+    const sy = y4 - y3;
+    const denom = dx * sy - dy * sx;
+    if (Math.abs(denom) < EPS) continue;
+    const qpx = x3 - x1;
+    const qpy = y3 - y1;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * dy - qpy * dx) / denom;
+    if (t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS) ts.push(Math.max(0, Math.min(1, t)));
+  }
+  return [...new Set(ts.map((t) => Math.round(t * 1_000_000) / 1_000_000))].sort((a, b) => a - b);
+}
+
+function clipEdgeToFootprint(edge: OverlayEdge, footprint: [number, number][]): OverlayEdge[] {
+  if (footprint.length < 3) return [edge];
+  const [x1, y1] = edge.p1;
+  const [x2, y2] = edge.p2;
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return [];
+  const ts = segmentPolygonIntersections(edge.p1, edge.p2, footprint);
+  const segments: OverlayEdge[] = [];
+  for (let i = 0; i < ts.length - 1; i++) {
+    const a = ts[i];
+    const b = ts[i + 1];
+    if (b - a < EPS) continue;
+    const mid = (a + b) / 2;
+    const midpoint: [number, number] = [x1 + (x2 - x1) * mid, y1 + (y2 - y1) * mid];
+    if (!pointInPolygon(midpoint, footprint)) continue;
+    segments.push({
+      ...edge,
+      p1: [x1 + (x2 - x1) * a, y1 + (y2 - y1) * a],
+      p2: [x1 + (x2 - x1) * b, y1 + (y2 - y1) * b],
+    });
+  }
+  return segments.length ? segments : pointInPolygon(edge.p1, footprint) && pointInPolygon(edge.p2, footprint) ? [edge] : [];
+}
+
 const LAYER_DEFAULTS = {
   raster: true,
   footprint: true,
@@ -224,7 +283,10 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
 
     // Classified edges from edges_px (accepted, final)
     if (layers.classifiedEdgesPx && data.edges_px) {
-      for (const edge of data.edges_px) {
+      const visibleEdges = data.footprint_px && data.footprint_px.length >= 3
+        ? data.edges_px.flatMap((edge) => clipEdgeToFootprint(edge, data.footprint_px!))
+        : data.edges_px;
+      for (const edge of visibleEdges) {
         const baseColor = EDGE_COLORS[edge.type] || '#ffffff';
         // Confidence-based opacity: stronger edges are more opaque
         const confidence = (edge as any).confidence ?? 1;
