@@ -259,7 +259,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 
       <CardContent className={cn('space-y-4', showHeader ? 'pt-4' : 'pt-0')}>
         {/* Action Bar */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 relative z-10">
           {/* Upload buttons */}
           <input
             ref={fileInputRef}
