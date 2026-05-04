@@ -130,7 +130,9 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     if (!files?.length) return;
 
     const fileArray = Array.from(files);
-    const imageFiles = fileArray.filter(f => f.type.startsWith('image/'));
+    const imageFiles = fileArray.filter(f =>
+      f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)
+    );
 
     if (imageFiles.length === 0) {
       toast({
