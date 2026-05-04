@@ -55,6 +55,7 @@ const LINE_LABELS: Record<string, string> = {
 export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess }: TraceRoofButtonProps) {
   const [isTracing, setIsTracing] = useState(false);
   const [traceResult, setTraceResult] = useState<TraceResult | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [satImageUrl, setSatImageUrl] = useState('');
   const [imageSize, setImageSize] = useState(1280);
 
