@@ -351,6 +351,14 @@ export function RoofMeasurementTool({
         )}
       </Card>
 
+      {/* AI Trace - available even before full analysis */}
+      {!measurementData && (effectiveLat || effectiveLng) && (
+        <AITraceOverlay
+          lat={effectiveLat || 0}
+          lng={effectiveLng || 0}
+        />
+      )}
+
       {/* Results */}
       {measurementData && (
         <div className="space-y-6">
