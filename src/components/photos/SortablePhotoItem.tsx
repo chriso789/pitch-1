@@ -220,9 +220,8 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
           className="w-full h-full object-cover"
         />
 
-        {/* Overlay on hover */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors">
-          {/* Drag handle */}
+        {/* Drag handle & checkbox on hover */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors">
           <button
             className="absolute top-2 left-2 p-1 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-grab touch-none"
             {...attributes}
@@ -231,7 +230,6 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
             <GripVertical className="h-4 w-4" />
           </button>
 
-          {/* Checkbox */}
           <div 
             className={cn(
               'absolute top-2 right-2 transition-opacity',
@@ -244,63 +242,9 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
               className="bg-white/90 border-white"
             />
           </div>
-
-          {/* Action buttons on hover */}
-          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button 
-              size="icon" 
-              variant="secondary" 
-              className="h-7 w-7 bg-white/90 hover:bg-white"
-              onClick={onEdit}
-            >
-              <Edit2 className="h-3.5 w-3.5" />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  size="icon" 
-                  variant="secondary" 
-                  className="h-7 w-7 bg-white/90 hover:bg-white"
-                >
-                  <MoreVertical className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onSetPrimary}>
-                  <Star className="h-4 w-4 mr-2" />
-                  Set as Primary
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onToggleEstimate(!photo.include_in_estimate)}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  {photo.include_in_estimate ? 'Remove from Estimate' : 'Add to Estimate'}
-                </DropdownMenuItem>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <Tag className="h-4 w-4 mr-2" />
-                    Category
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                      <DropdownMenuItem
-                        key={value}
-                        onClick={() => onUpdateCategory(value as PhotoCategory)}
-                      >
-                        {label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onDelete} className="text-destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
 
-        {/* Badges */}
+        {/* Status badges */}
         <div className="absolute bottom-2 left-2 flex gap-1">
           {photo.is_primary && (
             <div className="p-1 rounded bg-amber-500 text-white">
@@ -315,11 +259,75 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
         </div>
       </div>
 
-      {/* Category badge below image */}
-      <div className="p-2 border-t">
+      {/* Controls below image */}
+      <div className="p-2 border-t flex items-center justify-between gap-1">
         <Badge variant="outline" className={cn('text-[10px]', CATEGORY_COLORS[category])}>
           {CATEGORY_LABELS[category] || category}
         </Badge>
+        <div className="flex items-center gap-1">
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            className="h-7 w-7"
+            onClick={onEdit}
+            title="Edit / Markup"
+          >
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            onClick={onDelete}
+            title="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                className="h-7 w-7"
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onSetPrimary}>
+                <Star className="h-4 w-4 mr-2" />
+                Set as Primary
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onToggleEstimate(!photo.include_in_estimate)}>
+                <FileText className="h-4 w-4 mr-2" />
+                {photo.include_in_estimate ? 'Remove from Estimate' : 'Add to Estimate'}
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Tag className="h-4 w-4 mr-2" />
+                  Category
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                    <DropdownMenuItem
+                      key={value}
+                      onClick={() => onUpdateCategory(value as PhotoCategory)}
+                    >
+                      {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={() => window.open(photo.file_url, '_blank')}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   );
