@@ -309,7 +309,7 @@ export const UserManagement = () => {
           phone: newUser.phone || undefined,
           role: newUser.role,
           companyName: newUser.company_name,
-          assignedTenantId: newUser.selected_tenant_id || undefined,
+          assignedTenantId: activeCompanyId || newUser.selected_tenant_id || undefined,
           title: newUser.title,
           payType: payStructure.pay_type,
           hourlyRate: payStructure.pay_type === 'hourly' ? payStructure.hourly_rate : undefined,
