@@ -74,12 +74,16 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // The edge function returns { data: traceData, imageUrl, ... }
-      const traceData = data?.data?.components || data?.data || data?.trace || data;
+      // The edge function returns { data: { roofType, components: {...}, facets, ... }, imageUrl, imageSize }
+      // We need the components object which has ridges/hips/valleys/eaves/rakes/step_flashing arrays
+      const traceData = data?.data?.components || data?.data || data;
       setTraceResult(traceData);
       
+      // Use the imageSize from the response (scale=2 means 1280px)
+      setImageSize(data?.imageSize || 1280);
+      
       // Use the image URL returned by the edge function (has server-side API key)
-      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=20&size=640x640&maptype=satellite`;
+      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=21&size=640x640&scale=2&maptype=satellite`;
       setSatImageUrl(url);
       setDialogOpen(true);
 
