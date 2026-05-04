@@ -83,7 +83,7 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
       setImageSize(data?.imageSize || 1280);
       
       // Use the image URL returned by the edge function (has server-side API key)
-      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=21&size=640x640&scale=2&maptype=satellite`;
+      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=22&size=640x640&scale=2&maptype=satellite`;
       setSatImageUrl(url);
       setDialogOpen(true);
 
