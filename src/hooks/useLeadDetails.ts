@@ -372,6 +372,7 @@ export interface ProjectData {
 // Main hook - fetches ALL data in PARALLEL with caching
 export function useLeadDetails(id: string | undefined) {
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
 
   // Lead details - primary data
   const leadQuery = useQuery({
@@ -394,9 +395,9 @@ export function useLeadDetails(id: string | undefined) {
 
   // Photos - parallel
   const photosQuery = useQuery({
-    queryKey: ['lead-photos', id],
-    queryFn: () => fetchPhotos(id!),
-    enabled: !!id,
+    queryKey: ['lead-photos', id, effectiveTenantId],
+    queryFn: () => fetchPhotos(id!, effectiveTenantId),
+    enabled: !!id && !!effectiveTenantId,
     staleTime: 30000,
   });
 
@@ -480,6 +481,7 @@ export function useLeadDetails(id: string | undefined) {
 // Prefetch function for hover prefetching
 export function usePrefetchLeadDetails() {
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
 
   return (id: string) => {
     // Prefetch lead data
@@ -489,8 +491,8 @@ export function usePrefetchLeadDetails() {
       staleTime: 30000,
     });
     queryClient.prefetchQuery({
-      queryKey: ['lead-photos', id],
-      queryFn: () => fetchPhotos(id),
+      queryKey: ['lead-photos', id, effectiveTenantId],
+      queryFn: () => fetchPhotos(id, effectiveTenantId),
       staleTime: 30000,
     });
   };
