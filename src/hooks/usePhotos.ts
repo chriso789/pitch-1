@@ -93,7 +93,7 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
     },
     enabled: enabled && !!effectiveTenantId && !!(contactId || leadId || projectId),
     staleTime: 60_000,
-    initialData: leadId ? () => queryClient.getQueryData<CustomerPhoto[]>(['lead-photos', leadId]) : undefined,
+    initialData: leadId ? () => queryClient.getQueryData<CustomerPhoto[]>(['lead-photos', leadId, effectiveTenantId]) : undefined,
   });
 
   // Upload photo
@@ -292,7 +292,7 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
         current.filter((photo) => !photoIds.includes(photo.id))
       );
       queryClient.invalidateQueries({ queryKey });
-      if (leadId) queryClient.invalidateQueries({ queryKey: ['lead-photos', leadId] });
+      if (leadId) queryClient.invalidateQueries({ queryKey: ['lead-photos', leadId, effectiveTenantId] });
       toast({
         title: 'Photos deleted',
         description: 'Selected photos have been deleted',
