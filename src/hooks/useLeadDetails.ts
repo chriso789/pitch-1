@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 export interface LeadDetailsData {
   id: string;
@@ -226,11 +227,15 @@ async function fetchDynamicRequirements(tenantId: string | undefined, pipelineEn
 }
 
 // Fetch photos from customer_photos table (canonical source)
-async function fetchPhotos(id: string) {
+async function fetchPhotos(id: string, tenantId: string | null) {
+  if (!tenantId) return [];
+
   const { data, error } = await supabase
     .from('customer_photos')
-    .select('*')
+    .select('id, tenant_id, contact_id, lead_id, project_id, file_url, file_name, original_filename, file_size, mime_type, category, description, display_order, uploaded_by, gps_latitude, gps_longitude, taken_at, include_in_estimate, is_primary, uploaded_at')
+    .eq('tenant_id', tenantId)
     .eq('lead_id', id)
+    .order('display_order', { ascending: true, nullsFirst: false })
     .order('uploaded_at', { ascending: false });
 
   if (error) throw error;
