@@ -70,6 +70,11 @@ export interface WhyChooseUsProps extends TemplatePageProps {
   brandStory?: string | null;
   brandMission?: string | null;
   brandCertifications?: string | null;
+  brandStats?: BrandStat[] | null;
+  brandTestimonial?: BrandTestimonial | null;
+  brandCommitments?: BrandCommitment[] | null;
+  brandPrimaryColor?: string | null;
+  brandAccentColor?: string | null;
 }
 
 export interface ProcessTimelineProps {
