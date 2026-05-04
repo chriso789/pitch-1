@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Camera, CheckCircle, ImageIcon, Loader2, Upload } from 'lucide-react';
+import { compressImage } from '@/lib/imageCompression';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
 import { toast } from '@/components/ui/use-toast';
@@ -32,10 +33,12 @@ export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps)
 
     setUploadingCategory(category);
     try {
-      for (const file of Array.from(files)) {
-        if (!file.type.startsWith('image/')) continue;
-        if (file.size > 10 * 1024 * 1024) {
-          toast({ title: 'File too large', description: `${file.name} exceeds 10MB limit`, variant: 'destructive' });
+      for (const rawFile of Array.from(files)) {
+        if (!rawFile.type.startsWith('image/') && !/\.(heic|heif)$/i.test(rawFile.name)) continue;
+        // Compress before size check — handles large drone/HEIC photos
+        const file = await compressImage(rawFile);
+        if (file.size > 25 * 1024 * 1024) {
+          toast({ title: 'File too large', description: `${rawFile.name} still exceeds 25MB after compression`, variant: 'destructive' });
           continue;
         }
         await uploadPhoto({ file, category, leadId, contactId });
@@ -115,7 +118,7 @@ export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps)
                   <input
                     ref={el => { fileInputRefs.current[step.key] = el; }}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif"
                     multiple
                     className="hidden"
                     onChange={e => handleFileSelect(e, step.key)}
