@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SafeImage } from '@/components/ui/safe-image';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,7 +110,7 @@ export default function StormCanvassPhotos() {
             {filteredPhotos.map((photo) => (
               <Card key={photo.id} className="overflow-hidden group cursor-pointer hover:ring-2 hover:ring-primary transition-all">
                 <div className="aspect-square bg-muted relative">
-                  <img
+                  <SafeImage
                     src={photo.thumbnail_url || photo.file_url}
                     alt={photo.property_address || 'Canvass photo'}
                     className="w-full h-full object-cover"
