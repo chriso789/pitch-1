@@ -24,6 +24,10 @@ interface CompanyInfo {
   brand_story?: string | null;
   brand_mission?: string | null;
   brand_certifications?: string | null;
+  brand_headline?: string | null;
+  brand_tagline?: string | null;
+  brand_primary_color?: string | null;
+  brand_accent_color?: string | null;
 }
 
 interface EstimateCoverPageProps {
