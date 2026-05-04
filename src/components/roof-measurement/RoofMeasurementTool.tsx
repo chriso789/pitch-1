@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { 
   Loader2, Download, AlertCircle, CheckCircle, 
-  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage, Sparkles
+  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage, Sparkles, Scan
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
