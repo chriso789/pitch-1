@@ -70,7 +70,7 @@ interface OverlayDebugData {
   footprint_valid?: boolean;
   footprint_point_count?: number;
   footprint_area_sqft?: number;
-  dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: any; dsm_bbox: any } | null;
+  dsm_coordinate_match?: { match: boolean; overlap_ratio: number; footprint_dsm_bbox: unknown; dsm_bbox: unknown } | null;
   // Registration quality metrics
   overlay_calibration?: {
     registration_quality?: {
@@ -81,13 +81,13 @@ interface OverlayDebugData {
       publish_allowed?: boolean;
       block_reason?: string | null;
     };
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
 interface DSMDebugOverlayProps {
   overlayDebug: OverlayDebugData | null;
-  debugGeometry?: any;
+  debugGeometry?: unknown;
 }
 
 function parseRasterSizeFromUrl(url?: string | null): { width: number; height: number } | null {
@@ -112,6 +112,77 @@ const EDGE_COLORS: Record<string, string> = {
   rake: '#00cc44',
 };
 
+const EPS = 1e-6;
+
+function pointOnSegment(point: [number, number], a: [number, number], b: [number, number]): boolean {
+  const cross = (point[1] - a[1]) * (b[0] - a[0]) - (point[0] - a[0]) * (b[1] - a[1]);
+  if (Math.abs(cross) > EPS) return false;
+  return (
+    point[0] >= Math.min(a[0], b[0]) - EPS &&
+    point[0] <= Math.max(a[0], b[0]) + EPS &&
+    point[1] >= Math.min(a[1], b[1]) - EPS &&
+    point[1] <= Math.max(a[1], b[1]) + EPS
+  );
+}
+
+function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    if (pointOnSegment(point, polygon[j], polygon[i])) return true;
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || EPS) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function segmentPolygonIntersections(p1: [number, number], p2: [number, number], polygon: [number, number][]): number[] {
+  const [x1, y1] = p1;
+  const [x2, y2] = p2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const ts = [0, 1];
+  for (let i = 0; i < polygon.length; i++) {
+    const [x3, y3] = polygon[i];
+    const [x4, y4] = polygon[(i + 1) % polygon.length];
+    const sx = x4 - x3;
+    const sy = y4 - y3;
+    const denom = dx * sy - dy * sx;
+    if (Math.abs(denom) < EPS) continue;
+    const qpx = x3 - x1;
+    const qpy = y3 - y1;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * dy - qpy * dx) / denom;
+    if (t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS) ts.push(Math.max(0, Math.min(1, t)));
+  }
+  return [...new Set(ts.map((t) => Math.round(t * 1_000_000) / 1_000_000))].sort((a, b) => a - b);
+}
+
+function clipEdgeToFootprint(edge: OverlayEdge, footprint: [number, number][]): OverlayEdge[] {
+  if (footprint.length < 3) return [edge];
+  const [x1, y1] = edge.p1;
+  const [x2, y2] = edge.p2;
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return [];
+  const ts = segmentPolygonIntersections(edge.p1, edge.p2, footprint);
+  const segments: OverlayEdge[] = [];
+  for (let i = 0; i < ts.length - 1; i++) {
+    const a = ts[i];
+    const b = ts[i + 1];
+    if (b - a < EPS) continue;
+    const mid = (a + b) / 2;
+    const midpoint: [number, number] = [x1 + (x2 - x1) * mid, y1 + (y2 - y1) * mid];
+    if (!pointInPolygon(midpoint, footprint)) continue;
+    segments.push({
+      ...edge,
+      p1: [x1 + (x2 - x1) * a, y1 + (y2 - y1) * a],
+      p2: [x1 + (x2 - x1) * b, y1 + (y2 - y1) * b],
+    });
+  }
+  return segments.length ? segments : pointInPolygon(edge.p1, footprint) && pointInPolygon(edge.p2, footprint) ? [edge] : [];
+}
+
 const LAYER_DEFAULTS = {
   raster: true,
   footprint: true,
@@ -121,6 +192,8 @@ const LAYER_DEFAULTS = {
   graphNodes: true,
   facets: false,
 };
+
+const EMPTY_OVERLAY_DEBUG_DATA: OverlayDebugData = {};
 
 export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlayProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -132,8 +205,7 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
 
-  const data = overlayDebug;
-  if (!data) return null;
+  const data = overlayDebug || EMPTY_OVERLAY_DEBUG_DATA;
 
   const inferredRasterSize = data.raster_size || parseRasterSizeFromUrl(data.raster_url);
   const rasterW = inferredRasterSize?.width || 1280;
@@ -142,43 +214,6 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
   const toggleLayer = (key: keyof typeof LAYER_DEFAULTS) => {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
   };
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(pan.x, pan.y);
-    ctx.scale(zoom, zoom);
-
-    // Draw raster background
-    if (layers.raster && data.raster_url) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.translate(pan.x, pan.y);
-        ctx.scale(zoom, zoom);
-        ctx.globalAlpha = 0.7;
-        ctx.drawImage(img, 0, 0, rasterW, rasterH);
-        ctx.globalAlpha = 1.0;
-        drawOverlays(ctx);
-        ctx.restore();
-      };
-      img.src = data.raster_url;
-    } else {
-      // Dark background
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, rasterW, rasterH);
-      drawOverlays(ctx);
-    }
-
-    ctx.restore();
-  }, [data, layers, zoom, pan, rasterW, rasterH]);
 
   const drawOverlays = useCallback((ctx: CanvasRenderingContext2D) => {
     // Footprint
@@ -224,10 +259,13 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
 
     // Classified edges from edges_px (accepted, final)
     if (layers.classifiedEdgesPx && data.edges_px) {
-      for (const edge of data.edges_px) {
+      const visibleEdges = data.footprint_px && data.footprint_px.length >= 3
+        ? data.edges_px.flatMap((edge) => clipEdgeToFootprint(edge, data.footprint_px!))
+        : data.edges_px;
+      for (const edge of visibleEdges) {
         const baseColor = EDGE_COLORS[edge.type] || '#ffffff';
         // Confidence-based opacity: stronger edges are more opaque
-        const confidence = (edge as any).confidence ?? 1;
+        const confidence = (edge as OverlayEdge & { confidence?: number }).confidence ?? 1;
         const alpha = Math.max(0.3, Math.min(1, confidence));
         ctx.strokeStyle = baseColor;
         ctx.globalAlpha = alpha;
@@ -273,10 +311,47 @@ export function DSMDebugOverlay({ overlayDebug, debugGeometry }: DSMDebugOverlay
     }
   }, [data, layers]);
 
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(pan.x, pan.y);
+    ctx.scale(zoom, zoom);
+
+    if (layers.raster && data.raster_url) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(pan.x, pan.y);
+        ctx.scale(zoom, zoom);
+        ctx.globalAlpha = 0.7;
+        ctx.drawImage(img, 0, 0, rasterW, rasterH);
+        ctx.globalAlpha = 1.0;
+        drawOverlays(ctx);
+        ctx.restore();
+      };
+      img.src = data.raster_url;
+    } else {
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, rasterW, rasterH);
+      drawOverlays(ctx);
+    }
+
+    ctx.restore();
+  }, [data, drawOverlays, layers.raster, pan.x, pan.y, rasterH, rasterW, zoom]);
+
   useEffect(() => {
     if (!isOpen) return;
     draw();
   }, [isOpen, draw]);
+
+  if (!overlayDebug) return null;
 
   // Mouse handlers for pan/zoom
   const handleWheel = (e: React.WheelEvent) => {

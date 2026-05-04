@@ -26,6 +26,90 @@ type Pt = [number, number];
 type PlanePx = { polygon: Pt[] };
 type EdgePx = { type: string; p1: Pt; p2: Pt };
 
+const EPS = 1e-6;
+
+function pointOnSegment(point: Pt, a: Pt, b: Pt): boolean {
+  const cross = (point[1] - a[1]) * (b[0] - a[0]) - (point[0] - a[0]) * (b[1] - a[1]);
+  if (Math.abs(cross) > EPS) return false;
+  return (
+    point[0] >= Math.min(a[0], b[0]) - EPS &&
+    point[0] <= Math.max(a[0], b[0]) + EPS &&
+    point[1] >= Math.min(a[1], b[1]) - EPS &&
+    point[1] <= Math.max(a[1], b[1]) + EPS
+  );
+}
+
+function pointInPolygon(point: Pt, polygon: Pt[]): boolean {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    if (pointOnSegment(point, polygon[j], polygon[i])) return true;
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || EPS) + xi;
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function segmentPolygonIntersections(p1: Pt, p2: Pt, polygon: Pt[]): number[] {
+  const [x1, y1] = p1;
+  const [x2, y2] = p2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const ts = [0, 1];
+
+  for (let i = 0; i < polygon.length; i++) {
+    const [x3, y3] = polygon[i];
+    const [x4, y4] = polygon[(i + 1) % polygon.length];
+    const sx = x4 - x3;
+    const sy = y4 - y3;
+    const denom = dx * sy - dy * sx;
+    if (Math.abs(denom) < EPS) continue;
+
+    const qpx = x3 - x1;
+    const qpy = y3 - y1;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * dy - qpy * dx) / denom;
+
+    if (t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS) {
+      ts.push(Math.max(0, Math.min(1, t)));
+    }
+  }
+
+  return [...new Set(ts.map((t) => Math.round(t * 1_000_000) / 1_000_000))].sort((a, b) => a - b);
+}
+
+function clipEdgeToPolygon(edge: EdgePx, polygon: Pt[]): EdgePx[] {
+  if (polygon.length < 3) return [edge];
+  const [x1, y1] = edge.p1;
+  const [x2, y2] = edge.p2;
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return [];
+
+  const ts = segmentPolygonIntersections(edge.p1, edge.p2, polygon);
+  const segments: EdgePx[] = [];
+  for (let i = 0; i < ts.length - 1; i++) {
+    const a = ts[i];
+    const b = ts[i + 1];
+    if (b - a < EPS) continue;
+    const mid = (a + b) / 2;
+    const midPoint: Pt = [x1 + (x2 - x1) * mid, y1 + (y2 - y1) * mid];
+    if (!pointInPolygon(midPoint, polygon)) continue;
+    segments.push({
+      ...edge,
+      p1: [x1 + (x2 - x1) * a, y1 + (y2 - y1) * a],
+      p2: [x1 + (x2 - x1) * b, y1 + (y2 - y1) * b],
+    });
+  }
+
+  if (segments.length === 0 && pointInPolygon(edge.p1, polygon) && pointInPolygon(edge.p2, polygon)) {
+    return [edge];
+  }
+  return segments;
+}
+
 const EDGE_COLORS: Record<string, string> = {
   ridge: '#ef4444',
   hip: '#f97316',
@@ -112,6 +196,11 @@ export function RasterOverlayDebugView({
       return [out.x, out.y] as Pt;
     });
   }, [calibration, footprint_px]);
+
+  const clippedDisplayEdges = useMemo(() => {
+    if (displayFootprint.length < 3) return displayEdges;
+    return displayEdges.flatMap((edge) => clipEdgeToPolygon(edge, displayFootprint));
+  }, [displayEdges, displayFootprint]);
 
   if (!imageUrl || !rasterSize) {
     return (
@@ -202,7 +291,7 @@ export function RasterOverlayDebugView({
                 );
               })}
             {showEdges &&
-              displayEdges.map((e, i) => (
+              clippedDisplayEdges.map((e, i) => (
                 <line
                   key={`e-${i}`}
                   x1={e.p1[0]}
