@@ -41,6 +41,50 @@ async function resolveDisplayUrl(url: string): Promise<string> {
   return data.signedUrl;
 }
 
+async function persistConvertedHeic(originalUrl: string, jpegBlob: Blob): Promise<string | null> {
+  const storageObject = parseSupabaseStorageUrl(originalUrl);
+  if (!storageObject) return null;
+
+  const jpegPath = storageObject.path.replace(/\.(heic|heif)$/i, '.jpg');
+  if (jpegPath === storageObject.path) return null;
+
+  const { error: uploadError } = await supabase.storage
+    .from(storageObject.bucket)
+    .upload(jpegPath, jpegBlob, {
+      cacheControl: '3600',
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data: publicData } = supabase.storage
+    .from(storageObject.bucket)
+    .getPublicUrl(jpegPath);
+
+  await supabase
+    .from('customer_photos')
+    .update({
+      file_url: publicData.publicUrl,
+      file_name: jpegPath,
+      mime_type: 'image/jpeg',
+      file_size: jpegBlob.size,
+      description: jpegPath.split('/').pop() || 'photo.jpg',
+    })
+    .eq('file_name', storageObject.path);
+
+  const { data: signedData } = await supabase.storage
+    .from(storageObject.bucket)
+    .createSignedUrl(jpegPath, 60 * 60);
+
+  if (signedData?.signedUrl) {
+    signedUrlCache.set(publicData.publicUrl, signedData.signedUrl);
+    return signedData.signedUrl;
+  }
+
+  return publicData.publicUrl;
+}
+
 /**
  * Converts a HEIC/HEIF URL to a displayable blob URL.
  * Returns the original URL for non-HEIC files.
@@ -71,9 +115,13 @@ export function useHeicUrl(url: string | undefined | null): { displayUrl: string
         const blob = await resp.blob();
         const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
         const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+        const persistedUrl = await persistConvertedHeic(url, jpegBlob).catch((err) => {
+          console.warn('[useHeicUrl] Converted display but could not persist JPEG:', err);
+          return null;
+        });
         const blobUrl = URL.createObjectURL(jpegBlob);
-        cache.set(url, blobUrl);
-        if (!cancelled) setDisplayUrl(blobUrl);
+        cache.set(url, persistedUrl || blobUrl);
+        if (!cancelled) setDisplayUrl(persistedUrl || blobUrl);
       } catch (err) {
         console.warn('[useHeicUrl] Conversion failed, falling back:', err);
         if (!cancelled) setDisplayUrl(url);
