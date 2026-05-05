@@ -23178,6 +23178,294 @@ export type Database = {
           },
         ]
       }
+      pdf_workspace_ai_edits: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          id: string
+          instruction: string
+          page_number: number | null
+          replacement_text: string | null
+          selected_text: string
+          status: string
+          tenant_id: string
+          workspace_document_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          id?: string
+          instruction: string
+          page_number?: number | null
+          replacement_text?: string | null
+          selected_text: string
+          status?: string
+          tenant_id: string
+          workspace_document_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          instruction?: string
+          page_number?: number | null
+          replacement_text?: string | null
+          selected_text?: string
+          status?: string
+          tenant_id?: string
+          workspace_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_workspace_ai_edits_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_workspace_annotations: {
+        Row: {
+          annotation_json: Json
+          created_at: string | null
+          created_by: string
+          id: string
+          tenant_id: string
+          updated_at: string | null
+          updated_by: string | null
+          version_id: string | null
+          workspace_document_id: string
+          xfdf: string | null
+        }
+        Insert: {
+          annotation_json?: Json
+          created_at?: string | null
+          created_by: string
+          id?: string
+          tenant_id: string
+          updated_at?: string | null
+          updated_by?: string | null
+          version_id?: string | null
+          workspace_document_id: string
+          xfdf?: string | null
+        }
+        Update: {
+          annotation_json?: Json
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          version_id?: string | null
+          workspace_document_id?: string
+          xfdf?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_workspace_annotations_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_workspace_annotations_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_workspace_audit_events: {
+        Row: {
+          actor_id: string
+          created_at: string | null
+          event_data: Json
+          event_type: string
+          id: string
+          ip_address: string | null
+          tenant_id: string
+          user_agent: string | null
+          workspace_document_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string | null
+          event_data?: Json
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          tenant_id: string
+          user_agent?: string | null
+          workspace_document_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string | null
+          event_data?: Json
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+          workspace_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_workspace_audit_events_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_workspace_documents: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          created_by: string
+          current_bucket: string
+          current_path: string | null
+          document_id: string | null
+          estimate_id: string | null
+          file_size: number | null
+          finalized_bucket: string | null
+          finalized_path: string | null
+          id: string
+          metadata: Json
+          mime_type: string
+          original_bucket: string
+          original_filename: string
+          original_path: string
+          page_count: number | null
+          pipeline_entry_id: string | null
+          signature_envelope_id: string | null
+          source_type: string
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by: string
+          current_bucket?: string
+          current_path?: string | null
+          document_id?: string | null
+          estimate_id?: string | null
+          file_size?: number | null
+          finalized_bucket?: string | null
+          finalized_path?: string | null
+          id?: string
+          metadata?: Json
+          mime_type?: string
+          original_bucket?: string
+          original_filename: string
+          original_path: string
+          page_count?: number | null
+          pipeline_entry_id?: string | null
+          signature_envelope_id?: string | null
+          source_type?: string
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string
+          current_bucket?: string
+          current_path?: string | null
+          document_id?: string | null
+          estimate_id?: string | null
+          file_size?: number | null
+          finalized_bucket?: string | null
+          finalized_path?: string | null
+          id?: string
+          metadata?: Json
+          mime_type?: string
+          original_bucket?: string
+          original_filename?: string
+          original_path?: string
+          page_count?: number | null
+          pipeline_entry_id?: string | null
+          signature_envelope_id?: string | null
+          source_type?: string
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      pdf_workspace_versions: {
+        Row: {
+          annotation_state: Json
+          bucket: string
+          change_summary: string | null
+          created_at: string | null
+          created_by: string
+          editor_state: Json
+          file_path: string
+          file_size: number | null
+          flattened: boolean
+          id: string
+          tenant_id: string
+          version_number: number
+          workspace_document_id: string
+          xfdf: string | null
+        }
+        Insert: {
+          annotation_state?: Json
+          bucket: string
+          change_summary?: string | null
+          created_at?: string | null
+          created_by: string
+          editor_state?: Json
+          file_path: string
+          file_size?: number | null
+          flattened?: boolean
+          id?: string
+          tenant_id: string
+          version_number: number
+          workspace_document_id: string
+          xfdf?: string | null
+        }
+        Update: {
+          annotation_state?: Json
+          bucket?: string
+          change_summary?: string | null
+          created_at?: string | null
+          created_by?: string
+          editor_state?: Json
+          file_path?: string
+          file_size?: number | null
+          flattened?: boolean
+          id?: string
+          tenant_id?: string
+          version_number?: number
+          workspace_document_id?: string
+          xfdf?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_workspace_versions_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permit_application_templates: {
         Row: {
           authority_id: string
@@ -44292,6 +44580,7 @@ export type Database = {
         Args: { contact_id_param: string }
         Returns: number
       }
+      get_pdf_ws_tenant_id: { Args: { _user_id: string }; Returns: string }
       get_pipeline_status_counts: {
         Args: {
           p_location_id?: string

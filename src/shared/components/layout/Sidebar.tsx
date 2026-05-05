@@ -119,6 +119,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/storm-canvass')) return 'storm-canvass';
     if (path.startsWith('/communications')) return 'communications';
     if (path.startsWith('/smartdocs')) return 'smartdocs';
+    if (path.startsWith('/documents/pdf-workspace')) return 'pdf-workspace';
     if (path.startsWith('/presentations')) return 'presentations';
     if (path.startsWith('/permits')) return 'permits';
     if (path.startsWith('/insurance') || path.startsWith('/scope-intelligence')) return 'insurance';
@@ -301,6 +302,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: BookOpen,
       description: "Document templates & library",
       featureKey: "smart_docs"
+    },
+    {
+      name: "PDF Workspace",
+      href: "documents/pdf-workspace",
+      path: "/documents/pdf-workspace",
+      icon: FileText,
+      description: "Edit & annotate PDFs",
     },
     {
       name: "Presentations",

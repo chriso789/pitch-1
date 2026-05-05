@@ -92,6 +92,8 @@ const NotificationsPage = React.lazy(() => import("@/pages/NotificationsPage"));
 const CommissionReport = React.lazy(() => import("@/pages/CommissionReport"));
 const MyMoney = React.lazy(() => import("@/pages/MyMoney"));
 const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPage"));
+const PdfWorkspaceList = React.lazy(() => import("@/pages/PdfWorkspaceList"));
+const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -195,6 +197,8 @@ export default function ProtectedRoutes() {
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
         <Route path="/my-money" element={<ProtectedRoute><MyMoney /></ProtectedRoute>} />
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
+        <Route path="/documents/pdf-workspace" element={<ProtectedRoute><PdfWorkspaceList /></ProtectedRoute>} />
+        <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
