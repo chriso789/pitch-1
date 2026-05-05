@@ -379,7 +379,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const validateForm = () => {
     const errors: Record<string, string> = {};
     
-    // Either need selected contact OR new contact info (name + phone + address text)
+    // Either need selected contact OR new contact info (name + phone)
     if (!selectedContact && !formData.name.trim()) {
       errors.name = "Lead name is required";
     }
@@ -394,9 +394,10 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         errors.roofAge = "Must be between 0 and 100 years";
       }
     }
-    // Allow either: verified address, selected contact with address, OR manual address text
-    if (!verifiedAddress && !selectedContact && !formData.address.trim()) {
-      errors.address = "Address is required";
+    // REQUIRE a verified address — either from address verification component or from a selected contact that already has one
+    const contactHasVerifiedAddress = selectedContact && selectedContact.address_street && selectedContact.latitude && selectedContact.longitude;
+    if (!verifiedAddress && !contactHasVerifiedAddress) {
+      errors.address = "A verified address is required. Please search and select an address.";
     }
     if (!formData.status) {
       errors.status = "Status is required";
