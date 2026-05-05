@@ -621,6 +621,78 @@ ${aiAgent?.safety_prompt || 'Never provide pricing or estimates. Never make prom
   }
 }
 
+function buildInboundGatherSchema(qualificationQuestions: unknown) {
+  const extraQuestionText = Array.isArray(qualificationQuestions)
+    ? qualificationQuestions.filter(Boolean).join(' ')
+    : String(qualificationQuestions || '').trim();
+
+  const properties: Record<string, unknown> = {
+    full_name: { type: 'string', description: 'The caller’s full name.' },
+    reason_for_calling: { type: 'string', description: 'What the caller needs help with, including project type or problem.' },
+    property_address: { type: 'string', description: 'The full property address for the roofing or construction issue.' },
+    callback_number: { type: 'string', description: 'The best phone number for the team to call back.' },
+    urgency: { type: 'string', description: 'How urgent the request is and whether there is active leaking, storm damage, or emergency damage.' },
+  };
+  const required = ['full_name', 'reason_for_calling', 'property_address', 'callback_number', 'urgency'];
+
+  if (extraQuestionText) {
+    properties.additional_qualification_details = {
+      type: 'string',
+      description: `Answers to these additional qualification questions: ${extraQuestionText}`,
+    };
+    required.push('additional_qualification_details');
+  }
+
+  return { type: 'object', properties, required };
+}
+
+async function playVoicemailPrompt(callControlId?: string) {
+  if (!callControlId) return;
+  await speak(callControlId, 'Please leave any additional details after the tone.', { flow: 'inbound_voicemail_prompt' });
+}
+
+async function playVoicemailTone(callControlId?: string) {
+  if (!callControlId) return;
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/send_dtmf`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ digits: '1', duration_millis: 500 }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to play voicemail tone:', response.status, await response.text());
+  }
+}
+
+async function speak(callControlId: string, text: string, clientState?: Record<string, unknown>) {
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/speak`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      payload: text,
+      voice: 'female',
+      language: 'en-US',
+      client_state: clientState ? btoa(JSON.stringify(clientState)) : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to speak on inbound call:', response.status, await response.text());
+  }
+}
+
 function extractPhone(value: unknown): string {
   if (!value) return '';
   if (typeof value === 'string') return normalizePhone(value);
