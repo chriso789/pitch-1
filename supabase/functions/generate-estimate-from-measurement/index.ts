@@ -238,22 +238,23 @@ function buildScopeFromMeasurements(m: MeasurementInput): {
 function calculateComplexity(m: MeasurementInput): { waste: number; complexity: string } {
   let score = 0;
 
-  // Facet complexity
+  // Facet complexity — 14 facets is NOT simple
   if (m.facet_count <= 4) score += 0;
   else if (m.facet_count <= 8) score += 1;
-  else if (m.facet_count <= 14) score += 2;
-  else score += 3;
+  else if (m.facet_count <= 12) score += 2;
+  else score += 3; // 13+ facets = high complexity contributor
 
   // Valley complexity
   if (m.valleys_ft > 100) score += 2;
-  else if (m.valleys_ft > 40) score += 1;
+  else if (m.valleys_ft > 30) score += 1;
 
   // Pitch complexity
   if (m.pitch >= 10) score += 2;
   else if (m.pitch >= 7) score += 1;
 
   // Hip complexity
-  if (m.hips_ft > 150) score += 1;
+  if (m.hips_ft > 100) score += 1;
+  else if (m.hips_ft > 150) score += 2;
 
   let complexity: string;
   let waste: number;
@@ -301,7 +302,7 @@ Deno.serve(async (req: Request) => {
         eaves_ft: measurements.eaves_ft || measurements.eaves || 0,
         rakes_ft: measurements.rakes_ft || measurements.rakes || 0,
         valleys_ft: measurements.valleys_ft || measurements.valleys || 0,
-        hips_ft: measurements.hips_ft || measurements.hips || measurements.hips_ridges ? (measurements.hips_ridges - (measurements.ridges || 0)) : 0,
+        hips_ft: measurements.hips_ft || measurements.hips || (measurements.hips_ridges ? (measurements.hips_ridges - (measurements.ridges || 0)) : 0),
         ridges_ft: measurements.ridges_ft || measurements.ridges || 0,
         step_flashing_ft: measurements.step_flashing_ft || measurements.step_flashing || 0,
         pitch: measurements.pitch || 4,
