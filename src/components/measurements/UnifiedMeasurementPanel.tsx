@@ -1229,7 +1229,7 @@ export function UnifiedMeasurementPanel({
                     size="sm" 
                     className="flex-1"
                     onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
-                    disabled={isSavingDirect}
+                    disabled={isSavingDirect || aiIsBlocked}
                   >
                     {isSavingDirect ? (
                       <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
