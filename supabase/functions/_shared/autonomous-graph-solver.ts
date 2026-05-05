@@ -1731,7 +1731,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     return polygon.length >= 3 ? s + polygonAreaSqft(polygon, midLat) : s;
   }, 0);
-  const coverageRatio = planar.debug.face_coverage_ratio || (footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0);
+  const coverageRatio = footprintAreaSqft > 0 ? Math.min(totalPlanArea / footprintAreaSqft, planar.debug.face_coverage_ratio || (totalPlanArea / footprintAreaSqft)) : 0;
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
   const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
