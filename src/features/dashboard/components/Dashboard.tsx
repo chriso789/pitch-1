@@ -475,7 +475,7 @@ const Dashboard = () => {
                 <ChevronDown className="h-4 w-4 ml-1" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            <DropdownMenuContent className="z-[70]">
               <DropdownMenuItem onClick={handleExportCSV} data-testid="dashboard-export-data">
                 <Download className="h-4 w-4 mr-2" />
                 Export CSV
