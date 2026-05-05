@@ -199,6 +199,7 @@ export default function ProtectedRoutes() {
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
         <Route path="/documents/pdf-workspace" element={<ProtectedRoute><PdfWorkspaceList /></ProtectedRoute>} />
         <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
+        <Route path="/supplements" element={<ProtectedRoute><SupplementEngine /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
