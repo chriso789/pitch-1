@@ -200,13 +200,20 @@ Project Details:
 - Roof Pitch: ${measurements.summary?.predominant_pitch || 'TBD'}
 - Estimate Total: ${estimate.selling_price ? '$' + Number(estimate.selling_price).toLocaleString() : 'TBD'}
 
+CRITICAL RULES:
+- NEVER fabricate or invent company history, founding year, number of years in business, or any facts not explicitly provided above.
+- NEVER make up Google reviews, testimonials, awards, or certifications not provided.
+- If the "About" field is empty, do NOT invent a company backstory. Focus only on the project details and services.
+- Only state facts that are directly provided in the data above.
+
 Write compelling, professional content that:
 1. Emphasizes quality workmanship and materials
-2. Highlights the company's experience and licensing
+2. Highlights the company's licensing (if provided)
 3. Builds trust with clear warranty information
 4. Uses specific project details when available
 5. Maintains a professional but friendly tone
-6. Is concise and to the point`;
+6. Is concise and to the point
+7. Omits any section where data is not available rather than fabricating it`;
 }
 
 // Format material list from line items
