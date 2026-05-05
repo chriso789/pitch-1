@@ -5573,6 +5573,56 @@ export type Database = {
           },
         ]
       }
+      carrier_estimate_line_items: {
+        Row: {
+          category: string | null
+          code: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          quantity: number | null
+          raw_text: string
+          supplement_case_id: string
+          total_price: number | null
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          category?: string | null
+          code?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          quantity?: number | null
+          raw_text: string
+          supplement_case_id: string
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          category?: string | null
+          code?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          quantity?: number | null
+          raw_text?: string
+          supplement_case_id?: string
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carrier_estimate_line_items_supplement_case_id_fkey"
+            columns: ["supplement_case_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       change_order_line_items: {
         Row: {
           change_order_id: string
@@ -38116,48 +38166,104 @@ export type Database = {
         }
         Relationships: []
       }
+      supplement_activity_log: {
+        Row: {
+          activity_type: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          notes: string | null
+          supplement_case_id: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          supplement_case_id: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          supplement_case_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_activity_log_supplement_case_id_fkey"
+            columns: ["supplement_case_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplement_cases: {
         Row: {
+          adjuster_email: string | null
+          approved_at: string | null
           carrier_name: string | null
           claim_number: string | null
           created_at: string
           created_by: string | null
+          denied_at: string | null
           estimate_project_id: string | null
           id: string
           job_id: string
           loss_date: string | null
           policy_number: string | null
+          resubmitted_at: string | null
           status: string
+          submitted_at: string | null
+          supplement_approved_total: number | null
+          supplement_requested_total: number | null
           supplement_total: number | null
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          adjuster_email?: string | null
+          approved_at?: string | null
           carrier_name?: string | null
           claim_number?: string | null
           created_at?: string
           created_by?: string | null
+          denied_at?: string | null
           estimate_project_id?: string | null
           id?: string
           job_id: string
           loss_date?: string | null
           policy_number?: string | null
+          resubmitted_at?: string | null
           status?: string
+          submitted_at?: string | null
+          supplement_approved_total?: number | null
+          supplement_requested_total?: number | null
           supplement_total?: number | null
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          adjuster_email?: string | null
+          approved_at?: string | null
           carrier_name?: string | null
           claim_number?: string | null
           created_at?: string
           created_by?: string | null
+          denied_at?: string | null
           estimate_project_id?: string | null
           id?: string
           job_id?: string
           loss_date?: string | null
           policy_number?: string | null
+          resubmitted_at?: string | null
           status?: string
+          submitted_at?: string | null
+          supplement_approved_total?: number | null
+          supplement_requested_total?: number | null
           supplement_total?: number | null
           tenant_id?: string
           updated_at?: string
@@ -38280,6 +38386,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "supplement_narratives_supplement_case_id_fkey"
+            columns: ["supplement_case_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplement_packet_exports: {
+        Row: {
+          created_at: string | null
+          export_type: string | null
+          file_url: string | null
+          id: string
+          status: string | null
+          supplement_case_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          export_type?: string | null
+          file_url?: string | null
+          id?: string
+          status?: string | null
+          supplement_case_id: string
+        }
+        Update: {
+          created_at?: string | null
+          export_type?: string | null
+          file_url?: string | null
+          id?: string
+          status?: string | null
+          supplement_case_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_packet_exports_supplement_case_id_fkey"
             columns: ["supplement_case_id"]
             isOneToOne: false
             referencedRelation: "supplement_cases"
