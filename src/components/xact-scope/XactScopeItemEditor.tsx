@@ -171,6 +171,24 @@ export const XactScopeItemEditor: React.FC<XactScopeItemEditorProps> = ({
         <Button size="sm" variant="outline" onClick={() => setShowManual(true)}>
           <Plus className="h-4 w-4 mr-1" /> Custom Item
         </Button>
+        {items.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-destructive hover:text-destructive"
+            onClick={async () => {
+              if (!confirm(`Remove all ${items.length} line items? This allows re-generating from measurements.`)) return;
+              const { error } = await supabase.from('xact_scope_items').delete().eq('scope_project_id', scopeProjectId);
+              if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+              else {
+                queryClient.invalidateQueries({ queryKey: ['xact-scope-items'] });
+                toast({ title: 'All items cleared' });
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> Clear All
+          </Button>
+        )}
       </div>
 
       {/* Items Table */}

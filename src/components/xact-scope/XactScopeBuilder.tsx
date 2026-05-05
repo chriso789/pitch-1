@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/use-toast';
 import {
   Plus, Trash2, FileText, Download, ClipboardList, AlertTriangle,
   CheckCircle, Edit2, Copy, ChevronDown, ChevronRight, Loader2,
-  FileSpreadsheet, FileDown, Sparkles
+  FileSpreadsheet, FileDown, Sparkles, Zap, Ruler
 } from 'lucide-react';
 import { XactScopeItemEditor } from './XactScopeItemEditor';
 import { XactAreaManager } from './XactAreaManager';
@@ -187,7 +187,48 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
     }
   });
 
-  // Calculate totals
+  // Check if measurement data exists for this pipeline entry
+  const { data: hasMeasurement } = useQuery({
+    queryKey: ['xact-has-measurement', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await (supabase
+        .from('roof_measurements') as any)
+        .select('id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      return data as { id: string; total_area_adjusted_sqft: number | null; total_squares: number | null; predominant_pitch: string | null; facet_count: number | null } | null;
+    },
+    enabled: !!pipelineEntryId
+  });
+
+  // Auto-generate scope from measurements
+  const autoGenerateMutation = useMutation({
+    mutationFn: async (scopeProjectId: string) => {
+      const { data, error } = await supabase.functions.invoke('generate-estimate-from-measurement', {
+        body: {
+          pipeline_entry_id: pipelineEntryId,
+          scope_project_id: scopeProjectId,
+        }
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['xact-scope-items'] });
+      toast({
+        title: 'Scope auto-generated',
+        description: `${data.line_item_count} line items created (${data.complexity_score} complexity, ${Math.round(data.waste_factor * 100)}% waste)`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Auto-generate failed', description: err.message, variant: 'destructive' });
+    }
+  });
+
   const subtotal = items?.reduce((sum, item) => sum + (item.line_total || 0), 0) || 0;
   const taxTotal = items?.reduce((sum, item) => {
     const taxable = item.line_total || 0;
@@ -319,6 +360,45 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
               </div>
             </CardContent>
           </Card>
+
+          {/* Auto-Generate from Measurements */}
+          {hasMeasurement && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Ruler className="h-5 w-5 text-primary" />
+                    <div>
+                      <div className="text-sm font-medium">Measurement Data Available</div>
+                      <div className="text-xs text-muted-foreground">
+                        {hasMeasurement.total_squares?.toFixed(1) || '?'} SQ
+                        {hasMeasurement.predominant_pitch ? ` · ${hasMeasurement.predominant_pitch} pitch` : ''}
+                        {hasMeasurement.facet_count ? ` · ${hasMeasurement.facet_count} facets` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => autoGenerateMutation.mutate(selectedProject!.id)}
+                    disabled={autoGenerateMutation.isPending || !items || items.length > 0}
+                    className="gap-1"
+                    size="sm"
+                  >
+                    {autoGenerateMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="h-4 w-4" />
+                    )}
+                    {items && items.length > 0 ? 'Already Generated' : 'Auto-Build Scope'}
+                  </Button>
+                </div>
+                {items && items.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Clear existing items first if you want to regenerate. This prevents accidental duplicates.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Tabs for Areas / Items / Export */}
           <Card>
