@@ -361,6 +361,45 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
             </CardContent>
           </Card>
 
+          {/* Auto-Generate from Measurements */}
+          {hasMeasurement && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Ruler className="h-5 w-5 text-primary" />
+                    <div>
+                      <div className="text-sm font-medium">Measurement Data Available</div>
+                      <div className="text-xs text-muted-foreground">
+                        {hasMeasurement.total_squares?.toFixed(1) || '?'} SQ
+                        {hasMeasurement.predominant_pitch ? ` · ${hasMeasurement.predominant_pitch} pitch` : ''}
+                        {hasMeasurement.facet_count ? ` · ${hasMeasurement.facet_count} facets` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => autoGenerateMutation.mutate(selectedProject!.id)}
+                    disabled={autoGenerateMutation.isPending || !items || items.length > 0}
+                    className="gap-1"
+                    size="sm"
+                  >
+                    {autoGenerateMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="h-4 w-4" />
+                    )}
+                    {items && items.length > 0 ? 'Already Generated' : 'Auto-Build Scope'}
+                  </Button>
+                </div>
+                {items && items.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Clear existing items first if you want to regenerate. This prevents accidental duplicates.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tabs for Areas / Items / Export */}
           <Card>
             <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
