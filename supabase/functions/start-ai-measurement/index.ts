@@ -4029,6 +4029,17 @@ async function processJob(input: any) {
         totals,
         quality,
       },
+      // ── Validation columns ──
+      is_valid: measurementIsValid,
+      fail_reasons: sanityFailures.length > 0 ? sanityFailures : (dsmFailReason ? [dsmFailReason] : null),
+      area_ratio: computedAreaRatio,
+      coverage: computedCoverage,
+      validated_face_count: computedValidatedFaces,
+      total_face_count: computedTotalFaces,
+      footprint_confidence: autonomousDebug?.footprint_valid ? 1.0 : 0.5,
+      report_blocked: !!blockCustomerReportReason,
+      blocked_reason: blockCustomerReportReason,
+      needs_review: needsInternalReview || !!blockCustomerReportReason || quality.overall_score < 0.80,
     });
 
     if (quality.checks.length) {
