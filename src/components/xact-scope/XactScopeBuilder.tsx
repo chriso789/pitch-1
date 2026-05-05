@@ -187,7 +187,48 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
     }
   });
 
-  // Calculate totals
+  // Check if measurement data exists for this pipeline entry
+  const { data: hasMeasurement } = useQuery({
+    queryKey: ['xact-has-measurement', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('roof_measurements')
+        .select('id, total_area_adjusted_sqft, total_squares, total_eave_length, total_valley_length, total_hip_length, total_ridge_length, predominant_pitch, facet_count')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!pipelineEntryId
+  });
+
+  // Auto-generate scope from measurements
+  const autoGenerateMutation = useMutation({
+    mutationFn: async (scopeProjectId: string) => {
+      const { data, error } = await supabase.functions.invoke('generate-estimate-from-measurement', {
+        body: {
+          pipeline_entry_id: pipelineEntryId,
+          scope_project_id: scopeProjectId,
+        }
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['xact-scope-items'] });
+      toast({
+        title: 'Scope auto-generated',
+        description: `${data.line_item_count} line items created (${data.complexity_score} complexity, ${Math.round(data.waste_factor * 100)}% waste)`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Auto-generate failed', description: err.message, variant: 'destructive' });
+    }
+  });
+
   const subtotal = items?.reduce((sum, item) => sum + (item.line_total || 0), 0) || 0;
   const taxTotal = items?.reduce((sum, item) => {
     const taxable = item.line_total || 0;
