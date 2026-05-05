@@ -946,7 +946,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
             if (block.type === 'sub-header') {
               return (
                 <tr key={`sub-${block.label}-${idx}`}>
-                  <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-1.5 pb-0.5">
+                  <td colSpan={colCount} className="pt-1.5 pb-0.5">
                     <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
                       {block.label}
                     </div>
