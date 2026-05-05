@@ -250,7 +250,13 @@ async function completeInboundCall(supabase: any, event: any, context: any) {
     .eq('telnyx_call_control_id', callControlId);
 
   if (error) console.error('Failed to complete inbound call:', error);
-  await upsertUnifiedInboxCall(supabase, callControlId, context, 'completed', event);
+  const { data: call } = await supabase
+    .from('calls')
+    .select('id')
+    .eq('telnyx_call_control_id', callControlId)
+    .maybeSingle();
+
+  await upsertUnifiedInboxCall(supabase, call?.id || callControlId, context, 'completed', event);
 }
 
 async function answerInboundCall(callControlId?: string) {
@@ -450,4 +456,75 @@ async function playConsentMessage(callControlId: string) {
       language: 'en-US',
     }),
   });
+}
+
+async function playInboundGreeting(supabase: any, callControlId: string | undefined, tenantId: string | null) {
+  if (!callControlId) return;
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  let greeting = 'Thank you for calling. Please leave a message after the tone.';
+  if (tenantId) {
+    const { data: aiConfig } = await supabase
+      .from('ai_answering_config')
+      .select('greeting_text')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (aiConfig?.greeting_text) greeting = `${aiConfig.greeting_text} Please leave a message after the tone.`;
+  }
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/speak`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      payload: greeting,
+      voice: 'female',
+      language: 'en-US',
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to play inbound greeting:', response.status, await response.text());
+  }
+}
+
+function extractPhone(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return normalizePhone(value);
+  if (typeof value === 'object') {
+    const candidate = (value as Record<string, unknown>).phone_number
+      || (value as Record<string, unknown>).number
+      || (value as Record<string, unknown>).sip_address;
+    return typeof candidate === 'string' ? normalizePhone(candidate) : '';
+  }
+  return '';
+}
+
+function normalizePhone(phone: string): string {
+  const cleaned = phone.replace(/[^(\d+)]/g, '');
+  const digits = digitsOnly(cleaned);
+  if (cleaned.startsWith('+')) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return cleaned;
+}
+
+function digitsOnly(phone: string): string {
+  return (phone || '').replace(/\D/g, '');
+}
+
+function phoneVariants(phone: string): string[] {
+  const digits = digitsOnly(phone);
+  const variants = new Set<string>();
+  if (phone) variants.add(phone);
+  if (digits.length === 10) variants.add(`+1${digits}`);
+  if (digits.length === 11 && digits.startsWith('1')) {
+    variants.add(`+${digits}`);
+    variants.add(digits.slice(1));
+  }
+  variants.add(digits);
+  return [...variants].filter(Boolean);
 }
