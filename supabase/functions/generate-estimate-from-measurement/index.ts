@@ -302,7 +302,7 @@ Deno.serve(async (req: Request) => {
         eaves_ft: measurements.eaves_ft || measurements.eaves || 0,
         rakes_ft: measurements.rakes_ft || measurements.rakes || 0,
         valleys_ft: measurements.valleys_ft || measurements.valleys || 0,
-        hips_ft: measurements.hips_ft || measurements.hips || measurements.hips_ridges ? (measurements.hips_ridges - (measurements.ridges || 0)) : 0,
+        hips_ft: measurements.hips_ft || measurements.hips || (measurements.hips_ridges ? (measurements.hips_ridges - (measurements.ridges || 0)) : 0),
         ridges_ft: measurements.ridges_ft || measurements.ridges || 0,
         step_flashing_ft: measurements.step_flashing_ft || measurements.step_flashing || 0,
         pitch: measurements.pitch || 4,
