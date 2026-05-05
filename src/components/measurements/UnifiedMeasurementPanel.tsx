@@ -1175,48 +1175,46 @@ export function UnifiedMeasurementPanel({
                   />
                 )}
 
-                {/* Key Stats — hidden when measurement is invalid */}
                 {!aiIsBlocked && (
-                <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground text-xs">Squares</span>
-                    <p className="font-semibold">{formatValue(ai.total_squares)}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Sq Ft</span>
-                    <p className="font-semibold">{formatValue(ai.total_area_adjusted_sqft)}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Pitch</span>
-                    <p className="font-semibold">{ai.predominant_pitch || '—'}</p>
-                  </div>
-                </div>
-
-                {/* Linear Measurements Grid */}
-                <div className="grid grid-cols-5 gap-2 text-xs border-t border-border pt-2">
-                  <div className="text-center">
-                    <span className="block font-medium" style={{ color: '#90EE90' }}>Ridge</span>
-                    <span className="text-foreground">{formatValue(ai.total_ridge_length)} ft</span>
-                  </div>
-                  <div className="text-center">
-                    <span className="block font-medium" style={{ color: '#9B59B6' }}>Hip</span>
-                    <span className="text-foreground">{formatValue(ai.total_hip_length)} ft</span>
-                  </div>
-                  <div className="text-center">
-                    <span className="block font-medium" style={{ color: '#DC3545' }}>Valley</span>
-                    <span className="text-foreground">{formatValue(ai.total_valley_length)} ft</span>
-                  </div>
-                  <div className="text-center">
-                    <span className="block font-medium" style={{ color: '#006400' }}>Eave</span>
-                    <span className="text-foreground">{formatValue(ai.total_eave_length)} ft</span>
-                  </div>
-                  <div className="text-center">
-                    <span className="block font-medium" style={{ color: '#17A2B8' }}>Rake</span>
-                    <span className="text-foreground">{formatValue(ai.total_rake_length)} ft</span>
-                  </div>
-                </div>
+                  <>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <span className="text-muted-foreground text-xs">Squares</span>
+                        <p className="font-semibold">{formatValue(ai.total_squares)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs">Sq Ft</span>
+                        <p className="font-semibold">{formatValue(ai.total_area_adjusted_sqft)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs">Pitch</span>
+                        <p className="font-semibold">{ai.predominant_pitch || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 text-xs border-t border-border pt-2">
+                      <div className="text-center">
+                        <span className="block font-medium" style={{ color: '#90EE90' }}>Ridge</span>
+                        <span className="text-foreground">{formatValue(ai.total_ridge_length)} ft</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="block font-medium" style={{ color: '#9B59B6' }}>Hip</span>
+                        <span className="text-foreground">{formatValue(ai.total_hip_length)} ft</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="block font-medium" style={{ color: '#DC3545' }}>Valley</span>
+                        <span className="text-foreground">{formatValue(ai.total_valley_length)} ft</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="block font-medium" style={{ color: '#006400' }}>Eave</span>
+                        <span className="text-foreground">{formatValue(ai.total_eave_length)} ft</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="block font-medium" style={{ color: '#17A2B8' }}>Rake</span>
+                        <span className="text-foreground">{formatValue(ai.total_rake_length)} ft</span>
+                      </div>
+                    </div>
+                  </>
                 )}
-
                 <div className="flex gap-2">
                   <Button 
                     size="sm" 
