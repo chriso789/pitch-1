@@ -4483,7 +4483,9 @@ async function processJob(input: any) {
     });
 
     // Geometry collapse → never call this "completed" for the customer.
-    const finalAiStatus = needsInternalReview
+    const finalAiStatus = !measurementIsValid
+      ? "failed"
+      : needsInternalReview
       ? "needs_internal_review"
       : blockCustomerReportReason
       ? "needs_review"
