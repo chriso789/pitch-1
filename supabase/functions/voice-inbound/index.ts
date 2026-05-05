@@ -686,7 +686,7 @@ ${aiAgent?.safety_prompt || 'Never provide pricing or estimates. Never make prom
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              greeting: companyGreeting || 'Thank you for calling. I"m the virtual receptionist. I"ll ask a few quick questions so the team can follow up properly. First, may I have your full name?',
+              greeting: companyGreeting || 'Thank you for calling. I'm the virtual receptionist. I"ll ask a few quick questions so the team can follow up properly. First, may I have your full name?',
               assistant: { instructions },
               voice: 'Telnyx.KokoroTTS.af',
               user_response_timeout_ms: 15000,
@@ -734,7 +734,7 @@ function buildInboundGatherSchema(qualificationQuestions: unknown) {
     : String(qualificationQuestions || '').trim();
 
   const properties: Record<string, unknown> = {
-    full_name: { type: 'string', description: 'The caller"s full name.' },
+    full_name: { type: 'string', description: 'The caller's full name.' },
     reason_for_calling: { type: 'string', description: 'What the caller needs help with, including project type or problem.' },
     property_address: { type: 'string', description: 'The full property address for the roofing or construction issue.' },
     callback_number: { type: 'string', description: 'The best phone number for the team to call back.' },
