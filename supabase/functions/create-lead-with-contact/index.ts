@@ -152,6 +152,14 @@ Deno.serve(async (req: Request) => {
     const body: LeadRequest = await req.json();
     console.log("[create-lead-with-contact] Request body:", JSON.stringify(body, null, 2));
 
+    // Server-side validation: require address
+    if (!body.address?.trim() && !body.selectedAddress && !body.existingContactId) {
+      return new Response(JSON.stringify({ success: false, error: "A verified address is required to create a lead." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // PRIORITY: Use locationId from request (client's current location switcher selection)
     // Then fall back to profile's active_location_id, then find a default
     let locationId = body.locationId || profile.active_location_id;
