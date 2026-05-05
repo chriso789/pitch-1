@@ -255,6 +255,14 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "estimates"
     },
     {
+      name: "Supplements",
+      href: "supplements",
+      path: "/supplements",
+      icon: Shield,
+      description: "Insurance supplement engine",
+      featureKey: "estimates"
+    },
+    {
       name: "Production",
       href: "production",
       path: "/production",

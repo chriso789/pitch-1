@@ -38116,6 +38116,177 @@ export type Database = {
         }
         Relationships: []
       }
+      supplement_cases: {
+        Row: {
+          carrier_name: string | null
+          claim_number: string | null
+          created_at: string
+          created_by: string | null
+          estimate_project_id: string | null
+          id: string
+          job_id: string
+          loss_date: string | null
+          policy_number: string | null
+          status: string
+          supplement_total: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          carrier_name?: string | null
+          claim_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          estimate_project_id?: string | null
+          id?: string
+          job_id: string
+          loss_date?: string | null
+          policy_number?: string | null
+          status?: string
+          supplement_total?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          carrier_name?: string | null
+          claim_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          estimate_project_id?: string | null
+          id?: string
+          job_id?: string
+          loss_date?: string | null
+          policy_number?: string | null
+          status?: string
+          supplement_total?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      supplement_disputes: {
+        Row: {
+          carrier_quantity: number | null
+          created_at: string
+          description: string
+          dispute_type: string
+          evidence_refs: Json | null
+          id: string
+          reason: string | null
+          requested_quantity: number | null
+          status: string
+          supplement_case_id: string
+          unit: string | null
+          xactimate_code: string | null
+        }
+        Insert: {
+          carrier_quantity?: number | null
+          created_at?: string
+          description: string
+          dispute_type: string
+          evidence_refs?: Json | null
+          id?: string
+          reason?: string | null
+          requested_quantity?: number | null
+          status?: string
+          supplement_case_id: string
+          unit?: string | null
+          xactimate_code?: string | null
+        }
+        Update: {
+          carrier_quantity?: number | null
+          created_at?: string
+          description?: string
+          dispute_type?: string
+          evidence_refs?: Json | null
+          id?: string
+          reason?: string | null
+          requested_quantity?: number | null
+          status?: string
+          supplement_case_id?: string
+          unit?: string | null
+          xactimate_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_disputes_supplement_case_id_fkey"
+            columns: ["supplement_case_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplement_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          file_url: string
+          id: string
+          parsed_text: string | null
+          supplement_case_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_type: string
+          file_url: string
+          id?: string
+          parsed_text?: string | null
+          supplement_case_id: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          file_url?: string
+          id?: string
+          parsed_text?: string | null
+          supplement_case_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_documents_supplement_case_id_fkey"
+            columns: ["supplement_case_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplement_narratives: {
+        Row: {
+          adjuster_email: string | null
+          created_at: string
+          id: string
+          internal_notes: string | null
+          narrative: string
+          supplement_case_id: string
+        }
+        Insert: {
+          adjuster_email?: string | null
+          created_at?: string
+          id?: string
+          internal_notes?: string | null
+          narrative: string
+          supplement_case_id: string
+        }
+        Update: {
+          adjuster_email?: string | null
+          created_at?: string
+          id?: string
+          internal_notes?: string | null
+          narrative?: string
+          supplement_case_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_narratives_supplement_case_id_fkey"
+            columns: ["supplement_case_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplement_requests: {
         Row: {
           additional_items: Json
