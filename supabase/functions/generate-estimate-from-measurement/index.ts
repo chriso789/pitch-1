@@ -238,22 +238,23 @@ function buildScopeFromMeasurements(m: MeasurementInput): {
 function calculateComplexity(m: MeasurementInput): { waste: number; complexity: string } {
   let score = 0;
 
-  // Facet complexity
+  // Facet complexity — 14 facets is NOT simple
   if (m.facet_count <= 4) score += 0;
   else if (m.facet_count <= 8) score += 1;
-  else if (m.facet_count <= 14) score += 2;
-  else score += 3;
+  else if (m.facet_count <= 12) score += 2;
+  else score += 3; // 13+ facets = high complexity contributor
 
   // Valley complexity
   if (m.valleys_ft > 100) score += 2;
-  else if (m.valleys_ft > 40) score += 1;
+  else if (m.valleys_ft > 30) score += 1;
 
   // Pitch complexity
   if (m.pitch >= 10) score += 2;
   else if (m.pitch >= 7) score += 1;
 
   // Hip complexity
-  if (m.hips_ft > 150) score += 1;
+  if (m.hips_ft > 100) score += 1;
+  else if (m.hips_ft > 150) score += 2;
 
   let complexity: string;
   let waste: number;
