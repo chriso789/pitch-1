@@ -192,6 +192,86 @@ async function upsertInboundCall(supabase: any, event: any, context: any, status
   await upsertUnifiedInboxCall(supabase, result.data.id, context, status, event);
 }
 
+async function upsertUnifiedInboxCall(supabase: any, callId: string, context: any, status: string, event: any) {
+  if (!context.tenantId) return;
+
+  const content = status === 'completed'
+    ? `Inbound call completed from ${context.fromNumber || 'unknown caller'}`
+    : `Inbound call from ${context.fromNumber || 'unknown caller'}`;
+
+  const { data: existing } = await supabase
+    .from('unified_inbox')
+    .select('id')
+    .eq('tenant_id', context.tenantId)
+    .eq('channel', 'call')
+    .contains('metadata', { telnyx_call_control_id: event.payload.call_control_id })
+    .maybeSingle();
+
+  const inboxPayload = {
+    tenant_id: context.tenantId,
+    contact_id: context.contactId,
+    channel: 'call',
+    direction: 'inbound',
+    content,
+    subject: context.locationName ? `Inbound call — ${context.locationName}` : 'Inbound call',
+    phone_number: context.fromNumber,
+    is_read: false,
+    assigned_to: context.managerId,
+    metadata: {
+      calls_table_id: callId,
+      telnyx_call_control_id: event.payload.call_control_id,
+      to_number: context.toNumber,
+      status,
+      location_id: context.locationId,
+      location_name: context.locationName,
+    },
+  };
+
+  const result = existing?.id
+    ? await supabase.from('unified_inbox').update(inboxPayload).eq('id', existing.id)
+    : await supabase.from('unified_inbox').insert(inboxPayload);
+
+  if (result.error) console.error('Failed to upsert unified inbox call:', result.error);
+}
+
+async function completeInboundCall(supabase: any, event: any, context: any) {
+  const callControlId = event.payload?.call_control_id;
+  if (!context.tenantId || !callControlId) return;
+
+  const duration = event.payload?.call_duration_secs || event.payload?.duration_secs || null;
+  const { error } = await supabase
+    .from('calls')
+    .update({
+      status: 'completed',
+      ended_at: new Date().toISOString(),
+      duration_seconds: duration,
+      raw_payload: { telnyx_event: event, location_name: context.locationName },
+    })
+    .eq('telnyx_call_control_id', callControlId);
+
+  if (error) console.error('Failed to complete inbound call:', error);
+  await upsertUnifiedInboxCall(supabase, callControlId, context, 'completed', event);
+}
+
+async function answerInboundCall(callControlId?: string) {
+  if (!callControlId) return;
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/answer`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to answer inbound call:', response.status, await response.text());
+  }
+}
+
 // Event handlers
 async function handleCallInitiated(supabase: any, event: any, clientState: any) {
   const callId = event.payload?.call_control_id;
