@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
         // Parse name into first/last
         const nameParts = body.name.split(" ");
         const firstName = nameParts[0] || "Unknown";
-        const lastName = nameParts.slice(1).join(" ") || "Contact";
+        const lastName = nameParts.slice(1).join(" ") || "";
 
         const contactData: any = {
           tenant_id: tenantId,
