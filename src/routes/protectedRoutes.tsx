@@ -94,6 +94,7 @@ const MyMoney = React.lazy(() => import("@/pages/MyMoney"));
 const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPage"));
 const PdfWorkspaceList = React.lazy(() => import("@/pages/PdfWorkspaceList"));
 const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor"));
+const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
