@@ -76,7 +76,10 @@ const ContactProfile = () => {
 
   // Fetch team members for assign rep dropdown — location-filtered & active only
   useEffect(() => {
-    if (!activeTenantId || !contact) return;
+    if (!contact) return;
+    // Use the CONTACT's tenant_id so we show reps from the contact's company, not the viewer's
+    const contactTenantId = contact.tenant_id;
+    if (!contactTenantId) return;
     const fetchTeam = async () => {
       const ELEVATED_ROLES = ['owner', 'corporate', 'office_admin', 'admin', 'manager'];
 
@@ -91,11 +94,11 @@ const ContactProfile = () => {
         locationUserIds = (assignments || []).map((a: any) => a.user_id);
       }
 
-      // Build query: active profiles only
+      // Build query: active profiles from the CONTACT's tenant
       let query = supabase
         .from('profiles')
         .select('id, first_name, last_name, role, is_developer')
-        .eq('tenant_id', activeTenantId)
+        .eq('tenant_id', contactTenantId)
         .eq('is_active', true)
         .order('first_name');
 
