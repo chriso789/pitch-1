@@ -1142,6 +1142,12 @@ export function UnifiedMeasurementPanel({
               solar_building_footprint_sqft: ai.solar_building_footprint_sqft,
             };
             const hasGeometry = ai.linear_features_wkt && (Array.isArray(ai.linear_features_wkt) ? ai.linear_features_wkt.length > 0 : true);
+            const grjBlock = (ai as any).geometry_report_json;
+            const aiBlockReason = grjBlock?.block_customer_report_reason || (ai as any).gate_reason || null;
+            const aiFailReasons = aiBlockReason ? aiBlockReason.split('|').filter(Boolean) : [];
+            const aiIsBlocked = !!aiBlockReason;
+            const aiAreaRatio = grjBlock?.totals?.total_area_pitch_adjusted_sqft && grjBlock?.totals?.total_area_2d_sqft
+              ? grjBlock.totals.total_area_pitch_adjusted_sqft / grjBlock.totals.total_area_2d_sqft : null;
 
             return (
               <div className="p-3 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-2">
