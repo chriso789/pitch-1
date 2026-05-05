@@ -63,8 +63,29 @@ Deno.serve(async (req) => {
           await startRecording(callControlId);
         }
         
-        // Play inbound greeting / voicemail prompt
-        await playInboundGreeting(supabase, callControlId, inboundContext.tenantId);
+        // Run inbound AI qualification only for organic inbound calls
+        if (isUncorrelatedInbound) {
+          await playInboundGreeting(supabase, callControlId, inboundContext.tenantId);
+        }
+        break;
+
+      case 'call.ai_gather.partial_results':
+      case 'call.ai_gather.message_history_updated':
+        await mergeCallRawPayload(supabase, callControlId, {
+          inbound_ai_progress: event.payload,
+          inbound_ai_progress_at: new Date().toISOString(),
+        });
+        break;
+
+      case 'call.ai_gather.ended':
+        await handleInboundAIGatherEnded(supabase, event, inboundContext);
+        await playVoicemailPrompt(callControlId);
+        break;
+
+      case 'call.speak.ended':
+        if (parsedClientState?.flow === 'inbound_voicemail_prompt') {
+          await playVoicemailTone(callControlId);
+        }
         break;
 
       case 'call.bridged':
@@ -425,6 +446,57 @@ async function handleRecordingSaved(supabase: any, event: any) {
   }
 }
 
+async function handleInboundAIGatherEnded(supabase: any, event: any, context: any) {
+  const callControlId = event.payload?.call_control_id;
+  if (!callControlId) return;
+
+  const gatheredData = event.payload?.result || event.payload?.parameters || event.payload?.collected || event.payload?.data || null;
+  const messageHistory = event.payload?.message_history || event.payload?.messages || null;
+  const summaryParts = formatGatheredLeadSummary(gatheredData);
+
+  const updatePayload: Record<string, unknown> = {
+    raw_payload: {
+      telnyx_event: event,
+      location_name: context.locationName,
+      inbound_ai_qualification: gatheredData,
+      inbound_ai_message_history: messageHistory,
+    },
+  };
+
+  if (summaryParts.length) {
+    updatePayload.notes = `AI qualification:\n${summaryParts.join('\n')}`;
+  }
+
+  const { error } = await supabase
+    .from('calls')
+    .update(updatePayload)
+    .eq('telnyx_call_control_id', callControlId);
+  if (error) console.error('Failed to save inbound AI gather result:', error);
+
+  await upsertUnifiedInboxCall(supabase, callControlId, context, 'qualified', event);
+}
+
+function formatGatheredLeadSummary(value: unknown): string[] {
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+    .map(([key, v]) => `- ${key.replace(/_/g, ' ')}: ${String(v)}`);
+}
+
+async function mergeCallRawPayload(supabase: any, callControlId: string | undefined, patch: Record<string, unknown>) {
+  if (!callControlId) return;
+  const { data: call } = await supabase
+    .from('calls')
+    .select('raw_payload')
+    .eq('telnyx_call_control_id', callControlId)
+    .maybeSingle();
+
+  await supabase
+    .from('calls')
+    .update({ raw_payload: { ...(call?.raw_payload || {}), ...patch } })
+    .eq('telnyx_call_control_id', callControlId);
+}
+
 async function startRecording(callControlId: string) {
   const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
   
@@ -463,8 +535,8 @@ async function playInboundGreeting(supabase: any, callControlId: string | undefi
   const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
   if (!TELNYX_API_KEY) return;
 
-  // Try to start AI assistant for qualifying questions
-  let aiStarted = false;
+  // Use Telnyx Gather Using AI so the caller is actually asked each required question.
+  let aiGatherStarted = false;
   if (tenantId) {
     const { data: aiAgent } = await supabase
       .from('ai_agents')
@@ -474,84 +546,150 @@ async function playInboundGreeting(supabase: any, callControlId: string | undefi
 
     const { data: aiConfig } = await supabase
       .from('ai_answering_config')
-      .select('greeting_text, enabled, qualification_questions')
+      .select('greeting_text, is_enabled, qualification_questions')
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
-    if (aiAgent?.enabled || aiConfig?.enabled) {
+    if (aiAgent?.enabled || aiConfig?.is_enabled) {
       const companyGreeting = aiConfig?.greeting_text || '';
       const qualificationQuestions = aiConfig?.qualification_questions || '';
 
-      const persona = aiAgent?.persona_prompt || `You are a friendly and professional virtual receptionist for a roofing and construction company.
+      const instructions = `${aiAgent?.persona_prompt || 'You are a friendly and professional virtual receptionist for a roofing and construction company.'}
 
-Your job:
-1. Greet the caller warmly. ${companyGreeting ? `Use this greeting: "${companyGreeting}"` : 'Say "Thank you for calling!"'}
-2. Ask the caller for their name.
-3. Ask what they are calling about (roof repair, new roof, storm damage, insurance claim, estimate request, etc.).
-4. Ask for their property address.
-5. Ask for the best callback number if different from the one they're calling from.
-${qualificationQuestions ? `6. Also ask: ${qualificationQuestions}` : ''}
+Ask one question at a time and wait for the caller's answer before continuing. Confirm unclear answers briefly, then move to the next missing required field. Do not skip required fields. Keep responses concise and natural.
 
-After gathering this information, thank them and say: "I've got all the information I need. Someone from our team will be reaching out to you shortly. If you'd like to leave any additional details, please leave a message after the tone."
+Required call flow:
+1. Greet the caller warmly.
+2. Ask for their full name.
+3. Ask what they are calling about, such as roof repair, new roof, storm damage, insurance claim, estimate request, leak, gutters, siding, or another construction need.
+4. Ask for the property address.
+5. Ask for the best callback number, especially if different from the number they called from.
+6. Ask how urgent the issue is and whether there is active leaking or storm damage.
+${qualificationQuestions ? `7. Also gather these additional details: ${qualificationQuestions}` : ''}
 
-Keep your responses concise and natural. Be warm but professional. If the caller seems frustrated or urgent, acknowledge their concern and assure them someone will follow up quickly.`;
-
-      const safety = aiAgent?.safety_prompt || `Never provide pricing or estimates. Never make promises about timelines. Never share internal company information. If the caller asks something you cannot answer, say "I'll make sure the team gets that question and follows up with you." Do not discuss competitors. Stay focused on gathering the caller's information.`;
+${aiAgent?.safety_prompt || 'Never provide pricing or estimates. Never make promises about timelines. Never share internal company information. If the caller asks something you cannot answer, say the team will follow up.'}`;
 
       try {
         const aiResponse = await fetch(
-          `https://api.telnyx.com/v2/calls/${callControlId}/actions/ai_assistant_start`,
+          `https://api.telnyx.com/v2/calls/${callControlId}/actions/gather_using_ai`,
           {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${TELNYX_API_KEY}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ persona, safety }),
+            body: JSON.stringify({
+              greeting: companyGreeting || 'Thank you for calling. I’m the virtual receptionist. I’ll ask a few quick questions so the team can follow up properly. First, may I have your full name?',
+              assistant: { instructions },
+              voice: 'Telnyx.KokoroTTS.af',
+              user_response_timeout_ms: 15000,
+              send_partial_results: true,
+              send_message_history_updates: true,
+              client_state: btoa(JSON.stringify({ flow: 'inbound_ai_qualification', tenant_id: tenantId })),
+              gather_ended_speech: 'Thanks, I have the information I need. Someone from our team will follow up with you shortly.',
+              parameters: buildInboundGatherSchema(qualificationQuestions),
+            }),
           }
         );
 
         if (aiResponse.ok) {
-          aiStarted = true;
-          console.log('[voice-inbound] AI assistant started on inbound call');
+          aiGatherStarted = true;
+          console.log('[voice-inbound] AI gather started on inbound call');
         } else {
           const errText = await aiResponse.text();
-          console.error('[voice-inbound] AI assistant start failed:', aiResponse.status, errText);
+          console.error('[voice-inbound] AI gather start failed:', aiResponse.status, errText);
         }
       } catch (err) {
-        console.error('[voice-inbound] AI assistant error:', err);
+        console.error('[voice-inbound] AI gather error:', err);
       }
     }
   }
 
-  // Fallback: play simple greeting if AI didn't start
-  if (!aiStarted) {
-    let greeting = 'Thank you for calling. Please leave a message after the tone.';
+  // Fallback: play simple greeting if AI gather didn't start
+  if (!aiGatherStarted) {
+    let greeting = 'Thank you for calling. Please leave your name, property address, callback number, and what you are calling about after the tone.';
     if (tenantId) {
       const { data: aiConfig } = await supabase
         .from('ai_answering_config')
         .select('greeting_text')
         .eq('tenant_id', tenantId)
         .maybeSingle();
-      if (aiConfig?.greeting_text) greeting = `${aiConfig.greeting_text} Please leave a message after the tone.`;
+      if (aiConfig?.greeting_text) greeting = `${aiConfig.greeting_text} Please leave your name, property address, callback number, and what you are calling about after the tone.`;
     }
 
-    const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/speak`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${TELNYX_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        payload: greeting,
-        voice: 'female',
-        language: 'en-US',
-      }),
-    });
+    await speak(callControlId, greeting, { flow: 'inbound_voicemail_prompt' });
+  }
+}
 
-    if (!response.ok) {
-      console.error('Failed to play inbound greeting:', response.status, await response.text());
-    }
+function buildInboundGatherSchema(qualificationQuestions: unknown) {
+  const extraQuestionText = Array.isArray(qualificationQuestions)
+    ? qualificationQuestions.filter(Boolean).join(' ')
+    : String(qualificationQuestions || '').trim();
+
+  const properties: Record<string, unknown> = {
+    full_name: { type: 'string', description: 'The caller’s full name.' },
+    reason_for_calling: { type: 'string', description: 'What the caller needs help with, including project type or problem.' },
+    property_address: { type: 'string', description: 'The full property address for the roofing or construction issue.' },
+    callback_number: { type: 'string', description: 'The best phone number for the team to call back.' },
+    urgency: { type: 'string', description: 'How urgent the request is and whether there is active leaking, storm damage, or emergency damage.' },
+  };
+  const required = ['full_name', 'reason_for_calling', 'property_address', 'callback_number', 'urgency'];
+
+  if (extraQuestionText) {
+    properties.additional_qualification_details = {
+      type: 'string',
+      description: `Answers to these additional qualification questions: ${extraQuestionText}`,
+    };
+    required.push('additional_qualification_details');
+  }
+
+  return { type: 'object', properties, required };
+}
+
+async function playVoicemailPrompt(callControlId?: string) {
+  if (!callControlId) return;
+  await speak(callControlId, 'Please leave any additional details after the tone.', { flow: 'inbound_voicemail_prompt' });
+}
+
+async function playVoicemailTone(callControlId?: string) {
+  if (!callControlId) return;
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/send_dtmf`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ digits: '1', duration_millis: 500 }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to play voicemail tone:', response.status, await response.text());
+  }
+}
+
+async function speak(callControlId: string, text: string, clientState?: Record<string, unknown>) {
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/speak`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      payload: text,
+      voice: 'female',
+      language: 'en-US',
+      client_state: clientState ? btoa(JSON.stringify(clientState)) : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to speak on inbound call:', response.status, await response.text());
   }
 }
 
