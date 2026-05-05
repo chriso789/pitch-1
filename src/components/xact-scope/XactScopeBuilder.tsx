@@ -191,8 +191,8 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
   const { data: hasMeasurement } = useQuery({
     queryKey: ['xact-has-measurement', pipelineEntryId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('roof_measurements')
+      const { data, error } = await (supabase
+        .from('roof_measurements') as any)
         .select('id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count')
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('created_at', { ascending: false })
