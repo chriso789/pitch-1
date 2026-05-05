@@ -38,8 +38,6 @@ import {
   Mic,
   ClipboardCheck,
   Search,
-  Star,
-  Gift,
   Truck,
   Wallet
 } from "lucide-react";
@@ -685,38 +683,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                 </div>
               )}
             </div>
-
-            {/* Customer Experience Links */}
-            <Link
-              to="/surveys"
-              onClick={onNavigate}
-              className={cn(
-                "w-full flex items-center rounded-md text-left transition-colors group",
-                isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
-                location.pathname === '/surveys'
-                  ? "bg-primary/10 text-primary border-l-2 border-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
-              )}
-              title={isCollapsed ? "Surveys" : undefined}
-            >
-              <Star className={cn("h-4 w-4 flex-shrink-0", location.pathname === '/surveys' ? "text-primary" : "text-muted-foreground group-hover:text-accent-foreground")} />
-              {!isCollapsed && <span className={cn("text-sm font-medium truncate", location.pathname === '/surveys' ? "text-primary" : "")}>Surveys</span>}
-            </Link>
-            <Link
-              to="/referrals"
-              onClick={onNavigate}
-              className={cn(
-                "w-full flex items-center rounded-md text-left transition-colors group",
-                isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
-                location.pathname === '/referrals'
-                  ? "bg-primary/10 text-primary border-l-2 border-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
-              )}
-              title={isCollapsed ? "Referrals" : undefined}
-            >
-              <Gift className={cn("h-4 w-4 flex-shrink-0", location.pathname === '/referrals' ? "text-primary" : "text-muted-foreground group-hover:text-accent-foreground")} />
-              {!isCollapsed && <span className={cn("text-sm font-medium truncate", location.pathname === '/referrals' ? "text-primary" : "")}>Referrals</span>}
-            </Link>
           </nav>
         </div>
 
