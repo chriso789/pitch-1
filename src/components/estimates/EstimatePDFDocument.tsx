@@ -870,7 +870,7 @@ const ItemsContinuationPage: React.FC<{
 };
 
 // Items Table Component - renders pre-built render blocks
-const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean }> = ({ blocks, opts, continued = false }) => {
+const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean; markupFactor?: number }> = ({ blocks, opts, continued = false, markupFactor = 1 }) => {
   const colCount = 1 + (opts.showLineItemQuantities ? 2 : 0) + (opts.showLineItemPricing ? 2 : 0);
 
   const renderItem = (item: LineItem, idx: number) => (
