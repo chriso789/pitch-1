@@ -39,7 +39,7 @@ const defaultMeasurements = {
 };
 
 const SupplementEngine = () => {
-  const { effectiveTenantId } = useEffectiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const [carrierItems, setCarrierItems] = useState("");
   const [result, setResult] = useState<SupplementResult | null>(null);
@@ -147,7 +147,7 @@ const SupplementEngine = () => {
           <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {Object.entries(measurements).map(([key, value]) => (
               <div key={key}>
-                <Label className="text-xs capitalize">{key.replaceAll("_", " ")}</Label>
+                <Label className="text-xs capitalize">{key.replace(/_/g, " ")}</Label>
                 <Input
                   type="number"
                   value={value}
