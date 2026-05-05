@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/use-toast';
 import {
   Plus, Trash2, FileText, Download, ClipboardList, AlertTriangle,
   CheckCircle, Edit2, Copy, ChevronDown, ChevronRight, Loader2,
-  FileSpreadsheet, FileDown, Sparkles, Zap, Ruler
+  FileSpreadsheet, FileDown, Sparkles, Zap, Ruler, Upload
 } from 'lucide-react';
 import { XactScopeItemEditor } from './XactScopeItemEditor';
 import { XactAreaManager } from './XactAreaManager';
