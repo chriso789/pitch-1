@@ -400,6 +400,14 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
             </Card>
           )}
 
+          {/* Manual Report Entry — when no AI measurement exists */}
+          {!hasMeasurement && (
+            <ManualReportEntry
+              scopeProjectId={selectedProject.id}
+              hasItems={!!items && items.length > 0}
+            />
+          )}
+
           {/* Tabs for Areas / Items / Export */}
           <Card>
             <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
