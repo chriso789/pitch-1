@@ -686,7 +686,7 @@ ${aiAgent?.safety_prompt || 'Never provide pricing or estimates. Never make prom
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              greeting: companyGreeting || 'Thank you for calling. I'm the virtual receptionist. I'll ask a few quick questions so the team can follow up properly. First, may I have your full name?',
+              greeting: companyGreeting || "Thank you for calling. I'm the virtual receptionist. I'll ask a few quick questions so the team can follow up properly. First, may I have your full name?",
               assistant: { instructions },
               voice: 'Telnyx.KokoroTTS.af',
               user_response_timeout_ms: 15000,
