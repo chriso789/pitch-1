@@ -42668,6 +42668,308 @@ export type Database = {
           },
         ]
       }
+      xact_comparisons: {
+        Row: {
+          carrier_estimate_url: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          job_id: string
+          missing_items: Json | null
+          pitch_scope_id: string | null
+          pricing_disputes: Json | null
+          quantity_disputes: Json | null
+          status: string | null
+          supplement_summary: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          carrier_estimate_url?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          job_id: string
+          missing_items?: Json | null
+          pitch_scope_id?: string | null
+          pricing_disputes?: Json | null
+          quantity_disputes?: Json | null
+          status?: string | null
+          supplement_summary?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          carrier_estimate_url?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          job_id?: string
+          missing_items?: Json | null
+          pitch_scope_id?: string | null
+          pricing_disputes?: Json | null
+          quantity_disputes?: Json | null
+          status?: string | null
+          supplement_summary?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xact_comparisons_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xact_comparisons_pitch_scope_id_fkey"
+            columns: ["pitch_scope_id"]
+            isOneToOne: false
+            referencedRelation: "xact_scope_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xact_comparisons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      xact_exports: {
+        Row: {
+          created_at: string | null
+          export_type: string
+          file_url: string | null
+          id: string
+          metadata: Json | null
+          scope_project_id: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          export_type: string
+          file_url?: string | null
+          id?: string
+          metadata?: Json | null
+          scope_project_id: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          export_type?: string
+          file_url?: string | null
+          id?: string
+          metadata?: Json | null
+          scope_project_id?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xact_exports_scope_project_id_fkey"
+            columns: ["scope_project_id"]
+            isOneToOne: false
+            referencedRelation: "xact_scope_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      xact_scope_areas: {
+        Row: {
+          area_name: string
+          area_type: string
+          created_at: string | null
+          id: string
+          measurements: Json | null
+          notes: string | null
+          scope_project_id: string
+          sort_order: number | null
+        }
+        Insert: {
+          area_name: string
+          area_type?: string
+          created_at?: string | null
+          id?: string
+          measurements?: Json | null
+          notes?: string | null
+          scope_project_id: string
+          sort_order?: number | null
+        }
+        Update: {
+          area_name?: string
+          area_type?: string
+          created_at?: string | null
+          id?: string
+          measurements?: Json | null
+          notes?: string | null
+          scope_project_id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xact_scope_areas_scope_project_id_fkey"
+            columns: ["scope_project_id"]
+            isOneToOne: false
+            referencedRelation: "xact_scope_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      xact_scope_items: {
+        Row: {
+          ai_reason: string | null
+          confidence: number | null
+          created_at: string | null
+          description: string
+          id: string
+          line_total: number | null
+          quantity: number
+          scope_area_id: string | null
+          scope_project_id: string
+          sort_order: number | null
+          source: string | null
+          tax_rate: number | null
+          trade: string
+          unit: string
+          unit_price: number | null
+          waste_percent: number | null
+          xactimate_code: string | null
+        }
+        Insert: {
+          ai_reason?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          description: string
+          id?: string
+          line_total?: number | null
+          quantity?: number
+          scope_area_id?: string | null
+          scope_project_id: string
+          sort_order?: number | null
+          source?: string | null
+          tax_rate?: number | null
+          trade?: string
+          unit?: string
+          unit_price?: number | null
+          waste_percent?: number | null
+          xactimate_code?: string | null
+        }
+        Update: {
+          ai_reason?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          line_total?: number | null
+          quantity?: number
+          scope_area_id?: string | null
+          scope_project_id?: string
+          sort_order?: number | null
+          source?: string | null
+          tax_rate?: number | null
+          trade?: string
+          unit?: string
+          unit_price?: number | null
+          waste_percent?: number | null
+          xactimate_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xact_scope_items_scope_area_id_fkey"
+            columns: ["scope_area_id"]
+            isOneToOne: false
+            referencedRelation: "xact_scope_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xact_scope_items_scope_project_id_fkey"
+            columns: ["scope_project_id"]
+            isOneToOne: false
+            referencedRelation: "xact_scope_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      xact_scope_projects: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          default_tax_rate: number | null
+          estimate_type: string
+          id: string
+          job_id: string
+          notes: string | null
+          overhead_percent: number | null
+          overhead_profit_enabled: boolean | null
+          price_list_date: string | null
+          price_list_region: string | null
+          profit_percent: number | null
+          status: string
+          tax_enabled: boolean | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+          xactimate_profile: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          default_tax_rate?: number | null
+          estimate_type: string
+          id?: string
+          job_id: string
+          notes?: string | null
+          overhead_percent?: number | null
+          overhead_profit_enabled?: boolean | null
+          price_list_date?: string | null
+          price_list_region?: string | null
+          profit_percent?: number | null
+          status?: string
+          tax_enabled?: boolean | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+          xactimate_profile?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          default_tax_rate?: number | null
+          estimate_type?: string
+          id?: string
+          job_id?: string
+          notes?: string | null
+          overhead_percent?: number | null
+          overhead_profit_enabled?: boolean | null
+          price_list_date?: string | null
+          price_list_region?: string | null
+          profit_percent?: number | null
+          status?: string
+          tax_enabled?: boolean | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+          xactimate_profile?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xact_scope_projects_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xact_scope_projects_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       ai_usage_summary: {
