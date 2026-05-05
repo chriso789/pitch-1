@@ -63,8 +63,29 @@ Deno.serve(async (req) => {
           await startRecording(callControlId);
         }
         
-        // Play inbound greeting / voicemail prompt
-        await playInboundGreeting(supabase, callControlId, inboundContext.tenantId);
+        // Run inbound AI qualification only for organic inbound calls
+        if (isUncorrelatedInbound) {
+          await playInboundGreeting(supabase, callControlId, inboundContext.tenantId);
+        }
+        break;
+
+      case 'call.ai_gather.partial_results':
+      case 'call.ai_gather.message_history_updated':
+        await mergeCallRawPayload(supabase, callControlId, {
+          inbound_ai_progress: event.payload,
+          inbound_ai_progress_at: new Date().toISOString(),
+        });
+        break;
+
+      case 'call.ai_gather.ended':
+        await handleInboundAIGatherEnded(supabase, event, inboundContext);
+        await playVoicemailPrompt(callControlId);
+        break;
+
+      case 'call.speak.ended':
+        if (parsedClientState?.flow === 'inbound_voicemail_prompt') {
+          await playVoicemailTone(callControlId);
+        }
         break;
 
       case 'call.bridged':
