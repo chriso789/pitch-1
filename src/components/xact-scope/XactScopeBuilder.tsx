@@ -193,13 +193,13 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, total_area_adjusted_sqft, total_squares, total_eave_length, total_valley_length, total_hip_length, total_ridge_length, predominant_pitch, facet_count')
+        .select('id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count')
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) return null;
-      return data;
+      return data as { id: string; total_area_adjusted_sqft: number | null; total_squares: number | null; predominant_pitch: string | null; facet_count: number | null } | null;
     },
     enabled: !!pipelineEntryId
   });
