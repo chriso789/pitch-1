@@ -5105,11 +5105,19 @@ function buildPlaneRows(args: {
         }]
       : [];
 
+  // Max residential pitch: 24/12 rise (~63°). Anything above is noise.
+  const MAX_RISE_PER_12 = 24;
   return inputPlanes.map((plane) => {
-    const rise = overrideRise ?? plane.pitch ??
+    let rise = overrideRise ?? plane.pitch ??
       (plane.pitch_degrees != null ? Math.tan((plane.pitch_degrees * Math.PI) / 180) * 12 : null) ??
       solarRise ?? 6;
-    const pitchDegrees = plane.pitch_degrees ?? risePer12ToDegrees(rise);
+    if (rise > MAX_RISE_PER_12) {
+      console.warn(`[BUILD_PLANES] Clamping rise ${rise.toFixed(1)}/12 → ${MAX_RISE_PER_12}/12 for plane ${plane.plane_index}`);
+      rise = MAX_RISE_PER_12;
+    }
+    const pitchDegrees = plane.pitch_degrees != null
+      ? Math.min(plane.pitch_degrees, 63)
+      : risePer12ToDegrees(rise);
     const area2d = Array.isArray((plane as any).multi_part_px) && (plane as any).multi_part_px.length
       ? (plane as any).multi_part_px.reduce((sum: number, part: Point[]) => sum + polygonAreaSqft(part, args.feetPerPixelActual), 0)
       : polygonAreaSqft(plane.polygon_px, args.feetPerPixelActual);

@@ -982,7 +982,15 @@ function fitPlaneWithPitch(
   const slopeX = a / metersPerPixelX; // dz/dx in meters/meter
   const slopeY = b / metersPerPixelY;
   const gradMag = Math.sqrt(slopeX * slopeX + slopeY * slopeY);
-  const pitchDeg = Math.atan(gradMag) * 180 / Math.PI;
+  let pitchDeg = Math.atan(gradMag) * 180 / Math.PI;
+  // SANITY CLAMP: Residential roofs never exceed ~24/12 (63°).
+  // Pitches above this threshold indicate the polygon crosses a wall edge
+  // or the DSM data is noisy. Cap to a steep-but-plausible maximum.
+  const MAX_RESIDENTIAL_PITCH_DEG = 63; // ~24/12
+  if (pitchDeg > MAX_RESIDENTIAL_PITCH_DEG) {
+    console.warn(`[FIT_PLANE] Clamping unrealistic pitch ${pitchDeg.toFixed(1)}° → ${MAX_RESIDENTIAL_PITCH_DEG}° (likely wall/noise)`);
+    pitchDeg = MAX_RESIDENTIAL_PITCH_DEG;
+  }
   const azimuthDeg = ((Math.atan2(slopeX, -slopeY) * 180 / Math.PI) + 360) % 360;
 
   return { rms, pitchDeg, azimuthDeg };
