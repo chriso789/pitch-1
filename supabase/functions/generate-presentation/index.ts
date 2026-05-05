@@ -184,6 +184,25 @@ function buildRoofingSystemPrompt(context: TagContext): string {
   const estimate = context.estimate || {};
   
   const foundedYear = tenant.settings?.founded_year || '';
+  const brandStory = tenant.settings?.brand_story || '';
+  const brandMission = tenant.settings?.brand_mission || '';
+  const brandTagline = tenant.settings?.brand_tagline || '';
+  const brandCertifications = tenant.settings?.brand_certifications || '';
+  const brandTestimonial = tenant.settings?.brand_testimonial || null;
+  const brandCommitments = tenant.settings?.brand_commitments || [];
+  const aboutUs = tenant.settings?.about_us || tenant.about_us || '';
+  
+  // Build testimonial string
+  let testimonialStr = '';
+  if (brandTestimonial && brandTestimonial.quote) {
+    testimonialStr = `\nReal Customer Review: "${brandTestimonial.quote}" — ${brandTestimonial.attribution || 'Verified Customer'}`;
+  }
+
+  // Build commitments string
+  let commitmentsStr = '';
+  if (brandCommitments && brandCommitments.length > 0) {
+    commitmentsStr = '\nCompany Values:\n' + brandCommitments.map((c: any) => `- ${c.title}: ${c.body}`).join('\n');
+  }
   
   return `You are a professional roofing sales presentation writer for ${tenant.name || 'our company'}.
 
@@ -193,8 +212,14 @@ Company Details:
 - Phone: ${tenant.phone || ''}
 - Email: ${tenant.email || ''}
 - Website: ${tenant.website || ''}
-- About: ${tenant.about_us || ''}
+- About: ${aboutUs}
 ${foundedYear ? `- Founded: ${foundedYear}` : ''}
+${brandTagline ? `- Tagline: ${brandTagline}` : ''}
+${brandMission ? `- Mission: ${brandMission}` : ''}
+${brandCertifications ? `- Certifications/Services: ${brandCertifications}` : ''}
+${brandStory ? `- Brand Story: ${brandStory}` : ''}
+${testimonialStr}
+${commitmentsStr}
 
 Project Details:
 - Customer: ${contact.first_name || ''} ${contact.last_name || ''}
@@ -210,6 +235,7 @@ CRITICAL RULES:
 - Only state facts that are directly provided in the data above.
 - If a "Founded" year is provided above, use ONLY that year. NEVER use the current year or any other year.
 - If NO "Founded" year is provided, do NOT include any "EST." badge, founding date, or year established. Leave it out entirely.
+- USE the real customer review provided above in the presentation. Do NOT invent additional reviews.
 
 Write compelling, professional content that:
 1. Emphasizes quality workmanship and materials
