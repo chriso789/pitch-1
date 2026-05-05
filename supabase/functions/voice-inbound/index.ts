@@ -586,7 +586,7 @@ ${aiAgent?.safety_prompt || 'Never provide pricing or estimates. Never make prom
               send_partial_results: true,
               send_message_history_updates: true,
               client_state: btoa(JSON.stringify({ flow: 'inbound_ai_qualification', tenant_id: tenantId })),
-              gather_ended_speech: 'Thanks, I have the information I need. Someone from our team will follow up with you shortly. You can leave any additional details after the tone.',
+              gather_ended_speech: 'Thanks, I have the information I need. Someone from our team will follow up with you shortly.',
               parameters: buildInboundGatherSchema(qualificationQuestions),
             }),
           }
