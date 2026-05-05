@@ -26,17 +26,25 @@ function parseSupabaseStorageUrl(url: string): { bucket: string; path: string; a
   }
 }
 
+// Known-private buckets whose stored URLs may incorrectly use the `/object/public/` path.
+const PRIVATE_BUCKETS = new Set(['customer-photos', 'documents', 'crew-photos']);
+
 async function resolveDisplayUrl(url: string): Promise<string> {
   if (signedUrlCache.has(url)) return signedUrlCache.get(url)!;
 
   const storageObject = parseSupabaseStorageUrl(url);
   if (!storageObject) return url;
 
-  if (storageObject.accessMode === 'public' || storageObject.accessMode === 'sign') {
+  // For truly public buckets (not in our private list), the public URL works fine.
+  if (
+    (storageObject.accessMode === 'public' || storageObject.accessMode === 'sign') &&
+    !PRIVATE_BUCKETS.has(storageObject.bucket)
+  ) {
     signedUrlCache.set(url, url);
     return url;
   }
 
+  // Always sign URLs for private buckets (even if the stored URL says /public/).
   const { data, error } = await supabase.storage
     .from(storageObject.bucket)
     .createSignedUrl(storageObject.path, 60 * 60);
