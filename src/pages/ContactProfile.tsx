@@ -78,7 +78,7 @@ const ContactProfile = () => {
   useEffect(() => {
     if (!activeTenantId || !contact) return;
     const fetchTeam = async () => {
-      const ELEVATED_ROLES = ['owner', 'corporate', 'office_admin'];
+      const ELEVATED_ROLES = ['owner', 'corporate', 'office_admin', 'admin', 'manager'];
 
       // If contact has a location, filter reps by that location
       let locationUserIds: string[] = [];
