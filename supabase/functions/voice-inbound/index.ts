@@ -446,6 +446,57 @@ async function handleRecordingSaved(supabase: any, event: any) {
   }
 }
 
+async function handleInboundAIGatherEnded(supabase: any, event: any, context: any) {
+  const callControlId = event.payload?.call_control_id;
+  if (!callControlId) return;
+
+  const gatheredData = event.payload?.result || event.payload?.parameters || event.payload?.collected || event.payload?.data || null;
+  const messageHistory = event.payload?.message_history || event.payload?.messages || null;
+  const summaryParts = formatGatheredLeadSummary(gatheredData);
+
+  const updatePayload: Record<string, unknown> = {
+    raw_payload: {
+      telnyx_event: event,
+      location_name: context.locationName,
+      inbound_ai_qualification: gatheredData,
+      inbound_ai_message_history: messageHistory,
+    },
+  };
+
+  if (summaryParts.length) {
+    updatePayload.notes = `AI qualification:\n${summaryParts.join('\n')}`;
+  }
+
+  const { error } = await supabase
+    .from('calls')
+    .update(updatePayload)
+    .eq('telnyx_call_control_id', callControlId);
+  if (error) console.error('Failed to save inbound AI gather result:', error);
+
+  await upsertUnifiedInboxCall(supabase, callControlId, context, 'qualified', event);
+}
+
+function formatGatheredLeadSummary(value: unknown): string[] {
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+    .map(([key, v]) => `- ${key.replace(/_/g, ' ')}: ${String(v)}`);
+}
+
+async function mergeCallRawPayload(supabase: any, callControlId: string | undefined, patch: Record<string, unknown>) {
+  if (!callControlId) return;
+  const { data: call } = await supabase
+    .from('calls')
+    .select('raw_payload')
+    .eq('telnyx_call_control_id', callControlId)
+    .maybeSingle();
+
+  await supabase
+    .from('calls')
+    .update({ raw_payload: { ...(call?.raw_payload || {}), ...patch } })
+    .eq('telnyx_call_control_id', callControlId);
+}
+
 async function startRecording(callControlId: string) {
   const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
   
