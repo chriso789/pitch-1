@@ -1232,9 +1232,75 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const faceRejectionTable: NonNullable<AutonomousGraphResult['face_rejection_table']> = [];
   const graphFaces: GraphFace[] = [];
   faceCountBeforeMerge = planar.faces.length;
+
+  // ===== TOPOLOGY FIX: Clip face polygons to footprint boundary =====
+  // Sutherland-Hodgman polygon clipping to ensure all faces terminate at footprint
+  function clipPolygonToFootprint(subject: XY[], clip: XY[]): XY[] {
+    if (subject.length < 3 || clip.length < 3) return subject;
+    let output = [...subject];
+    for (let i = 0; i < clip.length; i++) {
+      if (output.length < 3) return output;
+      const edgeStart = clip[i];
+      const edgeEnd = clip[(i + 1) % clip.length];
+      const input = [...output];
+      output = [];
+      for (let j = 0; j < input.length; j++) {
+        const current = input[j];
+        const previous = input[(j + input.length - 1) % input.length];
+        const currInside = crossProduct2D(edgeStart, edgeEnd, current) >= -1e-12;
+        const prevInside = crossProduct2D(edgeStart, edgeEnd, previous) >= -1e-12;
+        if (currInside) {
+          if (!prevInside) {
+            const ix = lineIntersection2D(edgeStart, edgeEnd, previous, current);
+            if (ix) output.push(ix);
+          }
+          output.push(current);
+        } else if (prevInside) {
+          const ix = lineIntersection2D(edgeStart, edgeEnd, previous, current);
+          if (ix) output.push(ix);
+        }
+      }
+    }
+    return output;
+  }
+
+  function crossProduct2D(a: XY, b: XY, p: XY): number {
+    return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+  }
+
+  function lineIntersection2D(a: XY, b: XY, c: XY, d: XY): XY | null {
+    const dx1 = b[0] - a[0], dy1 = b[1] - a[1];
+    const dx2 = d[0] - c[0], dy2 = d[1] - c[1];
+    const denom = dx1 * dy2 - dy1 * dx2;
+    if (Math.abs(denom) < 1e-15) return null;
+    const t = ((c[0] - a[0]) * dy2 - (c[1] - a[1]) * dx2) / denom;
+    return [a[0] + dx1 * t, a[1] + dy1 * t];
+  }
+
+  // Ensure footprint is counter-clockwise for clipping
+  const fpArea = polygonAreaSqft(input.footprintCoords, midLat);
+  let clipFootprint = [...input.footprintCoords];
+  {
+    let sum = 0;
+    for (let i = 0; i < clipFootprint.length; i++) {
+      const j = (i + 1) % clipFootprint.length;
+      sum += (clipFootprint[j][0] - clipFootprint[i][0]) * (clipFootprint[j][1] + clipFootprint[i][1]);
+    }
+    if (sum > 0) clipFootprint = clipFootprint.reverse(); // Make CCW
+  }
+
   for (const [faceIdx, face] of planar.faces.entries()) {
-    const polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
+    let polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
+
+    // CLIP to footprint boundary — prevents area overshooting
+    polygon = clipPolygonToFootprint(polygon, clipFootprint);
+    if (polygon.length < 3) {
+      facesRejected++;
+      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+      continue;
+    }
+
     // Conditional plane fit: > 200 sqft allows 0.8m, otherwise strict 0.5m
     const areaSqft = polygonAreaSqft(polygon, midLat);
     const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
@@ -1275,6 +1341,74 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       edge_ids: [],
     });
   }
+
+  // ===== TOPOLOGY FIX: Overlap detection and removal =====
+  let overlappingFaceCount = 0;
+  if (graphFaces.length > 1) {
+    // Approximate overlap using centroid containment + area comparison
+    const toRemove = new Set<number>();
+    for (let i = 0; i < graphFaces.length; i++) {
+      if (toRemove.has(i)) continue;
+      for (let j = i + 1; j < graphFaces.length; j++) {
+        if (toRemove.has(j)) continue;
+        // Check if centroid of face j is inside face i (approximate overlap)
+        const polyI = graphFaces[i].polygon.slice(0, -1); // remove closing point
+        const polyJ = graphFaces[j].polygon.slice(0, -1);
+        const centroidJ: XY = polyJ.reduce((acc, p) => [acc[0] + p[0] / polyJ.length, acc[1] + p[1] / polyJ.length] as XY, [0, 0] as XY);
+        const centroidI: XY = polyI.reduce((acc, p) => [acc[0] + p[0] / polyI.length, acc[1] + p[1] / polyI.length] as XY, [0, 0] as XY);
+        const jInsideI = pointInPolygon(centroidJ, polyI);
+        const iInsideJ = pointInPolygon(centroidI, polyJ);
+        if (jInsideI && iInsideJ) {
+          // Near-complete overlap — remove the smaller face
+          overlappingFaceCount++;
+          if (graphFaces[i].plan_area_sqft >= graphFaces[j].plan_area_sqft) {
+            toRemove.add(j);
+          } else {
+            toRemove.add(i);
+            break;
+          }
+        } else if (jInsideI || iInsideJ) {
+          // Partial overlap — check if overlap is significant (>50% of smaller face)
+          const smallerArea = Math.min(graphFaces[i].plan_area_sqft, graphFaces[j].plan_area_sqft);
+          const largerArea = Math.max(graphFaces[i].plan_area_sqft, graphFaces[j].plan_area_sqft);
+          if (smallerArea / largerArea > 0.8) {
+            // Nearly same size and one contains the other's centroid → duplicate
+            overlappingFaceCount++;
+            toRemove.add(graphFaces[i].plan_area_sqft <= graphFaces[j].plan_area_sqft ? i : j);
+          }
+        }
+      }
+    }
+    if (toRemove.size > 0) {
+      const indices = [...toRemove].sort((a, b) => b - a);
+      for (const idx of indices) graphFaces.splice(idx, 1);
+      // Re-label faces
+      for (let i = 0; i < graphFaces.length; i++) {
+        graphFaces[i].id = `SF-${String.fromCharCode(65 + i)}`;
+        graphFaces[i].label = String.fromCharCode(65 + i);
+      }
+      console.log(`  Overlap removal: removed ${toRemove.size} overlapping faces, ${graphFaces.length} remain`);
+    }
+  }
+
+  // ===== TOPOLOGY FIX: Area conservation check =====
+  const totalFacePlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+  const areaConservationRatio = footprintAreaSqft > 0 ? totalFacePlanArea / footprintAreaSqft : 0;
+  if (areaConservationRatio > 1.15) {
+    // Area inflation detected — faces sum to >115% of footprint
+    // Scale down proportionally to enforce conservation
+    const scaleFactor = footprintAreaSqft / totalFacePlanArea;
+    warnings.push(`area_inflation_${areaConservationRatio.toFixed(2)}_corrected_by_scale_${scaleFactor.toFixed(3)}`);
+    console.log(`  AREA CONSERVATION: ratio=${areaConservationRatio.toFixed(2)}, scaling faces by ${scaleFactor.toFixed(3)}`);
+    for (const face of graphFaces) {
+      face.plan_area_sqft *= scaleFactor;
+      face.roof_area_sqft *= scaleFactor;
+    }
+  } else if (areaConservationRatio > 0 && areaConservationRatio < 0.5) {
+    warnings.push(`low_coverage_${areaConservationRatio.toFixed(2)}_faces_cover_lt_50pct`);
+  }
+  console.log(`  Area conservation: ratio=${areaConservationRatio.toFixed(3)} (faces=${totalFacePlanArea.toFixed(0)} vs footprint=${footprintAreaSqft.toFixed(0)})`);
+
   faceCountAfterMerge = graphFaces.length;
 
   let edgeId = 0;
