@@ -787,7 +787,7 @@ const LeadDetails = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
         <h2 className="text-2xl font-bold">Lead not found</h2>
-        <Button onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/pipeline')}>
+        <Button onClick={() => navigate('/pipeline', { replace: true })}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Go back
         </Button>
