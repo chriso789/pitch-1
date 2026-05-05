@@ -3928,6 +3928,29 @@ async function processJob(input: any) {
         sanityFailures.push("overlay_alignment_failed");
       }
     }
+    // ── HARD VALIDATION GATE: area ratio, coverage, face validation ──
+    const computedAreaRatio = (totals.total_area_2d_sqft > 0)
+      ? totals.total_area_pitch_adjusted_sqft / totals.total_area_2d_sqft
+      : null;
+    if (computedAreaRatio != null && computedAreaRatio > 1.25) {
+      if (!sanityFailures.includes("AREA_INFLATION")) {
+        sanityFailures.push("AREA_INFLATION");
+      }
+    }
+    const computedCoverage = autonomousDebug?.face_coverage_ratio ?? null;
+    if (computedCoverage != null && computedCoverage < 0.85) {
+      if (!sanityFailures.includes("LOW_COVERAGE")) {
+        sanityFailures.push("LOW_COVERAGE");
+      }
+    }
+    const computedValidatedFaces = Number(autonomousDebug?.validated_faces ?? planeRows.length);
+    const computedTotalFaces = Number(autonomousDebug?.attempted_faces ?? planeRows.length);
+    if (computedTotalFaces === 0 || computedValidatedFaces < computedTotalFaces * 0.7) {
+      if (!sanityFailures.includes("INVALID_FACES")) {
+        sanityFailures.push("INVALID_FACES");
+      }
+    }
+    const measurementIsValid = sanityFailures.length === 0 && !dsmFailReason;
 
     const blockCustomerReportReason: string | null =
       dsmFailReason ? dsmFailReason : (sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason);
@@ -4006,6 +4029,17 @@ async function processJob(input: any) {
         totals,
         quality,
       },
+      // ── Validation columns ──
+      is_valid: measurementIsValid,
+      fail_reasons: sanityFailures.length > 0 ? sanityFailures : (dsmFailReason ? [dsmFailReason] : null),
+      area_ratio: computedAreaRatio,
+      coverage: computedCoverage,
+      validated_face_count: computedValidatedFaces,
+      total_face_count: computedTotalFaces,
+      footprint_confidence: autonomousDebug?.footprint_valid ? 1.0 : 0.5,
+      report_blocked: !!blockCustomerReportReason,
+      blocked_reason: blockCustomerReportReason,
+      needs_review: needsInternalReview || !!blockCustomerReportReason || quality.overall_score < 0.80,
     });
 
     if (quality.checks.length) {
@@ -4449,7 +4483,9 @@ async function processJob(input: any) {
     });
 
     // Geometry collapse → never call this "completed" for the customer.
-    const finalAiStatus = needsInternalReview
+    const finalAiStatus = !measurementIsValid
+      ? "failed"
+      : needsInternalReview
       ? "needs_internal_review"
       : blockCustomerReportReason
       ? "needs_review"
