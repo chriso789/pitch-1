@@ -100,6 +100,98 @@ Deno.serve(async (req) => {
   }
 });
 
+async function resolveInboundContext(supabase: any, event: any, clientState: any) {
+  const payload = event.payload || {};
+  const fromNumber = extractPhone(payload.from || payload.from_number || payload.caller_id_number);
+  const toNumber = extractPhone(payload.to || payload.to_number || payload.called_number);
+  const toVariants = phoneVariants(toNumber);
+
+  let location: any = null;
+  if (toVariants.length) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('id, name, tenant_id, manager_id, telnyx_phone_number')
+      .in('telnyx_phone_number', toVariants)
+      .limit(1)
+      .maybeSingle();
+    if (error) console.error('Location lookup failed:', error);
+    location = data;
+  }
+
+  const tenantId = (clientState.tenant_id as string | undefined) || location?.tenant_id || null;
+  let contactId: string | null = null;
+  const callerLast10 = digitsOnly(fromNumber).slice(-10);
+
+  if (tenantId && callerLast10) {
+    const { data: contact, error } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .or(`phone.ilike.%${callerLast10}%`)
+      .limit(1)
+      .maybeSingle();
+    if (error) console.error('Contact lookup failed:', error);
+    contactId = contact?.id || null;
+  }
+
+  return {
+    tenantId,
+    locationId: location?.id || null,
+    locationName: location?.name || null,
+    managerId: location?.manager_id || null,
+    fromNumber,
+    toNumber,
+    contactId,
+  };
+}
+
+async function logVoiceWebhookEvent(supabase: any, body: any, event: any, tenantId: string | null) {
+  const { error } = await supabase.from('telnyx_webhook_events').insert({
+    tenant_id: tenantId,
+    kind: 'voice',
+    event_type: event.event_type,
+    telnyx_event_id: event.id || body?.meta?.event_id || null,
+    occurred_at: event.occurred_at || event.created_at || null,
+    payload: body,
+  });
+  if (error) console.error('Failed to audit voice webhook:', error);
+}
+
+async function upsertInboundCall(supabase: any, event: any, context: any, status: string) {
+  if (!context.tenantId || !event.payload?.call_control_id) return;
+
+  const callPayload = {
+    tenant_id: context.tenantId,
+    contact_id: context.contactId,
+    from_number: context.fromNumber,
+    to_number: context.toNumber,
+    direction: 'inbound',
+    status,
+    telnyx_call_control_id: event.payload.call_control_id,
+    telnyx_call_leg_id: event.payload.call_leg_id || null,
+    location_id: context.locationId,
+    call_type: 'inbound',
+    raw_payload: { telnyx_event: event, location_name: context.locationName },
+  };
+
+  const { data: existing } = await supabase
+    .from('calls')
+    .select('id')
+    .eq('telnyx_call_control_id', event.payload.call_control_id)
+    .maybeSingle();
+
+  const result = existing?.id
+    ? await supabase.from('calls').update(callPayload).eq('id', existing.id).select('id').single()
+    : await supabase.from('calls').insert(callPayload).select('id').single();
+
+  if (result.error) {
+    console.error('Failed to upsert inbound call:', result.error);
+    return;
+  }
+
+  await upsertUnifiedInboxCall(supabase, result.data.id, context, status, event);
+}
+
 // Event handlers
 async function handleCallInitiated(supabase: any, event: any, clientState: any) {
   const callId = event.payload?.call_control_id;
