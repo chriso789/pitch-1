@@ -1166,7 +1166,17 @@ export function UnifiedMeasurementPanel({
 
                 {/* Diagram intentionally hidden — open via "View Report" */}
 
-                {/* Key Stats */}
+                {aiIsBlocked && (
+                  <MeasurementFailureAlert
+                    isValid={false}
+                    failReasons={aiFailReasons}
+                    areaRatio={aiAreaRatio}
+                    reportBlocked={true}
+                  />
+                )}
+
+                {/* Key Stats — hidden when measurement is invalid */}
+                {!aiIsBlocked && (
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <div>
                     <span className="text-muted-foreground text-xs">Squares</span>
