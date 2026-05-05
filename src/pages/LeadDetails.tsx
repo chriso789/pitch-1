@@ -64,6 +64,7 @@ import { InternalNotesSection } from '@/components/lead-details/InternalNotesSec
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { EditProjectDetailsDialog } from '@/components/lead-details/EditProjectDetailsDialog';
 import { InspectionWalkthrough } from '@/components/inspection/InspectionWalkthrough';
+import { XactScopeBuilder } from '@/components/xact-scope/XactScopeBuilder';
 import { ProjectPhotoSteps } from '@/components/lead-details/ProjectPhotoSteps';
 import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
