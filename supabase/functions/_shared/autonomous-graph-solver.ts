@@ -1232,9 +1232,75 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const faceRejectionTable: NonNullable<AutonomousGraphResult['face_rejection_table']> = [];
   const graphFaces: GraphFace[] = [];
   faceCountBeforeMerge = planar.faces.length;
+
+  // ===== TOPOLOGY FIX: Clip face polygons to footprint boundary =====
+  // Sutherland-Hodgman polygon clipping to ensure all faces terminate at footprint
+  function clipPolygonToFootprint(subject: XY[], clip: XY[]): XY[] {
+    if (subject.length < 3 || clip.length < 3) return subject;
+    let output = [...subject];
+    for (let i = 0; i < clip.length; i++) {
+      if (output.length < 3) return output;
+      const edgeStart = clip[i];
+      const edgeEnd = clip[(i + 1) % clip.length];
+      const input = [...output];
+      output = [];
+      for (let j = 0; j < input.length; j++) {
+        const current = input[j];
+        const previous = input[(j + input.length - 1) % input.length];
+        const currInside = crossProduct2D(edgeStart, edgeEnd, current) >= -1e-12;
+        const prevInside = crossProduct2D(edgeStart, edgeEnd, previous) >= -1e-12;
+        if (currInside) {
+          if (!prevInside) {
+            const ix = lineIntersection2D(edgeStart, edgeEnd, previous, current);
+            if (ix) output.push(ix);
+          }
+          output.push(current);
+        } else if (prevInside) {
+          const ix = lineIntersection2D(edgeStart, edgeEnd, previous, current);
+          if (ix) output.push(ix);
+        }
+      }
+    }
+    return output;
+  }
+
+  function crossProduct2D(a: XY, b: XY, p: XY): number {
+    return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+  }
+
+  function lineIntersection2D(a: XY, b: XY, c: XY, d: XY): XY | null {
+    const dx1 = b[0] - a[0], dy1 = b[1] - a[1];
+    const dx2 = d[0] - c[0], dy2 = d[1] - c[1];
+    const denom = dx1 * dy2 - dy1 * dx2;
+    if (Math.abs(denom) < 1e-15) return null;
+    const t = ((c[0] - a[0]) * dy2 - (c[1] - a[1]) * dx2) / denom;
+    return [a[0] + dx1 * t, a[1] + dy1 * t];
+  }
+
+  // Ensure footprint is counter-clockwise for clipping
+  const fpArea = polygonAreaSqft(input.footprintCoords, midLat);
+  let clipFootprint = [...input.footprintCoords];
+  {
+    let sum = 0;
+    for (let i = 0; i < clipFootprint.length; i++) {
+      const j = (i + 1) % clipFootprint.length;
+      sum += (clipFootprint[j][0] - clipFootprint[i][0]) * (clipFootprint[j][1] + clipFootprint[i][1]);
+    }
+    if (sum > 0) clipFootprint = clipFootprint.reverse(); // Make CCW
+  }
+
   for (const [faceIdx, face] of planar.faces.entries()) {
-    const polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
+    let polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
+
+    // CLIP to footprint boundary — prevents area overshooting
+    polygon = clipPolygonToFootprint(polygon, clipFootprint);
+    if (polygon.length < 3) {
+      facesRejected++;
+      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+      continue;
+    }
+
     // Conditional plane fit: > 200 sqft allows 0.8m, otherwise strict 0.5m
     const areaSqft = polygonAreaSqft(polygon, midLat);
     const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
@@ -1275,6 +1341,74 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       edge_ids: [],
     });
   }
+
+  // ===== TOPOLOGY FIX: Overlap detection and removal =====
+  let overlappingFaceCount = 0;
+  if (graphFaces.length > 1) {
+    // Approximate overlap using centroid containment + area comparison
+    const toRemove = new Set<number>();
+    for (let i = 0; i < graphFaces.length; i++) {
+      if (toRemove.has(i)) continue;
+      for (let j = i + 1; j < graphFaces.length; j++) {
+        if (toRemove.has(j)) continue;
+        // Check if centroid of face j is inside face i (approximate overlap)
+        const polyI = graphFaces[i].polygon.slice(0, -1); // remove closing point
+        const polyJ = graphFaces[j].polygon.slice(0, -1);
+        const centroidJ: XY = polyJ.reduce((acc, p) => [acc[0] + p[0] / polyJ.length, acc[1] + p[1] / polyJ.length] as XY, [0, 0] as XY);
+        const centroidI: XY = polyI.reduce((acc, p) => [acc[0] + p[0] / polyI.length, acc[1] + p[1] / polyI.length] as XY, [0, 0] as XY);
+        const jInsideI = pointInPolygon(centroidJ, polyI);
+        const iInsideJ = pointInPolygon(centroidI, polyJ);
+        if (jInsideI && iInsideJ) {
+          // Near-complete overlap — remove the smaller face
+          overlappingFaceCount++;
+          if (graphFaces[i].plan_area_sqft >= graphFaces[j].plan_area_sqft) {
+            toRemove.add(j);
+          } else {
+            toRemove.add(i);
+            break;
+          }
+        } else if (jInsideI || iInsideJ) {
+          // Partial overlap — check if overlap is significant (>50% of smaller face)
+          const smallerArea = Math.min(graphFaces[i].plan_area_sqft, graphFaces[j].plan_area_sqft);
+          const largerArea = Math.max(graphFaces[i].plan_area_sqft, graphFaces[j].plan_area_sqft);
+          if (smallerArea / largerArea > 0.8) {
+            // Nearly same size and one contains the other's centroid → duplicate
+            overlappingFaceCount++;
+            toRemove.add(graphFaces[i].plan_area_sqft <= graphFaces[j].plan_area_sqft ? i : j);
+          }
+        }
+      }
+    }
+    if (toRemove.size > 0) {
+      const indices = [...toRemove].sort((a, b) => b - a);
+      for (const idx of indices) graphFaces.splice(idx, 1);
+      // Re-label faces
+      for (let i = 0; i < graphFaces.length; i++) {
+        graphFaces[i].id = `SF-${String.fromCharCode(65 + i)}`;
+        graphFaces[i].label = String.fromCharCode(65 + i);
+      }
+      console.log(`  Overlap removal: removed ${toRemove.size} overlapping faces, ${graphFaces.length} remain`);
+    }
+  }
+
+  // ===== TOPOLOGY FIX: Area conservation check =====
+  const totalFacePlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+  const areaConservationRatio = footprintAreaSqft > 0 ? totalFacePlanArea / footprintAreaSqft : 0;
+  if (areaConservationRatio > 1.15) {
+    // Area inflation detected — faces sum to >115% of footprint
+    // Scale down proportionally to enforce conservation
+    const scaleFactor = footprintAreaSqft / totalFacePlanArea;
+    warnings.push(`area_inflation_${areaConservationRatio.toFixed(2)}_corrected_by_scale_${scaleFactor.toFixed(3)}`);
+    console.log(`  AREA CONSERVATION: ratio=${areaConservationRatio.toFixed(2)}, scaling faces by ${scaleFactor.toFixed(3)}`);
+    for (const face of graphFaces) {
+      face.plan_area_sqft *= scaleFactor;
+      face.roof_area_sqft *= scaleFactor;
+    }
+  } else if (areaConservationRatio > 0 && areaConservationRatio < 0.5) {
+    warnings.push(`low_coverage_${areaConservationRatio.toFixed(2)}_faces_cover_lt_50pct`);
+  }
+  console.log(`  Area conservation: ratio=${areaConservationRatio.toFixed(3)} (faces=${totalFacePlanArea.toFixed(0)} vs footprint=${footprintAreaSqft.toFixed(0)})`);
+
   faceCountAfterMerge = graphFaces.length;
 
   let edgeId = 0;
@@ -1282,20 +1416,56 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outputVerticesByKey = new Map<string, XY>();
   const addVertex = (p: XY) => outputVerticesByKey.set(vertexKey(p), p);
 
-  // ===== FACE-AWARE EDGE FILTERING =====
-  // Only emit edges that border at least one valid face.
-  // This prevents the "134 edges for 10 planes" explosion where every
-  // tiny planar graph segment was emitted as a hip by default.
+  // ===== CANONICAL SHARED EDGE SYSTEM =====
+  // Build a canonical edge map from validated graphFaces in GEO space.
+  // Each unique edge (by snapped vertex keys) maps to the list of face indices sharing it.
+  const GEO_SNAP_DIGITS = 7; // ~1m precision for vertex matching
+  function geoVertexKey(p: XY): string {
+    return `${p[0].toFixed(GEO_SNAP_DIGITS)},${p[1].toFixed(GEO_SNAP_DIGITS)}`;
+  }
+  function geoEdgeKey(a: XY, b: XY): string {
+    const ka = geoVertexKey(a), kb = geoVertexKey(b);
+    return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+  }
 
-  // Build a set of face-boundary segments (using DSM px space) for fast lookup.
-  // For each valid face polygon, collect all consecutive-vertex pairs as edge keys.
+  // Map: geoEdgeKey → { faceIndices, start, end }
+  const canonicalEdgeMap = new Map<string, { faceIndices: number[]; start: XY; end: XY }>();
+  let sharedEdgeCount = 0;
+  let duplicateEdgeCount = 0;
+
+  for (let fi = 0; fi < graphFaces.length; fi++) {
+    const poly = graphFaces[fi].polygon;
+    for (let pi = 0; pi < poly.length - 1; pi++) {
+      const a = poly[pi], b = poly[pi + 1];
+      const key = geoEdgeKey(a, b);
+      const existing = canonicalEdgeMap.get(key);
+      if (existing) {
+        if (!existing.faceIndices.includes(fi)) {
+          existing.faceIndices.push(fi);
+          sharedEdgeCount++;
+        } else {
+          duplicateEdgeCount++;
+        }
+      } else {
+        canonicalEdgeMap.set(key, { faceIndices: [fi], start: a, end: b });
+      }
+    }
+  }
+  console.log(`  Canonical edges: ${canonicalEdgeMap.size} unique, ${sharedEdgeCount} shared between faces, ${duplicateEdgeCount} duplicates removed`);
+
+  // ===== EMIT EDGES FROM CANONICAL MAP =====
+  // Instead of iterating planar.edges (px space), emit from the canonical geo-space edge map.
+  // This guarantees shared edges are exactly ONE edge object referenced by multiple faces.
+  let skippedNoFace = 0;
+  
+  // Also keep the px-based approach for fallback classification
   const segKeyFromPts = (a: { x: number; y: number }, b: { x: number; y: number }): string => {
     const ka = `${Math.round(a.x)}:${Math.round(a.y)}`;
     const kb = `${Math.round(b.x)}:${Math.round(b.y)}`;
     return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
   };
 
-  // Map: segKey → list of face indices that have this edge
+  // Build segFaceMap from planar solver for DSM-based classification
   const segFaceMap = new Map<string, number[]>();
   for (let fi = 0; fi < planar.faces.length; fi++) {
     const poly = planar.faces[fi].polygon;
@@ -1309,62 +1479,76 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
   }
 
-  // Map planar.faces indices to graphFaces indices (some faces were rejected).
-  // graphFaces were built in order from planar.faces, skipping rejected ones.
-  // We need to know which planar face indices correspond to valid graphFaces.
-  // Since graphFaces are built from planar.faces in order, we can track this.
-  // But we don't have that mapping here — so instead, match by checking if
-  // a segment borders ANY planar face (valid or not). The key insight:
-  // if a segment borders 2 faces → it's a structural interior edge (ridge/hip/valley).
-  // if a segment borders 1 face and touches footprint → eave/rake.
-  // if a segment borders 0 faces → skip it entirely (dangling/noise).
-
-  let skippedNoFace = 0;
-  for (const seg of planar.edges) {
-    if (!effectiveDSM) continue;
-    const key = segKeyFromPts(seg.a, seg.b);
-    const adjacentFaces = segFaceMap.get(key) || [];
-
-    // Skip segments that don't border any face
-    if (adjacentFaces.length === 0) {
-      skippedNoFace++;
-      continue;
-    }
-
-    const start = pxToGeoPoint(seg.a, effectiveDSM);
-    const end = pxToGeoPoint(seg.b, effectiveDSM);
+  for (const [_key, canonical] of canonicalEdgeMap) {
+    const { start, end, faceIndices } = canonical;
     const lengthFt = distanceFt(start, end, midLat);
     if (lengthFt < 1) continue;
 
-    // Use face adjacency count to determine edge type
+    // Determine edge type based on face adjacency count
     let edgeType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'unclassified';
     let edgeSource: 'dsm' | 'perimeter' = 'dsm';
     let edgeScore = 0.8;
 
-    if (adjacentFaces.length >= 2) {
-      // Interior structural edge — shared between faces
-      // Classify using DSM interior edge matching
-      const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
-      if (classified.type === 'eave' || classified.type === 'rake') {
-        // Shared between 2 faces but can't determine structural type → unclassified
-        edgeType = 'unclassified';
-      } else {
-        edgeType = classified.type;
+    // Check if this edge lies on the footprint boundary
+    const edgeMid: XY = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
+    let onFootprintBoundary = false;
+    for (let i = 0; i < input.footprintCoords.length; i++) {
+      const fpa = input.footprintCoords[i];
+      const fpb = input.footprintCoords[(i + 1) % input.footprintCoords.length];
+      // Check if edge midpoint is near footprint edge
+      const dx = fpb[0] - fpa[0], dy = fpb[1] - fpa[1];
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-16) continue;
+      const t = Math.max(0, Math.min(1, ((edgeMid[0] - fpa[0]) * dx + (edgeMid[1] - fpa[1]) * dy) / len2));
+      const proj: XY = [fpa[0] + t * dx, fpa[1] + t * dy];
+      const distToFootprint = Math.hypot(edgeMid[0] - proj[0], edgeMid[1] - proj[1]);
+      if (distToFootprint < 2e-6) { // ~0.2m
+        onFootprintBoundary = true;
+        break;
       }
+    }
+
+    if (faceIndices.length >= 2 && !onFootprintBoundary) {
+      // SHARED interior edge — structural (ridge/hip/valley)
+      // Will be reclassified by face-adjacency below
+      edgeType = 'unclassified';
       edgeSource = 'dsm';
-      edgeScore = classified.score;
+      edgeScore = 0.85;
+    } else if (onFootprintBoundary) {
+      // On footprint boundary — eave or rake
+      edgeType = 'eave';
+      edgeSource = 'perimeter';
+      edgeScore = 0.85;
     } else {
-      // Single-face boundary edge — should be eave or rake
-      const classified = classifyPlanarSegment(seg, footprintPx, dsmInteriorEdgesPx);
-      edgeType = classified.type;
-      edgeSource = classified.source;
-      edgeScore = classified.score;
+      // Single-face interior edge — unusual, classify by DSM if possible
+      if (effectiveDSM) {
+        const pxA = geoToPxPoint(start, effectiveDSM);
+        const pxB = geoToPxPoint(end, effectiveDSM);
+        const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPx, dsmInteriorEdgesPx);
+        edgeType = classified.type;
+        edgeSource = classified.source;
+        edgeScore = classified.score;
+      } else {
+        edgeType = 'unclassified';
+      }
     }
 
     addVertex(start);
     addVertex(end);
+    const eid = `GE-${edgeId++}`;
+    
+    // Track which face IDs this edge belongs to
+    const facetIds = faceIndices.map(fi => graphFaces[fi]?.id).filter(Boolean);
+    
+    // Also set edge_ids on the faces
+    for (const fi of faceIndices) {
+      if (graphFaces[fi]) {
+        graphFaces[fi].edge_ids.push(eid);
+      }
+    }
+
     outputEdges.push({
-      id: `GE-${edgeId++}`,
+      id: eid,
       type: edgeType,
       start,
       end,
@@ -1373,22 +1557,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         dsm_score: edgeSource === 'dsm' ? 0.85 : 0.8,
         rgb_score: 0,
         solar_azimuth_score: 0.5,
-        topology_score: planar.faces.length >= 2 ? 0.9 : 0.2,
+        topology_score: faceIndices.length >= 2 ? 0.95 : (faceIndices.length === 1 ? 0.7 : 0.2),
         length_score: lengthFt > 10 ? 0.8 : 0.5,
         final_confidence: edgeScore,
       },
-      facet_ids: [],
+      facet_ids: facetIds,
       source: edgeSource,
     });
   }
-  console.log(`  Edge output: ${outputEdges.length} emitted, ${skippedNoFace} skipped (no adjacent face)`);
+  console.log(`  Edge output: ${outputEdges.length} emitted from canonical map`);
   console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit/area`);
 
   // ===== FACE-ADJACENCY EDGE RECLASSIFICATION =====
   // Primary classification: use plane normals of adjacent faces to determine edge type.
-  // DSM perpendicular profile is secondary evidence only.
+  // Now uses canonical edge map for reliable face adjacency.
   if (graphFaces.length >= 2 && effectiveDSM) {
-    // Build face plane data: for each face, compute slopeX and slopeY from DSM plane fit
     const facePlanes: Array<{ slopeX: number; slopeY: number; centroid: XY } | null> = graphFaces.map(face => {
       const poly = face.polygon;
       if (poly.length < 3) return null;
@@ -1433,91 +1616,59 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         poly.reduce((s, p) => s + p[0], 0) / poly.length,
         poly.reduce((s, p) => s + p[1], 0) / poly.length,
       ];
-      // slopeX/Y in meters/meter: dz/dx and dz/dy
       return { slopeX: a / metersPerPixelX, slopeY: b / metersPerPixelY, centroid };
     });
 
     let reclassified = 0;
     for (const edge of outputEdges) {
-      if (edge.type === 'eave' || edge.type === 'rake') continue; // Don't reclassify boundary edges
-      // DO reclassify 'unclassified' edges via face-adjacency
-
-      // Find adjacent faces: faces whose polygon contains both edge endpoints
-      const adjacentFaceIndices: number[] = [];
-      const edgeMid: XY = [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2];
+      if (edge.type === 'eave' || edge.type === 'rake') continue;
       
-      for (let fi = 0; fi < graphFaces.length; fi++) {
-        const poly = graphFaces[fi].polygon;
-        // Check if edge shares a boundary segment with this face
-        for (let pi = 0; pi < poly.length - 1; pi++) {
-          const segStart = poly[pi];
-          const segEnd = poly[pi + 1];
-          const dStartA = Math.hypot(segStart[0] - edge.start[0], segStart[1] - edge.start[1]);
-          const dStartB = Math.hypot(segStart[0] - edge.end[0], segStart[1] - edge.end[1]);
-          const dEndA = Math.hypot(segEnd[0] - edge.start[0], segEnd[1] - edge.start[1]);
-          const dEndB = Math.hypot(segEnd[0] - edge.end[0], segEnd[1] - edge.end[1]);
-          const snapThresh = 1e-7; // ~1cm in degrees
-          if ((dStartA < snapThresh && dEndB < snapThresh) || (dStartB < snapThresh && dEndA < snapThresh)) {
-            adjacentFaceIndices.push(fi);
-            break;
-          }
-        }
+      // Use canonical edge map to find adjacent faces reliably
+      const eKey = geoEdgeKey(edge.start, edge.end);
+      const canonical = canonicalEdgeMap.get(eKey);
+      const adjacentFaceIndices = canonical?.faceIndices || [];
+
+      if (adjacentFaceIndices.length < 2) continue;
+
+      const planeA = facePlanes[adjacentFaceIndices[0]];
+      const planeB = facePlanes[adjacentFaceIndices[1]];
+      if (!planeA || !planeB) continue;
+
+      const edgeMidLocal: XY = [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2];
+      const edgeDx = edge.end[0] - edge.start[0];
+      const edgeDy = edge.end[1] - edge.start[1];
+      const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+      if (edgeLen < 1e-12) continue;
+      const perpX = -edgeDy / edgeLen;
+      const perpY = edgeDx / edgeLen;
+
+      const dotA = (planeA.centroid[0] - edgeMidLocal[0]) * perpX + (planeA.centroid[1] - edgeMidLocal[1]) * perpY;
+      const dotB = (planeB.centroid[0] - edgeMidLocal[0]) * perpX + (planeB.centroid[1] - edgeMidLocal[1]) * perpY;
+
+      const downslopeA_perp = -(planeA.slopeX * perpX + planeA.slopeY * perpY);
+      const downslopeB_perp = -(planeB.slopeX * perpX + planeB.slopeY * perpY);
+
+      const slopeAwayA = dotA > 0 ? downslopeA_perp : -downslopeA_perp;
+      const slopeAwayB = dotB > 0 ? -downslopeB_perp : downslopeB_perp;
+
+      const slopeThreshold = 0.02;
+      const aDescends = slopeAwayA > slopeThreshold;
+      const bDescends = slopeAwayB > slopeThreshold;
+      const aAscends = slopeAwayA < -slopeThreshold;
+      const bAscends = slopeAwayB < -slopeThreshold;
+
+      let newType: 'ridge' | 'valley' | 'hip' | null = null;
+      if (aDescends && bDescends) {
+        newType = 'ridge';
+      } else if (aAscends && bAscends) {
+        newType = 'valley';
+      } else if ((aDescends && bAscends) || (aAscends && bDescends)) {
+        newType = 'hip';
       }
 
-      if (adjacentFaceIndices.length === 1) {
-        // Boundary edge with one face — check if on footprint boundary
-        // Already classified as eave/rake by classifyPlanarSegment, skip
-        continue;
-      }
-
-      if (adjacentFaceIndices.length >= 2) {
-        const planeA = facePlanes[adjacentFaceIndices[0]];
-        const planeB = facePlanes[adjacentFaceIndices[1]];
-        if (!planeA || !planeB) continue;
-
-        // Compute edge normal (perpendicular to edge direction)
-        const edgeDx = edge.end[0] - edge.start[0];
-        const edgeDy = edge.end[1] - edge.start[1];
-        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-        if (edgeLen < 1e-12) continue;
-        // Perpendicular: points from face A toward face B
-        const perpX = -edgeDy / edgeLen;
-        const perpY = edgeDx / edgeLen;
-
-        // Determine which face is on which side of the edge
-        const dotA = (planeA.centroid[0] - edgeMid[0]) * perpX + (planeA.centroid[1] - edgeMid[1]) * perpY;
-        const dotB = (planeB.centroid[0] - edgeMid[0]) * perpX + (planeB.centroid[1] - edgeMid[1]) * perpY;
-
-        // Downslope component perpendicular to edge for each face
-        // Positive slopeX/Y means z increases in +x/+y direction
-        // Downslope direction is negative gradient: (-slopeX, -slopeY)
-        // Project downslope onto edge perpendicular
-        const downslopeA_perp = -(planeA.slopeX * perpX + planeA.slopeY * perpY);
-        const downslopeB_perp = -(planeB.slopeX * perpX + planeB.slopeY * perpY);
-
-        // Ensure face A is on the positive-perp side, face B on negative
-        const slopeAwayA = dotA > 0 ? downslopeA_perp : -downslopeA_perp; // positive = face A descends away from edge
-        const slopeAwayB = dotB > 0 ? -downslopeB_perp : downslopeB_perp; // positive = face B descends away from edge
-
-        const slopeThreshold = 0.02; // meters/meter
-        const aDescends = slopeAwayA > slopeThreshold;
-        const bDescends = slopeAwayB > slopeThreshold;
-        const aAscends = slopeAwayA < -slopeThreshold;
-        const bAscends = slopeAwayB < -slopeThreshold;
-
-        let newType: 'ridge' | 'valley' | 'hip' | null = null;
-        if (aDescends && bDescends) {
-          newType = 'ridge'; // Both faces descend away from shared edge = peak
-        } else if (aAscends && bAscends) {
-          newType = 'valley'; // Both faces ascend away from shared edge = trough
-        } else if ((aDescends && bAscends) || (aAscends && bDescends)) {
-          newType = 'hip'; // Mixed = hip
-        }
-
-        if (newType && newType !== edge.type) {
-          reclassified++;
-          edge.type = newType;
-        }
+      if (newType) {
+        if (newType !== edge.type) reclassified++;
+        edge.type = newType;
       }
     }
     if (reclassified > 0) {
@@ -1580,7 +1731,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     return polygon.length >= 3 ? s + polygonAreaSqft(polygon, midLat) : s;
   }, 0);
-  const coverageRatio = planar.debug.face_coverage_ratio || (footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0);
+  const coverageRatio = footprintAreaSqft > 0 ? Math.min(totalPlanArea / footprintAreaSqft, planar.debug.face_coverage_ratio || (totalPlanArea / footprintAreaSqft)) : 0;
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
   const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
@@ -1647,10 +1798,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   // ===== EDGE EMIT DIAGNOSTICS =====
   const edgeEmitDiagnostics = {
-    edge_emit_policy: 'face_adjacency_filtered',
+    edge_emit_policy: 'canonical_shared_edge_map',
+    canonical_edges_total: canonicalEdgeMap.size,
+    shared_edge_count: sharedEdgeCount,
+    duplicate_edge_count: duplicateEdgeCount,
+    overlapping_face_count: overlappingFaceCount,
+    area_conservation_ratio: Number(areaConservationRatio.toFixed(3)),
+    footprint_area_sqft: Number(footprintAreaSqft.toFixed(0)),
+    total_face_plan_area_sqft: Number(totalPlanArea.toFixed(0)),
     segments_input_total: planar.edges.length,
     segments_skipped_no_faces: skippedNoFace,
-    segments_emitted_structural_2_faces: outputEdges.filter(e => e.source === 'dsm' && e.type !== 'eave' && e.type !== 'rake').length,
+    segments_emitted_structural_2_faces: outputEdges.filter(e => e.facet_ids.length >= 2).length,
     segments_emitted_boundary_1_face: outputEdges.filter(e => e.type === 'eave' || e.type === 'rake').length,
     emitted_edges_total: outputEdges.length,
     ridge_edges_total: outRidges.length,
@@ -1712,10 +1870,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   };
 
   console.log(`[EDGE_EMIT_DIAGNOSTICS] ${JSON.stringify(edgeEmitDiagnostics)}`);
-  console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
-
-  console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
+  console.log(`[TOPOLOGY_METRICS] shared_edges=${sharedEdgeCount} duplicates=${duplicateEdgeCount} overlaps=${overlappingFaceCount} area_conservation=${areaConservationRatio.toFixed(3)}`);
   console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
 
   return {
