@@ -410,7 +410,7 @@ async function handleRecordingSaved(supabase: any, event: any) {
         .from('call_recordings')
         .insert({
           tenant_id: call.tenant_id,
-          call_log_id: call.id,
+          call_log_id: null,
           recording_url: recordingUrl,
           duration_seconds: durationSeconds || null,
           transcription_status: 'pending',
