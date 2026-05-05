@@ -263,6 +263,14 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "estimates"
     },
     {
+      name: "Supplement Workflow",
+      href: "supplement-workflow",
+      path: "/supplement-workflow",
+      icon: Shield,
+      description: "Carrier parser & packet workflow",
+      featureKey: "estimates"
+    },
+    {
       name: "Production",
       href: "production",
       path: "/production",

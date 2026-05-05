@@ -95,6 +95,7 @@ const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPa
 const PdfWorkspaceList = React.lazy(() => import("@/pages/PdfWorkspaceList"));
 const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor"));
 const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
+const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -201,6 +202,7 @@ export default function ProtectedRoutes() {
         <Route path="/documents/pdf-workspace" element={<ProtectedRoute><PdfWorkspaceList /></ProtectedRoute>} />
         <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
         <Route path="/supplements" element={<ProtectedRoute><SupplementEngine /></ProtectedRoute>} />
+        <Route path="/supplement-workflow" element={<ProtectedRoute><SupplementWorkflow /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
