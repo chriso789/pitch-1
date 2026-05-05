@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/use-toast';
 import {
   Plus, Trash2, FileText, Download, ClipboardList, AlertTriangle,
   CheckCircle, Edit2, Copy, ChevronDown, ChevronRight, Loader2,
-  FileSpreadsheet, FileDown, Sparkles, Zap, Ruler
+  FileSpreadsheet, FileDown, Sparkles, Zap, Ruler, Upload
 } from 'lucide-react';
 import { XactScopeItemEditor } from './XactScopeItemEditor';
 import { XactAreaManager } from './XactAreaManager';
@@ -400,6 +400,14 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
             </Card>
           )}
 
+          {/* Manual Report Entry — when no AI measurement exists */}
+          {!hasMeasurement && (
+            <ManualReportEntry
+              scopeProjectId={selectedProject.id}
+              hasItems={!!items && items.length > 0}
+            />
+          )}
+
           {/* Tabs for Areas / Items / Export */}
           <Card>
             <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
@@ -457,6 +465,178 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
         isLoading={createProjectMutation.isPending}
       />
     </div>
+  );
+};
+
+// Manual Report Entry — enter Roofr/EagleView measurements by hand
+const ManualReportEntry: React.FC<{
+  scopeProjectId: string;
+  hasItems: boolean;
+}> = ({ scopeProjectId, hasItems }) => {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    roof_area: '',
+    pitch: '6',
+    facets: '14',
+    eaves: '',
+    rakes: '',
+    valleys: '',
+    hips: '',
+    ridges: '',
+    step_flashing: '',
+    pipe_boots: '',
+    stories: '1',
+  });
+
+  const parseReportMutation = useMutation({
+    mutationFn: async () => {
+      const measurements = {
+        roof_area: parseFloat(formData.roof_area) || 0,
+        pitch: parseFloat(formData.pitch) || 4,
+        facets: parseInt(formData.facets) || 1,
+        eaves: parseFloat(formData.eaves) || 0,
+        rakes: parseFloat(formData.rakes) || 0,
+        valleys: parseFloat(formData.valleys) || 0,
+        hips: parseFloat(formData.hips) || 0,
+        ridges: parseFloat(formData.ridges) || 0,
+        step_flashing: parseFloat(formData.step_flashing) || 0,
+        pipe_boots: formData.pipe_boots ? parseInt(formData.pipe_boots) : undefined,
+        stories: parseInt(formData.stories) || 1,
+        source: 'manual_report_entry',
+      };
+
+      if (measurements.roof_area <= 0) throw new Error('Roof area is required');
+
+      const { data, error } = await supabase.functions.invoke('parse-roof-report', {
+        body: { measurements, scope_project_id: scopeProjectId }
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['xact-scope-items'] });
+      const parsed = data.parsed;
+      toast({
+        title: 'Estimate auto-built from report data',
+        description: `${parsed.squares} SQ · ${parsed.complexity} complexity · ${Math.round(parsed.waste_factor * 100)}% waste`,
+      });
+      setShowForm(false);
+    },
+    onError: (err: any) => {
+      toast({ title: 'Failed to generate estimate', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const updateField = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  if (!showForm) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Upload className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <div className="text-sm font-medium">Enter Report Measurements</div>
+                <div className="text-xs text-muted-foreground">
+                  Manually enter values from your Roofr or EagleView report
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowForm(true)}
+              disabled={hasItems}
+              className="gap-1"
+            >
+              <Upload className="h-4 w-4" />
+              {hasItems ? 'Already Generated' : 'Enter Measurements'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Upload className="h-4 w-4" />
+          Enter Report Measurements
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <Label className="text-xs">Roof Area (sqft) *</Label>
+            <Input type="number" value={formData.roof_area} onChange={e => updateField('roof_area', e.target.value)} placeholder="3077" />
+          </div>
+          <div>
+            <Label className="text-xs">Pitch (rise/12)</Label>
+            <Input type="number" value={formData.pitch} onChange={e => updateField('pitch', e.target.value)} placeholder="6" />
+          </div>
+          <div>
+            <Label className="text-xs">Facets</Label>
+            <Input type="number" value={formData.facets} onChange={e => updateField('facets', e.target.value)} placeholder="14" />
+          </div>
+          <div>
+            <Label className="text-xs">Stories</Label>
+            <Input type="number" value={formData.stories} onChange={e => updateField('stories', e.target.value)} placeholder="1" />
+          </div>
+        </div>
+        <Separator />
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Eaves (LF)</Label>
+            <Input type="number" value={formData.eaves} onChange={e => updateField('eaves', e.target.value)} placeholder="258" />
+          </div>
+          <div>
+            <Label className="text-xs">Rakes (LF)</Label>
+            <Input type="number" value={formData.rakes} onChange={e => updateField('rakes', e.target.value)} placeholder="5" />
+          </div>
+          <div>
+            <Label className="text-xs">Valleys (LF)</Label>
+            <Input type="number" value={formData.valleys} onChange={e => updateField('valleys', e.target.value)} placeholder="64" />
+          </div>
+          <div>
+            <Label className="text-xs">Hips (LF)</Label>
+            <Input type="number" value={formData.hips} onChange={e => updateField('hips', e.target.value)} placeholder="201" />
+          </div>
+          <div>
+            <Label className="text-xs">Ridges (LF)</Label>
+            <Input type="number" value={formData.ridges} onChange={e => updateField('ridges', e.target.value)} placeholder="30" />
+          </div>
+          <div>
+            <Label className="text-xs">Step Flashing (LF)</Label>
+            <Input type="number" value={formData.step_flashing} onChange={e => updateField('step_flashing', e.target.value)} placeholder="11" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Pipe Boots (count)</Label>
+            <Input type="number" value={formData.pipe_boots} onChange={e => updateField('pipe_boots', e.target.value)} placeholder="Auto-estimate" />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+          <Button
+            size="sm"
+            onClick={() => parseReportMutation.mutate()}
+            disabled={parseReportMutation.isPending || !formData.roof_area}
+            className="gap-1"
+          >
+            {parseReportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            Auto-Build Estimate
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
