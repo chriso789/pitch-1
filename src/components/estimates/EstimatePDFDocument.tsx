@@ -824,7 +824,7 @@ const FirstPage: React.FC<{
 
       {/* Project Scope Table */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && (
-        <ItemsTable blocks={blocks} opts={opts} />
+        <ItemsTable blocks={blocks} opts={opts} markupFactor={breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1} />
       )}
 
       {/* Continuation hint when items overflow to next page */}
@@ -858,7 +858,7 @@ const ItemsContinuationPage: React.FC<{
 }> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
   return (
     <div className="space-y-3">
-      <ItemsTable blocks={blocks} opts={opts} continued />
+      <ItemsTable blocks={blocks} opts={opts} continued markupFactor={breakdown ? (breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1) : 1} />
 
       {isLastPage && breakdown && config && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
@@ -870,7 +870,7 @@ const ItemsContinuationPage: React.FC<{
 };
 
 // Items Table Component - renders pre-built render blocks
-const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean }> = ({ blocks, opts, continued = false }) => {
+const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean; markupFactor?: number }> = ({ blocks, opts, continued = false, markupFactor = 1 }) => {
   const colCount = 1 + (opts.showLineItemQuantities ? 2 : 0) + (opts.showLineItemPricing ? 2 : 0);
 
   const renderItem = (item: LineItem, idx: number) => (
@@ -896,8 +896,8 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
       )}
       {opts.showLineItemPricing && (
         <>
-          <td className="py-1 text-right text-xs text-gray-700 align-top">{formatCurrency(item.unit_cost)}</td>
-          <td className="py-1 text-right text-xs text-gray-700 align-top font-medium">{formatCurrency(item.line_total)}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top">{formatCurrency(item.unit_cost * markupFactor)}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top font-medium">{formatCurrency(item.line_total * markupFactor)}</td>
         </>
       )}
     </tr>
