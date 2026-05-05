@@ -896,8 +896,8 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
       )}
       {opts.showLineItemPricing && (
         <>
-          <td className="py-1 text-right text-xs text-gray-700 align-top">{formatCurrency(item.unit_cost)}</td>
-          <td className="py-1 text-right text-xs text-gray-700 align-top font-medium">{formatCurrency(item.line_total)}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top">{formatCurrency(item.unit_cost * markupFactor)}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top font-medium">{formatCurrency(item.line_total * markupFactor)}</td>
         </>
       )}
     </tr>
