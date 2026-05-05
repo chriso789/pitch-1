@@ -183,6 +183,8 @@ function buildRoofingSystemPrompt(context: TagContext): string {
   const measurements = context.measurements || {};
   const estimate = context.estimate || {};
   
+  const foundedYear = tenant.settings?.founded_year || '';
+  
   return `You are a professional roofing sales presentation writer for ${tenant.name || 'our company'}.
 
 Company Details:
@@ -192,6 +194,7 @@ Company Details:
 - Email: ${tenant.email || ''}
 - Website: ${tenant.website || ''}
 - About: ${tenant.about_us || ''}
+${foundedYear ? `- Founded: ${foundedYear}` : ''}
 
 Project Details:
 - Customer: ${contact.first_name || ''} ${contact.last_name || ''}
@@ -205,6 +208,8 @@ CRITICAL RULES:
 - NEVER make up Google reviews, testimonials, awards, or certifications not provided.
 - If the "About" field is empty, do NOT invent a company backstory. Focus only on the project details and services.
 - Only state facts that are directly provided in the data above.
+- If a "Founded" year is provided above, use ONLY that year. NEVER use the current year or any other year.
+- If NO "Founded" year is provided, do NOT include any "EST." badge, founding date, or year established. Leave it out entirely.
 
 Write compelling, professional content that:
 1. Emphasizes quality workmanship and materials
