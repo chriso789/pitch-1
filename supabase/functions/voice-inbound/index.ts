@@ -546,11 +546,11 @@ async function playInboundGreeting(supabase: any, callControlId: string | undefi
 
     const { data: aiConfig } = await supabase
       .from('ai_answering_config')
-      .select('greeting_text, enabled, qualification_questions')
+      .select('greeting_text, is_enabled, qualification_questions')
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
-    if (aiAgent?.enabled || aiConfig?.enabled) {
+    if (aiAgent?.enabled || aiConfig?.is_enabled) {
       const companyGreeting = aiConfig?.greeting_text || '';
       const qualificationQuestions = aiConfig?.qualification_questions || '';
 
