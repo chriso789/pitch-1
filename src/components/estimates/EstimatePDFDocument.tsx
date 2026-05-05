@@ -824,7 +824,7 @@ const FirstPage: React.FC<{
 
       {/* Project Scope Table */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && (
-        <ItemsTable blocks={blocks} opts={opts} />
+        <ItemsTable blocks={blocks} opts={opts} markupFactor={breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1} />
       )}
 
       {/* Continuation hint when items overflow to next page */}
