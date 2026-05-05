@@ -1,0 +1,1 @@
+UPDATE public.contacts SET last_name = 'Lewis' WHERE id = '4e7b6fb3-7d9c-482f-a954-9640320d5666' AND last_name = 'Contact';
