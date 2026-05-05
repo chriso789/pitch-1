@@ -1215,6 +1215,7 @@ export function UnifiedMeasurementPanel({
                     <span className="text-foreground">{formatValue(ai.total_rake_length)} ft</span>
                   </div>
                 </div>
+                )}
 
                 <div className="flex gap-2">
                   <Button 
