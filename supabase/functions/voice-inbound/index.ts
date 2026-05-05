@@ -734,7 +734,7 @@ function buildInboundGatherSchema(qualificationQuestions: unknown) {
     : String(qualificationQuestions || '').trim();
 
   const properties: Record<string, unknown> = {
-    full_name: { type: 'string', description: 'The caller's full name.' },
+    full_name: { type: 'string', description: "The caller's full name." },
     reason_for_calling: { type: 'string', description: 'What the caller needs help with, including project type or problem.' },
     property_address: { type: 'string', description: 'The full property address for the roofing or construction issue.' },
     callback_number: { type: 'string', description: 'The best phone number for the team to call back.' },
