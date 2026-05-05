@@ -30,6 +30,7 @@ import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/
 import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
 // RoofDiagramViewer intentionally not rendered inline — diagrams only show in the View Report dialog
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
+import { MeasurementFailureAlert } from '@/components/measurements/MeasurementFailureAlert';
 import { DSMDebugOverlay } from '@/components/measurements/DSMDebugOverlay';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
