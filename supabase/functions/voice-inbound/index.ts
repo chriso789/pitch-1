@@ -504,7 +504,7 @@ function extractPhone(value: unknown): string {
 }
 
 function normalizePhone(phone: string): string {
-  const cleaned = phone.replace(/[^(\d+)]/g, '');
+  const cleaned = phone.replace(/[^\d+]/g, '');
   const digits = digitsOnly(cleaned);
   if (cleaned.startsWith('+')) return `+${digits}`;
   if (digits.length === 10) return `+1${digits}`;
