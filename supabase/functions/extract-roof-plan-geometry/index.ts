@@ -1,7 +1,7 @@
 // Stub: for each roof_plan page, extract geometry (outline, ridges, hips, valleys, eaves, rakes, dimensions).
 // True CAD-style geometry extraction is a heavy CV task; this stub uses AI vision on text + records
 // any pitch/dimension labels found in raw_text. Geometry vectorization is a follow-up phase.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
