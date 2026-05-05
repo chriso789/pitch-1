@@ -95,6 +95,7 @@ const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPa
 const PdfWorkspaceList = React.lazy(() => import("@/pages/PdfWorkspaceList"));
 const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor"));
 const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
+const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
