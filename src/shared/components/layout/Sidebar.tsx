@@ -38,8 +38,6 @@ import {
   Mic,
   ClipboardCheck,
   Search,
-  Star,
-  Gift,
   Truck,
   Wallet
 } from "lucide-react";
