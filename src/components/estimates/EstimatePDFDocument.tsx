@@ -913,12 +913,18 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-1 text-gray-700 font-semibold text-xs">Description</th>
-            {opts.showLineItemQuantities && (
-              <>
-                <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Qty</th>
-                <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Unit</th>
-              </>
-            )}
+             {opts.showLineItemQuantities && (
+               <>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Qty</th>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Unit</th>
+               </>
+             )}
+             {opts.showLineItemPricing && (
+               <>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-16 text-xs">Price</th>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-16 text-xs">Total</th>
+               </>
+             )}
           </tr>
         </thead>
         <tbody>
