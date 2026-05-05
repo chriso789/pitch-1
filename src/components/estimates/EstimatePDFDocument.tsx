@@ -933,7 +933,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
               return (
                 <tr key={`trade-${block.tradeType}-${idx}`}>
                   <td 
-                    colSpan={opts.showLineItemQuantities ? 3 : 1} 
+                    colSpan={colCount} 
                     className="pt-2 pb-0.5"
                   >
                     <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
