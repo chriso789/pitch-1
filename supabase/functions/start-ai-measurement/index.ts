@@ -3928,6 +3928,29 @@ async function processJob(input: any) {
         sanityFailures.push("overlay_alignment_failed");
       }
     }
+    // ── HARD VALIDATION GATE: area ratio, coverage, face validation ──
+    const computedAreaRatio = (totals.total_area_2d_sqft > 0)
+      ? totals.total_area_pitch_adjusted_sqft / totals.total_area_2d_sqft
+      : null;
+    if (computedAreaRatio != null && computedAreaRatio > 1.25) {
+      if (!sanityFailures.includes("AREA_INFLATION")) {
+        sanityFailures.push("AREA_INFLATION");
+      }
+    }
+    const computedCoverage = autonomousDebug?.face_coverage_ratio ?? null;
+    if (computedCoverage != null && computedCoverage < 0.85) {
+      if (!sanityFailures.includes("LOW_COVERAGE")) {
+        sanityFailures.push("LOW_COVERAGE");
+      }
+    }
+    const computedValidatedFaces = Number(autonomousDebug?.validated_faces ?? planeRows.length);
+    const computedTotalFaces = Number(autonomousDebug?.attempted_faces ?? planeRows.length);
+    if (computedTotalFaces === 0 || computedValidatedFaces < computedTotalFaces * 0.7) {
+      if (!sanityFailures.includes("INVALID_FACES")) {
+        sanityFailures.push("INVALID_FACES");
+      }
+    }
+    const measurementIsValid = sanityFailures.length === 0 && !dsmFailReason;
 
     const blockCustomerReportReason: string | null =
       dsmFailReason ? dsmFailReason : (sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason);
