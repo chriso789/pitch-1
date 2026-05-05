@@ -84,17 +84,18 @@ export const XactScopeBuilder: React.FC<XactScopeBuilderProps> = ({ pipelineEntr
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState('items');
 
-  // Resolve job_id from pipeline entry if not provided
+  // Resolve job_id from pipeline entry via jobs table
   const { data: resolvedJobId } = useQuery({
     queryKey: ['xact-resolve-job', pipelineEntryId],
     queryFn: async () => {
       if (jobId) return jobId;
       const { data } = await supabase
-        .from('pipeline_entries')
-        .select('job_id')
-        .eq('id', pipelineEntryId)
-        .single();
-      return data?.job_id || null;
+        .from('jobs')
+        .select('id')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .limit(1)
+        .maybeSingle();
+      return data?.id || null;
     },
     enabled: !jobId
   });
