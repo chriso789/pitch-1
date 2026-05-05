@@ -202,6 +202,7 @@ export default function ProtectedRoutes() {
         <Route path="/documents/pdf-workspace" element={<ProtectedRoute><PdfWorkspaceList /></ProtectedRoute>} />
         <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
         <Route path="/supplements" element={<ProtectedRoute><SupplementEngine /></ProtectedRoute>} />
+        <Route path="/supplement-workflow" element={<ProtectedRoute><SupplementWorkflow /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
