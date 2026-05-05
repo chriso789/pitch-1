@@ -21,8 +21,9 @@ Deno.serve(async (req) => {
 
     const event = payload.data;
     const eventType = event.event_type;
-    const callControlId = event.payload?.call_control_id;
-    const clientState = event.payload?.client_state;
+    const eventPayload = event.payload || {};
+    const callControlId = eventPayload.call_control_id;
+    const clientState = eventPayload.client_state;
 
     // Parse client_state (base64 encoded JSON with campaign_id, lead_id, etc.)
     let parsedClientState: any = {};
@@ -34,22 +35,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    const inboundContext = await resolveInboundContext(supabase, event, parsedClientState);
+    await logVoiceWebhookEvent(supabase, payload, event, inboundContext.tenantId);
+
+    const isUncorrelatedInbound = inboundContext.locationId && !parsedClientState.campaign_id && !parsedClientState.call_id;
+
     // Handle different event types
     switch (eventType) {
       case 'call.initiated':
-        await handleCallInitiated(supabase, event, parsedClientState);
+        if (isUncorrelatedInbound) {
+          await upsertInboundCall(supabase, event, inboundContext, 'ringing');
+          await answerInboundCall(callControlId);
+        } else {
+          await handleCallInitiated(supabase, event, parsedClientState);
+        }
         break;
 
       case 'call.answered':
-        await handleCallAnswered(supabase, event, parsedClientState);
+        if (isUncorrelatedInbound) {
+          await upsertInboundCall(supabase, event, inboundContext, 'in-progress');
+        } else {
+          await handleCallAnswered(supabase, event, parsedClientState);
+        }
         
         // Start recording
         if (callControlId) {
           await startRecording(callControlId);
         }
         
-        // Play IVR consent message
-        await playConsentMessage(callControlId);
+        // Play inbound greeting / voicemail prompt
+        await playInboundGreeting(supabase, callControlId, inboundContext.tenantId);
         break;
 
       case 'call.bridged':
@@ -57,7 +72,11 @@ Deno.serve(async (req) => {
         break;
 
       case 'call.hangup':
-        await handleCallHangup(supabase, event, parsedClientState);
+        if (isUncorrelatedInbound) {
+          await completeInboundCall(supabase, event, inboundContext);
+        } else {
+          await handleCallHangup(supabase, event, parsedClientState);
+        }
         break;
 
       case 'call.recording.saved':
