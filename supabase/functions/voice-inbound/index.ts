@@ -63,9 +63,9 @@ Deno.serve(async (req) => {
           await startRecording(callControlId);
         }
         
-        // Run inbound AI qualification only for organic inbound calls
+        // Run inbound IVR menu for organic inbound calls
         if (isUncorrelatedInbound) {
-          await playInboundGreeting(supabase, callControlId, inboundContext.tenantId);
+          await playIVRMenu(supabase, callControlId, inboundContext.tenantId);
         }
         break;
 
