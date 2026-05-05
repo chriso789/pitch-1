@@ -545,7 +545,99 @@ async function playConsentMessage(callControlId: string) {
   });
 }
 
-async function playInboundGreeting(supabase: any, callControlId: string | undefined, tenantId: string | null) {
+async function playIVRMenu(supabase: any, callControlId: string | undefined, tenantId: string | null) {
+  if (!callControlId) return;
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  let forwardName: string | null = null;
+  let forwardPhone: string | null = null;
+  let fromNumber = '';
+
+  if (tenantId) {
+    const { data: aiConfig } = await supabase
+      .from('ai_answering_config')
+      .select('forward_name, forward_phone')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    forwardName = aiConfig?.forward_name || null;
+    forwardPhone = aiConfig?.forward_phone || null;
+  }
+
+  // If no forward configured, skip IVR and go straight to AI qualification
+  if (!forwardName || !forwardPhone) {
+    console.log('[voice-inbound] No forward configured, skipping IVR menu');
+    await playInboundGreeting(supabase, callControlId, tenantId);
+    return;
+  }
+
+  // Play IVR with DTMF gather: "Press 1 to reach <name>, or stay on the line..."
+  const ivrPrompt = `Thank you for calling. Press 1 to speak with ${forwardName} directly, or stay on the line and our virtual assistant will help you.`;
+
+  const clientState = btoa(JSON.stringify({
+    flow: 'inbound_ivr_menu',
+    tenant_id: tenantId,
+    forward_phone: forwardPhone,
+    forward_name: forwardName,
+  }));
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/gather`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      payload: ivrPrompt,
+      payload_type: 'text',
+      voice: 'female',
+      language: 'en-US',
+      minimum_digits: 1,
+      maximum_digits: 1,
+      timeout_millis: 8000,
+      inter_digit_timeout_millis: 5000,
+      valid_digits: '1',
+      client_state: clientState,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('[voice-inbound] IVR gather failed:', response.status, await response.text());
+    // Fallback to AI qualification
+    await playInboundGreeting(supabase, callControlId, tenantId);
+  } else {
+    console.log('[voice-inbound] IVR menu started, waiting for DTMF');
+  }
+}
+
+async function transferToForward(callControlId: string | undefined, forwardPhone: string, callerNumber: string) {
+  if (!callControlId) return;
+  const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
+  if (!TELNYX_API_KEY) return;
+
+  // Speak a brief message, then transfer
+  await speak(callControlId, 'One moment, connecting you now.');
+
+  const response = await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      to: forwardPhone,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('[voice-inbound] Transfer failed:', response.status, await response.text());
+    await speak(callControlId, 'Sorry, we were unable to connect you. Please try again later.');
+  } else {
+    console.log('[voice-inbound] Call transferred to', forwardPhone);
+  }
+}
+
+
   if (!callControlId) return;
   const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
   if (!TELNYX_API_KEY) return;
