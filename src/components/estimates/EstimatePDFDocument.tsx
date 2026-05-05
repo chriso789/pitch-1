@@ -858,7 +858,7 @@ const ItemsContinuationPage: React.FC<{
 }> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
   return (
     <div className="space-y-3">
-      <ItemsTable blocks={blocks} opts={opts} continued />
+      <ItemsTable blocks={blocks} opts={opts} continued markupFactor={breakdown ? (breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1) : 1} />
 
       {isLastPage && breakdown && config && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
