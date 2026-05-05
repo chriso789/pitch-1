@@ -637,7 +637,7 @@ async function transferToForward(callControlId: string | undefined, forwardPhone
   }
 }
 
-
+async function playInboundGreeting(supabase: any, callControlId: string | undefined, tenantId: string | null) {
   if (!callControlId) return;
   const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY');
   if (!TELNYX_API_KEY) return;
