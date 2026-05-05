@@ -615,6 +615,8 @@ export type Database = {
           business_hours: Json | null
           created_at: string | null
           escalation_keywords: string[] | null
+          forward_name: string | null
+          forward_phone: string | null
           greeting_text: string | null
           id: string
           is_enabled: boolean | null
@@ -635,6 +637,8 @@ export type Database = {
           business_hours?: Json | null
           created_at?: string | null
           escalation_keywords?: string[] | null
+          forward_name?: string | null
+          forward_phone?: string | null
           greeting_text?: string | null
           id?: string
           is_enabled?: boolean | null
@@ -655,6 +659,8 @@ export type Database = {
           business_hours?: Json | null
           created_at?: string | null
           escalation_keywords?: string[] | null
+          forward_name?: string | null
+          forward_phone?: string | null
           greeting_text?: string | null
           id?: string
           is_enabled?: boolean | null
