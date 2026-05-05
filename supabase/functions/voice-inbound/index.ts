@@ -82,6 +82,21 @@ Deno.serve(async (req) => {
         await playVoicemailPrompt(callControlId);
         break;
 
+      case 'call.gather.ended': {
+        // DTMF IVR result — check if caller pressed 1 to reach a person
+        const digits = eventPayload.digits || '';
+        const gatherState = parsedClientState || {};
+        if (gatherState.flow === 'inbound_ivr_menu' && digits === '1' && gatherState.forward_phone) {
+          console.log('[voice-inbound] Caller pressed 1, transferring to', gatherState.forward_phone);
+          await transferToForward(callControlId, gatherState.forward_phone, gatherState.from_number || '');
+        } else {
+          // No digit or other digit — proceed to AI qualification
+          console.log('[voice-inbound] No forward digit, starting AI qualification');
+          await playInboundGreeting(supabase, callControlId, gatherState.tenant_id || inboundContext.tenantId);
+        }
+        break;
+      }
+
       case 'call.speak.ended':
         if (parsedClientState?.flow === 'inbound_voicemail_prompt') {
           await playVoicemailTone(callControlId);
