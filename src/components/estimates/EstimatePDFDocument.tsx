@@ -871,6 +871,8 @@ const ItemsContinuationPage: React.FC<{
 
 // Items Table Component - renders pre-built render blocks
 const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean }> = ({ blocks, opts, continued = false }) => {
+  const colCount = 1 + (opts.showLineItemQuantities ? 2 : 0) + (opts.showLineItemPricing ? 2 : 0);
+
   const renderItem = (item: LineItem, idx: number) => (
     <tr key={item.id || `item-${idx}`} className="border-b border-gray-100">
       <td className="py-1">
@@ -890,6 +892,12 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
         <>
           <td className="py-1 text-right text-xs text-gray-700 align-top">{item.qty.toFixed(0)}</td>
           <td className="py-1 text-right text-xs text-gray-500 align-top">{item.unit}</td>
+        </>
+      )}
+      {opts.showLineItemPricing && (
+        <>
+          <td className="py-1 text-right text-xs text-gray-700 align-top">{formatCurrency(item.unit_cost)}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top font-medium">{formatCurrency(item.line_total)}</td>
         </>
       )}
     </tr>
