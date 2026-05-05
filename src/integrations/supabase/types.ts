@@ -1796,16 +1796,21 @@ export type Database = {
       }
       ai_measurement_results: {
         Row: {
+          area_ratio: number | null
           blocked_reason: string | null
           confidence_score: number | null
+          coverage: number | null
           created_at: string
           dominant_pitch: number | null
           eave_length_ft: number | null
           edge_source: string | null
+          fail_reasons: string[] | null
+          footprint_confidence: number | null
           geometry_quality_score: number | null
           geometry_source: string | null
           hip_length_ft: number | null
           id: string
+          is_valid: boolean
           job_id: string
           line_breakdown: Json | null
           measurement_quality_score: number | null
@@ -1822,21 +1827,28 @@ export type Database = {
           roof_square_count: number | null
           total_area_2d_sqft: number | null
           total_area_pitch_adjusted_sqft: number | null
+          total_face_count: number | null
+          validated_face_count: number | null
           valley_length_ft: number | null
           waste_adjusted_squares: number | null
           waste_factor_percent: number | null
         }
         Insert: {
+          area_ratio?: number | null
           blocked_reason?: string | null
           confidence_score?: number | null
+          coverage?: number | null
           created_at?: string
           dominant_pitch?: number | null
           eave_length_ft?: number | null
           edge_source?: string | null
+          fail_reasons?: string[] | null
+          footprint_confidence?: number | null
           geometry_quality_score?: number | null
           geometry_source?: string | null
           hip_length_ft?: number | null
           id?: string
+          is_valid?: boolean
           job_id: string
           line_breakdown?: Json | null
           measurement_quality_score?: number | null
@@ -1853,21 +1865,28 @@ export type Database = {
           roof_square_count?: number | null
           total_area_2d_sqft?: number | null
           total_area_pitch_adjusted_sqft?: number | null
+          total_face_count?: number | null
+          validated_face_count?: number | null
           valley_length_ft?: number | null
           waste_adjusted_squares?: number | null
           waste_factor_percent?: number | null
         }
         Update: {
+          area_ratio?: number | null
           blocked_reason?: string | null
           confidence_score?: number | null
+          coverage?: number | null
           created_at?: string
           dominant_pitch?: number | null
           eave_length_ft?: number | null
           edge_source?: string | null
+          fail_reasons?: string[] | null
+          footprint_confidence?: number | null
           geometry_quality_score?: number | null
           geometry_source?: string | null
           hip_length_ft?: number | null
           id?: string
+          is_valid?: boolean
           job_id?: string
           line_breakdown?: Json | null
           measurement_quality_score?: number | null
@@ -1884,6 +1903,8 @@ export type Database = {
           roof_square_count?: number | null
           total_area_2d_sqft?: number | null
           total_area_pitch_adjusted_sqft?: number | null
+          total_face_count?: number | null
+          validated_face_count?: number | null
           valley_length_ft?: number | null
           waste_adjusted_squares?: number | null
           waste_factor_percent?: number | null
@@ -44969,6 +44990,17 @@ export type Database = {
           tenant_id: string
           user_id: string
         }[]
+      }
+      validate_measurement: {
+        Args: {
+          p_area_adjusted: number
+          p_area_flat: number
+          p_coverage: number
+          p_footprint_confidence: number
+          p_total_faces: number
+          p_validated_faces: number
+        }
+        Returns: Json
       }
       validate_presentation_token: {
         Args: { p_presentation_id: string; p_token: string }
