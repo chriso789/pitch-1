@@ -5092,6 +5092,7 @@ function buildPlaneRows(args: {
   const overrideRise = parsePitchOverride(args.pitchOverride);
   const solarRise = dominantSolarPitchRise(args.solarData);
   const solarAzimuth = dominantSolarAzimuth(args.solarData);
+  const WALL_LIKE_PITCH_DEG = 65;
 
   const inputPlanes: RoofPlane[] = args.planes.length
     ? args.planes
@@ -5108,9 +5109,15 @@ function buildPlaneRows(args: {
   // Max residential pitch: 24/12 rise (~63°). Anything above is noise.
   const MAX_RISE_PER_12 = 24;
   return inputPlanes.map((plane) => {
+    if (plane.pitch_degrees != null && plane.pitch_degrees > WALL_LIKE_PITCH_DEG) {
+      throw new Error(`WALL_LIKE_DSM_FACE plane=${plane.plane_index} pitch=${plane.pitch_degrees.toFixed(2)}deg`);
+    }
     let rise = overrideRise ?? plane.pitch ??
       (plane.pitch_degrees != null ? Math.tan((plane.pitch_degrees * Math.PI) / 180) * 12 : null) ??
       solarRise ?? 6;
+    if (risePer12ToDegrees(rise) > WALL_LIKE_PITCH_DEG) {
+      throw new Error(`WALL_LIKE_DSM_FACE plane=${plane.plane_index} rise=${rise.toFixed(2)}/12`);
+    }
     if (rise > MAX_RISE_PER_12) {
       console.warn(`[BUILD_PLANES] Clamping rise ${rise.toFixed(1)}/12 → ${MAX_RISE_PER_12}/12 for plane ${plane.plane_index}`);
       rise = MAX_RISE_PER_12;
