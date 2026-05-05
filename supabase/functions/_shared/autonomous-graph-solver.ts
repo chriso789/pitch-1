@@ -1798,10 +1798,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   // ===== EDGE EMIT DIAGNOSTICS =====
   const edgeEmitDiagnostics = {
-    edge_emit_policy: 'face_adjacency_filtered',
+    edge_emit_policy: 'canonical_shared_edge_map',
+    canonical_edges_total: canonicalEdgeMap.size,
+    shared_edge_count: sharedEdgeCount,
+    duplicate_edge_count: duplicateEdgeCount,
+    overlapping_face_count: overlappingFaceCount,
+    area_conservation_ratio: Number(areaConservationRatio.toFixed(3)),
+    footprint_area_sqft: Number(footprintAreaSqft.toFixed(0)),
+    total_face_plan_area_sqft: Number(totalPlanArea.toFixed(0)),
     segments_input_total: planar.edges.length,
     segments_skipped_no_faces: skippedNoFace,
-    segments_emitted_structural_2_faces: outputEdges.filter(e => e.source === 'dsm' && e.type !== 'eave' && e.type !== 'rake').length,
+    segments_emitted_structural_2_faces: outputEdges.filter(e => e.facet_ids.length >= 2).length,
     segments_emitted_boundary_1_face: outputEdges.filter(e => e.type === 'eave' || e.type === 'rake').length,
     emitted_edges_total: outputEdges.length,
     ridge_edges_total: outRidges.length,
