@@ -197,6 +197,8 @@ export default function ProtectedRoutes() {
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
         <Route path="/my-money" element={<ProtectedRoute><MyMoney /></ProtectedRoute>} />
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
+        <Route path="/documents/pdf-workspace" element={<ProtectedRoute><PdfWorkspaceList /></ProtectedRoute>} />
+        <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
