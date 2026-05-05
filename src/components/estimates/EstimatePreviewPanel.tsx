@@ -722,12 +722,7 @@ export function EstimatePreviewPanel({
         }
       }
       if (key === 'showLineItemPricing' && value) {
-        // Unit pricing lives inside materials/labor tables → must use sectioned view
-        next.showUnifiedItems = false;
-        if (!next.showMaterialsSection && !next.showLaborSection) {
-          next.showMaterialsSection = true;
-          next.showLaborSection = true;
-        }
+        // Pricing columns work in both unified and sectioned views — no view switch needed
       }
       if (key === 'showSubtotals' && value) {
         // Subtotals are gated by !hideSectionSubtotals
