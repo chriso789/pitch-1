@@ -1870,10 +1870,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   };
 
   console.log(`[EDGE_EMIT_DIAGNOSTICS] ${JSON.stringify(edgeEmitDiagnostics)}`);
-  console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
-
-  console.log(`[DSM_STRUCTURE] ${JSON.stringify(logs)}`);
+  console.log(`[TOPOLOGY_METRICS] shared_edges=${sharedEdgeCount} duplicates=${duplicateEdgeCount} overlaps=${overlappingFaceCount} area_conservation=${areaConservationRatio.toFixed(3)}`);
   console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
 
   return {
