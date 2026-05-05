@@ -871,6 +871,8 @@ const ItemsContinuationPage: React.FC<{
 
 // Items Table Component - renders pre-built render blocks
 const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean }> = ({ blocks, opts, continued = false }) => {
+  const colCount = 1 + (opts.showLineItemQuantities ? 2 : 0) + (opts.showLineItemPricing ? 2 : 0);
+
   const renderItem = (item: LineItem, idx: number) => (
     <tr key={item.id || `item-${idx}`} className="border-b border-gray-100">
       <td className="py-1">
@@ -892,6 +894,12 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
           <td className="py-1 text-right text-xs text-gray-500 align-top">{item.unit}</td>
         </>
       )}
+      {opts.showLineItemPricing && (
+        <>
+          <td className="py-1 text-right text-xs text-gray-700 align-top">{formatCurrency(item.unit_cost)}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top font-medium">{formatCurrency(item.line_total)}</td>
+        </>
+      )}
     </tr>
   );
 
@@ -905,12 +913,18 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-1 text-gray-700 font-semibold text-xs">Description</th>
-            {opts.showLineItemQuantities && (
-              <>
-                <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Qty</th>
-                <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Unit</th>
-              </>
-            )}
+             {opts.showLineItemQuantities && (
+               <>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Qty</th>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Unit</th>
+               </>
+             )}
+             {opts.showLineItemPricing && (
+               <>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-16 text-xs">Price</th>
+                 <th className="text-right py-1 text-gray-700 font-semibold w-16 text-xs">Total</th>
+               </>
+             )}
           </tr>
         </thead>
         <tbody>
@@ -919,7 +933,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
               return (
                 <tr key={`trade-${block.tradeType}-${idx}`}>
                   <td 
-                    colSpan={opts.showLineItemQuantities ? 3 : 1} 
+                    colSpan={colCount} 
                     className="pt-2 pb-0.5"
                   >
                     <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
@@ -932,7 +946,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
             if (block.type === 'sub-header') {
               return (
                 <tr key={`sub-${block.label}-${idx}`}>
-                  <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-1.5 pb-0.5">
+                  <td colSpan={colCount} className="pt-1.5 pb-0.5">
                     <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
                       {block.label}
                     </div>
