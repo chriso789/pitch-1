@@ -258,7 +258,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       name: "Supplements",
       href: "supplements",
       path: "/supplements",
-      icon: FileWarning,
+      icon: Shield,
       description: "Insurance supplement engine",
       featureKey: "estimates"
     },
