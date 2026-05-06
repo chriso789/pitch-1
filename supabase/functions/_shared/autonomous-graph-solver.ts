@@ -2301,6 +2301,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     footprint_winding: footprintWinding,
     footprint_self_intersects: footprintSelfIntersects,
     footprint_area_px: Number(footprintAreaPxVal.toFixed(0)),
+    // v7: explicit area-space diagnostics
+    sqft_area_ratio: Number(sqftAreaRatio.toFixed(3)),
+    px_area_ratio: Number(pxAreaRatio.toFixed(3)),
+    coverage_area_space_mismatch: coverageAreaSpaceMismatch,
+    footprint_dsm_px_area: Number(footprintAreaPxVal.toFixed(0)),
+    faces_dsm_px_area: Number(totalFaceAreaPx.toFixed(0)),
+    footprint_area_sqft_diag: Number(footprintAreaSqft.toFixed(0)),
+    faces_area_sqft_diag: Number(totalPlanArea.toFixed(0)),
   };
 
   const logs: AutonomousGraphLog = {
