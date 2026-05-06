@@ -102,7 +102,12 @@ export function RoofrStyleReportPreview({
       target_lat,
       target_lng,
       gps_coordinates,
-      customer_id
+      customer_id,
+      customer_report_ready,
+      gate_decision,
+      gate_reason,
+      requires_manual_review,
+      validation_status
     `;
     
     try {
