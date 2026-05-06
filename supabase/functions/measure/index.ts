@@ -1912,7 +1912,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     } : {
       geometry_source: 'heuristic_estimate',
       customer_report_ready: false,
-      debug_metrics: null,
+      debug_metrics: solverDebugMetrics,
+      gates: null,
+      failed_stage: autonomousResult.success ? 'post_solver' : 'solver',
+      solver_failure_reason: autonomousResult.failure_reason || null,
+      failure_classification: solverDebugMetrics.failure_classification,
     },
   };
 
