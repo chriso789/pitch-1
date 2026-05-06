@@ -477,7 +477,11 @@ export function analyzeSegmentTopology(
     hips,
     valleys,
     facetCount: facets.length,
-    roofType
+    roofType,
+    // ALL outputs from this analyzer are heuristic estimates derived from
+    // solar segment azimuth/area relationships — NOT from validated planar geometry.
+    geometry_source: 'heuristic_estimate' as GeometrySource,
+    customer_report_ready: false,
   };
 }
 
