@@ -1539,8 +1539,10 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   }
 
   // Attempt autonomous graph solve with DSM + mask evidence (DSM-first pipeline)
-  let dsmGridForSolver = null;
-  let maskedDSMForSolver = null;
+  let dsmGridForSolver: any = null;
+  let maskedDSMForSolver: any = null;
+  let roofMaskForContract: any = null;
+  let footprintSourceForContract: 'google_solar_mask' | 'mapbox' | 'osm' | 'regrid' | 'manual' | 'unknown' | 'none' = 'unknown';
   if (GOOGLE_PLACES_API_KEY) {
     try {
       // Fetch both DSM and mask in parallel for real data
@@ -1549,6 +1551,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         fetchRoofMaskFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY),
       ]);
       dsmGridForSolver = dsmResult;
+      roofMaskForContract = maskResult;
+      
+      if (maskResult) {
+        footprintSourceForContract = 'google_solar_mask';
+      }
       
       // Apply mask to DSM if both available
       if (dsmGridForSolver && maskResult) {
