@@ -33172,6 +33172,7 @@ export type Database = {
           detection_timestamp: string | null
           diagram_manifest: Json | null
           dsm_available: boolean | null
+          dsm_contract_debug: Json | null
           edge_breakdown: Json | null
           edge_continuity_score: number | null
           edge_count: number | null
@@ -33200,6 +33201,7 @@ export type Database = {
           gate_reason: string | null
           geometry_quality_score: number | null
           geometry_report_json: Json | null
+          geometry_source: string | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
           gps_accuracy_meters: number | null
@@ -33331,6 +33333,7 @@ export type Database = {
           detection_timestamp?: string | null
           diagram_manifest?: Json | null
           dsm_available?: boolean | null
+          dsm_contract_debug?: Json | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -33359,6 +33362,7 @@ export type Database = {
           gate_reason?: string | null
           geometry_quality_score?: number | null
           geometry_report_json?: Json | null
+          geometry_source?: string | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
@@ -33490,6 +33494,7 @@ export type Database = {
           detection_timestamp?: string | null
           diagram_manifest?: Json | null
           dsm_available?: boolean | null
+          dsm_contract_debug?: Json | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -33518,6 +33523,7 @@ export type Database = {
           gate_reason?: string | null
           geometry_quality_score?: number | null
           geometry_report_json?: Json | null
+          geometry_source?: string | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
