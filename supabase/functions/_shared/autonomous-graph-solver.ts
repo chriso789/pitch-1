@@ -1,5 +1,5 @@
 /**
- * Autonomous Roof Graph Solver v5 — DSM Pixel-Space Contract
+ * Autonomous Roof Graph Solver v7 — Coverage Fix + Edge Containment + Clipper Debug
  * 
  * Pipeline:
  *   1. DSM edge detection (Sobel gradient + PCA line fit)
