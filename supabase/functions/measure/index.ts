@@ -1603,6 +1603,28 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
 
   const autonomousResult = solveAutonomousGraph(autonomousInput);
 
+  // ============= BUILD SOLVER FAILURE DEBUG (always available) =============
+  // Captures solver-level diagnostics whether or not the solver succeeded
+  const solverDebugMetrics = {
+    ...preSolverDiagnostics,
+    solver_failed: !autonomousResult.success,
+    solver_failure_reason: autonomousResult.failure_reason || null,
+    solver_validation_status: autonomousResult.validation_status,
+    graph_nodes_attempted: autonomousResult.vertices?.length ?? 0,
+    graph_segments_attempted: autonomousResult.edges?.length ?? 0,
+    faces_attempted: autonomousResult.faces?.length ?? 0,
+    faces_validated: autonomousResult.success ? autonomousResult.faces?.length ?? 0 : 0,
+    closed_faces_found: autonomousResult.faces?.length ?? 0,
+    dangling_edges_removed: autonomousResult.logs?.dangling_edges_removed ?? 0,
+    intersections_split: autonomousResult.logs?.intersections_split ?? 0,
+    raw_dsm_edge_count: autonomousResult.logs?.dsm_edges_detected ?? 0,
+    accepted_dsm_edge_count: autonomousResult.logs?.dsm_edges_accepted ?? (autonomousResult.logs?.fused_edges ?? 0),
+    interior_line_count: autonomousResult.logs?.interior_lines_used ?? 0,
+    footprint_edge_count: coords.length - 1,
+    failure_classification: classifySolverFailure(autonomousResult, preSolverDiagnostics),
+  };
+  console.log('[SOLVER_DEBUG_METRICS]', JSON.stringify(solverDebugMetrics));
+
   // ============= DSM VALIDATED GEOMETRY CONTRACT =============
   // Run the six-gate contract on solver output to determine geometry_source
   let dsmContractResult: DSMContractGateResult | null = null;
