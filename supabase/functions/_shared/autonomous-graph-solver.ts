@@ -142,12 +142,41 @@ export interface FaceClippingDiagnostics {
   coordinate_space_mismatch_detected: boolean;
 }
 
+/**
+ * Failure category — tells you WHERE in the pipeline the problem is.
+ * - edge_filter_failure: most edges rejected, can't form closed faces
+ * - face_validation_failure: faces formed but all rejected by validation
+ * - partial_topology_success: some faces validated but coverage < threshold
+ * - topology_collapse: complex roof collapsed to too few facets
+ * - validated: all gates passed
+ */
+export type FailureCategory =
+  | 'edge_filter_failure'
+  | 'face_validation_failure'
+  | 'partial_topology_success'
+  | 'topology_collapse'
+  | 'validated'
+  | 'structural_signal_failure';
+
+export interface DominantRejectionAnalysis {
+  dominant_edge_rejection_reason: string | null;
+  dominant_edge_rejection_count: number;
+  dominant_edge_rejection_pct: number;
+  dominant_face_rejection_reason: string | null;
+  dominant_face_rejection_count: number;
+  dominant_face_rejection_pct: number;
+  edge_rejection_histogram: Record<string, number>;
+  face_rejection_histogram: Record<string, number>;
+}
+
 export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
   validation_status: 'validated' | 'ai_failed_complex_topology' | 'faces_extracted_but_rejected' | 'invalid_edge_classification' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid' | 'missing_valid_footprint' | 'footprint_coordinate_mismatch' | 'invalid_graph_no_perimeter' | 'graph_has_only_dangling_edges';
   failure_reason?: string;
+  failure_category: FailureCategory;
+  dominant_rejection: DominantRejectionAnalysis;
   
   vertices: GraphVertex[];
   edges: GraphEdge[];
