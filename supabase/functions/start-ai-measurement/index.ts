@@ -575,11 +575,23 @@ async function processJob(input: any) {
         geocode_center_score * 0.20 +
         polygon_shape_score * 0.15;
 
+      // Bbox-to-tile ratio: footprint bbox area / tile area
+      const tileArea = raster.width * raster.height;
+      const bboxTileRatio = bbox ? (bbox.width * bbox.height) / tileArea : 0;
+
+      // Footprint-to-solar area ratio
+      const footprintToSolarRatio = solarSegmentTotalAreaSqft > 0
+        ? area_sqft / solarSegmentTotalAreaSqft
+        : null;
+
       // Rejection rules
       let rejected_reason: string | null = null;
       if (!valid) rejected_reason = "polygon_invalid_or_off_canvas";
       else if (vertex_count < 4) rejected_reason = "fewer_than_4_corners";
       else if (area_sqft > 0 && area_sqft < RESIDENTIAL_MIN_SQFT) rejected_reason = `area_too_small:${Math.round(area_sqft)}sqft`;
+      else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
+      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+      else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
       else if (coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox < MIN_COVERAGE_RATIO)
         rejected_reason = `coverage_${Math.round((coverage_ratio_vs_solar_bbox || 0) * 100)}pct_lt_${Math.round(MIN_COVERAGE_RATIO * 100)}pct`;
       else if (solarBboxPx && solarBboxPx.area > 0 && overlap_with_solar_bbox <= 0)
