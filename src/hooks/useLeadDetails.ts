@@ -53,6 +53,7 @@ export interface LeadDetailsData {
   secondary_assigned_to?: string;
   primary_rep_split_percent?: number;
   location_id?: string;
+  clj_formatted_number?: string;
   created_at: string;
   updated_at: string;
 }
