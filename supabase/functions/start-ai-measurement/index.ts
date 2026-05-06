@@ -944,13 +944,30 @@ async function processJob(input: any) {
     const footprintIsLatLng = footprintForDsmPx.length > 0 && footprintForDsmPx.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
     const footprintBbox = bboxOf(footprintForDsmPx);
     const footprintCoordinateSpaceMatch = Boolean(footprintBbox && footprintBbox.maxX > 1 && footprintBbox.maxY > 1 && footprintBbox.minX >= -2 && footprintBbox.minY >= -2 && footprintBbox.maxX <= raster.width + 2 && footprintBbox.maxY <= raster.height + 2);
-    const footprintValid = footprintForDsmPx.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng && footprintCoordinateSpaceMatch;
+
+    // ── Enhanced sanity checks ──
+    const footprintBboxTileRatio = footprintBbox
+      ? (footprintBbox.width * footprintBbox.height) / (raster.width * raster.height)
+      : 0;
+    const footprintToSolarAreaRatio = solarSegmentTotalAreaSqft > 0
+      ? footprintAreaSqftVal / solarSegmentTotalAreaSqft
+      : null;
+    const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
+    const footprintBboxTooLarge = footprintBboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
+
+    const footprintValid = footprintForDsmPx.length >= 4
+      && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT
+      && !footprintAreaTooLarge
+      && !footprintBboxTooLarge
+      && !footprintInflatedVsSolar
+      && !footprintIsLatLng
+      && footprintCoordinateSpaceMatch;
 
     // Auto-close footprint if not closed
     if (footprint.length >= 4) {
       const first = footprint[0], last = footprint[footprint.length - 1];
       if (Math.hypot(first.x - last.x, first.y - last.y) > 1) {
-        // Already open — the solver handles this, but log it
         console.log("[FOOTPRINT_VALIDATE] Auto-closing footprint polygon");
       }
     }
@@ -960,9 +977,15 @@ async function processJob(input: any) {
         ? "missing_valid_footprint"
         : footprintIsLatLng
           ? "footprint_coordinate_mismatch"
-          : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
-            ? "missing_valid_footprint"
-            : "missing_valid_footprint";
+          : footprintAreaTooLarge
+            ? "invalid_roof_footprint:area_too_large"
+            : footprintBboxTooLarge
+              ? "invalid_roof_footprint:bbox_covers_too_much_tile"
+              : footprintInflatedVsSolar
+                ? "invalid_roof_footprint:area_inflation_vs_solar"
+                : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
+                  ? "missing_valid_footprint"
+                  : "missing_valid_footprint";
 
       console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
         footprint_length: footprintForDsmPx.length,
