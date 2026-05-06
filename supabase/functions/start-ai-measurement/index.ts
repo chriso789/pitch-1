@@ -581,10 +581,24 @@ async function processJob(input: any) {
       const tileArea = raster.width * raster.height;
       const bboxTileRatio = bbox ? (bbox.width * bbox.height) / tileArea : 0;
 
-      // Footprint-to-solar area ratio
+      // Footprint-to-solar area ratio (vs sum of segment areas)
       const footprintToSolarRatio = solarSegmentTotalAreaSqft > 0
         ? area_sqft / solarSegmentTotalAreaSqft
         : null;
+
+      // Footprint-to-solar-bbox area ratio — catches mask contours that spill
+      // far outside the actual building extent (yard, neighbors, tile edges).
+      const solarBboxAreaSqft = solarBboxPx && solarBboxPx.area > 0
+        ? solarBboxPx.area * sqftPerPx2
+        : null;
+      const footprintToSolarBboxRatio = solarBboxAreaSqft != null && solarBboxAreaSqft > 0
+        ? area_sqft / solarBboxAreaSqft
+        : null;
+
+      // Exterior spillover: how much candidate area lies OUTSIDE the solar bbox.
+      // A good footprint has most of its area inside the building bbox.
+      const outsideSolarBboxAreaPx = areaPx - overlapPolyPx;
+      const exteriorSpilloverRatio = areaPx > 0 ? outsideSolarBboxAreaPx / areaPx : 0;
 
       // Rejection rules
       let rejected_reason: string | null = null;
@@ -594,6 +608,8 @@ async function processJob(input: any) {
       else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
       else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
       else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
+      else if (footprintToSolarBboxRatio != null && footprintToSolarBboxRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarBboxRatio * 100)/100}x_solar_bbox_area_max_${MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO}x`;
+      else if (solarBboxPx && solarBboxPx.area > 0 && exteriorSpilloverRatio > MAX_EXTERIOR_SPILLOVER_RATIO) rejected_reason = `exterior_spillover_${Math.round(exteriorSpilloverRatio * 100)}pct_gt_${Math.round(MAX_EXTERIOR_SPILLOVER_RATIO * 100)}pct`;
       else if (coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox < MIN_COVERAGE_RATIO)
         rejected_reason = `coverage_${Math.round((coverage_ratio_vs_solar_bbox || 0) * 100)}pct_lt_${Math.round(MIN_COVERAGE_RATIO * 100)}pct`;
       else if (solarBboxPx && solarBboxPx.area > 0 && overlap_with_solar_bbox <= 0)
