@@ -2073,12 +2073,68 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     edge_filter_over_aggressive: edgeFilterOverAggressive,
   };
 
+  // ===== FAILURE CATEGORY CLASSIFICATION =====
+  const failureCategory: FailureCategory = (() => {
+    if (validation.valid) return 'validated';
+    // Edge filter failure: most edges rejected, can't form closed faces
+    if (edgeAcceptanceRatio < 0.15 && graphFaces.length < 2) return 'edge_filter_failure';
+    // Structural signal: not enough edges even survived
+    if (scoredEdges.length < 3) return 'structural_signal_failure';
+    // Face validation failure: planar graph extracted faces but all rejected
+    if (planar.faces.length > 0 && graphFaces.length === 0) return 'face_validation_failure';
+    // Partial topology success: some faces validated but coverage < threshold
+    if (graphFaces.length >= 2 && coverageRatio > 0 && coverageRatio < 0.85) return 'partial_topology_success';
+    // Topology collapse: complex roof collapsed to too few facets
+    if (complexity.isComplex && graphFaces.length <= 4) return 'topology_collapse';
+    // Default: classify based on what we have
+    if (graphFaces.length < 2) return 'edge_filter_failure';
+    return 'partial_topology_success';
+  })();
+
+  // ===== DOMINANT REJECTION ANALYSIS =====
+  const edgeRejectionHistogram: Record<string, number> = {
+    rejected_by_length: rejectedByLength,
+    rejected_by_footprint: rejectedByFootprint,
+    rejected_by_score: prunedByScore,
+    rejected_by_intersection: prunedByIntersection,
+    rejected_by_duplicate: duplicateEdgeCount,
+    rejected_by_connectivity: planar.debug.dangling_edges_removed || 0,
+  };
+  const totalEdgeRejections = Object.values(edgeRejectionHistogram).reduce((s, v) => s + v, 0);
+  const dominantEdge = Object.entries(edgeRejectionHistogram).sort((a, b) => b[1] - a[1])[0];
+
+  const faceRejectionHistogram: Record<string, number> = {};
+  for (const fr of enrichedFaceRejections) {
+    for (const reason of fr.rejection_reasons) {
+      const key = reason.replace(/[0-9.]+/g, 'N'); // Normalize numbers
+      faceRejectionHistogram[key] = (faceRejectionHistogram[key] || 0) + 1;
+    }
+  }
+  const totalFaceRejections = enrichedFaceRejections.length;
+  const dominantFace = Object.entries(faceRejectionHistogram).sort((a, b) => b[1] - a[1])[0];
+
+  const dominantRejection: DominantRejectionAnalysis = {
+    dominant_edge_rejection_reason: dominantEdge?.[0] || null,
+    dominant_edge_rejection_count: dominantEdge?.[1] || 0,
+    dominant_edge_rejection_pct: totalEdgeRejections > 0 ? Number(((dominantEdge?.[1] || 0) / totalEdgeRejections * 100).toFixed(1)) : 0,
+    dominant_face_rejection_reason: dominantFace?.[0] || null,
+    dominant_face_rejection_count: dominantFace?.[1] || 0,
+    dominant_face_rejection_pct: totalFaceRejections > 0 ? Number(((dominantFace?.[1] || 0) / totalFaceRejections * 100).toFixed(1)) : 0,
+    edge_rejection_histogram: edgeRejectionHistogram,
+    face_rejection_histogram: faceRejectionHistogram,
+  };
+
+  console.log(`[FAILURE_CATEGORY] ${failureCategory}`);
+  console.log(`[DOMINANT_REJECTION] edge: ${dominantRejection.dominant_edge_rejection_reason} (${dominantRejection.dominant_edge_rejection_pct}%), face: ${dominantRejection.dominant_face_rejection_reason} (${dominantRejection.dominant_face_rejection_pct}%)`);
+
   return {
     success: validation.valid,
     graph_connected: graphFaces.length >= 2 && coverageRatio >= 0.85,
     face_coverage_ratio: coverageRatio,
     validation_status: validation.status,
     failure_reason: validation.reason,
+    failure_category: failureCategory,
+    dominant_rejection: dominantRejection,
     vertices: outputVertices,
     edges: outputEdges,
     faces: graphFaces,
