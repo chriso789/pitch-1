@@ -583,9 +583,9 @@ async function processJob(input: any) {
 
       const validity_score = Math.max(0,
         area_score * 0.30 +
-        solar_overlap_score * 0.25 +
+        solar_overlap_score * 0.30 +
         geocode_center_score * 0.30 +
-        polygon_shape_score * 0.15 -
+        polygon_shape_score * 0.10 -
         outbuilding_penalty);
 
       // Bbox-to-tile ratio: footprint bbox area / tile area
