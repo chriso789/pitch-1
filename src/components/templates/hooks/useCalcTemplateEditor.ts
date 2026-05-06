@@ -218,7 +218,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
   };
 
   // Add group
-  const addGroup = async (name: string, groupType: 'material' | 'labor') => {
+  const addGroup = async (name: string, groupType: 'material' | 'labor' | 'turnkey') => {
     if (!template || !effectiveTenantId) return;
 
     try {
