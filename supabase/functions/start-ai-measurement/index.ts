@@ -780,7 +780,8 @@ async function processJob(input: any) {
             );
             const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
             maskCand.polygon_shape_score = Math.min(1, maskCand.polygon_shape_score + 0.45);
-            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.6));
+            // Only boost if not rejected — oversized masks must NOT auto-win
+            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.25));
             candidates.push(maskCand);
             if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
           }
