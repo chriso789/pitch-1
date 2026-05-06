@@ -859,15 +859,19 @@ function scoreAndFilterEdges(
   }
   if (footprintPx.length > 0) {
     console.log(`[EDGE_SCORING] Footprint px sample: [${footprintPx[0].x.toFixed(1)}, ${footprintPx[0].y.toFixed(1)}]`);
-    console.log(`[EDGE_SCORING] Using PIXEL-SPACE containment (v5)`);
+    console.log(`[EDGE_SCORING] Using RELAXED containment (v8 — edges already pre-masked to roof region)`);
   }
 
-  // A. DSM edges — primary evidence. CONTAINMENT IN PIXEL SPACE.
+  // A. DSM edges — primary evidence.
+  // v8: Edges are already pre-masked to roof region during detection.
+  // Footprint containment is now a soft filter — accept if midpoint is inside
+  // OR if any significant portion of the edge overlaps the footprint.
   for (const de of dsmEdges) {
     const lengthFt = distanceFt(de.start, de.end, midLat);
     if (lengthFt < MIN_EDGE_LENGTH_FT) { skippedByLength++; continue; }
 
-    // PIXEL-SPACE containment: test edge midpoint and endpoints in DSM pixel footprint
+    // Relaxed containment: since edge detection was pre-masked to roof region,
+    // most edges are already valid. Only reject edges clearly outside footprint.
     if (hasFootprintPx) {
       const startPx: PxPt = { x: de.startPx[0], y: de.startPx[1] };
       const endPx: PxPt = { x: de.endPx[0], y: de.endPx[1] };
@@ -876,17 +880,32 @@ function scoreAndFilterEdges(
       const endIn = pointInPolygonPx(endPx, footprintPx);
       const midIn = pointInPolygonPx(midPx, footprintPx);
       
-      // Accept if midpoint OR any endpoint is inside footprint
+      // v8: Accept if midpoint inside OR any endpoint inside OR edge is near boundary
       if (midIn || startIn || endIn) {
-        // pass
+        // pass — at least one point inside footprint
       } else {
-        // Check distance to footprint boundary — accept if within 5px
-        const distToFP = minDistanceToPolygonBoundaryPx(midPx, footprintPx);
-        if (distToFP <= 5.0) {
-          // Near-boundary edge — accept with reduced priority (handled by score)
+        // Compute percent of edge length inside footprint by sampling
+        const samples = 5;
+        let insideSamples = 0;
+        for (let s = 0; s <= samples; s++) {
+          const t = s / samples;
+          const sx = startPx.x + t * (endPx.x - startPx.x);
+          const sy = startPx.y + t * (endPx.y - startPx.y);
+          if (pointInPolygonPx({ x: sx, y: sy }, footprintPx)) insideSamples++;
+        }
+        const pctInsideMask = insideSamples / (samples + 1);
+        
+        // Accept if >=40% of edge is inside mask, or if very close to boundary
+        if (pctInsideMask >= 0.40) {
+          // pass — significant overlap with footprint
         } else {
-          skippedByFootprint++;
-          continue;
+          const distToFP = minDistanceToPolygonBoundaryPx(midPx, footprintPx);
+          if (distToFP <= 8.0) {
+            // Near-boundary edge — accept
+          } else {
+            skippedByFootprint++;
+            continue;
+          }
         }
       }
     } else {
