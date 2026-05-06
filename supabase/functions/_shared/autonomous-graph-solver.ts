@@ -759,9 +759,22 @@ function scoreAndFilterEdges(
       const startPx: PxPt = { x: de.startPx[0], y: de.startPx[1] };
       const endPx: PxPt = { x: de.endPx[0], y: de.endPx[1] };
       const midPx = midpointPx(startPx, endPx);
-      if (!pointInPolygonPx(midPx, footprintPx) && !pointInPolygonPx(startPx, footprintPx) && !pointInPolygonPx(endPx, footprintPx)) {
-        skippedByFootprint++;
-        continue;
+      const startIn = pointInPolygonPx(startPx, footprintPx);
+      const endIn = pointInPolygonPx(endPx, footprintPx);
+      const midIn = pointInPolygonPx(midPx, footprintPx);
+      
+      // Accept if midpoint OR any endpoint is inside footprint
+      if (midIn || startIn || endIn) {
+        // pass
+      } else {
+        // Check distance to footprint boundary — accept if within 5px
+        const distToFP = minDistanceToPolygonBoundaryPx(midPx, footprintPx);
+        if (distToFP <= 5.0) {
+          // Near-boundary edge — accept with reduced priority (handled by score)
+        } else {
+          skippedByFootprint++;
+          continue;
+        }
       }
     } else {
       // Fallback: geo containment (should not happen with DSM grid)
