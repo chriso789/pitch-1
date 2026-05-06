@@ -130,7 +130,7 @@ export function usePdfEngine(workspaceDocumentId: string | undefined) {
       const activeOps = opManager.current?.getActiveOps() || [];
       const objects = objectsQuery.data || [];
       const pdfBytes = await compilePdf(originalPdfBytes, activeOps, objects);
-      return new Blob([pdfBytes], { type: 'application/pdf' });
+      return new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
     } finally {
       setIsCompiling(false);
     }
