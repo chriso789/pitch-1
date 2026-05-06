@@ -53,7 +53,8 @@ export type PdfEngineOperationType =
   | 'rotate_page' | 'reorder_page' | 'insert_page' | 'delete_page'
   | 'add_annotation' | 'remove_annotation'
   | 'add_redaction' | 'apply_redaction'
-  | 'add_signature' | 'update_form_field';
+  | 'add_signature' | 'update_form_field'
+  | 'ai_rewrite' | 'ocr_extract' | 'fill_form_field';
 
 export interface PdfEngineOperation {
   id: string;

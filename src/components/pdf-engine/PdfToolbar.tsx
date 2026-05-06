@@ -3,7 +3,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import {
   MousePointer2, Type, Highlighter, EyeOff, PenTool, RotateCcw,
-  RotateCw, Download, Save, Undo2, Redo2,
+  RotateCw, Download, Save, Undo2, Redo2, ScanText, BookTemplate,
 } from 'lucide-react';
 
 export type ToolMode = 'select' | 'text' | 'annotate' | 'redact';
@@ -21,11 +21,15 @@ interface PdfToolbarProps {
   isSaving: boolean;
   operationCount: number;
   onRotatePage?: () => void;
+  onOcr?: () => void;
+  isOcrRunning?: boolean;
+  onSaveAsTemplate?: () => void;
 }
 
 export function PdfToolbar({
   mode, onModeChange, canUndo, canRedo, onUndo, onRedo,
   onCompile, onSave, isCompiling, isSaving, operationCount, onRotatePage,
+  onOcr, isOcrRunning, onSaveAsTemplate,
 }: PdfToolbarProps) {
   const tools: { key: ToolMode; icon: any; label: string }[] = [
     { key: 'select', icon: MousePointer2, label: 'Select' },
@@ -60,6 +64,20 @@ export function PdfToolbar({
       {onRotatePage && (
         <Button variant="ghost" size="icon" onClick={onRotatePage} title="Rotate page">
           <RotateCw className="h-4 w-4" />
+        </Button>
+      )}
+
+      {onOcr && (
+        <Button variant="ghost" size="sm" onClick={onOcr} disabled={isOcrRunning} title="OCR this page">
+          <ScanText className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">{isOcrRunning ? 'Scanning...' : 'OCR'}</span>
+        </Button>
+      )}
+
+      {onSaveAsTemplate && (
+        <Button variant="ghost" size="sm" onClick={onSaveAsTemplate} title="Save as template">
+          <BookTemplate className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">Template</span>
         </Button>
       )}
 
