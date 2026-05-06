@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Calculator, FileText } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ArrowLeft, Calculator, FileText, AlertTriangle } from 'lucide-react';
 import { MaterialCalculator } from '@/components/materials/MaterialCalculator';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { RoofMeasurementData } from '@/lib/measurements/materialCalculations';
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
+import { evaluateGeometryGate } from '@/lib/measurements/geometryProductionGate';
 
 export default function MaterialCalculations() {
   const { id } = useParams<{ id: string }>();
