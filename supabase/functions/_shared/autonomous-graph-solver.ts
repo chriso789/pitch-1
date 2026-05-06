@@ -99,6 +99,47 @@ export interface RejectedEdgeDebug {
   type: string;
   source: string;
   reason: string;
+  length_ft?: number;
+  inside_footprint?: boolean;
+  rejection_stage?: string;
+}
+
+export interface EnrichedFaceRejection {
+  face_id: string;
+  vertex_count: number;
+  area_sqft: number;
+  bbox_geo: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  centroid_geo: XY | null;
+  inside_footprint: boolean;
+  footprint_overlap_ratio: number | null;
+  mask_overlap_ratio: number | null;
+  plane_rms: number | null;
+  pitch_degrees: number | null;
+  shared_edge_count: number;
+  boundary_edge_count: number;
+  rejection_reasons: string[];
+}
+
+export interface EdgeRejectionSummary {
+  total_raw: number;
+  rejected_by_length: number;
+  rejected_by_footprint: number;
+  rejected_by_score: number;
+  rejected_by_intersection: number;
+  rejected_by_duplicate: number;
+  rejected_by_connectivity: number;
+  accepted_final: number;
+  acceptance_ratio: number;
+  edge_filter_over_aggressive: boolean;
+}
+
+export interface FaceClippingDiagnostics {
+  face_bbox_solver: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  footprint_bbox_solver: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  bbox_overlap_ratio_before_clip: number;
+  clipping_footprint_source: string;
+  clipping_coordinate_space: string;
+  coordinate_space_mismatch_detected: boolean;
 }
 
 export interface AutonomousGraphResult {
