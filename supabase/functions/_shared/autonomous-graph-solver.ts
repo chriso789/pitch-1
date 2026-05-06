@@ -163,6 +163,7 @@ export interface FaceClippingDiagnostics {
 export type FailureCategory =
   | 'edge_filter_failure'
   | 'face_validation_failure'
+  | 'polygon_clipper_failure'
   | 'partial_topology_success'
   | 'topology_collapse'
   | 'validated'
