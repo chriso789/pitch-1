@@ -4600,6 +4600,8 @@ async function processJob(input: any) {
           edge_acceptance_ratio: autonomousDebug?.edge_acceptance_ratio ?? null,
           bbox_rescue_used_in_validation: autonomousDebug?.bbox_rescue_used_in_validation ?? false,
           face_rejection_table: autonomousDebug?.face_rejection_table || [],
+          failure_category: autonomousDebug?.failure_category || null,
+          dominant_rejection: autonomousDebug?.dominant_rejection || null,
         },
       })
       .select("id")
