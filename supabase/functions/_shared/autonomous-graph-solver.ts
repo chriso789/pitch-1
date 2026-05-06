@@ -154,7 +154,11 @@ export interface AutonomousGraphResult {
   faces: GraphFace[];
   rejected_edges: RejectedEdgeDebug[];
   face_rejection_table?: Array<{ face_id: string; area_sqft: number; plane_rms: number | null; inside_footprint: boolean; mask_overlap: number | null; rejection_reason: string }>;
-  
+  enriched_face_rejections?: EnrichedFaceRejection[];
+  edge_rejection_summary?: EdgeRejectionSummary;
+  face_clipping_diagnostics?: FaceClippingDiagnostics[];
+  bbox_rescue_used_for_display_only?: boolean;
+  bbox_rescue_used_in_validation?: boolean;
   totals: {
     ridge_ft: number;
     hip_ft: number;
