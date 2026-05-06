@@ -381,6 +381,22 @@ function pointInPolygonPx(p: PxPt, ring: PxPt[]): boolean {
   return inside;
 }
 
+/** Minimum distance from point to polygon boundary in px */
+function minDistanceToPolygonBoundaryPx(p: PxPt, ring: PxPt[]): number {
+  let minDist = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    if (len2 < 1e-9) continue;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2));
+    const proj = { x: a.x + abx * t, y: a.y + aby * t };
+    const dist = Math.hypot(p.x - proj.x, p.y - proj.y);
+    if (dist < minDist) minDist = dist;
+  }
+  return minDist;
+}
+
 function vertexKey(p: XY): string {
   return `${p[0].toFixed(8)},${p[1].toFixed(8)}`;
 }
