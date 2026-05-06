@@ -1211,7 +1211,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   // ===== STEP 2: Score & filter (PRUNE BEFORE GRAPH) =====
-  const { accepted: scoredEdges, prunedByScore, rejectedDebug: rejectedEdgesDebug } = scoreAndFilterEdges(
+  const { accepted: scoredEdges, prunedByScore, rejectedDebug: rejectedEdgesDebug, rejectedByLength, rejectedByFootprint, totalRaw } = scoreAndFilterEdges(
     [...dsmRidges, ...dsmValleys],
     input.skeletonEdges,
     input.solarSegments,
@@ -1221,7 +1221,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     complexity.isComplex
   );
 
-  console.log(`  Scoring: ${scoredEdges.length} accepted, ${prunedByScore} pruned by score (threshold ${EDGE_SCORE_THRESHOLD})`);
+  const edgeAcceptanceRatio = totalRaw > 0 ? scoredEdges.length / totalRaw : 0;
+  const edgeFilterOverAggressive = edgeAcceptanceRatio < 0.25 && totalRaw > 10;
+  if (edgeFilterOverAggressive) {
+    warnings.push(`edge_filter_over_aggressive: acceptance_ratio=${edgeAcceptanceRatio.toFixed(3)} (${scoredEdges.length}/${totalRaw})`);
+  }
+
+  console.log(`  Scoring: ${scoredEdges.length} accepted, ${prunedByScore} pruned by score (threshold ${EDGE_SCORE_THRESHOLD}), acceptance_ratio=${edgeAcceptanceRatio.toFixed(3)}`);
+
 
   // ===== STEP 3: Conservative snapping (NO center collapse) =====
   const perimeterVertices: XY[] = [];
