@@ -2030,6 +2030,20 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`[TOPOLOGY_METRICS] shared_edges=${sharedEdgeCount} duplicates=${duplicateEdgeCount} overlaps=${overlappingFaceCount} area_conservation=${areaConservationRatio.toFixed(3)}`);
   console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
 
+  // Build edge rejection summary
+  const edgeRejectionSummary: EdgeRejectionSummary = {
+    total_raw: totalRaw,
+    rejected_by_length: rejectedByLength,
+    rejected_by_footprint: rejectedByFootprint,
+    rejected_by_score: prunedByScore,
+    rejected_by_intersection: prunedByIntersection,
+    rejected_by_duplicate: duplicateEdgeCount,
+    rejected_by_connectivity: dangling,
+    accepted_final: outputEdges.length,
+    acceptance_ratio: Number(edgeAcceptanceRatio.toFixed(3)),
+    edge_filter_over_aggressive: edgeFilterOverAggressive,
+  };
+
   return {
     success: validation.valid,
     graph_connected: graphFaces.length >= 2 && coverageRatio >= 0.85,
@@ -2041,6 +2055,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     faces: graphFaces,
     rejected_edges: rejectedEdgesDebug,
     face_rejection_table: faceRejectionTable,
+    enriched_face_rejections: enrichedFaceRejections,
+    edge_rejection_summary: edgeRejectionSummary,
+    face_clipping_diagnostics: faceClippingDiagnostics,
+    bbox_rescue_used_for_display_only: false,
+    bbox_rescue_used_in_validation: false,
     totals: {
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
