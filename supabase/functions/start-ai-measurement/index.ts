@@ -568,7 +568,10 @@ async function processJob(input: any) {
       // is clearly more complex (multiple solar segments). 5+ vertex hulls get boosted.
       const segCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
       let polygon_shape_score = vertex_count >= 4 ? Math.min(1, vertex_count / 8) : 0;
-      if (vertex_count <= 4 && segCount > 1) polygon_shape_score *= 0.4;
+      // Only penalize simple rectangles if they have LOW solar coverage.
+      // An OSM rectangle with >80% solar bbox coverage IS the main building — don't punish it.
+      const hasSufficientCoverage = coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox > 0.8;
+      if (vertex_count <= 4 && segCount > 1 && !hasSufficientCoverage) polygon_shape_score *= 0.4;
       if (vertex_count >= 6) polygon_shape_score = Math.min(1, polygon_shape_score + 0.15);
 
       // Outbuilding penalty: small footprints far from geocode are likely sheds/garages.
