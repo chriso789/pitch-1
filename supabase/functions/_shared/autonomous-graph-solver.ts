@@ -1360,15 +1360,56 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     if (sum > 0) clipFootprint = clipFootprint.reverse(); // Make CCW
   }
 
+  // Compute footprint bbox for clipping diagnostics
+  const footprintBboxSolver = getBounds(input.footprintCoords);
+
   for (const [faceIdx, face] of planar.faces.entries()) {
     let polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
+
+    const faceId = `attempt-${faceIdx + 1}`;
+    const rejectionReasons: string[] = [];
+
+    // Compute pre-clip face bbox for clipping diagnostics
+    const faceBboxSolver = getBounds(polygon);
+    const fbW = faceBboxSolver.maxX - faceBboxSolver.minX;
+    const fbH = faceBboxSolver.maxY - faceBboxSolver.minY;
+    const fpW = footprintBboxSolver.maxX - footprintBboxSolver.minX;
+    const fpH = footprintBboxSolver.maxY - footprintBboxSolver.minY;
+    const overlapX = Math.max(0, Math.min(faceBboxSolver.maxX, footprintBboxSolver.maxX) - Math.max(faceBboxSolver.minX, footprintBboxSolver.minX));
+    const overlapY = Math.max(0, Math.min(faceBboxSolver.maxY, footprintBboxSolver.maxY) - Math.max(faceBboxSolver.minY, footprintBboxSolver.minY));
+    const faceBboxArea = Math.max(fbW * fbH, 1e-15);
+    const bboxOverlapBeforeClip = (overlapX * overlapY) / faceBboxArea;
+
+    const clipDiag: FaceClippingDiagnostics = {
+      face_bbox_solver: { minX: faceBboxSolver.minX, minY: faceBboxSolver.minY, maxX: faceBboxSolver.maxX, maxY: faceBboxSolver.maxY },
+      footprint_bbox_solver: { minX: footprintBboxSolver.minX, minY: footprintBboxSolver.minY, maxX: footprintBboxSolver.maxX, maxY: footprintBboxSolver.maxY },
+      bbox_overlap_ratio_before_clip: Number(bboxOverlapBeforeClip.toFixed(3)),
+      clipping_footprint_source: 'input_footprint_geo',
+      clipping_coordinate_space: 'geo',
+      coordinate_space_mismatch_detected: bboxOverlapBeforeClip < 0.50,
+    };
+    faceClippingDiagnostics.push(clipDiag);
+
+    // If bbox overlap is < 0.50, flag coordinate space mismatch
+    if (bboxOverlapBeforeClip < 0.50) {
+      rejectionReasons.push(`coordinate_space_mismatch_before_clip:overlap=${bboxOverlapBeforeClip.toFixed(3)}`);
+    }
 
     // CLIP to footprint boundary — prevents area overshooting
     polygon = clipPolygonToFootprint(polygon, clipFootprint);
     if (polygon.length < 3) {
       facesRejected++;
-      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+      rejectionReasons.push('clipped_to_nothing');
+      faceRejectionTable.push({ face_id: faceId, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+      enrichedFaceRejections.push({
+        face_id: faceId, vertex_count: face.polygon.length, area_sqft: 0,
+        bbox_geo: clipDiag.face_bbox_solver, centroid_geo: null,
+        inside_footprint: false, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+        mask_overlap_ratio: null, plane_rms: null, pitch_degrees: null,
+        shared_edge_count: 0, boundary_edge_count: 0,
+        rejection_reasons: rejectionReasons,
+      });
       continue;
     }
 
@@ -1377,19 +1418,32 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
     let pitch = 0;
     let azimuth = 0;
+    let planeRms: number | null = null;
+
+    const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
+
     if (effectiveDSM) {
       const planeFit = fitPlaneWithPitch(polygon, effectiveDSM);
       if (planeFit) {
+        planeRms = planeFit.rms;
         if (planeFit.rms > threshold) {
           facesRejected++;
-          faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          rejectionReasons.push(`plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}`);
+          faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          enrichedFaceRejections.push({
+            face_id: faceId, vertex_count: polygon.length, area_sqft: Number(areaSqft.toFixed(2)),
+            bbox_geo: clipDiag.face_bbox_solver, centroid_geo: facetCenter,
+            inside_footprint: true, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+            mask_overlap_ratio: null, plane_rms: Number(planeFit.rms.toFixed(3)), pitch_degrees: planeFit.pitchDeg,
+            shared_edge_count: 0, boundary_edge_count: 0,
+            rejection_reasons: rejectionReasons,
+          });
           continue;
         }
         pitch = planeFit.pitchDeg;
         azimuth = planeFit.azimuthDeg;
       } else {
         // Fallback to solar segment
-        const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
         const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
         pitch = matchingSolar?.pitchDegrees || 0;
         azimuth = matchingSolar?.azimuthDegrees || 0;
@@ -1397,7 +1451,16 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
     if (areaSqft < MIN_FACET_AREA_SQFT) {
       facesRejected++;
-      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: null, inside_footprint: true, mask_overlap: null, rejection_reason: `area_below_${MIN_FACET_AREA_SQFT}_sqft` });
+      rejectionReasons.push(`area_below_${MIN_FACET_AREA_SQFT}_sqft`);
+      faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: planeRms !== null ? Number(planeRms.toFixed(3)) : null, inside_footprint: true, mask_overlap: null, rejection_reason: `area_below_${MIN_FACET_AREA_SQFT}_sqft` });
+      enrichedFaceRejections.push({
+        face_id: faceId, vertex_count: polygon.length, area_sqft: Number(areaSqft.toFixed(2)),
+        bbox_geo: clipDiag.face_bbox_solver, centroid_geo: facetCenter,
+        inside_footprint: true, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+        mask_overlap_ratio: null, plane_rms: planeRms !== null ? Number(planeRms.toFixed(3)) : null, pitch_degrees: pitch,
+        shared_edge_count: 0, boundary_edge_count: 0,
+        rejection_reasons: rejectionReasons,
+      });
       continue;
     }
     const closedPolygon = vertexKey(polygon[0]) === vertexKey(polygon[polygon.length - 1]) ? polygon : [...polygon, polygon[0]];
