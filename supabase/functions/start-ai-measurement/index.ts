@@ -4344,7 +4344,7 @@ async function processJob(input: any) {
       },
       overlay_debug: {
         coordinate_space: "satellite_px",
-        coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "dsm_px",
+        coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "geo",
         coordinate_space_renderer: "satellite_px",
         raster_url: imageUrl,
         raster_size,
