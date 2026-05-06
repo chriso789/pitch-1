@@ -1085,7 +1085,10 @@ async function processJob(input: any) {
       vertices: footprint.length,
       area_sqft: Math.round(footprintAreaSqftVal),
       solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+      solar_bbox_area_sqft: solarBboxAreaSqftVal != null ? Math.round(solarBboxAreaSqftVal) : null,
       footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
+      footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null ? Number(footprintToSolarBboxAreaRatio.toFixed(3)) : null,
+      exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
       footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
     }));
 
