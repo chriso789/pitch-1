@@ -940,6 +940,9 @@ const LeadDetails = () => {
 
         {/* Stats grid - single compact row */}
         <div className="flex items-center gap-3 flex-wrap text-[11px] md:text-xs text-muted-foreground">
+          {lead.clj_formatted_number && (
+            <span><b className="text-foreground">{lead.clj_formatted_number}</b></span>
+          )}
           <span><b className="text-foreground">{lead.priority || '—'}</b> priority</span>
           <span><b className="text-foreground">{lead.roof_type ? lead.roof_type.replace('_', ' ') : '—'}</b> roof</span>
           <span><b className="text-foreground">{lead.metadata?.roof_age_years ? `${lead.metadata.roof_age_years}yr` : '—'}</b> age</span>
