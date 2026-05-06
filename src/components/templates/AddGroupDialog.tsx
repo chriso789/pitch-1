@@ -10,7 +10,7 @@ import { Package, Wrench } from 'lucide-react';
 interface AddGroupDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (name: string, groupType: 'material' | 'labor') => void;
+  onAdd: (name: string, groupType: 'material' | 'labor' | 'turnkey') => void;
 }
 
 export const AddGroupDialog = ({ open, onOpenChange, onAdd }: AddGroupDialogProps) => {
