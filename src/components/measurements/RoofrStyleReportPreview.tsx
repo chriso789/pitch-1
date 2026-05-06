@@ -108,7 +108,8 @@ export function RoofrStyleReportPreview({
       gate_decision,
       gate_reason,
       requires_manual_review,
-      validation_status
+      validation_status,
+      geometry_report_json
     `;
     
     try {
