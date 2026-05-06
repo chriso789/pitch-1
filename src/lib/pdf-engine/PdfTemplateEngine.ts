@@ -108,7 +108,7 @@ export class PdfTemplateEngine {
     let result = text;
     for (const [tag, value] of Object.entries(values)) {
       const pattern = tag.startsWith('{{') ? tag : `{{${tag}}}`;
-      result = result.replaceAll(pattern, value);
+      result = result.split(pattern).join(value);
     }
     return result;
   }
