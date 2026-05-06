@@ -663,17 +663,21 @@ export function RoofrStyleReportPreview({
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="p-4 border-b flex-col gap-2">
-          {/* ── DIAGNOSTIC GATE: Block customer-facing actions for failed geometry ── */}
-          {roofMeasurementData && roofMeasurementData.customer_report_ready === false && (
+          {/* ── GEOMETRY PRODUCTION GATE BANNER ── */}
+          {roofMeasurementData && isCustomerExportBlocked && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
               <div className="text-sm">
-                <span className="font-semibold text-destructive">DIAGNOSTIC ONLY — NOT FOR CUSTOMER USE</span>
-                {roofMeasurementData.gate_reason && (
-                  <span className="text-muted-foreground ml-2">({roofMeasurementData.gate_reason})</span>
-                )}
+                <span className="font-semibold text-destructive">
+                  {geometryGate.source === 'heuristic_estimate'
+                    ? 'HEURISTIC DEBUG — NOT CUSTOMER READY'
+                    : 'DIAGNOSTIC ONLY — NOT FOR CUSTOMER USE'}
+                </span>
+                <span className="text-muted-foreground ml-2">({geometryGate.reason})</span>
               </div>
-              <Badge variant="destructive" className="ml-auto shrink-0">Blocked</Badge>
+              <Badge variant="destructive" className="ml-auto shrink-0">
+                {geometryGate.source === 'heuristic_estimate' ? 'Heuristic' : 'Blocked'}
+              </Badge>
             </div>
           )}
           <div className="flex items-center justify-between">
