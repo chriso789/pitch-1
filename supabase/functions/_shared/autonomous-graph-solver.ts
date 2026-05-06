@@ -2143,7 +2143,27 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     return polygon.length >= 3 ? s + polygonAreaSqft(polygon, midLat) : s;
   }, 0);
-  const coverageRatio = footprintAreaSqft > 0 ? Math.min(totalPlanArea / footprintAreaSqft, planar.debug.face_coverage_ratio || (totalPlanArea / footprintAreaSqft)) : 0;
+
+  // ===== COVERAGE: use sqft ratio as canonical, detect px/sqft mismatch =====
+  const sqftAreaRatio = footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0;
+  const totalFaceAreaPx = graphFaces.reduce((s, f) => {
+    // Re-compute face area in DSM px from the clipped px polygons we already have
+    // We stored face polygons in geo; convert back for diagnostic
+    if (!effectiveDSM) return s;
+    const pxPoly = f.polygon.slice(0, -1).map(p => geoToPxPoint(p, effectiveDSM));
+    return s + polygonAreaPx(pxPoly);
+  }, 0);
+  const pxAreaRatio = footprintAreaPxVal > 0 ? totalFaceAreaPx / footprintAreaPxVal : 0;
+  const coverageAreaSpaceMismatch = sqftAreaRatio > 0.85 && pxAreaRatio < 0.50;
+  
+  // CANONICAL: coverage uses sqft ratio. Never mix pixel-space planar ratio.
+  const coverageRatio = sqftAreaRatio;
+  
+  if (coverageAreaSpaceMismatch) {
+    warnings.push(`coverage_area_space_mismatch: sqft_ratio=${sqftAreaRatio.toFixed(3)} but px_ratio=${pxAreaRatio.toFixed(3)} — footprint_px and face_px may be in different scales`);
+    console.log(`  [COVERAGE_MISMATCH] sqft_ratio=${sqftAreaRatio.toFixed(3)} px_ratio=${pxAreaRatio.toFixed(3)} footprint_area_px=${footprintAreaPxVal.toFixed(0)} face_area_px=${totalFaceAreaPx.toFixed(0)}`);
+  }
+  console.log(`  Coverage: sqft_ratio=${sqftAreaRatio.toFixed(3)} px_ratio=${pxAreaRatio.toFixed(3)} footprint_sqft=${footprintAreaSqft.toFixed(0)} face_sqft=${totalPlanArea.toFixed(0)} footprint_px=${footprintAreaPxVal.toFixed(0)} face_px=${totalFaceAreaPx.toFixed(0)}`);
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
   const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
