@@ -23228,6 +23228,314 @@ export type Database = {
           },
         ]
       }
+      pdf_objects: {
+        Row: {
+          content: string | null
+          created_at: string | null
+          font_color: string | null
+          font_family: string | null
+          font_size: number | null
+          font_weight: string | null
+          height: number | null
+          id: string
+          is_deleted: boolean | null
+          metadata: Json | null
+          object_type: string
+          opacity: number | null
+          page_id: string
+          rotation: number | null
+          tenant_id: string
+          updated_at: string | null
+          width: number | null
+          workspace_document_id: string
+          x: number
+          y: number
+          z_index: number | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string | null
+          font_color?: string | null
+          font_family?: string | null
+          font_size?: number | null
+          font_weight?: string | null
+          height?: number | null
+          id?: string
+          is_deleted?: boolean | null
+          metadata?: Json | null
+          object_type: string
+          opacity?: number | null
+          page_id: string
+          rotation?: number | null
+          tenant_id: string
+          updated_at?: string | null
+          width?: number | null
+          workspace_document_id: string
+          x?: number
+          y?: number
+          z_index?: number | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string | null
+          font_color?: string | null
+          font_family?: string | null
+          font_size?: number | null
+          font_weight?: string | null
+          height?: number | null
+          id?: string
+          is_deleted?: boolean | null
+          metadata?: Json | null
+          object_type?: string
+          opacity?: number | null
+          page_id?: string
+          rotation?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+          width?: number | null
+          workspace_document_id?: string
+          x?: number
+          y?: number
+          z_index?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_objects_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_objects_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_operations: {
+        Row: {
+          actor_id: string
+          created_at: string | null
+          data: Json
+          id: string
+          is_undone: boolean | null
+          operation_type: string
+          sequence_number: number
+          target_object_id: string | null
+          target_page_id: string | null
+          tenant_id: string
+          workspace_document_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string | null
+          data?: Json
+          id?: string
+          is_undone?: boolean | null
+          operation_type: string
+          sequence_number: number
+          target_object_id?: string | null
+          target_page_id?: string | null
+          tenant_id: string
+          workspace_document_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string | null
+          data?: Json
+          id?: string
+          is_undone?: boolean | null
+          operation_type?: string
+          sequence_number?: number
+          target_object_id?: string | null
+          target_page_id?: string | null
+          tenant_id?: string
+          workspace_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_operations_target_object_id_fkey"
+            columns: ["target_object_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_objects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_operations_target_page_id_fkey"
+            columns: ["target_page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_operations_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_pages: {
+        Row: {
+          created_at: string | null
+          height: number | null
+          id: string
+          page_number: number
+          rotation: number | null
+          tenant_id: string
+          text_layer: Json | null
+          thumbnail_path: string | null
+          updated_at: string | null
+          width: number | null
+          workspace_document_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          height?: number | null
+          id?: string
+          page_number: number
+          rotation?: number | null
+          tenant_id: string
+          text_layer?: Json | null
+          thumbnail_path?: string | null
+          updated_at?: string | null
+          width?: number | null
+          workspace_document_id: string
+        }
+        Update: {
+          created_at?: string | null
+          height?: number | null
+          id?: string
+          page_number?: number
+          rotation?: number | null
+          tenant_id?: string
+          text_layer?: Json | null
+          thumbnail_path?: string | null
+          updated_at?: string | null
+          width?: number | null
+          workspace_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_pages_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_redactions: {
+        Row: {
+          applied: boolean | null
+          applied_at: string | null
+          created_at: string | null
+          created_by: string
+          height: number
+          id: string
+          page_id: string
+          reason: string | null
+          tenant_id: string
+          width: number
+          workspace_document_id: string
+          x: number
+          y: number
+        }
+        Insert: {
+          applied?: boolean | null
+          applied_at?: string | null
+          created_at?: string | null
+          created_by: string
+          height: number
+          id?: string
+          page_id: string
+          reason?: string | null
+          tenant_id: string
+          width: number
+          workspace_document_id: string
+          x: number
+          y: number
+        }
+        Update: {
+          applied?: boolean | null
+          applied_at?: string | null
+          created_at?: string | null
+          created_by?: string
+          height?: number
+          id?: string
+          page_id?: string
+          reason?: string | null
+          tenant_id?: string
+          width?: number
+          workspace_document_id?: string
+          x?: number
+          y?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_redactions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_redactions_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_render_cache: {
+        Row: {
+          created_at: string | null
+          id: string
+          page_number: number
+          render_format: string | null
+          render_path: string
+          scale: number | null
+          tenant_id: string
+          version_number: number
+          workspace_document_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          page_number: number
+          render_format?: string | null
+          render_path: string
+          scale?: number | null
+          tenant_id: string
+          version_number: number
+          workspace_document_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          page_number?: number
+          render_format?: string | null
+          render_path?: string
+          scale?: number | null
+          tenant_id?: string
+          version_number?: number
+          workspace_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_render_cache_workspace_document_id_fkey"
+            columns: ["workspace_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_workspace_ai_edits: {
         Row: {
           created_at: string | null
