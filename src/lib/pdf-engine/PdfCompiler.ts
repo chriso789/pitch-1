@@ -148,6 +148,33 @@ function applyOp(
       break;
     }
 
+    case 'ai_rewrite':
+    case 'fill_form_field': {
+      // These act like replace_text — white-out + redraw
+      const obj = op.target_object_id ? objectMap.get(op.target_object_id) : null;
+      if (!obj) return;
+      const pageNum = (obj.metadata as any)?.page_number ?? 1;
+      const pageIdx = Math.max(0, Math.min(pageNum - 1, pages.length - 1));
+      const page = pages[pageIdx];
+      const b = obj.bounds;
+      if (b.width && b.height) {
+        page.drawRectangle({
+          x: b.x, y: b.y, width: b.width, height: b.height + 2,
+          color: rgb(1, 1, 1),
+        });
+      }
+      const fi = obj.font_info || {};
+      const font = fi.fontWeight === 'bold' ? fonts.helveticaBold : fonts.helvetica;
+      const newText = p.replacement_text || p.rewritten_text || p.value || '';
+      page.drawText(newText, {
+        x: b.x, y: b.y,
+        size: fi.fontSize || 12,
+        font,
+        color: parseColor(fi.color),
+      });
+      break;
+    }
+
     default:
       break;
   }
