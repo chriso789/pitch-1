@@ -1802,6 +1802,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     footprintConfidence?: number;
     roofType?: string;
     derivedFacetCount?: number;
+    dsmContract?: { geometry_source: string; customer_report_ready: boolean; debug_metrics: any; gates?: any };
   } = {
     property_id: "",
     source: 'google_solar',
@@ -1832,6 +1833,17 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       centerLat: lat,
       zoom: 20,
       metersPerPixel,
+    },
+    // DSM Validated Geometry Contract result
+    dsmContract: dsmContractResult ? {
+      geometry_source: dsmContractResult.geometry_source,
+      customer_report_ready: dsmContractResult.customer_report_ready,
+      debug_metrics: dsmContractResult.debug_metrics,
+      gates: dsmContractResult.gates,
+    } : {
+      geometry_source: 'heuristic_estimate',
+      customer_report_ready: false,
+      debug_metrics: null,
     },
   };
 
