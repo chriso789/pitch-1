@@ -1,5 +1,5 @@
 /**
- * Autonomous Roof Graph Solver v5 — DSM Pixel-Space Contract
+ * Autonomous Roof Graph Solver v7 — Coverage Fix + Edge Containment + Clipper Debug
  * 
  * Pipeline:
  *   1. DSM edge detection (Sobel gradient + PCA line fit)
@@ -155,6 +155,14 @@ export interface FaceClippingDiagnostics {
   footprint_winding?: string;
   face_winding?: string;
   polygon_self_intersection_detected?: boolean;
+  // v7: clipper implementation debug
+  clipper_algorithm?: string;
+  clipper_input_face_vertices?: number;
+  clipper_input_footprint_vertices?: number;
+  clipper_output_vertices?: number;
+  clipper_error?: string | null;
+  vertices_inside_footprint?: number;
+  vertices_outside_footprint?: number;
 }
 
 /**
@@ -379,6 +387,22 @@ function pointInPolygonPx(p: PxPt, ring: PxPt[]): boolean {
     if (intersect) inside = !inside;
   }
   return inside;
+}
+
+/** Minimum distance from point to polygon boundary in px */
+function minDistanceToPolygonBoundaryPx(p: PxPt, ring: PxPt[]): number {
+  let minDist = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    if (len2 < 1e-9) continue;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2));
+    const proj = { x: a.x + abx * t, y: a.y + aby * t };
+    const dist = Math.hypot(p.x - proj.x, p.y - proj.y);
+    if (dist < minDist) minDist = dist;
+  }
+  return minDist;
 }
 
 function vertexKey(p: XY): string {
@@ -759,9 +783,22 @@ function scoreAndFilterEdges(
       const startPx: PxPt = { x: de.startPx[0], y: de.startPx[1] };
       const endPx: PxPt = { x: de.endPx[0], y: de.endPx[1] };
       const midPx = midpointPx(startPx, endPx);
-      if (!pointInPolygonPx(midPx, footprintPx) && !pointInPolygonPx(startPx, footprintPx) && !pointInPolygonPx(endPx, footprintPx)) {
-        skippedByFootprint++;
-        continue;
+      const startIn = pointInPolygonPx(startPx, footprintPx);
+      const endIn = pointInPolygonPx(endPx, footprintPx);
+      const midIn = pointInPolygonPx(midPx, footprintPx);
+      
+      // Accept if midpoint OR any endpoint is inside footprint
+      if (midIn || startIn || endIn) {
+        // pass
+      } else {
+        // Check distance to footprint boundary — accept if within 5px
+        const distToFP = minDistanceToPolygonBoundaryPx(midPx, footprintPx);
+        if (distToFP <= 5.0) {
+          // Near-boundary edge — accept with reduced priority (handled by score)
+        } else {
+          skippedByFootprint++;
+          continue;
+        }
       }
     } else {
       // Fallback: geo containment (should not happen with DSM grid)
@@ -1484,7 +1521,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v5 — DSM Pixel-Space Contract`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v7 — Coverage Fix + Edge Containment + Clipper Debug`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -1676,8 +1713,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       : clippedPx.length < 3 
       ? 'clipped_to_nothing' 
       : `${clippedPx.length}_vertices_${clipResult.method}`;
-    (clipDiag as any).vertices_inside_footprint = clipResult.verticesInsideCount;
-    (clipDiag as any).vertices_outside_footprint = clipResult.verticesOutsideCount;
+    clipDiag.clipper_algorithm = clipResult.method;
+    clipDiag.clipper_input_face_vertices = (cleanedFacePx.length >= 3 ? cleanedFacePx : facePx).length;
+    clipDiag.clipper_input_footprint_vertices = footprintPxCCW.length;
+    clipDiag.clipper_output_vertices = clippedPx.length;
+    clipDiag.clipper_error = clipResult.method === 'clipper_degenerate_output' ? 'degenerate_output_area_destroyed' : (clippedPx.length < 3 && faceAreaBeforeClipPx > 100 ? 'clipped_to_nothing' : null);
+    clipDiag.vertices_inside_footprint = clipResult.verticesInsideCount;
+    clipDiag.vertices_outside_footprint = clipResult.verticesOutsideCount;
     faceClippingDiagnostics.push(clipDiag);
 
     // Handle clipper degenerate output: preserve for debug but mark as failure
@@ -2143,7 +2185,27 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     return polygon.length >= 3 ? s + polygonAreaSqft(polygon, midLat) : s;
   }, 0);
-  const coverageRatio = footprintAreaSqft > 0 ? Math.min(totalPlanArea / footprintAreaSqft, planar.debug.face_coverage_ratio || (totalPlanArea / footprintAreaSqft)) : 0;
+
+  // ===== COVERAGE: use sqft ratio as canonical, detect px/sqft mismatch =====
+  const sqftAreaRatio = footprintAreaSqft > 0 ? totalPlanArea / footprintAreaSqft : 0;
+  const totalFaceAreaPx = graphFaces.reduce((s, f) => {
+    // Re-compute face area in DSM px from the clipped px polygons we already have
+    // We stored face polygons in geo; convert back for diagnostic
+    if (!effectiveDSM) return s;
+    const pxPoly = f.polygon.slice(0, -1).map(p => geoToPxPoint(p, effectiveDSM));
+    return s + polygonAreaPx(pxPoly);
+  }, 0);
+  const pxAreaRatio = footprintAreaPxVal > 0 ? totalFaceAreaPx / footprintAreaPxVal : 0;
+  const coverageAreaSpaceMismatch = sqftAreaRatio > 0.85 && pxAreaRatio < 0.50;
+  
+  // CANONICAL: coverage uses sqft ratio. Never mix pixel-space planar ratio.
+  const coverageRatio = sqftAreaRatio;
+  
+  if (coverageAreaSpaceMismatch) {
+    warnings.push(`coverage_area_space_mismatch: sqft_ratio=${sqftAreaRatio.toFixed(3)} but px_ratio=${pxAreaRatio.toFixed(3)} — footprint_px and face_px may be in different scales`);
+    console.log(`  [COVERAGE_MISMATCH] sqft_ratio=${sqftAreaRatio.toFixed(3)} px_ratio=${pxAreaRatio.toFixed(3)} footprint_area_px=${footprintAreaPxVal.toFixed(0)} face_area_px=${totalFaceAreaPx.toFixed(0)}`);
+  }
+  console.log(`  Coverage: sqft_ratio=${sqftAreaRatio.toFixed(3)} px_ratio=${pxAreaRatio.toFixed(3)} footprint_sqft=${footprintAreaSqft.toFixed(0)} face_sqft=${totalPlanArea.toFixed(0)} footprint_px=${footprintAreaPxVal.toFixed(0)} face_px=${totalFaceAreaPx.toFixed(0)}`);
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
   const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
@@ -2252,6 +2314,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     footprint_winding: footprintWinding,
     footprint_self_intersects: footprintSelfIntersects,
     footprint_area_px: Number(footprintAreaPxVal.toFixed(0)),
+    // v7: explicit area-space diagnostics
+    sqft_area_ratio: Number(sqftAreaRatio.toFixed(3)),
+    px_area_ratio: Number(pxAreaRatio.toFixed(3)),
+    coverage_area_space_mismatch: coverageAreaSpaceMismatch,
+    footprint_dsm_px_area: Number(footprintAreaPxVal.toFixed(0)),
+    faces_dsm_px_area: Number(totalFaceAreaPx.toFixed(0)),
+    footprint_area_sqft_diag: Number(footprintAreaSqft.toFixed(0)),
+    faces_area_sqft_diag: Number(totalPlanArea.toFixed(0)),
   };
 
   const logs: AutonomousGraphLog = {
