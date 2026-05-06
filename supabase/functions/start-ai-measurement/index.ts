@@ -5661,6 +5661,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       edge_acceptance_ratio: debug?.edge_acceptance_ratio ?? null,
       bbox_rescue_used_in_validation: debug?.bbox_rescue_used_in_validation ?? false,
       face_rejection_table: debug?.face_rejection_table || [],
+      failure_category: debug?.failure_category || null,
+      dominant_rejection: debug?.dominant_rejection || null,
     },
   }).select("id").single();
   if (error) throw error;
