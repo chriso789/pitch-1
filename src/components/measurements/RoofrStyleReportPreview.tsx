@@ -730,8 +730,8 @@ export function RoofrStyleReportPreview({
               <Button
                 size="sm"
                 onClick={handleConfirm}
-                disabled={isConfirming || isPDFGenerating || roofMeasurementData?.customer_report_ready === false}
-                title={roofMeasurementData?.customer_report_ready === false ? 'Report blocked — geometry did not pass validation' : undefined}
+                disabled={isConfirming || isPDFGenerating || isCustomerExportBlocked}
+                title={isCustomerExportBlocked ? `Report blocked — ${geometryGate.reason}` : undefined}
               >
                 {isConfirming || isPDFGenerating ? (
                   <>
