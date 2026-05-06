@@ -778,9 +778,9 @@ async function processJob(input: any) {
               unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.25);
               unionCand.validity_score = Math.min(1,
                 unionCand.area_score * 0.30 +
-                unionCand.solar_overlap_score * 0.25 +
+                unionCand.solar_overlap_score * 0.30 +
                 unionCand.geocode_center_score * 0.30 +
-                unionCand.polygon_shape_score * 0.15 +
+                unionCand.polygon_shape_score * 0.10 +
                 0.02,
               );
             }
