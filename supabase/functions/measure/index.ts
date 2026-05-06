@@ -1567,6 +1567,24 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     }
   }
 
+  // ============= PRE-SOLVER DSM DIAGNOSTICS =============
+  // Always collected before solver runs so we have debug even on failure
+  const effectiveDSMPreSolver = maskedDSMForSolver || dsmGridForSolver;
+  const preSolverDiagnostics = {
+    footprint_source: footprintSourceForContract,
+    footprint_valid: coords.length >= 4 && plan_sqft >= 200 && plan_sqft <= 50000,
+    footprint_area_sqft: Math.round(plan_sqft),
+    coordinate_space_input: 'geo',
+    coordinate_space_solver_expected: effectiveDSMPreSolver ? 'dsm_px' : 'geo',
+    dsm_loaded: !!dsmGridForSolver,
+    mask_loaded: !!roofMaskForContract,
+    dsm_width: effectiveDSMPreSolver?.width ?? 0,
+    dsm_height: effectiveDSMPreSolver?.height ?? 0,
+    roof_mask_pixel_count: roofMaskForContract ? Array.from(roofMaskForContract.data as Uint8Array).filter((v: number) => v > 0).length : 0,
+    roof_mask_ratio: roofMaskForContract ? Array.from(roofMaskForContract.data as Uint8Array).filter((v: number) => v > 0).length / (roofMaskForContract.width * roofMaskForContract.height) : 0,
+  };
+  console.log('[PRE_SOLVER_DIAGNOSTICS]', JSON.stringify(preSolverDiagnostics));
+
   const skeleton = computeStraightSkeleton(coords);
   const boundaryClass = classifyBoundaryEdges(coords, skeleton);
   
