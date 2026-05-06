@@ -55,7 +55,7 @@ export function safeEvalFormula(
     });
 
     // Build variables object with underscore prefix to avoid collisions
-    const vars: Record<string, number> = { ...SAFE_FUNCTIONS };
+    const vars: Record<string, any> = { ...SAFE_FUNCTIONS };
     for (const [key, value] of Object.entries(variables)) {
       vars[`_${key}`] = value ?? 0;
       vars[key] = value ?? 0; // Also allow bare names
