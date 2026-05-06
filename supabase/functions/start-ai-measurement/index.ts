@@ -4565,6 +4565,23 @@ async function processJob(input: any) {
         engine_version: "geometry_first_v2",
         engine_used: "geometry_first_v2",
         inference_source: resolvedGeometrySource,
+        geometry_source: resolvedGeometrySource === 'dsm_validated' || resolvedGeometrySource === 'vendor_verified' ? resolvedGeometrySource : 'heuristic_estimate',
+        dsm_contract_debug: {
+          footprint_source: footprintSource,
+          footprint_valid: true,
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          coordinate_space_solver: autonomousDebug?.coordinate_space_solver || 'geo',
+          dsm_loaded: !!autonomousDebug?.dsm_loaded,
+          mask_loaded: !!autonomousDebug?.mask_loaded,
+          raw_dsm_edge_count: Number(autonomousDebug?.raw_edges || autonomousDebug?.dsm_edges_detected || 0),
+          accepted_dsm_edge_count: Number(autonomousDebug?.accepted_edges || autonomousDebug?.dsm_edges_accepted || 0),
+          faces_attempted: Number(autonomousDebug?.faces_attempted || 0),
+          faces_validated: Number(autonomousDebug?.validated_faces || 0),
+          solver_failed: false,
+          solver_validation_status: autonomousDebug?.status || 'validated',
+          failure_classification: 'none',
+          face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
+        },
       })
       .select("id")
       .single();
