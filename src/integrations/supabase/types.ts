@@ -23234,6 +23234,47 @@ export type Database = {
           },
         ]
       }
+      pdf_collab_sessions: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          operation_stream: Json | null
+          participants: Json | null
+          pdf_document_id: string
+          session_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          operation_stream?: Json | null
+          participants?: Json | null
+          pdf_document_id: string
+          session_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          operation_stream?: Json | null
+          participants?: Json | null
+          pdf_document_id?: string
+          session_key?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_collab_sessions_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_documents: {
         Row: {
           created_at: string | null
@@ -23586,6 +23627,50 @@ export type Database = {
           },
         ]
       }
+      pdf_fonts: {
+        Row: {
+          created_at: string | null
+          embedded: boolean | null
+          font_family: string | null
+          font_metadata: Json | null
+          font_name: string | null
+          id: string
+          pdf_document_id: string
+          replacement_font: string | null
+          subset: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          embedded?: boolean | null
+          font_family?: string | null
+          font_metadata?: Json | null
+          font_name?: string | null
+          id?: string
+          pdf_document_id: string
+          replacement_font?: string | null
+          subset?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          embedded?: boolean | null
+          font_family?: string | null
+          font_metadata?: Json | null
+          font_name?: string | null
+          id?: string
+          pdf_document_id?: string
+          replacement_font?: string | null
+          subset?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_fonts_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_form_fields: {
         Row: {
           bounds: Json
@@ -23598,6 +23683,8 @@ export type Database = {
           options: Json | null
           page_id: string | null
           pdf_document_id: string
+          readonly: boolean | null
+          required: boolean | null
           sort_order: number | null
           updated_at: string | null
         }
@@ -23612,6 +23699,8 @@ export type Database = {
           options?: Json | null
           page_id?: string | null
           pdf_document_id: string
+          readonly?: boolean | null
+          required?: boolean | null
           sort_order?: number | null
           updated_at?: string | null
         }
@@ -23626,6 +23715,8 @@ export type Database = {
           options?: Json | null
           page_id?: string | null
           pdf_document_id?: string
+          readonly?: boolean | null
+          required?: boolean | null
           sort_order?: number | null
           updated_at?: string | null
         }
@@ -23954,6 +24045,113 @@ export type Database = {
           },
         ]
       }
+      pdf_search_index: {
+        Row: {
+          id: string
+          object_id: string | null
+          page_id: string | null
+          pdf_document_id: string
+          searchable_text: string | null
+          tsv: unknown
+        }
+        Insert: {
+          id?: string
+          object_id?: string | null
+          page_id?: string | null
+          pdf_document_id: string
+          searchable_text?: string | null
+          tsv?: unknown
+        }
+        Update: {
+          id?: string
+          object_id?: string | null
+          page_id?: string | null
+          pdf_document_id?: string
+          searchable_text?: string | null
+          tsv?: unknown
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_search_index_object_id_fkey"
+            columns: ["object_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_objects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_search_index_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_search_index_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_smart_fields: {
+        Row: {
+          bounds: Json | null
+          created_at: string | null
+          field_key: string
+          id: string
+          object_id: string | null
+          page_id: string | null
+          placeholder_text: string | null
+          replacement_rules: Json | null
+          template_id: string | null
+        }
+        Insert: {
+          bounds?: Json | null
+          created_at?: string | null
+          field_key: string
+          id?: string
+          object_id?: string | null
+          page_id?: string | null
+          placeholder_text?: string | null
+          replacement_rules?: Json | null
+          template_id?: string | null
+        }
+        Update: {
+          bounds?: Json | null
+          created_at?: string | null
+          field_key?: string
+          id?: string
+          object_id?: string | null
+          page_id?: string | null
+          placeholder_text?: string | null
+          replacement_rules?: Json | null
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_smart_fields_object_id_fkey"
+            columns: ["object_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_objects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_smart_fields_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_smart_fields_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_templates: {
         Row: {
           category: string | null
@@ -23962,8 +24160,10 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean | null
+          layout_graph: Json | null
           original_file_path: string | null
           page_count: number | null
+          reusable: boolean | null
           smart_tags: Json | null
           source_document_id: string | null
           tenant_id: string
@@ -23977,8 +24177,10 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          layout_graph?: Json | null
           original_file_path?: string | null
           page_count?: number | null
+          reusable?: boolean | null
           smart_tags?: Json | null
           source_document_id?: string | null
           tenant_id: string
@@ -23992,8 +24194,10 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          layout_graph?: Json | null
           original_file_path?: string | null
           page_count?: number | null
+          reusable?: boolean | null
           smart_tags?: Json | null
           source_document_id?: string | null
           tenant_id?: string
