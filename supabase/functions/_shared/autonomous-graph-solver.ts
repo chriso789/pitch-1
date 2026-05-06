@@ -1,5 +1,5 @@
 /**
- * Autonomous Roof Graph Solver v7 — Coverage Fix + Edge Containment + Clipper Debug
+ * Autonomous Roof Graph Solver v8 — Pre-Masked DSM Edge Detection
  * 
  * Pipeline:
  *   1. DSM edge detection (Sobel gradient + PCA line fit)
@@ -303,6 +303,95 @@ export interface AutonomousGraphInput {
     eaveEdges: [XY, XY][];
     rakeEdges: [XY, XY][];
   };
+}
+
+// ============= FOOTPRINT MASK RASTERIZATION =============
+
+/**
+ * Rasterize a footprint polygon (in DSM pixel space) into a Uint8Array mask.
+ * Pixels inside the polygon (+ buffer px) are set to 1, others to 0.
+ * This is used to constrain DSM edge detection to ONLY the roof region.
+ *
+ * Algorithm: scanline rasterization with optional dilation buffer.
+ */
+function rasterizeFootprintMask(
+  footprintPx: PxPt[],
+  width: number,
+  height: number,
+  bufferPx: number = 3
+): Uint8Array {
+  const mask = new Uint8Array(width * height);
+  if (footprintPx.length < 3) return mask;
+
+  // Compute bounding box with buffer
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of footprintPx) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const startY = Math.max(0, Math.floor(minY) - bufferPx);
+  const endY = Math.min(height - 1, Math.ceil(maxY) + bufferPx);
+  const startX = Math.max(0, Math.floor(minX) - bufferPx);
+  const endX = Math.min(width - 1, Math.ceil(maxX) + bufferPx);
+
+  // Scanline fill: for each row, find intersections with polygon edges
+  for (let y = startY; y <= endY; y++) {
+    const intersections: number[] = [];
+    const n = footprintPx.length;
+    for (let i = 0; i < n; i++) {
+      const a = footprintPx[i];
+      const b = footprintPx[(i + 1) % n];
+      if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+        const xIntersect = a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x);
+        intersections.push(xIntersect);
+      }
+    }
+    intersections.sort((a, b) => a - b);
+    
+    // Fill between pairs of intersections
+    for (let i = 0; i < intersections.length - 1; i += 2) {
+      const x1 = Math.max(startX, Math.floor(intersections[i]));
+      const x2 = Math.min(endX, Math.ceil(intersections[i + 1]));
+      for (let x = x1; x <= x2; x++) {
+        mask[y * width + x] = 1;
+      }
+    }
+  }
+
+  // Dilate by bufferPx to include edges right at the footprint boundary
+  if (bufferPx > 0) {
+    const dilated = new Uint8Array(mask.length);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (mask[y * width + x] === 1) {
+          for (let dy = -bufferPx; dy <= bufferPx; dy++) {
+            for (let dx = -bufferPx; dx <= bufferPx; dx++) {
+              const ny = y + dy, nx = x + dx;
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                dilated[ny * width + nx] = 1;
+              }
+            }
+          }
+        }
+      }
+    }
+    return dilated;
+  }
+
+  return mask;
+}
+
+/**
+ * Intersect two masks: result[i] = 1 only if both a[i] and b[i] are 1.
+ */
+function intersectMasks(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const result = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) {
+    result[i] = (a[i] && b[i]) ? 1 : 0;
+  }
+  return result;
 }
 
 // ============= GEOMETRY HELPERS =============
@@ -770,15 +859,19 @@ function scoreAndFilterEdges(
   }
   if (footprintPx.length > 0) {
     console.log(`[EDGE_SCORING] Footprint px sample: [${footprintPx[0].x.toFixed(1)}, ${footprintPx[0].y.toFixed(1)}]`);
-    console.log(`[EDGE_SCORING] Using PIXEL-SPACE containment (v5)`);
+    console.log(`[EDGE_SCORING] Using RELAXED containment (v8 — edges already pre-masked to roof region)`);
   }
 
-  // A. DSM edges — primary evidence. CONTAINMENT IN PIXEL SPACE.
+  // A. DSM edges — primary evidence.
+  // v8: Edges are already pre-masked to roof region during detection.
+  // Footprint containment is now a soft filter — accept if midpoint is inside
+  // OR if any significant portion of the edge overlaps the footprint.
   for (const de of dsmEdges) {
     const lengthFt = distanceFt(de.start, de.end, midLat);
     if (lengthFt < MIN_EDGE_LENGTH_FT) { skippedByLength++; continue; }
 
-    // PIXEL-SPACE containment: test edge midpoint and endpoints in DSM pixel footprint
+    // Relaxed containment: since edge detection was pre-masked to roof region,
+    // most edges are already valid. Only reject edges clearly outside footprint.
     if (hasFootprintPx) {
       const startPx: PxPt = { x: de.startPx[0], y: de.startPx[1] };
       const endPx: PxPt = { x: de.endPx[0], y: de.endPx[1] };
@@ -787,17 +880,32 @@ function scoreAndFilterEdges(
       const endIn = pointInPolygonPx(endPx, footprintPx);
       const midIn = pointInPolygonPx(midPx, footprintPx);
       
-      // Accept if midpoint OR any endpoint is inside footprint
+      // v8: Accept if midpoint inside OR any endpoint inside OR edge is near boundary
       if (midIn || startIn || endIn) {
-        // pass
+        // pass — at least one point inside footprint
       } else {
-        // Check distance to footprint boundary — accept if within 5px
-        const distToFP = minDistanceToPolygonBoundaryPx(midPx, footprintPx);
-        if (distToFP <= 5.0) {
-          // Near-boundary edge — accept with reduced priority (handled by score)
+        // Compute percent of edge length inside footprint by sampling
+        const samples = 5;
+        let insideSamples = 0;
+        for (let s = 0; s <= samples; s++) {
+          const t = s / samples;
+          const sx = startPx.x + t * (endPx.x - startPx.x);
+          const sy = startPx.y + t * (endPx.y - startPx.y);
+          if (pointInPolygonPx({ x: sx, y: sy }, footprintPx)) insideSamples++;
+        }
+        const pctInsideMask = insideSamples / (samples + 1);
+        
+        // Accept if >=40% of edge is inside mask, or if very close to boundary
+        if (pctInsideMask >= 0.40) {
+          // pass — significant overlap with footprint
         } else {
-          skippedByFootprint++;
-          continue;
+          const distToFP = minDistanceToPolygonBoundaryPx(midPx, footprintPx);
+          if (distToFP <= 8.0) {
+            // Near-boundary edge — accept
+          } else {
+            skippedByFootprint++;
+            continue;
+          }
         }
       }
     } else {
@@ -1521,7 +1629,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v7 — Coverage Fix + Edge Containment + Clipper Debug`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v8 — Pre-Masked DSM Edge Detection`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -1549,16 +1657,48 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push('footprint_self_intersection_detected');
   }
 
-  // ===== STEP 1: DSM edge detection =====
+  // ===== STEP 1: PRE-MASKED DSM EDGE DETECTION (v8) =====
+  // Architecture: constrain edge detection to roof region BEFORE topology,
+  // not afterward. Rasterize footprint polygon into a pixel mask and pass it
+  // to the edge detector so only roof-region pixels produce structural edges.
   let dsmRidges: DSMEdgeCandidate[] = [];
   let dsmValleys: DSMEdgeCandidate[] = [];
+  let unmaskEdgeCount = 0;
+  let maskedEdgeCount = 0;
+  let roofMaskPixelCount = 0;
 
   if (effectiveDSM) {
-    const mask = input.maskedDSM?.mask || null;
-    const detection = detectStructuralEdges(effectiveDSM, mask);
+    const { width, height } = effectiveDSM;
+
+    // Build roof-region mask from footprint polygon (3px buffer for boundary edges)
+    const footprintMask = footprintPxCCW.length >= 3
+      ? rasterizeFootprintMask(footprintPxCCW, width, height, 3)
+      : null;
+
+    // Intersect with existing DSM mask (if any) so we don't scan noData regions
+    const existingMask = input.maskedDSM?.mask || null;
+    let roofMask: Uint8Array | null;
+    if (footprintMask && existingMask) {
+      roofMask = intersectMasks(footprintMask, existingMask);
+    } else {
+      roofMask = footprintMask || existingMask;
+    }
+
+    // Count mask pixels for diagnostics
+    if (roofMask) {
+      for (let i = 0; i < roofMask.length; i++) {
+        if (roofMask[i]) roofMaskPixelCount++;
+      }
+    }
+
+    // Run edge detection ONLY inside roof mask
+    const detection = detectStructuralEdges(effectiveDSM, roofMask);
     dsmRidges = detection.ridges;
     dsmValleys = detection.valleys;
-    console.log(`  DSM edges: ${dsmRidges.length} ridges, ${dsmValleys.length} valleys (${detection.stats.processingMs}ms)`);
+    maskedEdgeCount = dsmRidges.length + dsmValleys.length;
+
+    console.log(`  [v8 PRE-MASK] Roof mask: ${roofMaskPixelCount} pixels out of ${width * height} total (${(roofMaskPixelCount / (width * height) * 100).toFixed(1)}%)`);
+    console.log(`  DSM edges (pre-masked): ${dsmRidges.length} ridges, ${dsmValleys.length} valleys (${detection.stats.processingMs}ms)`);
   } else {
     warnings.push('DSM not available — structural detection limited to skeleton');
   }
@@ -2322,6 +2462,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     faces_dsm_px_area: Number(totalFaceAreaPx.toFixed(0)),
     footprint_area_sqft_diag: Number(footprintAreaSqft.toFixed(0)),
     faces_area_sqft_diag: Number(totalPlanArea.toFixed(0)),
+    // v8: pre-masked edge detection diagnostics
+    engine_version: 'v8',
+    pre_mask_enabled: true,
+    roof_mask_pixel_count: roofMaskPixelCount,
+    roof_mask_tile_pct: effectiveDSM ? Number((roofMaskPixelCount / (effectiveDSM.width * effectiveDSM.height) * 100).toFixed(1)) : 0,
+    masked_edge_count: maskedEdgeCount,
+    unmasked_edge_count: unmaskEdgeCount,
   };
 
   const logs: AutonomousGraphLog = {
