@@ -1259,7 +1259,7 @@ async function processJob(input: any) {
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
         lng: coords.lng,
-        coordinateSpaceSolver: "dsm_px",
+        coordinateSpaceSolver: "dsm_px", // Legacy field — solver now self-reports truthful space in output
         footprintCoords: footprintGeo,
         solarSegments,
         dsmGrid,
