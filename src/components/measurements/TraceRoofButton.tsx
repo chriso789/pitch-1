@@ -3,12 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Scan, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface TraceRoofButtonProps {
   lat: number;
@@ -25,39 +20,58 @@ interface TraceLine {
 }
 
 interface TraceResult {
-  ridges: TraceLine[];
-  hips: TraceLine[];
-  valleys: TraceLine[];
-  eaves: TraceLine[];
-  rakes: TraceLine[];
-  step_flashing: TraceLine[];
-  facets?: { name: string; areaSqft: number; pitch: string }[];
+  roofType?: string;
+  components?: {
+    ridges?: TraceLine[];
+    hips?: TraceLine[];
+    valleys?: TraceLine[];
+    eaves?: TraceLine[];
+    rakes?: TraceLine[];
+    step_flashing?: TraceLine[];
+  };
+  ridges?: TraceLine[];
+  hips?: TraceLine[];
+  valleys?: TraceLine[];
+  eaves?: TraceLine[];
+  rakes?: TraceLine[];
+  step_flashing?: TraceLine[];
+  facets?: { id?: string; name?: string; vertices?: number[][]; estimatedPitch?: string; estimatedAreaSqft?: number; areaSqft?: number; pitch?: string }[];
+  confidence?: number;
+  notes?: string;
 }
 
-const LINE_COLORS: Record<string, string> = {
-  ridges: '#FF0000',
-  hips: '#FF8800',
-  valleys: '#00AAFF',
-  eaves: '#00FF00',
-  rakes: '#FFFF00',
-  step_flashing: '#FF00FF',
-};
+function sumLinearFt(lines?: TraceLine[]): number {
+  if (!lines?.length) return 0;
+  return lines.reduce((sum, l) => sum + (l.lengthEstimateFt || 0), 0);
+}
 
-const LINE_LABELS: Record<string, string> = {
-  ridges: 'Ridge',
-  hips: 'Hip',
-  valleys: 'Valley',
-  eaves: 'Eave',
-  rakes: 'Rake',
-  step_flashing: 'Step Flash',
-};
+/** Convert pixel-coordinate lines to WKT LINESTRING features for the measurement system */
+function traceLinesToWkt(type: string, lines?: TraceLine[]): any[] {
+  if (!lines?.length) return [];
+  return lines.map((l, i) => ({
+    type,
+    wkt: `LINESTRING(${l.start[0]} ${l.start[1]}, ${l.end[0]} ${l.end[1]})`,
+    length_ft: l.lengthEstimateFt || 0,
+    source: 'ai_vision_trace',
+  }));
+}
+
+/** Convert trace facets to the facets_json format */
+function traceFacetsToJson(facets?: TraceResult['facets']): any[] | null {
+  if (!facets?.length) return null;
+  return facets.map((f, i) => ({
+    facet_number: i + 1,
+    id: f.id || f.name || `F${i + 1}`,
+    polygon_points_px: f.vertices || [],
+    area_flat_sqft: f.estimatedAreaSqft || f.areaSqft || 0,
+    pitch: f.estimatedPitch || f.pitch || 'unknown',
+    source: 'ai_vision_trace',
+  }));
+}
 
 export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess }: TraceRoofButtonProps) {
   const [isTracing, setIsTracing] = useState(false);
-  const [traceResult, setTraceResult] = useState<TraceResult | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [satImageUrl, setSatImageUrl] = useState('');
-  const [imageSize, setImageSize] = useState(1280);
+  const effectiveTenantId = useEffectiveTenantId();
 
   const handleTrace = async () => {
     if (!lat || !lng) {
@@ -74,23 +88,101 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // The edge function returns { data: { roofType, components: {...}, facets, ... }, imageUrl, imageSize }
-      // We need the components object which has ridges/hips/valleys/eaves/rakes/step_flashing arrays
       const aiData = data?.data || data;
-      const traceData = aiData?.components
-        ? { ...aiData.components, facets: aiData.facets }
-        : aiData;
-      setTraceResult(traceData);
-      
-      // Use the imageSize from the response (scale=2 means 1280px)
-      setImageSize(data?.imageSize || 1280);
-      
-      // Use the image URL returned by the edge function (has server-side API key)
-      const url = data?.imageUrl || `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=22&size=512x512&scale=2&maptype=satellite`;
-      setSatImageUrl(url);
-      setDialogOpen(true);
+      const components = aiData?.components || aiData;
+      const imageSize = data?.imageSize || 1280;
+      const satImageUrl = data?.imageUrl || '';
 
-      toast({ title: 'Roof traced', description: 'AI vision trace complete. Review the overlay.' });
+      // Normalize — components may be nested under .components or flat
+      const ridges = components?.ridges || [];
+      const hips = components?.hips || [];
+      const valleys = components?.valleys || [];
+      const eaves = components?.eaves || [];
+      const rakes = components?.rakes || [];
+      const stepFlashing = components?.step_flashing || [];
+      const facets = aiData?.facets || components?.facets || [];
+
+      // Build linear features WKT array
+      const linearFeaturesWkt = [
+        ...traceLinesToWkt('ridge', ridges),
+        ...traceLinesToWkt('hip', hips),
+        ...traceLinesToWkt('valley', valleys),
+        ...traceLinesToWkt('eave', eaves),
+        ...traceLinesToWkt('rake', rakes),
+        ...traceLinesToWkt('step', stepFlashing),
+      ];
+
+      // Calculate totals
+      const totalRidge = sumLinearFt(ridges);
+      const totalHip = sumLinearFt(hips);
+      const totalValley = sumLinearFt(valleys);
+      const totalEave = sumLinearFt(eaves);
+      const totalRake = sumLinearFt(rakes);
+      const totalStepFlashing = sumLinearFt(stepFlashing);
+
+      // Calculate total area from facets
+      const totalAreaFlat = facets.reduce((s: number, f: any) => s + (f.estimatedAreaSqft || f.areaSqft || 0), 0);
+      const predominantPitch = facets.length > 0 
+        ? (facets[0].estimatedPitch || facets[0].pitch || 'unknown') 
+        : 'unknown';
+
+      // Persist as a roof_measurements record
+      const measurementInsert: any = {
+        tenant_id: effectiveTenantId,
+        lead_id: pipelineEntryId,
+        source_record_type: 'pipeline_entry',
+        source_record_id: pipelineEntryId,
+        source_button: 'ai_trace',
+        target_lat: lat,
+        target_lng: lng,
+        gps_coordinates: { lat, lng },
+        property_address: address || '',
+        detection_method: 'ai_vision_trace',
+        measurement_method: 'ai_vision_trace',
+        ai_model_version: 'gemini-2.5-pro',
+        roof_type: aiData?.roofType || 'unknown',
+        predominant_pitch: predominantPitch,
+        facet_count: facets.length || 0,
+        total_area_flat_sqft: totalAreaFlat || 0,
+        total_area_adjusted_sqft: totalAreaFlat || 0, // Will be refined when pitch is applied
+        total_squares: totalAreaFlat ? +(totalAreaFlat / 100).toFixed(1) : 0,
+        total_ridge_length: totalRidge,
+        total_hip_length: totalHip,
+        total_valley_length: totalValley,
+        total_eave_length: totalEave,
+        total_rake_length: totalRake,
+        total_step_flashing_length: totalStepFlashing,
+        linear_features_wkt: linearFeaturesWkt,
+        facets_json: traceFacetsToJson(facets),
+        analysis_image_size: { width: imageSize, height: imageSize },
+        analysis_zoom: 22,
+        satellite_overlay_url: satImageUrl,
+        google_maps_image_url: satImageUrl,
+        selected_image_source: 'google_static',
+        image_source: 'google_static',
+        measurement_confidence: (aiData?.confidence || 0) / 100,
+        validation_status: 'needs_review',
+        requires_manual_review: true,
+        ai_detection_data: {
+          trace_result: aiData,
+          source: 'trace-roof-edge-function',
+          image_size: imageSize,
+          image_url: satImageUrl,
+        },
+      };
+
+      const { error: insertError } = await supabase
+        .from('roof_measurements')
+        .insert(measurementInsert);
+
+      if (insertError) {
+        console.error('Failed to persist AI trace measurement:', insertError);
+        toast({ title: 'Trace completed but save failed', description: insertError.message, variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'AI Trace Complete', description: `Traced ${facets.length} facets, ${Math.round(totalAreaFlat)} sq ft. Review in measurements.` });
+      onSuccess?.();
     } catch (err: any) {
       console.error('Trace error:', err);
       toast({ title: 'Trace failed', description: err.message || 'Could not trace roof', variant: 'destructive' });
@@ -99,89 +191,16 @@ export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess 
     }
   };
 
-  const totalByType = (type: string) => {
-    const lines = traceResult?.[type as keyof TraceResult] as TraceLine[] | undefined;
-    if (!lines?.length) return 0;
-    return lines.reduce((sum, l) => sum + (l.lengthEstimateFt || 0), 0);
-  };
-
   return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleTrace}
-        disabled={isTracing}
-        className="flex items-center gap-2"
-      >
-        {isTracing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scan className="h-4 w-4" />}
-        {isTracing ? 'Tracing...' : 'AI Trace'}
-      </Button>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>AI Vision Roof Trace</DialogTitle>
-          </DialogHeader>
-
-          {traceResult && (
-            <div className="space-y-4">
-              {/* Overlay canvas */}
-              <div className="relative w-full" style={{ maxWidth: 640 }}>
-                <img src={satImageUrl} alt="Satellite" className="w-full rounded-lg" crossOrigin="anonymous" />
-                <svg
-                  viewBox={`0 0 ${imageSize} ${imageSize}`}
-                  className="absolute inset-0 w-full h-full"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {Object.entries(LINE_COLORS).map(([type, color]) => {
-                    const lines = traceResult[type as keyof TraceResult] as TraceLine[] | undefined;
-                    if (!lines?.length) return null;
-                    return lines.map((line, i) => (
-                      <line
-                        key={`${type}-${i}`}
-                        x1={line.start[0]}
-                        y1={line.start[1]}
-                        x2={line.end[0]}
-                        y2={line.end[1]}
-                        stroke={color}
-                        strokeWidth={3}
-                        strokeLinecap="round"
-                      />
-                    ));
-                  })}
-                </svg>
-              </div>
-
-              {/* Legend */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-                {Object.entries(LINE_COLORS).map(([type, color]) => {
-                  const total = totalByType(type);
-                  if (!total) return null;
-                  return (
-                    <div key={type} className="flex items-center gap-2">
-                      <div className="w-4 h-1 rounded" style={{ backgroundColor: color }} />
-                      <span>{LINE_LABELS[type]}: {Math.round(total)} ft</span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Facets */}
-              {traceResult.facets?.length ? (
-                <div className="text-sm space-y-1">
-                  <p className="font-medium">Facets:</p>
-                  {traceResult.facets.map((f, i) => (
-                    <p key={i} className="text-muted-foreground">
-                      {f.name}: {Math.round(f.areaSqft)} sq ft ({f.pitch})
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleTrace}
+      disabled={isTracing}
+      className="flex items-center gap-2"
+    >
+      {isTracing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scan className="h-4 w-4" />}
+      {isTracing ? 'Tracing...' : 'AI Trace'}
+    </Button>
   );
 }
