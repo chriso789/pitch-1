@@ -4,7 +4,7 @@
  * NEVER overwrites original PDF.
  */
 
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, degrees } from 'pdf-lib';
 import type { PdfEngineOperation, PdfEngineObject } from './engineTypes';
 
 export async function compileFromOperations(
@@ -109,7 +109,6 @@ function applyOp(
       if (pageIdx < 0 || pageIdx >= pages.length) return;
       const page = pages[pageIdx];
       const current = page.getRotation().angle || 0;
-      const { degrees } = require('pdf-lib');
       page.setRotation(degrees(current + (p.degrees || 90)));
       break;
     }
