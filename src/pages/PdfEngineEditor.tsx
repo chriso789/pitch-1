@@ -11,6 +11,9 @@ import { PdfEngine } from '@/lib/pdf-engine/PdfEngine';
 import { parsePdfToObjectGraph } from '@/lib/pdf-engine/PdfObjectParser';
 import { persistParsedPages } from '@/lib/pdf-engine/PdfObjectStore';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl } from '@/lib/pdfRenderer';
+import { ocrPageImage, persistOcrObjects } from '@/lib/pdf-engine/PdfOcrEngine';
+import { aiRewriteText } from '@/lib/pdf-engine/PdfAiRewriter';
+import { PdfTemplateEngine, STANDARD_SMART_TAGS } from '@/lib/pdf-engine/PdfTemplateEngine';
 import { PdfCanvas } from '@/components/pdf-engine/PdfCanvas';
 import { PdfToolbar, type ToolMode } from '@/components/pdf-engine/PdfToolbar';
 import { PdfPageSidebar } from '@/components/pdf-engine/PdfPageSidebar';
@@ -20,12 +23,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   ArrowLeft, Upload, FileText, Layers, History, Settings2
 } from 'lucide-react';
 import type { PdfEngineObject } from '@/lib/pdf-engine/engineTypes';
+import type { RewriteMode } from '@/lib/pdf-engine/PdfAiRewriter';
 
 const PdfEngineEditor = () => {
   const { id } = useParams<{ id: string }>();
@@ -42,8 +47,12 @@ const PdfEngineEditor = () => {
   const [selectedObject, setSelectedObject] = useState<PdfEngineObject | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isOcrRunning, setIsOcrRunning] = useState(false);
   const [showUpload, setShowUpload] = useState(!id);
   const [uploadTitle, setUploadTitle] = useState('');
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templateDesc, setTemplateDesc] = useState('');
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
 
   // Load document info
@@ -120,9 +129,7 @@ const PdfEngineEditor = () => {
   }, [tenantId, user, uploadTitle, navigate, toast]);
 
   const handleReplaceText = useCallback(async (objectId: string, newText: string) => {
-    await engine.pushOperation('replace_text', {
-      replacement_text: newText,
-    }, objectId);
+    await engine.pushOperation('replace_text', { replacement_text: newText }, objectId);
     toast({ title: 'Text replaced' });
   }, [engine, toast]);
 
@@ -147,6 +154,85 @@ const PdfEngineEditor = () => {
       text: bounds.text, page_number: bounds.pageNumber,
     });
   }, [engine]);
+
+  // OCR handler
+  const handleOcr = useCallback(async () => {
+    const pageImage = pageImages.get(activePage);
+    const pageMeta = engine.pages.find(p => p.page_number === activePage);
+    if (!pageImage || !pageMeta) return;
+
+    setIsOcrRunning(true);
+    try {
+      const result = await ocrPageImage(
+        pageImage, activePage, pageMeta.width, pageMeta.height, 1.5
+      );
+      if (result.words.length > 0) {
+        const count = await persistOcrObjects(id!, pageMeta.id, activePage, result);
+        await engine.pushOperation('ocr_extract', {
+          page_number: activePage,
+          objects_created: count,
+        });
+        engine.invalidate();
+        toast({ title: 'OCR complete', description: `Extracted ${count} text lines` });
+      } else {
+        toast({ title: 'No text found', description: 'OCR did not detect text on this page' });
+      }
+    } catch (err: any) {
+      toast({ title: 'OCR failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsOcrRunning(false);
+    }
+  }, [pageImages, activePage, engine, id, toast]);
+
+  // AI Rewrite handler
+  const handleAiRewrite = useCallback(async (
+    objectId: string, rewriteMode: RewriteMode, customInstruction?: string
+  ) => {
+    const obj = engine.objects.find(o => o.id === objectId);
+    if (!obj) return;
+    const originalText = (obj.content as any)?.text || '';
+    if (!originalText) return;
+
+    try {
+      const result = await aiRewriteText({
+        originalText,
+        mode: rewriteMode,
+        customInstruction,
+      });
+      await engine.pushOperation('ai_rewrite', {
+        original_text: originalText,
+        rewritten_text: result.rewrittenText,
+        mode: rewriteMode,
+      }, objectId);
+      toast({ title: 'Text rewritten', description: `Applied ${rewriteMode} rewrite` });
+    } catch (err: any) {
+      toast({ title: 'Rewrite failed', description: err.message, variant: 'destructive' });
+    }
+  }, [engine, toast]);
+
+  // Save as template
+  const handleSaveAsTemplate = useCallback(async () => {
+    if (!tenantId || !user?.id || !id) return;
+    try {
+      await PdfTemplateEngine.saveAsTemplate(
+        tenantId,
+        user.id,
+        templateTitle || docQuery.data?.title || 'Untitled Template',
+        templateDesc,
+        id,
+        STANDARD_SMART_TAGS,
+        'general',
+        docQuery.data?.original_file_path,
+        docQuery.data?.page_count
+      );
+      setShowTemplateDialog(false);
+      setTemplateTitle('');
+      setTemplateDesc('');
+      toast({ title: 'Template saved', description: 'Document saved as reusable template' });
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err.message, variant: 'destructive' });
+    }
+  }, [tenantId, user, id, templateTitle, templateDesc, docQuery.data, toast]);
 
   const handleCompile = useCallback(async () => {
     if (!originalBytesRef.current) return;
@@ -178,10 +264,7 @@ const PdfEngineEditor = () => {
   }, [engine, toast]);
 
   const handleRotatePage = useCallback(async () => {
-    await engine.pushOperation('rotate_page', {
-      page_number: activePage,
-      degrees: 90,
-    });
+    await engine.pushOperation('rotate_page', { page_number: activePage, degrees: 90 });
   }, [engine, activePage]);
 
   const activePageImage = pageImages.get(activePage);
@@ -257,6 +340,9 @@ const PdfEngineEditor = () => {
         isSaving={isSaving}
         operationCount={activeOpsCount}
         onRotatePage={handleRotatePage}
+        onOcr={handleOcr}
+        isOcrRunning={isOcrRunning}
+        onSaveAsTemplate={() => setShowTemplateDialog(true)}
       />
 
       {/* Main layout */}
@@ -319,6 +405,7 @@ const PdfEngineEditor = () => {
                 selectedObject={selectedObject}
                 onReplaceText={handleReplaceText}
                 onDeleteObject={handleDeleteObject}
+                onAiRewrite={handleAiRewrite}
               />
             </TabsContent>
             <TabsContent value="history" className="flex-1 overflow-hidden">
@@ -330,6 +417,35 @@ const PdfEngineEditor = () => {
           </Tabs>
         </div>
       </div>
+
+      {/* Save as Template Dialog */}
+      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Template title"
+              value={templateTitle}
+              onChange={e => setTemplateTitle(e.target.value)}
+            />
+            <Textarea
+              placeholder="Description (optional)"
+              value={templateDesc}
+              onChange={e => setTemplateDesc(e.target.value)}
+              className="min-h-[80px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Standard smart tags will be available: {'{'}{'{'} customer_name {'}'}{'}'}, {'{'}{'{'} job_number {'}'}{'}'}, {'{'}{'{'} company_name {'}'}{'}'}...
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplateDialog(false)}>Cancel</Button>
+            <Button onClick={handleSaveAsTemplate}>Save Template</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </GlobalLayout>
   );
 };
