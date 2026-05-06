@@ -1164,7 +1164,27 @@ export function UnifiedMeasurementPanel({
                   </span>
                 </div>
 
-                {/* Diagram intentionally hidden — open via "View Report" */}
+                {/* Inline roof diagram overlay */}
+                {hasGeometry && !aiIsBlocked && (
+                  <div className="rounded-lg overflow-hidden border border-border">
+                    <SchematicRoofDiagram
+                      measurement={diagramMeasurement}
+                      tags={diagramTags}
+                      measurementId={ai.id}
+                      width={600}
+                      height={400}
+                      showSatelliteOverlay={true}
+                      showLengthLabels={true}
+                      showLegend={false}
+                      showCompass={false}
+                      showTotals={false}
+                      showFacets={true}
+                      showQAPanel={false}
+                      showDebugMarkers={false}
+                      showDebugPanel={false}
+                    />
+                  </div>
+                )}
 
                 {aiIsBlocked && (
                   <MeasurementFailureAlert
