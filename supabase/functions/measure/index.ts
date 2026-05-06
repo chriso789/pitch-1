@@ -3576,6 +3576,10 @@ Deno.serve(async (req) => {
               total_eave_length: eaveTot,
               total_rake_length: rakeTot,
               ai_detection_data: { engine: engineUsed, source: meas.source, feature_count: features.length },
+              // DSM Contract fields
+              geometry_source: meas.dsmContract?.geometry_source || 'heuristic_estimate',
+              customer_report_ready: meas.dsmContract?.customer_report_ready || false,
+              dsm_contract_debug: meas.dsmContract?.debug_metrics || null,
             };
 
             const { error: rmErr } = await adminSupabase
