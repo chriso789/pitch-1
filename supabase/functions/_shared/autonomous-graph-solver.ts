@@ -99,6 +99,47 @@ export interface RejectedEdgeDebug {
   type: string;
   source: string;
   reason: string;
+  length_ft?: number;
+  inside_footprint?: boolean;
+  rejection_stage?: string;
+}
+
+export interface EnrichedFaceRejection {
+  face_id: string;
+  vertex_count: number;
+  area_sqft: number;
+  bbox_geo: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  centroid_geo: XY | null;
+  inside_footprint: boolean;
+  footprint_overlap_ratio: number | null;
+  mask_overlap_ratio: number | null;
+  plane_rms: number | null;
+  pitch_degrees: number | null;
+  shared_edge_count: number;
+  boundary_edge_count: number;
+  rejection_reasons: string[];
+}
+
+export interface EdgeRejectionSummary {
+  total_raw: number;
+  rejected_by_length: number;
+  rejected_by_footprint: number;
+  rejected_by_score: number;
+  rejected_by_intersection: number;
+  rejected_by_duplicate: number;
+  rejected_by_connectivity: number;
+  accepted_final: number;
+  acceptance_ratio: number;
+  edge_filter_over_aggressive: boolean;
+}
+
+export interface FaceClippingDiagnostics {
+  face_bbox_solver: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  footprint_bbox_solver: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  bbox_overlap_ratio_before_clip: number;
+  clipping_footprint_source: string;
+  clipping_coordinate_space: string;
+  coordinate_space_mismatch_detected: boolean;
 }
 
 export interface AutonomousGraphResult {
@@ -113,7 +154,11 @@ export interface AutonomousGraphResult {
   faces: GraphFace[];
   rejected_edges: RejectedEdgeDebug[];
   face_rejection_table?: Array<{ face_id: string; area_sqft: number; plane_rms: number | null; inside_footprint: boolean; mask_overlap: number | null; rejection_reason: string }>;
-  
+  enriched_face_rejections?: EnrichedFaceRejection[];
+  edge_rejection_summary?: EdgeRejectionSummary;
+  face_clipping_diagnostics?: FaceClippingDiagnostics[];
+  bbox_rescue_used_for_display_only?: boolean;
+  bbox_rescue_used_in_validation?: boolean;
   totals: {
     ridge_ft: number;
     hip_ft: number;
@@ -342,7 +387,7 @@ function scoreAndFilterEdges(
   dsmGrid: DSMGrid | null,
   midLat: number,
   isComplex: boolean
-): { accepted: ScoredEdge[]; prunedByScore: number; rejectedDebug: RejectedEdgeDebug[] } {
+): { accepted: ScoredEdge[]; prunedByScore: number; rejectedDebug: RejectedEdgeDebug[]; rejectedByLength: number; rejectedByFootprint: number; totalRaw: number } {
   const candidates: ScoredEdge[] = [];
   let edgeIdx = 0;
   let skippedByLength = 0, skippedByFootprint = 0;
@@ -428,9 +473,13 @@ function scoreAndFilterEdges(
     type: c.classifiedType,
     source: c.source,
     reason: `score_${c.score.toFixed(3)}_below_${EDGE_SCORE_THRESHOLD}`,
+    length_ft: c.lengthFt,
+    inside_footprint: true, // These passed footprint check but failed score
+    rejection_stage: 'score_filter',
   }));
 
-  return { accepted, prunedByScore, rejectedDebug };
+  const totalRaw = dsmEdges.length + skeletonEdges.length;
+  return { accepted, prunedByScore, rejectedDebug, rejectedByLength: skippedByLength, rejectedByFootprint: skippedByFootprint, totalRaw };
 }
 
 // ============= STEP 2: CONSERVATIVE SNAPPING (NO CENTER COLLAPSE) =============
@@ -1162,7 +1211,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   // ===== STEP 2: Score & filter (PRUNE BEFORE GRAPH) =====
-  const { accepted: scoredEdges, prunedByScore, rejectedDebug: rejectedEdgesDebug } = scoreAndFilterEdges(
+  const { accepted: scoredEdges, prunedByScore, rejectedDebug: rejectedEdgesDebug, rejectedByLength, rejectedByFootprint, totalRaw } = scoreAndFilterEdges(
     [...dsmRidges, ...dsmValleys],
     input.skeletonEdges,
     input.solarSegments,
@@ -1172,7 +1221,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     complexity.isComplex
   );
 
-  console.log(`  Scoring: ${scoredEdges.length} accepted, ${prunedByScore} pruned by score (threshold ${EDGE_SCORE_THRESHOLD})`);
+  const edgeAcceptanceRatio = totalRaw > 0 ? scoredEdges.length / totalRaw : 0;
+  const edgeFilterOverAggressive = edgeAcceptanceRatio < 0.25 && totalRaw > 10;
+  if (edgeFilterOverAggressive) {
+    warnings.push(`edge_filter_over_aggressive: acceptance_ratio=${edgeAcceptanceRatio.toFixed(3)} (${scoredEdges.length}/${totalRaw})`);
+  }
+
+  console.log(`  Scoring: ${scoredEdges.length} accepted, ${prunedByScore} pruned by score (threshold ${EDGE_SCORE_THRESHOLD}), acceptance_ratio=${edgeAcceptanceRatio.toFixed(3)}`);
+
 
   // ===== STEP 3: Conservative snapping (NO center collapse) =====
   const perimeterVertices: XY[] = [];
@@ -1243,6 +1299,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   let facesRejected = 0;
   const faceRejectionTable: NonNullable<AutonomousGraphResult['face_rejection_table']> = [];
+  const enrichedFaceRejections: EnrichedFaceRejection[] = [];
+  const faceClippingDiagnostics: FaceClippingDiagnostics[] = [];
   const graphFaces: GraphFace[] = [];
   faceCountBeforeMerge = planar.faces.length;
 
@@ -1302,15 +1360,56 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     if (sum > 0) clipFootprint = clipFootprint.reverse(); // Make CCW
   }
 
+  // Compute footprint bbox for clipping diagnostics
+  const footprintBboxSolver = getBounds(input.footprintCoords);
+
   for (const [faceIdx, face] of planar.faces.entries()) {
     let polygon = effectiveDSM ? face.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
     if (polygon.length < 3) continue;
+
+    const faceId = `attempt-${faceIdx + 1}`;
+    const rejectionReasons: string[] = [];
+
+    // Compute pre-clip face bbox for clipping diagnostics
+    const faceBboxSolver = getBounds(polygon);
+    const fbW = faceBboxSolver.maxX - faceBboxSolver.minX;
+    const fbH = faceBboxSolver.maxY - faceBboxSolver.minY;
+    const fpW = footprintBboxSolver.maxX - footprintBboxSolver.minX;
+    const fpH = footprintBboxSolver.maxY - footprintBboxSolver.minY;
+    const overlapX = Math.max(0, Math.min(faceBboxSolver.maxX, footprintBboxSolver.maxX) - Math.max(faceBboxSolver.minX, footprintBboxSolver.minX));
+    const overlapY = Math.max(0, Math.min(faceBboxSolver.maxY, footprintBboxSolver.maxY) - Math.max(faceBboxSolver.minY, footprintBboxSolver.minY));
+    const faceBboxArea = Math.max(fbW * fbH, 1e-15);
+    const bboxOverlapBeforeClip = (overlapX * overlapY) / faceBboxArea;
+
+    const clipDiag: FaceClippingDiagnostics = {
+      face_bbox_solver: { minX: faceBboxSolver.minX, minY: faceBboxSolver.minY, maxX: faceBboxSolver.maxX, maxY: faceBboxSolver.maxY },
+      footprint_bbox_solver: { minX: footprintBboxSolver.minX, minY: footprintBboxSolver.minY, maxX: footprintBboxSolver.maxX, maxY: footprintBboxSolver.maxY },
+      bbox_overlap_ratio_before_clip: Number(bboxOverlapBeforeClip.toFixed(3)),
+      clipping_footprint_source: 'input_footprint_geo',
+      clipping_coordinate_space: 'geo',
+      coordinate_space_mismatch_detected: bboxOverlapBeforeClip < 0.50,
+    };
+    faceClippingDiagnostics.push(clipDiag);
+
+    // If bbox overlap is < 0.50, flag coordinate space mismatch
+    if (bboxOverlapBeforeClip < 0.50) {
+      rejectionReasons.push(`coordinate_space_mismatch_before_clip:overlap=${bboxOverlapBeforeClip.toFixed(3)}`);
+    }
 
     // CLIP to footprint boundary — prevents area overshooting
     polygon = clipPolygonToFootprint(polygon, clipFootprint);
     if (polygon.length < 3) {
       facesRejected++;
-      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+      rejectionReasons.push('clipped_to_nothing');
+      faceRejectionTable.push({ face_id: faceId, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+      enrichedFaceRejections.push({
+        face_id: faceId, vertex_count: face.polygon.length, area_sqft: 0,
+        bbox_geo: clipDiag.face_bbox_solver, centroid_geo: null,
+        inside_footprint: false, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+        mask_overlap_ratio: null, plane_rms: null, pitch_degrees: null,
+        shared_edge_count: 0, boundary_edge_count: 0,
+        rejection_reasons: rejectionReasons,
+      });
       continue;
     }
 
@@ -1319,19 +1418,32 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
     let pitch = 0;
     let azimuth = 0;
+    let planeRms: number | null = null;
+
+    const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
+
     if (effectiveDSM) {
       const planeFit = fitPlaneWithPitch(polygon, effectiveDSM);
       if (planeFit) {
+        planeRms = planeFit.rms;
         if (planeFit.rms > threshold) {
           facesRejected++;
-          faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          rejectionReasons.push(`plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}`);
+          faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          enrichedFaceRejections.push({
+            face_id: faceId, vertex_count: polygon.length, area_sqft: Number(areaSqft.toFixed(2)),
+            bbox_geo: clipDiag.face_bbox_solver, centroid_geo: facetCenter,
+            inside_footprint: true, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+            mask_overlap_ratio: null, plane_rms: Number(planeFit.rms.toFixed(3)), pitch_degrees: planeFit.pitchDeg,
+            shared_edge_count: 0, boundary_edge_count: 0,
+            rejection_reasons: rejectionReasons,
+          });
           continue;
         }
         pitch = planeFit.pitchDeg;
         azimuth = planeFit.azimuthDeg;
       } else {
         // Fallback to solar segment
-        const facetCenter = polygon.reduce((acc, p) => [acc[0] + p[0] / polygon.length, acc[1] + p[1] / polygon.length] as XY, [0, 0] as XY);
         const matchingSolar = findClosestSolarSegment(facetCenter, input.solarSegments);
         pitch = matchingSolar?.pitchDegrees || 0;
         azimuth = matchingSolar?.azimuthDegrees || 0;
@@ -1339,7 +1451,16 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
     if (areaSqft < MIN_FACET_AREA_SQFT) {
       facesRejected++;
-      faceRejectionTable.push({ face_id: `attempt-${faceIdx + 1}`, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: null, inside_footprint: true, mask_overlap: null, rejection_reason: `area_below_${MIN_FACET_AREA_SQFT}_sqft` });
+      rejectionReasons.push(`area_below_${MIN_FACET_AREA_SQFT}_sqft`);
+      faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: planeRms !== null ? Number(planeRms.toFixed(3)) : null, inside_footprint: true, mask_overlap: null, rejection_reason: `area_below_${MIN_FACET_AREA_SQFT}_sqft` });
+      enrichedFaceRejections.push({
+        face_id: faceId, vertex_count: polygon.length, area_sqft: Number(areaSqft.toFixed(2)),
+        bbox_geo: clipDiag.face_bbox_solver, centroid_geo: facetCenter,
+        inside_footprint: true, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+        mask_overlap_ratio: null, plane_rms: planeRms !== null ? Number(planeRms.toFixed(3)) : null, pitch_degrees: pitch,
+        shared_edge_count: 0, boundary_edge_count: 0,
+        rejection_reasons: rejectionReasons,
+      });
       continue;
     }
     const closedPolygon = vertexKey(polygon[0]) === vertexKey(polygon[polygon.length - 1]) ? polygon : [...polygon, polygon[0]];
@@ -1909,6 +2030,20 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`[TOPOLOGY_METRICS] shared_edges=${sharedEdgeCount} duplicates=${duplicateEdgeCount} overlaps=${overlappingFaceCount} area_conservation=${areaConservationRatio.toFixed(3)}`);
   console.log(`[AUTONOMOUS_GRAPH_SOLVER] Validation: ${validation.status}${validation.reason ? ` — ${validation.reason}` : ''}`);
 
+  // Build edge rejection summary
+  const edgeRejectionSummary: EdgeRejectionSummary = {
+    total_raw: totalRaw,
+    rejected_by_length: rejectedByLength,
+    rejected_by_footprint: rejectedByFootprint,
+    rejected_by_score: prunedByScore,
+    rejected_by_intersection: prunedByIntersection,
+    rejected_by_duplicate: duplicateEdgeCount,
+    rejected_by_connectivity: planar.debug.dangling_edges_removed || 0,
+    accepted_final: outputEdges.length,
+    acceptance_ratio: Number(edgeAcceptanceRatio.toFixed(3)),
+    edge_filter_over_aggressive: edgeFilterOverAggressive,
+  };
+
   return {
     success: validation.valid,
     graph_connected: graphFaces.length >= 2 && coverageRatio >= 0.85,
@@ -1920,6 +2055,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     faces: graphFaces,
     rejected_edges: rejectedEdgesDebug,
     face_rejection_table: faceRejectionTable,
+    enriched_face_rejections: enrichedFaceRejections,
+    edge_rejection_summary: edgeRejectionSummary,
+    face_clipping_diagnostics: faceClippingDiagnostics,
+    bbox_rescue_used_for_display_only: false,
+    bbox_rescue_used_in_validation: false,
     totals: {
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
