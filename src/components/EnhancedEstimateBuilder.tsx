@@ -1156,8 +1156,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
             }
           });
 
-          const { Parser } = require('expr-eval');
-          const exprParser = new Parser();
+          const exprParser = new (require('expr-eval').Parser)();
           const parsed = exprParser.parse(expression);
           return parsed.evaluate(vars) || 0;
         } catch (e) {
