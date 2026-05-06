@@ -155,6 +155,14 @@ export interface FaceClippingDiagnostics {
   footprint_winding?: string;
   face_winding?: string;
   polygon_self_intersection_detected?: boolean;
+  // v7: clipper implementation debug
+  clipper_algorithm?: string;
+  clipper_input_face_vertices?: number;
+  clipper_input_footprint_vertices?: number;
+  clipper_output_vertices?: number;
+  clipper_error?: string | null;
+  vertices_inside_footprint?: number;
+  vertices_outside_footprint?: number;
 }
 
 /**
