@@ -1,9 +1,23 @@
 /**
- * Client-side Roof Geometry Reconstructor
- * 
- * Creates proper, connected roof geometry from perimeter coordinates.
- * This is used by SchematicRoofDiagram to render clean roof diagrams
- * when the database doesn't have pre-generated linear features.
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  CLIENT ROOF GEOMETRY RECONSTRUCTOR — DEBUG / VISUALIZATION ONLY   ║
+ * ║                                                                    ║
+ * ║  This module generates SYNTHETIC roof geometry from perimeter      ║
+ * ║  coordinates using heuristic shape-fitting (bbox insets, reflex    ║
+ * ║  vertex detection, wing decomposition).                            ║
+ * ║                                                                    ║
+ * ║  NEVER use outputs for:                                            ║
+ * ║   - Customer-facing measurement reports                           ║
+ * ║   - PDF generation for customers                                  ║
+ * ║   - Material quantity calculations                                ║
+ * ║   - Financial estimates                                           ║
+ * ║                                                                    ║
+ * ║  Outputs are marked geometry_source = "heuristic_estimate" and    ║
+ * ║  customer_report_ready = false.                                    ║
+ * ║                                                                    ║
+ * ║  For production measurements, use the DSM-validated planar graph  ║
+ * ║  from the server-side solver.                                     ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
 interface GPSCoord {
