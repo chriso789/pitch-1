@@ -416,8 +416,8 @@ function drawGeometry(page: any, ctx: any, box: Box, mode: 'raster' | 'bbox', op
     const t = String(edge.type).toLowerCase()
     let ep1: PointTuple = edge.p1
     let ep2: PointTuple = edge.p2
-    if (['ridge', 'hip', 'valley'].includes(t) && footprintHull.length >= 3) {
-      const clipped = clipSegmentToConvexPolygon(ep1, ep2, footprintHull)
+    if (['ridge', 'hip', 'valley'].includes(t) && footprintPoly.length >= 3) {
+      const clipped = clipSegmentToConvexPolygon(ep1, ep2, footprintPoly)
       if (!clipped) return // fully outside
       ep1 = clipped[0]
       ep2 = clipped[1]
