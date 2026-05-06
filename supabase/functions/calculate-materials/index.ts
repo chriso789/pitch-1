@@ -52,6 +52,19 @@ Deno.serve(async (req) => {
 
     const requestData: MaterialCalculationRequest = await req.json();
     
+    // ── GEOMETRY PRODUCTION GATE (server-side) ──
+    // If caller sends geometry_source, enforce the gate
+    if (requestData.geometry_source === 'heuristic_estimate' || requestData.customer_report_ready === false) {
+      console.warn('🚫 Material calculation blocked by geometry gate:', {
+        geometry_source: requestData.geometry_source,
+        customer_report_ready: requestData.customer_report_ready,
+      });
+      return new Response(JSON.stringify({
+        error: 'geometry_gate_blocked',
+        message: 'Material calculations blocked: geometry is not production-validated.',
+      }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     let measurementData: RoofMeasurementData;
 
     // If measurement_id provided, fetch from database
