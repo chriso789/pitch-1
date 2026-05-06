@@ -2462,6 +2462,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     faces_dsm_px_area: Number(totalFaceAreaPx.toFixed(0)),
     footprint_area_sqft_diag: Number(footprintAreaSqft.toFixed(0)),
     faces_area_sqft_diag: Number(totalPlanArea.toFixed(0)),
+    // v8: pre-masked edge detection diagnostics
+    engine_version: 'v8',
+    pre_mask_enabled: true,
+    roof_mask_pixel_count: roofMaskPixelCount,
+    roof_mask_tile_pct: effectiveDSM ? Number((roofMaskPixelCount / (effectiveDSM.width * effectiveDSM.height) * 100).toFixed(1)) : 0,
+    masked_edge_count: maskedEdgeCount,
+    unmasked_edge_count: unmaskEdgeCount,
   };
 
   const logs: AutonomousGraphLog = {
