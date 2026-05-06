@@ -32,6 +32,10 @@ interface ReconstructedRoof {
   facets: ReconstructedFacet[];
   diagramQuality: 'excellent' | 'good' | 'fair' | 'simplified';
   warnings: string[];
+  /** Always 'heuristic_estimate' — this reconstructor does NOT produce validated geometry. */
+  geometry_source: 'heuristic_estimate';
+  /** Always false — client-side reconstructed geometry is NEVER customer-report-ready. */
+  customer_report_ready: false;
 }
 
 interface RoofLine {
