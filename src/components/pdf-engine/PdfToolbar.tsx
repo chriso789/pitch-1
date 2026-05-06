@@ -67,6 +67,20 @@ export function PdfToolbar({
         </Button>
       )}
 
+      {onOcr && (
+        <Button variant="ghost" size="sm" onClick={onOcr} disabled={isOcrRunning} title="OCR this page">
+          <ScanText className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">{isOcrRunning ? 'Scanning...' : 'OCR'}</span>
+        </Button>
+      )}
+
+      {onSaveAsTemplate && (
+        <Button variant="ghost" size="sm" onClick={onSaveAsTemplate} title="Save as template">
+          <BookTemplate className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">Template</span>
+        </Button>
+      )}
+
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       <Button variant="outline" size="sm" onClick={onSave} disabled={isSaving}>
