@@ -1,3 +1,9 @@
+/**
+ * DEBUG-ONLY overlay calibration. This bbox-fit transform is a visualization
+ * convenience — it must NEVER be used to certify customer-facing geometry.
+ * Customer reports require raster-calibrated pixel coordinates persisted
+ * upstream by the autonomous graph solver.
+ */
 export type OverlayPoint = { x: number; y: number };
 
 export type OverlayBBox = {

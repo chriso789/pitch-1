@@ -62,6 +62,23 @@ function evaluatePreviewGate(measurement: any): { ok: boolean; reason?: string }
   return { ok: true };
 }
 
+/** Detect if geometry required bbox-fit rescue (not raster-calibrated). */
+function detectBboxRescue(measurement: any): boolean {
+  const grj = measurement?.geometry_report_json;
+  if (!grj) return false;
+  // Explicit flag from pipeline
+  if (grj.overlay_requires_bbox_rescue === true) return true;
+  // Infer: if geometry_px_space is not 'raster_calibrated' and overlay_calibration
+  // shows the geometry was fit into a target box, bbox rescue was used.
+  const pxSpace = grj.geometry_px_space;
+  if (pxSpace && pxSpace !== 'raster_calibrated') return true;
+  // If coordinate_space_solver says 'geo' but no persisted footprint_px or planes_px,
+  // the renderer will have to bbox-fit
+  const solverSpace = grj.coordinate_space_solver;
+  if (solverSpace === 'geo' && !Array.isArray(grj.planes_px)) return true;
+  return false;
+}
+
 /** Client mirror of the PDF-specific QC gate enforced by render-measurement-pdf. */
 function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warning?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
@@ -86,6 +103,11 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
       return { ok: false, reason: 'overlay_alignment_failed' };
     if (Number(cal.center_error_px) > 80)
       return { ok: false, reason: 'overlay_alignment_failed' };
+  }
+
+  // Block customer PDF when geometry depends on bbox rescue (not raster-calibrated)
+  if (detectBboxRescue(measurement)) {
+    return { ok: false, reason: 'overlay_requires_bbox_rescue — geometry is not raster-calibrated' };
   }
 
   const warnings: string[] = [];
@@ -121,12 +143,16 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Rake', value: fmt(m.total_rake_length ?? m.rakes_lf, 'LF') },
   ];
 
+  const isBboxRescue = detectBboxRescue(m);
+
   const debugRows: { label: string; value: string }[] = [
     { label: 'Detection Method', value: String(m.detection_method ?? grj.detection_method ?? '—') },
     { label: 'Footprint Source', value: String(m.footprint_source ?? grj.footprint_source ?? '—') },
     { label: 'Footprint Valid', value: String(grj.footprint_valid ?? '—') },
     { label: 'Coordinate Match', value: String(grj.coordinate_space_match ?? grj.dsm_coordinate_match?.match ?? '—') },
     { label: 'Solver Space', value: String(grj.coordinate_space_solver ?? grj.overlay_debug?.coordinate_space_solver ?? '—') },
+    { label: 'Export Space', value: String(grj.coordinate_space_export ?? '—') },
+    { label: 'BBox Rescue', value: isBboxRescue ? '⚠ YES' : 'No' },
     { label: 'Attempted Faces', value: fmt(grj.attempted_faces ?? grj.faces_attempted) },
     { label: 'Validated Faces', value: fmt(grj.validated_faces ?? grj.valid_faces) },
     { label: 'Coverage', value: fmt(((grj.debug_geometry?.face_coverage_ratio ?? grj.face_coverage_ratio) || 0) * 100, '%') },

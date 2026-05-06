@@ -383,9 +383,17 @@ function newPage(ctx: any, title: string) {
 }
 
 function drawGeometry(page: any, ctx: any, box: Box, mode: 'raster' | 'bbox', opts: any) {
-  // Build footprint polygon (convex hull of all plane vertices) for clipping
+  // Prefer the persisted footprint polygon for clipping instead of deriving
+  // a convex hull from plane vertices (which can over-clip L-shaped roofs
+  // and mask upstream geometry errors).
+  const persistedFootprint: PointTuple[] = asTuplePoints(
+    ctx.grj.overlay_debug?.footprint_px || ctx.grj.footprint_px || []
+  )
   const allPlaneVerts: PointTuple[] = ctx.planes.flatMap((p: any) => p.polygon)
-  const footprintHull = convexHull(allPlaneVerts)
+  // Fall back to convex hull only when no persisted footprint is available
+  const footprintPoly = persistedFootprint.length >= 3
+    ? persistedFootprint
+    : convexHull(allPlaneVerts)
 
   // Use only plane vertices for bbox (not raw edge endpoints which may extend beyond perimeter)
   const mapper = mode === 'raster'
@@ -408,8 +416,8 @@ function drawGeometry(page: any, ctx: any, box: Box, mode: 'raster' | 'bbox', op
     const t = String(edge.type).toLowerCase()
     let ep1: PointTuple = edge.p1
     let ep2: PointTuple = edge.p2
-    if (['ridge', 'hip', 'valley'].includes(t) && footprintHull.length >= 3) {
-      const clipped = clipSegmentToConvexPolygon(ep1, ep2, footprintHull)
+    if (['ridge', 'hip', 'valley'].includes(t) && footprintPoly.length >= 3) {
+      const clipped = clipSegmentToConvexPolygon(ep1, ep2, footprintPoly)
       if (!clipped) return // fully outside
       ep1 = clipped[0]
       ep2 = clipped[1]
