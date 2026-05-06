@@ -118,6 +118,8 @@ function createEmptyResult(warnings: string[]): ReconstructedRoof {
     valleys: [],
     facets: [],
     diagramQuality: 'simplified',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings
   };
 }
@@ -234,6 +236,8 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string, roofTyp
     valleys: [],
     facets,
     diagramQuality: 'excellent',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings: isGable ? ['Gable roof: ridge spans full building length'] : []
   };
 }
@@ -273,6 +277,8 @@ function reconstructMultiWingRoof(
         color: FACET_COLORS[0]
       }],
       diagramQuality: 'simplified',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
       warnings: ['Complex roof - showing perimeter only']
     };
   }
@@ -430,6 +436,8 @@ function reconstructMultiWingRoof(
     valleys,
     facets,
     diagramQuality: 'good',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings
   };
 }
@@ -512,6 +520,8 @@ function reconstructComplexRoof(
     valleys,
     facets,
     diagramQuality: 'fair',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings: ['Complex roof - using simplified geometry']
   };
 }
