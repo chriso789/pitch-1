@@ -223,13 +223,15 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
       evalExpr = evalExpr.replace(new RegExp(escapedKey, 'g'), String(value));
     }
 
-    // Safe evaluation with math functions
-    const safeEval = new Function(
-      'ceil', 'floor', 'round', 'min', 'max', 'abs',
-      `return ${evalExpr};`
-    );
-    const result = safeEval(Math.ceil, Math.floor, Math.round, Math.min, Math.max, Math.abs);
-    // Round to 2 decimal places to avoid floating-point precision issues
+    // Safe evaluation using expr-eval parser
+    const { Parser } = await import('expr-eval');
+    const exprParser = new Parser();
+    const parsed = exprParser.parse(evalExpr);
+    const mathVars: Record<string, any> = {
+      ceil: Math.ceil, floor: Math.floor, round: Math.round,
+      min: Math.min, max: Math.max, abs: Math.abs,
+    };
+    const result = parsed.evaluate(mathVars);
     return typeof result === 'number' && !isNaN(result) 
       ? Math.round(result * 100) / 100 
       : 0;
