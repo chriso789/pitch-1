@@ -4260,14 +4260,44 @@ async function processJob(input: any) {
     });
 
     const geometryReportJson = {
+      // ── ARCHITECTURAL CONTRACTS ──
+      // 1. Authoritative footprint — one polygon used by ALL downstream stages.
+      authoritative_footprint_px: footprint.map((p) => [p.x, p.y]),
+      authoritative_footprint_source: footprintSource,
+      authoritative_footprint_area_sqft: Math.round(footprintAreaSqftVal),
+      // 2. Single coordinate truth — solver operates in geo [lng,lat],
+      //    renderer clips against persisted footprint_px, overlay uses satellite px.
+      coordinate_space_contract: {
+        solver: "geo_lnglat",
+        footprint: "satellite_px",
+        renderer: "satellite_px",
+        overlay_transform: "debug_bbox_fit_only",
+      },
+      // 3. Area conservation — Σ(face area) must ≈ footprint area (±8%).
+      area_conservation: {
+        total_face_area_sqft: finalRoofAreaSqft,
+        footprint_area_sqft: finalFootprintAreaSqft,
+        ratio: geometryVsFootprintRatio,
+        passed: finalFootprintAreaSqft <= 0 || finalRoofAreaSqft <= finalFootprintAreaSqft * 1.08,
+      },
+      // 4. Publication gate — failed geometry never becomes a customer report.
+      publication_gate: {
+        customer_report_allowed: !blockCustomerReportReason,
+        block_reason: blockCustomerReportReason,
+        is_diagnostic_only: !!blockCustomerReportReason,
+      },
       planes: planeRows,
       edges: edgeRows,
       totals,
       quality,
       dsm_planar_graph_debug: autonomousDebug,
-      // Dev overlay payload — matches RasterOverlayDebugView contract.
-      planes_px,
-      edges_px,
+      // ── DEBUG-ONLY overlay payload — bbox-fit visual normalization.
+      // This is NOT a geospatial registration system. It makes geometry
+      // appear approximately centered on the house for dev visualization.
+      // Customer reports MUST use persisted footprint_px and geo coordinates,
+      // NOT these bbox-fitted coordinates.
+      _debug_only_planes_px: planes_px,
+      _debug_only_edges_px: edges_px,
       raster_size,
       raster_image_url: imageUrl,
       topology_source: topologySource,
