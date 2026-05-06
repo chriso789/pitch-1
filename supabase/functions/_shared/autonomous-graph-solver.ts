@@ -1713,8 +1713,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       : clippedPx.length < 3 
       ? 'clipped_to_nothing' 
       : `${clippedPx.length}_vertices_${clipResult.method}`;
-    (clipDiag as any).vertices_inside_footprint = clipResult.verticesInsideCount;
-    (clipDiag as any).vertices_outside_footprint = clipResult.verticesOutsideCount;
+    clipDiag.clipper_algorithm = clipResult.method;
+    clipDiag.clipper_input_face_vertices = (cleanedFacePx.length >= 3 ? cleanedFacePx : facePx).length;
+    clipDiag.clipper_input_footprint_vertices = footprintPxCCW.length;
+    clipDiag.clipper_output_vertices = clippedPx.length;
+    clipDiag.clipper_error = clipResult.method === 'clipper_degenerate_output' ? 'degenerate_output_area_destroyed' : (clippedPx.length < 3 && faceAreaBeforeClipPx > 100 ? 'clipped_to_nothing' : null);
+    clipDiag.vertices_inside_footprint = clipResult.verticesInsideCount;
+    clipDiag.vertices_outside_footprint = clipResult.verticesOutsideCount;
     faceClippingDiagnostics.push(clipDiag);
 
     // Handle clipper degenerate output: preserve for debug but mark as failure
