@@ -219,7 +219,7 @@ export const useTemplateEditor = (templateId?: string) => {
   };
 
   // Add group
-  const addGroup = async (name: string, groupType: 'material' | 'labor') => {
+  const addGroup = async (name: string, groupType: 'material' | 'labor' | 'turnkey') => {
     if (!template) return;
 
     try {
