@@ -1809,6 +1809,26 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   const timingMs = Date.now() - startMs;
 
+  // ===== EDGE CLASS COUNTS (pre/post face-adjacency reclassification) =====
+  // Pre-classification counts come from classifyEdgesWithDSMDebug
+  const edgeClassCountsPre = (edgeClassificationDebug as any)?.counts ?? {};
+  const edgeClassCountsPost = {
+    ridge: outRidges.length,
+    hip: outHips.length,
+    valley: outValleys.length,
+    eave: outEaves.length,
+    rake: outRakes.length,
+    unclassified: outUnclassified.length,
+  };
+
+  // Null endpoint count — detect malformed edge payloads
+  let nullEndpointCount = 0;
+  for (const e of outputEdges) {
+    if (!e.start || !e.end || !Number.isFinite(e.start[0]) || !Number.isFinite(e.start[1]) || !Number.isFinite(e.end[0]) || !Number.isFinite(e.end[1])) {
+      nullEndpointCount++;
+    }
+  }
+
   // ===== EDGE EMIT DIAGNOSTICS =====
   const edgeEmitDiagnostics = {
     edge_emit_policy: 'canonical_shared_edge_map',
@@ -1832,6 +1852,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     unclassified_edges_total: outUnclassified.length,
     edges_outside_footprint_count: edgesOutsideFootprintCount,
     max_endpoint_distance_outside_footprint_px: maxEndpointDistanceOutsideFootprintPx,
+    edge_class_counts_pre: edgeClassCountsPre,
+    edge_class_counts_post: edgeClassCountsPost,
+    null_endpoint_count: nullEndpointCount,
   };
 
   const logs: AutonomousGraphLog = {
