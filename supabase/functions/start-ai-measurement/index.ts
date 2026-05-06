@@ -970,15 +970,31 @@ async function processJob(input: any) {
     const footprintToSolarAreaRatio = solarSegmentTotalAreaSqft > 0
       ? footprintAreaSqftVal / solarSegmentTotalAreaSqft
       : null;
+    const solarBboxAreaSqftVal = solarBboxPx && solarBboxPx.area > 0
+      ? solarBboxPx.area * sqftPerPx2
+      : null;
+    const footprintToSolarBboxAreaRatio = solarBboxAreaSqftVal != null && solarBboxAreaSqftVal > 0
+      ? footprintAreaSqftVal / solarBboxAreaSqftVal
+      : null;
+    const footprintOverlapPx = (solarBboxPx && footprintForDsmPx.length >= 3)
+      ? polygonAreaPx(clipPolygonToRect(footprintForDsmPx, solarBboxPx))
+      : footprintAreaPxVal;
+    const footprintExteriorSpillover = footprintAreaPxVal > 0
+      ? (footprintAreaPxVal - footprintOverlapPx) / footprintAreaPxVal
+      : 0;
     const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
     const footprintBboxTooLarge = footprintBboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO;
     const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
+    const footprintInflatedVsSolarBbox = footprintToSolarBboxAreaRatio != null && footprintToSolarBboxAreaRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO;
+    const footprintSpillsOutside = solarBboxPx && solarBboxPx.area > 0 && footprintExteriorSpillover > MAX_EXTERIOR_SPILLOVER_RATIO;
 
     const footprintValid = footprintForDsmPx.length >= 4
       && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT
       && !footprintAreaTooLarge
       && !footprintBboxTooLarge
       && !footprintInflatedVsSolar
+      && !footprintInflatedVsSolarBbox
+      && !footprintSpillsOutside
       && !footprintIsLatLng
       && footprintCoordinateSpaceMatch;
 
