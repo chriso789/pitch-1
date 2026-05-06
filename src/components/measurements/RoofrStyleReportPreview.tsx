@@ -11,6 +11,7 @@ import { ReportPage } from './ReportPage';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 import { AllReportPages } from './AllReportPages';
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
+import { evaluateGeometryGate, type GeometryGateInput } from '@/lib/measurements/geometryProductionGate';
 
 interface RoofrStyleReportPreviewProps {
   open: boolean;
