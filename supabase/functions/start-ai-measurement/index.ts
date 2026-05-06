@@ -624,6 +624,8 @@ async function processJob(input: any) {
         rejected_reason = "no_overlap_with_solar_bbox";
       else if (bbox && bbox_center_distance_from_geocode_px > Math.max(raster.width, raster.height) * 0.4)
         rejected_reason = "bbox_center_far_from_geocode";
+      else if (isLikelyOutbuilding)
+        rejected_reason = `likely_outbuilding:${Math.round(area_sqft)}sqft_${Math.round(bbox_center_distance_from_geocode_px)}px_from_geocode`;
 
       return {
         source,
