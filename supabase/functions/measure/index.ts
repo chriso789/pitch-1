@@ -20,6 +20,7 @@ import { callInternalUNet, unetResultToOverlay } from "../_shared/internal-unet-
 import { calibrateRidgePosition, type RidgeCalibrationResult } from "./ridge-calibrator.ts";
 import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts";
 import { solveAutonomousGraph, detectComplexRoof, validateAutonomousResult, type AutonomousGraphResult, type AutonomousGraphInput } from "./autonomous-graph-solver.ts";
+import { evaluateDSMContract, analyzeGraphTopology, computeOverlayRegistration, type DSMContractInput, type DSMContractGateResult } from "./dsm-geometry-contract.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
