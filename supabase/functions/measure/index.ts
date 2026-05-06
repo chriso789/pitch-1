@@ -1871,7 +1871,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     footprintConfidence?: number;
     roofType?: string;
     derivedFacetCount?: number;
-    dsmContract?: { geometry_source: string; customer_report_ready: boolean; debug_metrics: any; gates?: any };
+    dsmContract?: { geometry_source: string; customer_report_ready: boolean; debug_metrics: any; gates?: any; failed_stage?: string; solver_failure_reason?: string | null; failure_classification?: string };
   } = {
     property_id: "",
     source: 'google_solar',
