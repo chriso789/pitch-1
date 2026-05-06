@@ -1,12 +1,15 @@
 /**
  * Template Engine for Smart Tag Substitution
  * Supports: {{ roof.squares }}, {{ ceil(lf.ridge / 33) }}, {{ roof.squares * 3 }}
- * Safe expression evaluation with limited Math functions
+ * Uses expr-eval for safe expression evaluation (no eval/Function)
  */
+import { Parser } from 'expr-eval';
 
 type Context = { tags: Record<string, any> };
 
-const SAFE_FUNCTIONS = {
+const parser = new Parser();
+
+const SAFE_FUNCTIONS: Record<string, any> = {
   ceil: Math.ceil,
   floor: Math.floor,
   round: Math.round,
@@ -28,43 +31,27 @@ export function renderTemplate(str: string, ctx: Context): string {
 }
 
 function evalExpr(expr: string, ctx: Context): number | string {
-  const vars: Record<string, any> = {};
+  const vars: Record<string, any> = { ...SAFE_FUNCTIONS };
   
-  // Flatten tags into vars
+  // Flatten tags into vars, supporting both dotted and underscored keys
   Object.entries(ctx.tags || {}).forEach(([key, value]) => {
     vars[key] = value;
+    vars[key.replace(/\./g, '_')] = value;
   });
 
-  // Replace dotted identifiers with vars access
-  const rewritten = expr.replace(/[a-zA-Z_][\w\.]*/g, (name) => {
-    // Keep safe function names
-    if (name in SAFE_FUNCTIONS) return name;
-    
-    // Keep numeric literals
-    if (/^\d+(\.\d+)?$/.test(name)) return name;
-    
-    // Replace tag references: roof.squares -> vars["roof.squares"]
-    return `vars[${JSON.stringify(name)}]`;
-  });
+  // Replace dotted identifiers with underscored versions for parser compatibility
+  let rewritten = expr;
+  const sortedKeys = Object.keys(ctx.tags || {}).sort((a, b) => b.length - a.length);
+  for (const key of sortedKeys) {
+    if (key.includes('.')) {
+      const escaped = key.replace(/\./g, '\\.');
+      rewritten = rewritten.replace(new RegExp(escaped, 'g'), key.replace(/\./g, '_'));
+    }
+  }
 
   try {
-    // Limited eval via Function sandbox
-    const fn = new Function(
-      'vars', 'ceil', 'floor', 'round', 'min', 'max', 'abs',
-      `return (${rewritten});`
-    );
-    
-    const result = fn(
-      vars,
-      SAFE_FUNCTIONS.ceil,
-      SAFE_FUNCTIONS.floor,
-      SAFE_FUNCTIONS.round,
-      SAFE_FUNCTIONS.min,
-      SAFE_FUNCTIONS.max,
-      SAFE_FUNCTIONS.abs
-    );
-
-    return result;
+    const parsed = parser.parse(rewritten);
+    return parsed.evaluate(vars);
   } catch (err) {
     throw new Error(`Evaluation failed: ${err}`);
   }
