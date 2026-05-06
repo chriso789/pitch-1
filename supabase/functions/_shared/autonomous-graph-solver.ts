@@ -1299,6 +1299,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
   let facesRejected = 0;
   const faceRejectionTable: NonNullable<AutonomousGraphResult['face_rejection_table']> = [];
+  const enrichedFaceRejections: EnrichedFaceRejection[] = [];
+  const faceClippingDiagnostics: FaceClippingDiagnostics[] = [];
   const graphFaces: GraphFace[] = [];
   faceCountBeforeMerge = planar.faces.length;
 
