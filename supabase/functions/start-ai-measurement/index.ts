@@ -571,11 +571,19 @@ async function processJob(input: any) {
       if (vertex_count <= 4 && segCount > 1) polygon_shape_score *= 0.4;
       if (vertex_count >= 6) polygon_shape_score = Math.min(1, polygon_shape_score + 0.15);
 
-      const validity_score =
-        area_score * 0.35 +
-        solar_overlap_score * 0.30 +
-        geocode_center_score * 0.20 +
-        polygon_shape_score * 0.15;
+      // Outbuilding penalty: small footprints far from geocode are likely sheds/garages.
+      // Penalizes candidates where centroid is >25% of tile diagonal from geocode AND area < 1500 sqft.
+      const OUTBUILDING_DISTANCE_THRESHOLD = maxDist * 0.5; // 25% of tile diagonal (maxDist is half-diagonal)
+      const OUTBUILDING_AREA_THRESHOLD = 1500; // sqft
+      const isLikelyOutbuilding = bbox_center_distance_from_geocode_px > OUTBUILDING_DISTANCE_THRESHOLD && area_sqft < OUTBUILDING_AREA_THRESHOLD;
+      const outbuilding_penalty = isLikelyOutbuilding ? 0.35 : 0;
+
+      const validity_score = Math.max(0,
+        area_score * 0.30 +
+        solar_overlap_score * 0.25 +
+        geocode_center_score * 0.30 +
+        polygon_shape_score * 0.15 -
+        outbuilding_penalty);
 
       // Bbox-to-tile ratio: footprint bbox area / tile area
       const tileArea = raster.width * raster.height;
