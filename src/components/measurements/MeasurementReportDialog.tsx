@@ -96,6 +96,11 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
   if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
   if (grj.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
+  // Hard gate: heuristic geometry MUST NOT produce customer PDFs
+  if (grj.geometry_source === 'heuristic_estimate')
+    return { ok: false, reason: 'Geometry is heuristic estimate — not validated for customer use.' };
+  if (measurement.customer_report_ready === false)
+    return { ok: false, reason: 'customer_report_ready gate is false.' };
   const cal = grj.overlay_calibration;
   if (cal?.calibrated !== true) return { ok: false, reason: 'overlay_alignment_failed' };
   if (cal?.calibrated) {

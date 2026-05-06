@@ -11,6 +11,7 @@ import { ReportPage } from './ReportPage';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 import { AllReportPages } from './AllReportPages';
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
+import { evaluateGeometryGate, type GeometryGateInput } from '@/lib/measurements/geometryProductionGate';
 
 interface RoofrStyleReportPreviewProps {
   open: boolean;
@@ -107,7 +108,8 @@ export function RoofrStyleReportPreview({
       gate_decision,
       gate_reason,
       requires_manual_review,
-      validation_status
+      validation_status,
+      geometry_report_json
     `;
     
     try {
@@ -442,11 +444,30 @@ export function RoofrStyleReportPreview({
     };
   });
 
+  // ── GEOMETRY PRODUCTION GATE ──
+  const geometryGate = useMemo(() => {
+    if (!roofMeasurementData) return { allowed: false, reason: 'No data', source: 'heuristic_estimate' as const };
+    const grj = roofMeasurementData.geometry_report_json as Record<string, any> | null;
+    const gateInput: GeometryGateInput = {
+      geometry_source: grj?.geometry_source ?? null,
+      customer_report_ready: roofMeasurementData.customer_report_ready ?? null,
+      report_blocked: roofMeasurementData.gate_decision === 'blocked',
+      needs_review: roofMeasurementData.requires_manual_review ?? false,
+    };
+    return evaluateGeometryGate(gateInput);
+  }, [roofMeasurementData]);
+
+  const isCustomerExportBlocked = !geometryGate.allowed;
+
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
 
   // Native share using Web Share API
   const handleShare = async () => {
+    if (isCustomerExportBlocked) {
+      toast({ title: "Export blocked", description: `Geometry gate: ${geometryGate.reason}`, variant: "destructive" });
+      return;
+    }
     setIsSharing(true);
     try {
       // Generate PDF blob first
@@ -507,6 +528,10 @@ export function RoofrStyleReportPreview({
 
   // Confirm & Save: generates PDF, uploads to documents bucket, saves smart tags
   const handleConfirm = async () => {
+    if (isCustomerExportBlocked) {
+      toast({ title: "Export blocked", description: `Geometry gate: ${geometryGate.reason}`, variant: "destructive" });
+      return;
+    }
     setIsConfirming(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -638,17 +663,21 @@ export function RoofrStyleReportPreview({
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="p-4 border-b flex-col gap-2">
-          {/* ── DIAGNOSTIC GATE: Block customer-facing actions for failed geometry ── */}
-          {roofMeasurementData && roofMeasurementData.customer_report_ready === false && (
+          {/* ── GEOMETRY PRODUCTION GATE BANNER ── */}
+          {roofMeasurementData && isCustomerExportBlocked && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
               <div className="text-sm">
-                <span className="font-semibold text-destructive">DIAGNOSTIC ONLY — NOT FOR CUSTOMER USE</span>
-                {roofMeasurementData.gate_reason && (
-                  <span className="text-muted-foreground ml-2">({roofMeasurementData.gate_reason})</span>
-                )}
+                <span className="font-semibold text-destructive">
+                  {geometryGate.source === 'heuristic_estimate'
+                    ? 'HEURISTIC DEBUG — NOT CUSTOMER READY'
+                    : 'DIAGNOSTIC ONLY — NOT FOR CUSTOMER USE'}
+                </span>
+                <span className="text-muted-foreground ml-2">({geometryGate.reason})</span>
               </div>
-              <Badge variant="destructive" className="ml-auto shrink-0">Blocked</Badge>
+              <Badge variant="destructive" className="ml-auto shrink-0">
+                {geometryGate.source === 'heuristic_estimate' ? 'Heuristic' : 'Blocked'}
+              </Badge>
             </div>
           )}
           <div className="flex items-center justify-between">
@@ -688,8 +717,8 @@ export function RoofrStyleReportPreview({
                 variant="outline"
                 size="sm"
                 onClick={handleShare}
-                disabled={isSharing || roofMeasurementData?.customer_report_ready === false}
-                title={roofMeasurementData?.customer_report_ready === false ? 'Report blocked — geometry did not pass validation' : undefined}
+                disabled={isSharing || isCustomerExportBlocked}
+                title={isCustomerExportBlocked ? `Report blocked — ${geometryGate.reason}` : undefined}
               >
                 {isSharing ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -701,8 +730,8 @@ export function RoofrStyleReportPreview({
               <Button
                 size="sm"
                 onClick={handleConfirm}
-                disabled={isConfirming || isPDFGenerating || roofMeasurementData?.customer_report_ready === false}
-                title={roofMeasurementData?.customer_report_ready === false ? 'Report blocked — geometry did not pass validation' : undefined}
+                disabled={isConfirming || isPDFGenerating || isCustomerExportBlocked}
+                title={isCustomerExportBlocked ? `Report blocked — ${geometryGate.reason}` : undefined}
               >
                 {isConfirming || isPDFGenerating ? (
                   <>

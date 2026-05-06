@@ -20,6 +20,24 @@ Deno.serve(async (req) => {
     const { measurementId, measurement, tags, address, companyInfo, pipelineEntryId, finalReport } = await req.json()
     console.log('📄 Generating Roofr-style report for:', address || measurementId)
 
+    // ── GEOMETRY PRODUCTION GATE (server-side) ──
+    // Block customer report generation for heuristic geometry
+    const geoSource = finalReport?.geometry_source
+      ?? measurement?.geometry_source
+      ?? measurement?.geometry_report_json?.geometry_source
+      ?? null;
+    const customerReady = finalReport?.customer_report_ready
+      ?? measurement?.customer_report_ready
+      ?? null;
+    
+    if (geoSource === 'heuristic_estimate' || customerReady === false) {
+      console.warn('🚫 Geometry gate BLOCKED report generation:', { geoSource, customerReady });
+      return new Response(JSON.stringify({
+        error: 'geometry_gate_blocked',
+        message: `Report generation blocked: geometry_source=${geoSource}, customer_report_ready=${customerReady}. Only dsm_validated or vendor_verified geometry may produce customer reports.`,
+      }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     // Prefer structured finalReport from unified pipeline when available

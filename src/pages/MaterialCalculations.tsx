@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Calculator, FileText } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ArrowLeft, Calculator, FileText, AlertTriangle } from 'lucide-react';
 import { MaterialCalculator } from '@/components/materials/MaterialCalculator';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { RoofMeasurementData } from '@/lib/measurements/materialCalculations';
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
+import { evaluateGeometryGate } from '@/lib/measurements/geometryProductionGate';
 
 export default function MaterialCalculations() {
   const { id } = useParams<{ id: string }>();
@@ -47,6 +49,15 @@ export default function MaterialCalculations() {
   }
 
   const measurement = measurementResult.measurement;
+
+  // ── GEOMETRY PRODUCTION GATE ──
+  const geometryGate = useMemo(() => {
+    const grj = (measurement as any)?.geometry_report_json;
+    return evaluateGeometryGate({
+      geometry_source: grj?.geometry_source ?? null,
+      customer_report_ready: (measurement as any)?.customer_report_ready ?? null,
+    });
+  }, [measurement]);
 
   // Convert measurement data to RoofMeasurementData format
   const measurementData: RoofMeasurementData = {
@@ -126,15 +137,37 @@ export default function MaterialCalculations() {
         </CardContent>
       </Card>
 
-      {/* Material Calculator */}
-      <MaterialCalculator
-        measurementData={measurementData}
-        pipelineEntryId={id}
-        onOrderCreated={(orderId) => {
-          console.log('Order created:', orderId);
-          // Navigate to order page or show success
-        }}
-      />
+      {/* Geometry Gate Warning */}
+      {!geometryGate.allowed && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {geometryGate.source === 'heuristic_estimate'
+              ? 'HEURISTIC DEBUG — NOT CUSTOMER READY'
+              : 'Material Calculations Blocked'}
+          </AlertTitle>
+          <AlertDescription>
+            {geometryGate.reason} — Material quantities from unvalidated geometry must not be used for ordering.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Material Calculator — only render for validated geometry */}
+      {geometryGate.allowed ? (
+        <MaterialCalculator
+          measurementData={measurementData}
+          pipelineEntryId={id}
+          onOrderCreated={(orderId) => {
+            console.log('Order created:', orderId);
+          }}
+        />
+      ) : (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Material calculations are unavailable until geometry passes the production gate.
+          </CardContent>
+        </Card>
+      )}
 
       {/* Measurement Report Dialog */}
       {measurement && (
