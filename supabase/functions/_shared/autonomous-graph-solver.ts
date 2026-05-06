@@ -305,6 +305,95 @@ export interface AutonomousGraphInput {
   };
 }
 
+// ============= FOOTPRINT MASK RASTERIZATION =============
+
+/**
+ * Rasterize a footprint polygon (in DSM pixel space) into a Uint8Array mask.
+ * Pixels inside the polygon (+ buffer px) are set to 1, others to 0.
+ * This is used to constrain DSM edge detection to ONLY the roof region.
+ *
+ * Algorithm: scanline rasterization with optional dilation buffer.
+ */
+function rasterizeFootprintMask(
+  footprintPx: PxPt[],
+  width: number,
+  height: number,
+  bufferPx: number = 3
+): Uint8Array {
+  const mask = new Uint8Array(width * height);
+  if (footprintPx.length < 3) return mask;
+
+  // Compute bounding box with buffer
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of footprintPx) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const startY = Math.max(0, Math.floor(minY) - bufferPx);
+  const endY = Math.min(height - 1, Math.ceil(maxY) + bufferPx);
+  const startX = Math.max(0, Math.floor(minX) - bufferPx);
+  const endX = Math.min(width - 1, Math.ceil(maxX) + bufferPx);
+
+  // Scanline fill: for each row, find intersections with polygon edges
+  for (let y = startY; y <= endY; y++) {
+    const intersections: number[] = [];
+    const n = footprintPx.length;
+    for (let i = 0; i < n; i++) {
+      const a = footprintPx[i];
+      const b = footprintPx[(i + 1) % n];
+      if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+        const xIntersect = a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x);
+        intersections.push(xIntersect);
+      }
+    }
+    intersections.sort((a, b) => a - b);
+    
+    // Fill between pairs of intersections
+    for (let i = 0; i < intersections.length - 1; i += 2) {
+      const x1 = Math.max(startX, Math.floor(intersections[i]));
+      const x2 = Math.min(endX, Math.ceil(intersections[i + 1]));
+      for (let x = x1; x <= x2; x++) {
+        mask[y * width + x] = 1;
+      }
+    }
+  }
+
+  // Dilate by bufferPx to include edges right at the footprint boundary
+  if (bufferPx > 0) {
+    const dilated = new Uint8Array(mask.length);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (mask[y * width + x] === 1) {
+          for (let dy = -bufferPx; dy <= bufferPx; dy++) {
+            for (let dx = -bufferPx; dx <= bufferPx; dx++) {
+              const ny = y + dy, nx = x + dx;
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                dilated[ny * width + nx] = 1;
+              }
+            }
+          }
+        }
+      }
+    }
+    return dilated;
+  }
+
+  return mask;
+}
+
+/**
+ * Intersect two masks: result[i] = 1 only if both a[i] and b[i] are 1.
+ */
+function intersectMasks(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const result = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) {
+    result[i] = (a[i] && b[i]) ? 1 : 0;
+  }
+  return result;
+}
+
 // ============= GEOMETRY HELPERS =============
 
 function degToMeters(latDeg: number) {
