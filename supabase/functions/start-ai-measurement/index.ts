@@ -498,7 +498,22 @@ async function processJob(input: any) {
     const geocodePx = { x: raster.width / 2, y: raster.height / 2 };
     const sqftPerPx2 = actualFpp * actualFpp;
     const RESIDENTIAL_MIN_SQFT = 800;
+    const RESIDENTIAL_MAX_SQFT = 8000; // Largest realistic residential roof; rejects parcel/yard polygons
     const MIN_COVERAGE_RATIO = 0.20;
+    const MAX_FOOTPRINT_BBOX_TILE_RATIO = 0.35; // Footprint bbox may not exceed 35% of 1280×1280 tile
+    const MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO = 2.5; // Footprint may not be >2.5× the sum of solar segment areas
+    const MIN_FACETS_FOR_LARGE_ROOF = 3; // Roofs >3000 sqft must have ≥3 facets
+
+    // Compute total solar segment ground area in sqft for ratio checks
+    const solarSegmentTotalAreaSqft = (() => {
+      const segs = solarData?.solarPotential?.roofSegmentStats || [];
+      let total = 0;
+      for (const s of segs as any[]) {
+        const m2 = Number(s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0);
+        if (Number.isFinite(m2) && m2 > 0) total += m2 * 10.7639; // m² → sqft
+      }
+      return total;
+    })();
 
     type FootprintCandidate = {
       source: string;
