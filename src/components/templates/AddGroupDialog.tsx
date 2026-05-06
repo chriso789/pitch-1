@@ -48,32 +48,33 @@ export const AddGroupDialog = ({ open, onOpenChange, onAdd }: AddGroupDialogProp
 
           <div className="space-y-3">
             <Label>Group Type</Label>
-            <RadioGroup
-              value={groupType}
-              onValueChange={(v) => setGroupType(v as 'material' | 'labor')}
-              className="flex gap-4"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="material" id="type-material" />
-                <Label
-                  htmlFor="type-material"
-                  className="cursor-pointer flex items-center gap-2"
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 'material', label: 'Material', icon: Package, color: 'text-blue-500' },
+                { value: 'labor', label: 'Labor', icon: Wrench, color: 'text-purple-500' },
+                { value: 'turnkey', label: 'Turnkey', icon: Layers, color: 'text-emerald-500' },
+              ].map(({ value, label, icon: Icon, color }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setGroupType(value as 'material' | 'labor' | 'turnkey')}
+                  className={cn(
+                    'flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-sm font-medium transition-colors',
+                    groupType === value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-muted hover:border-muted-foreground/30'
+                  )}
                 >
-                  <Package className="h-4 w-4 text-blue-500" />
-                  Material
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="labor" id="type-labor" />
-                <Label
-                  htmlFor="type-labor"
-                  className="cursor-pointer flex items-center gap-2"
-                >
-                  <Wrench className="h-4 w-4 text-purple-500" />
-                  Labor
-                </Label>
-              </div>
-            </RadioGroup>
+                  <Icon className={cn('h-5 w-5', color)} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            {groupType === 'turnkey' && (
+              <p className="text-xs text-muted-foreground">
+                Material &amp; labor bundled into one price per item.
+              </p>
+            )}
           </div>
         </div>
 
