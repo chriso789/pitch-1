@@ -4255,7 +4255,7 @@ async function processJob(input: any) {
       fallback_used: autonomousDebug?.fallback_used ?? (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
       hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
       coordinate_space_input: autonomousDebug?.coordinate_space_input || "geo_from_selected_footprint",
-      coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "dsm_px",
+      coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "geo",
       coordinate_space_renderer: "satellite_px",
       dsm_pixel_transform_valid: Boolean(autonomousDebug?.dsm_pixel_transform_valid ?? dsmCoordinateMatchDebug?.match ?? true),
       geo_to_dsm_px_success: Boolean(autonomousDebug?.geo_to_dsm_px_success ?? dsmCoordinateMatchDebug?.match ?? true),
