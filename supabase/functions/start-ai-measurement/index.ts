@@ -1305,7 +1305,13 @@ async function processJob(input: any) {
 
       // Failure waterfall — decoupled from edge classification when faces are validated
       const hasValidFaces = graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5;
-      const failReason = !hasValidFaces && graph.validation_status !== "validated"
+      // Post-solver sanity: if area is large but facets are too few, the footprint
+      // likely included non-roof area (yard/trees) that merged into a single plane.
+      const postSolverAreaSqft = graph.totals?.total_plan_area_sqft || 0;
+      const tooFewFacetsForArea = graph.faces.length < MIN_FACETS_FOR_LARGE_ROOF && postSolverAreaSqft > 3000;
+      const failReason = tooFewFacetsForArea
+        ? `invalid_roof_footprint:${graph.faces.length}_facets_for_${Math.round(postSolverAreaSqft)}sqft`
+        : !hasValidFaces && graph.validation_status !== "validated"
         ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
         : !hasValidFaces && complexity.isComplex && graph.faces.length <= 4
           ? "ai_failed_complex_topology"
