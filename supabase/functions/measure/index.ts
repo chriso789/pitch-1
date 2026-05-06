@@ -1335,6 +1335,26 @@ function estimateLinearFeatures(faces: RoofFace[]): LinearFeature[] {
   return features;
 }
 
+// Classify solver failure into a specific reason code
+function classifySolverFailure(result: AutonomousGraphResult, preDiag: any): string {
+  if (result.success) return 'none';
+  if (!preDiag.footprint_valid) return 'missing_valid_footprint';
+  if (!preDiag.dsm_loaded) return 'no_dsm_available';
+  if (!preDiag.mask_loaded && preDiag.footprint_source === 'unknown') return 'missing_valid_footprint';
+  
+  const rawEdges = result.logs?.dsm_edges_detected ?? 0;
+  const acceptedEdges = result.logs?.dsm_edges_accepted ?? (result.logs?.fused_edges ?? 0);
+  const faces = result.faces?.length ?? 0;
+  
+  if (rawEdges === 0) return 'insufficient_dsm_edges';
+  if (rawEdges > 0 && acceptedEdges === 0) return 'insufficient_dsm_edges';
+  if (acceptedEdges > 0 && faces === 0) return 'dsm_edges_found_no_closed_faces';
+  if (faces > 0 && result.face_coverage_ratio < 0.5) return 'low_coverage';
+  if (result.validation_status === 'ai_failed_complex_topology') return 'graph_fragmentation';
+  
+  return result.failure_reason || result.validation_status || 'unknown_solver_failure';
+}
+
 // Provider: Google Solar API (sync, US coverage, actual pitch data)
 async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   if (!GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not configured");
