@@ -5,12 +5,11 @@
  * All edits create operations, never mutate the source PDF.
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { fabric } from 'fabric';
+import { useEffect, useRef, useState } from 'react';
+import { Canvas as FabricCanvas, IText, Rect, FabricImage } from 'fabric';
 import type { PdfObject } from '@/lib/pdf-engine/types';
 
 interface OverlayEditorProps {
-  /** Data URL of the rendered PDF page */
   pageImageUrl: string;
   pageWidth: number;
   pageHeight: number;
@@ -40,14 +39,14 @@ export function PdfOverlayEditor({
   scale = 1,
 }: OverlayEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fabricRef = useRef<fabric.Canvas | null>(null);
+  const fabricRef = useRef<FabricCanvas | null>(null);
   const [isReady, setIsReady] = useState(false);
 
   // Initialize Fabric canvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const canvas = new fabric.Canvas(canvasRef.current, {
+    const canvas = new FabricCanvas(canvasRef.current, {
       width: pageWidth * scale,
       height: pageHeight * scale,
       selection: mode === 'select',
@@ -56,16 +55,17 @@ export function PdfOverlayEditor({
     fabricRef.current = canvas;
 
     // Set background to rendered PDF page
-    fabric.Image.fromURL(pageImageUrl, (img) => {
+    FabricImage.fromURL(pageImageUrl, { crossOrigin: 'anonymous' }).then((img) => {
       img.scaleX = (pageWidth * scale) / (img.width || 1);
       img.scaleY = (pageHeight * scale) / (img.height || 1);
-      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+      canvas.backgroundImage = img;
+      canvas.renderAll();
       setIsReady(true);
-    }, { crossOrigin: 'anonymous' });
+    });
 
     // Handle selection
     canvas.on('selection:created', (e) => {
-      const selected = e.selected?.[0];
+      const selected = (e as any).selected?.[0];
       if (selected && (selected as any)._pitchObjectId && onObjectSelected) {
         const obj = objects.find(o => o.id === (selected as any)._pitchObjectId);
         onObjectSelected(obj || null);
@@ -78,21 +78,9 @@ export function PdfOverlayEditor({
 
     // Handle object movement
     canvas.on('object:modified', (e) => {
-      const target = e.target;
-      if (target && (target as any)._pitchObjectId && onObjectMoved) {
-        onObjectMoved(
-          (target as any)._pitchObjectId,
-          (target.left || 0) / scale,
-          (target.top || 0) / scale
-        );
-      }
-    });
-
-    // Handle text editing
-    canvas.on('text:changed', (e) => {
-      const target = e.target as fabric.IText;
-      if (target && (target as any)._pitchObjectId && onTextEdit) {
-        onTextEdit((target as any)._pitchObjectId, target.text || '');
+      const target = (e as any).target;
+      if (target && target._pitchObjectId && onObjectMoved) {
+        onObjectMoved(target._pitchObjectId, (target.left || 0) / scale, (target.top || 0) / scale);
       }
     });
 
@@ -103,7 +91,7 @@ export function PdfOverlayEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageImageUrl, pageWidth, pageHeight, scale]);
 
-  // Update mode
+  // Update mode - drawing for annotations/redactions
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -111,16 +99,15 @@ export function PdfOverlayEditor({
     canvas.selection = mode === 'select';
     canvas.defaultCursor = mode === 'select' ? 'default' : 'crosshair';
 
-    // Drawing mode for annotations/redactions
     if (mode === 'annotate' || mode === 'redact') {
       let startX = 0, startY = 0;
-      let rect: fabric.Rect | null = null;
+      let rect: Rect | null = null;
 
-      const onMouseDown = (e: fabric.IEvent<MouseEvent>) => {
-        const pointer = canvas.getPointer(e.e);
+      const onMouseDown = (e: any) => {
+        const pointer = canvas.getScenePoint(e.e);
         startX = pointer.x;
         startY = pointer.y;
-        rect = new fabric.Rect({
+        rect = new Rect({
           left: startX,
           top: startY,
           width: 0,
@@ -133,9 +120,9 @@ export function PdfOverlayEditor({
         canvas.add(rect);
       };
 
-      const onMouseMove = (e: fabric.IEvent<MouseEvent>) => {
+      const onMouseMove = (e: any) => {
         if (!rect) return;
-        const pointer = canvas.getPointer(e.e);
+        const pointer = canvas.getScenePoint(e.e);
         rect.set({
           width: Math.abs(pointer.x - startX),
           height: Math.abs(pointer.y - startY),
@@ -168,26 +155,24 @@ export function PdfOverlayEditor({
       canvas.on('mouse:up', onMouseUp);
 
       return () => {
-        canvas.off('mouse:down', onMouseDown as any);
-        canvas.off('mouse:move', onMouseMove as any);
-        canvas.off('mouse:up', onMouseUp as any);
+        canvas.off('mouse:down', onMouseDown);
+        canvas.off('mouse:move', onMouseMove);
+        canvas.off('mouse:up', onMouseUp);
       };
     }
   }, [mode, scale, pageNumber, onAddAnnotation, onAddRedaction]);
 
-  // Render text objects as interactive Fabric objects
+  // Render text objects
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || !isReady) return;
 
-    // Remove previous PITCH objects (keep background)
     const toRemove = canvas.getObjects().filter((o: any) => o._pitchObject);
     toRemove.forEach(o => canvas.remove(o));
 
-    // Add text objects
     const textObjects = objects.filter(o => o.object_type === 'text' && !o.is_deleted);
     for (const obj of textObjects) {
-      const itext = new fabric.IText(obj.content || '', {
+      const itext = new IText(obj.content || '', {
         left: obj.x * scale,
         top: obj.y * scale,
         fontSize: (obj.font_size || 12) * scale,
