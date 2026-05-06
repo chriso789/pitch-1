@@ -3,9 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Layers } from 'lucide-react';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Wrench } from 'lucide-react';
+import { Package, Wrench, Layers } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface AddGroupDialogProps {
   open: boolean;
