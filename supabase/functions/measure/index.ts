@@ -20,6 +20,7 @@ import { callInternalUNet, unetResultToOverlay } from "../_shared/internal-unet-
 import { calibrateRidgePosition, type RidgeCalibrationResult } from "./ridge-calibrator.ts";
 import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts";
 import { solveAutonomousGraph, detectComplexRoof, validateAutonomousResult, type AutonomousGraphResult, type AutonomousGraphInput } from "./autonomous-graph-solver.ts";
+import { evaluateDSMContract, analyzeGraphTopology, computeOverlayRegistration, type DSMContractInput, type DSMContractGateResult } from "./dsm-geometry-contract.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
@@ -1538,8 +1539,10 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   }
 
   // Attempt autonomous graph solve with DSM + mask evidence (DSM-first pipeline)
-  let dsmGridForSolver = null;
-  let maskedDSMForSolver = null;
+  let dsmGridForSolver: any = null;
+  let maskedDSMForSolver: any = null;
+  let roofMaskForContract: any = null;
+  let footprintSourceForContract: 'google_solar_mask' | 'mapbox' | 'osm' | 'regrid' | 'manual' | 'unknown' | 'none' = 'unknown';
   if (GOOGLE_PLACES_API_KEY) {
     try {
       // Fetch both DSM and mask in parallel for real data
@@ -1548,6 +1551,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         fetchRoofMaskFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY),
       ]);
       dsmGridForSolver = dsmResult;
+      roofMaskForContract = maskResult;
+      
+      if (maskResult) {
+        footprintSourceForContract = 'google_solar_mask';
+      }
       
       // Apply mask to DSM if both available
       if (dsmGridForSolver && maskResult) {
@@ -1577,7 +1585,83 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
 
   const autonomousResult = solveAutonomousGraph(autonomousInput);
 
-  // AUTONOMOUS VALIDATION GATE: Block all hard failures (no synthetic fallbacks)
+  // ============= DSM VALIDATED GEOMETRY CONTRACT =============
+  // Run the six-gate contract on solver output to determine geometry_source
+  let dsmContractResult: DSMContractGateResult | null = null;
+  if (autonomousResult.success) {
+    const effectiveDSM = maskedDSMForSolver || dsmGridForSolver;
+    
+    // Compute footprint pixel coords from DSM grid
+    const footprintPx: [number, number][] = effectiveDSM
+      ? coords.map((c: [number, number]) => {
+          const x = Math.floor((c[0] - effectiveDSM.bounds.minLng) / (effectiveDSM.bounds.maxLng - effectiveDSM.bounds.minLng) * effectiveDSM.width);
+          const y = Math.floor((effectiveDSM.bounds.maxLat - c[1]) / (effectiveDSM.bounds.maxLat - effectiveDSM.bounds.minLat) * effectiveDSM.height);
+          return [x, y] as [number, number];
+        })
+      : [];
+
+    // Build geometry_dsm_px and geometry_geo maps from faces
+    const geometryDsmPx: Record<string, [number, number][]> = {};
+    const geometryGeo: Record<string, [number, number][]> = {};
+    for (const face of autonomousResult.faces) {
+      geometryGeo[face.id] = face.polygon;
+      if (effectiveDSM) {
+        geometryDsmPx[face.id] = face.polygon.map((c: [number, number]) => {
+          const x = Math.floor((c[0] - effectiveDSM.bounds.minLng) / (effectiveDSM.bounds.maxLng - effectiveDSM.bounds.minLng) * effectiveDSM.width);
+          const y = Math.floor((effectiveDSM.bounds.maxLat - c[1]) / (effectiveDSM.bounds.maxLat - effectiveDSM.bounds.minLat) * effectiveDSM.height);
+          return [x, y] as [number, number];
+        });
+      }
+    }
+
+    const topoMetrics = analyzeGraphTopology(
+      autonomousResult.edges.map(e => ({ id: e.id, type: e.type, start: e.start, end: e.end })),
+      autonomousResult.faces.map(f => ({ id: f.id, edge_ids: f.edge_ids })),
+      coords,
+    );
+
+    const overlayReg = computeOverlayRegistration(
+      autonomousResult.faces.map(f => ({ polygon: f.polygon })),
+      coords,
+      footprintPx,
+      roofMaskForContract ? { data: roofMaskForContract.data, width: roofMaskForContract.width, height: roofMaskForContract.height } : null,
+      effectiveDSM?.bounds || null,
+    );
+
+    const contractInput: DSMContractInput = {
+      footprint: {
+        footprint_source: footprintSourceForContract,
+        footprint_geo: coords,
+        footprint_px: footprintPx,
+        footprint_area_sqft: plan_sqft,
+      },
+      coordinateSpace: {
+        coordinate_space_solver: effectiveDSM ? 'dsm_px' : 'geo',
+        geometry_dsm_px: geometryDsmPx,
+        geometry_geo: geometryGeo,
+      },
+      topology: topoMetrics,
+      areaConservation: {
+        sum_face_plan_area_sqft: autonomousResult.totals.total_plan_area_sqft,
+        footprint_area_sqft: plan_sqft,
+        area_conservation_ratio: plan_sqft > 0 ? autonomousResult.totals.total_plan_area_sqft / plan_sqft : 0,
+      },
+      overlayRegistration: overlayReg,
+    };
+
+    dsmContractResult = evaluateDSMContract(contractInput);
+    
+    const gateLog = Object.entries(dsmContractResult.gates).map(([k, v]) => `${k}:${v.passed ? '✅' : '❌'}`).join(' ');
+    console.log(`[DSM_CONTRACT] ${dsmContractResult.all_passed ? '✅ ALL GATES PASSED' : '❌ GATES FAILED'} → geometry_source=${dsmContractResult.geometry_source}`);
+    console.log(`  ${gateLog}`);
+    if (!dsmContractResult.all_passed) {
+      const failedGates = Object.entries(dsmContractResult.gates).filter(([_, v]) => !v.passed);
+      for (const [name, gate] of failedGates) {
+        console.warn(`  ❌ ${name}: ${gate.reason}`);
+      }
+    }
+  }
+
   const isHardFail = ['ai_failed_complex_topology', 'insufficient_structural_signal', 'invalid_roof_graph'].includes(autonomousResult.validation_status);
   if (isHardFail) {
     console.warn(`🚫 AUTONOMOUS FAILURE [${autonomousResult.validation_status}]: ${autonomousResult.failure_reason}`);
@@ -1718,6 +1802,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     footprintConfidence?: number;
     roofType?: string;
     derivedFacetCount?: number;
+    dsmContract?: { geometry_source: string; customer_report_ready: boolean; debug_metrics: any; gates?: any };
   } = {
     property_id: "",
     source: 'google_solar',
@@ -1748,6 +1833,17 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       centerLat: lat,
       zoom: 20,
       metersPerPixel,
+    },
+    // DSM Validated Geometry Contract result
+    dsmContract: dsmContractResult ? {
+      geometry_source: dsmContractResult.geometry_source,
+      customer_report_ready: dsmContractResult.customer_report_ready,
+      debug_metrics: dsmContractResult.debug_metrics,
+      gates: dsmContractResult.gates,
+    } : {
+      geometry_source: 'heuristic_estimate',
+      customer_report_ready: false,
+      debug_metrics: null,
     },
   };
 
@@ -3492,6 +3588,10 @@ Deno.serve(async (req) => {
               total_eave_length: eaveTot,
               total_rake_length: rakeTot,
               ai_detection_data: { engine: engineUsed, source: meas.source, feature_count: features.length },
+              // DSM Contract fields
+              geometry_source: meas.dsmContract?.geometry_source || 'heuristic_estimate',
+              customer_report_ready: meas.dsmContract?.customer_report_ready || false,
+              dsm_contract_debug: meas.dsmContract?.debug_metrics || null,
             };
 
             const { error: rmErr } = await adminSupabase
