@@ -2321,8 +2321,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   };
 
   // ===== FAILURE CATEGORY CLASSIFICATION =====
+  const hasClipperFailures = enrichedFaceRejections.some(fr => fr.rejection_reasons.includes('polygon_clipper_failure'));
   const failureCategory: FailureCategory = (() => {
     if (validation.valid) return 'validated';
+    // Clipper failure: faces existed but clipping destroyed them
+    if (hasClipperFailures && planar.faces.length > 0 && graphFaces.length === 0) return 'polygon_clipper_failure';
     if (edgeAcceptanceRatio < 0.15 && graphFaces.length < 2) return 'edge_filter_failure';
     if (scoredEdges.length < 3) return 'structural_signal_failure';
     if (planar.faces.length > 0 && graphFaces.length === 0) return 'face_validation_failure';
