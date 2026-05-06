@@ -1280,6 +1280,8 @@ async function processJob(input: any) {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
         facet_source: graph.facet_source || "dsm_planar_graph_faces",
         solver_version: "autonomous_graph_solver_v3_prune_first",
+        failure_category: graph.failure_category || 'validated',
+        dominant_rejection: graph.dominant_rejection || null,
         fallback_used: false,
         hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
          coordinate_space_input: "geo_from_selected_footprint",
@@ -4598,6 +4600,8 @@ async function processJob(input: any) {
           edge_acceptance_ratio: autonomousDebug?.edge_acceptance_ratio ?? null,
           bbox_rescue_used_in_validation: autonomousDebug?.bbox_rescue_used_in_validation ?? false,
           face_rejection_table: autonomousDebug?.face_rejection_table || [],
+          failure_category: autonomousDebug?.failure_category || null,
+          dominant_rejection: autonomousDebug?.dominant_rejection || null,
         },
       })
       .select("id")
@@ -5657,6 +5661,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       edge_acceptance_ratio: debug?.edge_acceptance_ratio ?? null,
       bbox_rescue_used_in_validation: debug?.bbox_rescue_used_in_validation ?? false,
       face_rejection_table: debug?.face_rejection_table || [],
+      failure_category: debug?.failure_category || null,
+      dominant_rejection: debug?.dominant_rejection || null,
     },
   }).select("id").single();
   if (error) throw error;
