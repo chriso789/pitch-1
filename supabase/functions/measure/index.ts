@@ -1760,6 +1760,15 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         reason: autonomousResult.failure_reason,
         logs: autonomousResult.logs,
       },
+      dsmContract: {
+        geometry_source: 'heuristic_estimate',
+        customer_report_ready: false,
+        debug_metrics: solverDebugMetrics,
+        gates: null,
+        failed_stage: 'solver',
+        solver_failure_reason: autonomousResult.failure_reason,
+        failure_classification: solverDebugMetrics.failure_classification,
+      },
     };
     return failResult;
   }
