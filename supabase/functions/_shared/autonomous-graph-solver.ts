@@ -1657,17 +1657,56 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       warnings.push(`face_${faceId}_self_intersecting`);
     }
 
-    // ===== PIXEL-SPACE CLIPPING =====
-    const clippedPx = clipPolygonPx(facePx, footprintPxCCW);
+    // ===== PIXEL-SPACE CLIPPING (Concave-safe v6) =====
+    // Clean face polygon before clipping
+    const cleanedFacePx = removeDuplicateVerticesPx(facePx, 0.5);
+    
+    const clipResult = clipPolygonPxRobust(
+      cleanedFacePx.length >= 3 ? cleanedFacePx : facePx, 
+      footprintPxCCW
+    );
+    const clippedPx = clipResult.polygon;
     const faceAreaAfterClipPx = polygonAreaPx(clippedPx);
     clipDiag.face_area_after_clip_px = Number(faceAreaAfterClipPx.toFixed(1));
-    clipDiag.clip_operation_result = clippedPx.length < 3 ? 'clipped_to_nothing' : `${clippedPx.length}_vertices`;
+    clipDiag.clip_operation_result = clipResult.method === 'inside_no_clip' 
+      ? 'inside_no_clip'
+      : clipResult.method === 'clipper_degenerate_output'
+      ? 'clipper_degenerate_output'
+      : clippedPx.length < 3 
+      ? 'clipped_to_nothing' 
+      : `${clippedPx.length}_vertices_${clipResult.method}`;
+    (clipDiag as any).vertices_inside_footprint = clipResult.verticesInsideCount;
+    (clipDiag as any).vertices_outside_footprint = clipResult.verticesOutsideCount;
     faceClippingDiagnostics.push(clipDiag);
+
+    // Handle clipper degenerate output: preserve for debug but mark as failure
+    if (clipResult.method === 'clipper_degenerate_output') {
+      facesRejected++;
+      rejectionReasons.push('polygon_clipper_failure');
+      warnings.push(`face_${faceId}_clipper_degenerate: area_before=${faceAreaBeforeClipPx.toFixed(0)} area_after=${faceAreaAfterClipPx.toFixed(0)}`);
+      faceRejectionTable.push({ face_id: faceId, area_sqft: 0, plane_rms: null, inside_footprint: true, mask_overlap: null, rejection_reason: 'polygon_clipper_failure' });
+      enrichedFaceRejections.push({
+        face_id: faceId, vertex_count: face.polygon.length, area_sqft: 0,
+        bbox_geo: null, centroid_geo: null,
+        inside_footprint: true, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+        mask_overlap_ratio: null, plane_rms: null, pitch_degrees: null,
+        shared_edge_count: 0, boundary_edge_count: 0,
+        rejection_reasons: rejectionReasons,
+      });
+      continue;
+    }
 
     if (clippedPx.length < 3) {
       facesRejected++;
       rejectionReasons.push('clipped_to_nothing');
-      faceRejectionTable.push({ face_id: faceId, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: 'clipped_to_nothing' });
+
+      // Fallback rule: if bbox overlap was high and face had real area, this is a clipper issue
+      if (bboxOverlapBeforeClip > 0.90 && faceAreaBeforeClipPx > 100) {
+        rejectionReasons.push('polygon_clipper_failure');
+        warnings.push(`face_${faceId}_clipper_failure_despite_overlap: bbox_overlap=${bboxOverlapBeforeClip.toFixed(3)} area_before=${faceAreaBeforeClipPx.toFixed(0)}`);
+      }
+
+      faceRejectionTable.push({ face_id: faceId, area_sqft: 0, plane_rms: null, inside_footprint: false, mask_overlap: null, rejection_reason: rejectionReasons.join('+') });
       enrichedFaceRejections.push({
         face_id: faceId, vertex_count: face.polygon.length, area_sqft: 0,
         bbox_geo: null, centroid_geo: null,
