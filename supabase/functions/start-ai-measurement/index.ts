@@ -498,7 +498,22 @@ async function processJob(input: any) {
     const geocodePx = { x: raster.width / 2, y: raster.height / 2 };
     const sqftPerPx2 = actualFpp * actualFpp;
     const RESIDENTIAL_MIN_SQFT = 800;
+    const RESIDENTIAL_MAX_SQFT = 8000; // Largest realistic residential roof; rejects parcel/yard polygons
     const MIN_COVERAGE_RATIO = 0.20;
+    const MAX_FOOTPRINT_BBOX_TILE_RATIO = 0.35; // Footprint bbox may not exceed 35% of 1280×1280 tile
+    const MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO = 2.5; // Footprint may not be >2.5× the sum of solar segment areas
+    const MIN_FACETS_FOR_LARGE_ROOF = 3; // Roofs >3000 sqft must have ≥3 facets
+
+    // Compute total solar segment ground area in sqft for ratio checks
+    const solarSegmentTotalAreaSqft = (() => {
+      const segs = solarData?.solarPotential?.roofSegmentStats || [];
+      let total = 0;
+      for (const s of segs as any[]) {
+        const m2 = Number(s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0);
+        if (Number.isFinite(m2) && m2 > 0) total += m2 * 10.7639; // m² → sqft
+      }
+      return total;
+    })();
 
     type FootprintCandidate = {
       source: string;
@@ -560,11 +575,23 @@ async function processJob(input: any) {
         geocode_center_score * 0.20 +
         polygon_shape_score * 0.15;
 
+      // Bbox-to-tile ratio: footprint bbox area / tile area
+      const tileArea = raster.width * raster.height;
+      const bboxTileRatio = bbox ? (bbox.width * bbox.height) / tileArea : 0;
+
+      // Footprint-to-solar area ratio
+      const footprintToSolarRatio = solarSegmentTotalAreaSqft > 0
+        ? area_sqft / solarSegmentTotalAreaSqft
+        : null;
+
       // Rejection rules
       let rejected_reason: string | null = null;
       if (!valid) rejected_reason = "polygon_invalid_or_off_canvas";
       else if (vertex_count < 4) rejected_reason = "fewer_than_4_corners";
       else if (area_sqft > 0 && area_sqft < RESIDENTIAL_MIN_SQFT) rejected_reason = `area_too_small:${Math.round(area_sqft)}sqft`;
+      else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
+      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+      else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
       else if (coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox < MIN_COVERAGE_RATIO)
         rejected_reason = `coverage_${Math.round((coverage_ratio_vs_solar_bbox || 0) * 100)}pct_lt_${Math.round(MIN_COVERAGE_RATIO * 100)}pct`;
       else if (solarBboxPx && solarBboxPx.area > 0 && overlap_with_solar_bbox <= 0)
@@ -753,7 +780,8 @@ async function processJob(input: any) {
             );
             const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
             maskCand.polygon_shape_score = Math.min(1, maskCand.polygon_shape_score + 0.45);
-            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.6));
+            // Only boost if not rejected — oversized masks must NOT auto-win
+            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.25));
             candidates.push(maskCand);
             if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
           }
@@ -916,13 +944,30 @@ async function processJob(input: any) {
     const footprintIsLatLng = footprintForDsmPx.length > 0 && footprintForDsmPx.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
     const footprintBbox = bboxOf(footprintForDsmPx);
     const footprintCoordinateSpaceMatch = Boolean(footprintBbox && footprintBbox.maxX > 1 && footprintBbox.maxY > 1 && footprintBbox.minX >= -2 && footprintBbox.minY >= -2 && footprintBbox.maxX <= raster.width + 2 && footprintBbox.maxY <= raster.height + 2);
-    const footprintValid = footprintForDsmPx.length >= 4 && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT && !footprintIsLatLng && footprintCoordinateSpaceMatch;
+
+    // ── Enhanced sanity checks ──
+    const footprintBboxTileRatio = footprintBbox
+      ? (footprintBbox.width * footprintBbox.height) / (raster.width * raster.height)
+      : 0;
+    const footprintToSolarAreaRatio = solarSegmentTotalAreaSqft > 0
+      ? footprintAreaSqftVal / solarSegmentTotalAreaSqft
+      : null;
+    const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
+    const footprintBboxTooLarge = footprintBboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
+
+    const footprintValid = footprintForDsmPx.length >= 4
+      && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT
+      && !footprintAreaTooLarge
+      && !footprintBboxTooLarge
+      && !footprintInflatedVsSolar
+      && !footprintIsLatLng
+      && footprintCoordinateSpaceMatch;
 
     // Auto-close footprint if not closed
     if (footprint.length >= 4) {
       const first = footprint[0], last = footprint[footprint.length - 1];
       if (Math.hypot(first.x - last.x, first.y - last.y) > 1) {
-        // Already open — the solver handles this, but log it
         console.log("[FOOTPRINT_VALIDATE] Auto-closing footprint polygon");
       }
     }
@@ -932,9 +977,15 @@ async function processJob(input: any) {
         ? "missing_valid_footprint"
         : footprintIsLatLng
           ? "footprint_coordinate_mismatch"
-          : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
-            ? "missing_valid_footprint"
-            : "missing_valid_footprint";
+          : footprintAreaTooLarge
+            ? "invalid_roof_footprint:area_too_large"
+            : footprintBboxTooLarge
+              ? "invalid_roof_footprint:bbox_covers_too_much_tile"
+              : footprintInflatedVsSolar
+                ? "invalid_roof_footprint:area_inflation_vs_solar"
+                : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
+                  ? "missing_valid_footprint"
+                  : "missing_valid_footprint";
 
       console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
         footprint_length: footprintForDsmPx.length,
@@ -952,6 +1003,12 @@ async function processJob(input: any) {
         footprint_point_count: footprintForDsmPx.length,
         footprint_area_px: Math.round(footprintAreaPxVal),
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+        footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
+        footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
+        footprint_area_too_large: footprintAreaTooLarge,
+        footprint_bbox_too_large: footprintBboxTooLarge,
+        footprint_inflated_vs_solar: footprintInflatedVsSolar,
         footprint_coordinate_space: footprintIsLatLng ? "lat_lng" : "pixel",
         dsm_edge_coordinate_space: "pixel",
         coordinate_space_match: footprintCoordinateSpaceMatch,
@@ -960,6 +1017,8 @@ async function processJob(input: any) {
         candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
           source: c.source, reason: c.rejected_reason
         })),
+        selected_component_count: validCandidates.length,
+        clipping_applied: false,
       };
 
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
@@ -982,6 +1041,9 @@ async function processJob(input: any) {
       source: footprintSource,
       vertices: footprint.length,
       area_sqft: Math.round(footprintAreaSqftVal),
+      solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+      footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
+      footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
     }));
 
     // 5. Run deterministic topology on the selected footprint.
@@ -1243,7 +1305,13 @@ async function processJob(input: any) {
 
       // Failure waterfall — decoupled from edge classification when faces are validated
       const hasValidFaces = graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5;
-      const failReason = !hasValidFaces && graph.validation_status !== "validated"
+      // Post-solver sanity: if area is large but facets are too few, the footprint
+      // likely included non-roof area (yard/trees) that merged into a single plane.
+      const postSolverAreaSqft = graph.totals?.total_plan_area_sqft || 0;
+      const tooFewFacetsForArea = graph.faces.length < MIN_FACETS_FOR_LARGE_ROOF && postSolverAreaSqft > 3000;
+      const failReason = tooFewFacetsForArea
+        ? `invalid_roof_footprint:${graph.faces.length}_facets_for_${Math.round(postSolverAreaSqft)}sqft`
+        : !hasValidFaces && graph.validation_status !== "validated"
         ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
         : !hasValidFaces && complexity.isComplex && graph.faces.length <= 4
           ? "ai_failed_complex_topology"
