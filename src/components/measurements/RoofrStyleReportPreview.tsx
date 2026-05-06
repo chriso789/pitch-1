@@ -444,6 +444,21 @@ export function RoofrStyleReportPreview({
     };
   });
 
+  // ── GEOMETRY PRODUCTION GATE ──
+  const geometryGate = useMemo(() => {
+    if (!roofMeasurementData) return { allowed: false, reason: 'No data', source: 'heuristic_estimate' as const };
+    const grj = roofMeasurementData.geometry_report_json as Record<string, any> | null;
+    const gateInput: GeometryGateInput = {
+      geometry_source: grj?.geometry_source ?? null,
+      customer_report_ready: roofMeasurementData.customer_report_ready ?? null,
+      report_blocked: roofMeasurementData.gate_decision === 'blocked',
+      needs_review: roofMeasurementData.requires_manual_review ?? false,
+    };
+    return evaluateGeometryGate(gateInput);
+  }, [roofMeasurementData]);
+
+  const isCustomerExportBlocked = !geometryGate.allowed;
+
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
 
