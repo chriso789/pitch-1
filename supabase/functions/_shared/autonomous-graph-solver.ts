@@ -1610,7 +1610,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v7 — Coverage Fix + Edge Containment + Clipper Debug`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v8 — Pre-Masked DSM Edge Detection`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -1638,16 +1638,48 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push('footprint_self_intersection_detected');
   }
 
-  // ===== STEP 1: DSM edge detection =====
+  // ===== STEP 1: PRE-MASKED DSM EDGE DETECTION (v8) =====
+  // Architecture: constrain edge detection to roof region BEFORE topology,
+  // not afterward. Rasterize footprint polygon into a pixel mask and pass it
+  // to the edge detector so only roof-region pixels produce structural edges.
   let dsmRidges: DSMEdgeCandidate[] = [];
   let dsmValleys: DSMEdgeCandidate[] = [];
+  let unmaskEdgeCount = 0;
+  let maskedEdgeCount = 0;
+  let roofMaskPixelCount = 0;
 
   if (effectiveDSM) {
-    const mask = input.maskedDSM?.mask || null;
-    const detection = detectStructuralEdges(effectiveDSM, mask);
+    const { width, height } = effectiveDSM;
+
+    // Build roof-region mask from footprint polygon (3px buffer for boundary edges)
+    const footprintMask = footprintPxCCW.length >= 3
+      ? rasterizeFootprintMask(footprintPxCCW, width, height, 3)
+      : null;
+
+    // Intersect with existing DSM mask (if any) so we don't scan noData regions
+    const existingMask = input.maskedDSM?.mask || null;
+    let roofMask: Uint8Array | null;
+    if (footprintMask && existingMask) {
+      roofMask = intersectMasks(footprintMask, existingMask);
+    } else {
+      roofMask = footprintMask || existingMask;
+    }
+
+    // Count mask pixels for diagnostics
+    if (roofMask) {
+      for (let i = 0; i < roofMask.length; i++) {
+        if (roofMask[i]) roofMaskPixelCount++;
+      }
+    }
+
+    // Run edge detection ONLY inside roof mask
+    const detection = detectStructuralEdges(effectiveDSM, roofMask);
     dsmRidges = detection.ridges;
     dsmValleys = detection.valleys;
-    console.log(`  DSM edges: ${dsmRidges.length} ridges, ${dsmValleys.length} valleys (${detection.stats.processingMs}ms)`);
+    maskedEdgeCount = dsmRidges.length + dsmValleys.length;
+
+    console.log(`  [v8 PRE-MASK] Roof mask: ${roofMaskPixelCount} pixels out of ${width * height} total (${(roofMaskPixelCount / (width * height) * 100).toFixed(1)}%)`);
+    console.log(`  DSM edges (pre-masked): ${dsmRidges.length} ridges, ${dsmValleys.length} valleys (${detection.stats.processingMs}ms)`);
   } else {
     warnings.push('DSM not available — structural detection limited to skeleton');
   }
