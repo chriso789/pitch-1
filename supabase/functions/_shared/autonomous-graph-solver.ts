@@ -1908,6 +1908,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       total_plan_area_sqft: totalPlanArea,
       predominant_pitch: predominantPitch,
     },
+    // Truthful coordinate-space contract: solver works in geographic [lng, lat]
+    coordinate_space_solver: 'geo' as const,
+    coordinate_space_export: 'geo' as const,
+    coordinate_space_footprint: 'geo' as const,
     logs,
     topology_source: 'autonomous_dsm_graph_solver',
     facet_source: 'dsm_planar_graph_faces',
