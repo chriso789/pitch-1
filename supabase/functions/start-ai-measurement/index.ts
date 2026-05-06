@@ -755,11 +755,12 @@ async function processJob(input: any) {
             // A convex hull can score slightly higher on area/coverage while still
             // collapsing to one roof plane, so prefer the topology-capable union.
             unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
-            unionCand.validity_score =
+            // If already rejected (e.g. outbuilding), do NOT boost validity
+            unionCand.validity_score = unionCand.rejected_reason ? unionCand.validity_score :
               Math.min(1,
-                unionCand.area_score * 0.35 +
-                unionCand.solar_overlap_score * 0.30 +
-                unionCand.geocode_center_score * 0.20 +
+                unionCand.area_score * 0.30 +
+                unionCand.solar_overlap_score * 0.25 +
+                unionCand.geocode_center_score * 0.30 +
                 unionCand.polygon_shape_score * 0.15 +
                 0.08,
               );
