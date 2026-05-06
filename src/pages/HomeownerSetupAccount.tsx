@@ -87,23 +87,13 @@ export default function HomeownerSetupAccount() {
     setIsLoading(true);
 
     try {
-      // Hash password (in production, this should be done server-side)
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      // Hash password server-side via edge function
+      const { data: pwResult, error: pwError } = await supabase.functions.invoke('homeowner-password', {
+        body: { action: 'set-password', contact_id: contact.id, password }
+      });
 
-      // Update contact with password hash
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({ 
-          portal_password_hash: hashHex,
-          portal_last_login_at: new Date().toISOString()
-        })
-        .eq('id', contact.id);
-
-      if (updateError) throw updateError;
+      if (pwError) throw new Error(pwError.message || 'Failed to set password');
+      if (!pwResult?.success) throw new Error(pwResult?.error || 'Failed to set password');
 
       // Create session
       const sessionToken = crypto.randomUUID();

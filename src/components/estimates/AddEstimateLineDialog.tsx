@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { safeEvalFormula } from "@/lib/safeFormulaEval";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,17 +177,7 @@ export function AddEstimateLineDialog({
   };
 
   const evaluateFormula = (formula: string, measures: any): number => {
-    try {
-      let expr = formula;
-      // Replace measurement variables
-      expr = expr.replace(/\{\{\s*measure\.(\w+)\s*\}\}/g, (_, key) => {
-        return String(measures[key] || 0);
-      });
-      // Simple eval - in production use a proper formula parser
-      return eval(expr) || 0;
-    } catch {
-      return 0;
-    }
+    return safeEvalFormula(formula, measures);
   };
 
   const handleFormulaChange = (formula: string) => {

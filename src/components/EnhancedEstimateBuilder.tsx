@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Parser as ExprParser } from 'expr-eval';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1132,33 +1133,33 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         if (!formula) return 1;
         
         try {
-          // Handle simple numeric values
           const numericValue = parseFloat(formula);
           if (!isNaN(numericValue)) return numericValue;
           
-          // Replace {{ expr }} with evaluated expression
-          let expression = formula.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expr) => {
-            // Replace tag references with values
-            let evalExpr = expr;
-            Object.entries(tags).forEach(([key, val]) => {
-              const regex = new RegExp(key.replace(/\./g, '\\.'), 'g');
-              evalExpr = evalExpr.replace(regex, String(val));
-            });
-            return evalExpr;
+          // Build variables from tags
+          const vars: Record<string, any> = {
+            ceil: Math.ceil, floor: Math.floor, round: Math.round,
+            max: Math.max, min: Math.min, abs: Math.abs,
+          };
+          Object.entries(tags).forEach(([key, val]) => {
+            // expr-eval uses underscores for dotted keys
+            vars[key.replace(/\./g, '_')] = val;
+            vars[key] = val;
           });
           
-          // If no {{ }}, try direct tag replacement
-          if (expression === formula) {
-            Object.entries(tags).forEach(([key, val]) => {
+          // Replace {{ expr }} with inner expression
+          let expression = formula.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expr) => expr);
+          // Replace dots in tag references with underscores for parser
+          Object.keys(tags).forEach(key => {
+            if (key.includes('.')) {
               const regex = new RegExp(key.replace(/\./g, '\\.'), 'g');
-              expression = expression.replace(regex, String(val));
-            });
-          }
-          
-          // Safe eval with Math functions
-          const safeEval = new Function('ceil', 'floor', 'round', 'max', 'min', 
-            `return ${expression}`);
-          return safeEval(Math.ceil, Math.floor, Math.round, Math.max, Math.min) || 0;
+              expression = expression.replace(regex, key.replace(/\./g, '_'));
+            }
+          });
+
+          const exprParser = new ExprParser();
+          const parsed = exprParser.parse(expression);
+          return parsed.evaluate(vars) || 0;
         } catch (e) {
           console.warn('Formula eval error:', formula, e);
           return 0;

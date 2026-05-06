@@ -50,9 +50,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     // Generate a customer portal token (re-uses existing /customer/:token route)
-    const tokenChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-    let token = "";
-    for (let i = 0; i < 32; i++) token += tokenChars.charAt(Math.floor(Math.random() * tokenChars.length));
+    const tokenBytes = new Uint8Array(32);
+    crypto.getRandomValues(tokenBytes);
+    const token = Array.from(tokenBytes, b => b.toString(16).padStart(2, '0')).join('');
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { error: tokenErr } = await supabase.from("customer_portal_tokens").insert({

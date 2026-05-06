@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { safeEvalFormula } from "@/lib/safeFormulaEval";
 
 export interface LaborRate {
   id: string;
@@ -102,17 +103,5 @@ export function evaluateLaborFormula(
   formula: string,
   measurements: Record<string, number | undefined>
 ): number {
-  try {
-    let expr = formula;
-    // Replace measurement variables with values
-    expr = expr.replace(/\{\{\s*measure\.(\w+)\s*\}\}/g, (_, key) => {
-      return String(measurements[key] || 0);
-    });
-    // Evaluate the expression safely
-    // eslint-disable-next-line no-eval
-    const result = eval(expr);
-    return typeof result === "number" && !isNaN(result) ? Math.max(0, result) : 0;
-  } catch {
-    return 0;
-  }
+  return safeEvalFormula(formula, measurements);
 }
