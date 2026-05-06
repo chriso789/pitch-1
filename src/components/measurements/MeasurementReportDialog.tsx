@@ -161,6 +161,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Planes (saved)', value: fmt(dp.final_plane_count_saved) },
     { label: 'Edges (saved)', value: fmt(dp.final_edge_count_saved) },
     { label: 'Patent Planes', value: fmt(dp.final_patent_model_plane_count) },
+    { label: 'Shared Edges', value: fmt(dp.edge_classification_debug?.shared_edge_count ?? grj.edge_emit_diagnostics?.shared_edge_count) },
+    { label: 'Outside Footprint', value: fmt(dp.edge_classification_debug?.edges_outside_footprint_count ?? grj.edge_emit_diagnostics?.edges_outside_footprint_count) },
+    { label: 'Null Endpoints', value: fmt(dp.edge_classification_debug?.null_endpoint_count ?? grj.edge_emit_diagnostics?.null_endpoint_count) },
+    { label: 'Area Conservation', value: fmt(dp.edge_classification_debug?.area_conservation_ratio ?? grj.edge_emit_diagnostics?.area_conservation_ratio) },
     { label: 'Footprint Confidence', value: fmt(m.footprint_confidence) },
     { label: 'Measurement Confidence', value: fmt(m.measurement_confidence) },
     { label: 'Validation Status', value: String(m.validation_status ?? '—') },
@@ -841,13 +845,25 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const { grj, rasterUrl, rasterSize, planes_px, edges_px, footprint_px, hasRasterOverlay } = getRasterOverlayData(effectiveMeasurement);
               const showDebugOverlay = hasRasterOverlay;
 
+              const isDiagnosticOnly = !pdfGate.ok;
+              const isBboxRescued = detectBboxRescue(effectiveMeasurement);
+
               const debugOverlay = showDebugOverlay ? (
-                <div className="measurement-report-page border rounded-lg overflow-hidden bg-background">
+                <div className="measurement-report-page border rounded-lg overflow-hidden bg-background relative">
                   <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
                     <div className="font-semibold text-sm">Roof Overlay</div>
-                    <Badge variant="secondary">preliminary</Badge>
+                    {isDiagnosticOnly ? (
+                      <Badge variant="destructive">diagnostic only</Badge>
+                    ) : (
+                      <Badge variant="secondary">preliminary</Badge>
+                    )}
                   </div>
-                  <div className="p-2 bg-white">
+                  {isDiagnosticOnly && (
+                    <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-destructive">
+                      ⚠ DIAGNOSTIC — NOT FOR CUSTOMER USE {isBboxRescued ? '— BBOX RESCUE ACTIVE' : ''}
+                    </div>
+                  )}
+                  <div className="p-2 bg-white relative">
                     <RasterOverlayDebugView
                       imageUrl={rasterUrl}
                       rasterSize={rasterSize}
@@ -858,6 +874,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                       roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
                       geometryPxSpace={grj?.geometry_px_space || null}
                     />
+                    {isDiagnosticOnly && (
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <div className="text-destructive/15 font-black text-6xl -rotate-30 select-none whitespace-nowrap">
+                          DIAGNOSTIC ONLY
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : null;
