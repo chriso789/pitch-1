@@ -163,5 +163,23 @@ export function overlayToPatentModel(
         reshoot_requested: false,
       };
     })(),
+    // Determine geometry source from measurement metadata
+    geometry_source: (() => {
+      const m = (measurement as any) || {};
+      if (m.geometry_source === 'dsm_validated') return 'dsm_validated' as const;
+      if (m.geometry_source === 'vendor_verified') return 'vendor_verified' as const;
+      // Default: overlay-based models built from heuristic topology are NOT validated
+      return 'heuristic_estimate' as const;
+    })(),
+    // Customer report gate: only allow if geometry is validated AND imagery QC passed
+    customer_report_ready: (() => {
+      const m = (measurement as any) || {};
+      const geoSource = m.geometry_source;
+      const isValidatedGeo = geoSource === 'dsm_validated' || geoSource === 'vendor_verified';
+      const blocked = !!(m.report_blocked || m.needs_review);
+      const score = typeof m.overall_score === 'number' ? m.overall_score : null;
+      const imageryOk = !blocked && (score == null || score >= 0.65);
+      return isValidatedGeo && imageryOk;
+    })(),
   };
 }
