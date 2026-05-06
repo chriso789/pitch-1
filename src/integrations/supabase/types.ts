@@ -18972,6 +18972,7 @@ export type Database = {
           address_street: string | null
           address_verified_at: string | null
           address_zip: string | null
+          contact_sequence_counter: number | null
           created_at: string
           created_by: string | null
           email: string | null
@@ -18980,6 +18981,7 @@ export type Database = {
           is_active: boolean
           is_primary: boolean | null
           latitude: number | null
+          location_code: string | null
           logo_url: string | null
           longitude: number | null
           manager_id: string | null
@@ -19002,6 +19004,7 @@ export type Database = {
           address_street?: string | null
           address_verified_at?: string | null
           address_zip?: string | null
+          contact_sequence_counter?: number | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -19010,6 +19013,7 @@ export type Database = {
           is_active?: boolean
           is_primary?: boolean | null
           latitude?: number | null
+          location_code?: string | null
           logo_url?: string | null
           longitude?: number | null
           manager_id?: string | null
@@ -19032,6 +19036,7 @@ export type Database = {
           address_street?: string | null
           address_verified_at?: string | null
           address_zip?: string | null
+          contact_sequence_counter?: number | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -19040,6 +19045,7 @@ export type Database = {
           is_active?: boolean
           is_primary?: boolean | null
           latitude?: number | null
+          location_code?: string | null
           logo_url?: string | null
           longitude?: number | null
           manager_id?: string | null
