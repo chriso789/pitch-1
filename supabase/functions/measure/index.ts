@@ -3664,7 +3664,13 @@ Deno.serve(async (req) => {
               // DSM Contract fields
               geometry_source: meas.dsmContract?.geometry_source || 'heuristic_estimate',
               customer_report_ready: meas.dsmContract?.customer_report_ready || false,
-              dsm_contract_debug: meas.dsmContract?.debug_metrics || null,
+              dsm_contract_debug: {
+                ...(meas.dsmContract?.debug_metrics || {}),
+                gates: meas.dsmContract?.gates || null,
+                failed_stage: meas.dsmContract?.failed_stage || null,
+                solver_failure_reason: meas.dsmContract?.solver_failure_reason || null,
+                failure_classification: meas.dsmContract?.failure_classification || null,
+              },
             };
 
             const { error: rmErr } = await adminSupabase
