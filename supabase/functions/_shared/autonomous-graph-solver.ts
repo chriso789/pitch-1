@@ -2038,7 +2038,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     rejected_by_score: prunedByScore,
     rejected_by_intersection: prunedByIntersection,
     rejected_by_duplicate: duplicateEdgeCount,
-    rejected_by_connectivity: dangling,
+    rejected_by_connectivity: planar.debug.dangling_edges_removed || 0,
     accepted_final: outputEdges.length,
     acceptance_ratio: Number(edgeAcceptanceRatio.toFixed(3)),
     edge_filter_over_aggressive: edgeFilterOverAggressive,
