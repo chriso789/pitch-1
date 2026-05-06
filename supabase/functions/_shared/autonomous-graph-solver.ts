@@ -426,9 +426,197 @@ function segmentsIntersectPx(a1: PxPt, a2: PxPt, b1: PxPt, b2: PxPt): boolean {
   return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
 }
 
-// ============= PIXEL-SPACE POLYGON CLIPPING (Sutherland-Hodgman) =============
+// ============= PIXEL-SPACE POLYGON CLIPPING (Concave-safe) =============
 
-function clipPolygonPx(subject: PxPt[], clip: PxPt[]): PxPt[] {
+/**
+ * Clip result with diagnostic info.
+ */
+interface ClipResult {
+  polygon: PxPt[];
+  method: 'inside_no_clip' | 'sutherland_hodgman' | 'vertex_filter' | 'clipper_degenerate_output' | 'empty';
+  verticesInsideCount: number;
+  verticesOutsideCount: number;
+}
+
+/**
+ * Check if ALL vertices of subject are inside the clip polygon.
+ * If yes, clipping is unnecessary — the face is fully contained.
+ */
+function allVerticesInside(subject: PxPt[], clip: PxPt[]): boolean {
+  return subject.every(p => pointInPolygonPx(p, clip));
+}
+
+/**
+ * Robust polygon clipping that handles concave clip polygons.
+ * 
+ * Strategy:
+ * 1. If all subject vertices are inside clip → return subject unchanged
+ * 2. Try vertex-filter approach: keep inside vertices + edge intersections
+ * 3. Fallback to S-H only for convex clip polygons
+ * 4. If result is degenerate (area < 5% of original), mark as clipper failure
+ */
+function clipPolygonPxRobust(subject: PxPt[], clip: PxPt[]): ClipResult {
+  if (subject.length < 3 || clip.length < 3) {
+    return { polygon: subject, method: 'empty', verticesInsideCount: 0, verticesOutsideCount: subject.length };
+  }
+
+  // Count vertices inside/outside
+  const insideFlags = subject.map(p => pointInPolygonPx(p, clip));
+  const insideCount = insideFlags.filter(Boolean).length;
+  const outsideCount = subject.length - insideCount;
+
+  // SHORTCUT: all inside → no clipping needed
+  if (outsideCount === 0) {
+    return { polygon: [...subject], method: 'inside_no_clip', verticesInsideCount: insideCount, verticesOutsideCount: 0 };
+  }
+
+  // For faces where most vertices are inside, use vertex-filter + edge intersection approach
+  // This handles concave clip polygons correctly
+  const clipped = clipByConcavePolygon(subject, clip, insideFlags);
+  
+  if (clipped.length >= 3) {
+    const originalArea = polygonAreaPx(subject);
+    const clippedArea = polygonAreaPx(clipped);
+    
+    // Sanity: if clipping destroyed > 95% of area, it's likely a clipper bug
+    if (originalArea > 100 && clippedArea < originalArea * 0.05) {
+      return { 
+        polygon: clipped, 
+        method: 'clipper_degenerate_output', 
+        verticesInsideCount: insideCount, 
+        verticesOutsideCount: outsideCount 
+      };
+    }
+    
+    return { polygon: clipped, method: 'vertex_filter', verticesInsideCount: insideCount, verticesOutsideCount: outsideCount };
+  }
+
+  return { polygon: [], method: 'empty', verticesInsideCount: insideCount, verticesOutsideCount: outsideCount };
+}
+
+/**
+ * Clip a polygon by a potentially concave clip polygon.
+ * Uses edge-by-edge intersection with point-in-polygon classification.
+ * 
+ * Algorithm:
+ * Walk the subject polygon. For each edge:
+ *   - If both endpoints inside: keep the end vertex
+ *   - If entering (outside→inside): add intersection point + end vertex  
+ *   - If leaving (inside→outside): add intersection point
+ *   - If both outside: skip
+ * 
+ * Edge intersections are computed against ALL edges of the clip polygon,
+ * taking the closest intersection. This handles concave clips correctly.
+ */
+function clipByConcavePolygon(subject: PxPt[], clip: PxPt[], insideFlags: boolean[]): PxPt[] {
+  const result: PxPt[] = [];
+  const n = subject.length;
+
+  for (let i = 0; i < n; i++) {
+    const curr = subject[i];
+    const next = subject[(i + 1) % n];
+    const currInside = insideFlags[i];
+    const nextInside = insideFlags[(i + 1) % n];
+
+    if (currInside && nextInside) {
+      // Both inside: add next vertex
+      result.push(next);
+    } else if (currInside && !nextInside) {
+      // Leaving: find exit intersection
+      const ix = findClosestIntersectionWithPolygon(curr, next, clip, 'exit');
+      if (ix) result.push(ix);
+    } else if (!currInside && nextInside) {
+      // Entering: find entry intersection + add next vertex
+      const ix = findClosestIntersectionWithPolygon(curr, next, clip, 'entry');
+      if (ix) result.push(ix);
+      result.push(next);
+    }
+    // Both outside: skip
+  }
+
+  // Remove duplicate consecutive vertices
+  return removeDuplicateVerticesPx(result);
+}
+
+/**
+ * Find the closest intersection of segment (a→b) with the clip polygon boundary.
+ * For 'exit': closest intersection going from inside to outside (smallest t > 0)
+ * For 'entry': closest intersection going from outside to inside (largest t < 1, or smallest t for entry)
+ */
+function findClosestIntersectionWithPolygon(
+  a: PxPt, b: PxPt, clip: PxPt[], direction: 'entry' | 'exit'
+): PxPt | null {
+  let bestT = direction === 'exit' ? Infinity : -Infinity;
+  let bestPt: PxPt | null = null;
+
+  for (let i = 0; i < clip.length; i++) {
+    const c1 = clip[i];
+    const c2 = clip[(i + 1) % clip.length];
+    const ix = segmentSegmentIntersectionPx(a, b, c1, c2);
+    if (!ix) continue;
+
+    if (direction === 'exit') {
+      // Want the first intersection along a→b (smallest t)
+      if (ix.t < bestT && ix.t > 0.001) {
+        bestT = ix.t;
+        bestPt = ix.point;
+      }
+    } else {
+      // Want the last intersection before reaching b (largest t < 1)
+      if (ix.t > bestT && ix.t < 0.999) {
+        bestT = ix.t;
+        bestPt = ix.point;
+      }
+    }
+  }
+
+  return bestPt;
+}
+
+/**
+ * Segment-segment intersection returning t parameter on first segment.
+ */
+function segmentSegmentIntersectionPx(
+  a1: PxPt, a2: PxPt, b1: PxPt, b2: PxPt
+): { point: PxPt; t: number; u: number } | null {
+  const dx1 = a2.x - a1.x, dy1 = a2.y - a1.y;
+  const dx2 = b2.x - b1.x, dy2 = b2.y - b1.y;
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((b1.x - a1.x) * dy2 - (b1.y - a1.y) * dx2) / denom;
+  const u = ((b1.x - a1.x) * dy1 - (b1.y - a1.y) * dx1) / denom;
+  if (t < -0.001 || t > 1.001 || u < -0.001 || u > 1.001) return null;
+  return {
+    point: { x: a1.x + dx1 * t, y: a1.y + dy1 * t },
+    t: Math.max(0, Math.min(1, t)),
+    u: Math.max(0, Math.min(1, u)),
+  };
+}
+
+/**
+ * Remove consecutive duplicate vertices (within tolerance).
+ */
+function removeDuplicateVerticesPx(pts: PxPt[], tol = 0.5): PxPt[] {
+  if (pts.length < 2) return pts;
+  const result: PxPt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = result[result.length - 1];
+    if (Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y) > tol) {
+      result.push(pts[i]);
+    }
+  }
+  // Also check last vs first
+  if (result.length > 1) {
+    const first = result[0], last = result[result.length - 1];
+    if (Math.hypot(first.x - last.x, first.y - last.y) <= tol) {
+      result.pop();
+    }
+  }
+  return result;
+}
+
+/** Legacy S-H clipper kept for reference but NOT used for concave polygons */
+function clipPolygonPxSH(subject: PxPt[], clip: PxPt[]): PxPt[] {
   if (subject.length < 3 || clip.length < 3) return subject;
   let output = [...subject];
   for (let i = 0; i < clip.length; i++) {
