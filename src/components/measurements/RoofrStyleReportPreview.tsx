@@ -528,6 +528,10 @@ export function RoofrStyleReportPreview({
 
   // Confirm & Save: generates PDF, uploads to documents bucket, saves smart tags
   const handleConfirm = async () => {
+    if (isCustomerExportBlocked) {
+      toast({ title: "Export blocked", description: `Geometry gate: ${geometryGate.reason}`, variant: "destructive" });
+      return;
+    }
     setIsConfirming(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
