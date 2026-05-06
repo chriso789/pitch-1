@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Parser as ExprParser } from 'expr-eval';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1156,7 +1157,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
             }
           });
 
-          const exprParser = new (require('expr-eval').Parser)();
+          const exprParser = new ExprParser();
           const parsed = exprParser.parse(expression);
           return parsed.evaluate(vars) || 0;
         } catch (e) {
