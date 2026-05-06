@@ -568,14 +568,25 @@ async function processJob(input: any) {
       // is clearly more complex (multiple solar segments). 5+ vertex hulls get boosted.
       const segCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
       let polygon_shape_score = vertex_count >= 4 ? Math.min(1, vertex_count / 8) : 0;
-      if (vertex_count <= 4 && segCount > 1) polygon_shape_score *= 0.4;
+      // Only penalize simple rectangles if they have LOW solar coverage.
+      // An OSM rectangle with >80% solar bbox coverage IS the main building — don't punish it.
+      const hasSufficientCoverage = coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox > 0.8;
+      if (vertex_count <= 4 && segCount > 1 && !hasSufficientCoverage) polygon_shape_score *= 0.4;
       if (vertex_count >= 6) polygon_shape_score = Math.min(1, polygon_shape_score + 0.15);
 
-      const validity_score =
-        area_score * 0.35 +
+      // Outbuilding penalty: small footprints far from geocode are likely sheds/garages.
+      // Penalizes candidates where centroid is >25% of tile diagonal from geocode AND area < 1500 sqft.
+      const OUTBUILDING_DISTANCE_THRESHOLD = maxDist * 0.5; // 25% of tile diagonal (maxDist is half-diagonal)
+      const OUTBUILDING_AREA_THRESHOLD = 1500; // sqft
+      const isLikelyOutbuilding = bbox_center_distance_from_geocode_px > OUTBUILDING_DISTANCE_THRESHOLD && area_sqft < OUTBUILDING_AREA_THRESHOLD;
+      const outbuilding_penalty = isLikelyOutbuilding ? 0.35 : 0;
+
+      const validity_score = Math.max(0,
+        area_score * 0.30 +
         solar_overlap_score * 0.30 +
-        geocode_center_score * 0.20 +
-        polygon_shape_score * 0.15;
+        geocode_center_score * 0.30 +
+        polygon_shape_score * 0.10 -
+        outbuilding_penalty);
 
       // Bbox-to-tile ratio: footprint bbox area / tile area
       const tileArea = raster.width * raster.height;
@@ -616,6 +627,8 @@ async function processJob(input: any) {
         rejected_reason = "no_overlap_with_solar_bbox";
       else if (bbox && bbox_center_distance_from_geocode_px > Math.max(raster.width, raster.height) * 0.4)
         rejected_reason = "bbox_center_far_from_geocode";
+      else if (isLikelyOutbuilding)
+        rejected_reason = `likely_outbuilding:${Math.round(area_sqft)}sqft_${Math.round(bbox_center_distance_from_geocode_px)}px_from_geocode`;
 
       return {
         source,
@@ -741,18 +754,37 @@ async function processJob(input: any) {
           const unionPoly = rectilinearUnionPolygon(boundsPx);
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
-            // Boost shape score: union polygons preserve concavity that topology needs.
-            // A convex hull can score slightly higher on area/coverage while still
-            // collapsing to one roof plane, so prefer the topology-capable union.
-            unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
-            unionCand.validity_score =
-              Math.min(1,
-                unionCand.area_score * 0.35 +
+            // Only boost union if no larger valid OSM/mask candidate exists.
+            // When a bigger building (OSM) with high solar coverage exists, the union
+            // likely describes an outbuilding or partial structure — don't let it win.
+            const bestExistingValid = candidates
+              .filter(c => !c.rejected_reason && c.source !== "google_solar_segments_hull")
+              .sort((a, b) => b.area_sqft - a.area_sqft)[0];
+            const unionIsLargest = !bestExistingValid || unionCand.area_sqft >= bestExistingValid.area_sqft * 0.9;
+            const bestHasHighCoverage = bestExistingValid && (bestExistingValid.coverage_ratio_vs_solar_bbox ?? 0) > 0.8;
+            
+            if (unionIsLargest && !unionCand.rejected_reason) {
+              // Full boost: union is the dominant footprint
+              unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
+              unionCand.validity_score = Math.min(1,
+                unionCand.area_score * 0.30 +
                 unionCand.solar_overlap_score * 0.30 +
-                unionCand.geocode_center_score * 0.20 +
-                unionCand.polygon_shape_score * 0.15 +
+                unionCand.geocode_center_score * 0.30 +
+                unionCand.polygon_shape_score * 0.10 +
                 0.08,
               );
+            } else if (!unionCand.rejected_reason && !bestHasHighCoverage) {
+              // Moderate boost: union isn't largest but no strong alternative
+              unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.25);
+              unionCand.validity_score = Math.min(1,
+                unionCand.area_score * 0.30 +
+                unionCand.solar_overlap_score * 0.30 +
+                unionCand.geocode_center_score * 0.30 +
+                unionCand.polygon_shape_score * 0.10 +
+                0.02,
+              );
+            }
+            // else: no boost — a larger candidate with high solar coverage exists
             candidates.push(unionCand);
             solarSegmentsDebug.union_vertices = unionPoly.length;
             solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
