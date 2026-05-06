@@ -464,6 +464,10 @@ export function RoofrStyleReportPreview({
 
   // Native share using Web Share API
   const handleShare = async () => {
+    if (isCustomerExportBlocked) {
+      toast({ title: "Export blocked", description: `Geometry gate: ${geometryGate.reason}`, variant: "destructive" });
+      return;
+    }
     setIsSharing(true);
     try {
       // Generate PDF blob first
