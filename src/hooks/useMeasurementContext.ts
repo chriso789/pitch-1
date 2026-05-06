@@ -8,6 +8,7 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { Parser } from 'expr-eval';
 
 export interface MeasurementContext {
   roof: {
@@ -224,7 +225,6 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
     }
 
     // Safe evaluation using expr-eval parser
-    const { Parser } = await import('expr-eval');
     const exprParser = new Parser();
     const parsed = exprParser.parse(evalExpr);
     const mathVars: Record<string, any> = {
