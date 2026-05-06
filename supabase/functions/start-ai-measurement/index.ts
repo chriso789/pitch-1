@@ -1017,9 +1017,13 @@ async function processJob(input: any) {
               ? "invalid_roof_footprint:bbox_covers_too_much_tile"
               : footprintInflatedVsSolar
                 ? "invalid_roof_footprint:area_inflation_vs_solar"
-                : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
-                  ? "missing_valid_footprint"
-                  : "missing_valid_footprint";
+                : footprintInflatedVsSolarBbox
+                  ? `invalid_roof_footprint:area_${Math.round(footprintToSolarBboxAreaRatio! * 100)/100}x_solar_bbox`
+                  : footprintSpillsOutside
+                    ? `invalid_roof_footprint:exterior_spillover_${Math.round(footprintExteriorSpillover * 100)}pct`
+                    : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
+                      ? "missing_valid_footprint"
+                      : "missing_valid_footprint";
 
       console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
         footprint_length: footprintForDsmPx.length,
