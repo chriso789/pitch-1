@@ -1,7 +1,23 @@
 /**
- * Segment Topology Analyzer
- * Extracts ridge, hip, valley positions from Google Solar roofSegmentStats
- * by analyzing segment azimuths and positions to derive roof topology
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  SEGMENT TOPOLOGY ANALYZER — DEBUG / ESTIMATE ONLY                 ║
+ * ║                                                                    ║
+ * ║  This module produces HEURISTIC ESTIMATES of ridge/hip/valley      ║
+ * ║  positions from Google Solar segment stats. These are NOT          ║
+ * ║  validated geometric reconstructions.                              ║
+ * ║                                                                    ║
+ * ║  ALL outputs carry geometry_source = "heuristic_estimate".         ║
+ * ║  Production customer reports MUST NOT use these values directly.   ║
+ * ║  They may only be used as:                                         ║
+ * ║    - Initial seeds for the planar graph solver                     ║
+ * ║    - Debug/preview visualizations                                  ║
+ * ║    - Confidence hints for human review                             ║
+ * ║                                                                    ║
+ * ║  EagleView-grade measurements require:                             ║
+ * ║    - DSM-derived planar graph                                      ║
+ * ║    - Authoritative footprint                                       ║
+ * ║    - Validated shared-edge topology                                ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
 type XY = [number, number]; // [lng, lat]
@@ -33,6 +49,8 @@ export interface TopologyLine {
   facetIds: string[];
 }
 
+export type GeometrySource = 'heuristic_estimate' | 'dsm_validated' | 'vendor_verified';
+
 export interface SegmentTopology {
   facets: AnalyzedFacet[];
   ridges: TopologyLine[];
@@ -40,6 +58,16 @@ export interface SegmentTopology {
   valleys: TopologyLine[];
   facetCount: number;
   roofType: 'gable' | 'hip' | 'cross-gable' | 'complex' | 'flat';
+  /**
+   * ALL outputs from this analyzer are heuristic estimates.
+   * Customer reports MUST reject geometry_source !== 'dsm_validated' | 'vendor_verified'.
+   */
+  geometry_source: GeometrySource;
+  /**
+   * When true, this topology passed hard validation gates and may be used
+   * in customer-facing reports. When false, it is debug/preview only.
+   */
+  customer_report_ready: boolean;
 }
 
 // Compass directions
@@ -449,7 +477,11 @@ export function analyzeSegmentTopology(
     hips,
     valleys,
     facetCount: facets.length,
-    roofType
+    roofType,
+    // ALL outputs from this analyzer are heuristic estimates derived from
+    // solar segment azimuth/area relationships — NOT from validated planar geometry.
+    geometry_source: 'heuristic_estimate' as GeometrySource,
+    customer_report_ready: false,
   };
 }
 

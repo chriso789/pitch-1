@@ -1,9 +1,23 @@
 /**
- * Client-side Roof Geometry Reconstructor
- * 
- * Creates proper, connected roof geometry from perimeter coordinates.
- * This is used by SchematicRoofDiagram to render clean roof diagrams
- * when the database doesn't have pre-generated linear features.
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  CLIENT ROOF GEOMETRY RECONSTRUCTOR — DEBUG / VISUALIZATION ONLY   ║
+ * ║                                                                    ║
+ * ║  This module generates SYNTHETIC roof geometry from perimeter      ║
+ * ║  coordinates using heuristic shape-fitting (bbox insets, reflex    ║
+ * ║  vertex detection, wing decomposition).                            ║
+ * ║                                                                    ║
+ * ║  NEVER use outputs for:                                            ║
+ * ║   - Customer-facing measurement reports                           ║
+ * ║   - PDF generation for customers                                  ║
+ * ║   - Material quantity calculations                                ║
+ * ║   - Financial estimates                                           ║
+ * ║                                                                    ║
+ * ║  Outputs are marked geometry_source = "heuristic_estimate" and    ║
+ * ║  customer_report_ready = false.                                    ║
+ * ║                                                                    ║
+ * ║  For production measurements, use the DSM-validated planar graph  ║
+ * ║  from the server-side solver.                                     ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
 interface GPSCoord {
@@ -18,6 +32,10 @@ interface ReconstructedRoof {
   facets: ReconstructedFacet[];
   diagramQuality: 'excellent' | 'good' | 'fair' | 'simplified';
   warnings: string[];
+  /** Always 'heuristic_estimate' — this reconstructor does NOT produce validated geometry. */
+  geometry_source: 'heuristic_estimate';
+  /** Always false — client-side reconstructed geometry is NEVER customer-report-ready. */
+  customer_report_ready: false;
 }
 
 interface RoofLine {
@@ -100,6 +118,8 @@ function createEmptyResult(warnings: string[]): ReconstructedRoof {
     valleys: [],
     facets: [],
     diagramQuality: 'simplified',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings
   };
 }
@@ -216,6 +236,8 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string, roofTyp
     valleys: [],
     facets,
     diagramQuality: 'excellent',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings: isGable ? ['Gable roof: ridge spans full building length'] : []
   };
 }
@@ -255,6 +277,8 @@ function reconstructMultiWingRoof(
         color: FACET_COLORS[0]
       }],
       diagramQuality: 'simplified',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
       warnings: ['Complex roof - showing perimeter only']
     };
   }
@@ -412,6 +436,8 @@ function reconstructMultiWingRoof(
     valleys,
     facets,
     diagramQuality: 'good',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings
   };
 }
@@ -494,6 +520,8 @@ function reconstructComplexRoof(
     valleys,
     facets,
     diagramQuality: 'fair',
+    geometry_source: 'heuristic_estimate' as const,
+    customer_report_ready: false as const,
     warnings: ['Complex roof - using simplified geometry']
   };
 }

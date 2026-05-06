@@ -101,4 +101,17 @@ export interface PatentRoofModel {
     abnormalities: string[];
     reshoot_requested: boolean;
   };
+  /**
+   * Source of the geometry used to build this model.
+   * - 'heuristic_estimate': bbox/azimuth heuristics (debug only, NOT for customer reports)
+   * - 'dsm_validated': DSM planar graph solver output (production-grade)
+   * - 'vendor_verified': EagleView or equivalent vendor report
+   */
+  geometry_source: 'heuristic_estimate' | 'dsm_validated' | 'vendor_verified';
+  /**
+   * Hard gate: when false, this model MUST NOT be used for customer-facing
+   * reports, PDFs, or material calculations. UI should show a "pending
+   * validation" state instead.
+   */
+  customer_report_ready: boolean;
 }
