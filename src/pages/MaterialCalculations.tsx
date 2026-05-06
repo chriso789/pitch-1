@@ -137,15 +137,37 @@ export default function MaterialCalculations() {
         </CardContent>
       </Card>
 
-      {/* Material Calculator */}
-      <MaterialCalculator
-        measurementData={measurementData}
-        pipelineEntryId={id}
-        onOrderCreated={(orderId) => {
-          console.log('Order created:', orderId);
-          // Navigate to order page or show success
-        }}
-      />
+      {/* Geometry Gate Warning */}
+      {!geometryGate.allowed && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {geometryGate.source === 'heuristic_estimate'
+              ? 'HEURISTIC DEBUG — NOT CUSTOMER READY'
+              : 'Material Calculations Blocked'}
+          </AlertTitle>
+          <AlertDescription>
+            {geometryGate.reason} — Material quantities from unvalidated geometry must not be used for ordering.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Material Calculator — only render for validated geometry */}
+      {geometryGate.allowed ? (
+        <MaterialCalculator
+          measurementData={measurementData}
+          pipelineEntryId={id}
+          onOrderCreated={(orderId) => {
+            console.log('Order created:', orderId);
+          }}
+        />
+      ) : (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Material calculations are unavailable until geometry passes the production gate.
+          </CardContent>
+        </Card>
+      )}
 
       {/* Measurement Report Dialog */}
       {measurement && (
