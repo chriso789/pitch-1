@@ -4464,15 +4464,16 @@ async function processJob(input: any) {
       },
       solar_used: !!solarData,
       unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
-      // Mirror overlay payload for clients reading ai_detection_data directly.
-      planes_px,
-      edges_px,
+      // ── DEBUG-ONLY bbox-fit overlay — NOT geospatial registration ──
+      _debug_only_planes_px: planes_px,
+      _debug_only_edges_px: edges_px,
       raster_size,
       raster_image_url: imageUrl,
-      overlay_calibration: overlayCalibration,
+      _debug_only_overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
       roof_target_source: roofTargetSource,
       geometry_px_space: "raster_calibrated",
+      is_diagnostic_only: !!blockCustomerReportReason,
       vendor_truth_comparison: vendorTruthComparison,
     };
 
