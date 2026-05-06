@@ -23580,6 +23580,66 @@ export type Database = {
           },
         ]
       }
+      pdf_form_fields: {
+        Row: {
+          bounds: Json
+          created_at: string | null
+          field_name: string
+          field_type: string
+          field_value: string | null
+          id: string
+          is_required: boolean | null
+          options: Json | null
+          page_id: string | null
+          pdf_document_id: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          bounds?: Json
+          created_at?: string | null
+          field_name: string
+          field_type?: string
+          field_value?: string | null
+          id?: string
+          is_required?: boolean | null
+          options?: Json | null
+          page_id?: string | null
+          pdf_document_id: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          bounds?: Json
+          created_at?: string | null
+          field_name?: string
+          field_type?: string
+          field_value?: string | null
+          id?: string
+          is_required?: boolean | null
+          options?: Json | null
+          page_id?: string | null
+          pdf_document_id?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_form_fields_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_form_fields_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_objects: {
         Row: {
           content: string | null
@@ -23884,6 +23944,62 @@ export type Database = {
             columns: ["workspace_document_id"]
             isOneToOne: false
             referencedRelation: "pdf_workspace_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_templates: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          original_file_path: string | null
+          page_count: number | null
+          smart_tags: Json | null
+          source_document_id: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          original_file_path?: string | null
+          page_count?: number | null
+          smart_tags?: Json | null
+          source_document_id?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          original_file_path?: string | null
+          page_count?: number | null
+          smart_tags?: Json | null
+          source_document_id?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_templates_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
             referencedColumns: ["id"]
           },
         ]
