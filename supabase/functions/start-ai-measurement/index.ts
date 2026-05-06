@@ -3447,22 +3447,42 @@ async function processJob(input: any) {
     }
 
 
-    const footprintCandidatesForReport = candidates.map((c) => ({
-      source: c.source,
-      area_sqft: Math.round(c.area_sqft),
-      coverage_ratio_vs_solar_bbox: c.coverage_ratio_vs_solar_bbox,
-      overlap_with_solar_bbox: Math.round(c.overlap_with_solar_bbox),
-      center_distance_px: Math.round(c.bbox_center_distance_from_geocode_px),
-      vertex_count: c.vertex_count,
-      validity_score: Number(c.validity_score.toFixed(3)),
-      rejected_reason: c.rejected_reason,
-      sub_scores: {
-        area: Number(c.area_score.toFixed(3)),
-        solar_overlap: Number(c.solar_overlap_score.toFixed(3)),
-        geocode_center: Number(c.geocode_center_score.toFixed(3)),
-        polygon_shape: Number(c.polygon_shape_score.toFixed(3)),
-      },
-    }));
+    // Enhanced candidate diagnostics per plan item 6 — includes spillover
+    // and solar-bbox ratio fields so failed runs explain why a candidate was rejected.
+    const solarBboxAreaSqftForReport = solarBboxPx && solarBboxPx.area > 0
+      ? solarBboxPx.area * sqftPerPx2
+      : null;
+    const footprintCandidatesForReport = candidates.map((c) => {
+      const candidateAreaPx = c.polygon.length >= 3 ? polygonAreaPx(c.polygon) : 0;
+      const overlapPx = (solarBboxPx && c.polygon.length >= 3)
+        ? polygonAreaPx(clipPolygonToRect(c.polygon, solarBboxPx))
+        : 0;
+      const outsideSolarBboxAreaPx = candidateAreaPx - overlapPx;
+      const exteriorSpilloverRatio = candidateAreaPx > 0 ? outsideSolarBboxAreaPx / candidateAreaPx : 0;
+      const candidateToSolarBboxRatio = solarBboxAreaSqftForReport != null && solarBboxAreaSqftForReport > 0
+        ? c.area_sqft / solarBboxAreaSqftForReport
+        : null;
+      return {
+        source: c.source,
+        candidate_area_sqft: Math.round(c.area_sqft),
+        solar_bbox_area_sqft: solarBboxAreaSqftForReport != null ? Math.round(solarBboxAreaSqftForReport) : null,
+        candidate_to_solar_bbox_ratio: candidateToSolarBboxRatio != null ? Number(candidateToSolarBboxRatio.toFixed(3)) : null,
+        outside_solar_bbox_ratio: Number(exteriorSpilloverRatio.toFixed(3)),
+        outside_solar_bbox_area_sqft: Math.round(outsideSolarBboxAreaPx * sqftPerPx2),
+        coverage_ratio_vs_solar_bbox: c.coverage_ratio_vs_solar_bbox != null ? Number(c.coverage_ratio_vs_solar_bbox.toFixed(3)) : null,
+        overlap_with_solar_bbox: Math.round(c.overlap_with_solar_bbox),
+        center_distance_px: Math.round(c.bbox_center_distance_from_geocode_px),
+        vertex_count: c.vertex_count,
+        validity_score: Number(c.validity_score.toFixed(3)),
+        rejected_reason: c.rejected_reason,
+        sub_scores: {
+          area: Number(c.area_score.toFixed(3)),
+          solar_overlap: Number(c.solar_overlap_score.toFixed(3)),
+          geocode_center: Number(c.geocode_center_score.toFixed(3)),
+          polygon_shape: Number(c.polygon_shape_score.toFixed(3)),
+        },
+      };
+    });
     const selectedFootprintForReport = selected ? {
       source: selected.source,
       area_sqft: Math.round(selected.area_sqft),
