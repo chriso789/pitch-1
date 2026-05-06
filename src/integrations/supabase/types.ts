@@ -45321,11 +45321,16 @@ export type Database = {
       }
       format_clj_number:
         | {
-            Args: { contact_num: number; job_num?: number; lead_num?: number }
+            Args: { contact_num: string; job_num?: string; lead_num?: string }
             Returns: string
           }
         | {
-            Args: { contact_num: string; job_num?: string; lead_num?: string }
+            Args: {
+              p_contact_num: number
+              p_job_num: number
+              p_lead_num: number
+              p_location_code: string
+            }
             Returns: string
           }
       generate_clj_number: { Args: never; Returns: string }
@@ -45657,7 +45662,7 @@ export type Database = {
       }
       get_loyalty_balance: { Args: { p_contact_id: string }; Returns: number }
       get_next_contact_number: {
-        Args: { tenant_id_param: string }
+        Args: { location_id_param?: string; tenant_id_param: string }
         Returns: number
       }
       get_next_job_number:
