@@ -1003,6 +1003,12 @@ async function processJob(input: any) {
         footprint_point_count: footprintForDsmPx.length,
         footprint_area_px: Math.round(footprintAreaPxVal),
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+        footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
+        footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
+        footprint_area_too_large: footprintAreaTooLarge,
+        footprint_bbox_too_large: footprintBboxTooLarge,
+        footprint_inflated_vs_solar: footprintInflatedVsSolar,
         footprint_coordinate_space: footprintIsLatLng ? "lat_lng" : "pixel",
         dsm_edge_coordinate_space: "pixel",
         coordinate_space_match: footprintCoordinateSpaceMatch,
@@ -1011,6 +1017,8 @@ async function processJob(input: any) {
         candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
           source: c.source, reason: c.rejected_reason
         })),
+        selected_component_count: validCandidates.length,
+        clipping_applied: false,
       };
 
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
