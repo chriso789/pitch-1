@@ -4590,6 +4590,14 @@ async function processJob(input: any) {
           solver_validation_status: autonomousDebug?.status || 'validated',
           failure_classification: 'none',
           face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
+          // Enriched diagnostics
+          edge_rejection_summary: autonomousDebug?.edge_rejection_summary || null,
+          enriched_face_rejections: autonomousDebug?.enriched_face_rejections || [],
+          face_clipping_diagnostics: autonomousDebug?.face_clipping_diagnostics || [],
+          edge_filter_over_aggressive: autonomousDebug?.edge_filter_over_aggressive ?? false,
+          edge_acceptance_ratio: autonomousDebug?.edge_acceptance_ratio ?? null,
+          bbox_rescue_used_in_validation: autonomousDebug?.bbox_rescue_used_in_validation ?? false,
+          face_rejection_table: autonomousDebug?.face_rejection_table || [],
         },
       })
       .select("id")
