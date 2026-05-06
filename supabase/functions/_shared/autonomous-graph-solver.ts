@@ -1,5 +1,5 @@
 /**
- * Autonomous Roof Graph Solver v7 — Coverage Fix + Edge Containment + Clipper Debug
+ * Autonomous Roof Graph Solver v8 — Pre-Masked DSM Edge Detection
  * 
  * Pipeline:
  *   1. DSM edge detection (Sobel gradient + PCA line fit)
