@@ -1335,6 +1335,26 @@ function estimateLinearFeatures(faces: RoofFace[]): LinearFeature[] {
   return features;
 }
 
+// Classify solver failure into a specific reason code
+function classifySolverFailure(result: AutonomousGraphResult, preDiag: any): string {
+  if (result.success) return 'none';
+  if (!preDiag.footprint_valid) return 'missing_valid_footprint';
+  if (!preDiag.dsm_loaded) return 'no_dsm_available';
+  if (!preDiag.mask_loaded && preDiag.footprint_source === 'unknown') return 'missing_valid_footprint';
+  
+  const rawEdges = result.logs?.dsm_edges_detected ?? 0;
+  const acceptedEdges = result.logs?.dsm_edges_accepted ?? (result.logs?.fused_edges ?? 0);
+  const faces = result.faces?.length ?? 0;
+  
+  if (rawEdges === 0) return 'insufficient_dsm_edges';
+  if (rawEdges > 0 && acceptedEdges === 0) return 'insufficient_dsm_edges';
+  if (acceptedEdges > 0 && faces === 0) return 'dsm_edges_found_no_closed_faces';
+  if (faces > 0 && result.face_coverage_ratio < 0.5) return 'low_coverage';
+  if (result.validation_status === 'ai_failed_complex_topology') return 'graph_fragmentation';
+  
+  return result.failure_reason || result.validation_status || 'unknown_solver_failure';
+}
+
 // Provider: Google Solar API (sync, US coverage, actual pitch data)
 async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   if (!GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not configured");
@@ -1567,6 +1587,24 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     }
   }
 
+  // ============= PRE-SOLVER DSM DIAGNOSTICS =============
+  // Always collected before solver runs so we have debug even on failure
+  const effectiveDSMPreSolver = maskedDSMForSolver || dsmGridForSolver;
+  const preSolverDiagnostics = {
+    footprint_source: footprintSourceForContract,
+    footprint_valid: coords.length >= 4 && plan_sqft >= 200 && plan_sqft <= 50000,
+    footprint_area_sqft: Math.round(plan_sqft),
+    coordinate_space_input: 'geo',
+    coordinate_space_solver_expected: effectiveDSMPreSolver ? 'dsm_px' : 'geo',
+    dsm_loaded: !!dsmGridForSolver,
+    mask_loaded: !!roofMaskForContract,
+    dsm_width: effectiveDSMPreSolver?.width ?? 0,
+    dsm_height: effectiveDSMPreSolver?.height ?? 0,
+    roof_mask_pixel_count: roofMaskForContract ? Array.from(roofMaskForContract.data as Uint8Array).filter((v: number) => v > 0).length : 0,
+    roof_mask_ratio: roofMaskForContract ? Array.from(roofMaskForContract.data as Uint8Array).filter((v: number) => v > 0).length / (roofMaskForContract.width * roofMaskForContract.height) : 0,
+  };
+  console.log('[PRE_SOLVER_DIAGNOSTICS]', JSON.stringify(preSolverDiagnostics));
+
   const skeleton = computeStraightSkeleton(coords);
   const boundaryClass = classifyBoundaryEdges(coords, skeleton);
   
@@ -1584,6 +1622,28 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   };
 
   const autonomousResult = solveAutonomousGraph(autonomousInput);
+
+  // ============= BUILD SOLVER FAILURE DEBUG (always available) =============
+  // Captures solver-level diagnostics whether or not the solver succeeded
+  const solverDebugMetrics = {
+    ...preSolverDiagnostics,
+    solver_failed: !autonomousResult.success,
+    solver_failure_reason: autonomousResult.failure_reason || null,
+    solver_validation_status: autonomousResult.validation_status,
+    graph_nodes_attempted: autonomousResult.vertices?.length ?? 0,
+    graph_segments_attempted: autonomousResult.edges?.length ?? 0,
+    faces_attempted: autonomousResult.faces?.length ?? 0,
+    faces_validated: autonomousResult.success ? autonomousResult.faces?.length ?? 0 : 0,
+    closed_faces_found: autonomousResult.faces?.length ?? 0,
+    dangling_edges_removed: autonomousResult.logs?.dangling_edges_removed ?? 0,
+    intersections_split: autonomousResult.logs?.intersections_split ?? 0,
+    raw_dsm_edge_count: autonomousResult.logs?.dsm_edges_detected ?? 0,
+    accepted_dsm_edge_count: autonomousResult.logs?.dsm_edges_accepted ?? (autonomousResult.logs?.fused_edges ?? 0),
+    interior_line_count: autonomousResult.logs?.interior_lines_used ?? 0,
+    footprint_edge_count: coords.length - 1,
+    failure_classification: classifySolverFailure(autonomousResult, preSolverDiagnostics),
+  };
+  console.log('[SOLVER_DEBUG_METRICS]', JSON.stringify(solverDebugMetrics));
 
   // ============= DSM VALIDATED GEOMETRY CONTRACT =============
   // Run the six-gate contract on solver output to determine geometry_source
@@ -1700,6 +1760,15 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         reason: autonomousResult.failure_reason,
         logs: autonomousResult.logs,
       },
+      dsmContract: {
+        geometry_source: 'heuristic_estimate',
+        customer_report_ready: false,
+        debug_metrics: solverDebugMetrics,
+        gates: null,
+        failed_stage: 'solver',
+        solver_failure_reason: autonomousResult.failure_reason,
+        failure_classification: solverDebugMetrics.failure_classification,
+      },
     };
     return failResult;
   }
@@ -1802,7 +1871,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     footprintConfidence?: number;
     roofType?: string;
     derivedFacetCount?: number;
-    dsmContract?: { geometry_source: string; customer_report_ready: boolean; debug_metrics: any; gates?: any };
+    dsmContract?: { geometry_source: string; customer_report_ready: boolean; debug_metrics: any; gates?: any; failed_stage?: string; solver_failure_reason?: string | null; failure_classification?: string };
   } = {
     property_id: "",
     source: 'google_solar',
@@ -1843,7 +1912,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     } : {
       geometry_source: 'heuristic_estimate',
       customer_report_ready: false,
-      debug_metrics: null,
+      debug_metrics: solverDebugMetrics,
+      gates: null,
+      failed_stage: autonomousResult.success ? 'post_solver' : 'solver',
+      solver_failure_reason: autonomousResult.failure_reason || null,
+      failure_classification: solverDebugMetrics.failure_classification,
     },
   };
 
@@ -3591,7 +3664,13 @@ Deno.serve(async (req) => {
               // DSM Contract fields
               geometry_source: meas.dsmContract?.geometry_source || 'heuristic_estimate',
               customer_report_ready: meas.dsmContract?.customer_report_ready || false,
-              dsm_contract_debug: meas.dsmContract?.debug_metrics || null,
+              dsm_contract_debug: {
+                ...(meas.dsmContract?.debug_metrics || {}),
+                gates: meas.dsmContract?.gates || null,
+                failed_stage: meas.dsmContract?.failed_stage || null,
+                solver_failure_reason: meas.dsmContract?.solver_failure_reason || null,
+                failure_classification: meas.dsmContract?.failure_classification || null,
+              },
             };
 
             const { error: rmErr } = await adminSupabase
