@@ -50,6 +50,15 @@ export default function MaterialCalculations() {
 
   const measurement = measurementResult.measurement;
 
+  // ── GEOMETRY PRODUCTION GATE ──
+  const geometryGate = useMemo(() => {
+    const grj = (measurement as any)?.geometry_report_json;
+    return evaluateGeometryGate({
+      geometry_source: grj?.geometry_source ?? null,
+      customer_report_ready: (measurement as any)?.customer_report_ready ?? null,
+    });
+  }, [measurement]);
+
   // Convert measurement data to RoofMeasurementData format
   const measurementData: RoofMeasurementData = {
     total_area_sqft: measurement.roof_area_sq_ft || 0,
