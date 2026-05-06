@@ -3,7 +3,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import {
   MousePointer2, Type, Highlighter, EyeOff, PenTool, RotateCcw,
-  RotateCw, Download, Save, Undo2, Redo2,
+  RotateCw, Download, Save, Undo2, Redo2, ScanText, BookTemplate,
 } from 'lucide-react';
 
 export type ToolMode = 'select' | 'text' | 'annotate' | 'redact';
@@ -21,11 +21,15 @@ interface PdfToolbarProps {
   isSaving: boolean;
   operationCount: number;
   onRotatePage?: () => void;
+  onOcr?: () => void;
+  isOcrRunning?: boolean;
+  onSaveAsTemplate?: () => void;
 }
 
 export function PdfToolbar({
   mode, onModeChange, canUndo, canRedo, onUndo, onRedo,
   onCompile, onSave, isCompiling, isSaving, operationCount, onRotatePage,
+  onOcr, isOcrRunning, onSaveAsTemplate,
 }: PdfToolbarProps) {
   const tools: { key: ToolMode; icon: any; label: string }[] = [
     { key: 'select', icon: MousePointer2, label: 'Select' },
