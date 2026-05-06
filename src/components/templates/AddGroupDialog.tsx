@@ -15,7 +15,7 @@ interface AddGroupDialogProps {
 
 export const AddGroupDialog = ({ open, onOpenChange, onAdd }: AddGroupDialogProps) => {
   const [name, setName] = useState('');
-  const [groupType, setGroupType] = useState<'material' | 'labor'>('material');
+  const [groupType, setGroupType] = useState<'material' | 'labor' | 'turnkey'>('material');
 
   const handleAdd = () => {
     if (!name.trim()) return;
