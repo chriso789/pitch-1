@@ -1,73 +1,74 @@
+The cause is now clear from the live function logs: the engine is still selecting `google_solar_mask_contour` even when it is massively larger than the actual roof.
 
-# Measurement Validation Hardening Plan
+For the current example, the candidate log shows:
 
-## Problem
+```text
+google_solar_segments_union: 2,398 sqft, valid, score 0.996
+google_solar_bbox:           2,454 sqft, valid, score 0.811
+google_solar_segments_hull:  3,131 sqft, valid, score 0.987
+google_solar_mask_contour:  17,592 sqft, valid, score 1.000  <-- selected incorrectly
+```
 
-The system detects failures (coverage=75%, validated_faces=0, area ratio=1.49) but still saves and returns measurements. Failed geometry produces inflated numbers that reach the customer-facing report.
+That means the hard gates are not catching this case because the bad mask still has `coverage_ratio_vs_solar_bbox = 1.0`. It covers the Solar bbox, but also spills far outside it into the whole tile/neighbor area. The code is only checking whether the candidate covers enough of the Solar bbox, not whether the candidate has too much area outside the Solar bbox.
 
-## Current State
+I will fix the footprint selection stage first, before any ridge/hip/area calculation runs.
 
-- `validateAutonomousResult()` in the graph solver has 7 gates (coverage, faces, ridges, etc.)
-- `sanityFailures[]` in `start-ai-measurement` collects issues and sets `blockCustomerReportReason`
-- When blocked: `report_blocked=true`, `needs_review=true` on `ai_measurement_jobs` and `ai_measurement_results`
-- **Gap 1**: No area-ratio gate (adjusted/flat > 1.25 should hard-fail)
-- **Gap 2**: No `is_valid` / `fail_reasons` / `area_ratio` columns on `ai_measurement_results`
-- **Gap 3**: Results are always inserted — there's no conditional "do not write measurements if validation failed"
-- **Gap 4**: No standalone validation edge function for post-hoc re-validation
-- **Gap 5**: No frontend debug overlay to visualize footprint vs planes vs edges
+Implementation plan:
 
-## Changes
+1. Add an exterior spillover gate to footprint candidate scoring
+   - Compute `outside_solar_bbox_area_px = candidate_area_px - candidate∩solar_bbox_area_px`.
+   - Compute `outside_solar_bbox_ratio = outside_solar_bbox_area_px / candidate_area_px`.
+   - Reject candidates when most of their area is outside the Solar building bbox.
+   - This would reject the current 17,592 sqft `google_solar_mask_contour` because only about 2,454 sqft overlaps the Solar bbox and the rest is yard/neighbors/tile area.
 
-### 1. Database Migration — Add Validation Columns
+2. Add a candidate-vs-Solar-bbox area ratio gate
+   - Compare each candidate area directly to the Solar building bbox area.
+   - Reject if `candidate_area / solar_bbox_area` is too high, e.g. over about `1.35` for mask contours and other non-authoritative footprints.
+   - In this case: `17,592 / 2,454 = 7.17x`, so it would hard fail immediately.
 
-Add to `ai_measurement_results`:
-- `is_valid boolean default false`
-- `fail_reasons text[]`
-- `area_ratio numeric` (adjusted / flat)
-- `footprint_confidence numeric`
-- `coverage numeric`
-- `validated_face_count int`
-- `total_face_count int`
+3. Make Google Solar mask contour non-authoritative unless it passes containment checks
+   - Keep mask contour as useful evidence.
+   - Do not let it auto-win just because it has high coverage.
+   - Only boost it if:
+     - area is close to Solar segment/bbox area,
+     - outside-spill ratio is low,
+     - bbox size is plausible,
+     - and it is near the selected roof target.
 
-Add a `validate_measurement` SQL function (as you specified) for reusable server-side validation.
+4. Prefer the roof-only candidate when the mask is inflated
+   - For this example, the selected footprint should fall back to `google_solar_segments_union` or `google_solar_bbox`, not `google_solar_mask_contour`.
+   - The green footprint should then stay around the actual roof instead of the entire lot/neighbor area.
 
-### 2. Edge Function: `start-ai-measurement` — Hard Stop on Bad Geometry
+5. Add a pre-solver hard fail for inflated footprints
+   - If a footprint candidate is already known to be inflated, the engine must not call `solveAutonomousGraph`.
+   - Failure code should be specific, e.g. `invalid_roof_footprint:mask_spills_outside_roof_target` or `invalid_roof_footprint:area_inflation_vs_solar_bbox`.
 
-In the result-writing section (~line 3970):
-- Compute `area_ratio = total_area_pitch_adjusted_sqft / total_area_2d_sqft`
-- Add area ratio sanity gate: if ratio > 1.25, add `AREA_INFLATION` to `sanityFailures`
-- Add coverage gate: if autonomous graph coverage < 0.85, add `LOW_COVERAGE`
-- Add face validation gate: if validated_faces < total_faces * 0.7, add `INVALID_FACES`
-- Populate the new columns (`is_valid`, `fail_reasons`, `area_ratio`, etc.) on every insert
-- When `is_valid=false`: still insert the record (for debugging), but zero out all measurement totals in the response and set `report_blocked=true`
+6. Store better diagnostics in failed/internal reports
+   - Add these fields to the footprint debug payload:
+     - `candidate_area_sqft`
+     - `solar_bbox_area_sqft`
+     - `candidate_to_solar_bbox_ratio`
+     - `outside_solar_bbox_ratio`
+     - `outside_solar_bbox_area_sqft`
+     - `selected_candidate_source`
+     - all rejected candidate reasons
+   - This will make the diagnostic report explain exactly why a footprint was rejected.
 
-### 3. New Edge Function: `validate-measurement`
+7. Ensure blocked measurement jobs are consistently marked blocked at the job level
+   - The result row is blocked, but recent `ai_measurement_jobs.report_blocked` still shows false in the database query.
+   - I will align the job record update so the job itself also has `report_blocked = true`, `needs_review = true`, and a useful `source_context.gate_reason` when measurement output is not publishable.
 
-Create `supabase/functions/validate-measurement/index.ts`:
-- Accepts `{ id }` (measurement result ID)
-- Reads the record, calls the `validate_measurement` RPC
-- Updates `is_valid`, `fail_reasons`, `area_ratio`, `status` on the record
-- Returns 400 with failure reasons if invalid, 200 if valid
-- This enables post-hoc re-validation of any measurement
+8. Deploy and validate against the logged failing case
+   - Re-run/validate the measurement function for `909 Windton Oak Dr`.
+   - Expected outcome:
+     - `google_solar_mask_contour` is rejected due to area spill/inflation.
+     - selected footprint is roof-sized (`~2,400–3,100 sqft`) or the job fails with `invalid_roof_footprint`.
+     - no customer-ready report is produced if the footprint is not roof-only.
 
-### 4. Frontend: Measurement Failure Indicator
+Technical target files:
 
-In the measurement results UI (where results are displayed after AI measurement completes):
-- Check `is_valid` / `report_blocked` / `fail_reasons`
-- When invalid: show a red alert banner listing each failure reason with clear labels
-- Do NOT display measurement numbers when `is_valid=false` — show "Measurement Failed" instead
+```text
+supabase/functions/start-ai-measurement/index.ts
+```
 
-### 5. Frontend: Debug Overlay Viewer Component
-
-Create `src/components/measurements/RoofDebugViewer.tsx`:
-- Renders footprint polygon (green), plane polygons (orange), edge lines (red) on a Mapbox map
-- Accepts geometry data from `ai_measurement_results.report_json`
-- Used on the internal review/debug panel for failed measurements
-- Shows coverage ratio, face count, area ratio as badges overlay
-
-## Technical Details
-
-- The `validate_measurement` SQL function uses the exact thresholds: coverage < 0.85, validated_faces < 70%, footprint_confidence < 0.9, area_ratio > 1.25
-- The area ratio gate in `start-ai-measurement` prevents the 49% inflation case (1.49x) from ever producing customer-visible output
-- All validation results are persisted for audit trail
-- Existing `report_blocked` / `needs_review` flags continue to work alongside the new `is_valid` flag
+No UI change is required for the root fix. This is a backend measurement-gate correction.

@@ -502,6 +502,8 @@ async function processJob(input: any) {
     const MIN_COVERAGE_RATIO = 0.20;
     const MAX_FOOTPRINT_BBOX_TILE_RATIO = 0.35; // Footprint bbox may not exceed 35% of 1280×1280 tile
     const MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO = 2.5; // Footprint may not be >2.5× the sum of solar segment areas
+    const MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO = 1.35; // Candidate area / solar bbox area — masks that spill into yard/neighbors
+    const MAX_EXTERIOR_SPILLOVER_RATIO = 0.40; // At most 40% of candidate area may lie outside the solar bbox
     const MIN_FACETS_FOR_LARGE_ROOF = 3; // Roofs >3000 sqft must have ≥3 facets
 
     // Compute total solar segment ground area in sqft for ratio checks
@@ -579,10 +581,24 @@ async function processJob(input: any) {
       const tileArea = raster.width * raster.height;
       const bboxTileRatio = bbox ? (bbox.width * bbox.height) / tileArea : 0;
 
-      // Footprint-to-solar area ratio
+      // Footprint-to-solar area ratio (vs sum of segment areas)
       const footprintToSolarRatio = solarSegmentTotalAreaSqft > 0
         ? area_sqft / solarSegmentTotalAreaSqft
         : null;
+
+      // Footprint-to-solar-bbox area ratio — catches mask contours that spill
+      // far outside the actual building extent (yard, neighbors, tile edges).
+      const solarBboxAreaSqft = solarBboxPx && solarBboxPx.area > 0
+        ? solarBboxPx.area * sqftPerPx2
+        : null;
+      const footprintToSolarBboxRatio = solarBboxAreaSqft != null && solarBboxAreaSqft > 0
+        ? area_sqft / solarBboxAreaSqft
+        : null;
+
+      // Exterior spillover: how much candidate area lies OUTSIDE the solar bbox.
+      // A good footprint has most of its area inside the building bbox.
+      const outsideSolarBboxAreaPx = areaPx - overlapPolyPx;
+      const exteriorSpilloverRatio = areaPx > 0 ? outsideSolarBboxAreaPx / areaPx : 0;
 
       // Rejection rules
       let rejected_reason: string | null = null;
@@ -592,6 +608,8 @@ async function processJob(input: any) {
       else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
       else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
       else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
+      else if (footprintToSolarBboxRatio != null && footprintToSolarBboxRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarBboxRatio * 100)/100}x_solar_bbox_area_max_${MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO}x`;
+      else if (solarBboxPx && solarBboxPx.area > 0 && exteriorSpilloverRatio > MAX_EXTERIOR_SPILLOVER_RATIO) rejected_reason = `exterior_spillover_${Math.round(exteriorSpilloverRatio * 100)}pct_gt_${Math.round(MAX_EXTERIOR_SPILLOVER_RATIO * 100)}pct`;
       else if (coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox < MIN_COVERAGE_RATIO)
         rejected_reason = `coverage_${Math.round((coverage_ratio_vs_solar_bbox || 0) * 100)}pct_lt_${Math.round(MIN_COVERAGE_RATIO * 100)}pct`;
       else if (solarBboxPx && solarBboxPx.area > 0 && overlap_with_solar_bbox <= 0)
@@ -952,15 +970,31 @@ async function processJob(input: any) {
     const footprintToSolarAreaRatio = solarSegmentTotalAreaSqft > 0
       ? footprintAreaSqftVal / solarSegmentTotalAreaSqft
       : null;
+    const solarBboxAreaSqftVal = solarBboxPx && solarBboxPx.area > 0
+      ? solarBboxPx.area * sqftPerPx2
+      : null;
+    const footprintToSolarBboxAreaRatio = solarBboxAreaSqftVal != null && solarBboxAreaSqftVal > 0
+      ? footprintAreaSqftVal / solarBboxAreaSqftVal
+      : null;
+    const footprintOverlapPx = (solarBboxPx && footprintForDsmPx.length >= 3)
+      ? polygonAreaPx(clipPolygonToRect(footprintForDsmPx, solarBboxPx))
+      : footprintAreaPxVal;
+    const footprintExteriorSpillover = footprintAreaPxVal > 0
+      ? (footprintAreaPxVal - footprintOverlapPx) / footprintAreaPxVal
+      : 0;
     const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
     const footprintBboxTooLarge = footprintBboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO;
     const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
+    const footprintInflatedVsSolarBbox = footprintToSolarBboxAreaRatio != null && footprintToSolarBboxAreaRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO;
+    const footprintSpillsOutside = solarBboxPx && solarBboxPx.area > 0 && footprintExteriorSpillover > MAX_EXTERIOR_SPILLOVER_RATIO;
 
     const footprintValid = footprintForDsmPx.length >= 4
       && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT
       && !footprintAreaTooLarge
       && !footprintBboxTooLarge
       && !footprintInflatedVsSolar
+      && !footprintInflatedVsSolarBbox
+      && !footprintSpillsOutside
       && !footprintIsLatLng
       && footprintCoordinateSpaceMatch;
 
@@ -983,9 +1017,13 @@ async function processJob(input: any) {
               ? "invalid_roof_footprint:bbox_covers_too_much_tile"
               : footprintInflatedVsSolar
                 ? "invalid_roof_footprint:area_inflation_vs_solar"
-                : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
-                  ? "missing_valid_footprint"
-                  : "missing_valid_footprint";
+                : footprintInflatedVsSolarBbox
+                  ? `invalid_roof_footprint:area_${Math.round(footprintToSolarBboxAreaRatio! * 100)/100}x_solar_bbox`
+                  : footprintSpillsOutside
+                    ? `invalid_roof_footprint:exterior_spillover_${Math.round(footprintExteriorSpillover * 100)}pct`
+                    : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
+                      ? "missing_valid_footprint"
+                      : "missing_valid_footprint";
 
       console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
         footprint_length: footprintForDsmPx.length,
@@ -1004,11 +1042,16 @@ async function processJob(input: any) {
         footprint_area_px: Math.round(footprintAreaPxVal),
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
         solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+        solar_bbox_area_sqft: solarBboxAreaSqftVal != null ? Math.round(solarBboxAreaSqftVal) : null,
         footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
+        footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null ? Number(footprintToSolarBboxAreaRatio.toFixed(3)) : null,
+        exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
         footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
         footprint_area_too_large: footprintAreaTooLarge,
         footprint_bbox_too_large: footprintBboxTooLarge,
         footprint_inflated_vs_solar: footprintInflatedVsSolar,
+        footprint_inflated_vs_solar_bbox: footprintInflatedVsSolarBbox,
+        footprint_spills_outside: Boolean(footprintSpillsOutside),
         footprint_coordinate_space: footprintIsLatLng ? "lat_lng" : "pixel",
         dsm_edge_coordinate_space: "pixel",
         coordinate_space_match: footprintCoordinateSpaceMatch,
@@ -1042,7 +1085,10 @@ async function processJob(input: any) {
       vertices: footprint.length,
       area_sqft: Math.round(footprintAreaSqftVal),
       solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+      solar_bbox_area_sqft: solarBboxAreaSqftVal != null ? Math.round(solarBboxAreaSqftVal) : null,
       footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
+      footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null ? Number(footprintToSolarBboxAreaRatio.toFixed(3)) : null,
+      exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
       footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
     }));
 
