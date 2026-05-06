@@ -4590,6 +4590,14 @@ async function processJob(input: any) {
           solver_validation_status: autonomousDebug?.status || 'validated',
           failure_classification: 'none',
           face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
+          // Enriched diagnostics
+          edge_rejection_summary: autonomousDebug?.edge_rejection_summary || null,
+          enriched_face_rejections: autonomousDebug?.enriched_face_rejections || [],
+          face_clipping_diagnostics: autonomousDebug?.face_clipping_diagnostics || [],
+          edge_filter_over_aggressive: autonomousDebug?.edge_filter_over_aggressive ?? false,
+          edge_acceptance_ratio: autonomousDebug?.edge_acceptance_ratio ?? null,
+          bbox_rescue_used_in_validation: autonomousDebug?.bbox_rescue_used_in_validation ?? false,
+          face_rejection_table: autonomousDebug?.face_rejection_table || [],
         },
       })
       .select("id")
@@ -5641,6 +5649,14 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       dangling_edges_removed: Number(debug?.dangling_edges_removed || 0),
       intersections_split: Number(debug?.intersections_split || 0),
       face_coverage_ratio: debug?.face_coverage_ratio ?? 0,
+      // Enriched diagnostics
+      edge_rejection_summary: debug?.edge_rejection_summary || null,
+      enriched_face_rejections: debug?.enriched_face_rejections || [],
+      face_clipping_diagnostics: debug?.face_clipping_diagnostics || [],
+      edge_filter_over_aggressive: debug?.edge_filter_over_aggressive ?? false,
+      edge_acceptance_ratio: debug?.edge_acceptance_ratio ?? null,
+      bbox_rescue_used_in_validation: debug?.bbox_rescue_used_in_validation ?? false,
+      face_rejection_table: debug?.face_rejection_table || [],
     },
   }).select("id").single();
   if (error) throw error;
