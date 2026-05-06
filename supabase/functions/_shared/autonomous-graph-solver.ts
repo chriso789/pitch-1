@@ -473,9 +473,13 @@ function scoreAndFilterEdges(
     type: c.classifiedType,
     source: c.source,
     reason: `score_${c.score.toFixed(3)}_below_${EDGE_SCORE_THRESHOLD}`,
+    length_ft: c.lengthFt,
+    inside_footprint: true, // These passed footprint check but failed score
+    rejection_stage: 'score_filter',
   }));
 
-  return { accepted, prunedByScore, rejectedDebug };
+  const totalRaw = dsmEdges.length + skeletonEdges.length;
+  return { accepted, prunedByScore, rejectedDebug, rejectedByLength: skippedByLength, rejectedByFootprint: skippedByFootprint, totalRaw };
 }
 
 // ============= STEP 2: CONSERVATIVE SNAPPING (NO CENTER COLLAPSE) =============
