@@ -96,6 +96,7 @@ const PdfWorkspaceList = React.lazy(() => import("@/pages/PdfWorkspaceList"));
 const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor"));
 const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
 const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
+const PdfEngineEditor = React.lazy(() => import("@/pages/PdfEngineEditor"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -203,6 +204,8 @@ export default function ProtectedRoutes() {
         <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
         <Route path="/supplements" element={<ProtectedRoute><SupplementEngine /></ProtectedRoute>} />
         <Route path="/supplement-workflow" element={<ProtectedRoute><SupplementWorkflow /></ProtectedRoute>} />
+        <Route path="/documents/pdf-engine" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
+        <Route path="/documents/pdf-engine/:id" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );

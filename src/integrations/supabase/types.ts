@@ -23228,6 +23228,358 @@ export type Database = {
           },
         ]
       }
+      pdf_documents: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          current_version_id: string | null
+          id: string
+          metadata: Json | null
+          original_file_path: string
+          page_count: number | null
+          source_document_id: string | null
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          current_version_id?: string | null
+          id?: string
+          metadata?: Json | null
+          original_file_path: string
+          page_count?: number | null
+          source_document_id?: string | null
+          status?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          current_version_id?: string | null
+          id?: string
+          metadata?: Json | null
+          original_file_path?: string
+          page_count?: number | null
+          source_document_id?: string | null
+          status?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_pdf_documents_current_version"
+            columns: ["current_version_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_engine_annotations: {
+        Row: {
+          annotation_data: Json | null
+          annotation_type: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          page_id: string | null
+          pdf_document_id: string
+        }
+        Insert: {
+          annotation_data?: Json | null
+          annotation_type?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          page_id?: string | null
+          pdf_document_id: string
+        }
+        Update: {
+          annotation_data?: Json | null
+          annotation_type?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          page_id?: string | null
+          pdf_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_engine_annotations_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_engine_annotations_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_engine_objects: {
+        Row: {
+          bounds: Json
+          content: Json | null
+          created_at: string | null
+          font_info: Json | null
+          id: string
+          is_editable: boolean | null
+          metadata: Json | null
+          object_key: string
+          object_type: string
+          page_id: string
+          pdf_document_id: string
+          transform: Json | null
+          updated_at: string | null
+          z_index: number | null
+        }
+        Insert: {
+          bounds?: Json
+          content?: Json | null
+          created_at?: string | null
+          font_info?: Json | null
+          id?: string
+          is_editable?: boolean | null
+          metadata?: Json | null
+          object_key: string
+          object_type: string
+          page_id: string
+          pdf_document_id: string
+          transform?: Json | null
+          updated_at?: string | null
+          z_index?: number | null
+        }
+        Update: {
+          bounds?: Json
+          content?: Json | null
+          created_at?: string | null
+          font_info?: Json | null
+          id?: string
+          is_editable?: boolean | null
+          metadata?: Json | null
+          object_key?: string
+          object_type?: string
+          page_id?: string
+          pdf_document_id?: string
+          transform?: Json | null
+          updated_at?: string | null
+          z_index?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_engine_objects_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_engine_objects_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_engine_operations: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_undone: boolean | null
+          operation_payload: Json
+          operation_type: string
+          page_id: string | null
+          pdf_document_id: string
+          target_object_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_undone?: boolean | null
+          operation_payload?: Json
+          operation_type: string
+          page_id?: string | null
+          pdf_document_id: string
+          target_object_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_undone?: boolean | null
+          operation_payload?: Json
+          operation_type?: string
+          page_id?: string | null
+          pdf_document_id?: string
+          target_object_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_engine_operations_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_engine_operations_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_engine_operations_target_object_id_fkey"
+            columns: ["target_object_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_objects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_engine_pages: {
+        Row: {
+          extracted_text: string | null
+          height: number | null
+          id: string
+          metadata: Json | null
+          page_number: number
+          pdf_document_id: string
+          render_path: string | null
+          rotation: number | null
+          thumbnail_path: string | null
+          width: number | null
+        }
+        Insert: {
+          extracted_text?: string | null
+          height?: number | null
+          id?: string
+          metadata?: Json | null
+          page_number: number
+          pdf_document_id: string
+          render_path?: string | null
+          rotation?: number | null
+          thumbnail_path?: string | null
+          width?: number | null
+        }
+        Update: {
+          extracted_text?: string | null
+          height?: number | null
+          id?: string
+          metadata?: Json | null
+          page_number?: number
+          pdf_document_id?: string
+          render_path?: string | null
+          rotation?: number | null
+          thumbnail_path?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_engine_pages_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_engine_render_cache: {
+        Row: {
+          created_at: string | null
+          id: string
+          image_path: string | null
+          page_id: string | null
+          pdf_document_id: string
+          render_scale: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          image_path?: string | null
+          page_id?: string | null
+          pdf_document_id: string
+          render_scale?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          image_path?: string | null
+          page_id?: string | null
+          pdf_document_id?: string
+          render_scale?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_engine_render_cache_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_engine_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_engine_render_cache_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_engine_versions: {
+        Row: {
+          compiled_file_path: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          operation_count: number | null
+          pdf_document_id: string
+          snapshot: Json | null
+          version_number: number
+        }
+        Insert: {
+          compiled_file_path?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          operation_count?: number | null
+          pdf_document_id: string
+          snapshot?: Json | null
+          version_number: number
+        }
+        Update: {
+          compiled_file_path?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          operation_count?: number | null
+          pdf_document_id?: string
+          snapshot?: Json | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_engine_versions_pdf_document_id_fkey"
+            columns: ["pdf_document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_objects: {
         Row: {
           content: string | null
