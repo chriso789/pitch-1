@@ -299,8 +299,11 @@ const getRasterOverlayData = (measurement: any) => {
     grj?.raster_size ||
     measurement?.analysis_image_size ||
     parseRasterSizeFromUrl(rasterUrl);
-  const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
-  const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
+  // Prefer _debug_only_ prefixed fields (new contract) with fallback to legacy names
+  const planes_px = Array.isArray(grj?._debug_only_planes_px) ? grj._debug_only_planes_px
+    : Array.isArray(grj?.planes_px) ? grj.planes_px : [];
+  const edges_px = Array.isArray(grj?._debug_only_edges_px) ? grj._debug_only_edges_px
+    : Array.isArray(grj?.edges_px) ? grj.edges_px : [];
   const footprint_px = Array.isArray(overlayDbg?.footprint_px)
     ? overlayDbg.footprint_px
     : Array.isArray(grj?.footprint_px)

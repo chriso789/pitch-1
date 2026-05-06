@@ -102,7 +102,12 @@ export function RoofrStyleReportPreview({
       target_lat,
       target_lng,
       gps_coordinates,
-      customer_id
+      customer_id,
+      customer_report_ready,
+      gate_decision,
+      gate_reason,
+      requires_manual_review,
+      validation_status
     `;
     
     try {
@@ -633,6 +638,19 @@ export function RoofrStyleReportPreview({
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="p-4 border-b flex-col gap-2">
+          {/* ── DIAGNOSTIC GATE: Block customer-facing actions for failed geometry ── */}
+          {roofMeasurementData && roofMeasurementData.customer_report_ready === false && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+              <div className="text-sm">
+                <span className="font-semibold text-destructive">DIAGNOSTIC ONLY — NOT FOR CUSTOMER USE</span>
+                {roofMeasurementData.gate_reason && (
+                  <span className="text-muted-foreground ml-2">({roofMeasurementData.gate_reason})</span>
+                )}
+              </div>
+              <Badge variant="destructive" className="ml-auto shrink-0">Blocked</Badge>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-primary" />
@@ -640,6 +658,9 @@ export function RoofrStyleReportPreview({
               <Badge variant="outline" className="ml-2">
                 Page {currentPage} of {totalPages}
               </Badge>
+              {roofMeasurementData?.validation_status === 'flagged' && (
+                <Badge variant="secondary">Needs Review</Badge>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Button 
@@ -663,7 +684,13 @@ export function RoofrStyleReportPreview({
                 )}
                 Re-measure
               </Button>
-              <Button variant="outline" size="sm" onClick={handleShare} disabled={isSharing}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleShare}
+                disabled={isSharing || roofMeasurementData?.customer_report_ready === false}
+                title={roofMeasurementData?.customer_report_ready === false ? 'Report blocked — geometry did not pass validation' : undefined}
+              >
                 {isSharing ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                 ) : (
@@ -671,7 +698,12 @@ export function RoofrStyleReportPreview({
                 )}
                 Share
               </Button>
-              <Button size="sm" onClick={handleConfirm} disabled={isConfirming || isPDFGenerating}>
+              <Button
+                size="sm"
+                onClick={handleConfirm}
+                disabled={isConfirming || isPDFGenerating || roofMeasurementData?.customer_report_ready === false}
+                title={roofMeasurementData?.customer_report_ready === false ? 'Report blocked — geometry did not pass validation' : undefined}
+              >
                 {isConfirming || isPDFGenerating ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-1 animate-spin" />

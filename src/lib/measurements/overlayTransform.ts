@@ -1,8 +1,25 @@
 /**
- * DEBUG-ONLY overlay calibration. This bbox-fit transform is a visualization
- * convenience — it must NEVER be used to certify customer-facing geometry.
- * Customer reports require raster-calibrated pixel coordinates persisted
- * upstream by the autonomous graph solver.
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  DEBUG-ONLY OVERLAY — NOT A GEOSPATIAL REGISTRATION SYSTEM         ║
+ * ║                                                                    ║
+ * ║  This bbox-fit transform is a VISUAL NORMALIZATION layer.          ║
+ * ║  It makes geometry appear approximately centered on the house      ║
+ * ║  even when the underlying geometry coordinates differ.             ║
+ * ║                                                                    ║
+ * ║  NEVER use this for:                                               ║
+ * ║   - Customer-facing geometry certification                        ║
+ * ║   - Area calculations or measurements                             ║
+ * ║   - PDF reports sent to customers                                 ║
+ * ║   - Any production output                                         ║
+ * ║                                                                    ║
+ * ║  Customer reports MUST use:                                        ║
+ * ║   - Persisted footprint_px (authoritative boundary)               ║
+ * ║   - Geo coordinates from the solver                               ║
+ * ║   - Registered raster coordinates, NOT bbox-fitted coordinates    ║
+ * ║                                                                    ║
+ * ║  EagleView-style architecture: registration is part of geometric  ║
+ * ║  reconstruction itself, not a post-hoc visual centering step.     ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
  */
 export type OverlayPoint = { x: number; y: number };
 
