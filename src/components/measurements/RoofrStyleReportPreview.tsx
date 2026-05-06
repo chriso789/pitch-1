@@ -717,8 +717,8 @@ export function RoofrStyleReportPreview({
                 variant="outline"
                 size="sm"
                 onClick={handleShare}
-                disabled={isSharing || roofMeasurementData?.customer_report_ready === false}
-                title={roofMeasurementData?.customer_report_ready === false ? 'Report blocked — geometry did not pass validation' : undefined}
+                disabled={isSharing || isCustomerExportBlocked}
+                title={isCustomerExportBlocked ? `Report blocked — ${geometryGate.reason}` : undefined}
               >
                 {isSharing ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
