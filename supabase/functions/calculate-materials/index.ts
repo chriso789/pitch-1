@@ -31,6 +31,9 @@ interface MaterialCalculationRequest {
     ice_water?: string;
     starter?: string;
   };
+  // Geometry gate fields (optional, enforced when present)
+  geometry_source?: string;
+  customer_report_ready?: boolean;
 }
 
 Deno.serve(async (req) => {
