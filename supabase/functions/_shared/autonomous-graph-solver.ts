@@ -1832,7 +1832,27 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     clipDiag.clipper_error = clipResult.method === 'clipper_degenerate_output' ? 'degenerate_output_area_destroyed' : (clippedPx.length < 3 && faceAreaBeforeClipPx > 100 ? 'clipped_to_nothing' : null);
     clipDiag.vertices_inside_footprint = clipResult.verticesInsideCount;
     clipDiag.vertices_outside_footprint = clipResult.verticesOutsideCount;
+    clipDiag.footprint_is_convex = clipResult.footprintIsConvex;
+    clipDiag.clipped_area_ratio = faceAreaBeforeClipPx > 0 ? Number((faceAreaAfterClipPx / faceAreaBeforeClipPx).toFixed(3)) : 0;
+    clipDiag.intersections_added_count = clipResult.intersectionsAdded;
     faceClippingDiagnostics.push(clipDiag);
+
+    // P0 area-loss guard: if face had real area, bbox overlap was high, but clipping destroyed >50%, it's a clipper bug not LOW_COVERAGE
+    if (faceAreaBeforeClipPx > 100 && bboxOverlapBeforeClip > 0.90 && faceAreaAfterClipPx > 0 && faceAreaAfterClipPx / faceAreaBeforeClipPx < 0.50) {
+      facesRejected++;
+      rejectionReasons.push('polygon_clipper_area_loss');
+      warnings.push(`face_${faceId}_clipper_area_loss: before=${faceAreaBeforeClipPx.toFixed(0)} after=${faceAreaAfterClipPx.toFixed(0)} ratio=${(faceAreaAfterClipPx/faceAreaBeforeClipPx).toFixed(3)}`);
+      faceRejectionTable.push({ face_id: faceId, area_sqft: 0, plane_rms: null, inside_footprint: true, mask_overlap: null, rejection_reason: 'polygon_clipper_area_loss' });
+      enrichedFaceRejections.push({
+        face_id: faceId, vertex_count: face.polygon.length, area_sqft: 0,
+        bbox_geo: null, centroid_geo: null,
+        inside_footprint: true, footprint_overlap_ratio: Number(bboxOverlapBeforeClip.toFixed(3)),
+        mask_overlap_ratio: null, plane_rms: null, pitch_degrees: null,
+        shared_edge_count: 0, boundary_edge_count: 0,
+        rejection_reasons: rejectionReasons,
+      });
+      continue;
+    }
 
     // Handle clipper degenerate output: preserve for debug but mark as failure
     if (clipResult.method === 'clipper_degenerate_output') {
