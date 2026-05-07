@@ -441,9 +441,10 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
 }
 
 // ── PRUNE DANGLING + GRAPH CONSISTENCY ───────────────────
-function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept: Seg[]; removed: number } {
+function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[], preserveStructural = false): { kept: Seg[]; removed: number; deferred: Seg[] } {
   let current = segments;
   let removed = 0;
+  const deferred: Seg[] = [];
   let changed = true;
 
   while (changed) {
@@ -467,6 +468,10 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
       const aDangling = (degree.get(ptKey(seg.a)) || 0) <= 1 && !aBoundary;
       const bDangling = (degree.get(ptKey(seg.b)) || 0) <= 1 && !bBoundary;
       if (aDangling || bDangling) {
+        // Complex-roof mode: defer structural edges instead of removing
+        if (preserveStructural && isStructural(seg) && (seg.edgeScore || 0) >= 0.3) {
+          deferred.push(seg);
+        }
         removed++;
         changed = true;
         return false;
@@ -491,12 +496,22 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
     const degB = finalDegree.get(ptKey(seg.b)) || 0;
     const aBound = pointNearFootprint(seg.a, footprint, 3);
     const bBound = pointNearFootprint(seg.b, footprint, 3);
-    if (degA < 2 && !aBound) { removed++; return false; }
-    if (degB < 2 && !bBound) { removed++; return false; }
+    if (degA < 2 && !aBound) {
+      if (preserveStructural && isStructural(seg) && (seg.edgeScore || 0) >= 0.3) {
+        deferred.push(seg);
+      }
+      removed++; return false;
+    }
+    if (degB < 2 && !bBound) {
+      if (preserveStructural && isStructural(seg) && (seg.edgeScore || 0) >= 0.3) {
+        deferred.push(seg);
+      }
+      removed++; return false;
+    }
     return true;
   });
 
-  return { kept: current, removed };
+  return { kept: current, removed, deferred };
 }
 
 // ── PERIMETER RE-INJECTION ───────────────────────────────
