@@ -100,6 +100,7 @@ interface EstimatePDFDocumentProps {
   companyLocations?: CompanyLocation[];
   materialItems: LineItem[];
   laborItems: LineItem[];
+  changeOrderItems?: LineItem[];
   breakdown: {
     materialsTotal: number;
     laborTotal: number;
