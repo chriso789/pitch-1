@@ -99,6 +99,7 @@ const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow")
 const PdfEngineEditor = React.lazy(() => import("@/pages/PdfEngineEditor"));
 const PdfTemplateList = React.lazy(() => import("@/pages/PdfTemplateList"));
 const PdfTemplateDetail = React.lazy(() => import("@/pages/PdfTemplateDetail"));
+const PdfTemplateLibrary = React.lazy(() => import("@/pages/PdfTemplateLibrary"));
 const MaterialAuditPage = React.lazy(() => import("@/pages/MaterialAuditPage"));
 const ProductionDetail = React.lazy(() => import("@/pages/ProductionDetail"));
 
@@ -213,6 +214,7 @@ export default function ProtectedRoutes() {
         <Route path="/documents/pdf-engine" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/templates" element={<ProtectedRoute><PdfTemplateList /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/template/:id" element={<ProtectedRoute><PdfTemplateDetail /></ProtectedRoute>} />
+        <Route path="/documents/pdf-engine/library" element={<ProtectedRoute><PdfTemplateLibrary /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/:id" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
       </Routes>
     </Suspense>

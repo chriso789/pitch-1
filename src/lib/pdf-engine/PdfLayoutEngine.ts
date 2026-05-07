@@ -177,4 +177,46 @@ export class PdfLayoutEngine {
   ): number {
     return newHeight - originalHeight;
   }
+
+  /**
+   * Detect text overflow and attempt fallback strategies.
+   * Returns the best layout result with warnings.
+   */
+  static layoutWithOverflowFallback(
+    text: string,
+    options: LayoutOptions
+  ): LayoutResult & { strategy: string; warnings: string[] } {
+    const warnings: string[] = [];
+
+    // Strategy 1: Same font size, single/multiline
+    const result1 = this.layoutText(text, options);
+    if (!result1.overflow) {
+      return { ...result1, strategy: 'original', warnings };
+    }
+    warnings.push(`Text overflows at ${options.fontSize}pt`);
+
+    // Strategy 2: Allow multiline expansion
+    const expandResult = this.layoutText(text, { ...options, allowExpand: true });
+    if (expandResult.totalHeight <= options.bounds.height * 1.5) {
+      warnings.push('Using multiline expansion');
+      return { ...expandResult, strategy: 'multiline_expand', warnings };
+    }
+
+    // Strategy 3: Shrink-to-fit
+    const shrinkSize = this.fitFontSize(text, options.bounds, options.fontName, options.fontSize);
+    if (shrinkSize >= options.fontSize * 0.6) {
+      const shrunkResult = this.layoutText(text, { ...options, fontSize: shrinkSize });
+      warnings.push(`Shrunk font from ${options.fontSize}pt to ${shrinkSize}pt`);
+      return { ...shrunkResult, strategy: 'shrink_to_fit', warnings };
+    }
+
+    // Strategy 4: Shrink + multiline
+    const shrinkMulti = this.layoutText(text, {
+      ...options,
+      fontSize: Math.max(shrinkSize, options.fontSize * 0.6),
+      allowExpand: true,
+    });
+    warnings.push(`Shrunk to ${Math.max(shrinkSize, options.fontSize * 0.6).toFixed(1)}pt + multiline — may still overflow`);
+    return { ...shrinkMulti, strategy: 'shrink_and_expand', warnings };
+  }
 }

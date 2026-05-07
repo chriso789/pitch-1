@@ -4,7 +4,7 @@ import { usePdfEngineV2 } from '@/hooks/usePdfEngineV2';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { PdfEngine } from '@/lib/pdf-engine/PdfEngine';
@@ -23,6 +23,7 @@ import { PdfSearchPanel } from '@/components/pdf-engine/PdfSearchPanel';
 import { PdfObjectPropertiesPanel } from '@/components/pdf-engine/PdfObjectPropertiesPanel';
 import { PdfAuditPanel } from '@/components/pdf-engine/PdfAuditPanel';
 import { PdfAuditEngine } from '@/lib/pdf-engine/PdfAuditEngine';
+import { PdfExportReadiness } from '@/lib/pdf-engine/PdfExportReadiness';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Upload, FileText, Layers, History, Settings2, Search, Shield
+  ArrowLeft, Upload, FileText, Layers, History, Settings2, Search, Shield, AlertTriangle
 } from 'lucide-react';
 import type { PdfEngineObject } from '@/lib/pdf-engine/engineTypes';
 import type { RewriteMode } from '@/lib/pdf-engine/PdfAiRewriter';
@@ -57,6 +58,8 @@ const PdfEngineEditor = () => {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDesc, setTemplateDesc] = useState('');
+  const [showExportReadiness, setShowExportReadiness] = useState(false);
+  const [exportReadiness, setExportReadiness] = useState<ReturnType<typeof PdfExportReadiness.check> | null>(null);
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
 
   // Load document info
@@ -240,6 +243,28 @@ const PdfEngineEditor = () => {
     }
   }, [tenantId, user, id, templateTitle, templateDesc, docQuery.data, toast]);
 
+  const handleExportCheck = useCallback(() => {
+    const hasRedactions = engine.operations.some(o => !o.is_undone && (o.operation_type === 'add_redaction' || o.operation_type === 'apply_redaction'));
+    const readiness = PdfExportReadiness.check({
+      unresolvedSmartFields: [],
+      redactionVerificationPassed: hasRedactions ? null : null,
+      hasRedactions,
+      ocrPendingPages: [],
+      missingFonts: [],
+      overflowWarnings: 0,
+      lockedRequiredFields: [],
+      emptyRequiredFormFields: [],
+      totalOperations: engine.operations.filter(o => !o.is_undone).length,
+      documentTitle: docQuery.data?.title || '',
+    });
+    setExportReadiness(readiness);
+    if (readiness.ready && readiness.warnings.length === 0) {
+      handleCompile();
+    } else {
+      setShowExportReadiness(true);
+    }
+  }, [engine.operations, docQuery.data]);
+
   const handleCompile = useCallback(async () => {
     if (!originalBytesRef.current) return;
     try {
@@ -251,6 +276,7 @@ const PdfEngineEditor = () => {
       a.download = `${docQuery.data?.title || 'compiled'}_pitch.pdf`;
       a.click();
       URL.revokeObjectURL(url);
+      setShowExportReadiness(false);
       toast({ title: 'PDF compiled and downloaded' });
     } catch (err: any) {
       toast({ title: 'Compile failed', description: err.message, variant: 'destructive' });
@@ -276,10 +302,11 @@ const PdfEngineEditor = () => {
 
   const activePageImage = pageImages.get(activePage);
   const activePageMeta = engine.pages.find(p => p.page_number === activePage);
-  const activePageObjects = engine.objects.filter(
+  const activePageObjects = useMemo(() => engine.objects.filter(
     o => (o.metadata as any)?.page_number === activePage
-  );
-  const activeOpsCount = engine.operations.filter(o => !o.is_undone).length;
+  ), [engine.objects, activePage]);
+  const activeOpsCount = useMemo(() => engine.operations.filter(o => !o.is_undone).length, [engine.operations]);
+  const isLargePdf = engine.pages.length > 200 || (originalBytesRef.current && originalBytesRef.current.byteLength > 100 * 1024 * 1024);
 
   // Upload dialog for new documents
   if (showUpload || !id) {
@@ -341,7 +368,7 @@ const PdfEngineEditor = () => {
         canRedo={engine.canRedo}
         onUndo={engine.undo}
         onRedo={engine.redo}
-        onCompile={handleCompile}
+        onCompile={handleExportCheck}
         onSave={handleSave}
         isCompiling={engine.isCompiling}
         isSaving={isSaving}
@@ -351,6 +378,13 @@ const PdfEngineEditor = () => {
         isOcrRunning={isOcrRunning}
         onSaveAsTemplate={() => setShowTemplateDialog(true)}
       />
+
+      {isLargePdf && (
+        <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 border border-yellow-500/30 rounded px-3 py-1.5 text-xs mt-1">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Large PDF detected ({engine.pages.length} pages). Performance may be reduced.
+        </div>
+      )}
 
       {/* Main layout */}
       <div className="flex gap-2 h-[calc(100vh-240px)] mt-2">
@@ -472,6 +506,53 @@ const PdfEngineEditor = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowTemplateDialog(false)}>Cancel</Button>
             <Button onClick={handleSaveAsTemplate}>Save Template</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Readiness Dialog */}
+      <Dialog open={showExportReadiness} onOpenChange={setShowExportReadiness}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Readiness Check</DialogTitle>
+          </DialogHeader>
+          {exportReadiness && (
+            <div className="space-y-4">
+              {exportReadiness.blockers.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-destructive">Blockers — must fix before export</p>
+                  {exportReadiness.blockers.map((b, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm bg-destructive/10 border border-destructive/30 rounded p-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                      <span>{b.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {exportReadiness.warnings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-yellow-600">Warnings</p>
+                  {exportReadiness.warnings.map((w, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm bg-yellow-500/10 border border-yellow-500/30 rounded p-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                      <span>{w.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {exportReadiness.blockers.length === 0 && exportReadiness.warnings.length === 0 && (
+                <p className="text-sm text-muted-foreground">All checks passed.</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportReadiness(false)}>Cancel</Button>
+            <Button
+              onClick={handleCompile}
+              disabled={exportReadiness ? !exportReadiness.ready : true}
+            >
+              {exportReadiness?.ready ? 'Export Anyway' : 'Blocked'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -5,17 +5,36 @@ import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
 import { PdfTemplateEngine, type PdfTemplate } from '@/lib/pdf-engine/PdfTemplateEngine';
+import { PdfTemplateQualityScorer, type QualityBadge } from '@/lib/pdf-engine/PdfTemplateQualityScorer';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, Search, Plus, Copy, Archive, ArrowRight } from 'lucide-react';
+import { FileText, Search, Plus, Copy, Archive, ArrowRight, Library } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 const CATEGORIES = ['general', 'estimate', 'proposal', 'contract', 'invoice', 'insurance', 'permit'];
+
+function getQuickScore(template: PdfTemplate): { score: number; badge: QualityBadge } {
+  const smartCount = (template.smart_tags || []).length;
+  const result = PdfTemplateQualityScorer.score({
+    smartFieldCount: smartCount,
+    totalTextObjects: Math.max(smartCount, 10),
+    unresolvedPlaceholders: [],
+    missingRequiredFields: [],
+    textOverflowWarnings: 0,
+    fontFallbackCount: 0,
+    hasRedactions: false,
+    redactionVerified: false,
+    ocrPageCount: 0,
+    totalPageCount: template.page_count || 1,
+    averageOcrConfidence: 100,
+  });
+  return { score: result.score, badge: result.badge };
+}
 
 const PdfTemplateList = () => {
   const navigate = useNavigate();
@@ -75,9 +94,14 @@ const PdfTemplateList = () => {
             <h1 className="text-2xl font-bold">PDF Templates</h1>
             <p className="text-sm text-muted-foreground">Reusable smart templates for document generation</p>
           </div>
-          <Button onClick={() => navigate('/documents/pdf-engine')}>
-            <Plus className="h-4 w-4 mr-1" /> New Template
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/documents/pdf-engine/library')}>
+              <Library className="h-4 w-4 mr-1" /> Library
+            </Button>
+            <Button onClick={() => navigate('/documents/pdf-engine')}>
+              <Plus className="h-4 w-4 mr-1" /> New Template
+            </Button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-4">
@@ -115,39 +139,45 @@ const PdfTemplateList = () => {
             </div>
           ) : (
             <div className="grid gap-3">
-              {filtered.map(t => (
-                <Card key={t.id} className="hover:bg-muted/30 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/documents/pdf-engine/template/${t.id}`)}
-                >
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <FileText className="h-8 w-8 text-primary/60 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm truncate">{t.title}</h3>
-                      <p className="text-xs text-muted-foreground truncate">{t.description}</p>
-                      <div className="flex gap-1 mt-1">
-                        <Badge variant="outline" className="text-[10px]">{t.category}</Badge>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {(t.smart_tags || []).length} smart fields
-                        </Badge>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {t.page_count} pages
-                        </Badge>
+              {filtered.map(t => {
+                const { score, badge } = getQuickScore(t);
+                return (
+                  <Card key={t.id} className="hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/documents/pdf-engine/template/${t.id}`)}
+                  >
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <FileText className="h-8 w-8 text-primary/60 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium text-sm truncate">{t.title}</h3>
+                        <p className="text-xs text-muted-foreground truncate">{t.description}</p>
+                        <div className="flex gap-1 mt-1">
+                          <Badge variant="outline" className="text-[10px]">{t.category}</Badge>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {(t.smart_tags || []).length} smart fields
+                          </Badge>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {t.page_count} pages
+                          </Badge>
+                          <Badge className={`text-[10px] ${PdfTemplateQualityScorer.getBadgeColor(badge)}`}>
+                            {badge} ({score})
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"
-                        onClick={() => duplicateMutation.mutate(t)} title="Duplicate">
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"
-                        onClick={() => archiveMutation.mutate(t.id)} title="Archive">
-                        <Archive className="h-3.5 w-3.5" />
-                      </Button>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground mt-1.5" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={() => duplicateMutation.mutate(t)} title="Duplicate">
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={() => archiveMutation.mutate(t.id)} title="Archive">
+                          <Archive className="h-3.5 w-3.5" />
+                        </Button>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground mt-1.5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </ScrollArea>
