@@ -400,9 +400,11 @@ const PdfEngineEditor = () => {
         {/* Right: Properties + History */}
         <div className="flex-[3] min-w-[260px] hidden md:block">
           <Tabs defaultValue="properties" className="h-full flex flex-col">
-            <TabsList className="grid grid-cols-2 w-full">
+            <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="properties"><Settings2 className="h-3.5 w-3.5 mr-1" />Props</TabsTrigger>
+              <TabsTrigger value="search"><Search className="h-3.5 w-3.5 mr-1" />Search</TabsTrigger>
               <TabsTrigger value="history"><History className="h-3.5 w-3.5 mr-1" />History</TabsTrigger>
+              <TabsTrigger value="audit"><Shield className="h-3.5 w-3.5 mr-1" />Audit</TabsTrigger>
             </TabsList>
             <TabsContent value="properties" className="flex-1 overflow-auto">
               <PdfPropertiesPanel
@@ -411,12 +413,32 @@ const PdfEngineEditor = () => {
                 onDeleteObject={handleDeleteObject}
                 onAiRewrite={handleAiRewrite}
               />
+              {selectedObject && (
+                <PdfObjectPropertiesPanel
+                  selectedObject={selectedObject}
+                  onPushOperation={(type, payload, targetId) => {
+                    engine.pushOperation(type, payload, targetId);
+                    if (tenantId && user?.id) {
+                      PdfAuditEngine.log(tenantId, user.id, type === 'move_object' ? 'object_moved' : type === 'delete_object' ? 'object_deleted' : 'text_replaced', payload, id);
+                    }
+                  }}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="search" className="flex-1 overflow-auto">
+              <PdfSearchPanel
+                currentDocumentId={id}
+                onJumpToPage={setActivePage}
+              />
             </TabsContent>
             <TabsContent value="history" className="flex-1 overflow-hidden">
               <PdfOperationHistory
                 operations={engine.operations}
                 versions={engine.versions}
               />
+            </TabsContent>
+            <TabsContent value="audit" className="flex-1 overflow-auto">
+              <PdfAuditPanel pdfDocumentId={id} />
             </TabsContent>
           </Tabs>
         </div>
