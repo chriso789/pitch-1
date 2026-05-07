@@ -4645,6 +4645,11 @@ async function processJob(input: any) {
           face_rejection_table: autonomousDebug?.face_rejection_table || [],
           failure_category: autonomousDebug?.failure_category || null,
           dominant_rejection: autonomousDebug?.dominant_rejection || null,
+          // DSM promotion gate
+          promotion_gate_passed: promotionGatePassed,
+          promotion_gate_failed_reasons: promotionGateFailedReasons,
+          promoted_geometry_source: promotedGeometrySource,
+          promoted_customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
         },
       })
       .select("id")
