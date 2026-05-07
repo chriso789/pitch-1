@@ -980,7 +980,7 @@ export function solveRoofPlanes(
   };
 
   if (rawFootprint.length < 3) {
-    return { faces: [], edges: [], debug: emptyDebug };
+    return { faces: [], edges: [], deferredEdges: [], debug: emptyDebug };
   }
 
   // 1. Snap footprint
