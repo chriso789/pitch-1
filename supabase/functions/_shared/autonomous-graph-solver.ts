@@ -2503,6 +2503,19 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     roof_mask_tile_pct: effectiveDSM ? Number((roofMaskPixelCount / (effectiveDSM.width * effectiveDSM.height) * 100).toFixed(1)) : 0,
     masked_edge_count: maskedEdgeCount,
     unmasked_edge_count: unmaskEdgeCount,
+    // v10: face-adjacency edge classification diagnostics
+    edge_classification_table: edgeClassificationTable.slice(0, 50), // cap for log size
+    classification_method_counts: classMethodCounts,
+    ridge_candidates: outRidges.length,
+    valley_candidates: outValleys.length,
+    hip_candidates: outHips.length,
+    unclassified_edges: outUnclassified.length,
+    topology_undersegmented: topologyUndersegmented,
+    expected_min_faces: expectedMinFacesLocal,
+    actual_faces_attempted: planar.faces.length,
+    edge_merge_count: planar.debug.collinear_merges || 0,
+    edges_removed_before_face_build: planar.debug.dangling_edges_removed || 0,
+    raw_dsm_edge_count: rawDsmEdgeCount,
   };
 
   const logs: AutonomousGraphLog = {
