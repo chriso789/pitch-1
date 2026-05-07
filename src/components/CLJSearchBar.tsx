@@ -329,39 +329,7 @@ export const CLJSearchBar = () => {
                 </>
               )}
               
-              {/* Contacts Group */}
-              {!loading && contacts.length > 0 && (
-                <CommandGroup heading="Contacts">
-                  {contacts.map((result) => {
-                    const config = ENTITY_CONFIG.contact;
-                    const Icon = config.icon;
-                    return (
-                      <CommandItem
-                        key={`contact-${result.entity_id}`}
-                        onSelect={() => handleSelect(result)}
-                        className="flex items-center justify-between cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <div className={cn("p-1 rounded", "bg-blue-50")}>
-                            <Icon className={cn("h-4 w-4", config.iconClass)} />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-medium truncate">{result.entity_name}</span>
-                            <span className="text-xs text-muted-foreground truncate">
-                              {result.entity_subtext}
-                            </span>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className={cn("text-xs shrink-0 ml-2", config.badgeClass)}>
-                          {config.label}
-                        </Badge>
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              )}
-              
-              {/* Leads Group */}
+              {/* Leads Group - shown first since most searches target leads */}
               {!loading && leads.length > 0 && (
                 <CommandGroup heading="Leads">
                   {leads.map((result) => {
