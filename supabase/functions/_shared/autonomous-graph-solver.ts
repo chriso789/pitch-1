@@ -1658,6 +1658,13 @@ function clusterEdges(
     for (let j = i + 1; j < edges.length; j++) {
       if (used.has(j)) continue;
       
+      // HIERARCHY GATE: Secondary edges only merge with tertiary
+      // (primary already emitted, so both i and j are secondary or tertiary here)
+      if (edges[i].tier === 'secondary' && edges[j].tier === 'secondary') {
+        // Two secondary edges — don't merge, preserve both
+        continue;
+      }
+
       // TOPOLOGY GATE 1: Must be in the same local region
       if (regionIds[i] !== regionIds[j]) {
         diagnostics.cross_region_rejections++;
@@ -1683,12 +1690,22 @@ function clusterEdges(
         let angleDiff = Math.abs(ai - aj);
         if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
         if (angleDiff > Math.PI / 2) angleDiff = Math.PI - angleDiff;
-        if (angleDiff * 180 / Math.PI > CLUSTER_ANGLE_DEG) continue;
+
+        // Tighter angle threshold for secondary edges
+        const effectiveAngleThreshold = (ei.tier === 'secondary' || ej.tier === 'secondary')
+          ? CLUSTER_ANGLE_DEG * 0.7
+          : CLUSTER_ANGLE_DEG;
+        if (angleDiff * 180 / Math.PI > effectiveAngleThreshold) continue;
         
         const midI = { x: (ei.a.x + ei.b.x) / 2, y: (ei.a.y + ei.b.y) / 2 };
         const midJ = { x: (ej.a.x + ej.b.x) / 2, y: (ej.a.y + ej.b.y) / 2 };
         const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
-        if (midDist > CLUSTER_MIDPOINT_DIST_PX) continue;
+
+        // Tighter distance threshold for secondary edges
+        const effectiveDistThreshold = (ei.tier === 'secondary' || ej.tier === 'secondary')
+          ? CLUSTER_MIDPOINT_DIST_PX * 0.6
+          : CLUSTER_MIDPOINT_DIST_PX;
+        if (midDist > effectiveDistThreshold) continue;
 
         // TOPOLOGY GATE 3: DSM elevation profile between edges
         if (wouldCrossTopologyBoundary(ei, ej, dsmGrid)) {
