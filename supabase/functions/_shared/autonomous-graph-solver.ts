@@ -3185,8 +3185,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   // Undersegmentation takes priority over invalid_edge_classification
   if (topologyUndersegmented) {
     validation.valid = false;
-    validation.status = 'topology_undersegmented';
-    validation.reason = `${rawDsmEdgeCount} raw DSM edges collapsed to ${planar.faces.length} faces on ${footprintAreaSqft.toFixed(0)} sqft footprint — topology undersegmented`;
+    const refinementWasAttempted = !!(refinementDiagnostics as Record<string, unknown>).refinement_attempted;
+    validation.status = refinementWasAttempted ? 'topology_undersegmented_after_refinement' : 'topology_undersegmented';
+    validation.reason = `${rawDsmEdgeCount} raw DSM edges collapsed to ${graphFaces.length} faces on ${footprintAreaSqft.toFixed(0)} sqft footprint — topology undersegmented${refinementWasAttempted ? ' (after refinement attempt)' : ''}`;
   } else {
     const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
     if (!validation.valid && invalidEdgeClassification) {
