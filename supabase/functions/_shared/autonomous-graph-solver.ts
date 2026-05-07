@@ -327,6 +327,7 @@ export interface AutonomousGraphInput {
   lng: number;
   coordinateSpaceSolver?: 'dsm_px';
   footprintCoords: XY[];
+  footprintSource?: string;
   solarSegments: SolarSegment[];
   dsmGrid: DSMGrid | null;
   maskedDSM: MaskedDSMGrid | null;
