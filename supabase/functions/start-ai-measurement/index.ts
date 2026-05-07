@@ -33,7 +33,7 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, geoToPixel } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
@@ -1152,17 +1152,19 @@ async function processJob(input: any) {
       let maskedDSM: any = null;
       try {
         if (GOOGLE_SOLAR_API_KEY) {
-          [dsmGrid, roofMask] = await Promise.all([
-            fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
-            fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
-          ]);
+          // Fetch DSM first (populates shared diagnostics), then mask uses cached dataLayers
+          dsmGrid = await fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+          roofMask = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
           maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
-          // Store roof mask for downstream registration quality check
           if (roofMask) (globalThis as any).__roofMaskForQA = roofMask;
+        } else {
+          console.warn("[AUTONOMOUS_DSM_GRAPH] No GOOGLE_SOLAR_API_KEY configured");
         }
       } catch (e) {
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
       }
+      const dsmDiag = getLastDSMDiagnostics();
+      console.log(`[DSM_INGESTION] loaded=${!!dsmGrid} mask=${!!roofMask} diag=${JSON.stringify(dsmDiag)}`);
 
       // Solver contract: use the final validated satellite-pixel footprint only.
       // Do not substitute selectedMaskContourGeo here; it is raw Solar mask

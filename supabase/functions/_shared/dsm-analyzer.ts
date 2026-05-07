@@ -138,9 +138,11 @@ async function parseRealGeoTIFF(
 
     // Extract geo-referencing from tiepoints + pixel scale
     const tiepoint = image.getTiePoints();
-    const pixelScale = image.getFileDirectory().ModelPixelScale;
+    const fileDir = image.getFileDirectory();
+    const pixelScale = fileDir.ModelPixelScale;
+    const modelTransformation = fileDir.ModelTransformation;
     const geoKeys = image.getGeoKeys();
-    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}`);
+    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}, hasTiepoints=${!!(tiepoint && tiepoint.length)}, hasPixelScale=${!!(pixelScale && pixelScale.length)}, hasModelTransformation=${!!(modelTransformation && modelTransformation.length)}`);
 
     let bounds: DSMGrid['bounds'];
 
@@ -154,88 +156,43 @@ async function parseRealGeoTIFF(
       let rawMaxY = tp.y + tp.j * scaleY;
       let rawMinY = tp.y - (height - tp.j) * scaleY;
 
-      // Detect if coordinates are in a projected CRS (not lat/lng)
-      // Lat/lng values: x in [-180, 180], y in [-90, 90]
-      // Projected coords (UTM, etc.): values typically > 180
-      const isProjected = Math.abs(rawMinX) > 360 || Math.abs(rawMinY) > 360;
+      bounds = resolveProjectedBounds(rawMinX, rawMinY, rawMaxX, rawMaxY, geoKeys);
+      if (!bounds) return null;
+    } else if (modelTransformation && modelTransformation.length >= 16) {
+      // ModelTransformation is a 4x4 affine matrix (row-major):
+      // [sx, shx, 0, tx,  shy, sy, 0, ty,  0, 0, sz, tz,  0, 0, 0, 1]
+      // pixel (i,j) -> geo (x,y) = (sx*i + shx*j + tx, shy*i + sy*j + ty)
+      const sx = modelTransformation[0];
+      const shx = modelTransformation[1];
+      const tx = modelTransformation[3];
+      const shy = modelTransformation[4];
+      const sy = modelTransformation[5];
+      const ty = modelTransformation[7];
 
-      if (isProjected) {
-        // Determine UTM zone from GeoKeys or estimate from coordinate values
-        const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
-        console.log(`[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
-        
-        // Convert projected (UTM) bounds to lat/lng
-        // Try to determine UTM zone from GeoKeys or from EPSG code
-        let utmZone = 0;
-        let isNorth = true;
-        
-        if (projCRS >= 32601 && projCRS <= 32660) {
-          utmZone = projCRS - 32600;
-          isNorth = true;
-        } else if (projCRS >= 32701 && projCRS <= 32760) {
-          utmZone = projCRS - 32700;
-          isNorth = false;
-        } else {
-          // Estimate UTM zone from easting value (typically 100000-900000)
-          // and use the request lat to determine hemisphere
-          // For Florida (lat ~27), UTM zone 17N is typical
-          // Easting ~381000 and Northing ~2996000 → zone 17N
-          if (rawMinX > 100000 && rawMinX < 900000) {
-            // Estimate zone from known property location — use northing to guess
-            utmZone = 17; // Default for SE US
-            isNorth = rawMinY > 0;
-          }
-        }
+      // Compute corners
+      const corners = [
+        { x: tx, y: ty },                                                    // (0,0)
+        { x: sx * width + tx, y: shy * width + ty },                         // (W,0)
+        { x: shx * height + tx, y: sy * height + ty },                       // (0,H)
+        { x: sx * width + shx * height + tx, y: shy * width + sy * height + ty }, // (W,H)
+      ];
 
-        if (utmZone > 0) {
-          const sw = utmToLatLng(rawMinX, rawMinY, utmZone, isNorth);
-          const ne = utmToLatLng(rawMaxX, rawMaxY, utmZone, isNorth);
-          bounds = {
-            minLng: sw.lng,
-            minLat: sw.lat,
-            maxLng: ne.lng,
-            maxLat: ne.lat,
-          };
-          console.log(`[DSM_ANALYZER] Converted UTM zone ${utmZone}${isNorth ? 'N' : 'S'} → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
-        } else {
-          console.warn('[DSM_ANALYZER] Cannot determine UTM zone for projected CRS');
-          return null;
-        }
-      } else {
-        // Already in lat/lng
-        bounds = {
-          minLng: rawMinX,
-          maxLng: rawMaxX,
-          maxLat: rawMaxY,
-          minLat: rawMinY,
-        };
-      }
+      const rawMinX = Math.min(...corners.map(c => c.x));
+      const rawMaxX = Math.max(...corners.map(c => c.x));
+      const rawMinY = Math.min(...corners.map(c => c.y));
+      const rawMaxY = Math.max(...corners.map(c => c.y));
+
+      console.log(`[DSM_ANALYZER] ModelTransformation bounds: [${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+
+      bounds = resolveProjectedBounds(rawMinX, rawMinY, rawMaxX, rawMaxY, geoKeys);
+      if (!bounds) return null;
     } else {
+      // Fallback: use library's getBoundingBox (handles ModelTransformation internally)
       const bbox = image.getBoundingBox();
       if (bbox && bbox.length === 4) {
-        const isProjected = Math.abs(bbox[0]) > 360 || Math.abs(bbox[1]) > 360;
-        if (isProjected) {
-          // Try to convert using geoKeys
-          const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
-          let utmZone = 0;
-          let isNorth = true;
-          if (projCRS >= 32601 && projCRS <= 32660) {
-            utmZone = projCRS - 32600; isNorth = true;
-          } else if (projCRS >= 32701 && projCRS <= 32760) {
-            utmZone = projCRS - 32700; isNorth = false;
-          }
-          if (utmZone > 0) {
-            const sw = utmToLatLng(bbox[0], bbox[1], utmZone, isNorth);
-            const ne = utmToLatLng(bbox[2], bbox[3], utmZone, isNorth);
-            bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
-            console.log(`[DSM_ANALYZER] Converted bbox UTM ${utmZone}${isNorth ? 'N' : 'S'} → [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
-          } else {
-            console.warn('[DSM_ANALYZER] Projected bbox, unknown CRS — cannot convert');
-            return null;
-          }
-        } else {
-          bounds = { minLng: bbox[0], minLat: bbox[1], maxLng: bbox[2], maxLat: bbox[3] };
-        }
+        console.log(`[DSM_ANALYZER] Using getBoundingBox fallback: [${bbox.map((v: number) => v.toFixed(2)).join(', ')}]`);
+        bounds = resolveProjectedBounds(bbox[0], bbox[1], bbox[2], bbox[3], geoKeys);
+        if (!bounds) return null;
       } else {
         console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
         return null;
@@ -243,7 +200,6 @@ async function parseRealGeoTIFF(
     }
 
     // Get nodata value
-    const fileDir = image.getFileDirectory();
     const noDataValue = fileDir.GDAL_NODATA
       ? parseFloat(fileDir.GDAL_NODATA)
       : -9999;
@@ -257,44 +213,209 @@ async function parseRealGeoTIFF(
   }
 }
 
+/**
+ * Resolve raw bounds (which may be in a projected CRS like UTM) to lat/lng.
+ * Returns null if the CRS cannot be determined.
+ */
+function resolveProjectedBounds(
+  rawMinX: number, rawMinY: number, rawMaxX: number, rawMaxY: number,
+  geoKeys: any
+): DSMGrid['bounds'] | null {
+  const isProjected = Math.abs(rawMinX) > 360 || Math.abs(rawMinY) > 360;
+  if (!isProjected) {
+    return { minLng: rawMinX, maxLng: rawMaxX, minLat: rawMinY, maxLat: rawMaxY };
+  }
+
+  const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
+  console.log(`[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+
+  let utmZone = 0;
+  let isNorth = true;
+
+  if (projCRS >= 32601 && projCRS <= 32660) {
+    utmZone = projCRS - 32600;
+    isNorth = true;
+  } else if (projCRS >= 32701 && projCRS <= 32760) {
+    utmZone = projCRS - 32700;
+    isNorth = false;
+  } else if (rawMinX > 100000 && rawMinX < 900000) {
+    utmZone = 17; // Default for SE US
+    isNorth = rawMinY > 0;
+  }
+
+  if (utmZone === 0) {
+    console.warn(`[DSM_ANALYZER] Cannot determine UTM zone for projected CRS ${projCRS}`);
+    return null;
+  }
+
+  const sw = utmToLatLng(rawMinX, rawMinY, utmZone, isNorth);
+  const ne = utmToLatLng(rawMaxX, rawMaxY, utmZone, isNorth);
+  const bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
+  console.log(`[DSM_ANALYZER] Converted UTM zone ${utmZone}${isNorth ? 'N' : 'S'} → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+  return bounds;
+}
+
+// ============= DIAGNOSTICS =============
+
+/** Mutable diagnostics object — caller should read after fetch calls */
+export interface DSMFetchDiagnostics {
+  google_solar_building_insights_status?: number;
+  google_solar_datalayers_status?: number;
+  dsm_url_present?: boolean;
+  mask_url_present?: boolean;
+  rgb_url_present?: boolean;
+  imagery_quality?: string;
+  dsm_fetch_status?: number;
+  dsm_fetch_content_type?: string;
+  dsm_fetch_byte_length?: number;
+  dsm_parse_success?: boolean;
+  dsm_width?: number;
+  dsm_height?: number;
+  dsm_no_data_ratio?: number;
+  dsm_valid_pixels?: number;
+  dsm_min_elevation_m?: number;
+  dsm_max_elevation_m?: number;
+  dsm_error_message?: string;
+  mask_fetch_status?: number;
+  mask_parse_success?: boolean;
+  mask_roof_pixel_count?: number;
+  mask_width?: number;
+  mask_height?: number;
+  failure_code?: string;
+}
+
+let _lastDiagnostics: DSMFetchDiagnostics = {};
+
+/** Get diagnostics from the most recent DSM/mask fetch cycle */
+export function getLastDSMDiagnostics(): DSMFetchDiagnostics { return _lastDiagnostics; }
+
+/** Reset diagnostics before a new fetch cycle */
+export function resetDSMDiagnostics() { _lastDiagnostics = {}; }
+
+// Cache dataLayers response per request to avoid double-fetch
+let _cachedDataLayers: { lat: number; lng: number; data: any; status: number } | null = null;
+
+async function fetchDataLayers(lat: number, lng: number, apiKey: string): Promise<{ data: any; status: number }> {
+  if (_cachedDataLayers && _cachedDataLayers.lat === lat && _cachedDataLayers.lng === lng) {
+    return { data: _cachedDataLayers.data, status: _cachedDataLayers.status };
+  }
+  const url = `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}&location.longitude=${lng}&radiusMeters=50&view=FULL_LAYERS&key=${apiKey}`;
+  const response = await fetch(url);
+  const status = response.status;
+  let data: any = null;
+  if (response.ok) {
+    data = await response.json();
+  } else {
+    const errText = await response.text();
+    console.warn(`[DSM_ANALYZER] DataLayers ${status}: ${errText.substring(0, 300)}`);
+  }
+  _cachedDataLayers = { lat, lng, data, status };
+  _lastDiagnostics.google_solar_datalayers_status = status;
+  return { data, status };
+}
+
 // ============= PUBLIC API =============
 
 /**
- * Fetch DSM from Google Solar API and parse into real elevation grid
+ * Fetch DSM from Google Solar API and parse into real elevation grid.
+ * Populates diagnostics accessible via getLastDSMDiagnostics().
  */
 export async function fetchDSMFromGoogleSolar(
   lat: number,
   lng: number,
   apiKey: string
 ): Promise<DSMGrid | null> {
+  resetDSMDiagnostics();
   try {
-    const layersUrl = `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}&location.longitude=${lng}&radiusMeters=50&view=FULL_LAYERS&key=${apiKey}`;
-    const response = await fetch(layersUrl);
-    if (!response.ok) {
-      console.warn(`[DSM_ANALYZER] Failed to fetch DSM layers: ${response.status}`);
+    const { data: layersData, status } = await fetchDataLayers(lat, lng, apiKey);
+    if (!layersData) {
+      _lastDiagnostics.failure_code = status === 404 ? 'google_solar_no_datalayers' : `google_solar_http_${status}`;
+      _lastDiagnostics.dsm_error_message = `DataLayers returned ${status}`;
       return null;
     }
 
-    const layersData = await response.json();
+    _lastDiagnostics.dsm_url_present = !!layersData.dsmUrl;
+    _lastDiagnostics.mask_url_present = !!layersData.maskUrl;
+    _lastDiagnostics.rgb_url_present = !!layersData.rgbUrl;
+    _lastDiagnostics.imagery_quality = layersData.imageryQuality;
+
     if (!layersData.dsmUrl) {
+      _lastDiagnostics.failure_code = 'dsm_url_missing';
+      _lastDiagnostics.dsm_error_message = 'DataLayers response has no dsmUrl';
       console.log('[DSM_ANALYZER] No DSM URL in Google Solar response');
       return null;
     }
 
     console.log('[DSM_ANALYZER] Fetching DSM GeoTIFF...');
     const dsmResponse = await fetch(`${layersData.dsmUrl}&key=${apiKey}`);
+    _lastDiagnostics.dsm_fetch_status = dsmResponse.status;
+    _lastDiagnostics.dsm_fetch_content_type = dsmResponse.headers.get('content-type') || undefined;
+
     if (!dsmResponse.ok) {
-      console.warn(`[DSM_ANALYZER] Failed to fetch DSM GeoTIFF: ${dsmResponse.status}`);
+      _lastDiagnostics.failure_code = 'dsm_fetch_failed';
+      _lastDiagnostics.dsm_error_message = `DSM GeoTIFF fetch returned ${dsmResponse.status}`;
+      const errBody = await dsmResponse.text();
+      console.warn(`[DSM_ANALYZER] Failed to fetch DSM GeoTIFF: ${dsmResponse.status} — ${errBody.substring(0, 200)}`);
+      return null;
+    }
+
+    // Validate content type — Google sometimes returns JSON errors with 200
+    const ct = dsmResponse.headers.get('content-type') || '';
+    if (ct.includes('application/json') || ct.includes('text/html')) {
+      const body = await dsmResponse.text();
+      _lastDiagnostics.failure_code = 'dsm_fetch_wrong_content_type';
+      _lastDiagnostics.dsm_error_message = `Expected image/tiff but got ${ct}: ${body.substring(0, 200)}`;
+      console.warn(`[DSM_ANALYZER] DSM response is ${ct}, not GeoTIFF`);
       return null;
     }
 
     const arrayBuffer = await dsmResponse.arrayBuffer();
+    _lastDiagnostics.dsm_fetch_byte_length = arrayBuffer.byteLength;
+
+    if (arrayBuffer.byteLength < 100) {
+      _lastDiagnostics.failure_code = 'dsm_fetch_too_small';
+      _lastDiagnostics.dsm_error_message = `GeoTIFF only ${arrayBuffer.byteLength} bytes`;
+      return null;
+    }
+
     const parsed = await parseRealGeoTIFF(arrayBuffer);
-    if (!parsed) return null;
+    if (!parsed) {
+      _lastDiagnostics.dsm_parse_success = false;
+      _lastDiagnostics.failure_code = _lastDiagnostics.failure_code || 'dsm_parse_failed';
+      _lastDiagnostics.dsm_error_message = _lastDiagnostics.dsm_error_message || 'parseRealGeoTIFF returned null';
+      return null;
+    }
+
+    _lastDiagnostics.dsm_parse_success = true;
+    _lastDiagnostics.dsm_width = parsed.width;
+    _lastDiagnostics.dsm_height = parsed.height;
+
+    // Compute elevation stats
+    let noDataCount = 0;
+    let minElev = Infinity, maxElev = -Infinity;
+    for (let i = 0; i < parsed.data.length; i++) {
+      const v = parsed.data[i];
+      if (v === parsed.noDataValue || isNaN(v)) { noDataCount++; }
+      else { if (v < minElev) minElev = v; if (v > maxElev) maxElev = v; }
+    }
+    const noDataRatio = noDataCount / parsed.data.length;
+    _lastDiagnostics.dsm_no_data_ratio = +noDataRatio.toFixed(4);
+    _lastDiagnostics.dsm_valid_pixels = parsed.data.length - noDataCount;
+    _lastDiagnostics.dsm_min_elevation_m = Number.isFinite(minElev) ? +minElev.toFixed(2) : undefined;
+    _lastDiagnostics.dsm_max_elevation_m = Number.isFinite(maxElev) ? +maxElev.toFixed(2) : undefined;
+
+    if (noDataRatio > 0.95) {
+      _lastDiagnostics.failure_code = 'dsm_empty_or_all_nodata';
+      _lastDiagnostics.dsm_error_message = `${(noDataRatio * 100).toFixed(1)}% no-data pixels`;
+      console.warn(`[DSM_ANALYZER] DSM is mostly no-data: ${(noDataRatio * 100).toFixed(1)}%`);
+      return null;
+    }
 
     // Estimate resolution in meters
     const latSpan = parsed.bounds.maxLat - parsed.bounds.minLat;
     const resolution = (latSpan * 111320) / parsed.height;
+
+    console.log(`[DSM_ANALYZER] DSM loaded successfully: ${parsed.width}x${parsed.height}, ${_lastDiagnostics.dsm_valid_pixels} valid pixels, elev range [${minElev.toFixed(1)}, ${maxElev.toFixed(1)}]m`);
 
     return {
       data: parsed.data,
@@ -305,6 +426,8 @@ export async function fetchDSMFromGoogleSolar(
       noDataValue: parsed.noDataValue,
     };
   } catch (error) {
+    _lastDiagnostics.failure_code = 'dsm_fetch_exception';
+    _lastDiagnostics.dsm_error_message = (error as Error).message;
     console.warn('[DSM_ANALYZER] Error fetching DSM:', error);
     return null;
   }
@@ -319,11 +442,9 @@ export async function fetchRoofMaskFromGoogleSolar(
   apiKey: string
 ): Promise<RoofMask | null> {
   try {
-    const layersUrl = `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}&location.longitude=${lng}&radiusMeters=50&view=FULL_LAYERS&key=${apiKey}`;
-    const response = await fetch(layersUrl);
-    if (!response.ok) return null;
+    const { data: layersData, status } = await fetchDataLayers(lat, lng, apiKey);
+    if (!layersData) return null;
 
-    const layersData = await response.json();
     if (!layersData.maskUrl) {
       console.log('[DSM_ANALYZER] No mask URL in Google Solar response');
       return null;
@@ -331,11 +452,19 @@ export async function fetchRoofMaskFromGoogleSolar(
 
     console.log('[DSM_ANALYZER] Fetching roof mask GeoTIFF...');
     const maskResponse = await fetch(`${layersData.maskUrl}&key=${apiKey}`);
+    _lastDiagnostics.mask_fetch_status = maskResponse.status;
     if (!maskResponse.ok) return null;
 
     const buffer = await maskResponse.arrayBuffer();
     const parsed = await parseRealGeoTIFF(buffer);
-    if (!parsed) return null;
+    if (!parsed) {
+      _lastDiagnostics.mask_parse_success = false;
+      return null;
+    }
+
+    _lastDiagnostics.mask_parse_success = true;
+    _lastDiagnostics.mask_width = parsed.width;
+    _lastDiagnostics.mask_height = parsed.height;
 
     // Convert float raster to boolean mask: >0 means roof pixel
     const maskData = new Uint8Array(parsed.data.length);
@@ -348,6 +477,7 @@ export async function fetchRoofMaskFromGoogleSolar(
       }
     }
 
+    _lastDiagnostics.mask_roof_pixel_count = roofPixels;
     const coverage = (roofPixels / parsed.data.length * 100).toFixed(1);
     console.log(`[DSM_ANALYZER] Mask parsed: ${parsed.width}x${parsed.height}, ${roofPixels} roof pixels (${coverage}%)`);
 
