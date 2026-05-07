@@ -261,6 +261,16 @@ export interface AutonomousGraphLog {
   intersections_split: number;
   intersection_filter_skipped: number;
   cluster_merges: number;
+  cluster_diagnostics?: {
+    local_regions_detected: number;
+    cross_region_rejections: number;
+    oversized_plane_rejections: number;
+    type_conflict_rejections: number;
+    valley_edges_preserved: number;
+    ridge_edges_preserved: number;
+    edges_merged_count: number;
+    cluster_merge_rejections: number;
+  };
   collinear_merges: number;
   fragment_merges: number;
   dangling_edges_removed: number;
