@@ -110,6 +110,7 @@ interface EstimatePreviewPanelProps {
   templateStyle?: string | null;
   materialItems: LineItem[];
   laborItems: LineItem[];
+  changeOrderItems?: LineItem[];
   breakdown: {
     materialsTotal: number;
     laborTotal: number;
