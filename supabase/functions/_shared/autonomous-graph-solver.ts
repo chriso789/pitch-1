@@ -261,6 +261,16 @@ export interface AutonomousGraphLog {
   intersections_split: number;
   intersection_filter_skipped: number;
   cluster_merges: number;
+  cluster_diagnostics?: {
+    local_regions_detected: number;
+    cross_region_rejections: number;
+    oversized_plane_rejections: number;
+    type_conflict_rejections: number;
+    valley_edges_preserved: number;
+    ridge_edges_preserved: number;
+    edges_merged_count: number;
+    cluster_merge_rejections: number;
+  };
   collinear_merges: number;
   fragment_merges: number;
   dangling_edges_removed: number;
@@ -1303,9 +1313,18 @@ function classifyPlanarSegment(
     : { type: 'hip', score: 0.5, source: 'dsm' };
 }
 
-// ============= EDGE CLUSTERING (WEIGHTED MERGE WITH SPAN CAP) =============
+// ============= TOPOLOGY-AWARE EDGE CLUSTERING =============
+// v10: Preserves local roof assemblies by segmenting edges into DSM-elevation
+// regions before clustering. Prevents merges that cross ridge/valley boundaries,
+// suppress local topology, or create oversized planes.
 
 const CLUSTER_MAX_SPAN_PX = 80;
+/** Maximum area ratio a single merged plane is allowed to cover */
+const CLUSTER_MAX_PLANE_AREA_RATIO = 0.35;
+/** Grid cell size for local DSM elevation partitioning */
+const LOCAL_REGION_CELL_PX = 40;
+/** Elevation difference threshold to consider two cells different regions */
+const LOCAL_REGION_ELEV_DIFF_M = 0.8;
 
 interface ClusterableEdge {
   a: { x: number; y: number };
@@ -1314,9 +1333,194 @@ interface ClusterableEdge {
   score: number;
 }
 
-function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
-  if (edges.length <= 1) return edges;
-  
+interface ClusterDiagnostics {
+  pre_cluster_edge_count: number;
+  post_cluster_edge_count: number;
+  edges_merged_count: number;
+  local_regions_detected: number;
+  cluster_merge_rejections: number;
+  cross_region_rejections: number;
+  oversized_plane_rejections: number;
+  type_conflict_rejections: number;
+  valley_edges_preserved: number;
+  ridge_edges_preserved: number;
+}
+
+/**
+ * Assign each edge midpoint to a local DSM elevation region.
+ * This partitions the roof into local structural assemblies.
+ */
+function assignLocalRegions(
+  edges: ClusterableEdge[],
+  dsmGrid: DSMGrid | null,
+  footprintPx: PxPt[],
+): number[] {
+  if (!dsmGrid || edges.length === 0) {
+    return edges.map(() => 0);
+  }
+
+  // Compute bounding box of footprint
+  const xs = footprintPx.map(p => p.x);
+  const ys = footprintPx.map(p => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+
+  // Build grid of mean elevations
+  const cellSize = LOCAL_REGION_CELL_PX;
+  const gridW = Math.max(1, Math.ceil(spanX / cellSize));
+  const gridH = Math.max(1, Math.ceil(spanY / cellSize));
+  const cellElevations: (number | null)[][] = [];
+
+  for (let gy = 0; gy < gridH; gy++) {
+    cellElevations.push([]);
+    for (let gx = 0; gx < gridW; gx++) {
+      const cx = minX + (gx + 0.5) * cellSize;
+      const cy = minY + (gy + 0.5) * cellSize;
+      // Sample DSM at this pixel location
+      const px = Math.round(cx);
+      const py = Math.round(cy);
+      if (px >= 0 && px < dsmGrid.width && py >= 0 && py < dsmGrid.height) {
+        const idx = py * dsmGrid.width + px;
+        const elev = dsmGrid.data[idx];
+        cellElevations[gy].push(elev !== dsmGrid.noDataValue ? elev : null);
+      } else {
+        cellElevations[gy].push(null);
+      }
+    }
+  }
+
+  // Flood-fill to create connected regions of similar elevation
+  const cellRegion = Array.from({ length: gridH }, () => new Array(gridW).fill(-1));
+  let regionCount = 0;
+
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      if (cellRegion[gy][gx] !== -1) continue;
+      const elev = cellElevations[gy][gx];
+      if (elev === null) {
+        cellRegion[gy][gx] = regionCount++;
+        continue;
+      }
+
+      // BFS flood fill
+      const regionId = regionCount++;
+      const queue: [number, number][] = [[gx, gy]];
+      cellRegion[gy][gx] = regionId;
+
+      while (queue.length > 0) {
+        const [cx, cy] = queue.shift()!;
+        const cElev = cellElevations[cy][cx];
+        if (cElev === null) continue;
+
+        for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
+          if (cellRegion[ny][nx] !== -1) continue;
+          const nElev = cellElevations[ny][nx];
+          if (nElev === null) continue;
+          if (Math.abs(nElev - cElev) <= LOCAL_REGION_ELEV_DIFF_M) {
+            cellRegion[ny][nx] = regionId;
+            queue.push([nx, ny]);
+          }
+        }
+      }
+    }
+  }
+
+  // Assign each edge to a region based on its midpoint
+  return edges.map(e => {
+    const mx = (e.a.x + e.b.x) / 2;
+    const my = (e.a.y + e.b.y) / 2;
+    const gx = Math.min(gridW - 1, Math.max(0, Math.floor((mx - minX) / cellSize)));
+    const gy = Math.min(gridH - 1, Math.max(0, Math.floor((my - minY) / cellSize)));
+    return cellRegion[gy]?.[gx] ?? 0;
+  });
+}
+
+/**
+ * Check if merging two edges would create a cross-topology violation:
+ * - different classified types (ridge + valley)
+ * - crossing a DSM elevation ridge/valley between their midpoints
+ */
+function wouldCrossTopologyBoundary(
+  ei: ClusterableEdge,
+  ej: ClusterableEdge,
+  dsmGrid: DSMGrid | null,
+): boolean {
+  // Type conflict: never merge ridge with valley
+  if (ei.type !== ej.type && (ei.type === 'valley' || ej.type === 'valley') && (ei.type === 'ridge' || ej.type === 'ridge')) {
+    return true;
+  }
+
+  if (!dsmGrid) return false;
+
+  // Check elevation profile between midpoints for ridge/valley crossing
+  const midI = { x: (ei.a.x + ei.b.x) / 2, y: (ei.a.y + ei.b.y) / 2 };
+  const midJ = { x: (ej.a.x + ej.b.x) / 2, y: (ej.a.y + ej.b.y) / 2 };
+
+  const steps = 8;
+  const elevations: number[] = [];
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    const px = Math.round(midI.x + (midJ.x - midI.x) * t);
+    const py = Math.round(midI.y + (midJ.y - midI.y) * t);
+    if (px >= 0 && px < dsmGrid.width && py >= 0 && py < dsmGrid.height) {
+      const idx = py * dsmGrid.width + px;
+      const elev = dsmGrid.data[idx];
+      if (elev !== dsmGrid.noDataValue) elevations.push(elev);
+    }
+  }
+
+  if (elevations.length < 4) return false;
+
+  // Detect local min/max in the elevation profile (indicates ridge/valley crossing)
+  let transitions = 0;
+  for (let i = 1; i < elevations.length - 1; i++) {
+    const prev = elevations[i - 1];
+    const curr = elevations[i];
+    const next = elevations[i + 1];
+    // Local maximum (ridge crossing) or minimum (valley crossing)
+    if ((curr > prev + 0.3 && curr > next + 0.3) || (curr < prev - 0.3 && curr < next - 0.3)) {
+      transitions++;
+    }
+  }
+
+  return transitions >= 1;
+}
+
+function clusterEdges(
+  edges: ClusterableEdge[],
+  dsmGrid: DSMGrid | null = null,
+  footprintPx: PxPt[] = [],
+  footprintAreaPx2: number = 0,
+): { clustered: ClusterableEdge[]; diagnostics: ClusterDiagnostics } {
+  const diagnostics: ClusterDiagnostics = {
+    pre_cluster_edge_count: edges.length,
+    post_cluster_edge_count: 0,
+    edges_merged_count: 0,
+    local_regions_detected: 0,
+    cluster_merge_rejections: 0,
+    cross_region_rejections: 0,
+    oversized_plane_rejections: 0,
+    type_conflict_rejections: 0,
+    valley_edges_preserved: 0,
+    ridge_edges_preserved: 0,
+  };
+
+  if (edges.length <= 1) {
+    diagnostics.post_cluster_edge_count = edges.length;
+    return { clustered: edges, diagnostics };
+  }
+
+  // Step 1: Assign edges to local DSM elevation regions
+  const regionIds = assignLocalRegions(edges, dsmGrid, footprintPx);
+  const uniqueRegions = new Set(regionIds);
+  diagnostics.local_regions_detected = uniqueRegions.size;
+
   const used = new Set<number>();
   const result: ClusterableEdge[] = [];
 
@@ -1329,10 +1533,25 @@ function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
     for (let j = i + 1; j < edges.length; j++) {
       if (used.has(j)) continue;
       
+      // TOPOLOGY GATE 1: Must be in the same local region
+      if (regionIds[i] !== regionIds[j]) {
+        diagnostics.cross_region_rejections++;
+        continue;
+      }
+
+      // TOPOLOGY GATE 2: Check type conflict (ridge + valley = no merge)
+      if (wouldCrossTopologyBoundary(edges[i], edges[j], dsmGrid)) {
+        diagnostics.type_conflict_rejections++;
+        continue;
+      }
+
       let belongs = false;
       for (const ci of cluster) {
         const ei = edges[ci];
         const ej = edges[j];
+        
+        // Same local region already verified for i, check for cluster member
+        if (regionIds[ci] !== regionIds[j]) continue;
         
         const ai = Math.atan2(ei.b.y - ei.a.y, ei.b.x - ei.a.x);
         const aj = Math.atan2(ej.b.y - ej.a.y, ej.b.x - ej.a.x);
@@ -1345,6 +1564,12 @@ function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
         const midJ = { x: (ej.a.x + ej.b.x) / 2, y: (ej.a.y + ej.b.y) / 2 };
         const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
         if (midDist > CLUSTER_MIDPOINT_DIST_PX) continue;
+
+        // TOPOLOGY GATE 3: DSM elevation profile between edges
+        if (wouldCrossTopologyBoundary(ei, ej, dsmGrid)) {
+          diagnostics.cluster_merge_rejections++;
+          continue;
+        }
         
         belongs = true;
         break;
@@ -1358,6 +1583,8 @@ function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
 
     if (cluster.length === 1) {
       result.push(edges[i]);
+      if (edges[i].type === 'valley') diagnostics.valley_edges_preserved++;
+      if (edges[i].type === 'ridge') diagnostics.ridge_edges_preserved++;
       continue;
     }
 
@@ -1367,12 +1594,31 @@ function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
     const spanY = Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y));
     const span = Math.hypot(spanX, spanY);
     
+    // TOPOLOGY GATE 4: Oversized plane prevention
+    // Estimate the area this merged edge would influence
+    if (footprintAreaPx2 > 0) {
+      const mergedInfluenceArea = span * CLUSTER_MIDPOINT_DIST_PX;
+      if (mergedInfluenceArea > footprintAreaPx2 * CLUSTER_MAX_PLANE_AREA_RATIO && clusterEdgesArr.length > 2) {
+        // Don't merge — keep top edges individually
+        diagnostics.oversized_plane_rejections++;
+        clusterEdgesArr.sort((a, b) => b.score - a.score);
+        const keep = Math.min(clusterEdgesArr.length, 3);
+        for (let k = 0; k < keep; k++) {
+          result.push(clusterEdgesArr[k]);
+        }
+        diagnostics.edges_merged_count += clusterEdgesArr.length - keep;
+        continue;
+      }
+    }
+
     if (span > CLUSTER_MAX_SPAN_PX && clusterEdgesArr.length > 2) {
       clusterEdgesArr.sort((a, b) => b.score - a.score);
       result.push(clusterEdgesArr[0], clusterEdgesArr[1]);
+      diagnostics.edges_merged_count += clusterEdgesArr.length - 2;
       continue;
     }
     
+    // Weighted merge (same as before for valid merges)
     let totalWeight = 0;
     let avgDx = 0, avgDy = 0;
     for (const e of clusterEdgesArr) {
@@ -1398,6 +1644,10 @@ function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
     const bestType = clusterEdgesArr.reduce((best, e) => 
       (typePriority[e.type] || 0) > (typePriority[best.type] || 0) ? e : best
     ).type;
+
+    // Track preserved types
+    if (bestType === 'valley') diagnostics.valley_edges_preserved++;
+    if (bestType === 'ridge') diagnostics.ridge_edges_preserved++;
     
     result.push({
       a: { x: Math.round(cx + nx * minProj), y: Math.round(cy + ny * minProj) },
@@ -1405,9 +1655,12 @@ function clusterEdges(edges: ClusterableEdge[]): ClusterableEdge[] {
       type: bestType,
       score: bestScore,
     });
+
+    diagnostics.edges_merged_count += clusterEdgesArr.length - 1;
   }
 
-  return result;
+  diagnostics.post_cluster_edge_count = result.length;
+  return { clustered: result, diagnostics };
 }
 
 // ============= DSM PLANE FIT WITH PITCH/AZIMUTH =============
@@ -1601,7 +1854,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v8 — Pre-Masked DSM Edge Detection`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v10 — Topology-Aware Edge Clustering`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -1717,7 +1970,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: Edge clustering =====
+  // ===== STEP 6: Topology-aware edge clustering =====
   const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
@@ -1729,9 +1982,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }))
     : [];
   
-  const clusteredEdgesPx = clusterEdges(rawDsmInteriorEdgesPx);
+  // Compute footprint area in pixel space for oversized-plane prevention
+  const footprintAreaPx2 = footprintPx.length >= 3
+    ? Math.abs(footprintPx.reduce((sum, p, i) => {
+        const q = footprintPx[(i + 1) % footprintPx.length];
+        return sum + (p.x * q.y - q.x * p.y);
+      }, 0) / 2)
+    : 0;
+
+  const clusterResult = clusterEdges(rawDsmInteriorEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
+  const clusteredEdgesPx = clusterResult.clustered;
+  const clusterDiag = clusterResult.diagnostics;
   edgeCountAfterCluster = clusteredEdgesPx.length;
-  console.log(`  Edge clustering: ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+  console.log(`  Edge clustering (topology-aware): ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+  console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region rejections: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized rejections: ${clusterDiag.oversized_plane_rejections}`);
+  console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}`);
 
   // ===== STEP 6b: Cap interior edges =====
   let dsmInteriorEdgesPx = clusteredEdgesPx
@@ -2546,7 +2811,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     graph_segments: planar.debug.total_graph_segments,
     intersections_split: planar.debug.intersections_split,
     intersection_filter_skipped: planar.debug.intersection_filter_skipped || 0,
-    cluster_merges: 0,
+    cluster_merges: clusterDiag.edges_merged_count,
+    cluster_diagnostics: {
+      local_regions_detected: clusterDiag.local_regions_detected,
+      cross_region_rejections: clusterDiag.cross_region_rejections,
+      oversized_plane_rejections: clusterDiag.oversized_plane_rejections,
+      type_conflict_rejections: clusterDiag.type_conflict_rejections,
+      valley_edges_preserved: clusterDiag.valley_edges_preserved,
+      ridge_edges_preserved: clusterDiag.ridge_edges_preserved,
+      edges_merged_count: clusterDiag.edges_merged_count,
+      cluster_merge_rejections: clusterDiag.cluster_merge_rejections,
+    },
     collinear_merges: planar.debug.collinear_merges || 0,
     fragment_merges: planar.debug.fragment_merges || 0,
     dangling_edges_removed: planar.debug.dangling_edges_removed,
