@@ -2542,6 +2542,237 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
   }
 
+  // ===== STEP 8: EVIDENCE-DRIVEN TOPOLOGY REFINEMENT (v15) =====
+  // If topology is undersegmented (few faces from many raw edges, or oversized planes),
+  // attempt a second-pass refinement using preserved raw DSM edges as structural evidence.
+  let refinementDiagnostics: Record<string, unknown> = { refinement_attempted: false };
+  
+  if (effectiveDSM && footprintPxCCW.length >= 3) {
+    const prePlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+    const preMaxPlaneRatio = prePlanArea > 0 ? Math.max(...graphFaces.map(f => f.plan_area_sqft)) / prePlanArea : 0;
+    const preRawEdgeCount = maskedEdgeCount; // raw DSM edges before clustering
+    
+    // Detect undersegmentation requiring refinement
+    const needsRefinement = (
+      // Many raw edges collapsed to very few faces
+      (footprintAreaSqft > 2500 && preRawEdgeCount >= 15 && graphFaces.length <= 4) ||
+      // A single plane dominates (>35% of total area) with sufficient raw evidence
+      (graphFaces.length >= 2 && preMaxPlaneRatio > 0.35 && preRawEdgeCount >= 10) ||
+      // Complex roof with too few faces for footprint size
+      (footprintAreaSqft > 3000 && graphFaces.length < 8 && preRawEdgeCount >= 15 && complexity.isComplex)
+    );
+
+    if (needsRefinement) {
+      console.log(`  [v15 REFINEMENT] Undersegmented topology detected: ${graphFaces.length} faces, max_plane_ratio=${preMaxPlaneRatio.toFixed(3)}, ${preRawEdgeCount} raw DSM edges`);
+      
+      // 1. Identify oversized faces (>35% of total area or spanning multiple DSM extrema)
+      const oversizedFaceIds: string[] = [];
+      const oversizedFaceAreaRatios: number[] = [];
+      for (const face of graphFaces) {
+        const ratio = prePlanArea > 0 ? face.plan_area_sqft / prePlanArea : 0;
+        if (ratio > 0.35) {
+          oversizedFaceIds.push(face.id);
+          oversizedFaceAreaRatios.push(ratio);
+        }
+      }
+      
+      // 2. Find raw DSM edges that were lost during clustering but overlap with the footprint
+      // These are edges from rawDsmInteriorEdgesPx that did NOT survive into dsmInteriorEdgesPx
+      const survivingEdgeKeys = new Set(
+        dsmInteriorEdgesPx.map(e => `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`)
+      );
+      
+      const lostEdges = rawDsmInteriorEdgesPx.filter(e => {
+        const key = `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`;
+        const revKey = `${Math.round(e.b.x)}:${Math.round(e.b.y)}|${Math.round(e.a.x)}:${Math.round(e.a.y)}`;
+        return !survivingEdgeKeys.has(key) && !survivingEdgeKeys.has(revKey);
+      });
+      
+      // 3. Filter lost edges to those inside the footprint and with minimum quality
+      const MIN_REFINEMENT_EDGE_SCORE = 0.3;
+      const MIN_REFINEMENT_EDGE_LENGTH_PX = 8;
+      const refinementCandidates = lostEdges.filter(e => {
+        const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+        if (len < MIN_REFINEMENT_EDGE_LENGTH_PX) return false;
+        if (e.score < MIN_REFINEMENT_EDGE_SCORE) return false;
+        const mid: PxPt = { x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 };
+        return pointInPolygonPx(mid, footprintPxCCW);
+      });
+      
+      console.log(`  [v15 REFINEMENT] ${lostEdges.length} lost edges, ${refinementCandidates.length} qualify as refinement candidates`);
+      console.log(`  [v15 REFINEMENT] Oversized faces: ${oversizedFaceIds.join(', ')} (ratios: ${oversizedFaceAreaRatios.map(r => r.toFixed(3)).join(', ')})`);
+      
+      if (refinementCandidates.length >= 2) {
+        // 4. Augment the edge set: surviving edges + refinement candidates
+        // Sort candidates by score*length to prioritize best structural evidence
+        const sortedCandidates = [...refinementCandidates].sort((a, b) => {
+          const lenA = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y);
+          const lenB = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y);
+          return (b.score * lenB) - (a.score * lenA);
+        });
+        
+        // Cap reintroduced edges to avoid noise
+        const maxReintroduced = Math.min(sortedCandidates.length, Math.max(8, dsmInteriorEdgesPx.length));
+        const reintroducedEdges = sortedCandidates.slice(0, maxReintroduced);
+        
+        const augmentedEdgesPx = [
+          ...dsmInteriorEdgesPx,
+          ...reintroducedEdges
+        ];
+        
+        // 5. Re-run planar solver with augmented edges
+        const refinedPlanarInput: InteriorLine[] = augmentedEdgesPx.map(e => ({
+          a: e.a, b: e.b, type: e.type, score: e.score,
+        }));
+        
+        const refinedPlanar = planarSolveRoofPlanes(footprintPxCCW, refinedPlanarInput);
+        console.log(`  [v15 REFINEMENT] Refined planar: ${refinedPlanar.faces.length} faces (was ${planar.faces.length})`);
+        
+        // 6. Process refined faces through the same validation pipeline
+        const refinedGraphFaces: GraphFace[] = [];
+        let refinedFacesRejected = 0;
+        
+        for (const [faceIdx, face] of refinedPlanar.faces.entries()) {
+          let facePxR = face.polygon.map(p => ({ x: p.x, y: p.y }));
+          if (facePxR.length < 3) continue;
+          facePxR = ensureCCW(facePxR);
+          
+          const cleanedFacePxR = removeDuplicateVerticesPx(facePxR, 0.5);
+          const clipResultR = clipPolygonPxRobust(
+            cleanedFacePxR.length >= 3 ? cleanedFacePxR : facePxR,
+            footprintPxCCW
+          );
+          const clippedPxR = clipResultR.polygon;
+          if (clippedPxR.length < 3) continue;
+          if (clipResultR.method === 'clipper_degenerate_output') continue;
+          
+          const polygonGeoR: XY[] = clippedPxR.map(p => pxToGeoPoint(p, effectiveDSM));
+          if (polygonGeoR.length < 3) continue;
+          
+          const areaSqftR = polygonAreaSqft(polygonGeoR, midLat);
+          if (areaSqftR < MIN_FACET_AREA_SQFT) { refinedFacesRejected++; continue; }
+          
+          let pitchR = 0, azimuthR = 0;
+          const planeFitR = fitPlaneWithPitch(polygonGeoR, effectiveDSM);
+          if (planeFitR) {
+            const thresholdR = areaSqftR > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
+            if (planeFitR.rms > thresholdR) { refinedFacesRejected++; continue; }
+            pitchR = planeFitR.pitchDeg;
+            azimuthR = planeFitR.azimuthDeg;
+          } else {
+            const facetCenterR = polygonGeoR.reduce((acc, p) => [acc[0] + p[0] / polygonGeoR.length, acc[1] + p[1] / polygonGeoR.length] as XY, [0, 0] as XY);
+            const matchingSolarR = findClosestSolarSegment(facetCenterR, input.solarSegments);
+            pitchR = matchingSolarR?.pitchDegrees || 0;
+            azimuthR = matchingSolarR?.azimuthDegrees || 0;
+          }
+          
+          const closedPolygonR = vertexKey(polygonGeoR[0]) === vertexKey(polygonGeoR[polygonGeoR.length - 1]) ? polygonGeoR : [...polygonGeoR, polygonGeoR[0]];
+          refinedGraphFaces.push({
+            id: `SF-${String.fromCharCode(65 + refinedGraphFaces.length)}`,
+            label: String.fromCharCode(65 + refinedGraphFaces.length),
+            polygon: closedPolygonR,
+            plan_area_sqft: areaSqftR,
+            roof_area_sqft: areaSqftR * pitchFactor(pitchR),
+            pitch_degrees: pitchR,
+            azimuth_degrees: azimuthR,
+            edge_ids: [],
+          });
+        }
+        
+        // 7. Validate refinement quality — accept only if topology improved
+        const refinedPlanArea = refinedGraphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+        const refinedMaxPlaneRatio = refinedPlanArea > 0
+          ? Math.max(...refinedGraphFaces.map(f => f.plan_area_sqft)) / refinedPlanArea
+          : 1;
+        const refinedCoverageRatio = footprintAreaSqft > 0 ? refinedPlanArea / footprintAreaSqft : 0;
+        
+        // Count ridges/valleys in refined edges for topology quality
+        const refinedRidgeCount = reintroducedEdges.filter(e => e.type === 'ridge').length + dsmInteriorEdgesPx.filter(e => e.type === 'ridge').length;
+        const refinedValleyCount = reintroducedEdges.filter(e => e.type === 'valley').length + dsmInteriorEdgesPx.filter(e => e.type === 'valley').length;
+        
+        // Minimum face area to prevent micro-facets (at least 3% of total)
+        const minFaceAreaRatio = refinedPlanArea > 0
+          ? Math.min(...refinedGraphFaces.map(f => f.plan_area_sqft)) / refinedPlanArea
+          : 0;
+        const hasNoiseFragments = minFaceAreaRatio < 0.03 && refinedGraphFaces.length > graphFaces.length + 2;
+        
+        // Accept refinement if:
+        // - More faces AND max plane ratio decreased
+        // - Coverage didn't collapse
+        // - No noise micro-facets introduced
+        const refinementAccepted = (
+          refinedGraphFaces.length > graphFaces.length &&
+          refinedMaxPlaneRatio < preMaxPlaneRatio &&
+          refinedCoverageRatio >= 0.50 &&
+          !hasNoiseFragments
+        );
+        
+        console.log(`  [v15 REFINEMENT RESULT] faces: ${graphFaces.length} → ${refinedGraphFaces.length}, ` +
+          `max_plane_ratio: ${preMaxPlaneRatio.toFixed(3)} → ${refinedMaxPlaneRatio.toFixed(3)}, ` +
+          `coverage: ${(prePlanArea / footprintAreaSqft).toFixed(3)} → ${refinedCoverageRatio.toFixed(3)}, ` +
+          `min_face_ratio: ${minFaceAreaRatio.toFixed(3)}, noise: ${hasNoiseFragments}, ` +
+          `ACCEPTED: ${refinementAccepted}`);
+        
+        refinementDiagnostics = {
+          refinement_attempted: true,
+          refinement_accepted: refinementAccepted,
+          refinement_candidates_considered: refinementCandidates.length,
+          refinement_candidates_used: reintroducedEdges.length,
+          raw_edges_reintroduced: reintroducedEdges.length,
+          lost_edges_total: lostEdges.length,
+          faces_before_refinement: graphFaces.length,
+          faces_after_refinement: refinedGraphFaces.length,
+          faces_rejected_in_refinement: refinedFacesRejected,
+          valley_count_before: dsmInteriorEdgesPx.filter(e => e.type === 'valley').length,
+          valley_count_after: refinedValleyCount,
+          ridge_count_before: dsmInteriorEdgesPx.filter(e => e.type === 'ridge').length,
+          ridge_count_after: refinedRidgeCount,
+          max_plane_area_ratio_before: Number(preMaxPlaneRatio.toFixed(3)),
+          max_plane_area_ratio_after: Number(refinedMaxPlaneRatio.toFixed(3)),
+          coverage_before: Number((prePlanArea / footprintAreaSqft).toFixed(3)),
+          coverage_after: Number(refinedCoverageRatio.toFixed(3)),
+          min_face_area_ratio: Number(minFaceAreaRatio.toFixed(3)),
+          has_noise_fragments: hasNoiseFragments,
+          oversized_face_ids: oversizedFaceIds,
+          oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
+          rejection_reason: refinementAccepted ? null : (
+            refinedGraphFaces.length <= graphFaces.length ? 'no_face_increase' :
+            refinedMaxPlaneRatio >= preMaxPlaneRatio ? 'max_plane_ratio_not_reduced' :
+            refinedCoverageRatio < 0.50 ? 'coverage_collapsed' :
+            hasNoiseFragments ? 'noise_micro_facets' : 'unknown'
+          ),
+        };
+        
+        if (refinementAccepted) {
+          // Replace faces with refined result
+          graphFaces.length = 0;
+          for (const f of refinedGraphFaces) graphFaces.push(f);
+          faceCountAfterMerge = graphFaces.length;
+          console.log(`  [v15 REFINEMENT] Accepted: topology improved from ${refinementDiagnostics.faces_before_refinement} to ${graphFaces.length} faces`);
+          warnings.push(`topology_refinement_accepted: ${refinementDiagnostics.faces_before_refinement} → ${graphFaces.length} faces`);
+        } else {
+          console.log(`  [v15 REFINEMENT] Rejected: ${refinementDiagnostics.rejection_reason}`);
+          warnings.push(`topology_refinement_rejected: ${refinementDiagnostics.rejection_reason}`);
+        }
+      } else {
+        refinementDiagnostics = {
+          refinement_attempted: true,
+          refinement_accepted: false,
+          refinement_candidates_considered: refinementCandidates.length,
+          refinement_candidates_used: 0,
+          raw_edges_reintroduced: 0,
+          lost_edges_total: lostEdges.length,
+          faces_before_refinement: graphFaces.length,
+          faces_after_refinement: graphFaces.length,
+          oversized_face_ids: oversizedFaceIds,
+          oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
+          rejection_reason: 'insufficient_refinement_candidates',
+        };
+        console.log(`  [v15 REFINEMENT] Skipped: only ${refinementCandidates.length} qualifying candidates (need ≥2)`);
+      }
+    }
+  }
+
   // ===== Area conservation check =====
   const totalFacePlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
   const areaConservationRatio = footprintAreaSqft > 0 ? totalFacePlanArea / footprintAreaSqft : 0;
