@@ -195,7 +195,7 @@ export interface AutonomousGraphResult {
   success: boolean;
   graph_connected: boolean;
   face_coverage_ratio: number;
-  validation_status: 'validated' | 'ai_failed_complex_topology' | 'faces_extracted_but_rejected' | 'invalid_edge_classification' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid' | 'missing_valid_footprint' | 'footprint_coordinate_mismatch' | 'invalid_graph_no_perimeter' | 'graph_has_only_dangling_edges';
+  validation_status: 'validated' | 'ai_failed_complex_topology' | 'faces_extracted_but_rejected' | 'invalid_edge_classification' | 'topology_undersegmented' | 'needs_review' | 'insufficient_structural_signal' | 'invalid_roof_graph' | 'dsm_edges_found_no_closed_faces' | 'incomplete_facet_coverage' | 'dsm_insufficient_resolution' | 'dsm_transform_invalid' | 'missing_valid_footprint' | 'footprint_coordinate_mismatch' | 'invalid_graph_no_perimeter' | 'graph_has_only_dangling_edges';
   failure_reason?: string;
   failure_category: FailureCategory;
   dominant_rejection: DominantRejectionAnalysis;
@@ -2083,6 +2083,50 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
   }
 
+  // Build face plane normals upfront for face-adjacency classification
+  const facePlanesForClassification: Array<{ slopeX: number; slopeY: number; centroid: XY } | null> = [];
+  if (effectiveDSM && planar.faces.length >= 2) {
+    for (const face of planar.faces) {
+      const geoPolygon = face.polygon.map((p: { x: number; y: number }) => pxToGeoPoint(p, effectiveDSM));
+      if (geoPolygon.length < 3) { facePlanesForClassification.push(null); continue; }
+      const { bounds, width, height, data, noDataValue } = effectiveDSM;
+      const midLatLocal = (bounds.minLat + bounds.maxLat) / 2;
+      const metersPerPixelX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLatLocal * Math.PI / 180);
+      const metersPerPixelY = (bounds.maxLat - bounds.minLat) / height * 111320;
+      const poly = geoPolygon;
+      const minPxX = Math.max(0, Math.floor((Math.min(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+      const maxPxX = Math.min(width - 1, Math.ceil((Math.max(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+      const minPxY = Math.max(0, Math.floor((bounds.maxLat - Math.max(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+      const maxPxY = Math.min(height - 1, Math.ceil((bounds.maxLat - Math.min(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+      const points: Array<{ x: number; y: number; z: number }> = [];
+      for (let py = minPxY; py <= maxPxY; py++) {
+        for (let px = minPxX; px <= maxPxX; px++) {
+          const lng = bounds.minLng + ((px + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+          const lat = bounds.maxLat - ((py + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+          if (!pointInPolygon([lng, lat], poly)) continue;
+          const z = data[py * width + px];
+          if (z === noDataValue || isNaN(z)) continue;
+          points.push({ x: px, y: py, z });
+        }
+      }
+      if (points.length < 6) { facePlanesForClassification.push(null); continue; }
+      const N = points.length;
+      let Sx = 0, Sy = 0, Sz = 0, Sxx = 0, Sxy = 0, Syy = 0, Sxz = 0, Syz = 0;
+      for (const p of points) { Sx += p.x; Sy += p.y; Sz += p.z; Sxx += p.x * p.x; Sxy += p.x * p.y; Syy += p.y * p.y; Sxz += p.x * p.z; Syz += p.y * p.z; }
+      const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, N]];
+      const B = [Sxz, Syz, Sz];
+      const detVal = det3(A);
+      if (Math.abs(detVal) < 1e-10) { facePlanesForClassification.push(null); continue; }
+      const a = det3(replCol(A, B, 0)) / detVal;
+      const b = det3(replCol(A, B, 1)) / detVal;
+      const centroid: XY = [poly.reduce((s, p) => s + p[0], 0) / poly.length, poly.reduce((s, p) => s + p[1], 0) / poly.length];
+      facePlanesForClassification.push({ slopeX: a / metersPerPixelX, slopeY: b / metersPerPixelY, centroid });
+    }
+  }
+
+  // Edge classification table for diagnostics
+  const edgeClassificationTable: Array<Record<string, unknown>> = [];
+
   for (const [_key, canonical] of canonicalEdgeMap) {
     const { start, end, faceIndices } = canonical;
     const lengthFt = distanceFt(start, end, midLat);
@@ -2091,6 +2135,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     let edgeType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'unclassified';
     let edgeSource: 'dsm' | 'perimeter' = 'dsm';
     let edgeScore = 0.8;
+    let classificationMethod = 'unknown';
 
     const edgeMid: XY = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
     let onFootprintBoundary = false;
@@ -2109,26 +2154,100 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       }
     }
 
-    if (faceIndices.length >= 2 && !onFootprintBoundary) {
-      edgeType = 'unclassified';
-      edgeSource = 'dsm';
-      edgeScore = 0.85;
-    } else if (onFootprintBoundary) {
+    if (onFootprintBoundary) {
+      // Boundary edge: eave/rake
       edgeType = 'eave';
       edgeSource = 'perimeter';
       edgeScore = 0.85;
-    } else {
+      classificationMethod = 'footprint_boundary';
+    } else if (faceIndices.length >= 2 && facePlanesForClassification.length > 0) {
+      // PRIMARY: face-adjacency plane-normal classification
+      const planeA = facePlanesForClassification[faceIndices[0]];
+      const planeB = facePlanesForClassification[faceIndices[1]];
+      
+      if (planeA && planeB) {
+        const edgeDx = end[0] - start[0];
+        const edgeDy = end[1] - start[1];
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+        if (edgeLen > 1e-12) {
+          const perpX = -edgeDy / edgeLen;
+          const perpY = edgeDx / edgeLen;
+
+          const dotA = (planeA.centroid[0] - edgeMid[0]) * perpX + (planeA.centroid[1] - edgeMid[1]) * perpY;
+          const dotB = (planeB.centroid[0] - edgeMid[0]) * perpX + (planeB.centroid[1] - edgeMid[1]) * perpY;
+
+          const downslopeA_perp = -(planeA.slopeX * perpX + planeA.slopeY * perpY);
+          const downslopeB_perp = -(planeB.slopeX * perpX + planeB.slopeY * perpY);
+
+          const slopeAwayA = dotA > 0 ? downslopeA_perp : -downslopeA_perp;
+          const slopeAwayB = dotB > 0 ? -downslopeB_perp : downslopeB_perp;
+
+          const slopeThreshold = 0.02;
+          const aDescends = slopeAwayA > slopeThreshold;
+          const bDescends = slopeAwayB > slopeThreshold;
+          const aAscends = slopeAwayA < -slopeThreshold;
+          const bAscends = slopeAwayB < -slopeThreshold;
+
+          if (aDescends && bDescends) {
+            edgeType = 'ridge'; edgeScore = 0.9; classificationMethod = 'face_adjacency_planes';
+          } else if (aAscends && bAscends) {
+            edgeType = 'valley'; edgeScore = 0.9; classificationMethod = 'face_adjacency_planes';
+          } else if ((aDescends && bAscends) || (aAscends && bDescends)) {
+            edgeType = 'hip'; edgeScore = 0.85; classificationMethod = 'face_adjacency_planes';
+          } else {
+            // Slopes too flat to determine — fall back to DSM profile
+            edgeType = 'unclassified'; edgeScore = 0.5; classificationMethod = 'face_adjacency_inconclusive';
+          }
+        } else {
+          edgeType = 'unclassified'; classificationMethod = 'edge_too_short';
+        }
+      } else {
+        // One or both planes couldn't be fit — fall back to DSM proximity
+        if (effectiveDSM) {
+          const pxA = geoToPxPoint(start, effectiveDSM);
+          const pxB = geoToPxPoint(end, effectiveDSM);
+          const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPxCCW, dsmInteriorEdgesPx);
+          edgeType = classified.type; edgeSource = classified.source; edgeScore = classified.score;
+          classificationMethod = 'dsm_proximity_fallback';
+        } else {
+          edgeType = 'unclassified'; classificationMethod = 'no_plane_data';
+        }
+      }
+    } else if (faceIndices.length === 1) {
+      // Single face edge not on boundary — likely a boundary we missed or structural
       if (effectiveDSM) {
         const pxA = geoToPxPoint(start, effectiveDSM);
         const pxB = geoToPxPoint(end, effectiveDSM);
         const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPxCCW, dsmInteriorEdgesPx);
-        edgeType = classified.type;
-        edgeSource = classified.source;
-        edgeScore = classified.score;
+        edgeType = classified.type; edgeSource = classified.source; edgeScore = classified.score;
+        classificationMethod = 'dsm_proximity_single_face';
       } else {
-        edgeType = 'unclassified';
+        edgeType = 'eave'; edgeSource = 'perimeter'; edgeScore = 0.7;
+        classificationMethod = 'single_face_default_eave';
+      }
+    } else {
+      // No face adjacency at all
+      if (effectiveDSM) {
+        const pxA = geoToPxPoint(start, effectiveDSM);
+        const pxB = geoToPxPoint(end, effectiveDSM);
+        const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPxCCW, dsmInteriorEdgesPx);
+        edgeType = classified.type; edgeSource = classified.source; edgeScore = classified.score;
+        classificationMethod = 'dsm_proximity_no_faces';
+      } else {
+        edgeType = 'unclassified'; classificationMethod = 'no_data';
       }
     }
+
+    // Record classification diagnostics
+    edgeClassificationTable.push({
+      edge_key: _key.substring(0, 40),
+      length_ft: Number(lengthFt.toFixed(1)),
+      adjacent_face_count: faceIndices.length,
+      on_footprint: onFootprintBoundary,
+      type: edgeType,
+      method: classificationMethod,
+      score: edgeScore,
+    });
 
     addVertex(start);
     addVertex(end);
@@ -2161,110 +2280,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`  Edge output: ${outputEdges.length} emitted from canonical map`);
   console.log(`  Faces: ${graphFaces.length} valid, ${facesRejected} rejected by plane fit/area`);
 
-  // ===== FACE-ADJACENCY EDGE RECLASSIFICATION =====
-  if (graphFaces.length >= 2 && effectiveDSM) {
-    const facePlanes: Array<{ slopeX: number; slopeY: number; centroid: XY } | null> = graphFaces.map(face => {
-      const poly = face.polygon;
-      if (poly.length < 3) return null;
-      const { bounds, width, height, data, noDataValue } = effectiveDSM;
-      const midLatLocal = (bounds.minLat + bounds.maxLat) / 2;
-      const metersPerPixelX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLatLocal * Math.PI / 180);
-      const metersPerPixelY = (bounds.maxLat - bounds.minLat) / height * 111320;
-      
-      const minPxX = Math.max(0, Math.floor((Math.min(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
-      const maxPxX = Math.min(width - 1, Math.ceil((Math.max(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
-      const minPxY = Math.max(0, Math.floor((bounds.maxLat - Math.max(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
-      const maxPxY = Math.min(height - 1, Math.ceil((bounds.maxLat - Math.min(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
-      
-      const points: Array<{ x: number; y: number; z: number }> = [];
-      for (let py = minPxY; py <= maxPxY; py++) {
-        for (let px = minPxX; px <= maxPxX; px++) {
-          const lng = bounds.minLng + ((px + 0.5) / width) * (bounds.maxLng - bounds.minLng);
-          const lat = bounds.maxLat - ((py + 0.5) / height) * (bounds.maxLat - bounds.minLat);
-          if (!pointInPolygon([lng, lat], poly)) continue;
-          const z = data[py * width + px];
-          if (z === noDataValue || isNaN(z)) continue;
-          points.push({ x: px, y: py, z });
-        }
-      }
-      if (points.length < 6) return null;
-      
-      const N = points.length;
-      let Sx = 0, Sy = 0, Sz = 0, Sxx = 0, Sxy = 0, Syy = 0, Sxz = 0, Syz = 0;
-      for (const p of points) {
-        Sx += p.x; Sy += p.y; Sz += p.z;
-        Sxx += p.x * p.x; Sxy += p.x * p.y; Syy += p.y * p.y;
-        Sxz += p.x * p.z; Syz += p.y * p.z;
-      }
-      const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, N]];
-      const B = [Sxz, Syz, Sz];
-      const detVal = det3(A);
-      if (Math.abs(detVal) < 1e-10) return null;
-      const a = det3(replCol(A, B, 0)) / detVal;
-      const b = det3(replCol(A, B, 1)) / detVal;
-      
-      const centroid: XY = [
-        poly.reduce((s, p) => s + p[0], 0) / poly.length,
-        poly.reduce((s, p) => s + p[1], 0) / poly.length,
-      ];
-      return { slopeX: a / metersPerPixelX, slopeY: b / metersPerPixelY, centroid };
-    });
-
-    let reclassified = 0;
-    for (const edge of outputEdges) {
-      if (edge.type === 'eave' || edge.type === 'rake') continue;
-      
-      const eKey = geoEdgeKey(edge.start, edge.end);
-      const canonical = canonicalEdgeMap.get(eKey);
-      const adjacentFaceIndices = canonical?.faceIndices || [];
-
-      if (adjacentFaceIndices.length < 2) continue;
-
-      const planeA = facePlanes[adjacentFaceIndices[0]];
-      const planeB = facePlanes[adjacentFaceIndices[1]];
-      if (!planeA || !planeB) continue;
-
-      const edgeMidLocal: XY = [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2];
-      const edgeDx = edge.end[0] - edge.start[0];
-      const edgeDy = edge.end[1] - edge.start[1];
-      const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-      if (edgeLen < 1e-12) continue;
-      const perpX = -edgeDy / edgeLen;
-      const perpY = edgeDx / edgeLen;
-
-      const dotA = (planeA.centroid[0] - edgeMidLocal[0]) * perpX + (planeA.centroid[1] - edgeMidLocal[1]) * perpY;
-      const dotB = (planeB.centroid[0] - edgeMidLocal[0]) * perpX + (planeB.centroid[1] - edgeMidLocal[1]) * perpY;
-
-      const downslopeA_perp = -(planeA.slopeX * perpX + planeA.slopeY * perpY);
-      const downslopeB_perp = -(planeB.slopeX * perpX + planeB.slopeY * perpY);
-
-      const slopeAwayA = dotA > 0 ? downslopeA_perp : -downslopeA_perp;
-      const slopeAwayB = dotB > 0 ? -downslopeB_perp : downslopeB_perp;
-
-      const slopeThreshold = 0.02;
-      const aDescends = slopeAwayA > slopeThreshold;
-      const bDescends = slopeAwayB > slopeThreshold;
-      const aAscends = slopeAwayA < -slopeThreshold;
-      const bAscends = slopeAwayB < -slopeThreshold;
-
-      let newType: 'ridge' | 'valley' | 'hip' | null = null;
-      if (aDescends && bDescends) {
-        newType = 'ridge';
-      } else if (aAscends && bAscends) {
-        newType = 'valley';
-      } else if ((aDescends && bAscends) || (aAscends && bDescends)) {
-        newType = 'hip';
-      }
-
-      if (newType) {
-        if (newType !== edge.type) reclassified++;
-        edge.type = newType;
-      }
-    }
-    if (reclassified > 0) {
-      console.log(`  Face-adjacency reclassification: ${reclassified} edges reclassified`);
-    }
+  // Face-adjacency classification already done in initial edge emit loop above.
+  // Log classification table summary
+  const classMethodCounts: Record<string, number> = {};
+  for (const entry of edgeClassificationTable) {
+    const m = String(entry.method);
+    classMethodCounts[m] = (classMethodCounts[m] || 0) + 1;
   }
+  console.log(`  Edge classification methods: ${JSON.stringify(classMethodCounts)}`);
 
   // Totals
   const outRidges = outputEdges.filter(e => e.type === 'ridge');
@@ -2274,6 +2297,19 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outRakes = outputEdges.filter(e => e.type === 'rake');
   const outUnclassified = outputEdges.filter(e => e.type === 'unclassified');
   const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
+
+  // ===== UNDERSEGMENTATION GATE =====
+  // If we had many raw DSM edges but the planar solver collapsed to very few faces,
+  // that's a topology undersegmentation — NOT an edge classification failure.
+  // Use raw masked edge count (pre-clustering) for undersegmentation detection
+  const rawDsmEdgeCount = maskedEdgeCount; // 31 for Fonsica — the true raw DSM edge count
+  const topologyUndersegmented = footprintAreaSqft > 2500 && rawDsmEdgeCount >= 15 && planar.faces.length <= 3;
+  if (topologyUndersegmented) {
+    console.log(`  [TOPOLOGY_UNDERSEGMENTED] ${rawDsmEdgeCount} raw DSM edges (${dsmInteriorEdgesPx.length} after cluster/filter) collapsed to ${planar.faces.length} faces (footprint ${footprintAreaSqft.toFixed(0)} sqft)`);
+  }
+
+  // Expected minimum faces based on footprint area
+  const expectedMinFacesLocal = footprintAreaSqft < 1500 ? 4 : footprintAreaSqft < 2500 ? 6 : footprintAreaSqft < 3500 ? 8 : 10;
 
   // ===== FOOTPRINT BOUNDARY CHECK =====
   let edgesOutsideFootprintCount = 0;
@@ -2365,10 +2401,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     validation.status = 'faces_extracted_but_rejected';
     validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
   }
-  const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
-  if (!validation.valid && invalidEdgeClassification) {
-    validation.status = 'invalid_edge_classification';
-    validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency reclassification';
+  // Undersegmentation takes priority over invalid_edge_classification
+  if (topologyUndersegmented) {
+    validation.valid = false;
+    validation.status = 'topology_undersegmented';
+    validation.reason = `${rawDsmEdgeCount} raw DSM edges collapsed to ${planar.faces.length} faces on ${footprintAreaSqft.toFixed(0)} sqft footprint — topology undersegmented`;
+  } else {
+    const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
+    if (!validation.valid && invalidEdgeClassification) {
+      validation.status = 'invalid_edge_classification';
+      validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency classification';
+    }
   }
 
   // ===== HARD BLOCK: edges outside footprint =====
@@ -2461,6 +2504,19 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     roof_mask_tile_pct: effectiveDSM ? Number((roofMaskPixelCount / (effectiveDSM.width * effectiveDSM.height) * 100).toFixed(1)) : 0,
     masked_edge_count: maskedEdgeCount,
     unmasked_edge_count: unmaskEdgeCount,
+    // v10: face-adjacency edge classification diagnostics
+    edge_classification_table: edgeClassificationTable.slice(0, 50), // cap for log size
+    classification_method_counts: classMethodCounts,
+    ridge_candidates: outRidges.length,
+    valley_candidates: outValleys.length,
+    hip_candidates: outHips.length,
+    unclassified_edges: outUnclassified.length,
+    topology_undersegmented: topologyUndersegmented,
+    expected_min_faces: expectedMinFacesLocal,
+    actual_faces_attempted: planar.faces.length,
+    edge_merge_count: planar.debug.collinear_merges || 0,
+    edges_removed_before_face_build: planar.debug.dangling_edges_removed || 0,
+    raw_dsm_edge_count: rawDsmEdgeCount,
   };
 
   const logs: AutonomousGraphLog = {
