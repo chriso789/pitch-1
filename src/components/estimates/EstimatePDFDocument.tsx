@@ -493,6 +493,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   companyLocations,
   materialItems,
   laborItems,
+  changeOrderItems = [],
   breakdown,
   config,
   createdAt,
