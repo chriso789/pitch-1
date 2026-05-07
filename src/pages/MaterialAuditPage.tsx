@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, XCircle, DollarSign, TrendingUp, Copy } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import AppLayout from "@/components/layout/AppLayout";
+import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
 const MaterialAuditPage = () => {
   const tenantId = useEffectiveTenantId();
