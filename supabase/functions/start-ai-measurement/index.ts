@@ -1279,7 +1279,10 @@ async function processJob(input: any) {
         hard_fail_reason: failReason,
         candidates_tried: candidates.length,
         candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
-          source: c.source, reason: c.rejected_reason
+          source: c.source, reason: c.rejected_reason,
+          centroid_offset_px: c.centroid_offset_px,
+          roof_image_overlap_score: c.roof_image_overlap_score,
+          registration_passed: c.footprint_registration_passed,
         })),
         selected_component_count: validCandidates.length,
         clipping_applied: false,
@@ -1291,6 +1294,10 @@ async function processJob(input: any) {
           tile_ground_extent_m: { width: raster.width * actualMpp, height: raster.height * actualMpp },
           solar_bbox_px: solarBboxPx,
         },
+        // v13: registration gate diagnostics
+        registration_gate: registrationDebug,
+        visible_roof_bbox_px: visibleRoofBboxPx,
+        footprint_registration_passed: false,
       };
 
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
