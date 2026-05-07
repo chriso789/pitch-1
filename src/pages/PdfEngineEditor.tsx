@@ -244,6 +244,7 @@ const PdfEngineEditor = () => {
     if (!originalBytesRef.current) return;
     try {
       const blob = await engine.compile(originalBytesRef.current);
+      if (tenantId && user?.id) PdfAuditEngine.log(tenantId, user.id, 'pdf_compiled', { title: docQuery.data?.title }, id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
