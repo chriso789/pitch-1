@@ -742,8 +742,6 @@ const LeadDetails = () => {
               clearEditingEstimateId={deletedEstimateId}
             />
 
-            {/* Xactimate Scope Builder */}
-            <XactScopeBuilder pipelineEntryId={id!} />
           </div>
         );
       case 'materials':
