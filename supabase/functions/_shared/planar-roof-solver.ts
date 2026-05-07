@@ -964,6 +964,7 @@ function countLocalClusters(interiorEdges: Seg[]): number {
 export function solveRoofPlanes(
   rawFootprint: Pt[],
   interiorLines: InteriorLine[],
+  options?: { complexRoofMode?: boolean },
 ): PlanarSolverResult {
   const emptyDebug: PlanarSolverDebug = {
     input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0,
