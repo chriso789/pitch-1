@@ -1,5 +1,5 @@
 /**
- * Autonomous Roof Graph Solver v9 — Real Sutherland-Hodgman Polygon Clipper
+ * Autonomous Roof Graph Solver v15 — Evidence-Driven Topology Refinement
  * 
  * Pipeline:
  *   1. DSM edge detection (Sobel gradient + PCA line fit)
