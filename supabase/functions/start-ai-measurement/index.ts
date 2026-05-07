@@ -649,6 +649,10 @@ async function processJob(input: any) {
         solar_overlap_score,
         geocode_center_score,
         polygon_shape_score,
+        // v13: registration gate — populated after visible roof reference is built
+        roof_image_overlap_score: null,
+        centroid_offset_px: null,
+        footprint_registration_passed: null,
       };
     }
 
