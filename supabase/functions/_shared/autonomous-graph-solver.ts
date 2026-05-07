@@ -3677,6 +3677,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       maxPlaneAreaRatio,
       customerBlockReason,
     );
+    // Enrich hierarchy with Phase 0 perimeter data
+    if (perimeterTopology && perimeterGateResult) {
+      topologyHierarchy.perimeter_gate_passed = perimeterGateResult.passed;
+      topologyHierarchy.perimeter_source = perimeterTopology.perimeter_source;
+      topologyHierarchy.perimeter_eave_ft = perimeterGateResult.diagnostics.eave_length_lf;
+      topologyHierarchy.perimeter_rake_ft = perimeterGateResult.diagnostics.rake_length_lf;
+      topologyHierarchy.perimeter_area_sqft = perimeterTopology.perimeter_area_sqft;
+    }
     topologyHierarchySummary = serializeHierarchySummary(topologyHierarchy);
     console.log(`[TOPOLOGY_HIERARCHY] Built: ${topologyHierarchy.faces.length} faces, ${topologyHierarchy.edges.length} edges, ${topologyHierarchy.assemblies.length} assemblies`);
   } catch (err) {
