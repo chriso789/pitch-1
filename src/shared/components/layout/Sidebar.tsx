@@ -76,6 +76,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const { currentLocation } = useLocationContext();
   const [followUpExpanded, setFollowUpExpanded] = React.useState(false);
   const [insuranceExpanded, setInsuranceExpanded] = React.useState(false);
+  const [supplementsExpanded, setSupplementsExpanded] = React.useState(false);
   
   // Instant display name from auth user_metadata (no loading state)
   const getInstantDisplayName = () => {
