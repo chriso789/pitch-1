@@ -1572,6 +1572,7 @@ export function EstimatePreviewPanel({
                     companyLogo={companyInfo?.logo_url || undefined}
                     materialItems={materialItems}
                     laborItems={laborItems}
+                    changeOrderItems={changeOrderItems}
                     breakdown={breakdown}
                     config={config}
                     finePrintContent={options.showCustomFinePrint ? finePrintContent : undefined}
