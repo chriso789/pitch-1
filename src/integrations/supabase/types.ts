@@ -28277,6 +28277,102 @@ export type Database = {
         }
         Relationships: []
       }
+      production_checklist_completions: {
+        Row: {
+          checklist_template_id: string
+          completed: boolean
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          production_workflow_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          checklist_template_id: string
+          completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          production_workflow_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          checklist_template_id?: string
+          completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          production_workflow_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_checklist_completions_checklist_template_id_fkey"
+            columns: ["checklist_template_id"]
+            isOneToOne: false
+            referencedRelation: "production_checklist_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_checklist_completions_production_workflow_id_fkey"
+            columns: ["production_workflow_id"]
+            isOneToOne: false
+            referencedRelation: "production_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_checklist_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_required: boolean
+          item_description: string | null
+          item_label: string
+          sort_order: number
+          stage_key: string
+          tenant_id: string
+          trade_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_required?: boolean
+          item_description?: string | null
+          item_label: string
+          sort_order?: number
+          stage_key: string
+          tenant_id: string
+          trade_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_required?: boolean
+          item_description?: string | null
+          item_label?: string
+          sort_order?: number
+          stage_key?: string
+          tenant_id?: string
+          trade_type?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       production_gate_validations: {
         Row: {
           bypass_reason: string | null
@@ -28465,6 +28561,116 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      production_trade_boards: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          current_stage: string
+          estimate_id: string | null
+          id: string
+          notes: string | null
+          production_workflow_id: string | null
+          project_id: string
+          status: string
+          tenant_id: string
+          trade_name: string
+          trade_type: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          current_stage?: string
+          estimate_id?: string | null
+          id?: string
+          notes?: string | null
+          production_workflow_id?: string | null
+          project_id: string
+          status?: string
+          tenant_id: string
+          trade_name: string
+          trade_type: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          current_stage?: string
+          estimate_id?: string | null
+          id?: string
+          notes?: string | null
+          production_workflow_id?: string | null
+          project_id?: string
+          status?: string
+          tenant_id?: string
+          trade_name?: string
+          trade_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_trade_boards_production_workflow_id_fkey"
+            columns: ["production_workflow_id"]
+            isOneToOne: false
+            referencedRelation: "production_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_trade_checklist_completions: {
+        Row: {
+          checklist_template_id: string
+          completed: boolean
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          tenant_id: string
+          trade_board_id: string
+          updated_at: string
+        }
+        Insert: {
+          checklist_template_id: string
+          completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          tenant_id: string
+          trade_board_id: string
+          updated_at?: string
+        }
+        Update: {
+          checklist_template_id?: string
+          completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          tenant_id?: string
+          trade_board_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_trade_checklist_completio_checklist_template_id_fkey"
+            columns: ["checklist_template_id"]
+            isOneToOne: false
+            referencedRelation: "production_checklist_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_trade_checklist_completions_trade_board_id_fkey"
+            columns: ["trade_board_id"]
+            isOneToOne: false
+            referencedRelation: "production_trade_boards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       production_weather_alerts: {
         Row: {
