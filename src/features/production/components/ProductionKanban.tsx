@@ -65,6 +65,7 @@ const ProductionKanban = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [costDialogOpen, setCostDialogOpen] = useState(false);
   const [costDialogProject, setCostDialogProject] = useState<ProductionProject | null>(null);
+  const [tradeFilter, setTradeFilter] = useState<string>('all');
   const { toast } = useToast();
   const navigate = useNavigate();
 
