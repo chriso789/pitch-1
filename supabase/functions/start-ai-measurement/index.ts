@@ -4637,6 +4637,9 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      // ── Phase 0: Perimeter-First Topology Contract ──
+      perimeter_phase0: graph?.perimeter_diagnostics ?? null,
+      perimeter_gate_passed: graph?.perimeter_gate?.passed ?? null,
       vendor_truth_comparison: vendorTruthComparison,
        status: needsInternalReview ? "needs_internal_review" : (Boolean(blockCustomerReportReason) || quality.overall_score < 0.80) ? "needs_review" : "completed",
       reason: blockCustomerReportReason,
