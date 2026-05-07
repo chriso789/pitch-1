@@ -59,6 +59,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('summary');
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [editPrice, setEditPrice] = useState('');
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
 
   // Listen for invoice updates from DocumentsTab
   useEffect(() => {
