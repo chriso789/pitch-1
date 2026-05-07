@@ -274,6 +274,18 @@ export interface RoofTopologyHierarchy {
   /** Solar segment stats used as priors */
   solar_segment_priors: SolarSegmentPrior[];
 
+  // ── Phase 0: Perimeter contract ──
+  /** Whether Phase 0 perimeter gate passed */
+  perimeter_gate_passed: boolean;
+  /** Perimeter source used */
+  perimeter_source: string | null;
+  /** Perimeter eave total (ft) */
+  perimeter_eave_ft: number;
+  /** Perimeter rake total (ft) */
+  perimeter_rake_ft: number;
+  /** Perimeter area (sqft) */
+  perimeter_area_sqft: number;
+
   // ── Quality metrics ──
   metrics: TopologyMetrics;
 
