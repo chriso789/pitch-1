@@ -1062,7 +1062,8 @@ export function solveRoofPlanes(
   const { result: splitSegments, intersectionCount, intersectionFilterSkipped } = splitSegmentsWithFilteredIntersections(allSegments);
 
   // 9. Prune dangling + graph consistency
-  const pruned = pruneDanglingInteriorSegments(splitSegments, footprint);
+  const preserveStructural = options?.complexRoofMode ?? false;
+  const pruned = pruneDanglingInteriorSegments(splitSegments, footprint, preserveStructural);
 
   // 10. Perimeter re-injection (hard guarantee)
   const beforeReinject = pruned.kept.length;
