@@ -1160,6 +1160,7 @@ export function solveRoofPlanes(
     intersections_split: intersectionCount,
     intersection_filter_skipped: intersectionFilterSkipped,
     dangling_edges_removed: pruned.removed,
+    deferred_structural_edges: pruned.deferred.length,
     perimeter_reinjected: perimeterReinjected,
     total_graph_segments: finalGraphSegments.length,
     total_graph_nodes: finalAdj.size,
