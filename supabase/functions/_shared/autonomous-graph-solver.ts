@@ -92,6 +92,8 @@ export interface GraphFace {
   pitch_degrees: number;
   azimuth_degrees: number;
   edge_ids: string[];
+  provisional?: boolean;
+  plane_rms?: number | null;
 }
 
 export interface GraphVertex {
@@ -2440,9 +2442,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     // Plane fit & area validation (uses geo polygon for DSM sampling)
     const areaSqft = polygonAreaSqft(polygonGeo, midLat);
     const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
+    // Provisional threshold: keep faces with marginal rms for provisional graph stability
+    const PROVISIONAL_RMS_THRESHOLD = 1.5;
     let pitch = 0;
     let azimuth = 0;
     let planeRms: number | null = null;
+    let isProvisional = false;
 
     const facetCenter = polygonGeo.reduce((acc, p) => [acc[0] + p[0] / polygonGeo.length, acc[1] + p[1] / polygonGeo.length] as XY, [0, 0] as XY);
 
@@ -2450,10 +2455,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       const planeFit = fitPlaneWithPitch(polygonGeo, effectiveDSM);
       if (planeFit) {
         planeRms = planeFit.rms;
-        if (planeFit.rms > threshold) {
+        if (planeFit.rms > PROVISIONAL_RMS_THRESHOLD) {
+          // Hard reject: too noisy even for provisional
           facesRejected++;
-          rejectionReasons.push(`plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}`);
-          faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          rejectionReasons.push(`plane_rms_${planeFit.rms.toFixed(3)}_gt_${PROVISIONAL_RMS_THRESHOLD}`);
+          faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${PROVISIONAL_RMS_THRESHOLD}` });
           enrichedFaceRejections.push({
             face_id: faceId, vertex_count: polygonGeo.length, area_sqft: Number(areaSqft.toFixed(2)),
             bbox_geo: getBounds(polygonGeo), centroid_geo: facetCenter,
@@ -2463,6 +2469,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             rejection_reasons: rejectionReasons,
           });
           continue;
+        }
+        if (planeFit.rms > threshold) {
+          // Marginal: exceeds strict threshold but within provisional range
+          // Keep as provisional face — will be subject to final validation after refinement
+          isProvisional = true;
+          warnings.push(`face_${faceId}_provisional_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}_le_${PROVISIONAL_RMS_THRESHOLD}`);
         }
         pitch = planeFit.pitchDeg;
         azimuth = planeFit.azimuthDeg;
@@ -2496,7 +2508,16 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       pitch_degrees: pitch,
       azimuth_degrees: azimuth,
       edge_ids: [],
-    });
+      provisional: isProvisional,
+      plane_rms: planeRms,
+    } as GraphFace);
+  }
+
+  // Log provisional face count
+  const provisionalFaceCount = graphFaces.filter(f => f.provisional).length;
+  const strictFaceCount = graphFaces.length - provisionalFaceCount;
+  if (provisionalFaceCount > 0) {
+    console.log(`  [PROVISIONAL_GRAPH] ${graphFaces.length} total faces: ${strictFaceCount} strict + ${provisionalFaceCount} provisional (marginal rms)`);
   }
 
   // ===== TOPOLOGY FIX: Overlap detection and removal =====
@@ -2653,10 +2674,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           if (areaSqftR < MIN_FACET_AREA_SQFT) { refinedFacesRejected++; continue; }
           
           let pitchR = 0, azimuthR = 0;
+          let isProvisionalR = false;
+          let planeRmsR: number | null = null;
           const planeFitR = fitPlaneWithPitch(polygonGeoR, effectiveDSM);
           if (planeFitR) {
+            planeRmsR = planeFitR.rms;
             const thresholdR = areaSqftR > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
-            if (planeFitR.rms > thresholdR) { refinedFacesRejected++; continue; }
+            const PROVISIONAL_RMS_THRESHOLD_R = 1.5;
+            if (planeFitR.rms > PROVISIONAL_RMS_THRESHOLD_R) { refinedFacesRejected++; continue; }
+            if (planeFitR.rms > thresholdR) { isProvisionalR = true; }
             pitchR = planeFitR.pitchDeg;
             azimuthR = planeFitR.azimuthDeg;
           } else {
@@ -2676,6 +2702,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             pitch_degrees: pitchR,
             azimuth_degrees: azimuthR,
             edge_ids: [],
+            provisional: isProvisionalR,
+            plane_rms: planeRmsR,
           });
         }
         
@@ -2696,15 +2724,23 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           : 0;
         const hasNoiseFragments = minFaceAreaRatio < 0.03 && refinedGraphFaces.length > graphFaces.length + 2;
         
-        // Accept refinement if:
-        // - More faces AND max plane ratio decreased
-        // - Coverage didn't collapse
-        // - No noise micro-facets introduced
+        // Accept refinement if topology improved (relaxed criteria for provisional graphs)
+        const preProvisionalCount = graphFaces.filter(f => f.provisional).length;
+        const refinedProvisionalCount = refinedGraphFaces.filter(f => f.provisional).length;
+        const refinementImprovesFaces = refinedGraphFaces.length > graphFaces.length;
+        const refinementImprovesPlaneRatio = refinedMaxPlaneRatio < preMaxPlaneRatio;
+        const refinementImprovesCoverage = refinedCoverageRatio > (prePlanArea / (footprintAreaSqft || 1));
+        const refinementDoesntDestroy = refinedGraphFaces.length >= Math.max(1, graphFaces.length - 1);
+        
         const refinementAccepted = (
-          refinedGraphFaces.length > graphFaces.length &&
-          refinedMaxPlaneRatio < preMaxPlaneRatio &&
-          refinedCoverageRatio >= 0.50 &&
-          !hasNoiseFragments
+          // Standard: more faces + better plane ratio
+          (refinementImprovesFaces && refinementImprovesPlaneRatio && refinedCoverageRatio >= 0.30 && !hasNoiseFragments) ||
+          // Coverage improvement: even if same faces, better coverage
+          (refinementDoesntDestroy && refinementImprovesCoverage && refinedCoverageRatio >= 0.40 && !hasNoiseFragments) ||
+          // Face count improvement with acceptable coverage
+          (refinementImprovesFaces && refinedCoverageRatio >= 0.40 && !hasNoiseFragments) ||
+          // Reduces provisional reliance
+          (refinedGraphFaces.length >= graphFaces.length && refinedProvisionalCount < preProvisionalCount && refinedCoverageRatio >= 0.30)
         );
         
         console.log(`  [v15 REFINEMENT RESULT] faces: ${graphFaces.length} → ${refinedGraphFaces.length}, ` +
@@ -2735,11 +2771,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           has_noise_fragments: hasNoiseFragments,
           oversized_face_ids: oversizedFaceIds,
           oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
+          provisional_faces_before: preProvisionalCount,
+          provisional_faces_after: refinedProvisionalCount,
           rejection_reason: refinementAccepted ? null : (
-            refinedGraphFaces.length <= graphFaces.length ? 'no_face_increase' :
-            refinedMaxPlaneRatio >= preMaxPlaneRatio ? 'max_plane_ratio_not_reduced' :
-            refinedCoverageRatio < 0.50 ? 'coverage_collapsed' :
-            hasNoiseFragments ? 'noise_micro_facets' : 'unknown'
+            refinedGraphFaces.length < graphFaces.length ? 'face_count_decreased' :
+            refinedCoverageRatio < 0.30 ? 'coverage_collapsed' :
+            hasNoiseFragments ? 'noise_micro_facets' : 
+            refinedGraphFaces.length <= graphFaces.length && !refinementImprovesCoverage ? 'no_improvement' :
+            'unknown'
           ),
         };
         
@@ -3178,9 +3217,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     },
     complexity
   );
+  const finalProvisionalCount = graphFaces.filter(f => f.provisional).length;
+  const finalStrictCount = graphFaces.length - finalProvisionalCount;
   if (!validation.valid && planar.faces.length > 0 && graphFaces.length === 0) {
     validation.status = 'faces_extracted_but_rejected';
     validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
+  } else if (!validation.valid && graphFaces.length > 0 && finalStrictCount === 0 && finalProvisionalCount > 0) {
+    // All surviving faces are provisional (marginal rms) — topology exists but needs review
+    validation.status = 'needs_review';
+    validation.reason = `${graphFaces.length} provisional faces (marginal plane_rms), 0 strict — topology preserved but quality uncertain`;
+    warnings.push(`all_faces_provisional: ${finalProvisionalCount} faces with marginal rms`);
+    console.log(`[PROVISIONAL_GRAPH] All ${finalProvisionalCount} faces are provisional — marking needs_review instead of rejected`);
   }
   // Undersegmentation takes priority over invalid_edge_classification
   if (topologyUndersegmented) {
@@ -3308,6 +3355,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     edge_merge_count: planar.debug.collinear_merges || 0,
     edges_removed_before_face_build: planar.debug.dangling_edges_removed || 0,
     raw_dsm_edge_count: rawDsmEdgeCount,
+    provisional_face_count: finalProvisionalCount,
+    strict_face_count: finalStrictCount,
+    total_face_count: graphFaces.length,
   };
 
   const logs: AutonomousGraphLog = {
