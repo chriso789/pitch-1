@@ -211,9 +211,9 @@ export default function ProtectedRoutes() {
         <Route path="/supplements" element={<ProtectedRoute><SupplementEngine /></ProtectedRoute>} />
         <Route path="/supplement-workflow" element={<ProtectedRoute><SupplementWorkflow /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
-        <Route path="/documents/pdf-engine/:id" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/templates" element={<ProtectedRoute><PdfTemplateList /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/template/:id" element={<ProtectedRoute><PdfTemplateDetail /></ProtectedRoute>} />
+        <Route path="/documents/pdf-engine/:id" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
