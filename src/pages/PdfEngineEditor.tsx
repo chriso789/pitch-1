@@ -19,6 +19,10 @@ import { PdfToolbar, type ToolMode } from '@/components/pdf-engine/PdfToolbar';
 import { PdfPageSidebar } from '@/components/pdf-engine/PdfPageSidebar';
 import { PdfOperationHistory } from '@/components/pdf-engine/PdfOperationHistory';
 import { PdfPropertiesPanel } from '@/components/pdf-engine/PdfPropertiesPanel';
+import { PdfSearchPanel } from '@/components/pdf-engine/PdfSearchPanel';
+import { PdfObjectPropertiesPanel } from '@/components/pdf-engine/PdfObjectPropertiesPanel';
+import { PdfAuditPanel } from '@/components/pdf-engine/PdfAuditPanel';
+import { PdfAuditEngine } from '@/lib/pdf-engine/PdfAuditEngine';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Upload, FileText, Layers, History, Settings2
+  ArrowLeft, Upload, FileText, Layers, History, Settings2, Search, Shield
 } from 'lucide-react';
 import type { PdfEngineObject } from '@/lib/pdf-engine/engineTypes';
 import type { RewriteMode } from '@/lib/pdf-engine/PdfAiRewriter';
