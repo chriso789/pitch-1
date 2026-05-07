@@ -611,33 +611,44 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               <div className="mt-4">
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
-                  {invoices.slice(0, 5).map((invoice) => (
-                    <div key={invoice.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-md text-sm">
-                      <div className="flex items-center gap-2">
-                        {invoice.invoice_type === 'material' ? (
-                          <Package className="h-3 w-3 text-blue-500" />
-                        ) : invoice.invoice_type === 'labor' ? (
-                          <Wrench className="h-3 w-3 text-orange-500" />
-                        ) : (
-                          <Receipt className="h-3 w-3 text-purple-500" />
-                        )}
-                        <span>{invoice.vendor_name || invoice.crew_name || invoice.notes || 'Unknown'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            "text-xs",
-                            invoice.status === 'verified' ? "bg-green-500/10 text-green-600 border-green-500/30" :
-                            invoice.status === 'pending' ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" : ""
+                  {invoices.map((invoice) => {
+                    const displayName = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || null;
+                    const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
+                    return (
+                      <div key={invoice.id} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {invoice.invoice_type === 'material' ? (
+                            <Package className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                          ) : invoice.invoice_type === 'labor' ? (
+                            <Wrench className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                          ) : (
+                            <Receipt className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
                           )}
-                        >
-                          {invoice.status}
-                        </Badge>
+                          <div className="min-w-0">
+                            <span className="font-medium truncate block">
+                              {displayName || typeLabel + ' Invoice'}
+                            </span>
+                            {invoice.invoice_number && (
+                              <span className="text-xs text-muted-foreground">#{invoice.invoice_number}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              "text-xs",
+                              invoice.status === 'verified' ? "bg-green-500/10 text-green-600 border-green-500/30" :
+                              invoice.status === 'pending' ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" : ""
+                            )}
+                          >
+                            {invoice.status}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
