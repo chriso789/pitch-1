@@ -4616,12 +4616,24 @@ async function processJob(input: any) {
       passed: promotionGatePassed,
       geometry_source: promotedGeometrySource,
       customer_report_ready: promotedCustomerReportReady,
+      status: topologyMismatch ? "topology_mismatch" : (promotionGatePassed ? "completed" : "needs_review"),
       topology_fidelity: topoFidelityRating,
       topology_score: topoFidelityScore,
       topology_issues: topoIssues,
       failed_reasons: promotionGateFailedReasons,
       inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
     }));
+
+    if (topologyMismatch) {
+      geometryReportJson.status = "topology_mismatch";
+      geometryReportJson.reason = `topology_mismatch:${topologyBlockReasons.join(",")}`;
+      geometryReportJson.block_customer_report_reason = geometryReportJson.reason;
+      geometryReportJson.topology_fidelity = topologyFidelity;
+      aiDetectionData.status = "topology_mismatch";
+      aiDetectionData.reason = geometryReportJson.reason;
+      aiDetectionData.block_customer_report_reason = geometryReportJson.reason;
+      aiDetectionData.topology_fidelity = topologyFidelity;
+    }
 
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
