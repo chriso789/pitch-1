@@ -76,6 +76,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const { currentLocation } = useLocationContext();
   const [followUpExpanded, setFollowUpExpanded] = React.useState(false);
   const [insuranceExpanded, setInsuranceExpanded] = React.useState(false);
+  const [documentsExpanded, setDocumentsExpanded] = React.useState(false);
   
   // Instant display name from auth user_metadata (no loading state)
   const getInstantDisplayName = () => {
@@ -117,8 +118,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/calendar')) return 'calendar';
     if (path.startsWith('/storm-canvass')) return 'storm-canvass';
     if (path.startsWith('/communications')) return 'communications';
-    if (path.startsWith('/smartdocs')) return 'smartdocs';
-    if (path.startsWith('/documents/pdf-workspace')) return 'pdf-workspace';
+    if (path.startsWith('/smartdocs') || path.startsWith('/documents/pdf-workspace')) return 'documents';
     if (path.startsWith('/presentations')) return 'presentations';
     if (path.startsWith('/permits')) return 'permits';
     if (path.startsWith('/insurance') || path.startsWith('/scope-intelligence') || path.startsWith('/supplement')) return 'insurance';
@@ -301,22 +301,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       testId: TEST_IDS.sidebar.calendar,
       featureKey: "calendar"
     },
-    // Communications is now an expandable section - see communicationsSubNav below
-    {
-      name: "Smart Docs",
-      href: "smartdocs",
-      path: "/smartdocs",
-      icon: BookOpen,
-      description: "Document templates & library",
-      featureKey: "smart_docs"
-    },
-    {
-      name: "PDF Workspace",
-      href: "documents/pdf-workspace",
-      path: "/documents/pdf-workspace",
-      icon: FileText,
-      description: "Edit & annotate PDFs",
-    },
+    // Documents is now an expandable section - see below
     {
       name: "Presentations",
       href: "presentations",
@@ -607,6 +592,74 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                 )}
               </Link>
           ))}
+
+            {/* Documents Expandable Section */}
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setDocumentsExpanded(!documentsExpanded)}
+                className={cn(
+                  "w-full flex items-center rounded-md text-left transition-colors group",
+                  isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                  activeSection === 'documents'
+                    ? "bg-primary/10 text-primary border-l-2 border-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
+                )}
+                title={isCollapsed ? "Documents" : undefined}
+              >
+                <BookOpen className={cn(
+                  "h-4 w-4 flex-shrink-0",
+                  activeSection === 'documents' 
+                    ? "text-primary" 
+                    : "text-muted-foreground group-hover:text-accent-foreground"
+                )} />
+                {!isCollapsed && (
+                  <>
+                    <span className={cn(
+                      "text-sm font-medium truncate flex-1",
+                      activeSection === 'documents' ? "text-primary" : ""
+                    )}>
+                      Documents
+                    </span>
+                    {documentsExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </>
+                )}
+              </button>
+              
+              {(documentsExpanded || activeSection === 'documents') && !isCollapsed && (
+                <div className="ml-4 pl-3 border-l border-border space-y-0.5">
+                  <Link
+                    to="/smartdocs"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname.startsWith('/smartdocs')
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <BookOpen className="h-3.5 w-3.5" />
+                    <span className="text-sm">Smart Docs</span>
+                  </Link>
+                  <Link
+                    to="/documents/pdf-workspace"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname.startsWith('/documents/pdf-workspace')
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="text-sm">PDF Workspace</span>
+                  </Link>
+                </div>
+              )}
+            </div>
 
             {/* Insurance Expandable Section */}
             <div className="space-y-0.5">
