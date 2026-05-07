@@ -1326,11 +1326,17 @@ const LOCAL_REGION_CELL_PX = 40;
 /** Elevation difference threshold to consider two cells different regions */
 const LOCAL_REGION_ELEV_DIFF_M = 0.8;
 
+type StructuralTier = 'primary' | 'secondary' | 'tertiary';
+
 interface ClusterableEdge {
   a: { x: number; y: number };
   b: { x: number; y: number };
   type: 'ridge' | 'valley' | 'hip';
   score: number;
+  /** Structural hierarchy tier assigned during classification */
+  tier?: StructuralTier;
+  /** Raw hierarchy score used for tier assignment */
+  hierarchyScore?: number;
 }
 
 interface ClusterDiagnostics {
@@ -1344,6 +1350,100 @@ interface ClusterDiagnostics {
   type_conflict_rejections: number;
   valley_edges_preserved: number;
   ridge_edges_preserved: number;
+  primary_edge_count: number;
+  secondary_edge_count: number;
+  tertiary_edge_count: number;
+  primary_ridges: number;
+  primary_valleys: number;
+  tertiary_merged: number;
+  micro_fragment_rejections: number;
+}
+
+/** Minimum area (px²) for a face to not be considered a micro-fragment */
+const MIN_FACE_AREA_RATIO = 0.02;
+
+/**
+ * Classify edges into primary / secondary / tertiary structural tiers.
+ *
+ * Primary:   long, high-prominence edges (major ridges/valleys) — never merged
+ * Secondary: medium importance (hips, moderate transitions) — merge cautiously
+ * Tertiary:  short, low-prominence micro-edges — can be aggressively merged
+ *
+ * Scoring factors:
+ *  - edge length (longer = more important)
+ *  - DSM elevation prominence at midpoint
+ *  - detection confidence score
+ *  - type bonus (ridges/valleys inherently more structural than hips)
+ */
+function classifyEdgeHierarchy(
+  edges: ClusterableEdge[],
+  dsmGrid: DSMGrid | null,
+  footprintPx: PxPt[],
+  footprintAreaPx2: number,
+): void {
+  if (edges.length === 0) return;
+
+  // Compute per-edge length
+  const lengths = edges.map(e => Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y));
+  const maxLen = Math.max(...lengths, 1);
+
+  // Footprint diagonal as reference scale
+  const fpXs = footprintPx.map(p => p.x);
+  const fpYs = footprintPx.map(p => p.y);
+  const fpDiag = footprintPx.length >= 2
+    ? Math.hypot(Math.max(...fpXs) - Math.min(...fpXs), Math.max(...fpYs) - Math.min(...fpYs))
+    : maxLen;
+
+  // DSM prominence: how much midpoint elevation differs from local neighbours
+  const prominences: number[] = edges.map((e, i) => {
+    if (!dsmGrid) return 0.5;
+    const mx = Math.round((e.a.x + e.b.x) / 2);
+    const my = Math.round((e.a.y + e.b.y) / 2);
+    if (mx < 1 || mx >= dsmGrid.width - 1 || my < 1 || my >= dsmGrid.height - 1) return 0.5;
+    const midElev = dsmGrid.data[my * dsmGrid.width + mx];
+    if (midElev === dsmGrid.noDataValue) return 0.5;
+    // Sample 4 neighbours at ~10px distance
+    const offsets = [[-10, 0], [10, 0], [0, -10], [0, 10]];
+    let elevSum = 0, cnt = 0;
+    for (const [ox, oy] of offsets) {
+      const sx = mx + ox, sy = my + oy;
+      if (sx >= 0 && sx < dsmGrid.width && sy >= 0 && sy < dsmGrid.height) {
+        const se = dsmGrid.data[sy * dsmGrid.width + sx];
+        if (se !== dsmGrid.noDataValue) { elevSum += se; cnt++; }
+      }
+    }
+    if (cnt === 0) return 0.5;
+    return Math.abs(midElev - elevSum / cnt);
+  });
+  const maxProm = Math.max(...prominences, 0.01);
+
+  // Compute composite hierarchy score for each edge
+  for (let i = 0; i < edges.length; i++) {
+    const lenNorm = lengths[i] / fpDiag; // 0..~1, relative to footprint
+    const promNorm = prominences[i] / maxProm; // 0..1
+    const scoreNorm = edges[i].score; // already 0..1 ish
+    const typeBonus = (edges[i].type === 'ridge' || edges[i].type === 'valley') ? 0.15 : 0;
+
+    // Weighted composite — length is most important, then prominence
+    const hScore = lenNorm * 0.40 + promNorm * 0.30 + scoreNorm * 0.15 + typeBonus;
+    edges[i].hierarchyScore = hScore;
+  }
+
+  // Sort scores to find tier thresholds
+  const scores = edges.map(e => e.hierarchyScore!).sort((a, b) => a - b);
+  const p33 = scores[Math.floor(scores.length * 0.33)] ?? 0;
+  const p66 = scores[Math.floor(scores.length * 0.66)] ?? 1;
+
+  for (const e of edges) {
+    const h = e.hierarchyScore!;
+    if (h >= p66) {
+      e.tier = 'primary';
+    } else if (h >= p33) {
+      e.tier = 'secondary';
+    } else {
+      e.tier = 'tertiary';
+    }
+  }
 }
 
 /**
