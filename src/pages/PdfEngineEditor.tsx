@@ -19,6 +19,10 @@ import { PdfToolbar, type ToolMode } from '@/components/pdf-engine/PdfToolbar';
 import { PdfPageSidebar } from '@/components/pdf-engine/PdfPageSidebar';
 import { PdfOperationHistory } from '@/components/pdf-engine/PdfOperationHistory';
 import { PdfPropertiesPanel } from '@/components/pdf-engine/PdfPropertiesPanel';
+import { PdfSearchPanel } from '@/components/pdf-engine/PdfSearchPanel';
+import { PdfObjectPropertiesPanel } from '@/components/pdf-engine/PdfObjectPropertiesPanel';
+import { PdfAuditPanel } from '@/components/pdf-engine/PdfAuditPanel';
+import { PdfAuditEngine } from '@/lib/pdf-engine/PdfAuditEngine';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Upload, FileText, Layers, History, Settings2
+  ArrowLeft, Upload, FileText, Layers, History, Settings2, Search, Shield
 } from 'lucide-react';
 import type { PdfEngineObject } from '@/lib/pdf-engine/engineTypes';
 import type { RewriteMode } from '@/lib/pdf-engine/PdfAiRewriter';
@@ -162,6 +166,7 @@ const PdfEngineEditor = () => {
     if (!pageImage || !pageMeta) return;
 
     setIsOcrRunning(true);
+    if (tenantId && user?.id) PdfAuditEngine.log(tenantId, user.id, 'ocr_started', { page: activePage }, id);
     try {
       const result = await ocrPageImage(
         pageImage, activePage, pageMeta.width, pageMeta.height, 1.5
@@ -173,6 +178,7 @@ const PdfEngineEditor = () => {
           objects_created: count,
         });
         engine.invalidate();
+        if (tenantId && user?.id) PdfAuditEngine.log(tenantId, user.id, 'ocr_completed', { page: activePage, objects: count }, id);
         toast({ title: 'OCR complete', description: `Extracted ${count} text lines` });
       } else {
         toast({ title: 'No text found', description: 'OCR did not detect text on this page' });
@@ -238,6 +244,7 @@ const PdfEngineEditor = () => {
     if (!originalBytesRef.current) return;
     try {
       const blob = await engine.compile(originalBytesRef.current);
+      if (tenantId && user?.id) PdfAuditEngine.log(tenantId, user.id, 'pdf_compiled', { title: docQuery.data?.title }, id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -396,9 +403,11 @@ const PdfEngineEditor = () => {
         {/* Right: Properties + History */}
         <div className="flex-[3] min-w-[260px] hidden md:block">
           <Tabs defaultValue="properties" className="h-full flex flex-col">
-            <TabsList className="grid grid-cols-2 w-full">
+            <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="properties"><Settings2 className="h-3.5 w-3.5 mr-1" />Props</TabsTrigger>
+              <TabsTrigger value="search"><Search className="h-3.5 w-3.5 mr-1" />Search</TabsTrigger>
               <TabsTrigger value="history"><History className="h-3.5 w-3.5 mr-1" />History</TabsTrigger>
+              <TabsTrigger value="audit"><Shield className="h-3.5 w-3.5 mr-1" />Audit</TabsTrigger>
             </TabsList>
             <TabsContent value="properties" className="flex-1 overflow-auto">
               <PdfPropertiesPanel
@@ -407,12 +416,32 @@ const PdfEngineEditor = () => {
                 onDeleteObject={handleDeleteObject}
                 onAiRewrite={handleAiRewrite}
               />
+              {selectedObject && (
+                <PdfObjectPropertiesPanel
+                  selectedObject={selectedObject}
+                  onPushOperation={(type, payload, targetId) => {
+                    engine.pushOperation(type, payload, targetId);
+                    if (tenantId && user?.id) {
+                      PdfAuditEngine.log(tenantId, user.id, type === 'move_object' ? 'object_moved' : type === 'delete_object' ? 'object_deleted' : 'text_replaced', payload, id);
+                    }
+                  }}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="search" className="flex-1 overflow-auto">
+              <PdfSearchPanel
+                currentDocumentId={id}
+                onJumpToPage={setActivePage}
+              />
             </TabsContent>
             <TabsContent value="history" className="flex-1 overflow-hidden">
               <PdfOperationHistory
                 operations={engine.operations}
                 versions={engine.versions}
               />
+            </TabsContent>
+            <TabsContent value="audit" className="flex-1 overflow-auto">
+              <PdfAuditPanel pdfDocumentId={id} />
             </TabsContent>
           </Tabs>
         </div>
