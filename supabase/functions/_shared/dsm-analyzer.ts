@@ -138,9 +138,11 @@ async function parseRealGeoTIFF(
 
     // Extract geo-referencing from tiepoints + pixel scale
     const tiepoint = image.getTiePoints();
-    const pixelScale = image.getFileDirectory().ModelPixelScale;
+    const fileDir = image.getFileDirectory();
+    const pixelScale = fileDir.ModelPixelScale;
+    const modelTransformation = fileDir.ModelTransformation;
     const geoKeys = image.getGeoKeys();
-    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}`);
+    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}, hasTiepoints=${!!(tiepoint && tiepoint.length)}, hasPixelScale=${!!(pixelScale && pixelScale.length)}, hasModelTransformation=${!!(modelTransformation && modelTransformation.length)}`);
 
     let bounds: DSMGrid['bounds'];
 
@@ -154,88 +156,43 @@ async function parseRealGeoTIFF(
       let rawMaxY = tp.y + tp.j * scaleY;
       let rawMinY = tp.y - (height - tp.j) * scaleY;
 
-      // Detect if coordinates are in a projected CRS (not lat/lng)
-      // Lat/lng values: x in [-180, 180], y in [-90, 90]
-      // Projected coords (UTM, etc.): values typically > 180
-      const isProjected = Math.abs(rawMinX) > 360 || Math.abs(rawMinY) > 360;
+      bounds = resolveProjectedBounds(rawMinX, rawMinY, rawMaxX, rawMaxY, geoKeys);
+      if (!bounds) return null;
+    } else if (modelTransformation && modelTransformation.length >= 16) {
+      // ModelTransformation is a 4x4 affine matrix (row-major):
+      // [sx, shx, 0, tx,  shy, sy, 0, ty,  0, 0, sz, tz,  0, 0, 0, 1]
+      // pixel (i,j) -> geo (x,y) = (sx*i + shx*j + tx, shy*i + sy*j + ty)
+      const sx = modelTransformation[0];
+      const shx = modelTransformation[1];
+      const tx = modelTransformation[3];
+      const shy = modelTransformation[4];
+      const sy = modelTransformation[5];
+      const ty = modelTransformation[7];
 
-      if (isProjected) {
-        // Determine UTM zone from GeoKeys or estimate from coordinate values
-        const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
-        console.log(`[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
-        
-        // Convert projected (UTM) bounds to lat/lng
-        // Try to determine UTM zone from GeoKeys or from EPSG code
-        let utmZone = 0;
-        let isNorth = true;
-        
-        if (projCRS >= 32601 && projCRS <= 32660) {
-          utmZone = projCRS - 32600;
-          isNorth = true;
-        } else if (projCRS >= 32701 && projCRS <= 32760) {
-          utmZone = projCRS - 32700;
-          isNorth = false;
-        } else {
-          // Estimate UTM zone from easting value (typically 100000-900000)
-          // and use the request lat to determine hemisphere
-          // For Florida (lat ~27), UTM zone 17N is typical
-          // Easting ~381000 and Northing ~2996000 → zone 17N
-          if (rawMinX > 100000 && rawMinX < 900000) {
-            // Estimate zone from known property location — use northing to guess
-            utmZone = 17; // Default for SE US
-            isNorth = rawMinY > 0;
-          }
-        }
+      // Compute corners
+      const corners = [
+        { x: tx, y: ty },                                                    // (0,0)
+        { x: sx * width + tx, y: shy * width + ty },                         // (W,0)
+        { x: shx * height + tx, y: sy * height + ty },                       // (0,H)
+        { x: sx * width + shx * height + tx, y: shy * width + sy * height + ty }, // (W,H)
+      ];
 
-        if (utmZone > 0) {
-          const sw = utmToLatLng(rawMinX, rawMinY, utmZone, isNorth);
-          const ne = utmToLatLng(rawMaxX, rawMaxY, utmZone, isNorth);
-          bounds = {
-            minLng: sw.lng,
-            minLat: sw.lat,
-            maxLng: ne.lng,
-            maxLat: ne.lat,
-          };
-          console.log(`[DSM_ANALYZER] Converted UTM zone ${utmZone}${isNorth ? 'N' : 'S'} → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
-        } else {
-          console.warn('[DSM_ANALYZER] Cannot determine UTM zone for projected CRS');
-          return null;
-        }
-      } else {
-        // Already in lat/lng
-        bounds = {
-          minLng: rawMinX,
-          maxLng: rawMaxX,
-          maxLat: rawMaxY,
-          minLat: rawMinY,
-        };
-      }
+      const rawMinX = Math.min(...corners.map(c => c.x));
+      const rawMaxX = Math.max(...corners.map(c => c.x));
+      const rawMinY = Math.min(...corners.map(c => c.y));
+      const rawMaxY = Math.max(...corners.map(c => c.y));
+
+      console.log(`[DSM_ANALYZER] ModelTransformation bounds: [${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+
+      bounds = resolveProjectedBounds(rawMinX, rawMinY, rawMaxX, rawMaxY, geoKeys);
+      if (!bounds) return null;
     } else {
+      // Fallback: use library's getBoundingBox (handles ModelTransformation internally)
       const bbox = image.getBoundingBox();
       if (bbox && bbox.length === 4) {
-        const isProjected = Math.abs(bbox[0]) > 360 || Math.abs(bbox[1]) > 360;
-        if (isProjected) {
-          // Try to convert using geoKeys
-          const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
-          let utmZone = 0;
-          let isNorth = true;
-          if (projCRS >= 32601 && projCRS <= 32660) {
-            utmZone = projCRS - 32600; isNorth = true;
-          } else if (projCRS >= 32701 && projCRS <= 32760) {
-            utmZone = projCRS - 32700; isNorth = false;
-          }
-          if (utmZone > 0) {
-            const sw = utmToLatLng(bbox[0], bbox[1], utmZone, isNorth);
-            const ne = utmToLatLng(bbox[2], bbox[3], utmZone, isNorth);
-            bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
-            console.log(`[DSM_ANALYZER] Converted bbox UTM ${utmZone}${isNorth ? 'N' : 'S'} → [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
-          } else {
-            console.warn('[DSM_ANALYZER] Projected bbox, unknown CRS — cannot convert');
-            return null;
-          }
-        } else {
-          bounds = { minLng: bbox[0], minLat: bbox[1], maxLng: bbox[2], maxLat: bbox[3] };
-        }
+        console.log(`[DSM_ANALYZER] Using getBoundingBox fallback: [${bbox.map((v: number) => v.toFixed(2)).join(', ')}]`);
+        bounds = resolveProjectedBounds(bbox[0], bbox[1], bbox[2], bbox[3], geoKeys);
+        if (!bounds) return null;
       } else {
         console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
         return null;
@@ -243,7 +200,6 @@ async function parseRealGeoTIFF(
     }
 
     // Get nodata value
-    const fileDir = image.getFileDirectory();
     const noDataValue = fileDir.GDAL_NODATA
       ? parseFloat(fileDir.GDAL_NODATA)
       : -9999;
@@ -255,6 +211,48 @@ async function parseRealGeoTIFF(
     console.error('[DSM_ANALYZER] GeoTIFF parse error:', err);
     return null;
   }
+}
+
+/**
+ * Resolve raw bounds (which may be in a projected CRS like UTM) to lat/lng.
+ * Returns null if the CRS cannot be determined.
+ */
+function resolveProjectedBounds(
+  rawMinX: number, rawMinY: number, rawMaxX: number, rawMaxY: number,
+  geoKeys: any
+): DSMGrid['bounds'] | null {
+  const isProjected = Math.abs(rawMinX) > 360 || Math.abs(rawMinY) > 360;
+  if (!isProjected) {
+    return { minLng: rawMinX, maxLng: rawMaxX, minLat: rawMinY, maxLat: rawMaxY };
+  }
+
+  const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
+  console.log(`[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+
+  let utmZone = 0;
+  let isNorth = true;
+
+  if (projCRS >= 32601 && projCRS <= 32660) {
+    utmZone = projCRS - 32600;
+    isNorth = true;
+  } else if (projCRS >= 32701 && projCRS <= 32760) {
+    utmZone = projCRS - 32700;
+    isNorth = false;
+  } else if (rawMinX > 100000 && rawMinX < 900000) {
+    utmZone = 17; // Default for SE US
+    isNorth = rawMinY > 0;
+  }
+
+  if (utmZone === 0) {
+    console.warn(`[DSM_ANALYZER] Cannot determine UTM zone for projected CRS ${projCRS}`);
+    return null;
+  }
+
+  const sw = utmToLatLng(rawMinX, rawMinY, utmZone, isNorth);
+  const ne = utmToLatLng(rawMaxX, rawMaxY, utmZone, isNorth);
+  const bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
+  console.log(`[DSM_ANALYZER] Converted UTM zone ${utmZone}${isNorth ? 'N' : 'S'} → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+  return bounds;
 }
 
 // ============= PUBLIC API =============
