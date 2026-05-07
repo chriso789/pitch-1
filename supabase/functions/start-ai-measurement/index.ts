@@ -1236,7 +1236,10 @@ async function processJob(input: any) {
       ? (footprintAreaPxVal - footprintOverlapPx) / footprintAreaPxVal
       : 0;
     const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
-    const footprintBboxTooLarge = footprintBboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    // Use relaxed 40% cap for connected-component mask contours that passed candidate selection
+    const selectedCandidateCCRelaxed = selected?.connected_component_isolated && selected?.bbox_cap_reason?.startsWith('cc_isolated_relaxed');
+    const effectiveValidationBboxCap = selectedCandidateCCRelaxed ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC : MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    const footprintBboxTooLarge = footprintBboxTileRatio > effectiveValidationBboxCap;
     const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
     const footprintInflatedVsSolarBbox = footprintToSolarBboxAreaRatio != null && footprintToSolarBboxAreaRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO;
     const footprintSpillsOutside = solarBboxPx && solarBboxPx.area > 0 && footprintExteriorSpillover > MAX_EXTERIOR_SPILLOVER_RATIO;
