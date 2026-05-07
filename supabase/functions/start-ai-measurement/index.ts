@@ -4504,6 +4504,49 @@ async function processJob(input: any) {
       throw new Error("WRONG_FINAL_EDGE_SOURCE");
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // DSM PROMOTION GATE — promote geometry_source to dsm_validated
+    // only when ALL contract gates pass.
+    // ═══════════════════════════════════════════════════════════════
+    const promotionGateFailedReasons: string[] = [];
+    const solverStatus = autonomousDebug?.status;
+    const facesValidated = Number(autonomousDebug?.validated_faces || 0);
+    const coordSpace = autonomousDebug?.coordinate_space_solver;
+    const coverageRatio = autonomousDebug?.face_coverage_ratio ?? null;
+    const outsideFootprintCount = Number(autonomousDebug?.outside_footprint_count || autonomousDebug?.rejected_by_footprint || 0);
+    const duplicateEdgeCount = Number(autonomousDebug?.duplicate_edge_count || 0);
+    const danglingEdgeCount = Number(autonomousDebug?.dangling_edge_count || 0);
+    const bboxRescueUsed = Boolean(autonomousDebug?.bbox_rescue_used_in_validation);
+    const maskIou = autonomousDebug?.mask_iou ?? null;
+    const maskLoaded = Boolean(autonomousDebug?.mask_loaded);
+    const clipperFailureCount = Number(autonomousDebug?.polygon_clipper_failure_count || autonomousDebug?.clipper_degenerate_output || 0);
+    const invalidEdgeClass = Boolean(autonomousDebug?.invalid_edge_classification);
+
+    if (solverStatus !== "validated") promotionGateFailedReasons.push(`status=${solverStatus}`);
+    if (facesValidated < 2) promotionGateFailedReasons.push(`faces_validated=${facesValidated}<2`);
+    if (coordSpace !== "dsm_px") promotionGateFailedReasons.push(`coord_space=${coordSpace}`);
+    if (coverageRatio != null && (coverageRatio < 0.95 || coverageRatio > 1.05)) promotionGateFailedReasons.push(`coverage=${coverageRatio}`);
+    if (outsideFootprintCount > 0) promotionGateFailedReasons.push(`outside_footprint=${outsideFootprintCount}`);
+    if (duplicateEdgeCount > 0) promotionGateFailedReasons.push(`duplicate_edges=${duplicateEdgeCount}`);
+    if (danglingEdgeCount > 0) promotionGateFailedReasons.push(`dangling_edges=${danglingEdgeCount}`);
+    if (bboxRescueUsed) promotionGateFailedReasons.push("bbox_rescue_used");
+    if (maskIou != null && maskIou < 0.85) promotionGateFailedReasons.push(`mask_iou=${maskIou}<0.85`);
+    if (!maskLoaded && maskIou == null) promotionGateFailedReasons.push("mask_not_loaded_and_no_iou");
+    if (clipperFailureCount > 0) promotionGateFailedReasons.push(`clipper_failures=${clipperFailureCount}`);
+    if (invalidEdgeClass) promotionGateFailedReasons.push("invalid_edge_classification");
+
+    const promotionGatePassed = promotionGateFailedReasons.length === 0;
+    const promotedGeometrySource = promotionGatePassed ? "dsm_validated" : "heuristic_estimate";
+    const promotedCustomerReportReady = promotionGatePassed;
+
+    console.log("[DSM_PROMOTION_GATE]", JSON.stringify({
+      passed: promotionGatePassed,
+      geometry_source: promotedGeometrySource,
+      customer_report_ready: promotedCustomerReportReady,
+      failed_reasons: promotionGateFailedReasons,
+      inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
+    }));
+
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
       .insert({
@@ -4542,7 +4585,7 @@ async function processJob(input: any) {
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
         validation_status: vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
-        customer_report_ready: !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
         internal_debug_report_ready: reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
@@ -4576,7 +4619,7 @@ async function processJob(input: any) {
         engine_version: "geometry_first_v2",
         engine_used: "geometry_first_v2",
         inference_source: resolvedGeometrySource,
-        geometry_source: resolvedGeometrySource === 'dsm_validated' || resolvedGeometrySource === 'vendor_verified' ? resolvedGeometrySource : 'heuristic_estimate',
+        geometry_source: promotedGeometrySource,
         dsm_contract_debug: {
           footprint_source: footprintSource,
           footprint_valid: true,
@@ -4602,12 +4645,29 @@ async function processJob(input: any) {
           face_rejection_table: autonomousDebug?.face_rejection_table || [],
           failure_category: autonomousDebug?.failure_category || null,
           dominant_rejection: autonomousDebug?.dominant_rejection || null,
+          // DSM promotion gate
+          promotion_gate_passed: promotionGatePassed,
+          promotion_gate_failed_reasons: promotionGateFailedReasons,
+          promoted_geometry_source: promotedGeometrySource,
+          promoted_customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
         },
       })
       .select("id")
       .single();
 
     if (publishError) throw publishError;
+
+    // Update ai_measurement_jobs with promotion gate results
+    await supabase.from("ai_measurement_jobs").update({
+      source_context: {
+        geometry_source: promotedGeometrySource,
+        customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        promotion_gate_passed: promotionGatePassed,
+        promotion_gate_failed_reasons: promotionGateFailedReasons,
+      },
+      report_blocked: !promotedCustomerReportReady || reviewRequired,
+      needs_review: !promotedCustomerReportReady || reviewRequired,
+    }).eq("id", input.ai_measurement_job_id);
 
     // Generate the customer-visible SVG report pages from the measured geometry.
     // The geometry-first rewrite still saved totals/planes, but no longer wrote
