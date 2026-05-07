@@ -54,6 +54,23 @@ const PdfWorkspaceEditor = () => {
   const [isExtracting, setIsExtracting] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Prevent browser zoom on Ctrl+wheel / trackpad pinch inside the PDF area
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = -e.deltaY * 0.01;
+        setZoomLevel(z => Math.min(5, Math.max(0.25, Math.round((z + delta) * 100) / 100)));
+      }
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
 
   // Load and render PDF pages when URL is available
   useEffect(() => {
@@ -309,7 +326,7 @@ const PdfWorkspaceEditor = () => {
               Reset
             </Button>
           </div>
-          <div className="flex-1 overflow-auto">
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto">
           {isPdfLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
