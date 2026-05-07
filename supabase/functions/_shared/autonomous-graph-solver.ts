@@ -3217,9 +3217,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     },
     complexity
   );
+  const finalProvisionalCount = graphFaces.filter(f => f.provisional).length;
+  const finalStrictCount = graphFaces.length - finalProvisionalCount;
   if (!validation.valid && planar.faces.length > 0 && graphFaces.length === 0) {
     validation.status = 'faces_extracted_but_rejected';
     validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
+  } else if (!validation.valid && graphFaces.length > 0 && finalStrictCount === 0 && finalProvisionalCount > 0) {
+    // All surviving faces are provisional (marginal rms) — topology exists but needs review
+    validation.status = 'needs_review';
+    validation.reason = `${graphFaces.length} provisional faces (marginal plane_rms), 0 strict — topology preserved but quality uncertain`;
+    warnings.push(`all_faces_provisional: ${finalProvisionalCount} faces with marginal rms`);
+    console.log(`[PROVISIONAL_GRAPH] All ${finalProvisionalCount} faces are provisional — marking needs_review instead of rejected`);
   }
   // Undersegmentation takes priority over invalid_edge_classification
   if (topologyUndersegmented) {
