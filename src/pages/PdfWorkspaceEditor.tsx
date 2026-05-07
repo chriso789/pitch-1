@@ -52,6 +52,7 @@ const PdfWorkspaceEditor = () => {
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<number, string>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
 
   // Load and render PDF pages when URL is available
