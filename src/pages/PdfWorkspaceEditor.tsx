@@ -326,7 +326,7 @@ const PdfWorkspaceEditor = () => {
               Reset
             </Button>
           </div>
-          <div className="flex-1 overflow-auto">
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto">
           {isPdfLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
