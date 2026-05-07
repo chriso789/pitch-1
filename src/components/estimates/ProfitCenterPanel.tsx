@@ -3,12 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { 
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
-  CreditCard, FileEdit
+  CreditCard, FileEdit, Pencil, X, Check
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,6 +59,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('summary');
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [editPrice, setEditPrice] = useState('');
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
 
   // Listen for invoice updates from DocumentsTab
   useEffect(() => {
@@ -103,7 +109,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       const { data, error } = await supabase
         .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
       if (error) throw error;
-      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number } | null;
+      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number; selected_estimate_id: string | null } | null;
     },
     enabled: !!pipelineEntryId,
   });
@@ -207,6 +213,67 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const handleInvoiceSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+  };
+
+  const handleStartEditPrice = () => {
+    setEditPrice(sellingPrice.toFixed(2));
+    setIsEditingPrice(true);
+  };
+
+  const handleSavePrice = async () => {
+    const newPrice = parseFloat(editPrice);
+    if (isNaN(newPrice) || newPrice <= 0) {
+      toast.error('Enter a valid price');
+      return;
+    }
+
+    const estimateId = (estimateData as any)?.selected_estimate_id;
+    if (!estimateId) {
+      toast.error('No estimate selected to update');
+      return;
+    }
+
+    setIsSavingPrice(true);
+    try {
+      // Fetch current estimate to get cost data
+      const { data: estimate, error: fetchError } = await supabase
+        .from('enhanced_estimates')
+        .select('material_cost, labor_cost, overhead_percent, sales_tax_amount')
+        .eq('id', estimateId)
+        .single();
+
+      if (fetchError || !estimate) throw new Error('Could not fetch estimate');
+
+      const directCost = (estimate.material_cost || 0) + (estimate.labor_cost || 0);
+      const tax = estimate.sales_tax_amount || 0;
+      const preTax = newPrice - tax;
+      const ohRate = estimate.overhead_percent || overheadRate;
+      const ohAmount = preTax * (ohRate / 100);
+      const profit = preTax - directCost - ohAmount;
+      const profitPct = preTax > 0 ? (profit / preTax) * 100 : 0;
+
+      const { error } = await supabase
+        .from('enhanced_estimates')
+        .update({
+          selling_price: newPrice,
+          overhead_amount: Math.round(ohAmount * 100) / 100,
+          actual_profit_amount: Math.round(profit * 100) / 100,
+          actual_profit_percent: Math.round(profitPct * 100) / 100,
+        })
+        .eq('id', estimateId);
+
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
+      toast.success(`Selling price updated to ${formatCurrency(newPrice)}`);
+      setIsEditingPrice(false);
+    } catch (err: any) {
+      toast.error(`Failed to update price: ${err.message}`);
+    } finally {
+      setIsSavingPrice(false);
+    }
   };
 
   const VarianceIndicator = ({ variance }: { variance: number }) => {
@@ -352,10 +419,58 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               </div>
             ) : (
               <>
-                {/* Selling Price */}
+                {/* Selling Price with Adjust Button */}
                 <div className="flex justify-between items-center py-2">
                   <span className="font-medium">Selling Price</span>
-                  <span className="font-semibold text-lg">{formatCurrency(sellingPrice)}</span>
+                  {isEditingPrice ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                        className="w-36 h-8 text-right font-semibold"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSavePrice();
+                          if (e.key === 'Escape') setIsEditingPrice(false);
+                        }}
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-green-600"
+                        onClick={handleSavePrice}
+                        disabled={isSavingPrice}
+                      >
+                        {isSavingPrice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => setIsEditingPrice(false)}
+                        disabled={isSavingPrice}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-lg">{formatCurrency(sellingPrice)}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={handleStartEditPrice}
+                        title="Adjust final price"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
