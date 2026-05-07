@@ -994,6 +994,7 @@ const Pipeline = () => {
       updated_at: pipelineEntry.updated_at || pipelineEntry.created_at || new Date().toISOString(),
       contact_id: pipelineEntry.contact_id,
       assigned_to: pipelineEntry.assigned_to,
+      lead_name: pipelineEntry.lead_name,
       contacts: {
         id: contact?.id || pipelineEntry.contact_id,
         contact_number: pipelineEntry.contact_number || `C-${pipelineEntry.id.slice(-4)}`,
