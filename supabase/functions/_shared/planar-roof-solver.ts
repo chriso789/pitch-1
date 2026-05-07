@@ -885,6 +885,8 @@ export function solveRoofPlanes(
 
   // 1. Snap footprint
   const footprint = rawFootprint.map(p => snap(p));
+  const roofDiagonalPx = footprintDiagonal(footprint);
+  const maxStructuralSpanPx = roofDiagonalPx * MAX_STRUCTURAL_SPAN_RATIO;
 
   // 2. Convert interior lines with metadata
   const snappedInterior: Seg[] = interiorLines
@@ -893,6 +895,7 @@ export function solveRoofPlanes(
       source: 'interior' as const,
       edgeType: (seg.type || 'unclassified') as Seg['edgeType'],
       edgeScore: seg.score || 0.5,
+      originalLengthPx: dist(snap(seg.a), snap(seg.b)),
     }))
     .filter((seg) => segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 
@@ -900,11 +903,15 @@ export function solveRoofPlanes(
     .map((seg) => {
       const touchesFootprint = pointNearFootprint(seg.a, footprint) || pointNearFootprint(seg.b, footprint);
       const isPrimaryDivider = seg.edgeType === 'ridge' || seg.edgeType === 'valley' || (seg.edgeType === 'hip' && (seg.edgeScore || 0) >= 0.35);
+      const localSpanExceeded = isPrimaryDivider && segmentLength(seg) > maxStructuralSpanPx;
       // DSM ridge/valley/hip detections often stop short of the eave because
       // the edge detector sees only the high-gradient core. A planar roof graph
       // cannot form closed facets from floating chords, so extend trustworthy
       // structural dividers to the footprint before intersection splitting.
-      return (touchesFootprint || isPrimaryDivider) ? extendLineToFootprint(seg, footprint) || seg : seg;
+      // Locality guard: never turn local evidence into a cross-roof diagonal.
+      return (touchesFootprint || isPrimaryDivider) && !localSpanExceeded
+        ? extendLineToFootprint(seg, footprint, MAX_STRUCTURAL_EXTENSION_PX, maxStructuralSpanPx) || seg
+        : seg;
     })
     .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b) && segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 
