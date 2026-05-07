@@ -4709,6 +4709,24 @@ async function processJob(input: any) {
           promotion_gate_failed_reasons: promotionGateFailedReasons,
           promoted_geometry_source: promotedGeometrySource,
           promoted_customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+          // Topology fidelity analysis
+          topology_fidelity: topoFidelityRating,
+          topology_fidelity_score: topoFidelityScore,
+          topology_issues: topoIssues,
+          topology_metrics: topologyFidelity ? {
+            facet_count: topologyFidelity.facet_count,
+            expected_min_facets: topologyFidelity.expected_min_facets,
+            facet_deficit: topologyFidelity.facet_deficit,
+            valley_to_ridge_ratio: topologyFidelity.valley_to_ridge_ratio,
+            ridge_to_eave_ratio: topologyFidelity.ridge_to_eave_ratio,
+            longest_ridge_ratio: topologyFidelity.longest_ridge_ratio,
+            dominant_plane_ratio: topologyFidelity.dominant_plane_ratio,
+            fan_collapse_suspected: topologyFidelity.fan_collapse_suspected,
+            central_node_degree: topologyFidelity.central_node_degree,
+            diagonal_cross_roof_count: topologyFidelity.diagonal_cross_roof_count,
+            pitch_uniformity_score: topologyFidelity.pitch_uniformity_score,
+            pitch_range: topologyFidelity.pitch_range,
+          } : null,
         },
       })
       .select("id")
