@@ -2867,8 +2867,8 @@ export function analyzeTopologyFidelity(
   } else if (valleyToRidgeRatio < 0.15 && ridgeTotalFt > 50) {
     issues.push(`valley_suppression:ratio=${valleyToRidgeRatio.toFixed(3)}`);
   }
-  if (ridgeToEaveRatio > 0.6) {
-    issues.push(`ridge_inflation:ridge_to_eave=${ridgeToEaveRatio.toFixed(3)}`);
+  if (ridgeInflationSuspected) {
+    issues.push(`ridge_inflation:ridge_to_valley=${ridgeToValleyRatio.toFixed(2)},ridge_to_eave=${ridgeToEaveRatio.toFixed(3)}`);
   }
   if (longestRidgeRatio > 0.5 && ridgeTotalFt > 50) {
     issues.push(`single_dominant_ridge:${longestRidge.toFixed(1)}ft_of_${ridgeTotalFt.toFixed(1)}ft`);
@@ -2877,13 +2877,16 @@ export function analyzeTopologyFidelity(
     issues.push(`fan_collapse:central_node_degree=${centralNodeDegree}`);
   }
   if (diagonalCrossRoofCount > 0) {
-    issues.push(`cross_roof_diagonals:${diagonalCrossRoofCount}`);
+    issues.push(`cross_roof_diagonals:${diagonalCrossRoofCount},span_ratio=${diagonalSpanRatio.toFixed(3)}`);
   }
-  if (dominantPlaneRatio > 0.40) {
+  if (oversizedContinuousPlaneSuspected) {
     issues.push(`oversized_plane:${(dominantPlaneRatio * 100).toFixed(1)}%_of_total`);
   }
-  if (pitchRange > 15 && pitchUniformityScore < 0.5) {
+  if (pitchFragmentationSuspected) {
     issues.push(`pitch_fragmentation:range=${pitchRange.toFixed(1)}deg,uniformity=${pitchUniformityScore.toFixed(2)}`);
+  }
+  if (planesNeedRefinement) {
+    issues.push(`plane_refinement_required:largest=${largestPlane.toFixed(0)}sqft,clusters=${localClusterCount}`);
   }
 
   // ── Fidelity scoring ──
@@ -2892,21 +2895,18 @@ export function analyzeTopologyFidelity(
   if (facetDeficit > 4) score -= 25;
   else if (facetDeficit > 2) score -= 15;
 
-  if (valleyToRidgeRatio < 0.10 && ridgeTotalFt > 50) score -= 20;
+  if (valleyCollapseSuspected) score -= 25;
   else if (valleyToRidgeRatio < 0.20 && ridgeTotalFt > 30) score -= 10;
 
-  if (ridgeToEaveRatio > 0.8) score -= 15;
-  else if (ridgeToEaveRatio > 0.6) score -= 8;
+  if (ridgeInflationSuspected) score -= ridgeTotalFt > 120 ? 25 : 15;
 
   if (fanCollapseSuspected) score -= 20;
-  if (diagonalCrossRoofCount >= 2) score -= 15;
-  else if (diagonalCrossRoofCount === 1) score -= 8;
+  if (diagonalCrossRoofCount >= 2 || diagonalSpanRatio > 0.65) score -= 20;
+  else if (diagonalCrossRoofCount === 1 || diagonalSpanRatio > 0.50) score -= 10;
 
-  if (dominantPlaneRatio > 0.50) score -= 15;
-  else if (dominantPlaneRatio > 0.40) score -= 8;
+  if (oversizedContinuousPlaneSuspected) score -= dominantPlaneRatio > 0.50 ? 20 : 12;
 
-  if (pitchRange > 20 && pitchUniformityScore < 0.4) score -= 15;
-  else if (pitchRange > 15 && pitchUniformityScore < 0.5) score -= 8;
+  if (pitchFragmentationSuspected) score -= pitchRange > 15 ? 15 : 8;
 
   if (longestRidgeRatio > 0.7) score -= 10;
 
