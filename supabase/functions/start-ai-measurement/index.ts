@@ -4797,7 +4797,7 @@ async function processJob(input: any) {
     // The geometry-first rewrite still saved totals/planes, but no longer wrote
     // ai_measurement_diagrams, which made the report dialog show "No diagrams available".
     try {
-      if (!blockCustomerReportReason && planeRows.length > 0) {
+      if (!blockCustomerReportReason && !topologyMismatch && planeRows.length > 0) {
         // ── AERIAL STRUCTURAL DIAGRAM QA ──
         const diagramQA = validateAerialStructuralMatch({
           solverPlanes: planeRows.map((p: any) => ({ polygon_px: p.polygon_px, source: p.source })),
