@@ -368,7 +368,7 @@ const PdfEngineEditor = () => {
         canRedo={engine.canRedo}
         onUndo={engine.undo}
         onRedo={engine.redo}
-        onCompile={handleCompile}
+        onCompile={handleExportCheck}
         onSave={handleSave}
         isCompiling={engine.isCompiling}
         isSaving={isSaving}
