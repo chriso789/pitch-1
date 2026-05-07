@@ -2809,7 +2809,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         refinementDiagnostics = {
           refinement_attempted: true,
           refinement_accepted: refinementAccepted,
+          complex_roof_mode: isComplexRoofMode,
           refinement_candidates_considered: refinementCandidates.length,
+          structural_candidates: structuralCandidates.length,
+          hip_candidates: hipCandidates.length,
+          deferred_connectivity_edges: deferredFromPlanar.length,
+          score_rejected_edges_available: scoreRejectedEdgesPx.length,
           refinement_candidates_used: reintroducedEdges.length,
           raw_edges_reintroduced: reintroducedEdges.length,
           lost_edges_total: lostEdges.length,
