@@ -20072,6 +20072,575 @@ export type Database = {
         }
         Relationships: []
       }
+      material_invoice_audit_lines: {
+        Row: {
+          agreed_description: string | null
+          agreed_supplier_sku: string | null
+          agreed_unit_price: number | null
+          agreed_uom: string | null
+          audit_id: string
+          charged_extended_price: number | null
+          charged_unit_price: number | null
+          company_id: string
+          created_at: string | null
+          discrepancy_status: string | null
+          discrepancy_type: string
+          expected_extended_price: number | null
+          id: string
+          invoice_description: string
+          invoice_document_id: string
+          invoice_line_item_id: string | null
+          invoice_uom: string | null
+          match_confidence: number | null
+          match_type: string
+          price_difference_per_unit: number | null
+          price_list_id: string | null
+          price_list_item_id: string | null
+          quantity: number
+          review_note: string | null
+          supplier_id: string
+          supplier_sku: string | null
+          total_difference: number | null
+        }
+        Insert: {
+          agreed_description?: string | null
+          agreed_supplier_sku?: string | null
+          agreed_unit_price?: number | null
+          agreed_uom?: string | null
+          audit_id: string
+          charged_extended_price?: number | null
+          charged_unit_price?: number | null
+          company_id: string
+          created_at?: string | null
+          discrepancy_status?: string | null
+          discrepancy_type: string
+          expected_extended_price?: number | null
+          id?: string
+          invoice_description: string
+          invoice_document_id: string
+          invoice_line_item_id?: string | null
+          invoice_uom?: string | null
+          match_confidence?: number | null
+          match_type: string
+          price_difference_per_unit?: number | null
+          price_list_id?: string | null
+          price_list_item_id?: string | null
+          quantity: number
+          review_note?: string | null
+          supplier_id: string
+          supplier_sku?: string | null
+          total_difference?: number | null
+        }
+        Update: {
+          agreed_description?: string | null
+          agreed_supplier_sku?: string | null
+          agreed_unit_price?: number | null
+          agreed_uom?: string | null
+          audit_id?: string
+          charged_extended_price?: number | null
+          charged_unit_price?: number | null
+          company_id?: string
+          created_at?: string | null
+          discrepancy_status?: string | null
+          discrepancy_type?: string
+          expected_extended_price?: number | null
+          id?: string
+          invoice_description?: string
+          invoice_document_id?: string
+          invoice_line_item_id?: string | null
+          invoice_uom?: string | null
+          match_confidence?: number | null
+          match_type?: string
+          price_difference_per_unit?: number | null
+          price_list_id?: string | null
+          price_list_item_id?: string | null
+          quantity?: number
+          review_note?: string | null
+          supplier_id?: string
+          supplier_sku?: string | null
+          total_difference?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_invoice_audit_lines_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audit_lines_invoice_line_item_id_fkey"
+            columns: ["invoice_line_item_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_line_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_invoice_audits: {
+        Row: {
+          audit_run_by: string | null
+          audit_status: string
+          company_id: string
+          created_at: string | null
+          csv_file_url: string | null
+          id: string
+          invoice_date: string | null
+          invoice_document_id: string
+          matched_lines: number | null
+          notes: string | null
+          overcharged_lines: number | null
+          price_list_id: string | null
+          report_file_url: string | null
+          supplier_id: string
+          total_actual_amount: number | null
+          total_expected_amount: number | null
+          total_invoice_lines: number | null
+          total_overcharge_amount: number | null
+          total_undercharge_amount: number | null
+          undercharged_lines: number | null
+          unmatched_lines: number | null
+        }
+        Insert: {
+          audit_run_by?: string | null
+          audit_status: string
+          company_id: string
+          created_at?: string | null
+          csv_file_url?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_document_id: string
+          matched_lines?: number | null
+          notes?: string | null
+          overcharged_lines?: number | null
+          price_list_id?: string | null
+          report_file_url?: string | null
+          supplier_id: string
+          total_actual_amount?: number | null
+          total_expected_amount?: number | null
+          total_invoice_lines?: number | null
+          total_overcharge_amount?: number | null
+          total_undercharge_amount?: number | null
+          undercharged_lines?: number | null
+          unmatched_lines?: number | null
+        }
+        Update: {
+          audit_run_by?: string | null
+          audit_status?: string
+          company_id?: string
+          created_at?: string | null
+          csv_file_url?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_document_id?: string
+          matched_lines?: number | null
+          notes?: string | null
+          overcharged_lines?: number | null
+          price_list_id?: string | null
+          report_file_url?: string | null
+          supplier_id?: string
+          total_actual_amount?: number | null
+          total_expected_amount?: number | null
+          total_invoice_lines?: number | null
+          total_overcharge_amount?: number | null
+          total_undercharge_amount?: number | null
+          undercharged_lines?: number | null
+          unmatched_lines?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_invoice_audits_invoice_document_id_fkey"
+            columns: ["invoice_document_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audits_price_list_id_fkey"
+            columns: ["price_list_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_invoice_documents: {
+        Row: {
+          account_number: string | null
+          audit_status: string | null
+          company_id: string
+          created_at: string | null
+          delivery_ticket_number: string | null
+          delivery_total: number | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          invoice_total: number | null
+          job_id: string | null
+          order_number: string | null
+          po_number: string | null
+          raw_extraction_json: Json | null
+          scrape_status: string | null
+          source_file_name: string | null
+          source_file_url: string | null
+          subtotal: number | null
+          supplier_confidence: number | null
+          supplier_detected_name: string | null
+          supplier_id: string | null
+          tax_total: number | null
+          updated_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          audit_status?: string | null
+          company_id: string
+          created_at?: string | null
+          delivery_ticket_number?: string | null
+          delivery_total?: number | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          invoice_total?: number | null
+          job_id?: string | null
+          order_number?: string | null
+          po_number?: string | null
+          raw_extraction_json?: Json | null
+          scrape_status?: string | null
+          source_file_name?: string | null
+          source_file_url?: string | null
+          subtotal?: number | null
+          supplier_confidence?: number | null
+          supplier_detected_name?: string | null
+          supplier_id?: string | null
+          tax_total?: number | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          audit_status?: string | null
+          company_id?: string
+          created_at?: string | null
+          delivery_ticket_number?: string | null
+          delivery_total?: number | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          invoice_total?: number | null
+          job_id?: string | null
+          order_number?: string | null
+          po_number?: string | null
+          raw_extraction_json?: Json | null
+          scrape_status?: string | null
+          source_file_name?: string | null
+          source_file_url?: string | null
+          subtotal?: number | null
+          supplier_confidence?: number | null
+          supplier_detected_name?: string | null
+          supplier_id?: string | null
+          tax_total?: number | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_invoice_documents_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "material_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_invoice_line_items: {
+        Row: {
+          brand: string | null
+          category: string | null
+          charged_extended_price: number | null
+          charged_unit_price: number | null
+          company_id: string
+          created_at: string | null
+          delivery_amount: number | null
+          discount_amount: number | null
+          id: string
+          invoice_document_id: string
+          item_description: string
+          job_id: string | null
+          line_number: number | null
+          manufacturer_sku: string | null
+          normalized_description: string
+          quantity: number
+          raw_line_json: Json | null
+          supplier_id: string | null
+          supplier_sku: string | null
+          tax_amount: number | null
+          unit_of_measure: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          brand?: string | null
+          category?: string | null
+          charged_extended_price?: number | null
+          charged_unit_price?: number | null
+          company_id: string
+          created_at?: string | null
+          delivery_amount?: number | null
+          discount_amount?: number | null
+          id?: string
+          invoice_document_id: string
+          item_description: string
+          job_id?: string | null
+          line_number?: number | null
+          manufacturer_sku?: string | null
+          normalized_description: string
+          quantity?: number
+          raw_line_json?: Json | null
+          supplier_id?: string | null
+          supplier_sku?: string | null
+          tax_amount?: number | null
+          unit_of_measure?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          brand?: string | null
+          category?: string | null
+          charged_extended_price?: number | null
+          charged_unit_price?: number | null
+          company_id?: string
+          created_at?: string | null
+          delivery_amount?: number | null
+          discount_amount?: number | null
+          id?: string
+          invoice_document_id?: string
+          item_description?: string
+          job_id?: string | null
+          line_number?: number | null
+          manufacturer_sku?: string | null
+          normalized_description?: string
+          quantity?: number
+          raw_line_json?: Json | null
+          supplier_id?: string | null
+          supplier_sku?: string | null
+          tax_amount?: number | null
+          unit_of_measure?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_invoice_line_items_invoice_document_id_fkey"
+            columns: ["invoice_document_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_item_match_rules: {
+        Row: {
+          company_id: string
+          confidence: number | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          manufacturer_sku: string | null
+          match_priority: number | null
+          normalized_invoice_description: string | null
+          price_list_item_id: string | null
+          supplier_id: string
+          supplier_sku: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          company_id: string
+          confidence?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          manufacturer_sku?: string | null
+          match_priority?: number | null
+          normalized_invoice_description?: string | null
+          price_list_item_id?: string | null
+          supplier_id: string
+          supplier_sku?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          company_id?: string
+          confidence?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          manufacturer_sku?: string | null
+          match_priority?: number | null
+          normalized_invoice_description?: string | null
+          price_list_item_id?: string | null
+          supplier_id?: string
+          supplier_sku?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_item_match_rules_price_list_item_id_fkey"
+            columns: ["price_list_item_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_list_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_price_audit_events: {
+        Row: {
+          audit_id: string | null
+          company_id: string
+          created_at: string | null
+          created_by: string | null
+          event_message: string
+          event_type: string
+          id: string
+          invoice_document_id: string | null
+          metadata: Json | null
+          supplier_id: string | null
+        }
+        Insert: {
+          audit_id?: string | null
+          company_id: string
+          created_at?: string | null
+          created_by?: string | null
+          event_message: string
+          event_type: string
+          id?: string
+          invoice_document_id?: string | null
+          metadata?: Json | null
+          supplier_id?: string | null
+        }
+        Update: {
+          audit_id?: string | null
+          company_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          event_message?: string
+          event_type?: string
+          id?: string
+          invoice_document_id?: string | null
+          metadata?: Json | null
+          supplier_id?: string | null
+        }
+        Relationships: []
+      }
+      material_supplier_credit_claims: {
+        Row: {
+          audit_id: string | null
+          claim_number: string | null
+          claim_status: string | null
+          company_id: string
+          created_at: string | null
+          credit_received_amount: number | null
+          credit_received_date: string | null
+          csv_file_url: string | null
+          email_body: string | null
+          email_subject: string | null
+          id: string
+          notes: string | null
+          report_file_url: string | null
+          submitted_at: string | null
+          submitted_to: string | null
+          supplier_id: string
+          supplier_response: string | null
+          total_claim_amount: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          audit_id?: string | null
+          claim_number?: string | null
+          claim_status?: string | null
+          company_id: string
+          created_at?: string | null
+          credit_received_amount?: number | null
+          credit_received_date?: string | null
+          csv_file_url?: string | null
+          email_body?: string | null
+          email_subject?: string | null
+          id?: string
+          notes?: string | null
+          report_file_url?: string | null
+          submitted_at?: string | null
+          submitted_to?: string | null
+          supplier_id: string
+          supplier_response?: string | null
+          total_claim_amount?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          audit_id?: string | null
+          claim_number?: string | null
+          claim_status?: string | null
+          company_id?: string
+          created_at?: string | null
+          credit_received_amount?: number | null
+          credit_received_date?: string | null
+          csv_file_url?: string | null
+          email_body?: string | null
+          email_subject?: string | null
+          id?: string
+          notes?: string | null
+          report_file_url?: string | null
+          submitted_at?: string | null
+          submitted_to?: string | null
+          supplier_id?: string
+          supplier_response?: string | null
+          total_claim_amount?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_supplier_credit_claims_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_suppliers: {
+        Row: {
+          account_number: string | null
+          aliases: string[] | null
+          company_id: string
+          created_at: string | null
+          id: string
+          normalized_name: string
+          status: string | null
+          supplier_code: string | null
+          supplier_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          aliases?: string[] | null
+          company_id: string
+          created_at?: string | null
+          id?: string
+          normalized_name: string
+          status?: string | null
+          supplier_code?: string | null
+          supplier_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          aliases?: string[] | null
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          normalized_name?: string
+          status?: string | null
+          supplier_code?: string | null
+          supplier_name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       materials: {
         Row: {
           active: boolean | null
@@ -39656,6 +40225,148 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_price_list_items: {
+        Row: {
+          agreed_price_basis: string | null
+          agreed_unit_price: number
+          brand: string | null
+          category: string | null
+          company_id: string
+          created_at: string | null
+          delivery_included: boolean | null
+          id: string
+          item_description: string
+          manufacturer_sku: string | null
+          material_type: string | null
+          max_qty: number | null
+          metadata: Json | null
+          min_qty: number | null
+          normalized_description: string
+          price_list_id: string
+          supplier_id: string
+          supplier_sku: string | null
+          tax_included: boolean | null
+          unit_of_measure: string
+          updated_at: string | null
+          waste_factor_allowed: number | null
+        }
+        Insert: {
+          agreed_price_basis?: string | null
+          agreed_unit_price: number
+          brand?: string | null
+          category?: string | null
+          company_id: string
+          created_at?: string | null
+          delivery_included?: boolean | null
+          id?: string
+          item_description: string
+          manufacturer_sku?: string | null
+          material_type?: string | null
+          max_qty?: number | null
+          metadata?: Json | null
+          min_qty?: number | null
+          normalized_description: string
+          price_list_id: string
+          supplier_id: string
+          supplier_sku?: string | null
+          tax_included?: boolean | null
+          unit_of_measure: string
+          updated_at?: string | null
+          waste_factor_allowed?: number | null
+        }
+        Update: {
+          agreed_price_basis?: string | null
+          agreed_unit_price?: number
+          brand?: string | null
+          category?: string | null
+          company_id?: string
+          created_at?: string | null
+          delivery_included?: boolean | null
+          id?: string
+          item_description?: string
+          manufacturer_sku?: string | null
+          material_type?: string | null
+          max_qty?: number | null
+          metadata?: Json | null
+          min_qty?: number | null
+          normalized_description?: string
+          price_list_id?: string
+          supplier_id?: string
+          supplier_sku?: string | null
+          tax_included?: boolean | null
+          unit_of_measure?: string
+          updated_at?: string | null
+          waste_factor_allowed?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_list_items_price_list_id_fkey"
+            columns: ["price_list_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_price_lists: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          effective_end_date: string | null
+          effective_start_date: string
+          id: string
+          imported_by: string | null
+          list_name: string
+          notes: string | null
+          raw_import_json: Json | null
+          source_file_name: string | null
+          source_file_url: string | null
+          status: string | null
+          supplier_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          effective_end_date?: string | null
+          effective_start_date: string
+          id?: string
+          imported_by?: string | null
+          list_name: string
+          notes?: string | null
+          raw_import_json?: Json | null
+          source_file_name?: string | null
+          source_file_url?: string | null
+          status?: string | null
+          supplier_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          effective_end_date?: string | null
+          effective_start_date?: string
+          id?: string
+          imported_by?: string | null
+          list_name?: string
+          notes?: string | null
+          raw_import_json?: Json | null
+          source_file_name?: string | null
+          source_file_url?: string | null
+          status?: string | null
+          supplier_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_lists_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "material_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_price_sync_logs: {
         Row: {
           completed_at: string | null
@@ -45661,6 +46372,14 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_active_supplier_price_list: {
+        Args: {
+          p_company_id: string
+          p_invoice_date: string
+          p_supplier_id: string
+        }
+        Returns: string
+      }
       get_ai_usage_stats: {
         Args: { p_hours_back?: number; p_tenant_id: string }
         Returns: Json
@@ -46129,8 +46848,13 @@ export type Database = {
         }
       }
       normalize_email: { Args: { email_text: string }; Returns: string }
+      normalize_material_description: {
+        Args: { input: string }
+        Returns: string
+      }
       normalize_phone: { Args: { phone_text: string }; Returns: string }
       normalize_street: { Args: { street: string }; Returns: string }
+      normalize_supplier_name: { Args: { input: string }; Returns: string }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
