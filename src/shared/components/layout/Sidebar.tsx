@@ -664,10 +664,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                     <Search className="h-3.5 w-3.5" />
                     <span className="text-sm">Scope Intelligence</span>
                   </Link>
-                </div>
-              )}
-            </div>
-
                   <Link
                     to="/supplements"
                     onClick={onNavigate}
