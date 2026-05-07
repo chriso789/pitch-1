@@ -1191,6 +1191,11 @@ async function processJob(input: any) {
         vertex_count: c.vertex_count,
         validity_score: Number(c.validity_score.toFixed(3)),
         rejected_reason: c.rejected_reason,
+        roof_image_overlap_score: c.roof_image_overlap_score,
+        centroid_offset_px: c.centroid_offset_px,
+        bbox_cap_used: c.bbox_cap_used,
+        bbox_cap_reason: c.bbox_cap_reason,
+        connected_component_isolated: c.connected_component_isolated,
       })),
       selected: selected
         ? { source: selected.source, area_sqft: Math.round(selected.area_sqft), validity_score: Number(selected.validity_score.toFixed(3)) }
