@@ -615,8 +615,11 @@ export default function AccountsReceivable() {
 
           <TabsContent value="all">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>WIP Report — All Converted Projects</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Sorted by {sortField === 'age' ? 'date' : sortField === 'costIncurred' ? 'cost incurred' : sortField === 'percentComplete' ? '% complete' : sortField} · {sortField === 'age' ? (sortDir === 'desc' ? 'oldest first' : 'newest first') : (sortDir === 'desc' ? 'high → low' : 'low → high')}
+                </p>
               </CardHeader>
               <CardContent>
                 {wipProjects.length === 0 ? (
