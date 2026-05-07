@@ -3407,6 +3407,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push(`${edgesOutsideFootprintCount} edges have endpoints outside footprint (max dist ${maxEndpointDistanceOutsideFootprintPx}px)`);
   }
 
+  // ===== PHASE 0 GATE: Perimeter must pass for customer export =====
+  if (perimeterGateResult && !perimeterGateResult.passed) {
+    customerBlockReason = customerBlockReason || `perimeter_gate_failed:${perimeterGateResult.failure_reasons.join(',')}`;
+    warnings.push(`perimeter_gate_failed: ${perimeterGateResult.failure_reasons.join(', ')}`);
+  }
+
   // Build vertex output
   const outputVertices: GraphVertex[] = [];
   let vId = 0;
