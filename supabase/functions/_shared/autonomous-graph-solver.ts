@@ -2674,10 +2674,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           if (areaSqftR < MIN_FACET_AREA_SQFT) { refinedFacesRejected++; continue; }
           
           let pitchR = 0, azimuthR = 0;
+          let isProvisionalR = false;
+          let planeRmsR: number | null = null;
           const planeFitR = fitPlaneWithPitch(polygonGeoR, effectiveDSM);
           if (planeFitR) {
+            planeRmsR = planeFitR.rms;
             const thresholdR = areaSqftR > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
-            if (planeFitR.rms > thresholdR) { refinedFacesRejected++; continue; }
+            const PROVISIONAL_RMS_THRESHOLD_R = 1.5;
+            if (planeFitR.rms > PROVISIONAL_RMS_THRESHOLD_R) { refinedFacesRejected++; continue; }
+            if (planeFitR.rms > thresholdR) { isProvisionalR = true; }
             pitchR = planeFitR.pitchDeg;
             azimuthR = planeFitR.azimuthDeg;
           } else {
