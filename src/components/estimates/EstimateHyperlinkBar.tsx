@@ -395,6 +395,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: formatCurrency(calculations?.selling_price || 0),
       hint: !isReady ? 'Final price pending' : null,
       description: 'Final selling price with guaranteed margin'
+    },
+    {
+      id: 'insurance',
+      label: 'Insurance',
+      icon: Shield,
+      value: '—',
+      hint: null,
+      description: 'Insurance scopes, supplements & Xactimate'
     }
   ];
 
