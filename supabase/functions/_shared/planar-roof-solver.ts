@@ -241,8 +241,9 @@ function snapInteriorFragmentsToGraph(rawLines: Seg[], footprint: Pt[]): Seg[] {
 }
 
 // ── EXTEND LINE TO FOOTPRINT ─────────────────────────────
-function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
+function extendLineToFootprint(seg: Seg, footprint: Pt[], maxExtraPx = Infinity, maxSpanPx = Infinity): Seg | null {
   const dir = sub(seg.b, seg.a);
+  const originalLen = segmentLength(seg);
   if (Math.hypot(dir.x, dir.y) < 4) return null;
 
   const hits: Array<{ point: Pt; t: number }> = [];
@@ -264,12 +265,19 @@ function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
     if (!unique.some((u) => dist(u.point, h.point) < 3)) unique.push(h);
   }
   if (unique.length >= 2) {
-    return { ...seg, a: unique[0].point, b: unique[unique.length - 1].point };
+    const candidate = { ...seg, a: unique[0].point, b: unique[unique.length - 1].point, originalLengthPx: originalLen, autoExtended: true };
+    const extendedLen = segmentLength(candidate);
+    if (extendedLen > maxSpanPx || extendedLen - originalLen > maxExtraPx) return null;
+    return candidate;
   }
 
   const a = snapToFootprint(seg.a, footprint, 12);
   const b = snapToFootprint(seg.b, footprint, 12);
-  return ptKey(a) !== ptKey(b) ? { ...seg, a, b } : null;
+  const candidate = ptKey(a) !== ptKey(b) ? { ...seg, a, b, originalLengthPx: originalLen, autoExtended: true } : null;
+  if (!candidate) return null;
+  const extendedLen = segmentLength(candidate);
+  if (extendedLen > maxSpanPx || extendedLen - originalLen > maxExtraPx) return null;
+  return candidate;
 }
 
 // ── COLLINEAR MERGE ──────────────────────────────────────
