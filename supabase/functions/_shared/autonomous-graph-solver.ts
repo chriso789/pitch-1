@@ -2679,17 +2679,18 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       console.log(`  [v16 REFINEMENT] Sources: ${lostEdges.length} lost_cluster, ${deferredFromPlanar.length} deferred_planar, ${scoreRejectedEdgesPx.length} score_rejected → ${uniqueCandidates.length} unique → ${refinementCandidates.length} qualifying (${structuralCandidates.length} ridge/valley, ${hipCandidates.length} hip)`);
       console.log(`  [v16 REFINEMENT] Oversized faces: ${oversizedFaceIds.join(', ')} (ratios: ${oversizedFaceAreaRatios.map(r => r.toFixed(3)).join(', ')})`);
       
-      if (refinementCandidates.length >= 2) {
+      if (orderedCandidates.length >= 2) {
         // 4. Augment the edge set: surviving edges + refinement candidates
-        // Sort candidates by score*length to prioritize best structural evidence
-        const sortedCandidates = [...refinementCandidates].sort((a, b) => {
+        const sortedCandidates = [...orderedCandidates].sort((a, b) => {
           const lenA = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y);
           const lenB = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y);
           return (b.score * lenB) - (a.score * lenA);
         });
         
-        // Cap reintroduced edges to avoid noise
-        const maxReintroduced = Math.min(sortedCandidates.length, Math.max(8, dsmInteriorEdgesPx.length));
+        // v16: Higher cap in complex-roof mode
+        const maxReintroduced = isComplexRoofMode
+          ? Math.min(sortedCandidates.length, Math.max(15, dsmInteriorEdgesPx.length))
+          : Math.min(sortedCandidates.length, Math.max(8, dsmInteriorEdgesPx.length));
         const reintroducedEdges = sortedCandidates.slice(0, maxReintroduced);
         
         const augmentedEdgesPx = [
@@ -2697,13 +2698,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           ...reintroducedEdges
         ];
         
-        // 5. Re-run planar solver with augmented edges
+        // 5. Re-run planar solver with augmented edges (complex mode preserves structural dangling edges)
         const refinedPlanarInput: InteriorLine[] = augmentedEdgesPx.map(e => ({
           a: e.a, b: e.b, type: e.type, score: e.score,
         }));
         
-        const refinedPlanar = planarSolveRoofPlanes(footprintPxCCW, refinedPlanarInput);
-        console.log(`  [v15 REFINEMENT] Refined planar: ${refinedPlanar.faces.length} faces (was ${planar.faces.length})`);
+        const refinedPlanar = planarSolveRoofPlanes(footprintPxCCW, refinedPlanarInput, { complexRoofMode: isComplexRoofMode });
+        console.log(`  [v16 REFINEMENT] Refined planar: ${refinedPlanar.faces.length} faces (was ${planar.faces.length}), deferred=${refinedPlanar.debug.deferred_structural_edges}`);
         
         // 6. Process refined faces through the same validation pipeline
         const refinedGraphFaces: GraphFace[] = [];
