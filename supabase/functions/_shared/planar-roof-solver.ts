@@ -886,6 +886,7 @@ export interface PlanarSolverDebug {
 export interface PlanarSolverResult {
   faces: Array<{ id: number; polygon: Pt[] }>;
   edges: Seg[];
+  deferredEdges: Seg[];
   debug: PlanarSolverDebug;
 }
 
