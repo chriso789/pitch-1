@@ -727,7 +727,31 @@ const ProductionKanban = () => {
         </div>
       </div>
 
-      {/* Kanban Board */}
+      {/* Trade Filter */}
+      {uniqueTradeTypes.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Badge
+            variant={tradeFilter === 'all' ? 'default' : 'outline'}
+            className="cursor-pointer"
+            onClick={() => setTradeFilter('all')}
+          >
+            All Trades
+          </Badge>
+          {uniqueTradeTypes.map(type => (
+            <Badge
+              key={type}
+              variant={tradeFilter === type ? 'default' : 'outline'}
+              className="cursor-pointer capitalize"
+              onClick={() => setTradeFilter(type)}
+            >
+              {type.replace(/_/g, ' ')}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+
       <DndContext 
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
