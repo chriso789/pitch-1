@@ -97,6 +97,7 @@ const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor")
 const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
 const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
 const PdfEngineEditor = React.lazy(() => import("@/pages/PdfEngineEditor"));
+const MaterialAuditPage = React.lazy(() => import("@/pages/MaterialAuditPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
