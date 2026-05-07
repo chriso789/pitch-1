@@ -4504,6 +4504,49 @@ async function processJob(input: any) {
       throw new Error("WRONG_FINAL_EDGE_SOURCE");
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // DSM PROMOTION GATE — promote geometry_source to dsm_validated
+    // only when ALL contract gates pass.
+    // ═══════════════════════════════════════════════════════════════
+    const promotionGateFailedReasons: string[] = [];
+    const solverStatus = autonomousDebug?.status;
+    const facesValidated = Number(autonomousDebug?.validated_faces || 0);
+    const coordSpace = autonomousDebug?.coordinate_space_solver;
+    const coverageRatio = autonomousDebug?.face_coverage_ratio ?? null;
+    const outsideFootprintCount = Number(autonomousDebug?.outside_footprint_count || autonomousDebug?.rejected_by_footprint || 0);
+    const duplicateEdgeCount = Number(autonomousDebug?.duplicate_edge_count || 0);
+    const danglingEdgeCount = Number(autonomousDebug?.dangling_edge_count || 0);
+    const bboxRescueUsed = Boolean(autonomousDebug?.bbox_rescue_used_in_validation);
+    const maskIou = autonomousDebug?.mask_iou ?? null;
+    const maskLoaded = Boolean(autonomousDebug?.mask_loaded);
+    const clipperFailureCount = Number(autonomousDebug?.polygon_clipper_failure_count || autonomousDebug?.clipper_degenerate_output || 0);
+    const invalidEdgeClass = Boolean(autonomousDebug?.invalid_edge_classification);
+
+    if (solverStatus !== "validated") promotionGateFailedReasons.push(`status=${solverStatus}`);
+    if (facesValidated < 2) promotionGateFailedReasons.push(`faces_validated=${facesValidated}<2`);
+    if (coordSpace !== "dsm_px") promotionGateFailedReasons.push(`coord_space=${coordSpace}`);
+    if (coverageRatio != null && (coverageRatio < 0.95 || coverageRatio > 1.05)) promotionGateFailedReasons.push(`coverage=${coverageRatio}`);
+    if (outsideFootprintCount > 0) promotionGateFailedReasons.push(`outside_footprint=${outsideFootprintCount}`);
+    if (duplicateEdgeCount > 0) promotionGateFailedReasons.push(`duplicate_edges=${duplicateEdgeCount}`);
+    if (danglingEdgeCount > 0) promotionGateFailedReasons.push(`dangling_edges=${danglingEdgeCount}`);
+    if (bboxRescueUsed) promotionGateFailedReasons.push("bbox_rescue_used");
+    if (maskIou != null && maskIou < 0.85) promotionGateFailedReasons.push(`mask_iou=${maskIou}<0.85`);
+    if (!maskLoaded && maskIou == null) promotionGateFailedReasons.push("mask_not_loaded_and_no_iou");
+    if (clipperFailureCount > 0) promotionGateFailedReasons.push(`clipper_failures=${clipperFailureCount}`);
+    if (invalidEdgeClass) promotionGateFailedReasons.push("invalid_edge_classification");
+
+    const promotionGatePassed = promotionGateFailedReasons.length === 0;
+    const promotedGeometrySource = promotionGatePassed ? "dsm_validated" : "heuristic_estimate";
+    const promotedCustomerReportReady = promotionGatePassed;
+
+    console.log("[DSM_PROMOTION_GATE]", JSON.stringify({
+      passed: promotionGatePassed,
+      geometry_source: promotedGeometrySource,
+      customer_report_ready: promotedCustomerReportReady,
+      failed_reasons: promotionGateFailedReasons,
+      inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
+    }));
+
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
       .insert({
