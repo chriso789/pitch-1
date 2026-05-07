@@ -755,7 +755,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     }
 
     return { pages: pageList, totalPages: totalPageCount, signaturePageIdx };
-  }, [materialItems, laborItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms]);
+  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms]);
 
   const commonProps = {
     companyLogo,
