@@ -58,6 +58,8 @@ const PdfEngineEditor = () => {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDesc, setTemplateDesc] = useState('');
+  const [showExportReadiness, setShowExportReadiness] = useState(false);
+  const [exportReadiness, setExportReadiness] = useState<ReturnType<typeof PdfExportReadiness.check> | null>(null);
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
 
   // Load document info
