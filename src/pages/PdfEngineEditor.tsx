@@ -379,6 +379,13 @@ const PdfEngineEditor = () => {
         onSaveAsTemplate={() => setShowTemplateDialog(true)}
       />
 
+      {isLargePdf && (
+        <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 border border-yellow-500/30 rounded px-3 py-1.5 text-xs mt-1">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Large PDF detected ({engine.pages.length} pages). Performance may be reduced.
+        </div>
+      )}
+
       {/* Main layout */}
       <div className="flex gap-2 h-[calc(100vh-240px)] mt-2">
         {/* Left: Page thumbnails */}
