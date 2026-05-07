@@ -2513,6 +2513,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     } as GraphFace);
   }
 
+  // Log provisional face count
+  const provisionalFaceCount = graphFaces.filter(f => f.provisional).length;
+  const strictFaceCount = graphFaces.length - provisionalFaceCount;
+  if (provisionalFaceCount > 0) {
+    console.log(`  [PROVISIONAL_GRAPH] ${graphFaces.length} total faces: ${strictFaceCount} strict + ${provisionalFaceCount} provisional (marginal rms)`);
+  }
+
   // ===== TOPOLOGY FIX: Overlap detection and removal =====
   let overlappingFaceCount = 0;
   if (graphFaces.length > 1) {
