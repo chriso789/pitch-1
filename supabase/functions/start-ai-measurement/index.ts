@@ -4904,6 +4904,8 @@ async function processJob(input: any) {
     // Geometry collapse → never call this "completed" for the customer.
     const finalAiStatus = !measurementIsValid
       ? "failed"
+      : topologyMismatch
+      ? "topology_mismatch"
       : needsInternalReview
       ? "needs_internal_review"
       : blockCustomerReportReason
@@ -4916,7 +4918,9 @@ async function processJob(input: any) {
     // allows queued/processing/completed/failed. Keep the richer review state on
     // ai_measurement_jobs, but stop the UI spinner by marking the legacy job complete.
     const finalJobStatus = "completed";
-    const finalJobMessage = blockCustomerReportReason
+    const finalJobMessage = topologyMismatch
+      ? `Measurement blocked — topology mismatch (${topologyBlockReasons.join(", ")})`
+      : blockCustomerReportReason
       ? `Measurement needs review — geometry covered only part of the roof. (${blockCustomerReportReason})`
       : "Measurement complete";
 
