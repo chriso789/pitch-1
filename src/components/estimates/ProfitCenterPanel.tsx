@@ -106,7 +106,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       const { data, error } = await supabase
         .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
       if (error) throw error;
-      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number } | null;
+      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number; selected_estimate_id: string | null } | null;
     },
     enabled: !!pipelineEntryId,
   });
