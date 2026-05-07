@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, AlertTriangle, DollarSign } from "lucide-react";
+import { GripVertical, AlertTriangle, DollarSign, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CLJBadge } from "@/components/CLJBadge";
 
