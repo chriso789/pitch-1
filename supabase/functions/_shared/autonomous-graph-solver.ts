@@ -2198,9 +2198,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const clusteredEdgesPx = clusterResult.clustered;
   const clusterDiag = clusterResult.diagnostics;
   edgeCountAfterCluster = clusteredEdgesPx.length;
-  console.log(`  Edge clustering (topology-aware): ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
-  console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region rejections: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized rejections: ${clusterDiag.oversized_plane_rejections}`);
-  console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}`);
+  console.log(`  Edge clustering (hierarchical): ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+  console.log(`    Hierarchy: primary=${clusterDiag.primary_edge_count} (ridges=${clusterDiag.primary_ridges}, valleys=${clusterDiag.primary_valleys}), secondary=${clusterDiag.secondary_edge_count}, tertiary=${clusterDiag.tertiary_edge_count}`);
+  console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized: ${clusterDiag.oversized_plane_rejections}`);
+  console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}, tertiary merged: ${clusterDiag.tertiary_merged}, micro-fragments rejected: ${clusterDiag.micro_fragment_rejections}`);
 
   // ===== STEP 6b: Cap interior edges =====
   let dsmInteriorEdgesPx = clusteredEdgesPx
