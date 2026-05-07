@@ -1,0 +1,1 @@
+DELETE FROM roof_measurements WHERE customer_report_ready = false;
