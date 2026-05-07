@@ -250,6 +250,10 @@ export interface AutonomousGraphResult {
   /** v17: Authoritative topology hierarchy (Fix #1-#3 from audit) */
   topology_hierarchy?: RoofTopologyHierarchy;
   topology_hierarchy_summary?: Record<string, unknown>;
+  /** v18: Phase 0 — Perimeter-First Topology Contract */
+  perimeter_topology?: PerimeterTopology;
+  perimeter_gate?: PerimeterGateResult;
+  perimeter_diagnostics?: PerimeterDiagnostics;
 }
 
 export interface AutonomousGraphLog {
