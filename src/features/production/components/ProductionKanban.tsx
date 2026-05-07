@@ -408,6 +408,56 @@ const ProductionKanban = () => {
                         notes: 'Production workflow auto-created',
                       });
                   }
+
+                  // Auto-create trade boards from estimate templates
+                  const estimates = project.estimates || [];
+                  if (estimates.length > 0 && workflow) {
+                    const { data: existingBoards } = await supabase
+                      .from('production_trade_boards')
+                      .select('trade_type')
+                      .eq('project_id', project.id)
+                      .eq('tenant_id', profile.tenant_id);
+
+                    const existingTypes = new Set((existingBoards || []).map((b: any) => b.trade_type));
+
+                    // Derive trades from estimate template names / roof_type
+                    const tradeSet = new Set<string>();
+                    for (const est of estimates) {
+                      // Check template_id to get trade type
+                      if (est.template_id) {
+                        const { data: tmpl } = await supabase
+                          .from('estimate_templates')
+                          .select('name, roof_type')
+                          .eq('id', est.template_id)
+                          .single();
+                        if (tmpl) {
+                          const name = (tmpl.name || '').toLowerCase();
+                          if (name.includes('gutter')) tradeSet.add('gutters');
+                          else if (name.includes('siding')) tradeSet.add('siding');
+                          else if (name.includes('solar')) tradeSet.add('solar');
+                          else if (name.includes('coating')) tradeSet.add('coating');
+                          else if (name.includes('window')) tradeSet.add('windows');
+                          else if (name.includes('paint')) tradeSet.add('painting');
+                          else tradeSet.add('roofing');
+                        }
+                      } else {
+                        tradeSet.add('roofing');
+                      }
+                    }
+
+                    for (const tradeType of tradeSet) {
+                      if (!existingTypes.has(tradeType)) {
+                        await supabase.from('production_trade_boards').insert({
+                          tenant_id: profile.tenant_id,
+                          project_id: project.id,
+                          production_workflow_id: workflow.id,
+                          trade_name: tradeType.charAt(0).toUpperCase() + tradeType.slice(1),
+                          trade_type: tradeType,
+                          current_stage: 'submit_documents',
+                        });
+                      }
+                    }
+                  }
                 }
               } catch (err) {
                 console.error('Error creating workflow:', err);
