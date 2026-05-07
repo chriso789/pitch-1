@@ -96,7 +96,7 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "w-full min-w-0 max-w-full min-h-[90px] max-h-[110px]",
+        "w-full min-w-0 max-w-full min-h-[90px]",
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
         "cursor-grab active:cursor-grabbing",
         "relative group overflow-hidden",
@@ -104,10 +104,6 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
       )}
       {...attributes}
       {...listeners}
-      onClick={(e) => {
-        e.stopPropagation();
-        onView(project.id);
-      }}
       role="button"
       tabIndex={0}
       aria-label={`Project ${projectNumber}, ${customerName}, ${project.days_in_stage} days in stage`}
