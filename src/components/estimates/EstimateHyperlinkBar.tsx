@@ -324,6 +324,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: formatCurrency(hyperlinkData.sale_price),
       hint: null,
       description: 'Final selling price with guaranteed margin'
+    },
+    {
+      id: 'insurance',
+      label: 'Insurance',
+      icon: Shield,
+      value: '—',
+      hint: null,
+      description: 'Insurance scopes, supplements & Xactimate'
     }
   ] : [
     {
