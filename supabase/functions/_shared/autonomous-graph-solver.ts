@@ -2660,6 +2660,7 @@ export interface TopologyFidelityResult {
 
   // Ratio analysis
   valley_to_ridge_ratio: number;       // Healthy roofs: 0.3–2.0. Fan-collapse: <0.15
+  ridge_to_valley_ratio: number;       // Collapse signal: inflated ridges vs suppressed valleys
   ridge_to_eave_ratio: number;         // Healthy: 0.1–0.6. Inflated ridges: >0.6
   longest_ridge_ft: number;
   longest_ridge_ratio: number;         // Longest ridge / total ridge. >0.5 = suspicious
@@ -2670,6 +2671,7 @@ export interface TopologyFidelityResult {
   average_plane_area_sqft: number;
   plane_area_variance: number;         // CV of plane areas. Very low = uniform fan
   dominant_plane_ratio: number;        // Largest plane / total area. >0.4 = over-merged
+  max_plane_area_ratio: number;        // Alias persisted for report/debug consumers
   largest_plane_sqft: number;
 
   // Pitch analysis
@@ -2683,7 +2685,14 @@ export interface TopologyFidelityResult {
   central_node_degree: number;         // Degree of highest-degree interior node
   fan_collapse_suspected: boolean;     // True if central node too connected
   diagonal_cross_roof_count: number;   // Edges spanning >60% of roof bbox
+  diagonal_span_ratio: number;         // Longest interior edge / sqrt(roof area). >0.9 = cross-assembly span
+  local_cluster_count: number;         // Connected local structural assemblies
   merged_plane_suspected: boolean;     // True if largest plane is outsized
+  valley_collapse_suspected: boolean;
+  ridge_inflation_suspected: boolean;
+  oversized_continuous_plane_suspected: boolean;
+  planes_need_refinement: boolean;
+  pitch_fragmentation_suspected: boolean;
 
   // Expected facet count (heuristic from footprint complexity)
   expected_min_facets: number;
