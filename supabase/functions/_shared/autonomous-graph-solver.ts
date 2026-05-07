@@ -2400,10 +2400,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     validation.status = 'faces_extracted_but_rejected';
     validation.reason = `Planar graph extracted ${planar.faces.length} attempted faces, but 0 passed validation`;
   }
-  const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
-  if (!validation.valid && invalidEdgeClassification) {
-    validation.status = 'invalid_edge_classification';
-    validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency reclassification';
+  // Undersegmentation takes priority over invalid_edge_classification
+  if (topologyUndersegmented) {
+    validation.valid = false;
+    validation.status = 'topology_undersegmented';
+    validation.reason = `${rawDsmEdgeCount} raw DSM edges collapsed to ${planar.faces.length} faces on ${footprintAreaSqft.toFixed(0)} sqft footprint — topology undersegmented`;
+  } else {
+    const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
+    if (!validation.valid && invalidEdgeClassification) {
+      validation.status = 'invalid_edge_classification';
+      validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency classification';
+    }
   }
 
   // ===== HARD BLOCK: edges outside footprint =====
