@@ -441,9 +441,10 @@ function splitSegmentsWithFilteredIntersections(segments: Seg[]): { result: Seg[
 }
 
 // ── PRUNE DANGLING + GRAPH CONSISTENCY ───────────────────
-function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept: Seg[]; removed: number } {
+function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[], preserveStructural = false): { kept: Seg[]; removed: number; deferred: Seg[] } {
   let current = segments;
   let removed = 0;
+  const deferred: Seg[] = [];
   let changed = true;
 
   while (changed) {
@@ -467,6 +468,10 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
       const aDangling = (degree.get(ptKey(seg.a)) || 0) <= 1 && !aBoundary;
       const bDangling = (degree.get(ptKey(seg.b)) || 0) <= 1 && !bBoundary;
       if (aDangling || bDangling) {
+        // Complex-roof mode: defer structural edges instead of removing
+        if (preserveStructural && isStructural(seg) && (seg.edgeScore || 0) >= 0.3) {
+          deferred.push(seg);
+        }
         removed++;
         changed = true;
         return false;
@@ -491,12 +496,22 @@ function pruneDanglingInteriorSegments(segments: Seg[], footprint: Pt[]): { kept
     const degB = finalDegree.get(ptKey(seg.b)) || 0;
     const aBound = pointNearFootprint(seg.a, footprint, 3);
     const bBound = pointNearFootprint(seg.b, footprint, 3);
-    if (degA < 2 && !aBound) { removed++; return false; }
-    if (degB < 2 && !bBound) { removed++; return false; }
+    if (degA < 2 && !aBound) {
+      if (preserveStructural && isStructural(seg) && (seg.edgeScore || 0) >= 0.3) {
+        deferred.push(seg);
+      }
+      removed++; return false;
+    }
+    if (degB < 2 && !bBound) {
+      if (preserveStructural && isStructural(seg) && (seg.edgeScore || 0) >= 0.3) {
+        deferred.push(seg);
+      }
+      removed++; return false;
+    }
     return true;
   });
 
-  return { kept: current, removed };
+  return { kept: current, removed, deferred };
 }
 
 // ── PERIMETER RE-INJECTION ───────────────────────────────
@@ -851,6 +866,7 @@ export interface PlanarSolverDebug {
   intersections_split: number;
   intersection_filter_skipped: number;
   dangling_edges_removed: number;
+  deferred_structural_edges: number;
   perimeter_reinjected: number;
   total_graph_segments: number;
   total_graph_nodes: number;
@@ -870,6 +886,7 @@ export interface PlanarSolverDebug {
 export interface PlanarSolverResult {
   faces: Array<{ id: number; polygon: Pt[] }>;
   edges: Seg[];
+  deferredEdges: Seg[];
   debug: PlanarSolverDebug;
 }
 
@@ -949,11 +966,12 @@ function countLocalClusters(interiorEdges: Seg[]): number {
 export function solveRoofPlanes(
   rawFootprint: Pt[],
   interiorLines: InteriorLine[],
+  options?: { complexRoofMode?: boolean },
 ): PlanarSolverResult {
   const emptyDebug: PlanarSolverDebug = {
     input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0,
     collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0,
-    intersection_filter_skipped: 0, dangling_edges_removed: 0, perimeter_reinjected: 0,
+    intersection_filter_skipped: 0, dangling_edges_removed: 0, deferred_structural_edges: 0, perimeter_reinjected: 0,
     total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0,
     faces_with_area: 0, face_coverage_ratio: 0, fragment_merges: 0,
     faces_rejected_by_area: 0, customer_block_reason: null,
@@ -962,7 +980,7 @@ export function solveRoofPlanes(
   };
 
   if (rawFootprint.length < 3) {
-    return { faces: [], edges: [], debug: emptyDebug };
+    return { faces: [], edges: [], deferredEdges: [], debug: emptyDebug };
   }
 
   // 1. Snap footprint
@@ -1046,7 +1064,8 @@ export function solveRoofPlanes(
   const { result: splitSegments, intersectionCount, intersectionFilterSkipped } = splitSegmentsWithFilteredIntersections(allSegments);
 
   // 9. Prune dangling + graph consistency
-  const pruned = pruneDanglingInteriorSegments(splitSegments, footprint);
+  const preserveStructural = options?.complexRoofMode ?? false;
+  const pruned = pruneDanglingInteriorSegments(splitSegments, footprint, preserveStructural);
 
   // 10. Perimeter re-injection (hard guarantee)
   const beforeReinject = pruned.kept.length;
@@ -1141,6 +1160,7 @@ export function solveRoofPlanes(
     intersections_split: intersectionCount,
     intersection_filter_skipped: intersectionFilterSkipped,
     dangling_edges_removed: pruned.removed,
+    deferred_structural_edges: pruned.deferred.length,
     perimeter_reinjected: perimeterReinjected,
     total_graph_segments: finalGraphSegments.length,
     total_graph_nodes: finalAdj.size,
@@ -1158,5 +1178,5 @@ export function solveRoofPlanes(
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));
 
-  return { faces: validFaces, edges: finalGraphSegments, debug };
+  return { faces: validFaces, edges: finalGraphSegments, deferredEdges: pruned.deferred, debug };
 }
