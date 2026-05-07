@@ -34,7 +34,7 @@ import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPo
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, geoToPixel } from "../_shared/dsm-analyzer.ts";
-import { solveAutonomousGraph, detectComplexRoof, type AutonomousGraphInput } from "../_shared/autonomous-graph-solver.ts";
+import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -1144,6 +1144,7 @@ async function processJob(input: any) {
     // Legacy solar/skeleton/hip/rectangular fallbacks must not produce customer reports.
     let autonomousDebug: any = null;
     let dsmFailReason: string | null = null;
+    let topologyFidelity: TopologyFidelityResult | null = null;
     let dsmCoordinateMatchDebug: any = null;
     {
       let dsmGrid: any = null;
@@ -1391,6 +1392,28 @@ async function processJob(input: any) {
           source: e.source,
         })) : [],
       };
+
+      // ═══════════════════════════════════════════════════════════════
+      // TOPOLOGY FIDELITY ANALYSIS — detect fan-collapse, over-merging,
+      // structural divergence from realistic roof topology
+      // ═══════════════════════════════════════════════════════════════
+      topologyFidelity = analyzeTopologyFidelity(graph, footprintAreaSqftVal);
+      autonomousDebug.topology_fidelity = topologyFidelity;
+      console.log("[TOPOLOGY_FIDELITY]", JSON.stringify({
+        fidelity: topologyFidelity.topology_fidelity,
+        score: topologyFidelity.topology_fidelity_score,
+        facets: topologyFidelity.facet_count,
+        expected_min: topologyFidelity.expected_min_facets,
+        deficit: topologyFidelity.facet_deficit,
+        valley_to_ridge: topologyFidelity.valley_to_ridge_ratio,
+        ridge_to_eave: topologyFidelity.ridge_to_eave_ratio,
+        fan_collapse: topologyFidelity.fan_collapse_suspected,
+        central_node_deg: topologyFidelity.central_node_degree,
+        cross_roof_diags: topologyFidelity.diagonal_cross_roof_count,
+        dominant_plane: topologyFidelity.dominant_plane_ratio,
+        pitch_uniformity: topologyFidelity.pitch_uniformity_score,
+        issues: topologyFidelity.topology_issues,
+      }));
 
       // Failure waterfall — decoupled from edge classification when faces are validated
       const hasValidFaces = graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5;
@@ -4535,14 +4558,50 @@ async function processJob(input: any) {
     if (clipperFailureCount > 0) promotionGateFailedReasons.push(`clipper_failures=${clipperFailureCount}`);
     if (invalidEdgeClass) promotionGateFailedReasons.push("invalid_edge_classification");
 
+    // ═══════════════════════════════════════════════════════════════
+    // TOPOLOGY FIDELITY GATE — block promotion when the solved graph
+    // shows structural divergence (fan-collapse, over-merging, etc.)
+    // even if all geometric contracts pass.
+    // ═══════════════════════════════════════════════════════════════
+    const topoFidelityScore = topologyFidelity?.topology_fidelity_score ?? 100;
+    const topoFidelityRating = topologyFidelity?.topology_fidelity ?? 'high';
+    const topoIssues = topologyFidelity?.topology_issues ?? [];
+
+    if (topoFidelityRating === 'low') {
+      promotionGateFailedReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
+    }
+    if (topologyFidelity?.fan_collapse_suspected) {
+      promotionGateFailedReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
+    }
+    if ((topologyFidelity?.facet_deficit ?? 0) > 4) {
+      promotionGateFailedReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
+    }
+    if ((topologyFidelity?.valley_to_ridge_ratio ?? 1) < 0.10 && (topologyFidelity?.ridge_total_ft ?? 0) > 50) {
+      promotionGateFailedReasons.push(`valley_collapse:ratio=${topologyFidelity!.valley_to_ridge_ratio}`);
+    }
+
     const promotionGatePassed = promotionGateFailedReasons.length === 0;
-    const promotedGeometrySource = promotionGatePassed ? "dsm_validated" : "heuristic_estimate";
-    const promotedCustomerReportReady = promotionGatePassed;
+    // Geometry source remains dsm_validated if geometric contracts pass
+    // but customer_report_ready is blocked if topology fidelity is low
+    const geometricContractsPassed = promotionGateFailedReasons.every(r => 
+      r.startsWith('topology_fidelity') || r.startsWith('fan_collapse') || 
+      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse')
+    ) && promotionGateFailedReasons.length > 0;
+    
+    const promotedGeometrySource = promotionGatePassed 
+      ? "dsm_validated" 
+      : geometricContractsPassed 
+        ? "dsm_validated"  // Geometry is valid, topology is suspect
+        : "heuristic_estimate";
+    const promotedCustomerReportReady = promotionGatePassed; // Only true if ALL gates pass including topology
 
     console.log("[DSM_PROMOTION_GATE]", JSON.stringify({
       passed: promotionGatePassed,
       geometry_source: promotedGeometrySource,
       customer_report_ready: promotedCustomerReportReady,
+      topology_fidelity: topoFidelityRating,
+      topology_score: topoFidelityScore,
+      topology_issues: topoIssues,
       failed_reasons: promotionGateFailedReasons,
       inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
     }));
@@ -4650,6 +4709,24 @@ async function processJob(input: any) {
           promotion_gate_failed_reasons: promotionGateFailedReasons,
           promoted_geometry_source: promotedGeometrySource,
           promoted_customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+          // Topology fidelity analysis
+          topology_fidelity: topoFidelityRating,
+          topology_fidelity_score: topoFidelityScore,
+          topology_issues: topoIssues,
+          topology_metrics: topologyFidelity ? {
+            facet_count: topologyFidelity.facet_count,
+            expected_min_facets: topologyFidelity.expected_min_facets,
+            facet_deficit: topologyFidelity.facet_deficit,
+            valley_to_ridge_ratio: topologyFidelity.valley_to_ridge_ratio,
+            ridge_to_eave_ratio: topologyFidelity.ridge_to_eave_ratio,
+            longest_ridge_ratio: topologyFidelity.longest_ridge_ratio,
+            dominant_plane_ratio: topologyFidelity.dominant_plane_ratio,
+            fan_collapse_suspected: topologyFidelity.fan_collapse_suspected,
+            central_node_degree: topologyFidelity.central_node_degree,
+            diagonal_cross_roof_count: topologyFidelity.diagonal_cross_roof_count,
+            pitch_uniformity_score: topologyFidelity.pitch_uniformity_score,
+            pitch_range: topologyFidelity.pitch_range,
+          } : null,
         },
       })
       .select("id")
