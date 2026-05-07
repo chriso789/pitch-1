@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, XCircle, DollarSign, TrendingUp, Copy } from "lucide-react";
+import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, XCircle, DollarSign, TrendingUp, Copy, Package } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
@@ -23,20 +23,44 @@ const MaterialAuditPage = () => {
   const [activeTab, setActiveTab] = useState("price-lists");
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
 
   // ---- Queries ----
-  const { data: suppliers = [] } = useQuery({
-    queryKey: ["material-suppliers", tenantId],
+
+  // Price lists from supplier_pricebooks (grouped by supplier_name + effective_date)
+  const { data: pricebookGroups = [] } = useQuery({
+    queryKey: ["pricebook-groups", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data } = await supabase.from("material_suppliers").select("*").eq("company_id", tenantId).order("supplier_name");
-      return data || [];
+      const { data } = await supabase
+        .from("supplier_pricebooks")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
+      if (!data || data.length === 0) return [];
+      // Group by supplier_name + effective_date
+      const groups: Record<string, { supplier_name: string; effective_date: string; item_count: number; categories: Set<string>; is_active: boolean; imported_at: string }> = {};
+      data.forEach((item: any) => {
+        const key = `${item.supplier_name}||${item.effective_date || 'unknown'}`;
+        if (!groups[key]) {
+          groups[key] = {
+            supplier_name: item.supplier_name,
+            effective_date: item.effective_date || '',
+            item_count: 0,
+            categories: new Set(),
+            is_active: item.is_active,
+            imported_at: item.imported_at || item.created_at,
+          };
+        }
+        groups[key].item_count++;
+        if (item.category) groups[key].categories.add(item.category);
+      });
+      return Object.values(groups).map(g => ({ ...g, categories: Array.from(g.categories) }));
     },
     enabled: !!tenantId,
   });
 
-  const { data: priceLists = [] } = useQuery({
+  // Also check old supplier_price_lists table
+  const { data: legacyPriceLists = [] } = useQuery({
     queryKey: ["supplier-price-lists", tenantId, selectedSupplier],
     queryFn: async () => {
       if (!tenantId) return [];
@@ -48,30 +72,39 @@ const MaterialAuditPage = () => {
     enabled: !!tenantId,
   });
 
-  const { data: priceListItems = [] } = useQuery({
-    queryKey: ["price-list-items", tenantId, selectedSupplier],
+  // Material invoices from project_cost_invoices (the real data)
+  const { data: materialInvoices = [] } = useQuery({
+    queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
       if (!tenantId) return [];
-      let q = supabase.from("supplier_price_list_items").select("*").eq("company_id", tenantId).limit(200);
-      if (selectedSupplier !== "all") q = q.eq("supplier_id", selectedSupplier);
+      let q = supabase
+        .from("project_cost_invoices")
+        .select("*, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
+        .eq("tenant_id", tenantId)
+        .in("invoice_type", ["material"])
+        .order("created_at", { ascending: false });
+      if (selectedSupplier !== "all") {
+        q = q.ilike("vendor_name", `%${selectedSupplier}%`);
+      }
       const { data } = await q;
       return data || [];
     },
     enabled: !!tenantId,
   });
 
-  const { data: invoices = [] } = useQuery({
-    queryKey: ["material-invoices", tenantId, selectedSupplier],
-    queryFn: async () => {
-      if (!tenantId) return [];
-      let q = supabase.from("material_invoice_documents").select("*, material_suppliers(supplier_name)").eq("company_id", tenantId).order("created_at", { ascending: false });
-      if (selectedSupplier !== "all") q = q.eq("supplier_id", selectedSupplier);
-      const { data } = await q;
-      return data || [];
-    },
-    enabled: !!tenantId,
-  });
+  // Get unique vendor names for the supplier filter
+  const supplierNames = React.useMemo(() => {
+    const names = new Set<string>();
+    materialInvoices.forEach((inv: any) => {
+      if (inv.vendor_name) names.add(inv.vendor_name);
+    });
+    pricebookGroups.forEach((g: any) => {
+      if (g.supplier_name) names.add(g.supplier_name);
+    });
+    return Array.from(names).sort();
+  }, [materialInvoices, pricebookGroups]);
 
+  // Legacy audit tables (keep existing functionality)
   const { data: audits = [] } = useQuery({
     queryKey: ["material-audits", tenantId],
     queryFn: async () => {
@@ -102,63 +135,18 @@ const MaterialAuditPage = () => {
     enabled: !!tenantId,
   });
 
-  // ---- Mutations ----
-  const runAudit = useMutation({
-    mutationFn: async (invoiceDocumentId: string) => {
-      const { data, error } = await supabase.functions.invoke("audit-material-invoice", { body: { invoiceDocumentId } });
-      if (error) throw error;
-      return data;
+  // Legacy suppliers for unmatched mapping
+  const { data: legacySuppliers = [] } = useQuery({
+    queryKey: ["material-suppliers", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data } = await supabase.from("material_suppliers").select("*").eq("company_id", tenantId).order("supplier_name");
+      return data || [];
     },
-    onSuccess: (data) => {
-      toast.success(`Audit complete: ${data.matched} matched, ${data.unmatched} unmatched, $${Number(data.totalOvercharge || 0).toFixed(2)} overcharge`);
-      queryClient.invalidateQueries({ queryKey: ["material-audits"] });
-      queryClient.invalidateQueries({ queryKey: ["material-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines"] });
-    },
-    onError: (e: any) => toast.error(e.message || "Audit failed"),
-  });
-
-  const generateReport = useMutation({
-    mutationFn: async (auditId: string) => {
-      const { data, error } = await supabase.functions.invoke("generate-material-audit-report", { body: { auditId, format: "csv" } });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      if (data?.csvUrl) window.open(data.csvUrl, "_blank");
-      toast.success("Report generated");
-    },
-    onError: (e: any) => toast.error(e.message || "Report generation failed"),
-  });
-
-  const createClaim = useMutation({
-    mutationFn: async (auditId: string) => {
-      const { data, error } = await supabase.functions.invoke("create-supplier-credit-claim", { body: { auditId } });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      toast.success("Credit claim draft created");
-      queryClient.invalidateQueries({ queryKey: ["credit-claims"] });
-    },
-    onError: (e: any) => toast.error(e.message || "Failed to create claim"),
+    enabled: !!tenantId,
   });
 
   // ---- Helpers ----
-  const getStatusBadge = (type: string) => {
-    switch (type) {
-      case "overcharge": return <Badge variant="destructive">Overcharge</Badge>;
-      case "undercharge": return <Badge className="bg-orange-500">Undercharge</Badge>;
-      case "no_issue": return <Badge className="bg-emerald-600">No Issue</Badge>;
-      case "unmatched_item": return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Unmatched</Badge>;
-      case "uom_mismatch": return <Badge variant="outline" className="border-yellow-500 text-yellow-600">UOM Mismatch</Badge>;
-      case "needs_review": return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Needs Review</Badge>;
-      case "duplicate_charge_possible": return <Badge variant="destructive">Possible Duplicate</Badge>;
-      case "missing_price_list": return <Badge variant="outline" className="border-red-500 text-red-600">No Price List</Badge>;
-      default: return <Badge variant="outline">{type}</Badge>;
-    }
-  };
-
   const getAuditStatusBadge = (status: string) => {
     switch (status) {
       case "audited": return <Badge className="bg-emerald-600">Audited</Badge>;
@@ -169,18 +157,42 @@ const MaterialAuditPage = () => {
     }
   };
 
+  const getInvoiceStatusBadge = (status: string) => {
+    switch (status) {
+      case "verified": return <Badge className="bg-emerald-600">Verified</Badge>;
+      case "approved": return <Badge className="bg-blue-600">Approved</Badge>;
+      case "pending": return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Pending</Badge>;
+      case "rejected": return <Badge variant="destructive">Rejected</Badge>;
+      default: return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const totalInvoiceAmount = materialInvoices.reduce((sum: number, inv: any) => sum + Number(inv.invoice_amount || 0), 0);
   const totalOvercharges = audits.reduce((sum: number, a: any) => sum + Number(a.total_overcharge_amount || 0), 0);
   const openClaims = claims.filter((c: any) => !["credited", "closed", "denied"].includes(c.claim_status));
+  const totalPricebookItems = pricebookGroups.reduce((sum, g: any) => sum + g.item_count, 0);
 
-  // Chart data
-  const chartData = suppliers.map((s: any) => {
-    const supplierAudits = audits.filter((a: any) => a.supplier_id === s.id);
-    return {
-      name: s.supplier_name,
-      overcharge: supplierAudits.reduce((sum: number, a: any) => sum + Number(a.total_overcharge_amount || 0), 0),
-      undercharge: supplierAudits.reduce((sum: number, a: any) => sum + Number(a.total_undercharge_amount || 0), 0),
-    };
-  }).filter(d => d.overcharge > 0 || d.undercharge > 0);
+  // Chart data by vendor
+  const chartData = React.useMemo(() => {
+    const byVendor: Record<string, number> = {};
+    materialInvoices.forEach((inv: any) => {
+      const name = inv.vendor_name || "Unknown";
+      byVendor[name] = (byVendor[name] || 0) + Number(inv.invoice_amount || 0);
+    });
+    return Object.entries(byVendor)
+      .map(([name, total]) => ({ name, total: Number(total.toFixed(2)) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [materialInvoices]);
+
+  const filteredInvoices = React.useMemo(() => {
+    if (!searchTerm) return materialInvoices;
+    const term = searchTerm.toLowerCase();
+    return materialInvoices.filter((inv: any) =>
+      (inv.vendor_name || "").toLowerCase().includes(term) ||
+      (inv.invoice_number || "").toLowerCase().includes(term)
+    );
+  }, [materialInvoices, searchTerm]);
 
   return (
     <GlobalLayout>
@@ -190,10 +202,22 @@ const MaterialAuditPage = () => {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Price Lists</p>
+                  <p className="text-2xl font-bold">{pricebookGroups.length}</p>
+                  <p className="text-xs text-muted-foreground">{totalPricebookItems} items</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2">
                 <FileText className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Invoices Audited</p>
-                  <p className="text-2xl font-bold">{audits.length}</p>
+                  <p className="text-sm text-muted-foreground">Material Invoices</p>
+                  <p className="text-2xl font-bold">{materialInvoices.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -203,8 +227,8 @@ const MaterialAuditPage = () => {
               <div className="flex items-center gap-2">
                 <DollarSign className="h-5 w-5 text-destructive" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Overcharges</p>
-                  <p className="text-2xl font-bold text-destructive">${totalOvercharges.toFixed(2)}</p>
+                  <p className="text-sm text-muted-foreground">Total Material Spend</p>
+                  <p className="text-2xl font-bold">${totalInvoiceAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
               </div>
             </CardContent>
@@ -220,33 +244,20 @@ const MaterialAuditPage = () => {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-emerald-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Open Claims</p>
-                  <p className="text-2xl font-bold">{openClaims.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Overcharge Chart */}
+        {/* Spend by Vendor Chart */}
         {chartData.length > 0 && (
           <Card>
-            <CardHeader><CardTitle className="text-base">Overcharge by Supplier</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Material Spend by Vendor</CardTitle></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis tickFormatter={(v) => `$${v}`} />
-                  <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} />
-                  <Legend />
-                  <Bar dataKey="overcharge" fill="hsl(var(--destructive))" name="Overcharge" />
-                  <Bar dataKey="undercharge" fill="hsl(var(--primary))" name="Undercharge" />
+                  <XAxis dataKey="name" angle={-20} textAnchor="end" height={60} fontSize={12} />
+                  <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`} />
+                  <Tooltip formatter={(v: number) => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                  <Bar dataKey="total" fill="hsl(var(--primary))" name="Spend" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -259,7 +270,7 @@ const MaterialAuditPage = () => {
             <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Suppliers</SelectItem>
-              {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.supplier_name}</SelectItem>)}
+              {supplierNames.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
             </SelectContent>
           </Select>
           <div className="relative flex-1 max-w-sm">
@@ -271,7 +282,7 @@ const MaterialAuditPage = () => {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="price-lists">Supplier Price Lists</TabsTrigger>
-            <TabsTrigger value="invoice-queue">Invoice Audit Queue</TabsTrigger>
+            <TabsTrigger value="invoice-queue">Invoice Audit Queue ({materialInvoices.length})</TabsTrigger>
             <TabsTrigger value="audit-results">Audit Results</TabsTrigger>
             <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
             <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
@@ -285,10 +296,9 @@ const MaterialAuditPage = () => {
                   <CardTitle className="text-base">Price Agreements</CardTitle>
                   <CardDescription>Active supplier price lists and imported agreements</CardDescription>
                 </div>
-                <ImportPriceListDialog tenantId={tenantId} suppliers={suppliers} onSuccess={() => {
+                <ImportPriceListDialog tenantId={tenantId} suppliers={legacySuppliers} onSuccess={() => {
+                  queryClient.invalidateQueries({ queryKey: ["pricebook-groups"] });
                   queryClient.invalidateQueries({ queryKey: ["supplier-price-lists"] });
-                  queryClient.invalidateQueries({ queryKey: ["price-list-items"] });
-                  queryClient.invalidateQueries({ queryKey: ["material-suppliers"] });
                 }} />
               </CardHeader>
               <CardContent>
@@ -296,26 +306,54 @@ const MaterialAuditPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Supplier</TableHead>
-                      <TableHead>List Name</TableHead>
-                      <TableHead>Effective</TableHead>
+                      <TableHead>Effective Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Items</TableHead>
+                      <TableHead>Categories</TableHead>
+                      <TableHead>Imported</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {priceLists.map((pl: any) => (
+                    {pricebookGroups.map((g: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">{g.supplier_name}</TableCell>
+                        <TableCell>{g.effective_date || "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
+                            {g.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{g.item_count}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {g.categories.slice(0, 3).map((c: string) => (
+                              <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+                            ))}
+                            {g.categories.length > 3 && <Badge variant="outline" className="text-xs">+{g.categories.length - 3}</Badge>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Also show legacy price lists */}
+                    {legacyPriceLists.map((pl: any) => (
                       <TableRow key={pl.id}>
                         <TableCell className="font-medium">{(pl as any).material_suppliers?.supplier_name}</TableCell>
-                        <TableCell>{pl.list_name}</TableCell>
                         <TableCell>{pl.effective_start_date} — {pl.effective_end_date || "∞"}</TableCell>
                         <TableCell>
                           <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
                         </TableCell>
-                        <TableCell>{priceListItems.filter((i: any) => i.price_list_id === pl.id).length}</TableCell>
+                        <TableCell>—</TableCell>
+                        <TableCell>—</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(pl.created_at).toLocaleDateString()}
+                        </TableCell>
                       </TableRow>
                     ))}
-                    {priceLists.length === 0 && (
-                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
+                    {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -323,42 +361,45 @@ const MaterialAuditPage = () => {
             </Card>
           </TabsContent>
 
-          {/* Tab 2: Invoice Queue */}
+          {/* Tab 2: Invoice Queue - pulls from project_cost_invoices */}
           <TabsContent value="invoice-queue">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Invoice Audit Queue</CardTitle>
-                <CardDescription>Invoices pending or completed audit</CardDescription>
+                <CardTitle className="text-base">Material Invoice Queue</CardTitle>
+                <CardDescription>Material invoices uploaded to projects — compare against price lists</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Invoice #</TableHead>
-                      <TableHead>Supplier</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>Project</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Audit Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Uploaded</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {invoices.map((inv: any) => (
-                      <TableRow key={inv.id}>
-                        <TableCell className="font-medium">{inv.invoice_number || "—"}</TableCell>
-                        <TableCell>{(inv as any).material_suppliers?.supplier_name || inv.supplier_detected_name || "Unknown"}</TableCell>
-                        <TableCell>{inv.invoice_date || "—"}</TableCell>
-                        <TableCell>${Number(inv.invoice_total || 0).toFixed(2)}</TableCell>
-                        <TableCell>{getAuditStatusBadge(inv.audit_status)}</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="outline" onClick={() => runAudit.mutate(inv.id)} disabled={runAudit.isPending || !inv.supplier_id}>
-                            <Play className="h-3 w-3 mr-1" />Run Audit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {invoices.length === 0 && (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No invoices found</TableCell></TableRow>
+                    {filteredInvoices.map((inv: any) => {
+                      const projectName = inv.pipeline_entries?.lead_name ||
+                        (inv.pipeline_entries?.contacts ? `${inv.pipeline_entries.contacts.first_name} ${inv.pipeline_entries.contacts.last_name}` : null) ||
+                        "—";
+                      return (
+                        <TableRow key={inv.id}>
+                          <TableCell className="font-medium">{inv.invoice_number || "—"}</TableCell>
+                          <TableCell>{inv.vendor_name || "Unknown"}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{projectName}</TableCell>
+                          <TableCell>{inv.invoice_date || "—"}</TableCell>
+                          <TableCell className="font-medium">${Number(inv.invoice_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell>{getInvoiceStatusBadge(inv.status)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{new Date(inv.created_at).toLocaleDateString()}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {filteredInvoices.length === 0 && (
+                      <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No material invoices found</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -366,7 +407,7 @@ const MaterialAuditPage = () => {
             </Card>
           </TabsContent>
 
-          {/* Tab 3: Audit Results */}
+          {/* Tab 3: Audit Results (legacy) */}
           <TabsContent value="audit-results">
             <Card>
               <CardHeader>
@@ -399,14 +440,9 @@ const MaterialAuditPage = () => {
                           <TableCell className={Number(a.total_overcharge_amount) > 0 ? "text-destructive font-bold" : ""}>${Number(a.total_overcharge_amount || 0).toFixed(2)}</TableCell>
                           <TableCell>{getAuditStatusBadge(a.audit_status)}</TableCell>
                           <TableCell className="space-x-1">
-                            <Button size="sm" variant="ghost" onClick={() => generateReport.mutate(a.id)} title="Download CSV">
+                            <Button size="sm" variant="ghost" title="Download CSV">
                               <Download className="h-3 w-3" />
                             </Button>
-                            {Number(a.total_overcharge_amount) > 0 && (
-                              <Button size="sm" variant="ghost" onClick={() => createClaim.mutate(a.id)} title="Create Credit Claim">
-                                <DollarSign className="h-3 w-3" />
-                              </Button>
-                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -422,7 +458,7 @@ const MaterialAuditPage = () => {
 
           {/* Tab 4: Unmatched Mapping */}
           <TabsContent value="unmatched">
-            <UnmatchedMappingTab tenantId={tenantId} unmatchedLines={unmatchedLines} suppliers={suppliers} queryClient={queryClient} />
+            <UnmatchedMappingTab tenantId={tenantId} unmatchedLines={unmatchedLines} suppliers={legacySuppliers} queryClient={queryClient} />
           </TabsContent>
 
           {/* Tab 5: Credit Claims */}
@@ -494,7 +530,6 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
     }
     setImporting(true);
     try {
-      // Parse CSV rows
       const lines = form.rawCsv.trim().split("\n");
       const header = lines[0].split(",").map(h => h.trim().toLowerCase());
       const rows = lines.slice(1).map(line => {
@@ -581,7 +616,6 @@ function UnmatchedMappingTab({ tenantId, unmatchedLines, suppliers, queryClient 
       created_by: (await supabase.auth.getUser()).data?.user?.id,
     });
     if (error) { toast.error(error.message); return; }
-    // Update audit line status
     await supabase.from("material_invoice_audit_lines").update({ discrepancy_status: "mapped" }).eq("id", mappingLine.id);
     toast.success("Mapping saved. Future audits will auto-match this item.");
     setMappingLine(null);
@@ -593,7 +627,7 @@ function UnmatchedMappingTab({ tenantId, unmatchedLines, suppliers, queryClient 
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Unmatched Material Mapping</CardTitle>
-        <CardDescription>Map invoice line items to the correct price list item. Mappings are supplier-specific.</CardDescription>
+        <CardDescription>Map invoice line items to the correct price list item.</CardDescription>
       </CardHeader>
       <CardContent>
         {mappingLine && (
