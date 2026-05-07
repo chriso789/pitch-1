@@ -1,74 +1,92 @@
-The cause is now clear from the live function logs: the engine is still selecting `google_solar_mask_contour` even when it is massively larger than the actual roof.
+I’ll implement this as a measurement pipeline hardening pass, not as looser gates.
 
-For the current example, the candidate log shows:
+## Plan
 
-```text
-google_solar_segments_union: 2,398 sqft, valid, score 0.996
-google_solar_bbox:           2,454 sqft, valid, score 0.811
-google_solar_segments_hull:  3,131 sqft, valid, score 0.987
-google_solar_mask_contour:  17,592 sqft, valid, score 1.000  <-- selected incorrectly
-```
+### 1. Add an authoritative footprint registration gate before footprint acceptance
+In `supabase/functions/start-ai-measurement/index.ts`, I’ll extend footprint candidate scoring so every candidate is evaluated against the exact raster frame used for the satellite/DSM overlay.
 
-That means the hard gates are not catching this case because the bad mask still has `coverage_ratio_vs_solar_bbox = 1.0`. It covers the Solar bbox, but also spills far outside it into the whole tile/neighbor area. The code is only checking whether the candidate covers enough of the Solar bbox, not whether the candidate has too much area outside the Solar bbox.
+For each candidate, persist and score:
+- `footprint_projected_bbox`
+- `visible_roof_bbox`
+- `centroid_offset_px`
+- `roof_image_overlap_score`
+- `candidate_bbox_vs_visible_roof_bbox`
+- `imagery_tile_bounds`
+- `dsm_bounds`
+- `raster_transform`
 
-I will fix the footprint selection stage first, before any ridge/hip/area calculation runs.
+The candidate will fail with `footprint_registration_mismatch` if it projects onto yard/driveway instead of the visible roof/mask/edge target.
 
-Implementation plan:
+### 2. Stop solar union/hull from winning unless registered to roof evidence
+For `google_solar_segments_union` and `google_solar_segments_hull`, I’ll add stricter acceptance rules:
+- Require overlap with DSM roof mask or DSM edge/visible roof evidence.
+- Require `centroid_offset_px <= 20`.
+- Require `roof_image_overlap_score >= 0.75`.
+- Otherwise reject with `footprint_registration_mismatch`.
 
-1. Add an exterior spillover gate to footprint candidate scoring
-   - Compute `outside_solar_bbox_area_px = candidate_area_px - candidate∩solar_bbox_area_px`.
-   - Compute `outside_solar_bbox_ratio = outside_solar_bbox_area_px / candidate_area_px`.
-   - Reject candidates when most of their area is outside the Solar building bbox.
-   - This would reject the current 17,592 sqft `google_solar_mask_contour` because only about 2,454 sqft overlaps the Solar bbox and the rest is yard/neighbors/tile area.
+This specifically targets Palm Harbor, where the solar footprint appears shifted off the roof onto driveway/yard.
 
-2. Add a candidate-vs-Solar-bbox area ratio gate
-   - Compare each candidate area directly to the Solar building bbox area.
-   - Reject if `candidate_area / solar_bbox_area` is too high, e.g. over about `1.35` for mask contours and other non-authoritative footprints.
-   - In this case: `17,592 / 2,454 = 7.17x`, so it would hard fail immediately.
+### 3. Add visible-roof fallback acquisition before declaring `missing_valid_footprint`
+If Solar segment footprints fail registration:
+1. Try Google Solar roof mask connected-component contour, projected into the same satellite raster frame.
+2. If mask is absent/invalid, try existing imagery segmentation footprint if available.
+3. If no automatic footprint can register, fail as `missing_valid_footprint` with full debug data.
 
-3. Make Google Solar mask contour non-authoritative unless it passes containment checks
-   - Keep mask contour as useful evidence.
-   - Do not let it auto-win just because it has high coverage.
-   - Only boost it if:
-     - area is close to Solar segment/bbox area,
-     - outside-spill ratio is low,
-     - bbox size is plausible,
-     - and it is near the selected roof target.
+I will not use parcel or broad bbox as a production footprint.
 
-4. Prefer the roof-only candidate when the mask is inflated
-   - For this example, the selected footprint should fall back to `google_solar_segments_union` or `google_solar_bbox`, not `google_solar_mask_contour`.
-   - The green footprint should then stay around the actual roof instead of the entire lot/neighbor area.
+### 4. Make failed diagnostic reports show registration evidence
+I’ll enrich failed `roof_measurements.geometry_report_json` / job `source_context` debug payloads so failed reports include:
+- attempted footprint
+- visible roof bbox
+- projected bbox
+- centroid offset
+- roof image overlap score
+- DSM loaded/mask loaded status
+- DSM/imagery bounds
+- rejection reason
 
-5. Add a pre-solver hard fail for inflated footprints
-   - If a footprint candidate is already known to be inflated, the engine must not call `solveAutonomousGraph`.
-   - Failure code should be specific, e.g. `invalid_roof_footprint:mask_spills_outside_roof_target` or `invalid_roof_footprint:area_inflation_vs_solar_bbox`.
+Then I’ll update `src/components/measurements/MeasurementReportDialog.tsx` to surface these fields in the diagnostic summary and PDF download, so failed reports are useful for debugging even when not customer-ready.
 
-6. Store better diagnostics in failed/internal reports
-   - Add these fields to the footprint debug payload:
-     - `candidate_area_sqft`
-     - `solar_bbox_area_sqft`
-     - `candidate_to_solar_bbox_ratio`
-     - `outside_solar_bbox_ratio`
-     - `outside_solar_bbox_area_sqft`
-     - `selected_candidate_source`
-     - all rejected candidate reasons
-   - This will make the diagnostic report explain exactly why a footprint was rejected.
+### 5. Keep customer report gate strict
+I’ll ensure `customer_report_ready` remains false unless both are true:
+- `footprint_registration_passed = true`
+- `topology_fidelity_passed = true`
 
-7. Ensure blocked measurement jobs are consistently marked blocked at the job level
-   - The result row is blocked, but recent `ai_measurement_jobs.report_blocked` still shows false in the database query.
-   - I will align the job record update so the job itself also has `report_blocked = true`, `needs_review = true`, and a useful `source_context.gate_reason` when measurement output is not publishable.
+This keeps debug downloads available while preventing bad customer-ready reports.
 
-8. Deploy and validate against the logged failing case
-   - Re-run/validate the measurement function for `909 Windton Oak Dr`.
-   - Expected outcome:
-     - `google_solar_mask_contour` is rejected due to area spill/inflation.
-     - selected footprint is roof-sized (`~2,400–3,100 sqft`) or the job fails with `invalid_roof_footprint`.
-     - no customer-ready report is produced if the footprint is not roof-only.
+### 6. Fix Fonsica topology collapse classification separately
+In `supabase/functions/_shared/autonomous-graph-solver.ts`, I’ll tighten topology fidelity detection so a roof like Fonsica cannot report as an edge-classification problem when the real failure is collapsed structure.
 
-Technical target files:
+Rules to add/strengthen:
+- If many raw DSM edges collapse into too few planes, fail `topology_undersegmented` before `invalid_edge_classification`.
+- For complex footprints, require `expected_min_faces >= 8`.
+- Prevent any single plane from covering more than 35% of roof area.
+- Preserve local ridge/valley clusters through clustering diagnostics/gates.
+- Persist `topology_fidelity` summary with raw edges, clustered edges, faces attempted, faces validated, max plane area ratio, expected min faces, and failure reason.
 
-```text
-supabase/functions/start-ai-measurement/index.ts
-```
+### 7. Add the requested return metrics into persisted diagnostics
+For each rerun, the measurement/job debug payload will expose:
+- `footprint_registration_passed`
+- `centroid_offset_px`
+- `roof_image_overlap_score`
+- `dsm_loaded`
+- `raw_edges`
+- `clustered_edges`
+- `faces_attempted`
+- `faces_validated`
+- `topology_fidelity`
+- `customer_report_ready`
 
-No UI change is required for the root fix. This is a backend measurement-gate correction.
+### 8. Deploy and re-run the three measurements
+After implementation I’ll deploy the updated edge function pipeline and re-run/audit:
+- 4063 Fonsica
+- 9 Palm Harbor
+- 309 Montelluna
+
+Then I’ll report back the exact metrics requested for all three.
+
+## Technical notes
+
+Current code already has basic projection diagnostics and DSM coordinate matching, but it does not yet gate candidate footprints against a visible roof/mask/edge target before acceptance. The missing piece is a pre-solver registration contract: candidate footprint must overlap the visible roof evidence in the same raster frame before DSM topology is allowed to run.
+
+Fonsica will remain blocked unless topology fidelity passes; Palm Harbor and Montelluna should be blocked earlier as footprint registration/acquisition failures until their footprint aligns to actual roof evidence.
