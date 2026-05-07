@@ -215,6 +215,67 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
   };
 
+  const handleStartEditPrice = () => {
+    setEditPrice(sellingPrice.toFixed(2));
+    setIsEditingPrice(true);
+  };
+
+  const handleSavePrice = async () => {
+    const newPrice = parseFloat(editPrice);
+    if (isNaN(newPrice) || newPrice <= 0) {
+      toast.error('Enter a valid price');
+      return;
+    }
+
+    const estimateId = (estimateData as any)?.selected_estimate_id;
+    if (!estimateId) {
+      toast.error('No estimate selected to update');
+      return;
+    }
+
+    setIsSavingPrice(true);
+    try {
+      // Fetch current estimate to get cost data
+      const { data: estimate, error: fetchError } = await supabase
+        .from('enhanced_estimates')
+        .select('material_cost, labor_cost, overhead_percent, sales_tax_amount')
+        .eq('id', estimateId)
+        .single();
+
+      if (fetchError || !estimate) throw new Error('Could not fetch estimate');
+
+      const directCost = (estimate.material_cost || 0) + (estimate.labor_cost || 0);
+      const tax = estimate.sales_tax_amount || 0;
+      const preTax = newPrice - tax;
+      const ohRate = estimate.overhead_percent || overheadRate;
+      const ohAmount = preTax * (ohRate / 100);
+      const profit = preTax - directCost - ohAmount;
+      const profitPct = preTax > 0 ? (profit / preTax) * 100 : 0;
+
+      const { error } = await supabase
+        .from('enhanced_estimates')
+        .update({
+          selling_price: newPrice,
+          overhead_amount: Math.round(ohAmount * 100) / 100,
+          actual_profit_amount: Math.round(profit * 100) / 100,
+          actual_profit_percent: Math.round(profitPct * 100) / 100,
+        })
+        .eq('id', estimateId);
+
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
+      toast.success(`Selling price updated to ${formatCurrency(newPrice)}`);
+      setIsEditingPrice(false);
+    } catch (err: any) {
+      toast.error(`Failed to update price: ${err.message}`);
+    } finally {
+      setIsSavingPrice(false);
+    }
+  };
+
   const VarianceIndicator = ({ variance }: { variance: number }) => {
     if (variance === 0 || !hasActualMaterial && !hasActualLabor) {
       return <span className="text-muted-foreground">-</span>;
