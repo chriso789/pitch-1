@@ -301,22 +301,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       testId: TEST_IDS.sidebar.calendar,
       featureKey: "calendar"
     },
-    // Communications is now an expandable section - see communicationsSubNav below
-    {
-      name: "Smart Docs",
-      href: "smartdocs",
-      path: "/smartdocs",
-      icon: BookOpen,
-      description: "Document templates & library",
-      featureKey: "smart_docs"
-    },
-    {
-      name: "PDF Workspace",
-      href: "documents/pdf-workspace",
-      path: "/documents/pdf-workspace",
-      icon: FileText,
-      description: "Edit & annotate PDFs",
-    },
+    // Documents is now an expandable section - see below
     {
       name: "Presentations",
       href: "presentations",
