@@ -1960,7 +1960,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: Edge clustering =====
+  // ===== STEP 6: Topology-aware edge clustering =====
   const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
@@ -1972,9 +1972,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }))
     : [];
   
-  const clusteredEdgesPx = clusterEdges(rawDsmInteriorEdgesPx);
+  // Compute footprint area in pixel space for oversized-plane prevention
+  const footprintAreaPx2 = footprintPx.length >= 3
+    ? Math.abs(footprintPx.reduce((sum, p, i) => {
+        const q = footprintPx[(i + 1) % footprintPx.length];
+        return sum + (p.x * q.y - q.x * p.y);
+      }, 0) / 2)
+    : 0;
+
+  const clusterResult = clusterEdges(rawDsmInteriorEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
+  const clusteredEdgesPx = clusterResult.clustered;
+  const clusterDiag = clusterResult.diagnostics;
   edgeCountAfterCluster = clusteredEdgesPx.length;
-  console.log(`  Edge clustering: ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+  console.log(`  Edge clustering (topology-aware): ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+  console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region rejections: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized rejections: ${clusterDiag.oversized_plane_rejections}`);
+  console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}`);
 
   // ===== STEP 6b: Cap interior edges =====
   let dsmInteriorEdgesPx = clusteredEdgesPx
