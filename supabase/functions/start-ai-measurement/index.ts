@@ -4566,26 +4566,43 @@ async function processJob(input: any) {
     const topoFidelityScore = topologyFidelity?.topology_fidelity_score ?? 100;
     const topoFidelityRating = topologyFidelity?.topology_fidelity ?? 'high';
     const topoIssues = topologyFidelity?.topology_issues ?? [];
+    const topologyBlockReasons: string[] = [];
 
     if (topoFidelityRating === 'low') {
-      promotionGateFailedReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
+      topologyBlockReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
     }
     if (topologyFidelity?.fan_collapse_suspected) {
-      promotionGateFailedReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
+      topologyBlockReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
     }
     if ((topologyFidelity?.facet_deficit ?? 0) > 4) {
-      promotionGateFailedReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
+      topologyBlockReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
     }
-    if ((topologyFidelity?.valley_to_ridge_ratio ?? 1) < 0.10 && (topologyFidelity?.ridge_total_ft ?? 0) > 50) {
-      promotionGateFailedReasons.push(`valley_collapse:ratio=${topologyFidelity!.valley_to_ridge_ratio}`);
+    if (topologyFidelity?.valley_collapse_suspected) {
+      topologyBlockReasons.push(`valley_collapse:ratio=${topologyFidelity.valley_to_ridge_ratio},valley_ft=${topologyFidelity.valley_total_ft}`);
     }
+    if (topologyFidelity?.ridge_inflation_suspected) {
+      topologyBlockReasons.push(`ridge_inflation:ridge_ft=${topologyFidelity.ridge_total_ft},ridge_to_valley=${topologyFidelity.ridge_to_valley_ratio}`);
+    }
+    if ((topologyFidelity?.diagonal_span_ratio ?? 0) > 0.50 || (topologyFidelity?.diagonal_cross_roof_count ?? 0) > 0) {
+      topologyBlockReasons.push(`cross_roof_diagonal:span_ratio=${topologyFidelity?.diagonal_span_ratio},count=${topologyFidelity?.diagonal_cross_roof_count}`);
+    }
+    if (topologyFidelity?.planes_need_refinement) {
+      topologyBlockReasons.push(`plane_refinement_required:max_plane_ratio=${topologyFidelity.max_plane_area_ratio}`);
+    }
+    if (topologyFidelity?.pitch_fragmentation_suspected) {
+      topologyBlockReasons.push(`pitch_fragmentation:range=${topologyFidelity.pitch_range},uniformity=${topologyFidelity.pitch_uniformity_score}`);
+    }
+    promotionGateFailedReasons.push(...topologyBlockReasons);
+    const topologyMismatch = topologyBlockReasons.length > 0;
 
     const promotionGatePassed = promotionGateFailedReasons.length === 0;
     // Geometry source remains dsm_validated if geometric contracts pass
     // but customer_report_ready is blocked if topology fidelity is low
     const geometricContractsPassed = promotionGateFailedReasons.every(r => 
       r.startsWith('topology_fidelity') || r.startsWith('fan_collapse') || 
-      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse')
+      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse') ||
+      r.startsWith('ridge_inflation') || r.startsWith('cross_roof_diagonal') ||
+      r.startsWith('plane_refinement_required') || r.startsWith('pitch_fragmentation')
     ) && promotionGateFailedReasons.length > 0;
     
     const promotedGeometrySource = promotionGatePassed 
@@ -4599,12 +4616,24 @@ async function processJob(input: any) {
       passed: promotionGatePassed,
       geometry_source: promotedGeometrySource,
       customer_report_ready: promotedCustomerReportReady,
+      status: topologyMismatch ? "topology_mismatch" : (promotionGatePassed ? "completed" : "needs_review"),
       topology_fidelity: topoFidelityRating,
       topology_score: topoFidelityScore,
       topology_issues: topoIssues,
       failed_reasons: promotionGateFailedReasons,
       inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
     }));
+
+    if (topologyMismatch) {
+      geometryReportJson.status = "topology_mismatch";
+      geometryReportJson.reason = `topology_mismatch:${topologyBlockReasons.join(",")}`;
+      geometryReportJson.block_customer_report_reason = geometryReportJson.reason;
+      geometryReportJson.topology_fidelity = topologyFidelity;
+      aiDetectionData.status = "topology_mismatch";
+      aiDetectionData.reason = geometryReportJson.reason;
+      aiDetectionData.block_customer_report_reason = geometryReportJson.reason;
+      aiDetectionData.topology_fidelity = topologyFidelity;
+    }
 
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
@@ -4643,12 +4672,14 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
-        validation_status: vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
+        validation_status: topologyMismatch ? "needs_internal_review" : vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
         customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
-        internal_debug_report_ready: reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
+        internal_debug_report_ready: topologyMismatch || reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
-          : blockCustomerReportReason,
+          : topologyMismatch
+            ? `topology_mismatch:${topologyBlockReasons.join(",")}`
+            : blockCustomerReportReason,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
@@ -4713,17 +4744,33 @@ async function processJob(input: any) {
           topology_fidelity: topoFidelityRating,
           topology_fidelity_score: topoFidelityScore,
           topology_issues: topoIssues,
+          topology_mismatch: topologyMismatch,
+          topology_block_reasons: topologyBlockReasons,
           topology_metrics: topologyFidelity ? {
             facet_count: topologyFidelity.facet_count,
             expected_min_facets: topologyFidelity.expected_min_facets,
             facet_deficit: topologyFidelity.facet_deficit,
+            ridge_count: topologyFidelity.ridge_count,
+            valley_count: topologyFidelity.valley_count,
+            ridge_total_ft: topologyFidelity.ridge_total_ft,
+            valley_total_ft: topologyFidelity.valley_total_ft,
             valley_to_ridge_ratio: topologyFidelity.valley_to_ridge_ratio,
+            ridge_to_valley_ratio: topologyFidelity.ridge_to_valley_ratio,
             ridge_to_eave_ratio: topologyFidelity.ridge_to_eave_ratio,
             longest_ridge_ratio: topologyFidelity.longest_ridge_ratio,
             dominant_plane_ratio: topologyFidelity.dominant_plane_ratio,
+            max_plane_area_ratio: topologyFidelity.max_plane_area_ratio,
+            average_plane_area_sqft: topologyFidelity.average_plane_area_sqft,
+            local_cluster_count: topologyFidelity.local_cluster_count,
             fan_collapse_suspected: topologyFidelity.fan_collapse_suspected,
             central_node_degree: topologyFidelity.central_node_degree,
             diagonal_cross_roof_count: topologyFidelity.diagonal_cross_roof_count,
+            diagonal_span_ratio: topologyFidelity.diagonal_span_ratio,
+            valley_collapse_suspected: topologyFidelity.valley_collapse_suspected,
+            ridge_inflation_suspected: topologyFidelity.ridge_inflation_suspected,
+            oversized_continuous_plane_suspected: topologyFidelity.oversized_continuous_plane_suspected,
+            planes_need_refinement: topologyFidelity.planes_need_refinement,
+            pitch_fragmentation_suspected: topologyFidelity.pitch_fragmentation_suspected,
             pitch_uniformity_score: topologyFidelity.pitch_uniformity_score,
             pitch_range: topologyFidelity.pitch_range,
           } : null,
@@ -4750,7 +4797,7 @@ async function processJob(input: any) {
     // The geometry-first rewrite still saved totals/planes, but no longer wrote
     // ai_measurement_diagrams, which made the report dialog show "No diagrams available".
     try {
-      if (!blockCustomerReportReason && planeRows.length > 0) {
+      if (!blockCustomerReportReason && !topologyMismatch && planeRows.length > 0) {
         // ── AERIAL STRUCTURAL DIAGRAM QA ──
         const diagramQA = validateAerialStructuralMatch({
           solverPlanes: planeRows.map((p: any) => ({ polygon_px: p.polygon_px, source: p.source })),
@@ -4857,6 +4904,8 @@ async function processJob(input: any) {
     // Geometry collapse → never call this "completed" for the customer.
     const finalAiStatus = !measurementIsValid
       ? "failed"
+      : topologyMismatch
+      ? "topology_mismatch"
       : needsInternalReview
       ? "needs_internal_review"
       : blockCustomerReportReason
@@ -4869,7 +4918,9 @@ async function processJob(input: any) {
     // allows queued/processing/completed/failed. Keep the richer review state on
     // ai_measurement_jobs, but stop the UI spinner by marking the legacy job complete.
     const finalJobStatus = "completed";
-    const finalJobMessage = blockCustomerReportReason
+    const finalJobMessage = topologyMismatch
+      ? `Measurement blocked — topology mismatch (${topologyBlockReasons.join(", ")})`
+      : blockCustomerReportReason
       ? `Measurement needs review — geometry covered only part of the roof. (${blockCustomerReportReason})`
       : "Measurement complete";
 
@@ -5604,7 +5655,7 @@ async function setMeasurementJobStatus(id: string, status: string, msg: string, 
   if (error) console.error("setMeasurementJobStatus failed", { id, status, legacyStatus, error });
 }
 async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
-  const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement"].includes(status);
+  const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement", "topology_mismatch"].includes(status);
   await supabase.from("ai_measurement_jobs").update({
     status, status_message: msg,
     updated_at: new Date().toISOString(),

@@ -30,10 +30,13 @@ import {
   GRID_SNAP_PX,
   MIN_FACE_AREA_RATIO,
   MIN_FACE_AREA_ABS_PX,
+  MAX_STRUCTURAL_SPAN_RATIO,
+  MAX_STRUCTURAL_EXTENSION_PX,
+  MAX_STRUCTURAL_MERGE_GAP_PX,
 } from "./solver-config.ts";
 
 type Pt = { x: number; y: number };
-type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number };
+type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number; originalLengthPx?: number; autoExtended?: boolean };
 
 // ── FORMALIZED SOLVER CONTRACT ─────────────────────────────────────
 export interface PlanarRoofSolverInput {
@@ -103,6 +106,17 @@ function dist(a: Pt, b: Pt): number {
 
 function segmentLength(seg: Seg): number {
   return dist(seg.a, seg.b);
+}
+
+function isStructural(seg: Seg): boolean {
+  return seg.edgeType === 'ridge' || seg.edgeType === 'valley' || seg.edgeType === 'hip';
+}
+
+function footprintDiagonal(footprint: Pt[]): number {
+  if (footprint.length === 0) return 1;
+  const xs = footprint.map(p => p.x);
+  const ys = footprint.map(p => p.y);
+  return Math.max(1, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)));
 }
 
 function sub(a: Pt, b: Pt): Pt {
@@ -227,8 +241,9 @@ function snapInteriorFragmentsToGraph(rawLines: Seg[], footprint: Pt[]): Seg[] {
 }
 
 // ── EXTEND LINE TO FOOTPRINT ─────────────────────────────
-function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
+function extendLineToFootprint(seg: Seg, footprint: Pt[], maxExtraPx = Infinity, maxSpanPx = Infinity): Seg | null {
   const dir = sub(seg.b, seg.a);
+  const originalLen = segmentLength(seg);
   if (Math.hypot(dir.x, dir.y) < 4) return null;
 
   const hits: Array<{ point: Pt; t: number }> = [];
@@ -250,12 +265,19 @@ function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
     if (!unique.some((u) => dist(u.point, h.point) < 3)) unique.push(h);
   }
   if (unique.length >= 2) {
-    return { ...seg, a: unique[0].point, b: unique[unique.length - 1].point };
+    const candidate = { ...seg, a: unique[0].point, b: unique[unique.length - 1].point, originalLengthPx: originalLen, autoExtended: true };
+    const extendedLen = segmentLength(candidate);
+    if (extendedLen > maxSpanPx || extendedLen - originalLen > maxExtraPx) return null;
+    return candidate;
   }
 
   const a = snapToFootprint(seg.a, footprint, 12);
   const b = snapToFootprint(seg.b, footprint, 12);
-  return ptKey(a) !== ptKey(b) ? { ...seg, a, b } : null;
+  const candidate = ptKey(a) !== ptKey(b) ? { ...seg, a, b, originalLengthPx: originalLen, autoExtended: true } : null;
+  if (!candidate) return null;
+  const extendedLen = segmentLength(candidate);
+  if (extendedLen > maxSpanPx || extendedLen - originalLen > maxExtraPx) return null;
+  return candidate;
 }
 
 // ── COLLINEAR MERGE ──────────────────────────────────────
@@ -292,11 +314,18 @@ function mergeCollinearSegments(segments: Seg[]): Seg[] {
         const perpDist = projMid ? dist(midJ, projMid) : 999;
         if (perpDist > 15) continue; // too far apart
 
-        // Overlapping or adjacent (gap < 10px)
-        if (minT <= t2 + 10 && maxT >= t1 - 10) {
+        // Overlapping or adjacent. Structural dividers use a much tighter gap
+        // so short local ridge/valley fragments do not merge into global spans.
+        const allowedGap = (isStructural(current) || isStructural(segments[j])) ? MAX_STRUCTURAL_MERGE_GAP_PX : 10;
+        if (minT <= t2 + allowedGap && maxT >= t1 - allowedGap) {
+          const currentLen = segmentLength(current);
           const allT = [t1, t2, minT, maxT];
           const globalMin = Math.min(...allT);
           const globalMax = Math.max(...allT);
+          const candidateSpan = globalMax - globalMin;
+          if ((isStructural(current) || isStructural(segments[j])) && candidateSpan > Math.max(currentLen, segmentLength(segments[j])) + allowedGap) {
+            continue;
+          }
           const newA = snap({ x: current.a.x + nx * globalMin, y: current.a.y + ny * globalMin });
           const newB = snap({ x: current.a.x + nx * globalMax, y: current.a.y + ny * globalMax });
           // Preserve higher priority type
@@ -856,6 +885,8 @@ export function solveRoofPlanes(
 
   // 1. Snap footprint
   const footprint = rawFootprint.map(p => snap(p));
+  const roofDiagonalPx = footprintDiagonal(footprint);
+  const maxStructuralSpanPx = roofDiagonalPx * MAX_STRUCTURAL_SPAN_RATIO;
 
   // 2. Convert interior lines with metadata
   const snappedInterior: Seg[] = interiorLines
@@ -864,6 +895,7 @@ export function solveRoofPlanes(
       source: 'interior' as const,
       edgeType: (seg.type || 'unclassified') as Seg['edgeType'],
       edgeScore: seg.score || 0.5,
+      originalLengthPx: dist(snap(seg.a), snap(seg.b)),
     }))
     .filter((seg) => segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 
@@ -871,11 +903,15 @@ export function solveRoofPlanes(
     .map((seg) => {
       const touchesFootprint = pointNearFootprint(seg.a, footprint) || pointNearFootprint(seg.b, footprint);
       const isPrimaryDivider = seg.edgeType === 'ridge' || seg.edgeType === 'valley' || (seg.edgeType === 'hip' && (seg.edgeScore || 0) >= 0.35);
+      const localSpanExceeded = isPrimaryDivider && segmentLength(seg) > maxStructuralSpanPx;
       // DSM ridge/valley/hip detections often stop short of the eave because
       // the edge detector sees only the high-gradient core. A planar roof graph
       // cannot form closed facets from floating chords, so extend trustworthy
       // structural dividers to the footprint before intersection splitting.
-      return (touchesFootprint || isPrimaryDivider) ? extendLineToFootprint(seg, footprint) || seg : seg;
+      // Locality guard: never turn local evidence into a cross-roof diagonal.
+      return (touchesFootprint || isPrimaryDivider) && !localSpanExceeded
+        ? extendLineToFootprint(seg, footprint, MAX_STRUCTURAL_EXTENSION_PX, maxStructuralSpanPx) || seg
+        : seg;
     })
     .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b) && segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
 

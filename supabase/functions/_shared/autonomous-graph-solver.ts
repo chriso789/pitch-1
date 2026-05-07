@@ -2660,6 +2660,7 @@ export interface TopologyFidelityResult {
 
   // Ratio analysis
   valley_to_ridge_ratio: number;       // Healthy roofs: 0.3–2.0. Fan-collapse: <0.15
+  ridge_to_valley_ratio: number;       // Collapse signal: inflated ridges vs suppressed valleys
   ridge_to_eave_ratio: number;         // Healthy: 0.1–0.6. Inflated ridges: >0.6
   longest_ridge_ft: number;
   longest_ridge_ratio: number;         // Longest ridge / total ridge. >0.5 = suspicious
@@ -2670,6 +2671,7 @@ export interface TopologyFidelityResult {
   average_plane_area_sqft: number;
   plane_area_variance: number;         // CV of plane areas. Very low = uniform fan
   dominant_plane_ratio: number;        // Largest plane / total area. >0.4 = over-merged
+  max_plane_area_ratio: number;        // Alias persisted for report/debug consumers
   largest_plane_sqft: number;
 
   // Pitch analysis
@@ -2683,7 +2685,14 @@ export interface TopologyFidelityResult {
   central_node_degree: number;         // Degree of highest-degree interior node
   fan_collapse_suspected: boolean;     // True if central node too connected
   diagonal_cross_roof_count: number;   // Edges spanning >60% of roof bbox
+  diagonal_span_ratio: number;         // Longest interior edge / sqrt(roof area). >0.9 = cross-assembly span
+  local_cluster_count: number;         // Connected local structural assemblies
   merged_plane_suspected: boolean;     // True if largest plane is outsized
+  valley_collapse_suspected: boolean;
+  ridge_inflation_suspected: boolean;
+  oversized_continuous_plane_suspected: boolean;
+  planes_need_refinement: boolean;
+  pitch_fragmentation_suspected: boolean;
 
   // Expected facet count (heuristic from footprint complexity)
   expected_min_facets: number;
@@ -2723,6 +2732,7 @@ export function analyzeTopologyFidelity(
 
   // ── Ratio analysis ──
   const valleyToRidgeRatio = ridgeTotalFt > 0 ? valleyTotalFt / ridgeTotalFt : 0;
+  const ridgeToValleyRatio = valleyTotalFt > 0 ? ridgeTotalFt / valleyTotalFt : (ridgeTotalFt > 0 ? 999 : 0);
   const ridgeToEaveRatio = eaveTotalFt > 0 ? ridgeTotalFt / eaveTotalFt : 0;
 
   const longestRidge = ridgeEdges.length > 0 ? Math.max(...ridgeEdges.map(e => e.length_ft)) : 0;
@@ -2756,16 +2766,16 @@ export function analyzeTopologyFidelity(
   const pitchUniformityScore = pitchRange > 0 ? Math.max(0, 1 - (pitchStdDev / Math.max(avgPitch, 1))) : 1;
 
   // ── Vertex degree analysis (fan-collapse detection) ──
-  // Count how many edges connect to each vertex
+  // Count how many edges connect to each vertex using exact canonical keys.
+  // A degree measured by geo-distance would mark every nearby roof vertex as
+  // connected and falsely hide/trigger fan-collapse on small parcels.
   const vertexDegreeMap = new Map<string, number>();
   for (const edge of edges) {
-    // Find vertices close to edge start/end
+    const startKey = vertexKey(edge.start);
+    const endKey = vertexKey(edge.end);
     for (const v of vertices) {
-      const dStart = Math.hypot(v.position[0] - edge.start[0], v.position[1] - edge.start[1]);
-      const dEnd = Math.hypot(v.position[0] - edge.end[0], v.position[1] - edge.end[1]);
-      if (dStart < 2 || dEnd < 2) { // Within 2 pixels
-        vertexDegreeMap.set(v.id, (vertexDegreeMap.get(v.id) || 0) + 1);
-      }
+      const key = vertexKey(v.position);
+      if (key === startKey || key === endKey) vertexDegreeMap.set(v.id, (vertexDegreeMap.get(v.id) || 0) + 1);
     }
   }
   // Also use connected_edge_ids if available
@@ -2799,10 +2809,43 @@ export function analyzeTopologyFidelity(
   // Interior edges (ridge/hip/valley) that span > 60% of roof bbox diagonal
   const interiorEdges = edges.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley');
   const edgeLengthsPx = interiorEdges.map(e => Math.hypot(e.end[0] - e.start[0], e.end[1] - e.start[1]));
-  const diagonalCrossRoofCount = edgeLengthsPx.filter(l => l > roofDiagonal * 0.6).length;
+  const maxInteriorSpanPx = edgeLengthsPx.length > 0 ? Math.max(...edgeLengthsPx) : 0;
+  const diagonalSpanRatio = roofDiagonal > 0 ? maxInteriorSpanPx / roofDiagonal : 0;
+  const diagonalCrossRoofCount = edgeLengthsPx.filter(l => l > roofDiagonal * 0.5).length;
+
+  // ── Local structural clusters ──
+  const adjacency = new Map<string, Set<string>>();
+  for (const edge of interiorEdges) {
+    const a = vertexKey(edge.start);
+    const b = vertexKey(edge.end);
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    if (!adjacency.has(b)) adjacency.set(b, new Set());
+    adjacency.get(a)!.add(b);
+    adjacency.get(b)!.add(a);
+  }
+  const seenClusterNodes = new Set<string>();
+  let localClusterCount = 0;
+  for (const node of adjacency.keys()) {
+    if (seenClusterNodes.has(node)) continue;
+    localClusterCount++;
+    const stack = [node];
+    seenClusterNodes.add(node);
+    while (stack.length) {
+      const cur = stack.pop()!;
+      for (const next of adjacency.get(cur) || []) {
+        if (seenClusterNodes.has(next)) continue;
+        seenClusterNodes.add(next);
+        stack.push(next);
+      }
+    }
+  }
 
   // ── Merged plane detection ──
-  const mergedPlaneSuspected = dominantPlaneRatio > 0.40 || (faces.length <= 6 && footprintAreaSqft > 2000);
+  const mergedPlaneSuspected = dominantPlaneRatio > 0.35 || (faces.length <= 8 && footprintAreaSqft > 2800);
+  const valleyCollapseSuspected = ridgeTotalFt > 40 && (valleyTotalFt < 20 || valleyToRidgeRatio < 0.25) && footprintAreaSqft > 1800;
+  const ridgeInflationSuspected = ridgeTotalFt > 90 || ridgeToValleyRatio > 3.5 || ridgeToEaveRatio > 0.45;
+  const oversizedContinuousPlaneSuspected = dominantPlaneRatio > 0.35 || largestPlane > Math.max(900, footprintAreaSqft * 0.33);
+  const pitchFragmentationSuspected = pitchRange > 10 && pitchUniformityScore < 0.75 && avgPitch > 0;
 
   // ── Expected facet count heuristic ──
   // Based on footprint area and complexity. Simple heuristic:
@@ -2813,6 +2856,7 @@ export function analyzeTopologyFidelity(
   else if (footprintAreaSqft < 3500) expectedMinFacets = 8;
   else expectedMinFacets = 10;
   const facetDeficit = expectedMinFacets - faces.length;
+  const planesNeedRefinement = oversizedContinuousPlaneSuspected || (planeAreaVariance > 0.9 && faces.length < expectedMinFacets + 2);
 
   // ── Issue detection ──
   if (facetDeficit > 2) {
@@ -2823,8 +2867,8 @@ export function analyzeTopologyFidelity(
   } else if (valleyToRidgeRatio < 0.15 && ridgeTotalFt > 50) {
     issues.push(`valley_suppression:ratio=${valleyToRidgeRatio.toFixed(3)}`);
   }
-  if (ridgeToEaveRatio > 0.6) {
-    issues.push(`ridge_inflation:ridge_to_eave=${ridgeToEaveRatio.toFixed(3)}`);
+  if (ridgeInflationSuspected) {
+    issues.push(`ridge_inflation:ridge_to_valley=${ridgeToValleyRatio.toFixed(2)},ridge_to_eave=${ridgeToEaveRatio.toFixed(3)}`);
   }
   if (longestRidgeRatio > 0.5 && ridgeTotalFt > 50) {
     issues.push(`single_dominant_ridge:${longestRidge.toFixed(1)}ft_of_${ridgeTotalFt.toFixed(1)}ft`);
@@ -2833,13 +2877,16 @@ export function analyzeTopologyFidelity(
     issues.push(`fan_collapse:central_node_degree=${centralNodeDegree}`);
   }
   if (diagonalCrossRoofCount > 0) {
-    issues.push(`cross_roof_diagonals:${diagonalCrossRoofCount}`);
+    issues.push(`cross_roof_diagonals:${diagonalCrossRoofCount},span_ratio=${diagonalSpanRatio.toFixed(3)}`);
   }
-  if (dominantPlaneRatio > 0.40) {
+  if (oversizedContinuousPlaneSuspected) {
     issues.push(`oversized_plane:${(dominantPlaneRatio * 100).toFixed(1)}%_of_total`);
   }
-  if (pitchRange > 15 && pitchUniformityScore < 0.5) {
+  if (pitchFragmentationSuspected) {
     issues.push(`pitch_fragmentation:range=${pitchRange.toFixed(1)}deg,uniformity=${pitchUniformityScore.toFixed(2)}`);
+  }
+  if (planesNeedRefinement) {
+    issues.push(`plane_refinement_required:largest=${largestPlane.toFixed(0)}sqft,clusters=${localClusterCount}`);
   }
 
   // ── Fidelity scoring ──
@@ -2848,23 +2895,26 @@ export function analyzeTopologyFidelity(
   if (facetDeficit > 4) score -= 25;
   else if (facetDeficit > 2) score -= 15;
 
-  if (valleyToRidgeRatio < 0.10 && ridgeTotalFt > 50) score -= 20;
+  if (valleyCollapseSuspected) score -= 25;
   else if (valleyToRidgeRatio < 0.20 && ridgeTotalFt > 30) score -= 10;
 
-  if (ridgeToEaveRatio > 0.8) score -= 15;
-  else if (ridgeToEaveRatio > 0.6) score -= 8;
+  if (ridgeInflationSuspected) score -= ridgeTotalFt > 120 ? 25 : 15;
 
   if (fanCollapseSuspected) score -= 20;
-  if (diagonalCrossRoofCount >= 2) score -= 15;
-  else if (diagonalCrossRoofCount === 1) score -= 8;
+  if (diagonalCrossRoofCount >= 2 || diagonalSpanRatio > 0.65) score -= 20;
+  else if (diagonalCrossRoofCount === 1 || diagonalSpanRatio > 0.50) score -= 10;
 
-  if (dominantPlaneRatio > 0.50) score -= 15;
-  else if (dominantPlaneRatio > 0.40) score -= 8;
+  if (oversizedContinuousPlaneSuspected) score -= dominantPlaneRatio > 0.50 ? 20 : 12;
 
-  if (pitchRange > 20 && pitchUniformityScore < 0.4) score -= 15;
-  else if (pitchRange > 15 && pitchUniformityScore < 0.5) score -= 8;
+  if (pitchFragmentationSuspected) score -= pitchRange > 15 ? 15 : 8;
 
   if (longestRidgeRatio > 0.7) score -= 10;
+
+  const severeStructuralCollapse = valleyCollapseSuspected && ridgeInflationSuspected && faces.length <= expectedMinFacets;
+  if (severeStructuralCollapse) {
+    issues.push(`structural_collapse_signature:facets=${faces.length},ridge=${ridgeTotalFt.toFixed(1)}ft,valley=${valleyTotalFt.toFixed(1)}ft`);
+    score = Math.min(score, 40);
+  }
 
   score = Math.max(0, Math.min(100, score));
 
@@ -2883,6 +2933,7 @@ export function analyzeTopologyFidelity(
     eave_total_ft: Number(eaveTotalFt.toFixed(2)),
     rake_total_ft: Number(rakeTotalFt.toFixed(2)),
     valley_to_ridge_ratio: Number(valleyToRidgeRatio.toFixed(4)),
+    ridge_to_valley_ratio: Number(ridgeToValleyRatio.toFixed(4)),
     ridge_to_eave_ratio: Number(ridgeToEaveRatio.toFixed(4)),
     longest_ridge_ft: Number(longestRidge.toFixed(2)),
     longest_ridge_ratio: Number(longestRidgeRatio.toFixed(4)),
@@ -2891,6 +2942,7 @@ export function analyzeTopologyFidelity(
     average_plane_area_sqft: Number(avgPlaneArea.toFixed(2)),
     plane_area_variance: Number(planeAreaVariance.toFixed(4)),
     dominant_plane_ratio: Number(dominantPlaneRatio.toFixed(4)),
+    max_plane_area_ratio: Number(dominantPlaneRatio.toFixed(4)),
     largest_plane_sqft: Number(largestPlane.toFixed(2)),
     pitch_variance: Number(pitchStdDev.toFixed(4)),
     predominant_pitch: predominantPitch,
@@ -2900,7 +2952,14 @@ export function analyzeTopologyFidelity(
     central_node_degree: centralNodeDegree,
     fan_collapse_suspected: fanCollapseSuspected,
     diagonal_cross_roof_count: diagonalCrossRoofCount,
+    diagonal_span_ratio: Number(diagonalSpanRatio.toFixed(4)),
+    local_cluster_count: localClusterCount,
     merged_plane_suspected: mergedPlaneSuspected,
+    valley_collapse_suspected: valleyCollapseSuspected,
+    ridge_inflation_suspected: ridgeInflationSuspected,
+    oversized_continuous_plane_suspected: oversizedContinuousPlaneSuspected,
+    planes_need_refinement: planesNeedRefinement,
+    pitch_fragmentation_suspected: pitchFragmentationSuspected,
     expected_min_facets: expectedMinFacets,
     facet_deficit: facetDeficit,
     topology_fidelity,
