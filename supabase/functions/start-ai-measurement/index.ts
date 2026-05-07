@@ -532,6 +532,10 @@ async function processJob(input: any) {
       solar_overlap_score: number;
       geocode_center_score: number;
       polygon_shape_score: number;
+      // v13: registration gate fields
+      roof_image_overlap_score: number | null;
+      centroid_offset_px: number | null;
+      footprint_registration_passed: boolean | null;
     };
 
     function scoreCandidate(source: string, polygon: Point[]): FootprintCandidate {
