@@ -108,6 +108,17 @@ function segmentLength(seg: Seg): number {
   return dist(seg.a, seg.b);
 }
 
+function isStructural(seg: Seg): boolean {
+  return seg.edgeType === 'ridge' || seg.edgeType === 'valley' || seg.edgeType === 'hip';
+}
+
+function footprintDiagonal(footprint: Pt[]): number {
+  if (footprint.length === 0) return 1;
+  const xs = footprint.map(p => p.x);
+  const ys = footprint.map(p => p.y);
+  return Math.max(1, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)));
+}
+
 function sub(a: Pt, b: Pt): Pt {
   return { x: a.x - b.x, y: a.y - b.y };
 }
