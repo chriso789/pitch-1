@@ -1662,6 +1662,17 @@ async function processJob(input: any) {
           confidence: e.confidence.final_confidence,
           source: e.source,
         })) : [],
+        // ── PERIMETER PHASE 0 ──
+        perimeter_phase0: graph.perimeter_diagnostics || null,
+        perimeter_gate_passed: graph.perimeter_gate?.passed ?? null,
+        perimeter_ready: graph.perimeter_gate?.passed ? true : false,
+        perimeter_source: graph.perimeter_topology?.perimeter_source ?? null,
+        perimeter_eave_ft: graph.perimeter_gate?.diagnostics?.eave_length_lf ?? null,
+        perimeter_rake_ft: graph.perimeter_gate?.diagnostics?.rake_length_lf ?? null,
+        perimeter_total_ft: graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? null,
+        unknown_perimeter_lf: graph.perimeter_gate?.diagnostics?.unknown_length_lf ?? null,
+        perimeter_area_sqft: graph.perimeter_topology?.perimeter_area_sqft ?? null,
+        perimeter_failure_reasons: graph.perimeter_gate?.failure_reasons ?? [],
       };
 
       // ═══════════════════════════════════════════════════════════════
