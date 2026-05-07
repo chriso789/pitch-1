@@ -1510,6 +1510,12 @@ async function processJob(input: any) {
         footprint_px: footprint.map(p => [p.x, p.y]),
         dsm_loaded: !!dsmGrid,
         mask_loaded: !!roofMask,
+        // v13: registration gate results
+        footprint_registration_passed: selected?.footprint_registration_passed ?? null,
+        centroid_offset_px: selected?.centroid_offset_px ?? null,
+        roof_image_overlap_score: selected?.roof_image_overlap_score ?? null,
+        visible_roof_bbox_px: visibleRoofBboxPx,
+        registration_gate: registrationDebug,
         dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
         dsm_edges_accepted: graph.logs?.dsm_edges_accepted ?? (graph.logs?.fused_edges || 0),
         raw_edges: graph.logs?.dsm_edges_detected ?? 0,
