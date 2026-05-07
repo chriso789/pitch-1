@@ -16,7 +16,7 @@ import {
   Loader2, DollarSign, Clock, CheckCircle, Package, Hammer, Filter,
   MoreVertical, FileText, CreditCard, Send, Eye, CheckSquare,
   ChevronDown, ChevronRight, TrendingUp, TrendingDown, AlertTriangle,
-  BarChart3, ClipboardList
+  BarChart3, ClipboardList, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, subDays, startOfMonth, startOfQuarter, startOfYear } from 'date-fns';
