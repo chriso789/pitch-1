@@ -48,6 +48,14 @@ import {
   type RoofTopologyHierarchy,
   type SolarSegmentInput,
 } from "./roof-topology-hierarchy.ts";
+import {
+  buildPerimeterTopology,
+  evaluatePerimeterGate,
+  snapEdgesToPerimeter,
+  type PerimeterTopology,
+  type PerimeterGateResult,
+  type PerimeterDiagnostics,
+} from "./perimeter-topology.ts";
 
 type XY = [number, number]; // [lng, lat]
 type PxPt = { x: number; y: number }; // DSM pixel space
