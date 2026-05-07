@@ -166,6 +166,7 @@ const PdfEngineEditor = () => {
     if (!pageImage || !pageMeta) return;
 
     setIsOcrRunning(true);
+    if (tenantId && user?.id) PdfAuditEngine.log(tenantId, user.id, 'ocr_started', { page: activePage }, id);
     try {
       const result = await ocrPageImage(
         pageImage, activePage, pageMeta.width, pageMeta.height, 1.5
@@ -177,6 +178,7 @@ const PdfEngineEditor = () => {
           objects_created: count,
         });
         engine.invalidate();
+        if (tenantId && user?.id) PdfAuditEngine.log(tenantId, user.id, 'ocr_completed', { page: activePage, objects: count }, id);
         toast({ title: 'OCR complete', description: `Extracted ${count} text lines` });
       } else {
         toast({ title: 'No text found', description: 'OCR did not detect text on this page' });
