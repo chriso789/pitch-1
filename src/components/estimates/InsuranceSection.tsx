@@ -410,7 +410,7 @@ const SupplementTracker: React.FC<{ pipelineEntryId: string }> = ({ pipelineEntr
       const metadata = (entry?.metadata as Record<string, unknown>) || {};
       const { error } = await supabase
         .from('pipeline_entries')
-        .update({ metadata: { ...metadata, supplements: updatedSupplements } })
+        .update({ metadata: { ...metadata, supplements: updatedSupplements } as any })
         .eq('id', pipelineEntryId);
       if (error) throw error;
     },
