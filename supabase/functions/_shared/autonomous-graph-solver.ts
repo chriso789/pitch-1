@@ -3072,10 +3072,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   // that's a topology undersegmentation — NOT an edge classification failure.
   // Use raw masked edge count (pre-clustering) for undersegmentation detection
   const rawDsmEdgeCount = maskedEdgeCount; // 31 for Fonsica — the true raw DSM edge count
-  // v13: also detect when max plane covers too much area
+  // v13/v15: also detect when max plane covers too much area
+  const postRefPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
   const planeAreas = graphFaces.map(f => f.plan_area_sqft);
   const maxPlaneAreaSqft = planeAreas.length > 0 ? Math.max(...planeAreas) : 0;
-  const maxPlaneAreaRatio = totalPlanArea > 0 ? maxPlaneAreaSqft / totalPlanArea : 0;
+  const maxPlaneAreaRatio = postRefPlanArea > 0 ? maxPlaneAreaSqft / postRefPlanArea : 0;
   const topologyUndersegmented = (
     // Original: many raw edges collapsed to few faces
     (footprintAreaSqft > 2500 && rawDsmEdgeCount >= 15 && planar.faces.length <= 3) ||
