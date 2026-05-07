@@ -42,6 +42,12 @@ import {
   angleDifference,
 } from "./dsm-utils.ts";
 import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./planar-roof-solver.ts";
+import {
+  buildTopologyHierarchy,
+  serializeHierarchySummary,
+  type RoofTopologyHierarchy,
+  type SolarSegmentInput,
+} from "./roof-topology-hierarchy.ts";
 
 type XY = [number, number]; // [lng, lat]
 type PxPt = { x: number; y: number }; // DSM pixel space
