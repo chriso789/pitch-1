@@ -196,8 +196,44 @@ export function PdfOverlayEditor({
     canvas.renderAll();
   }, [objects, isReady, scale, mode]);
 
+  // Handle mouse wheel zoom and trackpad pinch
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // ctrlKey is true for trackpad pinch gestures and Ctrl+scroll
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = -e.deltaY * 0.01;
+        const newZoom = Math.min(5, Math.max(0.25, zoomLevel + delta));
+        onZoomChange?.(Math.round(newZoom * 100) / 100);
+      } else {
+        // Regular scroll wheel (no modifier) = zoom
+        // deltaMode 0 = pixels, 1 = lines
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        e.preventDefault();
+        const newZoom = Math.min(5, Math.max(0.25, zoomLevel + delta));
+        onZoomChange?.(Math.round(newZoom * 100) / 100);
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [zoomLevel, onZoomChange]);
+
   return (
-    <div className="relative" style={{ width: pageWidth * scale, height: pageHeight * scale }}>
+    <div
+      ref={containerRef}
+      className="relative origin-top-left"
+      style={{
+        width: pageWidth * scale,
+        height: pageHeight * scale,
+        transform: `scale(${zoomLevel})`,
+        transformOrigin: 'top left',
+      }}
+    >
       <canvas ref={canvasRef} />
     </div>
   );
