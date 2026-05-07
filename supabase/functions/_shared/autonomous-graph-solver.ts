@@ -2724,15 +2724,23 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           : 0;
         const hasNoiseFragments = minFaceAreaRatio < 0.03 && refinedGraphFaces.length > graphFaces.length + 2;
         
-        // Accept refinement if:
-        // - More faces AND max plane ratio decreased
-        // - Coverage didn't collapse
-        // - No noise micro-facets introduced
+        // Accept refinement if topology improved (relaxed criteria for provisional graphs)
+        const preProvisionalCount = graphFaces.filter(f => f.provisional).length;
+        const refinedProvisionalCount = refinedGraphFaces.filter(f => f.provisional).length;
+        const refinementImprovesFaces = refinedGraphFaces.length > graphFaces.length;
+        const refinementImprovesPlaneRatio = refinedMaxPlaneRatio < preMaxPlaneRatio;
+        const refinementImprovesCoverage = refinedCoverageRatio > (prePlanArea / (footprintAreaSqft || 1));
+        const refinementDoesntDestroy = refinedGraphFaces.length >= Math.max(1, graphFaces.length - 1);
+        
         const refinementAccepted = (
-          refinedGraphFaces.length > graphFaces.length &&
-          refinedMaxPlaneRatio < preMaxPlaneRatio &&
-          refinedCoverageRatio >= 0.50 &&
-          !hasNoiseFragments
+          // Standard: more faces + better plane ratio
+          (refinementImprovesFaces && refinementImprovesPlaneRatio && refinedCoverageRatio >= 0.30 && !hasNoiseFragments) ||
+          // Coverage improvement: even if same faces, better coverage
+          (refinementDoesntDestroy && refinementImprovesCoverage && refinedCoverageRatio >= 0.40 && !hasNoiseFragments) ||
+          // Face count improvement with acceptable coverage
+          (refinementImprovesFaces && refinedCoverageRatio >= 0.40 && !hasNoiseFragments) ||
+          // Reduces provisional reliance
+          (refinedGraphFaces.length >= graphFaces.length && refinedProvisionalCount < preProvisionalCount && refinedCoverageRatio >= 0.30)
         );
         
         console.log(`  [v15 REFINEMENT RESULT] faces: ${graphFaces.length} → ${refinedGraphFaces.length}, ` +
