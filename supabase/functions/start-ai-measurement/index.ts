@@ -537,6 +537,10 @@ async function processJob(input: any) {
       roof_image_overlap_score: number | null;
       centroid_offset_px: number | null;
       footprint_registration_passed: boolean | null;
+      // v14: connected-component bbox cap diagnostics
+      bbox_cap_used: number | null;
+      bbox_cap_reason: string | null;
+      connected_component_isolated: boolean;
     };
 
     function scoreCandidate(source: string, polygon: Point[]): FootprintCandidate {
