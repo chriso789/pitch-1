@@ -2760,6 +2760,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               <Download className="mr-2 h-4 w-4" />
               Export PDF
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdateTemplateDialog(true)}
+              className="flex-1 min-w-[140px]"
+            >
+              <Hammer className="mr-2 h-4 w-4" />
+              Update Template
+            </Button>
           </>
         )}
       </div>
