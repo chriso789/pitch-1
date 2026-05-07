@@ -4619,7 +4619,7 @@ async function processJob(input: any) {
         engine_version: "geometry_first_v2",
         engine_used: "geometry_first_v2",
         inference_source: resolvedGeometrySource,
-        geometry_source: resolvedGeometrySource === 'dsm_validated' || resolvedGeometrySource === 'vendor_verified' ? resolvedGeometrySource : 'heuristic_estimate',
+        geometry_source: promotedGeometrySource,
         dsm_contract_debug: {
           footprint_source: footprintSource,
           footprint_valid: true,
