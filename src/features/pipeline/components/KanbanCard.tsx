@@ -26,6 +26,7 @@ interface KanbanCardProps {
     updated_at: string;
     contact_id: string;
     assigned_to?: string;
+    lead_name?: string | null;
     contacts: {
       id: string;
       contact_number: string;
