@@ -26,6 +26,7 @@ interface KanbanCardProps {
     updated_at: string;
     contact_id: string;
     assigned_to?: string;
+    lead_name?: string | null;
     contacts: {
       id: string;
       contact_number: string;
@@ -156,8 +157,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   // Get display name - prefer lead_name, fall back to contact name
   const getLastName = () => {
     // Use lead_name if set on the entry (decoupled from contact)
-    if ((entry as any).lead_name) {
-      return (entry as any).lead_name;
+    if (entry.lead_name) {
+      return entry.lead_name;
     }
     
     if (!contact) {
