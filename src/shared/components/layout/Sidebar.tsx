@@ -76,6 +76,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const { currentLocation } = useLocationContext();
   const [followUpExpanded, setFollowUpExpanded] = React.useState(false);
   const [insuranceExpanded, setInsuranceExpanded] = React.useState(false);
+  const [supplementsExpanded, setSupplementsExpanded] = React.useState(false);
   
   // Instant display name from auth user_metadata (no loading state)
   const getInstantDisplayName = () => {
@@ -250,22 +251,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: FileText,
       description: "Estimate builder & tracking",
       testId: TEST_IDS.sidebar.estimates,
-      featureKey: "estimates"
-    },
-    {
-      name: "Supplements",
-      href: "supplements",
-      path: "/supplements",
-      icon: Shield,
-      description: "Insurance supplement engine",
-      featureKey: "estimates"
-    },
-    {
-      name: "Supplement Workflow",
-      href: "supplement-workflow",
-      path: "/supplement-workflow",
-      icon: Shield,
-      description: "Carrier parser & packet workflow",
       featureKey: "estimates"
     },
     {
@@ -679,6 +664,75 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                   >
                     <Search className="h-3.5 w-3.5" />
                     <span className="text-sm">Scope Intelligence</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Supplements Expandable Section */}
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setSupplementsExpanded(!supplementsExpanded)}
+                className={cn(
+                  "w-full flex items-center rounded-md text-left transition-colors group",
+                  isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                  (location.pathname === '/supplements' || location.pathname === '/supplement-workflow')
+                    ? "bg-primary/10 text-primary border-l-2 border-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
+                )}
+                title={isCollapsed ? "Supplements" : undefined}
+              >
+                <Shield className={cn(
+                  "h-4 w-4 flex-shrink-0",
+                  (location.pathname === '/supplements' || location.pathname === '/supplement-workflow')
+                    ? "text-primary" 
+                    : "text-muted-foreground group-hover:text-accent-foreground"
+                )} />
+                {!isCollapsed && (
+                  <>
+                    <span className={cn(
+                      "text-sm font-medium truncate flex-1",
+                      (location.pathname === '/supplements' || location.pathname === '/supplement-workflow') ? "text-primary" : ""
+                    )}>
+                      Supplements
+                    </span>
+                    {supplementsExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </>
+                )}
+              </button>
+              
+              {/* Supplements Sub-items */}
+              {(supplementsExpanded || location.pathname === '/supplements' || location.pathname === '/supplement-workflow') && !isCollapsed && (
+                <div className="ml-4 pl-3 border-l border-border space-y-0.5">
+                  <Link
+                    to="/supplements"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/supplements'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="text-sm">Supplement Engine</span>
+                  </Link>
+                  <Link
+                    to="/supplement-workflow"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/supplement-workflow'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <ClipboardCheck className="h-3.5 w-3.5" />
+                    <span className="text-sm">Workflow</span>
                   </Link>
                 </div>
               )}
