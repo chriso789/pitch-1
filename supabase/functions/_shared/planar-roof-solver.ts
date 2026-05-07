@@ -1178,5 +1178,5 @@ export function solveRoofPlanes(
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));
 
-  return { faces: validFaces, edges: finalGraphSegments, debug };
+  return { faces: validFaces, edges: finalGraphSegments, deferredEdges: pruned.deferred, debug };
 }
