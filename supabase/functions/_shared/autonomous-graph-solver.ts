@@ -2845,7 +2845,6 @@ export function analyzeTopologyFidelity(
   const valleyCollapseSuspected = ridgeTotalFt > 40 && (valleyTotalFt < 20 || valleyToRidgeRatio < 0.25) && footprintAreaSqft > 1800;
   const ridgeInflationSuspected = ridgeTotalFt > 90 || ridgeToValleyRatio > 3.5 || ridgeToEaveRatio > 0.45;
   const oversizedContinuousPlaneSuspected = dominantPlaneRatio > 0.35 || largestPlane > Math.max(900, footprintAreaSqft * 0.33);
-  const planesNeedRefinement = oversizedContinuousPlaneSuspected || (planeAreaVariance > 0.9 && faces.length < expectedMinFacets + 2);
   const pitchFragmentationSuspected = pitchRange > 10 && pitchUniformityScore < 0.75 && avgPitch > 0;
 
   // ── Expected facet count heuristic ──
@@ -2857,6 +2856,7 @@ export function analyzeTopologyFidelity(
   else if (footprintAreaSqft < 3500) expectedMinFacets = 8;
   else expectedMinFacets = 10;
   const facetDeficit = expectedMinFacets - faces.length;
+  const planesNeedRefinement = oversizedContinuousPlaneSuspected || (planeAreaVariance > 0.9 && faces.length < expectedMinFacets + 2);
 
   // ── Issue detection ──
   if (facetDeficit > 2) {
