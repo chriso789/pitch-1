@@ -194,7 +194,25 @@ const ProductionKanban = () => {
     }
   });
 
-  const defaultStages = [
+  // Fetch all trade boards for filtering
+  const { data: allTradeBoards = [] } = useQuery({
+    queryKey: ['all-trade-boards'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('production_trade_boards')
+        .select('project_id, trade_type, trade_name');
+      return data || [];
+    }
+  });
+
+  const uniqueTradeTypes = [...new Set(allTradeBoards.map(tb => tb.trade_type))];
+
+  // Get project IDs that match trade filter
+  const tradeFilteredProjectIds = tradeFilter === 'all'
+    ? null
+    : new Set(allTradeBoards.filter(tb => tb.trade_type === tradeFilter).map(tb => tb.project_id));
+
+
     { stage_key: "submit_documents", name: "Submit Documents", color: "#ef4444", icon: FileText, sort_order: 1 },
     { stage_key: "permit_processing", name: "Permit Processing", color: "#f97316", icon: Clock, sort_order: 2 },
     { stage_key: "materials_labor", name: "Materials & Labor", color: "#eab308", icon: Package, sort_order: 3 },
