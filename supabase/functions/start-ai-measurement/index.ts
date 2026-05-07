@@ -859,7 +859,7 @@ async function processJob(input: any) {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting roof mask contour fallback");
         roofMaskForContour = roofMaskForContour || await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
-          const maskContourGeo = extractMaskContour(roofMaskForContour);
+          const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
           if (maskContourGeo.length >= 4) {
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
