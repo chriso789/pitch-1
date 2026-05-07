@@ -1609,12 +1609,27 @@ function clusterEdges(
     type_conflict_rejections: 0,
     valley_edges_preserved: 0,
     ridge_edges_preserved: 0,
+    primary_edge_count: 0,
+    secondary_edge_count: 0,
+    tertiary_edge_count: 0,
+    primary_ridges: 0,
+    primary_valleys: 0,
+    tertiary_merged: 0,
+    micro_fragment_rejections: 0,
   };
 
   if (edges.length <= 1) {
     diagnostics.post_cluster_edge_count = edges.length;
     return { clustered: edges, diagnostics };
   }
+
+  // Step 0: Classify structural hierarchy
+  classifyEdgeHierarchy(edges, dsmGrid, footprintPx, footprintAreaPx2);
+  diagnostics.primary_edge_count = edges.filter(e => e.tier === 'primary').length;
+  diagnostics.secondary_edge_count = edges.filter(e => e.tier === 'secondary').length;
+  diagnostics.tertiary_edge_count = edges.filter(e => e.tier === 'tertiary').length;
+  diagnostics.primary_ridges = edges.filter(e => e.tier === 'primary' && e.type === 'ridge').length;
+  diagnostics.primary_valleys = edges.filter(e => e.tier === 'primary' && e.type === 'valley').length;
 
   // Step 1: Assign edges to local DSM elevation regions
   const regionIds = assignLocalRegions(edges, dsmGrid, footprintPx);
