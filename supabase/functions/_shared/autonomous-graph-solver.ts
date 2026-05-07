@@ -3393,7 +3393,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     footprint_area_sqft_diag: Number(footprintAreaSqft.toFixed(0)),
     faces_area_sqft_diag: Number(totalPlanArea.toFixed(0)),
     // v8: pre-masked edge detection diagnostics
-    engine_version: 'v15',
+    engine_version: 'v16',
     pre_mask_enabled: true,
     roof_mask_pixel_count: roofMaskPixelCount,
     roof_mask_tile_pct: effectiveDSM ? Number((roofMaskPixelCount / (effectiveDSM.width * effectiveDSM.height) * 100).toFixed(1)) : 0,
