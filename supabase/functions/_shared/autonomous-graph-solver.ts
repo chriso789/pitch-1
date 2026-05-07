@@ -2844,10 +2844,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           graphFaces.length = 0;
           for (const f of refinedGraphFaces) graphFaces.push(f);
           faceCountAfterMerge = graphFaces.length;
-          console.log(`  [v15 REFINEMENT] Accepted: topology improved from ${refinementDiagnostics.faces_before_refinement} to ${graphFaces.length} faces`);
+          console.log(`  [v16 REFINEMENT] Accepted: topology improved from ${refinementDiagnostics.faces_before_refinement} to ${graphFaces.length} faces`);
           warnings.push(`topology_refinement_accepted: ${refinementDiagnostics.faces_before_refinement} → ${graphFaces.length} faces`);
         } else {
-          console.log(`  [v15 REFINEMENT] Rejected: ${refinementDiagnostics.rejection_reason}`);
+          console.log(`  [v16 REFINEMENT] Rejected: ${refinementDiagnostics.rejection_reason}`);
           warnings.push(`topology_refinement_rejected: ${refinementDiagnostics.rejection_reason}`);
         }
       } else {
@@ -2864,7 +2864,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
           rejection_reason: 'insufficient_refinement_candidates',
         };
-        console.log(`  [v15 REFINEMENT] Skipped: only ${refinementCandidates.length} qualifying candidates (need ≥2)`);
+        console.log(`  [v16 REFINEMENT] Skipped: only ${refinementCandidates.length} qualifying candidates (need ≥2)`);
       }
     }
   }
