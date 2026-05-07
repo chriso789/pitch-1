@@ -302,10 +302,11 @@ const PdfEngineEditor = () => {
 
   const activePageImage = pageImages.get(activePage);
   const activePageMeta = engine.pages.find(p => p.page_number === activePage);
-  const activePageObjects = engine.objects.filter(
+  const activePageObjects = useMemo(() => engine.objects.filter(
     o => (o.metadata as any)?.page_number === activePage
-  );
-  const activeOpsCount = engine.operations.filter(o => !o.is_undone).length;
+  ), [engine.objects, activePage]);
+  const activeOpsCount = useMemo(() => engine.operations.filter(o => !o.is_undone).length, [engine.operations]);
+  const isLargePdf = engine.pages.length > 200 || (originalBytesRef.current && originalBytesRef.current.byteLength > 100 * 1024 * 1024);
 
   // Upload dialog for new documents
   if (showUpload || !id) {
