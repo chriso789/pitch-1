@@ -4657,6 +4657,18 @@ async function processJob(input: any) {
 
     if (publishError) throw publishError;
 
+    // Update ai_measurement_jobs with promotion gate results
+    await supabase.from("ai_measurement_jobs").update({
+      source_context: {
+        geometry_source: promotedGeometrySource,
+        customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        promotion_gate_passed: promotionGatePassed,
+        promotion_gate_failed_reasons: promotionGateFailedReasons,
+      },
+      report_blocked: !promotedCustomerReportReady || reviewRequired,
+      needs_review: !promotedCustomerReportReady || reviewRequired,
+    }).eq("id", input.ai_measurement_job_id);
+
     // Generate the customer-visible SVG report pages from the measured geometry.
     // The geometry-first rewrite still saved totals/planes, but no longer wrote
     // ai_measurement_diagrams, which made the report dialog show "No diagrams available".
