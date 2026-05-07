@@ -501,7 +501,7 @@ async function processJob(input: any) {
     const RESIDENTIAL_MAX_SQFT = 8000; // Largest realistic residential roof; rejects parcel/yard polygons
     const MIN_COVERAGE_RATIO = 0.20;
     const MAX_FOOTPRINT_BBOX_TILE_RATIO = 0.35; // Footprint bbox may not exceed 35% of 1280×1280 tile
-    const MAX_FOOTPRINT_BBOX_TILE_RATIO_CC = 0.40; // Relaxed cap ONLY for isolated connected-component mask contours
+    const MAX_FOOTPRINT_BBOX_TILE_RATIO_CC = 0.42; // Relaxed cap ONLY for isolated connected-component mask contours (Montelluna at 40.6%)
     const MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO = 2.5; // Footprint may not be >2.5× the sum of solar segment areas
     const MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO = 1.35; // Candidate area / solar bbox area — masks that spill into yard/neighbors
     const MAX_EXTERIOR_SPILLOVER_RATIO = 0.40; // At most 40% of candidate area may lie outside the solar bbox
@@ -6091,6 +6091,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     engine_version: "autonomous_graph_solver_v3_prune_first",
     engine_used: "autonomous_dsm_graph_solver",
     geometry_source: 'heuristic_estimate',
+    last_failure_reason: failureReason,
+    last_failure_stage: debug?.failure_stage || (failureReason.includes('footprint') ? 'footprint_validation' : failureReason.includes('dsm') ? 'dsm_ingestion' : failureReason.includes('topology') ? 'topology_validation' : 'solver'),
     dsm_contract_debug: {
       footprint_source: debug?.footprint_source || 'unknown',
       footprint_valid: debug?.footprint_valid ?? false,
