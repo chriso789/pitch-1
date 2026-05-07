@@ -311,13 +311,13 @@ function mergeCollinearSegments(segments: Seg[]): Seg[] {
         const allowedGap = (isStructural(current) || isStructural(segments[j])) ? MAX_STRUCTURAL_MERGE_GAP_PX : 10;
         if (minT <= t2 + allowedGap && maxT >= t1 - allowedGap) {
           const currentLen = segmentLength(current);
+          const allT = [t1, t2, minT, maxT];
+          const globalMin = Math.min(...allT);
+          const globalMax = Math.max(...allT);
           const candidateSpan = globalMax - globalMin;
           if ((isStructural(current) || isStructural(segments[j])) && candidateSpan > Math.max(currentLen, segmentLength(segments[j])) + allowedGap) {
             continue;
           }
-          const allT = [t1, t2, minT, maxT];
-          const globalMin = Math.min(...allT);
-          const globalMax = Math.max(...allT);
           const newA = snap({ x: current.a.x + nx * globalMin, y: current.a.y + ny * globalMin });
           const newB = snap({ x: current.a.x + nx * globalMax, y: current.a.y + ny * globalMax });
           // Preserve higher priority type
