@@ -177,6 +177,7 @@ export function EstimatePreviewPanel({
   templateStyle,
   materialItems,
   laborItems,
+  changeOrderItems = [],
   breakdown,
   config,
   finePrintContent,
