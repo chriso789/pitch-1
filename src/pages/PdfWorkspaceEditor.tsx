@@ -26,7 +26,7 @@ import { renderPageToDataUrl } from "@/lib/pdfRenderer";
 import { loadPDFFromArrayBuffer } from "@/lib/pdfRenderer";
 import {
   ArrowLeft, Save, Download, History, Tags, Wand2, ShieldCheck,
-  FileText, AlertTriangle, Copy, Check, Layers
+  FileText, AlertTriangle, Copy, Check, Layers, ZoomIn, ZoomOut
 } from "lucide-react";
 
 const PdfWorkspaceEditor = () => {
