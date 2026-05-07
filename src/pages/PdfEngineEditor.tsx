@@ -509,6 +509,53 @@ const PdfEngineEditor = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Export Readiness Dialog */}
+      <Dialog open={showExportReadiness} onOpenChange={setShowExportReadiness}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Readiness Check</DialogTitle>
+          </DialogHeader>
+          {exportReadiness && (
+            <div className="space-y-4">
+              {exportReadiness.blockers.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-destructive">Blockers — must fix before export</p>
+                  {exportReadiness.blockers.map((b, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm bg-destructive/10 border border-destructive/30 rounded p-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                      <span>{b.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {exportReadiness.warnings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-yellow-600">Warnings</p>
+                  {exportReadiness.warnings.map((w, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm bg-yellow-500/10 border border-yellow-500/30 rounded p-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                      <span>{w.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {exportReadiness.blockers.length === 0 && exportReadiness.warnings.length === 0 && (
+                <p className="text-sm text-muted-foreground">All checks passed.</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportReadiness(false)}>Cancel</Button>
+            <Button
+              onClick={handleCompile}
+              disabled={exportReadiness ? !exportReadiness.ready : true}
+            >
+              {exportReadiness?.ready ? 'Export Anyway' : 'Blocked'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </GlobalLayout>
   );
 };
