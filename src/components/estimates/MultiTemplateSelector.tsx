@@ -2845,6 +2845,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         tenantId={currentTenantId || undefined}
         userId={currentUserId || undefined}
       />
+
+      {/* Update Template Dialog */}
+      <UpdateTemplateDialog
+        open={showUpdateTemplateDialog}
+        onOpenChange={setShowUpdateTemplateDialog}
+        lineItems={lineItems}
+      />
     </div>
   );
 };
