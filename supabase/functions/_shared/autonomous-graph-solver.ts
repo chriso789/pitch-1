@@ -2083,6 +2083,50 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
   }
 
+  // Build face plane normals upfront for face-adjacency classification
+  const facePlanesForClassification: Array<{ slopeX: number; slopeY: number; centroid: XY } | null> = [];
+  if (effectiveDSM && planar.faces.length >= 2) {
+    for (const face of planar.faces) {
+      const geoPolygon = face.polygon.map((p: { x: number; y: number }) => pxToGeoPoint(p, effectiveDSM));
+      if (geoPolygon.length < 3) { facePlanesForClassification.push(null); continue; }
+      const { bounds, width, height, data, noDataValue } = effectiveDSM;
+      const midLatLocal = (bounds.minLat + bounds.maxLat) / 2;
+      const metersPerPixelX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLatLocal * Math.PI / 180);
+      const metersPerPixelY = (bounds.maxLat - bounds.minLat) / height * 111320;
+      const poly = geoPolygon;
+      const minPxX = Math.max(0, Math.floor((Math.min(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+      const maxPxX = Math.min(width - 1, Math.ceil((Math.max(...poly.map(p => p[0])) - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width));
+      const minPxY = Math.max(0, Math.floor((bounds.maxLat - Math.max(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+      const maxPxY = Math.min(height - 1, Math.ceil((bounds.maxLat - Math.min(...poly.map(p => p[1]))) / (bounds.maxLat - bounds.minLat) * height));
+      const points: Array<{ x: number; y: number; z: number }> = [];
+      for (let py = minPxY; py <= maxPxY; py++) {
+        for (let px = minPxX; px <= maxPxX; px++) {
+          const lng = bounds.minLng + ((px + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+          const lat = bounds.maxLat - ((py + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+          if (!pointInPolygon([lng, lat], poly)) continue;
+          const z = data[py * width + px];
+          if (z === noDataValue || isNaN(z)) continue;
+          points.push({ x: px, y: py, z });
+        }
+      }
+      if (points.length < 6) { facePlanesForClassification.push(null); continue; }
+      const N = points.length;
+      let Sx = 0, Sy = 0, Sz = 0, Sxx = 0, Sxy = 0, Syy = 0, Sxz = 0, Syz = 0;
+      for (const p of points) { Sx += p.x; Sy += p.y; Sz += p.z; Sxx += p.x * p.x; Sxy += p.x * p.y; Syy += p.y * p.y; Sxz += p.x * p.z; Syz += p.y * p.z; }
+      const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, N]];
+      const B = [Sxz, Syz, Sz];
+      const detVal = det3(A);
+      if (Math.abs(detVal) < 1e-10) { facePlanesForClassification.push(null); continue; }
+      const a = det3(replCol(A, B, 0)) / detVal;
+      const b = det3(replCol(A, B, 1)) / detVal;
+      const centroid: XY = [poly.reduce((s, p) => s + p[0], 0) / poly.length, poly.reduce((s, p) => s + p[1], 0) / poly.length];
+      facePlanesForClassification.push({ slopeX: a / metersPerPixelX, slopeY: b / metersPerPixelY, centroid });
+    }
+  }
+
+  // Edge classification table for diagnostics
+  const edgeClassificationTable: Array<Record<string, unknown>> = [];
+
   for (const [_key, canonical] of canonicalEdgeMap) {
     const { start, end, faceIndices } = canonical;
     const lengthFt = distanceFt(start, end, midLat);
@@ -2091,6 +2135,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     let edgeType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'unclassified';
     let edgeSource: 'dsm' | 'perimeter' = 'dsm';
     let edgeScore = 0.8;
+    let classificationMethod = 'unknown';
 
     const edgeMid: XY = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
     let onFootprintBoundary = false;
@@ -2109,26 +2154,100 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       }
     }
 
-    if (faceIndices.length >= 2 && !onFootprintBoundary) {
-      edgeType = 'unclassified';
-      edgeSource = 'dsm';
-      edgeScore = 0.85;
-    } else if (onFootprintBoundary) {
+    if (onFootprintBoundary) {
+      // Boundary edge: eave/rake
       edgeType = 'eave';
       edgeSource = 'perimeter';
       edgeScore = 0.85;
-    } else {
+      classificationMethod = 'footprint_boundary';
+    } else if (faceIndices.length >= 2 && facePlanesForClassification.length > 0) {
+      // PRIMARY: face-adjacency plane-normal classification
+      const planeA = facePlanesForClassification[faceIndices[0]];
+      const planeB = facePlanesForClassification[faceIndices[1]];
+      
+      if (planeA && planeB) {
+        const edgeDx = end[0] - start[0];
+        const edgeDy = end[1] - start[1];
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+        if (edgeLen > 1e-12) {
+          const perpX = -edgeDy / edgeLen;
+          const perpY = edgeDx / edgeLen;
+
+          const dotA = (planeA.centroid[0] - edgeMid[0]) * perpX + (planeA.centroid[1] - edgeMid[1]) * perpY;
+          const dotB = (planeB.centroid[0] - edgeMid[0]) * perpX + (planeB.centroid[1] - edgeMid[1]) * perpY;
+
+          const downslopeA_perp = -(planeA.slopeX * perpX + planeA.slopeY * perpY);
+          const downslopeB_perp = -(planeB.slopeX * perpX + planeB.slopeY * perpY);
+
+          const slopeAwayA = dotA > 0 ? downslopeA_perp : -downslopeA_perp;
+          const slopeAwayB = dotB > 0 ? -downslopeB_perp : downslopeB_perp;
+
+          const slopeThreshold = 0.02;
+          const aDescends = slopeAwayA > slopeThreshold;
+          const bDescends = slopeAwayB > slopeThreshold;
+          const aAscends = slopeAwayA < -slopeThreshold;
+          const bAscends = slopeAwayB < -slopeThreshold;
+
+          if (aDescends && bDescends) {
+            edgeType = 'ridge'; edgeScore = 0.9; classificationMethod = 'face_adjacency_planes';
+          } else if (aAscends && bAscends) {
+            edgeType = 'valley'; edgeScore = 0.9; classificationMethod = 'face_adjacency_planes';
+          } else if ((aDescends && bAscends) || (aAscends && bDescends)) {
+            edgeType = 'hip'; edgeScore = 0.85; classificationMethod = 'face_adjacency_planes';
+          } else {
+            // Slopes too flat to determine — fall back to DSM profile
+            edgeType = 'unclassified'; edgeScore = 0.5; classificationMethod = 'face_adjacency_inconclusive';
+          }
+        } else {
+          edgeType = 'unclassified'; classificationMethod = 'edge_too_short';
+        }
+      } else {
+        // One or both planes couldn't be fit — fall back to DSM proximity
+        if (effectiveDSM) {
+          const pxA = geoToPxPoint(start, effectiveDSM);
+          const pxB = geoToPxPoint(end, effectiveDSM);
+          const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPxCCW, dsmInteriorEdgesPx);
+          edgeType = classified.type; edgeSource = classified.source; edgeScore = classified.score;
+          classificationMethod = 'dsm_proximity_fallback';
+        } else {
+          edgeType = 'unclassified'; classificationMethod = 'no_plane_data';
+        }
+      }
+    } else if (faceIndices.length === 1) {
+      // Single face edge not on boundary — likely a boundary we missed or structural
       if (effectiveDSM) {
         const pxA = geoToPxPoint(start, effectiveDSM);
         const pxB = geoToPxPoint(end, effectiveDSM);
         const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPxCCW, dsmInteriorEdgesPx);
-        edgeType = classified.type;
-        edgeSource = classified.source;
-        edgeScore = classified.score;
+        edgeType = classified.type; edgeSource = classified.source; edgeScore = classified.score;
+        classificationMethod = 'dsm_proximity_single_face';
       } else {
-        edgeType = 'unclassified';
+        edgeType = 'eave'; edgeSource = 'perimeter'; edgeScore = 0.7;
+        classificationMethod = 'single_face_default_eave';
+      }
+    } else {
+      // No face adjacency at all
+      if (effectiveDSM) {
+        const pxA = geoToPxPoint(start, effectiveDSM);
+        const pxB = geoToPxPoint(end, effectiveDSM);
+        const classified = classifyPlanarSegment({ a: pxA, b: pxB }, footprintPxCCW, dsmInteriorEdgesPx);
+        edgeType = classified.type; edgeSource = classified.source; edgeScore = classified.score;
+        classificationMethod = 'dsm_proximity_no_faces';
+      } else {
+        edgeType = 'unclassified'; classificationMethod = 'no_data';
       }
     }
+
+    // Record classification diagnostics
+    edgeClassificationTable.push({
+      edge_key: _key.substring(0, 40),
+      length_ft: Number(lengthFt.toFixed(1)),
+      adjacent_face_count: faceIndices.length,
+      on_footprint: onFootprintBoundary,
+      type: edgeType,
+      method: classificationMethod,
+      score: edgeScore,
+    });
 
     addVertex(start);
     addVertex(end);
