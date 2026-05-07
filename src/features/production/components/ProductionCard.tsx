@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, AlertTriangle, DollarSign } from "lucide-react";
+import { GripVertical, AlertTriangle, DollarSign, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CLJBadge } from "@/components/CLJBadge";
 
@@ -96,7 +96,7 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "w-full min-w-0 max-w-full min-h-[90px] max-h-[110px]",
+        "w-full min-w-0 max-w-full min-h-[90px]",
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
         "cursor-grab active:cursor-grabbing",
         "relative group overflow-hidden",
@@ -104,10 +104,6 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
       )}
       {...attributes}
       {...listeners}
-      onClick={(e) => {
-        e.stopPropagation();
-        onView(project.id);
-      }}
       role="button"
       tabIndex={0}
       aria-label={`Project ${projectNumber}, ${customerName}, ${project.days_in_stage} days in stage`}
@@ -181,6 +177,18 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
           >
             {formatCurrency(project.contract_value)}
           </span>
+        </div>
+
+        {/* Row 4: Arrow to open production detail */}
+        <div
+          className="flex items-center justify-center pt-1 mt-1 border-t border-border/40 cursor-pointer hover:bg-muted/50 rounded-b -mx-2 -mb-2 py-1 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            onView(project.id);
+          }}
+          title="Open production details"
+        >
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
         </div>
 
         {/* Drag Handle */}
