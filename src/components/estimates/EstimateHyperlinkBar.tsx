@@ -236,6 +236,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       case 'profit': return TrendingUp;
       case 'total': return DollarSign;
       case 'documents': return FileText;
+      case 'insurance': return Shield;
       default: return Calculator;
     }
   };
