@@ -23803,6 +23803,36 @@ export type Database = {
           },
         ]
       }
+      pdf_audit_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string | null
+          event_payload: Json | null
+          event_type: string
+          id: string
+          pdf_document_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string | null
+          event_payload?: Json | null
+          event_type: string
+          id?: string
+          pdf_document_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string | null
+          event_payload?: Json | null
+          event_type?: string
+          id?: string
+          pdf_document_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       pdf_collab_sessions: {
         Row: {
           created_at: string | null
