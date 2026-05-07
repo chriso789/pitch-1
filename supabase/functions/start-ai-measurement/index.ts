@@ -652,6 +652,11 @@ async function processJob(input: any) {
       else if (isLikelyOutbuilding)
         rejected_reason = `likely_outbuilding:${Math.round(area_sqft)}sqft_${Math.round(bbox_center_distance_from_geocode_px)}px_from_geocode`;
 
+      // Determine which bbox cap was used for diagnostics
+      const isCC = source === 'google_solar_mask_contour';
+      const ccRelaxed = isCC && bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO && bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC && !rejected_reason;
+      const effectiveBboxCap = ccRelaxed ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC : MAX_FOOTPRINT_BBOX_TILE_RATIO;
+
       return {
         source,
         polygon: cleaned,
@@ -671,6 +676,10 @@ async function processJob(input: any) {
         roof_image_overlap_score: null,
         centroid_offset_px: null,
         footprint_registration_passed: null,
+        // v14: connected-component bbox cap diagnostics
+        bbox_cap_used: bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO ? effectiveBboxCap : null,
+        bbox_cap_reason: ccRelaxed ? `cc_isolated_relaxed_${Math.round(bboxTileRatio * 100)}pct_le_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)}pct` : null,
+        connected_component_isolated: isCC,
       };
     }
 
