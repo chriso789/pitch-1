@@ -269,6 +269,14 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "production"
     },
     {
+      name: "Material Audit",
+      href: "material-audit",
+      path: "/material-audit",
+      icon: ClipboardCheck,
+      description: "Audit supplier invoices vs price lists",
+      featureKey: "production"
+    },
+    {
       name: "My Money",
       href: "my-money",
       path: "/my-money",
