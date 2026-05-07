@@ -2771,11 +2771,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           has_noise_fragments: hasNoiseFragments,
           oversized_face_ids: oversizedFaceIds,
           oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
+          provisional_faces_before: preProvisionalCount,
+          provisional_faces_after: refinedProvisionalCount,
           rejection_reason: refinementAccepted ? null : (
-            refinedGraphFaces.length <= graphFaces.length ? 'no_face_increase' :
-            refinedMaxPlaneRatio >= preMaxPlaneRatio ? 'max_plane_ratio_not_reduced' :
-            refinedCoverageRatio < 0.50 ? 'coverage_collapsed' :
-            hasNoiseFragments ? 'noise_micro_facets' : 'unknown'
+            refinedGraphFaces.length < graphFaces.length ? 'face_count_decreased' :
+            refinedCoverageRatio < 0.30 ? 'coverage_collapsed' :
+            hasNoiseFragments ? 'noise_micro_facets' : 
+            refinedGraphFaces.length <= graphFaces.length && !refinementImprovesCoverage ? 'no_improvement' :
+            'unknown'
           ),
         };
         
