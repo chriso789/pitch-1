@@ -40,14 +40,22 @@ export const MAX_INTERSECTIONS_PER_EDGE = 2;
 export const PLANE_FIT_ERROR_THRESHOLD = 0.5;
 /** Facets smaller than this (sqft) are discarded */
 export const MIN_FACET_AREA_SQFT = 15;
-/** Maximum interior edges passed to planar solver (ranked by score × length) */
-export const MAX_INTERIOR_EDGES_FOR_SOLVER = 12;
+/** Maximum interior edges passed to planar solver (ranked by score × length).
+ * Roofr/EagleView-grade topology needs enough short local ridges/valleys to
+ * survive into polygonization; low caps collapse upper roof assemblies. */
+export const MAX_INTERIOR_EDGES_FOR_SOLVER = 24;
 /** Minimum edge score to be considered for solver input */
 export const MIN_EDGE_SCORE_FOR_SOLVER = 0.25;
 /** Clustering: max midpoint distance between near-parallel edges */
 export const CLUSTER_MIDPOINT_DIST_PX = 25;
 /** Clustering: max angle difference between near-parallel edges */
 export const CLUSTER_ANGLE_DEG = 10;
+/** Locality guard: max roof-diagonal ratio for auto-extended structural dividers */
+export const MAX_STRUCTURAL_SPAN_RATIO = 0.50;
+/** Locality guard: max extra px added when extending an interior structural line */
+export const MAX_STRUCTURAL_EXTENSION_PX = 28;
+/** Locality guard: max gap allowed when merging collinear structural fragments */
+export const MAX_STRUCTURAL_MERGE_GAP_PX = 4;
 
 // ── FACE MERGE / POST-MERGE QA ───────────────────────────────────
 /** Max RMS (meters) to allow adjacent face merge */
