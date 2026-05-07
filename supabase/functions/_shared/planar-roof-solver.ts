@@ -38,7 +38,7 @@ import {
 } from "./solver-config.ts";
 
 type Pt = { x: number; y: number };
-type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number; originalLengthPx?: number; autoExtended?: boolean };
+type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number; originalLengthPx?: number; autoExtended?: boolean; localityPenalty?: number };
 
 // ── FORMALIZED SOLVER CONTRACT ─────────────────────────────────────
 export interface PlanarRoofSolverInput {
