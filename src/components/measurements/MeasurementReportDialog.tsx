@@ -372,6 +372,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     return getRasterOverlayData(effectiveMeasurement).hasRasterOverlay;
   })();
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0 || hasRasterOverlayRenderable;
+  const hasDiagnosticExport = Boolean(effectiveMeasurement);
 
   type PdfExportProfile = {
     scale: number;
@@ -593,7 +594,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   }, [open, explicitJobId, measurement, pipelineEntryId]);
 
   const handleDownloadPdf = async () => {
-    if (!hasRenderableReport && !jobId) return;
+    if (!hasDiagnosticExport && !hasRenderableReport && !jobId) return;
     setDownloading(true);
 
     // ALWAYS prefer capturing the visible report — it is the source of truth
@@ -602,20 +603,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     // different visuals (legacy patent line drawings) than the current
     // dialog. Only fall back to the cached/server PDF when client capture
     // genuinely cannot produce anything (no DOM pages at all).
-    if (hasRenderableReport) {
-      try {
-        await downloadVisibleReportPdf();
-        toast({
-          title: pdfGate.ok ? 'Report downloaded' : 'Diagnostic report downloaded',
-          description: pdfGate.ok
-            ? 'The measurement report PDF is ready.'
-            : 'This PDF is marked preview-only and includes QA failure details for troubleshooting.',
-        });
-        setDownloading(false);
-        return;
-      } catch (clientErr: any) {
-        console.warn('Client PDF export failed, attempting server fallback:', clientErr);
-      }
+    try {
+      await downloadVisibleReportPdf();
+      toast({
+        title: pdfGate.ok ? 'Report downloaded' : 'Diagnostic report downloaded',
+        description: pdfGate.ok
+          ? 'The measurement report PDF is ready.'
+          : 'This PDF is marked preview-only and includes QA failure details for troubleshooting.',
+      });
+      setDownloading(false);
+      return;
+    } catch (clientErr: any) {
+      console.warn('Client PDF export failed, attempting server fallback:', clientErr);
     }
 
     // Server fallback path: existing cached PDF first, then re-render.
@@ -778,7 +777,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               measurement?.validation_status === 'needs_internal_review' ||
               measurement?.validation_status === 'needs_manual_measurement' ||
               Boolean((effectiveMeasurement as any)?.geometry_report_json?.block_customer_report_reason);
-            const canDownloadDiagnostic = hasRenderableReport || canOpenExistingPdf || Boolean(jobId && pdfGate.ok);
+            const canDownloadDiagnostic = hasDiagnosticExport || hasRenderableReport || canOpenExistingPdf || Boolean(jobId);
             return (
               <Button
                 size="sm"
