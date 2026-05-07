@@ -3706,9 +3706,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
       valley_ft: outValleys.reduce((s, e) => s + e.length_ft, 0),
-      eave_ft: outEaves.reduce((s, e) => s + e.length_ft, 0),
-      rake_ft: outRakes.reduce((s, e) => s + e.length_ft, 0),
-      perimeter_ft: outEaves.reduce((s, e) => s + e.length_ft, 0) + outRakes.reduce((s, e) => s + e.length_ft, 0),
+      // Use perimeter Phase 0 eave/rake if available, otherwise solver output
+      eave_ft: perimeterGateResult?.passed && perimeterGateResult.diagnostics.eave_length_lf > 0
+        ? perimeterGateResult.diagnostics.eave_length_lf
+        : outEaves.reduce((s, e) => s + e.length_ft, 0),
+      rake_ft: perimeterGateResult?.passed && perimeterGateResult.diagnostics.rake_length_lf > 0
+        ? perimeterGateResult.diagnostics.rake_length_lf
+        : outRakes.reduce((s, e) => s + e.length_ft, 0),
+      perimeter_ft: perimeterGateResult?.diagnostics.total_perimeter_lf
+        ?? (outEaves.reduce((s, e) => s + e.length_ft, 0) + outRakes.reduce((s, e) => s + e.length_ft, 0)),
       total_roof_area_sqft: totalRoofArea,
       total_plan_area_sqft: totalPlanArea,
       predominant_pitch: predominantPitch,
