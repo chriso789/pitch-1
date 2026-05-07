@@ -762,6 +762,8 @@ const LeadDetails = () => {
         return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} contactId={lead?.contact?.id} />;
       case 'total':
         return <TotalsTab pipelineEntryId={id!} />;
+      case 'insurance':
+        return <InsuranceSection pipelineEntryId={id!} />;
       default:
         return (
           <Card>
