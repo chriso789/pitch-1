@@ -26,7 +26,7 @@ import { renderPageToDataUrl } from "@/lib/pdfRenderer";
 import { loadPDFFromArrayBuffer } from "@/lib/pdfRenderer";
 import {
   ArrowLeft, Save, Download, History, Tags, Wand2, ShieldCheck,
-  FileText, AlertTriangle, Copy, Check, Layers
+  FileText, AlertTriangle, Copy, Check, Layers, ZoomIn, ZoomOut
 } from "lucide-react";
 
 const PdfWorkspaceEditor = () => {
@@ -52,6 +52,7 @@ const PdfWorkspaceEditor = () => {
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<number, string>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
 
   // Load and render PDF pages when URL is available
@@ -294,13 +295,27 @@ const PdfWorkspaceEditor = () => {
         </div>
 
         {/* Center: PDF overlay editor */}
-        <div className="flex-[7] border rounded-lg overflow-auto bg-muted/10">
+        <div className="flex-[7] border rounded-lg overflow-hidden bg-muted/10 flex flex-col">
+          {/* Zoom controls bar */}
+          <div className="flex items-center justify-center gap-2 py-1.5 px-3 border-b bg-muted/20 flex-shrink-0">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoomLevel(z => Math.max(0.25, Math.round((z - 0.1) * 100) / 100))}>
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs font-medium w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoomLevel(z => Math.min(5, Math.round((z + 0.1) * 100) / 100))}>
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setZoomLevel(1)}>
+              Reset
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto">
           {isPdfLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
             </div>
           ) : activePageImage && activePageMeta ? (
-            <div className="flex items-start justify-center p-4">
+            <div className="flex items-start justify-center p-4" style={{ minWidth: activePageMeta.width * 1.5 * zoomLevel, minHeight: activePageMeta.height * 1.5 * zoomLevel }}>
               <PdfOverlayEditor
                 pageImageUrl={activePageImage}
                 pageWidth={activePageMeta.width}
@@ -313,18 +328,20 @@ const PdfWorkspaceEditor = () => {
                 onAddRedaction={handleAddRedaction}
                 mode={editorMode === 'text' ? 'select' : editorMode}
                 scale={1.5}
+                zoomLevel={zoomLevel}
+                onZoomChange={setZoomLevel}
               />
             </div>
           ) : activePageImage ? (
-            // Fallback: just show the rendered page image if no object extraction yet
             <div className="flex items-start justify-center p-4">
-              <img src={activePageImage} alt={`Page ${activePage}`} className="max-w-full shadow-lg rounded" />
+              <img src={activePageImage} alt={`Page ${activePage}`} className="max-w-full shadow-lg rounded" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }} />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <FileText className="h-8 w-8 mr-2" />Unable to load PDF
             </div>
           )}
+          </div>
         </div>
 
         {/* Right: Intelligence panel */}
