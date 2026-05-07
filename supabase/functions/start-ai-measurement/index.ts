@@ -1122,6 +1122,14 @@ async function processJob(input: any) {
         })),
         selected_component_count: validCandidates.length,
         clipping_applied: false,
+        projection_diagnostics: projectionDiagnostics.slice(0, 5),
+        tile_registration: {
+          tile_center_geo: { lat: coords.lat, lng: coords.lng },
+          tile_size_px: { width: raster.width, height: raster.height },
+          actual_mpp: Number(actualMpp.toFixed(5)),
+          tile_ground_extent_m: { width: raster.width * actualMpp, height: raster.height * actualMpp },
+          solar_bbox_px: solarBboxPx,
+        },
       };
 
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
