@@ -239,6 +239,9 @@ export interface AutonomousGraphResult {
   topology_source: 'autonomous_dsm_graph_solver';
   facet_source: 'dsm_planar_graph_faces';
   fallback_used: false;
+  /** v17: Authoritative topology hierarchy (Fix #1-#3 from audit) */
+  topology_hierarchy?: RoofTopologyHierarchy;
+  topology_hierarchy_summary?: Record<string, unknown>;
 }
 
 export interface AutonomousGraphLog {
