@@ -689,23 +689,15 @@ const ProductionKanban = () => {
             Monitor and manage active construction projects
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Button 
-            onClick={fetchProductionData} 
-            disabled={loading}
-            variant="outline"
-            size="sm"
-          >
-            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-            Refresh
-          </Button>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              {Object.values(productionData).flat().length} active projects
-            </span>
-          </div>
-        </div>
+        <Button 
+          onClick={fetchProductionData} 
+          disabled={loading}
+          variant="outline"
+          size="sm"
+        >
+          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+          Refresh · {Object.values(productionData).flat().length} active projects
+        </Button>
       </div>
 
       {/* Job Action Items */}
