@@ -243,6 +243,28 @@ const PdfEngineEditor = () => {
     }
   }, [tenantId, user, id, templateTitle, templateDesc, docQuery.data, toast]);
 
+  const handleExportCheck = useCallback(() => {
+    const hasRedactions = engine.operations.some(o => !o.is_undone && (o.operation_type === 'add_redaction' || o.operation_type === 'apply_redaction'));
+    const readiness = PdfExportReadiness.check({
+      unresolvedSmartFields: [],
+      redactionVerificationPassed: hasRedactions ? null : null,
+      hasRedactions,
+      ocrPendingPages: [],
+      missingFonts: [],
+      overflowWarnings: 0,
+      lockedRequiredFields: [],
+      emptyRequiredFormFields: [],
+      totalOperations: engine.operations.filter(o => !o.is_undone).length,
+      documentTitle: docQuery.data?.title || '',
+    });
+    setExportReadiness(readiness);
+    if (readiness.ready && readiness.warnings.length === 0) {
+      handleCompile();
+    } else {
+      setShowExportReadiness(true);
+    }
+  }, [engine.operations, docQuery.data]);
+
   const handleCompile = useCallback(async () => {
     if (!originalBytesRef.current) return;
     try {
@@ -254,6 +276,7 @@ const PdfEngineEditor = () => {
       a.download = `${docQuery.data?.title || 'compiled'}_pitch.pdf`;
       a.click();
       URL.revokeObjectURL(url);
+      setShowExportReadiness(false);
       toast({ title: 'PDF compiled and downloaded' });
     } catch (err: any) {
       toast({ title: 'Compile failed', description: err.message, variant: 'destructive' });
