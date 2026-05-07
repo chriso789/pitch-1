@@ -306,8 +306,15 @@ function mergeCollinearSegments(segments: Seg[]): Seg[] {
         const perpDist = projMid ? dist(midJ, projMid) : 999;
         if (perpDist > 15) continue; // too far apart
 
-        // Overlapping or adjacent (gap < 10px)
-        if (minT <= t2 + 10 && maxT >= t1 - 10) {
+        // Overlapping or adjacent. Structural dividers use a much tighter gap
+        // so short local ridge/valley fragments do not merge into global spans.
+        const allowedGap = (isStructural(current) || isStructural(segments[j])) ? MAX_STRUCTURAL_MERGE_GAP_PX : 10;
+        if (minT <= t2 + allowedGap && maxT >= t1 - allowedGap) {
+          const currentLen = segmentLength(current);
+          const candidateSpan = globalMax - globalMin;
+          if ((isStructural(current) || isStructural(segments[j])) && candidateSpan > Math.max(currentLen, segmentLength(segments[j])) + allowedGap) {
+            continue;
+          }
           const allT = [t1, t2, minT, maxT];
           const globalMin = Math.min(...allT);
           const globalMax = Math.max(...allT);
