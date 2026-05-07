@@ -155,7 +155,7 @@ export interface FaceClippingDiagnostics {
   footprint_winding?: string;
   face_winding?: string;
   polygon_self_intersection_detected?: boolean;
-  // v7: clipper implementation debug
+  // v9: real polygon clipper diagnostics
   clipper_algorithm?: string;
   clipper_input_face_vertices?: number;
   clipper_input_footprint_vertices?: number;
@@ -163,6 +163,9 @@ export interface FaceClippingDiagnostics {
   clipper_error?: string | null;
   vertices_inside_footprint?: number;
   vertices_outside_footprint?: number;
+  footprint_is_convex?: boolean;
+  clipped_area_ratio?: number;
+  intersections_added_count?: number;
 }
 
 /**
