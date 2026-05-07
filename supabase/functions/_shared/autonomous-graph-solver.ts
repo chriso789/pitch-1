@@ -2702,6 +2702,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             pitch_degrees: pitchR,
             azimuth_degrees: azimuthR,
             edge_ids: [],
+            provisional: isProvisionalR,
+            plane_rms: planeRmsR,
           });
         }
         
