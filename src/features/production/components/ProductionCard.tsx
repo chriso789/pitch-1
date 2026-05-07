@@ -179,6 +179,18 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
           </span>
         </div>
 
+        {/* Row 4: Arrow to open production detail */}
+        <div
+          className="flex items-center justify-center pt-1 mt-1 border-t border-border/40 cursor-pointer hover:bg-muted/50 rounded-b -mx-2 -mb-2 py-1 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            onView(project.id);
+          }}
+          title="Open production details"
+        >
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+        </div>
+
         {/* Drag Handle */}
         <GripVertical 
           className="absolute top-0.5 right-0.5 h-2.5 w-2.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
