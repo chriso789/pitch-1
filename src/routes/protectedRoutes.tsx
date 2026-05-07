@@ -97,6 +97,7 @@ const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor")
 const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
 const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
 const PdfEngineEditor = React.lazy(() => import("@/pages/PdfEngineEditor"));
+const MaterialAuditPage = React.lazy(() => import("@/pages/MaterialAuditPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -153,6 +154,7 @@ export default function ProtectedRoutes() {
         <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
         <Route path="/material-orders" element={<ProtectedRoute><MaterialOrders /></ProtectedRoute>} />
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
+        <Route path="/material-audit" element={<ProtectedRoute><MaterialAuditPage /></ProtectedRoute>} />
         <Route path="/approval-rules" element={<ProtectedRoute><ApprovalRules /></ProtectedRoute>} />
         <Route path="/pending-approvals" element={<ProtectedRoute><PendingApprovals /></ProtectedRoute>} />
         <Route path="/manager-approval-queue" element={<ProtectedRoute><ManagerApprovalQueue /></ProtectedRoute>} />
