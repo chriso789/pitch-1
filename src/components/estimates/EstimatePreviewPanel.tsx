@@ -110,6 +110,7 @@ interface EstimatePreviewPanelProps {
   templateStyle?: string | null;
   materialItems: LineItem[];
   laborItems: LineItem[];
+  changeOrderItems?: LineItem[];
   breakdown: {
     materialsTotal: number;
     laborTotal: number;
@@ -176,6 +177,7 @@ export function EstimatePreviewPanel({
   templateStyle,
   materialItems,
   laborItems,
+  changeOrderItems = [],
   breakdown,
   config,
   finePrintContent,
@@ -1570,6 +1572,7 @@ export function EstimatePreviewPanel({
                     companyLogo={companyInfo?.logo_url || undefined}
                     materialItems={materialItems}
                     laborItems={laborItems}
+                    changeOrderItems={changeOrderItems}
                     breakdown={breakdown}
                     config={config}
                     finePrintContent={options.showCustomFinePrint ? finePrintContent : undefined}

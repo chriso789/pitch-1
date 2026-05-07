@@ -36,6 +36,7 @@ import { TemplateCombobox, BLANK_TEMPLATE_ID } from './TemplateCombobox';
 import { SupplierQuoteUploader } from './SupplierQuoteUploader';
 // usePDFGeneration removed - now using useMultiPagePDFGeneration for all PDF operations
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
+import { UpdateTemplateDialog } from './UpdateTemplateDialog';
 
 // Parsed measurements interface for inline import
 interface ParsedMeasurements {
@@ -213,6 +214,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [contactId, setContactId] = useState<string | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
+  const [showUpdateTemplateDialog, setShowUpdateTemplateDialog] = useState(false);
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
@@ -2758,6 +2760,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               <Download className="mr-2 h-4 w-4" />
               Export PDF
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdateTemplateDialog(true)}
+              className="flex-1 min-w-[140px]"
+            >
+              <Hammer className="mr-2 h-4 w-4" />
+              Update Template
+            </Button>
           </>
         )}
       </div>
@@ -2793,6 +2803,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             companyLocations={pdfData.companyLocations}
             materialItems={pdfData.materialItems}
             laborItems={pdfData.laborItems}
+            changeOrderItems={changeOrderItems}
             breakdown={pdfData.breakdown}
             config={pdfData.config}
             finePrintContent={pdfData.finePrintContent}
@@ -2821,6 +2832,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         templateStyle={proposalTemplateStyle}
         materialItems={materialItems}
         laborItems={laborItems}
+        changeOrderItems={changeOrderItems}
         breakdown={breakdown}
         config={config}
         finePrintContent={finePrintContent}
@@ -2832,6 +2844,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         contactId={contactId || undefined}
         tenantId={currentTenantId || undefined}
         userId={currentUserId || undefined}
+      />
+
+      {/* Update Template Dialog */}
+      <UpdateTemplateDialog
+        open={showUpdateTemplateDialog}
+        onOpenChange={setShowUpdateTemplateDialog}
+        lineItems={lineItems}
       />
     </div>
   );
