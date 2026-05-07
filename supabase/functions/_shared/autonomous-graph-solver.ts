@@ -1,5 +1,5 @@
 /**
- * Autonomous Roof Graph Solver v8 — Pre-Masked DSM Edge Detection
+ * Autonomous Roof Graph Solver v9 — Real Sutherland-Hodgman Polygon Clipper
  * 
  * Pipeline:
  *   1. DSM edge detection (Sobel gradient + PCA line fit)
