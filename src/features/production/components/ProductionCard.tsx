@@ -106,9 +106,7 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
       {...listeners}
       onClick={(e) => {
         e.stopPropagation();
-        if (project.contacts?.id) {
-          onView(project.contacts.id);
-        }
+        onView(project.id);
       }}
       role="button"
       tabIndex={0}

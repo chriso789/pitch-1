@@ -98,6 +98,7 @@ const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
 const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
 const PdfEngineEditor = React.lazy(() => import("@/pages/PdfEngineEditor"));
 const MaterialAuditPage = React.lazy(() => import("@/pages/MaterialAuditPage"));
+const ProductionDetail = React.lazy(() => import("@/pages/ProductionDetail"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -112,6 +113,7 @@ export default function ProtectedRoutes() {
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
         <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
+        <Route path="/production/:projectId" element={<ProtectedRoute><ProductionDetail /></ProtectedRoute>} />
         <Route path="/client-list" element={<ProtectedRoute><ClientList /></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
         <Route path="/storm-canvass" element={<ProtectedRoute><StormCanvass /></ProtectedRoute>} />

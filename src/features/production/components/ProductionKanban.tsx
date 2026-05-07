@@ -5,6 +5,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { ProductionColumn } from './ProductionColumn';
 import { ProductionCard } from './ProductionCard';
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { 
   Plus, 
   FileText,
@@ -21,7 +22,8 @@ import {
   AlertCircle,
   Ruler,
   PenTool,
-  Camera
+  Camera,
+  Filter
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -65,6 +67,7 @@ const ProductionKanban = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [costDialogOpen, setCostDialogOpen] = useState(false);
   const [costDialogProject, setCostDialogProject] = useState<ProductionProject | null>(null);
+  const [tradeFilter, setTradeFilter] = useState<string>('all');
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -190,6 +193,25 @@ const ProductionKanban = () => {
       return count || 0;
     }
   });
+
+  // Fetch all trade boards for filtering
+  const { data: allTradeBoards = [] } = useQuery({
+    queryKey: ['all-trade-boards'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('production_trade_boards')
+        .select('project_id, trade_type, trade_name');
+      return data || [];
+    }
+  });
+
+  const uniqueTradeTypes = [...new Set(allTradeBoards.map(tb => tb.trade_type))];
+
+  // Get project IDs that match trade filter
+  const tradeFilteredProjectIds = tradeFilter === 'all'
+    ? null
+    : new Set(allTradeBoards.filter(tb => tb.trade_type === tradeFilter).map(tb => tb.project_id));
+
 
   const defaultStages = [
     { stage_key: "submit_documents", name: "Submit Documents", color: "#ef4444", icon: FileText, sort_order: 1 },
@@ -385,6 +407,56 @@ const ProductionKanban = () => {
                         to_stage: 'submit_documents',
                         notes: 'Production workflow auto-created',
                       });
+                  }
+
+                  // Auto-create trade boards from estimate templates
+                  const estimates = project.estimates || [];
+                  if (estimates.length > 0 && workflow) {
+                    const { data: existingBoards } = await supabase
+                      .from('production_trade_boards')
+                      .select('trade_type')
+                      .eq('project_id', project.id)
+                      .eq('tenant_id', profile.tenant_id);
+
+                    const existingTypes = new Set((existingBoards || []).map((b: any) => b.trade_type));
+
+                    // Derive trades from estimate template names / roof_type
+                    const tradeSet = new Set<string>();
+                    for (const est of estimates) {
+                      // Check template_id to get trade type
+                      if (est.template_id) {
+                        const { data: tmpl } = await supabase
+                          .from('estimate_templates')
+                          .select('name, roof_type')
+                          .eq('id', est.template_id)
+                          .single();
+                        if (tmpl) {
+                          const name = (tmpl.name || '').toLowerCase();
+                          if (name.includes('gutter')) tradeSet.add('gutters');
+                          else if (name.includes('siding')) tradeSet.add('siding');
+                          else if (name.includes('solar')) tradeSet.add('solar');
+                          else if (name.includes('coating')) tradeSet.add('coating');
+                          else if (name.includes('window')) tradeSet.add('windows');
+                          else if (name.includes('paint')) tradeSet.add('painting');
+                          else tradeSet.add('roofing');
+                        }
+                      } else {
+                        tradeSet.add('roofing');
+                      }
+                    }
+
+                    for (const tradeType of tradeSet) {
+                      if (!existingTypes.has(tradeType)) {
+                        await supabase.from('production_trade_boards').insert({
+                          tenant_id: profile.tenant_id,
+                          project_id: project.id,
+                          production_workflow_id: workflow.id,
+                          trade_name: tradeType.charAt(0).toUpperCase() + tradeType.slice(1),
+                          trade_type: tradeType,
+                          current_stage: 'submit_documents',
+                        });
+                      }
+                    }
                   }
                 }
               } catch (err) {
@@ -705,7 +777,31 @@ const ProductionKanban = () => {
         </div>
       </div>
 
-      {/* Kanban Board */}
+      {/* Trade Filter */}
+      {uniqueTradeTypes.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Badge
+            variant={tradeFilter === 'all' ? 'default' : 'outline'}
+            className="cursor-pointer"
+            onClick={() => setTradeFilter('all')}
+          >
+            All Trades
+          </Badge>
+          {uniqueTradeTypes.map(type => (
+            <Badge
+              key={type}
+              variant={tradeFilter === type ? 'default' : 'outline'}
+              className="cursor-pointer capitalize"
+              onClick={() => setTradeFilter(type)}
+            >
+              {type.replace(/_/g, ' ')}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+
       <DndContext 
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
@@ -716,8 +812,11 @@ const ProductionKanban = () => {
             {stages.filter((stage, index, self) => 
               index === self.findIndex(s => s.stage_key === stage.stage_key)
             ).map((stage) => {
-              const stageProjects = productionData[stage.stage_key] || [];
-              const stageTotal = getStageTotal(stage.stage_key);
+              const allStageProjects = productionData[stage.stage_key] || [];
+              const stageProjects = tradeFilteredProjectIds
+                ? allStageProjects.filter(p => tradeFilteredProjectIds.has(p.id))
+                : allStageProjects;
+              const stageTotal = stageProjects.reduce((sum, p) => sum + p.contract_value, 0);
 
               return (
                 <div key={stage.stage_key} className="flex-shrink-0 w-[260px]">
@@ -738,7 +837,7 @@ const ProductionKanban = () => {
                           key={`project-${project.id}`}
                           id={project.id}
                           project={project}
-                          onView={(contactId) => navigate(`/contact/${contactId}`)}
+                          onView={(projectId) => navigate(`/production/${projectId}`)}
                         />
                       ))}
                     </SortableContext>
