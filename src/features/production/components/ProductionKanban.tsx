@@ -5,6 +5,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { ProductionColumn } from './ProductionColumn';
 import { ProductionCard } from './ProductionCard';
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { 
   Plus, 
   FileText,
@@ -21,7 +22,8 @@ import {
   AlertCircle,
   Ruler,
   PenTool,
-  Camera
+  Camera,
+  Filter
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
