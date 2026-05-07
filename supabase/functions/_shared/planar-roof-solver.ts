@@ -30,13 +30,15 @@ import {
   GRID_SNAP_PX,
   MIN_FACE_AREA_RATIO,
   MIN_FACE_AREA_ABS_PX,
-  MAX_STRUCTURAL_SPAN_RATIO,
-  MAX_STRUCTURAL_EXTENSION_PX,
+  LOCALITY_SPAN_RATIO_SOFT,
+  LOCALITY_SPAN_RATIO_HARD,
+  LOCALITY_EXTENSION_SOFT_PX,
+  LOCALITY_EXTENSION_HARD_PX,
   MAX_STRUCTURAL_MERGE_GAP_PX,
 } from "./solver-config.ts";
 
 type Pt = { x: number; y: number };
-type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number; originalLengthPx?: number; autoExtended?: boolean };
+type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number; originalLengthPx?: number; autoExtended?: boolean; localityPenalty?: number };
 
 // ── FORMALIZED SOLVER CONTRACT ─────────────────────────────────────
 export interface PlanarRoofSolverInput {
@@ -858,12 +860,90 @@ export interface PlanarSolverDebug {
   fragment_merges: number;
   faces_rejected_by_area: number;
   customer_block_reason: string | null;
+  // Adaptive locality diagnostics
+  edges_with_locality_penalty: number;
+  edges_removed_post_faces: number;
+  provisional_faces_count: number;
+  local_clusters_detected: number;
 }
 
 export interface PlanarSolverResult {
   faces: Array<{ id: number; polygon: Pt[] }>;
   edges: Seg[];
   debug: PlanarSolverDebug;
+}
+
+/**
+ * Compute locality penalty for a structural edge.
+ * 0 = perfectly local, 1 = extreme cross-roof diagonal.
+ */
+function computeLocalityPenalty(seg: Seg, roofDiagonalPx: number): number {
+  const len = segmentLength(seg);
+  const spanRatio = len / roofDiagonalPx;
+  const extensionPx = seg.autoExtended && seg.originalLengthPx
+    ? len - seg.originalLengthPx
+    : 0;
+
+  let penalty = 0;
+  // Span ratio penalty
+  if (spanRatio > LOCALITY_SPAN_RATIO_SOFT) {
+    penalty += Math.min(1, (spanRatio - LOCALITY_SPAN_RATIO_SOFT) / (LOCALITY_SPAN_RATIO_HARD - LOCALITY_SPAN_RATIO_SOFT)) * 0.5;
+  }
+  // Extension penalty
+  if (extensionPx > LOCALITY_EXTENSION_SOFT_PX) {
+    penalty += Math.min(1, (extensionPx - LOCALITY_EXTENSION_SOFT_PX) / (LOCALITY_EXTENSION_HARD_PX - LOCALITY_EXTENSION_SOFT_PX)) * 0.5;
+  }
+  return Math.min(1, penalty);
+}
+
+/**
+ * Check if removing an edge would destroy any face in the provided face list.
+ */
+function edgeContributesToFace(seg: Seg, faces: Array<{ polygon: Pt[] }>): boolean {
+  const ka = ptKey(seg.a), kb = ptKey(seg.b);
+  for (const face of faces) {
+    for (let i = 0; i < face.polygon.length; i++) {
+      const pa = ptKey(face.polygon[i]);
+      const pb = ptKey(face.polygon[(i + 1) % face.polygon.length]);
+      if ((pa === ka && pb === kb) || (pa === kb && pb === ka)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Detect local clusters using BFS on edge adjacency.
+ */
+function countLocalClusters(interiorEdges: Seg[]): number {
+  if (interiorEdges.length === 0) return 0;
+  const nodeToEdges = new Map<string, number[]>();
+  interiorEdges.forEach((seg, idx) => {
+    for (const p of [seg.a, seg.b]) {
+      const k = ptKey(p);
+      if (!nodeToEdges.has(k)) nodeToEdges.set(k, []);
+      nodeToEdges.get(k)!.push(idx);
+    }
+  });
+  const visited = new Set<number>();
+  let clusters = 0;
+  for (let i = 0; i < interiorEdges.length; i++) {
+    if (visited.has(i)) continue;
+    clusters++;
+    const queue = [i];
+    while (queue.length > 0) {
+      const cur = queue.pop()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const seg = interiorEdges[cur];
+      for (const p of [seg.a, seg.b]) {
+        const neighbors = nodeToEdges.get(ptKey(p)) || [];
+        for (const n of neighbors) {
+          if (!visited.has(n)) queue.push(n);
+        }
+      }
+    }
+  }
+  return clusters;
 }
 
 export function solveRoofPlanes(
@@ -877,6 +957,8 @@ export function solveRoofPlanes(
     total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0,
     faces_with_area: 0, face_coverage_ratio: 0, fragment_merges: 0,
     faces_rejected_by_area: 0, customer_block_reason: null,
+    edges_with_locality_penalty: 0, edges_removed_post_faces: 0,
+    provisional_faces_count: 0, local_clusters_detected: 0,
   };
 
   if (rawFootprint.length < 3) {
@@ -886,9 +968,12 @@ export function solveRoofPlanes(
   // 1. Snap footprint
   const footprint = rawFootprint.map(p => snap(p));
   const roofDiagonalPx = footprintDiagonal(footprint);
-  const maxStructuralSpanPx = roofDiagonalPx * MAX_STRUCTURAL_SPAN_RATIO;
 
-  // 2. Convert interior lines with metadata
+  // 2. Convert interior lines with metadata — use GENEROUS extension limits
+  //    to allow graph closure. Hard locality pruning happens AFTER face extraction.
+  const maxExtensionPx = LOCALITY_EXTENSION_HARD_PX;
+  const maxSpanPx = roofDiagonalPx * LOCALITY_SPAN_RATIO_HARD;
+
   const snappedInterior: Seg[] = interiorLines
     .map((seg) => ({
       a: snap(seg.a), b: snap(seg.b),
@@ -903,17 +988,19 @@ export function solveRoofPlanes(
     .map((seg) => {
       const touchesFootprint = pointNearFootprint(seg.a, footprint) || pointNearFootprint(seg.b, footprint);
       const isPrimaryDivider = seg.edgeType === 'ridge' || seg.edgeType === 'valley' || (seg.edgeType === 'hip' && (seg.edgeScore || 0) >= 0.35);
-      const localSpanExceeded = isPrimaryDivider && segmentLength(seg) > maxStructuralSpanPx;
-      // DSM ridge/valley/hip detections often stop short of the eave because
-      // the edge detector sees only the high-gradient core. A planar roof graph
-      // cannot form closed facets from floating chords, so extend trustworthy
-      // structural dividers to the footprint before intersection splitting.
-      // Locality guard: never turn local evidence into a cross-roof diagonal.
-      return (touchesFootprint || isPrimaryDivider) && !localSpanExceeded
-        ? extendLineToFootprint(seg, footprint, MAX_STRUCTURAL_EXTENSION_PX, maxStructuralSpanPx) || seg
+      // Extend to footprint using generous hard limits — locality scoring applied later
+      const extended = (touchesFootprint || isPrimaryDivider)
+        ? extendLineToFootprint(seg, footprint, maxExtensionPx, maxSpanPx) || seg
         : seg;
+      // Compute locality penalty for post-face-extraction refinement
+      if (extended && isStructural(extended)) {
+        extended.localityPenalty = computeLocalityPenalty(extended, roofDiagonalPx);
+      }
+      return extended;
     })
     .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b) && segmentLength(seg) >= MIN_SEGMENT_LENGTH_PX);
+
+  let edgesWithLocalityPenalty = interiorFragments.filter(s => (s.localityPenalty || 0) > 0.1).length;
 
   // 3. Collinear merge
   const beforeMerge = interiorFragments.length;
@@ -925,6 +1012,8 @@ export function solveRoofPlanes(
   const filteredInterior = filterByClassificationPriority(mergedInterior, footprint);
   const filteredByPriority = beforeFilter - filteredInterior.length;
 
+  const localClustersDetected = countLocalClusters(filteredInterior.filter(s => isStructural(s)));
+
   // 5. Collect interior endpoints on footprint
   const interiorEndpoints = filteredInterior.flatMap(s => [s.a, s.b]);
 
@@ -935,12 +1024,12 @@ export function solveRoofPlanes(
   const allSegments: Seg[] = [];
   const segSet = new Set<string>();
 
-  const addSeg = (a: Pt, b: Pt, source: Seg['source'], edgeType?: Seg['edgeType'], edgeScore?: number) => {
+  const addSeg = (a: Pt, b: Pt, source: Seg['source'], edgeType?: Seg['edgeType'], edgeScore?: number, localityPenalty?: number) => {
     const k = segKey(a, b);
     if (segSet.has(k)) return;
     if (ptKey(a) === ptKey(b)) return;
     segSet.add(k);
-    allSegments.push({ a, b, source, edgeType, edgeScore });
+    allSegments.push({ a, b, source, edgeType, edgeScore, localityPenalty });
   };
 
   // Footprint edges (immune to removal)
@@ -950,7 +1039,7 @@ export function solveRoofPlanes(
 
   // Interior lines
   for (const seg of filteredInterior) {
-    addSeg(seg.a, seg.b, 'interior', seg.edgeType, seg.edgeScore);
+    addSeg(seg.a, seg.b, 'interior', seg.edgeType, seg.edgeScore, seg.localityPenalty);
   }
 
   // 8. Split with ordered intersection filtering
@@ -964,17 +1053,65 @@ export function solveRoofPlanes(
   const graphSegments = reinjectPerimeter(pruned.kept, footprint);
   const perimeterReinjected = graphSegments.length - beforeReinject;
 
-  // 11. Build adjacency + extract faces
+  // 11. Build adjacency + extract PROVISIONAL faces (before locality refinement)
   const adj = buildAdjacency(graphSegments);
   const rawFaces = extractMinimalCycles(adj);
 
-  // 12. Face filtering
   const footprintArea = Math.abs(signedArea(footprint));
   const minRawFaceArea = Math.max(30, footprintArea * 0.001);
-  const allFaces = rawFaces
+  const provisionalFaces = rawFaces
     .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
     .map((polygon, i) => ({ id: i, polygon }));
-  const facesRejectedByArea = rawFaces.length - allFaces.length;
+  const provisionalFacesCount = provisionalFaces.length;
+
+  // 12. POST-FACE locality refinement: remove high-penalty edges that do NOT
+  //     contribute to valid face closure. This preserves graph continuity while
+  //     still preventing cross-roof diagonals that create false oversized planes.
+  let edgesRemovedPostFaces = 0;
+  const validProvisionalFaces = filterRoofFaces(provisionalFaces, footprint);
+
+  // Only attempt locality-based removal if we have enough provisional faces
+  let finalGraphSegments = graphSegments;
+  if (validProvisionalFaces.length >= 2) {
+    const highPenaltyEdges = graphSegments.filter(s =>
+      s.source === 'interior' && (s.localityPenalty || 0) > 0.6
+    );
+
+    if (highPenaltyEdges.length > 0) {
+      // Try removing high-penalty edges that don't destroy faces
+      const edgesToRemove = new Set<string>();
+      for (const edge of highPenaltyEdges) {
+        if (!edgeContributesToFace(edge, validProvisionalFaces)) {
+          edgesToRemove.add(segKey(edge.a, edge.b));
+          edgesRemovedPostFaces++;
+        }
+      }
+
+      if (edgesToRemove.size > 0) {
+        finalGraphSegments = graphSegments.filter(s => !edgesToRemove.has(segKey(s.a, s.b)));
+        // Re-extract faces after removal
+        const adj2 = buildAdjacency(finalGraphSegments);
+        const rawFaces2 = extractMinimalCycles(adj2);
+        const faces2 = rawFaces2
+          .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
+          .map((polygon, i) => ({ id: i, polygon }));
+        const filtered2 = filterRoofFaces(faces2, footprint);
+        // Only accept removal if it didn't reduce face count
+        if (filtered2.length < validProvisionalFaces.length) {
+          finalGraphSegments = graphSegments; // revert
+          edgesRemovedPostFaces = 0;
+        }
+      }
+    }
+  }
+
+  // 13. Final face extraction
+  const finalAdj = buildAdjacency(finalGraphSegments);
+  const finalRawFaces = extractMinimalCycles(finalAdj);
+  const allFaces = finalRawFaces
+    .filter((f) => Math.abs(signedArea(f)) > minRawFaceArea)
+    .map((polygon, i) => ({ id: i, polygon }));
+  const facesRejectedByArea = finalRawFaces.length - allFaces.length;
   let validFaces = filterRoofFaces(allFaces, footprint)
     .map((face, i) => ({ id: i, polygon: simplifyPolygon(face.polygon, SIMPLIFY_TOLERANCE_PX) }));
 
@@ -1005,17 +1142,21 @@ export function solveRoofPlanes(
     intersection_filter_skipped: intersectionFilterSkipped,
     dangling_edges_removed: pruned.removed,
     perimeter_reinjected: perimeterReinjected,
-    total_graph_segments: graphSegments.length,
-    total_graph_nodes: adj.size,
-    faces_extracted: rawFaces.length,
+    total_graph_segments: finalGraphSegments.length,
+    total_graph_nodes: finalAdj.size,
+    faces_extracted: finalRawFaces.length,
     faces_with_area: validFaces.length,
     face_coverage_ratio: Number(faceCoverageRatio.toFixed(3)),
     fragment_merges: polygonizerFallbackUsed ? 1 : 0,
     faces_rejected_by_area: polygonizerFallbackUsed ? 0 : facesRejectedByArea,
     customer_block_reason: customerBlockReason,
+    edges_with_locality_penalty: edgesWithLocalityPenalty,
+    edges_removed_post_faces: edgesRemovedPostFaces,
+    provisional_faces_count: provisionalFacesCount,
+    local_clusters_detected: localClustersDetected,
   };
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));
 
-  return { faces: validFaces, edges: graphSegments, debug };
+  return { faces: validFaces, edges: finalGraphSegments, debug };
 }

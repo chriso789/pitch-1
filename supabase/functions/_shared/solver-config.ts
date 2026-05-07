@@ -50,12 +50,22 @@ export const MIN_EDGE_SCORE_FOR_SOLVER = 0.25;
 export const CLUSTER_MIDPOINT_DIST_PX = 25;
 /** Clustering: max angle difference between near-parallel edges */
 export const CLUSTER_ANGLE_DEG = 10;
-/** Locality guard: max roof-diagonal ratio for auto-extended structural dividers */
-export const MAX_STRUCTURAL_SPAN_RATIO = 0.50;
-/** Locality guard: max extra px added when extending an interior structural line */
-export const MAX_STRUCTURAL_EXTENSION_PX = 28;
+
+// ── ADAPTIVE LOCALITY (replaces hard MAX_STRUCTURAL_SPAN_RATIO / MAX_STRUCTURAL_EXTENSION_PX) ──
+/** Soft penalty threshold: span ratio above this gets locality penalty */
+export const LOCALITY_SPAN_RATIO_SOFT = 0.40;
+/** Hard cap: span ratio above this is only allowed if edge contributes to face closure */
+export const LOCALITY_SPAN_RATIO_HARD = 0.75;
+/** Soft penalty threshold: extra extension px above this gets penalty */
+export const LOCALITY_EXTENSION_SOFT_PX = 20;
+/** Hard cap: extension px above this is only allowed if edge contributes to face closure */
+export const LOCALITY_EXTENSION_HARD_PX = 60;
 /** Locality guard: max gap allowed when merging collinear structural fragments */
 export const MAX_STRUCTURAL_MERGE_GAP_PX = 4;
+
+// Legacy exports for backward compatibility (used by autonomous-graph-solver)
+export const MAX_STRUCTURAL_SPAN_RATIO = LOCALITY_SPAN_RATIO_HARD;
+export const MAX_STRUCTURAL_EXTENSION_PX = LOCALITY_EXTENSION_HARD_PX;
 
 // ── FACE MERGE / POST-MERGE QA ───────────────────────────────────
 /** Max RMS (meters) to allow adjacent face merge */
