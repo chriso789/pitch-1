@@ -118,8 +118,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/calendar')) return 'calendar';
     if (path.startsWith('/storm-canvass')) return 'storm-canvass';
     if (path.startsWith('/communications')) return 'communications';
-    if (path.startsWith('/smartdocs')) return 'smartdocs';
-    if (path.startsWith('/documents/pdf-workspace')) return 'pdf-workspace';
+    if (path.startsWith('/smartdocs') || path.startsWith('/documents/pdf-workspace')) return 'documents';
     if (path.startsWith('/presentations')) return 'presentations';
     if (path.startsWith('/permits')) return 'permits';
     if (path.startsWith('/insurance') || path.startsWith('/scope-intelligence') || path.startsWith('/supplement')) return 'insurance';
