@@ -214,6 +214,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [contactId, setContactId] = useState<string | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
+  const [showUpdateTemplateDialog, setShowUpdateTemplateDialog] = useState(false);
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
