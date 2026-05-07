@@ -30,10 +30,13 @@ import {
   GRID_SNAP_PX,
   MIN_FACE_AREA_RATIO,
   MIN_FACE_AREA_ABS_PX,
+  MAX_STRUCTURAL_SPAN_RATIO,
+  MAX_STRUCTURAL_EXTENSION_PX,
+  MAX_STRUCTURAL_MERGE_GAP_PX,
 } from "./solver-config.ts";
 
 type Pt = { x: number; y: number };
-type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number };
+type Seg = { a: Pt; b: Pt; source?: 'footprint' | 'interior'; edgeType?: 'ridge' | 'valley' | 'hip' | 'eave' | 'unclassified'; edgeScore?: number; originalLengthPx?: number; autoExtended?: boolean };
 
 // ── FORMALIZED SOLVER CONTRACT ─────────────────────────────────────
 export interface PlanarRoofSolverInput {
