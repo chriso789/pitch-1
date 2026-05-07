@@ -183,7 +183,7 @@ const MaterialAuditPage = () => {
   }).filter(d => d.overcharge > 0 || d.undercharge > 0);
 
   return (
-    <AppLayout title="Material Price Audit">
+    <GlobalLayout>
       <div className="p-4 space-y-4">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -477,7 +477,7 @@ const MaterialAuditPage = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </AppLayout>
+    </GlobalLayout>
   );
 };
 
