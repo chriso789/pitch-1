@@ -287,10 +287,36 @@ export default function AccountsReceivable() {
         projectedProfitPct,
         budgetVariance,
       };
-    }).sort((a: WipProject, b: WipProject) => b.contractValue - a.contractValue);
+    });
   }, [projects, estimates, payments, invoices, laborTracking, filterDate]);
 
-  const arItems = useMemo(() => wipProjects.filter(p => p.balance > 0), [wipProjects]);
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir(field === 'age' ? 'desc' : 'desc');
+    }
+  };
+
+  const sortedWipProjects = useMemo(() => {
+    const list = [...wipProjects];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      switch (sortField) {
+        case 'age': return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        case 'contract': return dir * (a.contractValue - b.contractValue);
+        case 'costIncurred': return dir * (a.totalCostIncurred - b.totalCostIncurred);
+        case 'billed': return dir * (a.totalInvoiced - b.totalInvoiced);
+        case 'balance': return dir * (a.balance - b.balance);
+        case 'percentComplete': return dir * (a.percentComplete - b.percentComplete);
+        default: return 0;
+      }
+    });
+    return list;
+  }, [wipProjects, sortField, sortDir]);
+
+  const arItems = useMemo(() => sortedWipProjects.filter(p => p.balance > 0), [sortedWipProjects]);
 
   const totals = useMemo(() => {
     let totalOutstanding = 0, totalMaterial = 0, totalLabor = 0, totalContract = 0,
