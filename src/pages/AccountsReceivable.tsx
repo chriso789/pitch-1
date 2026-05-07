@@ -82,11 +82,16 @@ interface WipProject {
   budgetVariance: number;
 }
 
+type SortField = 'age' | 'contract' | 'costIncurred' | 'billed' | 'balance' | 'percentComplete';
+type SortDir = 'asc' | 'desc';
+
 export default function AccountsReceivable() {
   const activeTenantId = useEffectiveTenantId();
   const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [expandedWip, setExpandedWip] = useState<Set<string>>(new Set());
+  const [sortField, setSortField] = useState<SortField>('age');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
 
   const arStatuses = useMemo(() => {
