@@ -1526,6 +1526,7 @@ async function processJob(input: any) {
         lng: coords.lng,
         coordinateSpaceSolver: "dsm_px", // Legacy field — solver now self-reports truthful space in output
         footprintCoords: footprintGeo,
+        footprintSource: footprintSource,
         solarSegments,
         dsmGrid,
         maskedDSM,
