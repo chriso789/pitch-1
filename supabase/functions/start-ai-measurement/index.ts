@@ -4566,26 +4566,43 @@ async function processJob(input: any) {
     const topoFidelityScore = topologyFidelity?.topology_fidelity_score ?? 100;
     const topoFidelityRating = topologyFidelity?.topology_fidelity ?? 'high';
     const topoIssues = topologyFidelity?.topology_issues ?? [];
+    const topologyBlockReasons: string[] = [];
 
     if (topoFidelityRating === 'low') {
-      promotionGateFailedReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
+      topologyBlockReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
     }
     if (topologyFidelity?.fan_collapse_suspected) {
-      promotionGateFailedReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
+      topologyBlockReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
     }
     if ((topologyFidelity?.facet_deficit ?? 0) > 4) {
-      promotionGateFailedReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
+      topologyBlockReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
     }
-    if ((topologyFidelity?.valley_to_ridge_ratio ?? 1) < 0.10 && (topologyFidelity?.ridge_total_ft ?? 0) > 50) {
-      promotionGateFailedReasons.push(`valley_collapse:ratio=${topologyFidelity!.valley_to_ridge_ratio}`);
+    if (topologyFidelity?.valley_collapse_suspected) {
+      topologyBlockReasons.push(`valley_collapse:ratio=${topologyFidelity.valley_to_ridge_ratio},valley_ft=${topologyFidelity.valley_total_ft}`);
     }
+    if (topologyFidelity?.ridge_inflation_suspected) {
+      topologyBlockReasons.push(`ridge_inflation:ridge_ft=${topologyFidelity.ridge_total_ft},ridge_to_valley=${topologyFidelity.ridge_to_valley_ratio}`);
+    }
+    if ((topologyFidelity?.diagonal_span_ratio ?? 0) > 0.50 || (topologyFidelity?.diagonal_cross_roof_count ?? 0) > 0) {
+      topologyBlockReasons.push(`cross_roof_diagonal:span_ratio=${topologyFidelity?.diagonal_span_ratio},count=${topologyFidelity?.diagonal_cross_roof_count}`);
+    }
+    if (topologyFidelity?.planes_need_refinement) {
+      topologyBlockReasons.push(`plane_refinement_required:max_plane_ratio=${topologyFidelity.max_plane_area_ratio}`);
+    }
+    if (topologyFidelity?.pitch_fragmentation_suspected) {
+      topologyBlockReasons.push(`pitch_fragmentation:range=${topologyFidelity.pitch_range},uniformity=${topologyFidelity.pitch_uniformity_score}`);
+    }
+    promotionGateFailedReasons.push(...topologyBlockReasons);
+    const topologyMismatch = topologyBlockReasons.length > 0;
 
     const promotionGatePassed = promotionGateFailedReasons.length === 0;
     // Geometry source remains dsm_validated if geometric contracts pass
     // but customer_report_ready is blocked if topology fidelity is low
     const geometricContractsPassed = promotionGateFailedReasons.every(r => 
       r.startsWith('topology_fidelity') || r.startsWith('fan_collapse') || 
-      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse')
+      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse') ||
+      r.startsWith('ridge_inflation') || r.startsWith('cross_roof_diagonal') ||
+      r.startsWith('plane_refinement_required') || r.startsWith('pitch_fragmentation')
     ) && promotionGateFailedReasons.length > 0;
     
     const promotedGeometrySource = promotionGatePassed 
