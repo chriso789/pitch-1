@@ -16,7 +16,7 @@ import {
   Loader2, DollarSign, Clock, CheckCircle, Package, Hammer, Filter,
   MoreVertical, FileText, CreditCard, Send, Eye, CheckSquare,
   ChevronDown, ChevronRight, TrendingUp, TrendingDown, AlertTriangle,
-  BarChart3, ClipboardList
+  BarChart3, ClipboardList, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, subDays, startOfMonth, startOfQuarter, startOfYear } from 'date-fns';
@@ -82,11 +82,16 @@ interface WipProject {
   budgetVariance: number;
 }
 
+type SortField = 'age' | 'contract' | 'costIncurred' | 'billed' | 'balance' | 'percentComplete';
+type SortDir = 'asc' | 'desc';
+
 export default function AccountsReceivable() {
   const activeTenantId = useEffectiveTenantId();
   const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [expandedWip, setExpandedWip] = useState<Set<string>>(new Set());
+  const [sortField, setSortField] = useState<SortField>('age');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
 
   const arStatuses = useMemo(() => {
@@ -282,10 +287,36 @@ export default function AccountsReceivable() {
         projectedProfitPct,
         budgetVariance,
       };
-    }).sort((a: WipProject, b: WipProject) => b.contractValue - a.contractValue);
+    });
   }, [projects, estimates, payments, invoices, laborTracking, filterDate]);
 
-  const arItems = useMemo(() => wipProjects.filter(p => p.balance > 0), [wipProjects]);
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir(field === 'age' ? 'desc' : 'desc');
+    }
+  };
+
+  const sortedWipProjects = useMemo(() => {
+    const list = [...wipProjects];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      switch (sortField) {
+        case 'age': return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        case 'contract': return dir * (a.contractValue - b.contractValue);
+        case 'costIncurred': return dir * (a.totalCostIncurred - b.totalCostIncurred);
+        case 'billed': return dir * (a.totalInvoiced - b.totalInvoiced);
+        case 'balance': return dir * (a.balance - b.balance);
+        case 'percentComplete': return dir * (a.percentComplete - b.percentComplete);
+        default: return 0;
+      }
+    });
+    return list;
+  }, [wipProjects, sortField, sortDir]);
+
+  const arItems = useMemo(() => sortedWipProjects.filter(p => p.balance > 0), [sortedWipProjects]);
 
   const totals = useMemo(() => {
     let totalOutstanding = 0, totalMaterial = 0, totalLabor = 0, totalContract = 0,
@@ -584,8 +615,11 @@ export default function AccountsReceivable() {
 
           <TabsContent value="all">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>WIP Report — All Converted Projects</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Sorted by {sortField === 'age' ? 'date' : sortField === 'costIncurred' ? 'cost incurred' : sortField === 'percentComplete' ? '% complete' : sortField} · {sortField === 'age' ? (sortDir === 'asc' ? 'oldest first' : 'newest first') : (sortDir === 'desc' ? 'high → low' : 'low → high')}
+                </p>
               </CardHeader>
               <CardContent>
                 {wipProjects.length === 0 ? (
@@ -595,17 +629,32 @@ export default function AccountsReceivable() {
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    {/* Header */}
+                    {/* Sortable Header */}
                     <div className="hidden md:grid md:grid-cols-[2fr_1fr_1fr_1fr_1fr_80px_40px] gap-2 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b">
-                      <span>Project</span>
-                      <span className="text-right">Contract</span>
-                      <span className="text-right">Cost Incurred</span>
-                      <span className="text-right">Billed</span>
-                      <span className="text-right">Balance</span>
-                      <span className="text-center">% Done</span>
+                      {([
+                        { field: 'age' as SortField, label: 'Project', align: 'text-left' },
+                        { field: 'contract' as SortField, label: 'Contract', align: 'text-right' },
+                        { field: 'costIncurred' as SortField, label: 'Cost Incurred', align: 'text-right' },
+                        { field: 'billed' as SortField, label: 'Billed', align: 'text-right' },
+                        { field: 'balance' as SortField, label: 'Balance', align: 'text-right' },
+                        { field: 'percentComplete' as SortField, label: '% Done', align: 'text-center' },
+                      ]).map(col => (
+                        <button
+                          key={col.field}
+                          onClick={() => toggleSort(col.field)}
+                          className={cn('flex items-center gap-1 hover:text-foreground transition-colors', col.align, col.align === 'text-right' ? 'justify-end' : col.align === 'text-center' ? 'justify-center' : 'justify-start')}
+                        >
+                          {col.label}
+                          {sortField === col.field ? (
+                            sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </button>
+                      ))}
                       <span></span>
                     </div>
-                    {wipProjects.map(item => (
+                    {sortedWipProjects.map(item => (
                       <Collapsible key={item.id} open={expandedWip.has(item.id)} onOpenChange={() => toggleWip(item.id)}>
                         <div className="flex items-center justify-between p-4 hover:bg-muted/30 rounded-lg transition-colors">
                           <CollapsibleTrigger asChild>
