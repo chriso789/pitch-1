@@ -2910,6 +2910,12 @@ export function analyzeTopologyFidelity(
 
   if (longestRidgeRatio > 0.7) score -= 10;
 
+  const severeStructuralCollapse = valleyCollapseSuspected && ridgeInflationSuspected && faces.length <= expectedMinFacets;
+  if (severeStructuralCollapse) {
+    issues.push(`structural_collapse_signature:facets=${faces.length},ridge=${ridgeTotalFt.toFixed(1)}ft,valley=${valleyTotalFt.toFixed(1)}ft`);
+    score = Math.min(score, 40);
+  }
+
   score = Math.max(0, Math.min(100, score));
 
   const topology_fidelity: 'high' | 'medium' | 'low' =
@@ -2927,6 +2933,7 @@ export function analyzeTopologyFidelity(
     eave_total_ft: Number(eaveTotalFt.toFixed(2)),
     rake_total_ft: Number(rakeTotalFt.toFixed(2)),
     valley_to_ridge_ratio: Number(valleyToRidgeRatio.toFixed(4)),
+    ridge_to_valley_ratio: Number(ridgeToValleyRatio.toFixed(4)),
     ridge_to_eave_ratio: Number(ridgeToEaveRatio.toFixed(4)),
     longest_ridge_ft: Number(longestRidge.toFixed(2)),
     longest_ridge_ratio: Number(longestRidgeRatio.toFixed(4)),
@@ -2935,6 +2942,7 @@ export function analyzeTopologyFidelity(
     average_plane_area_sqft: Number(avgPlaneArea.toFixed(2)),
     plane_area_variance: Number(planeAreaVariance.toFixed(4)),
     dominant_plane_ratio: Number(dominantPlaneRatio.toFixed(4)),
+    max_plane_area_ratio: Number(dominantPlaneRatio.toFixed(4)),
     largest_plane_sqft: Number(largestPlane.toFixed(2)),
     pitch_variance: Number(pitchStdDev.toFixed(4)),
     predominant_pitch: predominantPitch,
@@ -2944,7 +2952,14 @@ export function analyzeTopologyFidelity(
     central_node_degree: centralNodeDegree,
     fan_collapse_suspected: fanCollapseSuspected,
     diagonal_cross_roof_count: diagonalCrossRoofCount,
+    diagonal_span_ratio: Number(diagonalSpanRatio.toFixed(4)),
+    local_cluster_count: localClusterCount,
     merged_plane_suspected: mergedPlaneSuspected,
+    valley_collapse_suspected: valleyCollapseSuspected,
+    ridge_inflation_suspected: ridgeInflationSuspected,
+    oversized_continuous_plane_suspected: oversizedContinuousPlaneSuspected,
+    planes_need_refinement: planesNeedRefinement,
+    pitch_fragmentation_suspected: pitchFragmentationSuspected,
     expected_min_facets: expectedMinFacets,
     facet_deficit: facetDeficit,
     topology_fidelity,
