@@ -39,9 +39,12 @@ export function PdfOverlayEditor({
   onAddRedaction,
   mode,
   scale = 1,
+  zoomLevel = 1,
+  onZoomChange,
 }: OverlayEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
 
   // Initialize Fabric canvas
