@@ -1326,11 +1326,17 @@ const LOCAL_REGION_CELL_PX = 40;
 /** Elevation difference threshold to consider two cells different regions */
 const LOCAL_REGION_ELEV_DIFF_M = 0.8;
 
+type StructuralTier = 'primary' | 'secondary' | 'tertiary';
+
 interface ClusterableEdge {
   a: { x: number; y: number };
   b: { x: number; y: number };
   type: 'ridge' | 'valley' | 'hip';
   score: number;
+  /** Structural hierarchy tier assigned during classification */
+  tier?: StructuralTier;
+  /** Raw hierarchy score used for tier assignment */
+  hierarchyScore?: number;
 }
 
 interface ClusterDiagnostics {
@@ -1344,6 +1350,100 @@ interface ClusterDiagnostics {
   type_conflict_rejections: number;
   valley_edges_preserved: number;
   ridge_edges_preserved: number;
+  primary_edge_count: number;
+  secondary_edge_count: number;
+  tertiary_edge_count: number;
+  primary_ridges: number;
+  primary_valleys: number;
+  tertiary_merged: number;
+  micro_fragment_rejections: number;
+}
+
+/** Minimum area (px²) for a face to not be considered a micro-fragment */
+const MIN_FACE_AREA_RATIO = 0.02;
+
+/**
+ * Classify edges into primary / secondary / tertiary structural tiers.
+ *
+ * Primary:   long, high-prominence edges (major ridges/valleys) — never merged
+ * Secondary: medium importance (hips, moderate transitions) — merge cautiously
+ * Tertiary:  short, low-prominence micro-edges — can be aggressively merged
+ *
+ * Scoring factors:
+ *  - edge length (longer = more important)
+ *  - DSM elevation prominence at midpoint
+ *  - detection confidence score
+ *  - type bonus (ridges/valleys inherently more structural than hips)
+ */
+function classifyEdgeHierarchy(
+  edges: ClusterableEdge[],
+  dsmGrid: DSMGrid | null,
+  footprintPx: PxPt[],
+  footprintAreaPx2: number,
+): void {
+  if (edges.length === 0) return;
+
+  // Compute per-edge length
+  const lengths = edges.map(e => Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y));
+  const maxLen = Math.max(...lengths, 1);
+
+  // Footprint diagonal as reference scale
+  const fpXs = footprintPx.map(p => p.x);
+  const fpYs = footprintPx.map(p => p.y);
+  const fpDiag = footprintPx.length >= 2
+    ? Math.hypot(Math.max(...fpXs) - Math.min(...fpXs), Math.max(...fpYs) - Math.min(...fpYs))
+    : maxLen;
+
+  // DSM prominence: how much midpoint elevation differs from local neighbours
+  const prominences: number[] = edges.map((e, i) => {
+    if (!dsmGrid) return 0.5;
+    const mx = Math.round((e.a.x + e.b.x) / 2);
+    const my = Math.round((e.a.y + e.b.y) / 2);
+    if (mx < 1 || mx >= dsmGrid.width - 1 || my < 1 || my >= dsmGrid.height - 1) return 0.5;
+    const midElev = dsmGrid.data[my * dsmGrid.width + mx];
+    if (midElev === dsmGrid.noDataValue) return 0.5;
+    // Sample 4 neighbours at ~10px distance
+    const offsets = [[-10, 0], [10, 0], [0, -10], [0, 10]];
+    let elevSum = 0, cnt = 0;
+    for (const [ox, oy] of offsets) {
+      const sx = mx + ox, sy = my + oy;
+      if (sx >= 0 && sx < dsmGrid.width && sy >= 0 && sy < dsmGrid.height) {
+        const se = dsmGrid.data[sy * dsmGrid.width + sx];
+        if (se !== dsmGrid.noDataValue) { elevSum += se; cnt++; }
+      }
+    }
+    if (cnt === 0) return 0.5;
+    return Math.abs(midElev - elevSum / cnt);
+  });
+  const maxProm = Math.max(...prominences, 0.01);
+
+  // Compute composite hierarchy score for each edge
+  for (let i = 0; i < edges.length; i++) {
+    const lenNorm = lengths[i] / fpDiag; // 0..~1, relative to footprint
+    const promNorm = prominences[i] / maxProm; // 0..1
+    const scoreNorm = edges[i].score; // already 0..1 ish
+    const typeBonus = (edges[i].type === 'ridge' || edges[i].type === 'valley') ? 0.15 : 0;
+
+    // Weighted composite — length is most important, then prominence
+    const hScore = lenNorm * 0.40 + promNorm * 0.30 + scoreNorm * 0.15 + typeBonus;
+    edges[i].hierarchyScore = hScore;
+  }
+
+  // Sort scores to find tier thresholds
+  const scores = edges.map(e => e.hierarchyScore!).sort((a, b) => a - b);
+  const p33 = scores[Math.floor(scores.length * 0.33)] ?? 0;
+  const p66 = scores[Math.floor(scores.length * 0.66)] ?? 1;
+
+  for (const e of edges) {
+    const h = e.hierarchyScore!;
+    if (h >= p66) {
+      e.tier = 'primary';
+    } else if (h >= p33) {
+      e.tier = 'secondary';
+    } else {
+      e.tier = 'tertiary';
+    }
+  }
 }
 
 /**
@@ -1509,12 +1609,27 @@ function clusterEdges(
     type_conflict_rejections: 0,
     valley_edges_preserved: 0,
     ridge_edges_preserved: 0,
+    primary_edge_count: 0,
+    secondary_edge_count: 0,
+    tertiary_edge_count: 0,
+    primary_ridges: 0,
+    primary_valleys: 0,
+    tertiary_merged: 0,
+    micro_fragment_rejections: 0,
   };
 
   if (edges.length <= 1) {
     diagnostics.post_cluster_edge_count = edges.length;
     return { clustered: edges, diagnostics };
   }
+
+  // Step 0: Classify structural hierarchy
+  classifyEdgeHierarchy(edges, dsmGrid, footprintPx, footprintAreaPx2);
+  diagnostics.primary_edge_count = edges.filter(e => e.tier === 'primary').length;
+  diagnostics.secondary_edge_count = edges.filter(e => e.tier === 'secondary').length;
+  diagnostics.tertiary_edge_count = edges.filter(e => e.tier === 'tertiary').length;
+  diagnostics.primary_ridges = edges.filter(e => e.tier === 'primary' && e.type === 'ridge').length;
+  diagnostics.primary_valleys = edges.filter(e => e.tier === 'primary' && e.type === 'valley').length;
 
   // Step 1: Assign edges to local DSM elevation regions
   const regionIds = assignLocalRegions(edges, dsmGrid, footprintPx);
@@ -1523,6 +1638,16 @@ function clusterEdges(
 
   const used = new Set<number>();
   const result: ClusterableEdge[] = [];
+
+  // HIERARCHY GATE: Primary edges are NEVER merged — emit directly
+  for (let i = 0; i < edges.length; i++) {
+    if (edges[i].tier === 'primary') {
+      result.push(edges[i]);
+      used.add(i);
+      if (edges[i].type === 'valley') diagnostics.valley_edges_preserved++;
+      if (edges[i].type === 'ridge') diagnostics.ridge_edges_preserved++;
+    }
+  }
 
   for (let i = 0; i < edges.length; i++) {
     if (used.has(i)) continue;
@@ -1533,6 +1658,13 @@ function clusterEdges(
     for (let j = i + 1; j < edges.length; j++) {
       if (used.has(j)) continue;
       
+      // HIERARCHY GATE: Secondary edges only merge with tertiary
+      // (primary already emitted, so both i and j are secondary or tertiary here)
+      if (edges[i].tier === 'secondary' && edges[j].tier === 'secondary') {
+        // Two secondary edges — don't merge, preserve both
+        continue;
+      }
+
       // TOPOLOGY GATE 1: Must be in the same local region
       if (regionIds[i] !== regionIds[j]) {
         diagnostics.cross_region_rejections++;
@@ -1558,12 +1690,22 @@ function clusterEdges(
         let angleDiff = Math.abs(ai - aj);
         if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
         if (angleDiff > Math.PI / 2) angleDiff = Math.PI - angleDiff;
-        if (angleDiff * 180 / Math.PI > CLUSTER_ANGLE_DEG) continue;
+
+        // Tighter angle threshold for secondary edges
+        const effectiveAngleThreshold = (ei.tier === 'secondary' || ej.tier === 'secondary')
+          ? CLUSTER_ANGLE_DEG * 0.7
+          : CLUSTER_ANGLE_DEG;
+        if (angleDiff * 180 / Math.PI > effectiveAngleThreshold) continue;
         
         const midI = { x: (ei.a.x + ei.b.x) / 2, y: (ei.a.y + ei.b.y) / 2 };
         const midJ = { x: (ej.a.x + ej.b.x) / 2, y: (ej.a.y + ej.b.y) / 2 };
         const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
-        if (midDist > CLUSTER_MIDPOINT_DIST_PX) continue;
+
+        // Tighter distance threshold for secondary edges
+        const effectiveDistThreshold = (ei.tier === 'secondary' || ej.tier === 'secondary')
+          ? CLUSTER_MIDPOINT_DIST_PX * 0.6
+          : CLUSTER_MIDPOINT_DIST_PX;
+        if (midDist > effectiveDistThreshold) continue;
 
         // TOPOLOGY GATE 3: DSM elevation profile between edges
         if (wouldCrossTopologyBoundary(ei, ej, dsmGrid)) {
@@ -1589,17 +1731,71 @@ function clusterEdges(
     }
 
     const clusterEdgesArr = cluster.map(ci => edges[ci]);
+
+    // HIERARCHY: If cluster contains any secondary edge, keep it separate
+    const hasSecondary = clusterEdgesArr.some(e => e.tier === 'secondary');
+    if (hasSecondary && clusterEdgesArr.length >= 2) {
+      // Keep secondary edges individually, only merge tertiary among themselves
+      const secondary = clusterEdgesArr.filter(e => e.tier === 'secondary');
+      const tertiary = clusterEdgesArr.filter(e => e.tier === 'tertiary');
+      for (const se of secondary) {
+        result.push(se);
+        if (se.type === 'valley') diagnostics.valley_edges_preserved++;
+        if (se.type === 'ridge') diagnostics.ridge_edges_preserved++;
+      }
+      // If only 1 tertiary, keep as-is; otherwise merge tertiary below
+      if (tertiary.length <= 1) {
+        for (const te of tertiary) result.push(te);
+        diagnostics.edges_merged_count += 0;
+        continue;
+      }
+      // Fall through with only tertiary edges to merge
+      // (replace clusterEdgesArr for the merge logic below)
+      // We'll handle this inline:
+      diagnostics.tertiary_merged += tertiary.length - 1;
+      const tPts = tertiary.flatMap(e => [e.a, e.b]);
+      let tDx = 0, tDy = 0, tW = 0;
+      for (const e of tertiary) {
+        const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+        const dx = (e.b.x - e.a.x) / (len || 1);
+        const dy = (e.b.y - e.a.y) / (len || 1);
+        const sign = (tDx * dx + tDy * dy >= 0 || tW === 0) ? 1 : -1;
+        tDx += sign * dx * len; tDy += sign * dy * len; tW += len;
+      }
+      const tNorm = Math.hypot(tDx, tDy) || 1;
+      const tnx = tDx / tNorm, tny = tDy / tNorm;
+      const tcx = tPts.reduce((s, p) => s + p.x, 0) / tPts.length;
+      const tcy = tPts.reduce((s, p) => s + p.y, 0) / tPts.length;
+      const tProj = tPts.map(p => (p.x - tcx) * tnx + (p.y - tcy) * tny);
+
+      // Micro-fragment rejection: if merged tertiary is too short, drop it
+      const mergedLen = Math.max(...tProj) - Math.min(...tProj);
+      if (mergedLen < 8) {
+        diagnostics.micro_fragment_rejections++;
+        diagnostics.edges_merged_count += tertiary.length;
+        continue;
+      }
+
+      result.push({
+        a: { x: Math.round(tcx + tnx * Math.min(...tProj)), y: Math.round(tcy + tny * Math.min(...tProj)) },
+        b: { x: Math.round(tcx + tnx * Math.max(...tProj)), y: Math.round(tcy + tny * Math.max(...tProj)) },
+        type: tertiary[0].type,
+        score: Math.max(...tertiary.map(e => e.score)),
+      });
+      diagnostics.edges_merged_count += tertiary.length - 1;
+      continue;
+    }
+
+    // All-tertiary cluster — merge freely
     const allPts = clusterEdgesArr.flatMap(e => [e.a, e.b]);
     const spanX = Math.max(...allPts.map(p => p.x)) - Math.min(...allPts.map(p => p.x));
     const spanY = Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y));
     const span = Math.hypot(spanX, spanY);
     
     // TOPOLOGY GATE 4: Oversized plane prevention
-    // Estimate the area this merged edge would influence
     if (footprintAreaPx2 > 0) {
       const mergedInfluenceArea = span * CLUSTER_MIDPOINT_DIST_PX;
       if (mergedInfluenceArea > footprintAreaPx2 * CLUSTER_MAX_PLANE_AREA_RATIO && clusterEdgesArr.length > 2) {
-        // Don't merge — keep top edges individually
         diagnostics.oversized_plane_rejections++;
         clusterEdgesArr.sort((a, b) => b.score - a.score);
         const keep = Math.min(clusterEdgesArr.length, 3);
@@ -1617,8 +1813,16 @@ function clusterEdges(
       diagnostics.edges_merged_count += clusterEdgesArr.length - 2;
       continue;
     }
+
+    // Micro-fragment rejection for all-tertiary clusters
+    if (span < 8 && clusterEdgesArr.every(e => e.tier === 'tertiary')) {
+      diagnostics.micro_fragment_rejections++;
+      diagnostics.edges_merged_count += clusterEdgesArr.length;
+      continue;
+    }
     
-    // Weighted merge (same as before for valid merges)
+    // Weighted merge
+    diagnostics.tertiary_merged += clusterEdgesArr.length - 1;
     let totalWeight = 0;
     let avgDx = 0, avgDy = 0;
     for (const e of clusterEdgesArr) {
@@ -1994,9 +2198,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const clusteredEdgesPx = clusterResult.clustered;
   const clusterDiag = clusterResult.diagnostics;
   edgeCountAfterCluster = clusteredEdgesPx.length;
-  console.log(`  Edge clustering (topology-aware): ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
-  console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region rejections: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized rejections: ${clusterDiag.oversized_plane_rejections}`);
-  console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}`);
+  console.log(`  Edge clustering (hierarchical): ${rawDsmInteriorEdgesPx.length} → ${clusteredEdgesPx.length} edges`);
+  console.log(`    Hierarchy: primary=${clusterDiag.primary_edge_count} (ridges=${clusterDiag.primary_ridges}, valleys=${clusterDiag.primary_valleys}), secondary=${clusterDiag.secondary_edge_count}, tertiary=${clusterDiag.tertiary_edge_count}`);
+  console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized: ${clusterDiag.oversized_plane_rejections}`);
+  console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}, tertiary merged: ${clusterDiag.tertiary_merged}, micro-fragments rejected: ${clusterDiag.micro_fragment_rejections}`);
 
   // ===== STEP 6b: Cap interior edges =====
   let dsmInteriorEdgesPx = clusteredEdgesPx
@@ -2821,6 +3026,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       ridge_edges_preserved: clusterDiag.ridge_edges_preserved,
       edges_merged_count: clusterDiag.edges_merged_count,
       cluster_merge_rejections: clusterDiag.cluster_merge_rejections,
+      primary_edge_count: clusterDiag.primary_edge_count,
+      secondary_edge_count: clusterDiag.secondary_edge_count,
+      tertiary_edge_count: clusterDiag.tertiary_edge_count,
+      primary_ridges: clusterDiag.primary_ridges,
+      primary_valleys: clusterDiag.primary_valleys,
+      tertiary_merged: clusterDiag.tertiary_merged,
+      micro_fragment_rejections: clusterDiag.micro_fragment_rejections,
     },
     collinear_merges: planar.debug.collinear_merges || 0,
     fragment_merges: planar.debug.fragment_merges || 0,
