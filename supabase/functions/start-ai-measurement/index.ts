@@ -650,6 +650,7 @@ async function processJob(input: any) {
 
     // 1. Build OSM candidates (ALL nearby buildings, not just one).
     const candidates: FootprintCandidate[] = [];
+    const projectionDiagnostics: Array<{ source: string; raw_centroid_geo: { lat: number; lng: number }; projected_centroid_px: { x: number; y: number }; on_canvas: boolean; bbox_px: any; geo_distance_m: number }> = [];
     try {
       const osmRes = await fetchOSMBuildingCandidates(coords.lat, coords.lng, { searchRadius: 80 });
       for (const c of osmRes.candidates || []) {
@@ -662,8 +663,35 @@ async function processJob(input: any) {
           const f = pp[0], l = pp[pp.length - 1];
           if (Math.hypot(f.x - l.x, f.y - l.y) < 1) pp = pp.slice(0, -1);
         }
+
+        // Projection diagnostics: raw centroid vs projected
+        const rawCentroid = {
+          lat: c.ring.reduce((s, r) => s + r[1], 0) / c.ring.length,
+          lng: c.ring.reduce((s, r) => s + r[0], 0) / c.ring.length,
+        };
+        const projCentroid = lngLatToPx(rawCentroid.lat, rawCentroid.lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+        const onCanvas = projCentroid.x >= 0 && projCentroid.x <= raster.width && projCentroid.y >= 0 && projCentroid.y <= raster.height;
+        const xs = pp.map(p => p.x), ys = pp.map(p => p.y);
+        projectionDiagnostics.push({
+          source: `osm_overpass#${c.osmId}`,
+          raw_centroid_geo: rawCentroid,
+          projected_centroid_px: projCentroid,
+          on_canvas: onCanvas,
+          bbox_px: { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) },
+          geo_distance_m: c.distanceFromPointM,
+        });
+
         const sc = scoreCandidate(`osm_overpass#${c.osmId}`, pp);
         candidates.push(sc);
+      }
+      if (projectionDiagnostics.length > 0) {
+        const onCanvasCount = projectionDiagnostics.filter(d => d.on_canvas).length;
+        console.log(`[PROJECTION_DIAGNOSTICS] ${projectionDiagnostics.length} OSM candidates: ${onCanvasCount} on-canvas, ${projectionDiagnostics.length - onCanvasCount} off-canvas. Tile: ${raster.width}x${raster.height}px, center: ${coords.lat.toFixed(6)},${coords.lng.toFixed(6)}, actualMpp: ${actualMpp.toFixed(4)}`);
+        // Log closest 3 candidates for debugging
+        const sorted = [...projectionDiagnostics].sort((a, b) => a.geo_distance_m - b.geo_distance_m).slice(0, 3);
+        for (const d of sorted) {
+          console.log(`  ${d.source}: geo_dist=${d.geo_distance_m.toFixed(1)}m, centroid_px=(${d.projected_centroid_px.x.toFixed(0)},${d.projected_centroid_px.y.toFixed(0)}), on_canvas=${d.on_canvas}, bbox_px=[${d.bbox_px.minX.toFixed(0)},${d.bbox_px.minY.toFixed(0)}]-[${d.bbox_px.maxX.toFixed(0)},${d.bbox_px.maxY.toFixed(0)}]`);
+        }
       }
     } catch (e) {
       console.warn("[footprint-selection] OSM candidate scan failed:", (e as Error).message);
