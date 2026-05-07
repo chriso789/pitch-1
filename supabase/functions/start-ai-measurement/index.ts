@@ -5655,7 +5655,7 @@ async function setMeasurementJobStatus(id: string, status: string, msg: string, 
   if (error) console.error("setMeasurementJobStatus failed", { id, status, legacyStatus, error });
 }
 async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
-  const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement"].includes(status);
+  const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement", "topology_mismatch"].includes(status);
   await supabase.from("ai_measurement_jobs").update({
     status, status_message: msg,
     updated_at: new Date().toISOString(),
