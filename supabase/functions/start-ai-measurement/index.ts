@@ -501,6 +501,7 @@ async function processJob(input: any) {
     const RESIDENTIAL_MAX_SQFT = 8000; // Largest realistic residential roof; rejects parcel/yard polygons
     const MIN_COVERAGE_RATIO = 0.20;
     const MAX_FOOTPRINT_BBOX_TILE_RATIO = 0.35; // Footprint bbox may not exceed 35% of 1280×1280 tile
+    const MAX_FOOTPRINT_BBOX_TILE_RATIO_CC = 0.40; // Relaxed cap ONLY for isolated connected-component mask contours
     const MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO = 2.5; // Footprint may not be >2.5× the sum of solar segment areas
     const MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO = 1.35; // Candidate area / solar bbox area — masks that spill into yard/neighbors
     const MAX_EXTERIOR_SPILLOVER_RATIO = 0.40; // At most 40% of candidate area may lie outside the solar bbox
