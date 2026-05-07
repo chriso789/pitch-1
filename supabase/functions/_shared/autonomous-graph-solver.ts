@@ -3565,6 +3565,42 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`[FAILURE_CATEGORY] ${failureCategory}`);
   console.log(`[DOMINANT_REJECTION] edge: ${dominantRejection.dominant_edge_rejection_reason} (${dominantRejection.dominant_edge_rejection_pct}%), face: ${dominantRejection.dominant_face_rejection_reason} (${dominantRejection.dominant_face_rejection_pct}%)`);
 
+  // ===== v17: BUILD AUTHORITATIVE TOPOLOGY HIERARCHY =====
+  const solarSegmentInputs: SolarSegmentInput[] = input.solarSegments.map((seg, i) => ({
+    index: i,
+    pitch_degrees: seg.pitchDegrees,
+    azimuth_degrees: seg.azimuthDegrees,
+    area_sqft: (seg.stats?.areaMeters2 || 0) * 10.7639,
+    center_geo: seg.center ? [seg.center.longitude, seg.center.latitude] as [number, number] : null,
+    bbox_geo: seg.boundingBox ? {
+      sw: [seg.boundingBox.sw.longitude, seg.boundingBox.sw.latitude] as [number, number],
+      ne: [seg.boundingBox.ne.longitude, seg.boundingBox.ne.latitude] as [number, number],
+    } : null,
+    plane_height_m: seg.planeHeightAtCenterMeters || null,
+  }));
+
+  let topologyHierarchy: RoofTopologyHierarchy | undefined;
+  let topologyHierarchySummary: Record<string, unknown> | undefined;
+  try {
+    topologyHierarchy = buildTopologyHierarchy(
+      { vertices: outputVertices, edges: outputEdges, faces: graphFaces },
+      input.footprintCoords,
+      footprintPxCCW,
+      footprintAreaSqft,
+      solarSegmentInputs,
+      effectiveDSM,
+      refinementDiagnostics,
+      coverageRatio,
+      maxPlaneAreaRatio,
+      customerBlockReason,
+    );
+    topologyHierarchySummary = serializeHierarchySummary(topologyHierarchy);
+    console.log(`[TOPOLOGY_HIERARCHY] Built: ${topologyHierarchy.faces.length} faces, ${topologyHierarchy.edges.length} edges, ${topologyHierarchy.assemblies.length} assemblies`);
+  } catch (err) {
+    console.error(`[TOPOLOGY_HIERARCHY] Build failed:`, err);
+    warnings.push(`topology_hierarchy_build_failed: ${String(err)}`);
+  }
+
   return {
     success: validation.valid,
     graph_connected: graphFaces.length >= 2 && coverageRatio >= 0.85,
@@ -3601,6 +3637,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     topology_source: 'autonomous_dsm_graph_solver',
     facet_source: 'dsm_planar_graph_faces',
     fallback_used: false,
+    topology_hierarchy: topologyHierarchy,
+    topology_hierarchy_summary: topologyHierarchySummary,
   };
 }
 
