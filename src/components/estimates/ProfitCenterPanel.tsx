@@ -419,10 +419,58 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               </div>
             ) : (
               <>
-                {/* Selling Price */}
+                {/* Selling Price with Adjust Button */}
                 <div className="flex justify-between items-center py-2">
                   <span className="font-medium">Selling Price</span>
-                  <span className="font-semibold text-lg">{formatCurrency(sellingPrice)}</span>
+                  {isEditingPrice ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                        className="w-36 h-8 text-right font-semibold"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSavePrice();
+                          if (e.key === 'Escape') setIsEditingPrice(false);
+                        }}
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-green-600"
+                        onClick={handleSavePrice}
+                        disabled={isSavingPrice}
+                      >
+                        {isSavingPrice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => setIsEditingPrice(false)}
+                        disabled={isSavingPrice}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-lg">{formatCurrency(sellingPrice)}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={handleStartEditPrice}
+                        title="Adjust final price"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
