@@ -1497,6 +1497,29 @@ async function processJob(input: any) {
         return;
       }
 
+      // HARD BLOCK: if DSM completely unavailable (404 / no DataLayers), fail as no_dsm_coverage
+      if (!dsmGrid && !maskedDSM) {
+        const dsmFailCode = dsmDiag?.failure_code || "google_solar_no_dsm_coverage";
+        const failReason = dsmFailCode === "google_solar_no_datalayers" ? "google_solar_no_dsm_coverage" : dsmFailCode;
+        console.error(`[DSM_AVAILABILITY_GATE] FAIL: No DSM data available — ${failReason}`, JSON.stringify(dsmDiag));
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: true,
+          footprint_point_count: footprint.length,
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          dsm_loaded: false,
+          mask_loaded: false,
+          dsm_diagnostics: dsmDiag,
+          hard_fail_reason: failReason,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM data unavailable: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM data unavailable: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
       const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
