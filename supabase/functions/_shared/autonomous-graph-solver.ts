@@ -2594,30 +2594,29 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     }
   }
 
-  // ===== STEP 8: EVIDENCE-DRIVEN TOPOLOGY REFINEMENT (v15) =====
-  // If topology is undersegmented (few faces from many raw edges, or oversized planes),
-  // attempt a second-pass refinement using preserved raw DSM edges as structural evidence.
+  // ===== STEP 8: EVIDENCE-DRIVEN TOPOLOGY REFINEMENT (v16) =====
+  // Enhanced: uses deferred structural edges from planar solver + score-rejected edges
+  // + lost clustering edges as refinement candidates
   let refinementDiagnostics: Record<string, unknown> = { refinement_attempted: false };
   
   if (effectiveDSM && footprintPxCCW.length >= 3) {
     const prePlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
     const preMaxPlaneRatio = prePlanArea > 0 ? Math.max(...graphFaces.map(f => f.plan_area_sqft)) / prePlanArea : 0;
-    const preRawEdgeCount = maskedEdgeCount; // raw DSM edges before clustering
+    const preRawEdgeCount = maskedEdgeCount;
     
     // Detect undersegmentation requiring refinement
     const needsRefinement = (
-      // Many raw edges collapsed to very few faces
       (footprintAreaSqft > 2500 && preRawEdgeCount >= 15 && graphFaces.length <= 4) ||
-      // A single plane dominates (>35% of total area) with sufficient raw evidence
       (graphFaces.length >= 2 && preMaxPlaneRatio > 0.35 && preRawEdgeCount >= 10) ||
-      // Complex roof with too few faces for footprint size
-      (footprintAreaSqft > 3000 && graphFaces.length < 8 && preRawEdgeCount >= 15 && complexity.isComplex)
+      (footprintAreaSqft > 3000 && graphFaces.length < 8 && preRawEdgeCount >= 15 && complexity.isComplex) ||
+      // v16: also trigger if complex-roof mode is active and topology is poor
+      (isComplexRoofMode && graphFaces.length <= 4 && preRawEdgeCount >= 10)
     );
 
     if (needsRefinement) {
-      console.log(`  [v15 REFINEMENT] Undersegmented topology detected: ${graphFaces.length} faces, max_plane_ratio=${preMaxPlaneRatio.toFixed(3)}, ${preRawEdgeCount} raw DSM edges`);
+      console.log(`  [v16 REFINEMENT] Undersegmented topology detected: ${graphFaces.length} faces, max_plane_ratio=${preMaxPlaneRatio.toFixed(3)}, ${preRawEdgeCount} raw DSM edges`);
       
-      // 1. Identify oversized faces (>35% of total area or spanning multiple DSM extrema)
+      // 1. Identify oversized faces
       const oversizedFaceIds: string[] = [];
       const oversizedFaceAreaRatios: number[] = [];
       for (const face of graphFaces) {
@@ -2628,8 +2627,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }
       }
       
-      // 2. Find raw DSM edges that were lost during clustering but overlap with the footprint
-      // These are edges from rawDsmInteriorEdgesPx that did NOT survive into dsmInteriorEdgesPx
+      // 2. Collect ALL refinement candidate sources:
+      //    a) Raw edges lost during clustering
+      //    b) Deferred structural edges from planar solver dangling pruning
+      //    c) Score-rejected edges with structural type
       const survivingEdgeKeys = new Set(
         dsmInteriorEdgesPx.map(e => `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`)
       );
@@ -2640,10 +2641,29 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         return !survivingEdgeKeys.has(key) && !survivingEdgeKeys.has(revKey);
       });
       
-      // 3. Filter lost edges to those inside the footprint and with minimum quality
-      const MIN_REFINEMENT_EDGE_SCORE = 0.3;
-      const MIN_REFINEMENT_EDGE_LENGTH_PX = 8;
-      const refinementCandidates = lostEdges.filter(e => {
+      // v16: Convert deferred edges from planar solver back to ClusterableEdge format
+      const deferredFromPlanar: ClusterableEdge[] = planar.deferredEdges.map(seg => ({
+        a: seg.a, b: seg.b,
+        type: (seg.edgeType === 'ridge' || seg.edgeType === 'valley' || seg.edgeType === 'hip') ? seg.edgeType : 'hip',
+        score: seg.edgeScore || 0.3,
+      }));
+      
+      // Combine all sources, deduplicate
+      const allCandidateEdges = [...lostEdges, ...deferredFromPlanar, ...scoreRejectedEdgesPx];
+      const seenKeys = new Set<string>();
+      const uniqueCandidates: ClusterableEdge[] = [];
+      for (const e of allCandidateEdges) {
+        const key = `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`;
+        const revKey = `${Math.round(e.b.x)}:${Math.round(e.b.y)}|${Math.round(e.a.x)}:${Math.round(e.a.y)}`;
+        if (seenKeys.has(key) || seenKeys.has(revKey) || survivingEdgeKeys.has(key) || survivingEdgeKeys.has(revKey)) continue;
+        seenKeys.add(key);
+        uniqueCandidates.push(e);
+      }
+      
+      // 3. Filter to those inside footprint with minimum quality
+      const MIN_REFINEMENT_EDGE_SCORE = isComplexRoofMode ? 0.15 : 0.3;
+      const MIN_REFINEMENT_EDGE_LENGTH_PX = isComplexRoofMode ? 5 : 8;
+      const refinementCandidates = uniqueCandidates.filter(e => {
         const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
         if (len < MIN_REFINEMENT_EDGE_LENGTH_PX) return false;
         if (e.score < MIN_REFINEMENT_EDGE_SCORE) return false;
@@ -2651,8 +2671,13 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         return pointInPolygonPx(mid, footprintPxCCW);
       });
       
-      console.log(`  [v15 REFINEMENT] ${lostEdges.length} lost edges, ${refinementCandidates.length} qualify as refinement candidates`);
-      console.log(`  [v15 REFINEMENT] Oversized faces: ${oversizedFaceIds.join(', ')} (ratios: ${oversizedFaceAreaRatios.map(r => r.toFixed(3)).join(', ')})`);
+      // v16: Prefer ridge/valley candidates for structural splitting
+      const structuralCandidates = refinementCandidates.filter(e => e.type === 'ridge' || e.type === 'valley');
+      const hipCandidates = refinementCandidates.filter(e => e.type === 'hip');
+      const orderedCandidates = [...structuralCandidates, ...hipCandidates];
+      
+      console.log(`  [v16 REFINEMENT] Sources: ${lostEdges.length} lost_cluster, ${deferredFromPlanar.length} deferred_planar, ${scoreRejectedEdgesPx.length} score_rejected → ${uniqueCandidates.length} unique → ${refinementCandidates.length} qualifying (${structuralCandidates.length} ridge/valley, ${hipCandidates.length} hip)`);
+      console.log(`  [v16 REFINEMENT] Oversized faces: ${oversizedFaceIds.join(', ')} (ratios: ${oversizedFaceAreaRatios.map(r => r.toFixed(3)).join(', ')})`);
       
       if (refinementCandidates.length >= 2) {
         // 4. Augment the edge set: surviving edges + refinement candidates
