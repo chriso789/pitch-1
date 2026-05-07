@@ -2638,3 +2638,273 @@ function getBoundsPx(pts: PxPt[]): { minX: number; maxX: number; minY: number; m
     maxY: Math.max(...pts.map(p => p.y)),
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOPOLOGY FIDELITY ANALYSIS
+// Detects fan-collapse, over-merging, and structural divergence from
+// realistic roof topology. This is the missing layer between
+// "geometry-valid" and "structurally correct."
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface TopologyFidelityResult {
+  // Core metrics
+  facet_count: number;
+  ridge_count: number;
+  valley_count: number;
+  hip_count: number;
+  ridge_total_ft: number;
+  valley_total_ft: number;
+  hip_total_ft: number;
+  eave_total_ft: number;
+  rake_total_ft: number;
+
+  // Ratio analysis
+  valley_to_ridge_ratio: number;       // Healthy roofs: 0.3–2.0. Fan-collapse: <0.15
+  ridge_to_eave_ratio: number;         // Healthy: 0.1–0.6. Inflated ridges: >0.6
+  longest_ridge_ft: number;
+  longest_ridge_ratio: number;         // Longest ridge / total ridge. >0.5 = suspicious
+  longest_hip_ft: number;
+  longest_hip_ratio: number;
+
+  // Plane analysis
+  average_plane_area_sqft: number;
+  plane_area_variance: number;         // CV of plane areas. Very low = uniform fan
+  dominant_plane_ratio: number;        // Largest plane / total area. >0.4 = over-merged
+  largest_plane_sqft: number;
+
+  // Pitch analysis
+  pitch_variance: number;              // StdDev of face pitches. High + low mean = wrong planes
+  predominant_pitch: number;
+  pitch_range: number;                 // max - min pitch
+  pitch_uniformity_score: number;      // 0-1, 1 = all same pitch
+
+  // Fan-collapse detection
+  max_vertex_degree: number;           // Highest edge count on any interior vertex
+  central_node_degree: number;         // Degree of highest-degree interior node
+  fan_collapse_suspected: boolean;     // True if central node too connected
+  diagonal_cross_roof_count: number;   // Edges spanning >60% of roof bbox
+  merged_plane_suspected: boolean;     // True if largest plane is outsized
+
+  // Expected facet count (heuristic from footprint complexity)
+  expected_min_facets: number;
+  facet_deficit: number;               // expected_min - actual. >0 = under-segmented
+
+  // Overall fidelity
+  topology_fidelity: 'high' | 'medium' | 'low';
+  topology_fidelity_score: number;     // 0-100
+  topology_issues: string[];
+}
+
+/**
+ * Analyze topology fidelity of a solved roof graph.
+ * Returns detailed metrics and a fidelity rating.
+ */
+export function analyzeTopologyFidelity(
+  graph: AutonomousGraphResult,
+  footprintAreaSqft: number,
+): TopologyFidelityResult {
+  const faces = graph.faces;
+  const edges = graph.edges;
+  const vertices = graph.vertices;
+  const issues: string[] = [];
+
+  // ── Core counts ──
+  const ridgeEdges = edges.filter(e => e.type === 'ridge');
+  const valleyEdges = edges.filter(e => e.type === 'valley');
+  const hipEdges = edges.filter(e => e.type === 'hip');
+  const eaveEdges = edges.filter(e => e.type === 'eave');
+  const rakeEdges = edges.filter(e => e.type === 'rake');
+
+  const ridgeTotalFt = ridgeEdges.reduce((s, e) => s + e.length_ft, 0);
+  const valleyTotalFt = valleyEdges.reduce((s, e) => s + e.length_ft, 0);
+  const hipTotalFt = hipEdges.reduce((s, e) => s + e.length_ft, 0);
+  const eaveTotalFt = eaveEdges.reduce((s, e) => s + e.length_ft, 0);
+  const rakeTotalFt = rakeEdges.reduce((s, e) => s + e.length_ft, 0);
+
+  // ── Ratio analysis ──
+  const valleyToRidgeRatio = ridgeTotalFt > 0 ? valleyTotalFt / ridgeTotalFt : 0;
+  const ridgeToEaveRatio = eaveTotalFt > 0 ? ridgeTotalFt / eaveTotalFt : 0;
+
+  const longestRidge = ridgeEdges.length > 0 ? Math.max(...ridgeEdges.map(e => e.length_ft)) : 0;
+  const longestRidgeRatio = ridgeTotalFt > 0 ? longestRidge / ridgeTotalFt : 0;
+  const longestHip = hipEdges.length > 0 ? Math.max(...hipEdges.map(e => e.length_ft)) : 0;
+  const longestHipRatio = hipTotalFt > 0 ? longestHip / hipTotalFt : 0;
+
+  // ── Plane analysis ──
+  const planeAreas = faces.map(f => f.plan_area_sqft);
+  const totalPlaneArea = planeAreas.reduce((s, a) => s + a, 0);
+  const avgPlaneArea = faces.length > 0 ? totalPlaneArea / faces.length : 0;
+  const largestPlane = planeAreas.length > 0 ? Math.max(...planeAreas) : 0;
+  const dominantPlaneRatio = totalPlaneArea > 0 ? largestPlane / totalPlaneArea : 0;
+
+  // Coefficient of variation of plane areas
+  const areaStdDev = faces.length > 1
+    ? Math.sqrt(planeAreas.reduce((s, a) => s + (a - avgPlaneArea) ** 2, 0) / (faces.length - 1))
+    : 0;
+  const planeAreaVariance = avgPlaneArea > 0 ? areaStdDev / avgPlaneArea : 0;
+
+  // ── Pitch analysis ──
+  const pitches = faces.map(f => f.pitch_degrees);
+  const avgPitch = pitches.length > 0 ? pitches.reduce((s, p) => s + p, 0) / pitches.length : 0;
+  const pitchStdDev = pitches.length > 1
+    ? Math.sqrt(pitches.reduce((s, p) => s + (p - avgPitch) ** 2, 0) / (pitches.length - 1))
+    : 0;
+  const pitchRange = pitches.length > 0 ? Math.max(...pitches) - Math.min(...pitches) : 0;
+  // Convert predominant pitch from degrees to x/12 ratio for comparison
+  const predominantPitch = graph.totals.predominant_pitch;
+  // Uniformity: 1 means all faces have same pitch, 0 means very spread
+  const pitchUniformityScore = pitchRange > 0 ? Math.max(0, 1 - (pitchStdDev / Math.max(avgPitch, 1))) : 1;
+
+  // ── Vertex degree analysis (fan-collapse detection) ──
+  // Count how many edges connect to each vertex
+  const vertexDegreeMap = new Map<string, number>();
+  for (const edge of edges) {
+    // Find vertices close to edge start/end
+    for (const v of vertices) {
+      const dStart = Math.hypot(v.position[0] - edge.start[0], v.position[1] - edge.start[1]);
+      const dEnd = Math.hypot(v.position[0] - edge.end[0], v.position[1] - edge.end[1]);
+      if (dStart < 2 || dEnd < 2) { // Within 2 pixels
+        vertexDegreeMap.set(v.id, (vertexDegreeMap.get(v.id) || 0) + 1);
+      }
+    }
+  }
+  // Also use connected_edge_ids if available
+  for (const v of vertices) {
+    if (v.connected_edge_ids.length > (vertexDegreeMap.get(v.id) || 0)) {
+      vertexDegreeMap.set(v.id, v.connected_edge_ids.length);
+    }
+  }
+  const degrees = Array.from(vertexDegreeMap.values());
+  const maxVertexDegree = degrees.length > 0 ? Math.max(...degrees) : 0;
+  // Central node = highest-degree interior vertex (not eave_corner)
+  let centralNodeDegree = 0;
+  for (const v of vertices) {
+    if (v.type !== 'eave_corner') {
+      const deg = vertexDegreeMap.get(v.id) || v.connected_edge_ids.length;
+      if (deg > centralNodeDegree) centralNodeDegree = deg;
+    }
+  }
+
+  // Fan collapse: too many edges converging at one interior node
+  const fanCollapseSuspected = centralNodeDegree >= 6;
+
+  // ── Diagonal cross-roof detection ──
+  // Get roof bounding box diagonal
+  const allPts = faces.flatMap(f => f.polygon);
+  let roofDiagonal = 1;
+  if (allPts.length > 0) {
+    const bounds = getBounds(allPts);
+    roofDiagonal = Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+  }
+  // Interior edges (ridge/hip/valley) that span > 60% of roof bbox diagonal
+  const interiorEdges = edges.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley');
+  const edgeLengthsPx = interiorEdges.map(e => Math.hypot(e.end[0] - e.start[0], e.end[1] - e.start[1]));
+  const diagonalCrossRoofCount = edgeLengthsPx.filter(l => l > roofDiagonal * 0.6).length;
+
+  // ── Merged plane detection ──
+  const mergedPlaneSuspected = dominantPlaneRatio > 0.40 || (faces.length <= 6 && footprintAreaSqft > 2000);
+
+  // ── Expected facet count heuristic ──
+  // Based on footprint area and complexity. Simple heuristic:
+  // <1500 sqft: expect 4-8, 1500-3000: expect 6-12, >3000: expect 8-16
+  let expectedMinFacets: number;
+  if (footprintAreaSqft < 1500) expectedMinFacets = 4;
+  else if (footprintAreaSqft < 2500) expectedMinFacets = 6;
+  else if (footprintAreaSqft < 3500) expectedMinFacets = 8;
+  else expectedMinFacets = 10;
+  const facetDeficit = expectedMinFacets - faces.length;
+
+  // ── Issue detection ──
+  if (facetDeficit > 2) {
+    issues.push(`facet_count_deficit:${faces.length}_vs_expected_min_${expectedMinFacets}`);
+  }
+  if (valleyToRidgeRatio < 0.15 && valleyEdges.length === 0 && footprintAreaSqft > 1500) {
+    issues.push(`valley_collapse:ratio=${valleyToRidgeRatio.toFixed(3)}`);
+  } else if (valleyToRidgeRatio < 0.15 && ridgeTotalFt > 50) {
+    issues.push(`valley_suppression:ratio=${valleyToRidgeRatio.toFixed(3)}`);
+  }
+  if (ridgeToEaveRatio > 0.6) {
+    issues.push(`ridge_inflation:ridge_to_eave=${ridgeToEaveRatio.toFixed(3)}`);
+  }
+  if (longestRidgeRatio > 0.5 && ridgeTotalFt > 50) {
+    issues.push(`single_dominant_ridge:${longestRidge.toFixed(1)}ft_of_${ridgeTotalFt.toFixed(1)}ft`);
+  }
+  if (fanCollapseSuspected) {
+    issues.push(`fan_collapse:central_node_degree=${centralNodeDegree}`);
+  }
+  if (diagonalCrossRoofCount > 0) {
+    issues.push(`cross_roof_diagonals:${diagonalCrossRoofCount}`);
+  }
+  if (dominantPlaneRatio > 0.40) {
+    issues.push(`oversized_plane:${(dominantPlaneRatio * 100).toFixed(1)}%_of_total`);
+  }
+  if (pitchRange > 15 && pitchUniformityScore < 0.5) {
+    issues.push(`pitch_fragmentation:range=${pitchRange.toFixed(1)}deg,uniformity=${pitchUniformityScore.toFixed(2)}`);
+  }
+
+  // ── Fidelity scoring ──
+  // Start at 100, deduct for each issue
+  let score = 100;
+  if (facetDeficit > 4) score -= 25;
+  else if (facetDeficit > 2) score -= 15;
+
+  if (valleyToRidgeRatio < 0.10 && ridgeTotalFt > 50) score -= 20;
+  else if (valleyToRidgeRatio < 0.20 && ridgeTotalFt > 30) score -= 10;
+
+  if (ridgeToEaveRatio > 0.8) score -= 15;
+  else if (ridgeToEaveRatio > 0.6) score -= 8;
+
+  if (fanCollapseSuspected) score -= 20;
+  if (diagonalCrossRoofCount >= 2) score -= 15;
+  else if (diagonalCrossRoofCount === 1) score -= 8;
+
+  if (dominantPlaneRatio > 0.50) score -= 15;
+  else if (dominantPlaneRatio > 0.40) score -= 8;
+
+  if (pitchRange > 20 && pitchUniformityScore < 0.4) score -= 15;
+  else if (pitchRange > 15 && pitchUniformityScore < 0.5) score -= 8;
+
+  if (longestRidgeRatio > 0.7) score -= 10;
+
+  score = Math.max(0, Math.min(100, score));
+
+  const topology_fidelity: 'high' | 'medium' | 'low' =
+    score >= 70 ? 'high' :
+    score >= 45 ? 'medium' : 'low';
+
+  return {
+    facet_count: faces.length,
+    ridge_count: ridgeEdges.length,
+    valley_count: valleyEdges.length,
+    hip_count: hipEdges.length,
+    ridge_total_ft: Number(ridgeTotalFt.toFixed(2)),
+    valley_total_ft: Number(valleyTotalFt.toFixed(2)),
+    hip_total_ft: Number(hipTotalFt.toFixed(2)),
+    eave_total_ft: Number(eaveTotalFt.toFixed(2)),
+    rake_total_ft: Number(rakeTotalFt.toFixed(2)),
+    valley_to_ridge_ratio: Number(valleyToRidgeRatio.toFixed(4)),
+    ridge_to_eave_ratio: Number(ridgeToEaveRatio.toFixed(4)),
+    longest_ridge_ft: Number(longestRidge.toFixed(2)),
+    longest_ridge_ratio: Number(longestRidgeRatio.toFixed(4)),
+    longest_hip_ft: Number(longestHip.toFixed(2)),
+    longest_hip_ratio: Number(longestHipRatio.toFixed(4)),
+    average_plane_area_sqft: Number(avgPlaneArea.toFixed(2)),
+    plane_area_variance: Number(planeAreaVariance.toFixed(4)),
+    dominant_plane_ratio: Number(dominantPlaneRatio.toFixed(4)),
+    largest_plane_sqft: Number(largestPlane.toFixed(2)),
+    pitch_variance: Number(pitchStdDev.toFixed(4)),
+    predominant_pitch: predominantPitch,
+    pitch_range: Number(pitchRange.toFixed(2)),
+    pitch_uniformity_score: Number(pitchUniformityScore.toFixed(4)),
+    max_vertex_degree: maxVertexDegree,
+    central_node_degree: centralNodeDegree,
+    fan_collapse_suspected: fanCollapseSuspected,
+    diagonal_cross_roof_count: diagonalCrossRoofCount,
+    merged_plane_suspected: mergedPlaneSuspected,
+    expected_min_facets: expectedMinFacets,
+    facet_deficit: facetDeficit,
+    topology_fidelity,
+    topology_fidelity_score: score,
+    topology_issues: issues,
+  };
+}
