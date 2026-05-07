@@ -743,7 +743,59 @@ function rasterizePolygonToGrid(poly: Array<{ x: number; y: number }>, grid: Uin
  * Uses simple boundary tracing (marching squares simplified).
  * Returns the polygon in [lng, lat][] format, or empty array if no contour found.
  */
-export function extractMaskContour(mask: RoofMask): XY[] {
+/**
+ * Connected-component labeling on a binary grid.
+ * Returns label array (0 = background) and component metadata.
+ */
+function labelConnectedComponents(grid: Uint8Array, w: number, h: number): {
+  labels: Int32Array;
+  components: Array<{ id: number; size: number; centroidX: number; centroidY: number }>;
+} {
+  const labels = new Int32Array(w * h);
+  let nextLabel = 1;
+  const components: Array<{ id: number; size: number; sumX: number; sumY: number }> = [];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (grid[idx] === 0 || labels[idx] !== 0) continue;
+      // BFS flood-fill
+      const label = nextLabel++;
+      const queue = [idx];
+      labels[idx] = label;
+      let size = 0, sumX = 0, sumY = 0;
+      while (queue.length > 0) {
+        const ci = queue.pop()!;
+        const cx = ci % w, cy = (ci - cx) / w;
+        size++;
+        sumX += cx;
+        sumY += cy;
+        for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (grid[ni] > 0 && labels[ni] === 0) {
+            labels[ni] = label;
+            queue.push(ni);
+          }
+        }
+      }
+      components.push({ id: label, size, sumX, sumY });
+    }
+  }
+
+  return {
+    labels,
+    components: components.map(c => ({
+      id: c.id,
+      size: c.size,
+      centroidX: c.sumX / c.size,
+      centroidY: c.sumY / c.size,
+    })),
+  };
+}
+
+export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeLng?: number): XY[] {
   const { data, width, height, bounds } = mask;
   if (!data || width < 4 || height < 4) return [];
 
@@ -764,24 +816,57 @@ export function extractMaskContour(mask: RoofMask): XY[] {
     }
   }
 
-  // Find boundary pixels (filled pixel adjacent to empty)
+  // ── Connected-component isolation ──
+  // Instead of convex-hulling ALL boundary pixels (which merges neighbor roofs,
+  // yards, driveways), find the component closest to the geocode center.
+  const { labels, components } = labelConnectedComponents(grid, sw, sh);
+
+  if (components.length === 0) return [];
+
+  // Geocode center in downsampled-mask pixel space
+  let targetCx = sw / 2;
+  let targetCy = sh / 2;
+  if (geocodeLat != null && geocodeLng != null) {
+    targetCx = ((geocodeLng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * sw;
+    targetCy = ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) * sh;
+  }
+
+  // Select component: closest to geocode center among those with ≥10% of the
+  // largest component's size (ignore tiny specks).
+  const maxSize = Math.max(...components.map(c => c.size));
+  const minSize = Math.max(4, maxSize * 0.10);
+  const viable = components.filter(c => c.size >= minSize);
+
+  let bestComp = viable[0];
+  let bestDist = Infinity;
+  for (const c of viable) {
+    const dist = Math.hypot(c.centroidX - targetCx, c.centroidY - targetCy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestComp = c;
+    }
+  }
+
+  console.log(`[DSM_ANALYZER] Mask components: ${components.length} total, ${viable.length} viable (min ${minSize}px²). Selected component #${bestComp.id}: ${bestComp.size}px², centroid=(${bestComp.centroidX.toFixed(0)},${bestComp.centroidY.toFixed(0)}), dist_from_center=${bestDist.toFixed(1)}px`);
+
+  // Extract boundary pixels for selected component only
   const boundary: Array<{ x: number; y: number }> = [];
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
-      if (grid[y * sw + x] === 0) continue;
+      if (labels[y * sw + x] !== bestComp.id) continue;
       const isEdge =
         x === 0 || y === 0 || x === sw - 1 || y === sh - 1 ||
-        grid[y * sw + (x - 1)] === 0 ||
-        grid[y * sw + (x + 1)] === 0 ||
-        grid[(y - 1) * sw + x] === 0 ||
-        grid[(y + 1) * sw + x] === 0;
+        labels[y * sw + (x - 1)] !== bestComp.id ||
+        labels[y * sw + (x + 1)] !== bestComp.id ||
+        labels[(y - 1) * sw + x] !== bestComp.id ||
+        labels[(y + 1) * sw + x] !== bestComp.id;
       if (isEdge) boundary.push({ x, y });
     }
   }
 
   if (boundary.length < 4) return [];
 
-  // Compute convex hull of boundary points
+  // Compute convex hull of SELECTED COMPONENT's boundary
   const pts = boundary.slice().sort((a, b) => a.x - b.x || a.y - b.y);
   const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
     (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -809,7 +894,7 @@ export function extractMaskContour(mask: RoofMask): XY[] {
     return [lng, lat] as XY;
   });
 
-  console.log(`[DSM_ANALYZER] Mask contour extracted: ${geoContour.length} vertices from ${boundary.length} boundary pixels`);
+  console.log(`[DSM_ANALYZER] Mask contour extracted: ${geoContour.length} vertices from ${boundary.length} boundary pixels (component ${bestComp.id} of ${components.length})`);
   return geoContour;
 }
 
