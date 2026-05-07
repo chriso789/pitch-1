@@ -23,6 +23,7 @@ import { PdfSearchPanel } from '@/components/pdf-engine/PdfSearchPanel';
 import { PdfObjectPropertiesPanel } from '@/components/pdf-engine/PdfObjectPropertiesPanel';
 import { PdfAuditPanel } from '@/components/pdf-engine/PdfAuditPanel';
 import { PdfAuditEngine } from '@/lib/pdf-engine/PdfAuditEngine';
+import { PdfExportReadiness } from '@/lib/pdf-engine/PdfExportReadiness';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
