@@ -3355,6 +3355,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     edge_merge_count: planar.debug.collinear_merges || 0,
     edges_removed_before_face_build: planar.debug.dangling_edges_removed || 0,
     raw_dsm_edge_count: rawDsmEdgeCount,
+    provisional_face_count: finalProvisionalCount,
+    strict_face_count: finalStrictCount,
+    total_face_count: graphFaces.length,
   };
 
   const logs: AutonomousGraphLog = {
