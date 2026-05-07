@@ -92,6 +92,8 @@ export interface GraphFace {
   pitch_degrees: number;
   azimuth_degrees: number;
   edge_ids: string[];
+  provisional?: boolean;
+  plane_rms?: number | null;
 }
 
 export interface GraphVertex {
