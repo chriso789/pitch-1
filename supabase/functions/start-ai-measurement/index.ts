@@ -4558,14 +4558,50 @@ async function processJob(input: any) {
     if (clipperFailureCount > 0) promotionGateFailedReasons.push(`clipper_failures=${clipperFailureCount}`);
     if (invalidEdgeClass) promotionGateFailedReasons.push("invalid_edge_classification");
 
+    // ═══════════════════════════════════════════════════════════════
+    // TOPOLOGY FIDELITY GATE — block promotion when the solved graph
+    // shows structural divergence (fan-collapse, over-merging, etc.)
+    // even if all geometric contracts pass.
+    // ═══════════════════════════════════════════════════════════════
+    const topoFidelityScore = topologyFidelity?.topology_fidelity_score ?? 100;
+    const topoFidelityRating = topologyFidelity?.topology_fidelity ?? 'high';
+    const topoIssues = topologyFidelity?.topology_issues ?? [];
+
+    if (topoFidelityRating === 'low') {
+      promotionGateFailedReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
+    }
+    if (topologyFidelity?.fan_collapse_suspected) {
+      promotionGateFailedReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
+    }
+    if ((topologyFidelity?.facet_deficit ?? 0) > 4) {
+      promotionGateFailedReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
+    }
+    if ((topologyFidelity?.valley_to_ridge_ratio ?? 1) < 0.10 && (topologyFidelity?.ridge_total_ft ?? 0) > 50) {
+      promotionGateFailedReasons.push(`valley_collapse:ratio=${topologyFidelity!.valley_to_ridge_ratio}`);
+    }
+
     const promotionGatePassed = promotionGateFailedReasons.length === 0;
-    const promotedGeometrySource = promotionGatePassed ? "dsm_validated" : "heuristic_estimate";
-    const promotedCustomerReportReady = promotionGatePassed;
+    // Geometry source remains dsm_validated if geometric contracts pass
+    // but customer_report_ready is blocked if topology fidelity is low
+    const geometricContractsPassed = promotionGateFailedReasons.every(r => 
+      r.startsWith('topology_fidelity') || r.startsWith('fan_collapse') || 
+      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse')
+    ) && promotionGateFailedReasons.length > 0;
+    
+    const promotedGeometrySource = promotionGatePassed 
+      ? "dsm_validated" 
+      : geometricContractsPassed 
+        ? "dsm_validated"  // Geometry is valid, topology is suspect
+        : "heuristic_estimate";
+    const promotedCustomerReportReady = promotionGatePassed; // Only true if ALL gates pass including topology
 
     console.log("[DSM_PROMOTION_GATE]", JSON.stringify({
       passed: promotionGatePassed,
       geometry_source: promotedGeometrySource,
       customer_report_ready: promotedCustomerReportReady,
+      topology_fidelity: topoFidelityRating,
+      topology_score: topoFidelityScore,
+      topology_issues: topoIssues,
       failed_reasons: promotionGateFailedReasons,
       inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
     }));
