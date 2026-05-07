@@ -2732,6 +2732,7 @@ export function analyzeTopologyFidelity(
 
   // ── Ratio analysis ──
   const valleyToRidgeRatio = ridgeTotalFt > 0 ? valleyTotalFt / ridgeTotalFt : 0;
+  const ridgeToValleyRatio = valleyTotalFt > 0 ? ridgeTotalFt / valleyTotalFt : (ridgeTotalFt > 0 ? 999 : 0);
   const ridgeToEaveRatio = eaveTotalFt > 0 ? ridgeTotalFt / eaveTotalFt : 0;
 
   const longestRidge = ridgeEdges.length > 0 ? Math.max(...ridgeEdges.map(e => e.length_ft)) : 0;
@@ -2765,16 +2766,16 @@ export function analyzeTopologyFidelity(
   const pitchUniformityScore = pitchRange > 0 ? Math.max(0, 1 - (pitchStdDev / Math.max(avgPitch, 1))) : 1;
 
   // ── Vertex degree analysis (fan-collapse detection) ──
-  // Count how many edges connect to each vertex
+  // Count how many edges connect to each vertex using exact canonical keys.
+  // A degree measured by geo-distance would mark every nearby roof vertex as
+  // connected and falsely hide/trigger fan-collapse on small parcels.
   const vertexDegreeMap = new Map<string, number>();
   for (const edge of edges) {
-    // Find vertices close to edge start/end
+    const startKey = vertexKey(edge.start);
+    const endKey = vertexKey(edge.end);
     for (const v of vertices) {
-      const dStart = Math.hypot(v.position[0] - edge.start[0], v.position[1] - edge.start[1]);
-      const dEnd = Math.hypot(v.position[0] - edge.end[0], v.position[1] - edge.end[1]);
-      if (dStart < 2 || dEnd < 2) { // Within 2 pixels
-        vertexDegreeMap.set(v.id, (vertexDegreeMap.get(v.id) || 0) + 1);
-      }
+      const key = vertexKey(v.position);
+      if (key === startKey || key === endKey) vertexDegreeMap.set(v.id, (vertexDegreeMap.get(v.id) || 0) + 1);
     }
   }
   // Also use connected_edge_ids if available
