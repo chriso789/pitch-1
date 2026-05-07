@@ -622,7 +622,20 @@ async function processJob(input: any) {
       else if (vertex_count < 4) rejected_reason = "fewer_than_4_corners";
       else if (area_sqft > 0 && area_sqft < RESIDENTIAL_MIN_SQFT) rejected_reason = `area_too_small:${Math.round(area_sqft)}sqft`;
       else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
-      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) {
+        // FIX: Montelluna — allow up to 40% ONLY for isolated connected-component mask contours
+        // that meet strict quality criteria. Do NOT loosen for OSM, parcel, hull, union, or bbox.
+        const isConnectedComponent = source === 'google_solar_mask_contour';
+        const ccQualifies = isConnectedComponent
+          && area_sqft <= 8000
+          && exteriorSpilloverRatio <= 0.10
+          && bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC;
+        if (!ccQualifies) {
+          rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+        } else {
+          console.log(`[BBOX_CAP_CC_RELAXED] Allowing ${source} at ${Math.round(bboxTileRatio * 100)}% tile (≤${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)}%): area=${Math.round(area_sqft)}sqft, spillover=${Math.round(exteriorSpilloverRatio * 100)}%`);
+        }
+      }
       else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
       else if (footprintToSolarBboxRatio != null && footprintToSolarBboxRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarBboxRatio * 100)/100}x_solar_bbox_area_max_${MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO}x`;
       else if (solarBboxPx && solarBboxPx.area > 0 && exteriorSpilloverRatio > MAX_EXTERIOR_SPILLOVER_RATIO) rejected_reason = `exterior_spillover_${Math.round(exteriorSpilloverRatio * 100)}pct_gt_${Math.round(MAX_EXTERIOR_SPILLOVER_RATIO * 100)}pct`;
