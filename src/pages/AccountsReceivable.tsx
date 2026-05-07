@@ -626,17 +626,32 @@ export default function AccountsReceivable() {
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    {/* Header */}
+                    {/* Sortable Header */}
                     <div className="hidden md:grid md:grid-cols-[2fr_1fr_1fr_1fr_1fr_80px_40px] gap-2 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b">
-                      <span>Project</span>
-                      <span className="text-right">Contract</span>
-                      <span className="text-right">Cost Incurred</span>
-                      <span className="text-right">Billed</span>
-                      <span className="text-right">Balance</span>
-                      <span className="text-center">% Done</span>
+                      {([
+                        { field: 'age' as SortField, label: 'Project', align: 'text-left' },
+                        { field: 'contract' as SortField, label: 'Contract', align: 'text-right' },
+                        { field: 'costIncurred' as SortField, label: 'Cost Incurred', align: 'text-right' },
+                        { field: 'billed' as SortField, label: 'Billed', align: 'text-right' },
+                        { field: 'balance' as SortField, label: 'Balance', align: 'text-right' },
+                        { field: 'percentComplete' as SortField, label: '% Done', align: 'text-center' },
+                      ]).map(col => (
+                        <button
+                          key={col.field}
+                          onClick={() => toggleSort(col.field)}
+                          className={cn('flex items-center gap-1 hover:text-foreground transition-colors', col.align, col.align === 'text-right' ? 'justify-end' : col.align === 'text-center' ? 'justify-center' : 'justify-start')}
+                        >
+                          {col.label}
+                          {sortField === col.field ? (
+                            sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </button>
+                      ))}
                       <span></span>
                     </div>
-                    {wipProjects.map(item => (
+                    {sortedWipProjects.map(item => (
                       <Collapsible key={item.id} open={expandedWip.has(item.id)} onOpenChange={() => toggleWip(item.id)}>
                         <div className="flex items-center justify-between p-4 hover:bg-muted/30 rounded-lg transition-colors">
                           <CollapsibleTrigger asChild>
