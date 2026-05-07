@@ -748,7 +748,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           {/* Budget Tab - Project only */}
           {isProject && (
             <TabsContent value="budget" className="mt-0">
-              <BudgetTracker projectId={projectId!} budgetItems={budgetItems || []} onRefresh={() => {
+              <BudgetTracker projectId={projectId!} pipelineEntryId={pipelineEntryId} budgetItems={budgetItems || []} onRefresh={() => {
                 queryClient.invalidateQueries({ queryKey: ['project-budget-items', projectId] });
               }} />
             </TabsContent>
