@@ -762,8 +762,11 @@ const ProductionKanban = () => {
             {stages.filter((stage, index, self) => 
               index === self.findIndex(s => s.stage_key === stage.stage_key)
             ).map((stage) => {
-              const stageProjects = productionData[stage.stage_key] || [];
-              const stageTotal = getStageTotal(stage.stage_key);
+              const allStageProjects = productionData[stage.stage_key] || [];
+              const stageProjects = tradeFilteredProjectIds
+                ? allStageProjects.filter(p => tradeFilteredProjectIds.has(p.id))
+                : allStageProjects;
+              const stageTotal = stageProjects.reduce((sum, p) => sum + p.contract_value, 0);
 
               return (
                 <div key={stage.stage_key} className="flex-shrink-0 w-[260px]">
@@ -784,7 +787,7 @@ const ProductionKanban = () => {
                           key={`project-${project.id}`}
                           id={project.id}
                           project={project}
-                          onView={(contactId) => navigate(`/contact/${contactId}`)}
+                          onView={(projectId) => navigate(`/production/${projectId}`)}
                         />
                       ))}
                     </SortableContext>
