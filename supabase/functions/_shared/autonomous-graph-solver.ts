@@ -2809,10 +2809,44 @@ export function analyzeTopologyFidelity(
   // Interior edges (ridge/hip/valley) that span > 60% of roof bbox diagonal
   const interiorEdges = edges.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley');
   const edgeLengthsPx = interiorEdges.map(e => Math.hypot(e.end[0] - e.start[0], e.end[1] - e.start[1]));
-  const diagonalCrossRoofCount = edgeLengthsPx.filter(l => l > roofDiagonal * 0.6).length;
+  const maxInteriorSpanPx = edgeLengthsPx.length > 0 ? Math.max(...edgeLengthsPx) : 0;
+  const diagonalSpanRatio = roofDiagonal > 0 ? maxInteriorSpanPx / roofDiagonal : 0;
+  const diagonalCrossRoofCount = edgeLengthsPx.filter(l => l > roofDiagonal * 0.5).length;
+
+  // ── Local structural clusters ──
+  const adjacency = new Map<string, Set<string>>();
+  for (const edge of interiorEdges) {
+    const a = vertexKey(edge.start);
+    const b = vertexKey(edge.end);
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    if (!adjacency.has(b)) adjacency.set(b, new Set());
+    adjacency.get(a)!.add(b);
+    adjacency.get(b)!.add(a);
+  }
+  const seenClusterNodes = new Set<string>();
+  let localClusterCount = 0;
+  for (const node of adjacency.keys()) {
+    if (seenClusterNodes.has(node)) continue;
+    localClusterCount++;
+    const stack = [node];
+    seenClusterNodes.add(node);
+    while (stack.length) {
+      const cur = stack.pop()!;
+      for (const next of adjacency.get(cur) || []) {
+        if (seenClusterNodes.has(next)) continue;
+        seenClusterNodes.add(next);
+        stack.push(next);
+      }
+    }
+  }
 
   // ── Merged plane detection ──
-  const mergedPlaneSuspected = dominantPlaneRatio > 0.40 || (faces.length <= 6 && footprintAreaSqft > 2000);
+  const mergedPlaneSuspected = dominantPlaneRatio > 0.35 || (faces.length <= 8 && footprintAreaSqft > 2800);
+  const valleyCollapseSuspected = ridgeTotalFt > 40 && (valleyTotalFt < 20 || valleyToRidgeRatio < 0.25) && footprintAreaSqft > 1800;
+  const ridgeInflationSuspected = ridgeTotalFt > 90 || ridgeToValleyRatio > 3.5 || ridgeToEaveRatio > 0.45;
+  const oversizedContinuousPlaneSuspected = dominantPlaneRatio > 0.35 || largestPlane > Math.max(900, footprintAreaSqft * 0.33);
+  const planesNeedRefinement = oversizedContinuousPlaneSuspected || (planeAreaVariance > 0.9 && faces.length < expectedMinFacets + 2);
+  const pitchFragmentationSuspected = pitchRange > 10 && pitchUniformityScore < 0.75 && avgPitch > 0;
 
   // ── Expected facet count heuristic ──
   // Based on footprint area and complexity. Simple heuristic:
