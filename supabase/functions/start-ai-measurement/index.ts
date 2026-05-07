@@ -1393,6 +1393,28 @@ async function processJob(input: any) {
         })) : [],
       };
 
+      // ═══════════════════════════════════════════════════════════════
+      // TOPOLOGY FIDELITY ANALYSIS — detect fan-collapse, over-merging,
+      // structural divergence from realistic roof topology
+      // ═══════════════════════════════════════════════════════════════
+      topologyFidelity = analyzeTopologyFidelity(graph, footprintAreaSqftVal);
+      autonomousDebug.topology_fidelity = topologyFidelity;
+      console.log("[TOPOLOGY_FIDELITY]", JSON.stringify({
+        fidelity: topologyFidelity.topology_fidelity,
+        score: topologyFidelity.topology_fidelity_score,
+        facets: topologyFidelity.facet_count,
+        expected_min: topologyFidelity.expected_min_facets,
+        deficit: topologyFidelity.facet_deficit,
+        valley_to_ridge: topologyFidelity.valley_to_ridge_ratio,
+        ridge_to_eave: topologyFidelity.ridge_to_eave_ratio,
+        fan_collapse: topologyFidelity.fan_collapse_suspected,
+        central_node_deg: topologyFidelity.central_node_degree,
+        cross_roof_diags: topologyFidelity.diagonal_cross_roof_count,
+        dominant_plane: topologyFidelity.dominant_plane_ratio,
+        pitch_uniformity: topologyFidelity.pitch_uniformity_score,
+        issues: topologyFidelity.topology_issues,
+      }));
+
       // Failure waterfall — decoupled from edge classification when faces are validated
       const hasValidFaces = graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5;
       // Post-solver sanity: if area is large but facets are too few, the footprint
