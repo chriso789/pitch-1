@@ -179,17 +179,20 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
           </span>
         </div>
 
-        {/* Row 4: Arrow to open production detail */}
-        <div
-          className="flex items-center justify-center pt-1 mt-1 border-t border-border/40 cursor-pointer hover:bg-muted/50 rounded-b -mx-2 -mb-2 py-1 transition-colors"
+        {/* Lead Details Button (bottom left) - matches pipeline card style */}
+        <button
+          className="absolute bottom-0 left-0 h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10 bg-primary/5 rounded-tr-md opacity-100 transition-opacity flex items-center justify-center z-10 border-0 cursor-pointer"
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             onView(project.id);
           }}
+          onPointerDown={(e) => e.stopPropagation()}
           title="Open production details"
+          aria-label={`View production details for ${projectNumber}`}
         >
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-        </div>
+          <ChevronDown className="h-4 w-4 md:h-3 md:w-3" />
+        </button>
 
         {/* Drag Handle */}
         <GripVertical 
