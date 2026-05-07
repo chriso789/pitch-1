@@ -2879,8 +2879,17 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   } else {
     const invalidEdgeClassification = complexity.isComplex && outRidges.length === 0 && outValleys.length === 0 && outHips.reduce((s, e) => s + e.length_ft, 0) > 50;
     if (!validation.valid && invalidEdgeClassification) {
-      validation.status = 'invalid_edge_classification';
-      validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency classification';
+      // If faces have good coverage (≥85%), downgrade to needs_review instead of hard fail.
+      // The geometry is structurally coherent even if edge classification is imperfect.
+      if (coverageRatio >= 0.85 && graphFaces.length >= 2) {
+        validation.status = 'needs_review';
+        validation.reason = `Complex roof: 0 ridges, 0 valleys but ${graphFaces.length} faces at ${(coverageRatio * 100).toFixed(0)}% coverage — edge classification incomplete, geometry may be usable`;
+        warnings.push('edge_classification_incomplete_but_faces_valid');
+        console.log(`[VALIDATION] Downgraded invalid_edge_classification → needs_review: ${graphFaces.length} faces, ${(coverageRatio * 100).toFixed(0)}% coverage`);
+      } else {
+        validation.status = 'invalid_edge_classification';
+        validation.reason = 'Complex roof has 0 ridges, 0 valleys, and >50 LF of hips after face-adjacency classification';
+      }
     }
   }
 
