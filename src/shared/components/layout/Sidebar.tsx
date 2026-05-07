@@ -120,7 +120,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/documents/pdf-workspace')) return 'pdf-workspace';
     if (path.startsWith('/presentations')) return 'presentations';
     if (path.startsWith('/permits')) return 'permits';
-    if (path.startsWith('/insurance') || path.startsWith('/scope-intelligence')) return 'insurance';
+    if (path.startsWith('/insurance') || path.startsWith('/scope-intelligence') || path.startsWith('/supplement')) return 'insurance';
     if (path.startsWith('/crew')) return 'crew';
     if (path.startsWith('/homeowner')) return 'homeowner';
     if (path.startsWith('/admin/monitoring')) return 'monitoring';
