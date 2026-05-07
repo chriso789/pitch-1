@@ -2121,7 +2121,71 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push('footprint_self_intersection_detected');
   }
 
-  // ===== STEP 1: PRE-MASKED DSM EDGE DETECTION (v8) =====
+  // ===== PHASE 0: PERIMETER-FIRST TOPOLOGY CONTRACT (v18) =====
+  let perimeterTopology: PerimeterTopology | undefined;
+  let perimeterGateResult: PerimeterGateResult | undefined;
+  
+  if (footprintPxCCW.length >= 3 && effectiveDSM) {
+    try {
+      const { width, height } = effectiveDSM;
+      const bounds = effectiveDSM.bounds || { minLng: 0, maxLng: 1, minLat: 0, maxLat: 1 };
+      const mppX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLat * Math.PI / 180);
+      const mppY = (bounds.maxLat - bounds.minLat) / height * 111320;
+      const metersPerPixel = (mppX + mppY) / 2;
+
+      // Count roof mask pixels for overlap scoring
+      let phaseMaskPixelCount = 0;
+      if (input.maskedDSM?.mask) {
+        for (let i = 0; i < input.maskedDSM.mask.length; i++) {
+          if (input.maskedDSM.mask[i] > 0) phaseMaskPixelCount++;
+        }
+      }
+      
+      // Build boundary edges in px space from input
+      const bEaves = input.boundaryEdges.eaveEdges.map(([s, e]) => ({
+        start_geo: s, end_geo: e,
+        start_px: geoToPxPoint(s, effectiveDSM),
+        end_px: geoToPxPoint(e, effectiveDSM),
+      }));
+      const bRakes = input.boundaryEdges.rakeEdges.map(([s, e]) => ({
+        start_geo: s, end_geo: e,
+        start_px: geoToPxPoint(s, effectiveDSM),
+        end_px: geoToPxPoint(e, effectiveDSM),
+      }));
+
+      perimeterTopology = buildPerimeterTopology({
+        footprint_geo: input.footprintCoords,
+        footprint_px: footprintPxCCW,
+        footprint_area_sqft: footprintAreaSqft,
+        footprint_source: input.footprintSource || 'unknown',
+        dsm_grid: input.dsmGrid,
+        masked_dsm: input.maskedDSM,
+        solar_segments: input.solarSegments.map(s => ({
+          pitch_degrees: s.pitchDegrees,
+          azimuth_degrees: s.azimuthDegrees,
+          area_sqft: s.stats.areaMeters2 * 10.7639,
+          center_geo: s.center ? [s.center.longitude, s.center.latitude] as XY : null,
+        })),
+        roof_mask_pixel_count: phaseMaskPixelCount,
+        dsm_width: width,
+        dsm_height: height,
+        lat: midLat,
+        meters_per_pixel: metersPerPixel,
+        boundary_eaves: bEaves,
+        boundary_rakes: bRakes,
+      });
+
+      // Compute roof mask area for gate evaluation
+      const roofMaskAreaSqft = phaseMaskPixelCount * metersPerPixel * metersPerPixel * 10.7639;
+      perimeterGateResult = evaluatePerimeterGate(perimeterTopology, roofMaskAreaSqft);
+
+      console.log(`[PHASE_0] Perimeter gate: ${perimeterGateResult.passed ? 'PASSED' : 'FAILED'} — ${perimeterGateResult.failure_reasons.join(', ') || 'all clear'}`);
+    } catch (err) {
+      console.error(`[PHASE_0] Perimeter topology build failed:`, err);
+      warnings.push(`perimeter_phase0_failed: ${String(err)}`);
+    }
+  }
+
   // v14: Added comprehensive pre-solver DSM/mask diagnostics for Palm Harbor failure mode
   let dsmRidges: DSMEdgeCandidate[] = [];
   let dsmValleys: DSMEdgeCandidate[] = [];
