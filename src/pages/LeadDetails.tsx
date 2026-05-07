@@ -64,7 +64,7 @@ import { InternalNotesSection } from '@/components/lead-details/InternalNotesSec
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { EditProjectDetailsDialog } from '@/components/lead-details/EditProjectDetailsDialog';
 import { InspectionWalkthrough } from '@/components/inspection/InspectionWalkthrough';
-import { XactScopeBuilder } from '@/components/xact-scope/XactScopeBuilder';
+import { InsuranceSection } from '@/components/estimates/InsuranceSection';
 import { ProjectPhotoSteps } from '@/components/lead-details/ProjectPhotoSteps';
 import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
@@ -741,8 +741,6 @@ const LeadDetails = () => {
               clearEditingEstimateId={deletedEstimateId}
             />
 
-            {/* Xactimate Scope Builder */}
-            <XactScopeBuilder pipelineEntryId={id!} />
           </div>
         );
       case 'materials':
@@ -761,6 +759,8 @@ const LeadDetails = () => {
         return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} contactId={lead?.contact?.id} />;
       case 'total':
         return <TotalsTab pipelineEntryId={id!} />;
+      case 'insurance':
+        return <InsuranceSection pipelineEntryId={id!} />;
       default:
         return (
           <Card>

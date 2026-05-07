@@ -9,7 +9,8 @@ import {
   DollarSign,
   FileText,
   Minus,
-  Plus
+  Plus,
+  Shield
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -235,6 +236,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       case 'profit': return TrendingUp;
       case 'total': return DollarSign;
       case 'documents': return FileText;
+      case 'insurance': return Shield;
       default: return Calculator;
     }
   };
@@ -323,6 +325,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: formatCurrency(hyperlinkData.sale_price),
       hint: null,
       description: 'Final selling price with guaranteed margin'
+    },
+    {
+      id: 'insurance',
+      label: 'Insurance',
+      icon: Shield,
+      value: '—',
+      hint: null,
+      description: 'Insurance scopes, supplements & Xactimate'
     }
   ] : [
     {
@@ -386,6 +396,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: formatCurrency(calculations?.selling_price || 0),
       hint: !isReady ? 'Final price pending' : null,
       description: 'Final selling price with guaranteed margin'
+    },
+    {
+      id: 'insurance',
+      label: 'Insurance',
+      icon: Shield,
+      value: '—',
+      hint: null,
+      description: 'Insurance scopes, supplements & Xactimate'
     }
   ];
 
