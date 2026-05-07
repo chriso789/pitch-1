@@ -22,6 +22,8 @@ interface OverlayEditorProps {
   onAddRedaction?: (redaction: { x: number; y: number; width: number; height: number; pageNumber: number }) => void;
   mode: 'select' | 'annotate' | 'redact' | 'text';
   scale?: number;
+  zoomLevel?: number;
+  onZoomChange?: (zoom: number) => void;
 }
 
 export function PdfOverlayEditor({
