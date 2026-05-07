@@ -106,7 +106,7 @@ export const InsuranceSection: React.FC<InsuranceSectionProps> = ({
       const { error } = await supabase
         .from('pipeline_entries')
         .update({
-          metadata: { ...currentMetadata, insurance_claim: claim }
+          metadata: { ...currentMetadata, insurance_claim: claim } as any
         })
         .eq('id', pipelineEntryId);
       if (error) throw error;
