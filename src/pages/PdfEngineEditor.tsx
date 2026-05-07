@@ -4,7 +4,7 @@ import { usePdfEngineV2 } from '@/hooks/usePdfEngineV2';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { PdfEngine } from '@/lib/pdf-engine/PdfEngine';
@@ -31,7 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Upload, FileText, Layers, History, Settings2, Search, Shield
+  ArrowLeft, Upload, FileText, Layers, History, Settings2, Search, Shield, AlertTriangle
 } from 'lucide-react';
 import type { PdfEngineObject } from '@/lib/pdf-engine/engineTypes';
 import type { RewriteMode } from '@/lib/pdf-engine/PdfAiRewriter';
