@@ -3716,6 +3716,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     fallback_used: false,
     topology_hierarchy: topologyHierarchy,
     topology_hierarchy_summary: topologyHierarchySummary,
+    perimeter_topology: perimeterTopology,
+    perimeter_gate: perimeterGateResult,
+    perimeter_diagnostics: perimeterGateResult?.diagnostics,
   };
 }
 
