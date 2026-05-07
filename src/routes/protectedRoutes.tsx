@@ -97,6 +97,8 @@ const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor")
 const SupplementEngine = React.lazy(() => import("@/pages/SupplementEngine"));
 const SupplementWorkflow = React.lazy(() => import("@/pages/SupplementWorkflow"));
 const PdfEngineEditor = React.lazy(() => import("@/pages/PdfEngineEditor"));
+const PdfTemplateList = React.lazy(() => import("@/pages/PdfTemplateList"));
+const PdfTemplateDetail = React.lazy(() => import("@/pages/PdfTemplateDetail"));
 const MaterialAuditPage = React.lazy(() => import("@/pages/MaterialAuditPage"));
 const ProductionDetail = React.lazy(() => import("@/pages/ProductionDetail"));
 
