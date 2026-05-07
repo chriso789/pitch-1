@@ -274,6 +274,18 @@ export interface RoofTopologyHierarchy {
   /** Solar segment stats used as priors */
   solar_segment_priors: SolarSegmentPrior[];
 
+  // ── Phase 0: Perimeter contract ──
+  /** Whether Phase 0 perimeter gate passed */
+  perimeter_gate_passed: boolean;
+  /** Perimeter source used */
+  perimeter_source: string | null;
+  /** Perimeter eave total (ft) */
+  perimeter_eave_ft: number;
+  /** Perimeter rake total (ft) */
+  perimeter_rake_ft: number;
+  /** Perimeter area (sqft) */
+  perimeter_area_sqft: number;
+
   // ── Quality metrics ──
   metrics: TopologyMetrics;
 
@@ -989,6 +1001,12 @@ export function buildTopologyHierarchy(
     footprint_px,
     footprint_area_sqft,
     solar_segment_priors: solarSegmentPriors,
+    // Phase 0 perimeter fields (populated by caller if available)
+    perimeter_gate_passed: !customerBlockReason,
+    perimeter_source: null,
+    perimeter_eave_ft: eaveEdges.reduce((s, e) => s + e.length_ft, 0),
+    perimeter_rake_ft: rakeEdges.reduce((s, e) => s + e.length_ft, 0),
+    perimeter_area_sqft: footprint_area_sqft,
     metrics,
     refinement_rounds_applied: refinementHistory.filter(r => r.accepted).length,
     refinement_history: refinementHistory,

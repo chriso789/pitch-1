@@ -48,6 +48,14 @@ import {
   type RoofTopologyHierarchy,
   type SolarSegmentInput,
 } from "./roof-topology-hierarchy.ts";
+import {
+  buildPerimeterTopology,
+  evaluatePerimeterGate,
+  snapEdgesToPerimeter,
+  type PerimeterTopology,
+  type PerimeterGateResult,
+  type PerimeterDiagnostics,
+} from "./perimeter-topology.ts";
 
 type XY = [number, number]; // [lng, lat]
 type PxPt = { x: number; y: number }; // DSM pixel space
@@ -242,6 +250,10 @@ export interface AutonomousGraphResult {
   /** v17: Authoritative topology hierarchy (Fix #1-#3 from audit) */
   topology_hierarchy?: RoofTopologyHierarchy;
   topology_hierarchy_summary?: Record<string, unknown>;
+  /** v18: Phase 0 — Perimeter-First Topology Contract */
+  perimeter_topology?: PerimeterTopology;
+  perimeter_gate?: PerimeterGateResult;
+  perimeter_diagnostics?: PerimeterDiagnostics;
 }
 
 export interface AutonomousGraphLog {
@@ -319,6 +331,7 @@ export interface AutonomousGraphInput {
   lng: number;
   coordinateSpaceSolver?: 'dsm_px';
   footprintCoords: XY[];
+  footprintSource?: string;
   solarSegments: SolarSegment[];
   dsmGrid: DSMGrid | null;
   maskedDSM: MaskedDSMGrid | null;
@@ -2108,7 +2121,71 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push('footprint_self_intersection_detected');
   }
 
-  // ===== STEP 1: PRE-MASKED DSM EDGE DETECTION (v8) =====
+  // ===== PHASE 0: PERIMETER-FIRST TOPOLOGY CONTRACT (v18) =====
+  let perimeterTopology: PerimeterTopology | undefined;
+  let perimeterGateResult: PerimeterGateResult | undefined;
+  
+  if (footprintPxCCW.length >= 3 && effectiveDSM) {
+    try {
+      const { width, height } = effectiveDSM;
+      const bounds = effectiveDSM.bounds || { minLng: 0, maxLng: 1, minLat: 0, maxLat: 1 };
+      const mppX = (bounds.maxLng - bounds.minLng) / width * 111320 * Math.cos(midLat * Math.PI / 180);
+      const mppY = (bounds.maxLat - bounds.minLat) / height * 111320;
+      const metersPerPixel = (mppX + mppY) / 2;
+
+      // Count roof mask pixels for overlap scoring
+      let phaseMaskPixelCount = 0;
+      if (input.maskedDSM?.mask) {
+        for (let i = 0; i < input.maskedDSM.mask.length; i++) {
+          if (input.maskedDSM.mask[i] > 0) phaseMaskPixelCount++;
+        }
+      }
+      
+      // Build boundary edges in px space from input
+      const bEaves = input.boundaryEdges.eaveEdges.map(([s, e]) => ({
+        start_geo: s, end_geo: e,
+        start_px: geoToPxPoint(s, effectiveDSM),
+        end_px: geoToPxPoint(e, effectiveDSM),
+      }));
+      const bRakes = input.boundaryEdges.rakeEdges.map(([s, e]) => ({
+        start_geo: s, end_geo: e,
+        start_px: geoToPxPoint(s, effectiveDSM),
+        end_px: geoToPxPoint(e, effectiveDSM),
+      }));
+
+      perimeterTopology = buildPerimeterTopology({
+        footprint_geo: input.footprintCoords,
+        footprint_px: footprintPxCCW,
+        footprint_area_sqft: footprintAreaSqft,
+        footprint_source: input.footprintSource || 'unknown',
+        dsm_grid: input.dsmGrid,
+        masked_dsm: input.maskedDSM,
+        solar_segments: input.solarSegments.map(s => ({
+          pitch_degrees: s.pitchDegrees,
+          azimuth_degrees: s.azimuthDegrees,
+          area_sqft: s.stats.areaMeters2 * 10.7639,
+          center_geo: s.center ? [s.center.longitude, s.center.latitude] as XY : null,
+        })),
+        roof_mask_pixel_count: phaseMaskPixelCount,
+        dsm_width: width,
+        dsm_height: height,
+        lat: midLat,
+        meters_per_pixel: metersPerPixel,
+        boundary_eaves: bEaves,
+        boundary_rakes: bRakes,
+      });
+
+      // Compute roof mask area for gate evaluation
+      const roofMaskAreaSqft = phaseMaskPixelCount * metersPerPixel * metersPerPixel * 10.7639;
+      perimeterGateResult = evaluatePerimeterGate(perimeterTopology, roofMaskAreaSqft);
+
+      console.log(`[PHASE_0] Perimeter gate: ${perimeterGateResult.passed ? 'PASSED' : 'FAILED'} — ${perimeterGateResult.failure_reasons.join(', ') || 'all clear'}`);
+    } catch (err) {
+      console.error(`[PHASE_0] Perimeter topology build failed:`, err);
+      warnings.push(`perimeter_phase0_failed: ${String(err)}`);
+    }
+  }
+
   // v14: Added comprehensive pre-solver DSM/mask diagnostics for Palm Harbor failure mode
   let dsmRidges: DSMEdgeCandidate[] = [];
   let dsmValleys: DSMEdgeCandidate[] = [];
@@ -3330,6 +3407,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push(`${edgesOutsideFootprintCount} edges have endpoints outside footprint (max dist ${maxEndpointDistanceOutsideFootprintPx}px)`);
   }
 
+  // ===== PHASE 0 GATE: Perimeter must pass for customer export =====
+  if (perimeterGateResult && !perimeterGateResult.passed) {
+    customerBlockReason = customerBlockReason || `perimeter_gate_failed:${perimeterGateResult.failure_reasons.join(',')}`;
+    warnings.push(`perimeter_gate_failed: ${perimeterGateResult.failure_reasons.join(', ')}`);
+  }
+
   // Build vertex output
   const outputVertices: GraphVertex[] = [];
   let vId = 0;
@@ -3594,6 +3677,14 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       maxPlaneAreaRatio,
       customerBlockReason,
     );
+    // Enrich hierarchy with Phase 0 perimeter data
+    if (perimeterTopology && perimeterGateResult) {
+      topologyHierarchy.perimeter_gate_passed = perimeterGateResult.passed;
+      topologyHierarchy.perimeter_source = perimeterTopology.perimeter_source;
+      topologyHierarchy.perimeter_eave_ft = perimeterGateResult.diagnostics.eave_length_lf;
+      topologyHierarchy.perimeter_rake_ft = perimeterGateResult.diagnostics.rake_length_lf;
+      topologyHierarchy.perimeter_area_sqft = perimeterTopology.perimeter_area_sqft;
+    }
     topologyHierarchySummary = serializeHierarchySummary(topologyHierarchy);
     console.log(`[TOPOLOGY_HIERARCHY] Built: ${topologyHierarchy.faces.length} faces, ${topologyHierarchy.edges.length} edges, ${topologyHierarchy.assemblies.length} assemblies`);
   } catch (err) {
@@ -3623,9 +3714,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
       valley_ft: outValleys.reduce((s, e) => s + e.length_ft, 0),
-      eave_ft: outEaves.reduce((s, e) => s + e.length_ft, 0),
-      rake_ft: outRakes.reduce((s, e) => s + e.length_ft, 0),
-      perimeter_ft: outEaves.reduce((s, e) => s + e.length_ft, 0) + outRakes.reduce((s, e) => s + e.length_ft, 0),
+      // Use perimeter Phase 0 eave/rake if available, otherwise solver output
+      eave_ft: perimeterGateResult?.passed && perimeterGateResult.diagnostics.eave_length_lf > 0
+        ? perimeterGateResult.diagnostics.eave_length_lf
+        : outEaves.reduce((s, e) => s + e.length_ft, 0),
+      rake_ft: perimeterGateResult?.passed && perimeterGateResult.diagnostics.rake_length_lf > 0
+        ? perimeterGateResult.diagnostics.rake_length_lf
+        : outRakes.reduce((s, e) => s + e.length_ft, 0),
+      perimeter_ft: perimeterGateResult?.diagnostics.total_perimeter_lf
+        ?? (outEaves.reduce((s, e) => s + e.length_ft, 0) + outRakes.reduce((s, e) => s + e.length_ft, 0)),
       total_roof_area_sqft: totalRoofArea,
       total_plan_area_sqft: totalPlanArea,
       predominant_pitch: predominantPitch,
@@ -3639,6 +3736,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     fallback_used: false,
     topology_hierarchy: topologyHierarchy,
     topology_hierarchy_summary: topologyHierarchySummary,
+    perimeter_topology: perimeterTopology,
+    perimeter_gate: perimeterGateResult,
+    perimeter_diagnostics: perimeterGateResult?.diagnostics,
   };
 }
 
