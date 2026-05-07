@@ -2440,9 +2440,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     // Plane fit & area validation (uses geo polygon for DSM sampling)
     const areaSqft = polygonAreaSqft(polygonGeo, midLat);
     const threshold = areaSqft > 200 ? 0.8 : PLANE_FIT_ERROR_THRESHOLD;
+    // Provisional threshold: keep faces with marginal rms for provisional graph stability
+    const PROVISIONAL_RMS_THRESHOLD = 1.5;
     let pitch = 0;
     let azimuth = 0;
     let planeRms: number | null = null;
+    let isProvisional = false;
 
     const facetCenter = polygonGeo.reduce((acc, p) => [acc[0] + p[0] / polygonGeo.length, acc[1] + p[1] / polygonGeo.length] as XY, [0, 0] as XY);
 
@@ -2450,10 +2453,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       const planeFit = fitPlaneWithPitch(polygonGeo, effectiveDSM);
       if (planeFit) {
         planeRms = planeFit.rms;
-        if (planeFit.rms > threshold) {
+        if (planeFit.rms > PROVISIONAL_RMS_THRESHOLD) {
+          // Hard reject: too noisy even for provisional
           facesRejected++;
-          rejectionReasons.push(`plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}`);
-          faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}` });
+          rejectionReasons.push(`plane_rms_${planeFit.rms.toFixed(3)}_gt_${PROVISIONAL_RMS_THRESHOLD}`);
+          faceRejectionTable.push({ face_id: faceId, area_sqft: Number(areaSqft.toFixed(2)), plane_rms: Number(planeFit.rms.toFixed(3)), inside_footprint: true, mask_overlap: null, rejection_reason: `plane_rms_${planeFit.rms.toFixed(3)}_gt_${PROVISIONAL_RMS_THRESHOLD}` });
           enrichedFaceRejections.push({
             face_id: faceId, vertex_count: polygonGeo.length, area_sqft: Number(areaSqft.toFixed(2)),
             bbox_geo: getBounds(polygonGeo), centroid_geo: facetCenter,
@@ -2463,6 +2467,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             rejection_reasons: rejectionReasons,
           });
           continue;
+        }
+        if (planeFit.rms > threshold) {
+          // Marginal: exceeds strict threshold but within provisional range
+          // Keep as provisional face — will be subject to final validation after refinement
+          isProvisional = true;
+          warnings.push(`face_${faceId}_provisional_rms_${planeFit.rms.toFixed(3)}_gt_${threshold}_le_${PROVISIONAL_RMS_THRESHOLD}`);
         }
         pitch = planeFit.pitchDeg;
         azimuth = planeFit.azimuthDeg;
@@ -2496,7 +2506,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       pitch_degrees: pitch,
       azimuth_degrees: azimuth,
       edge_ids: [],
-    });
+      provisional: isProvisional,
+      plane_rms: planeRms,
+    } as GraphFace);
   }
 
   // ===== TOPOLOGY FIX: Overlap detection and removal =====
