@@ -2301,10 +2301,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   // ===== UNDERSEGMENTATION GATE =====
   // If we had many raw DSM edges but the planar solver collapsed to very few faces,
   // that's a topology undersegmentation — NOT an edge classification failure.
-  const rawDsmEdgeCount = dsmInteriorEdgesPx.length;
-  const topologyUndersegmented = footprintAreaSqft > 2500 && rawDsmEdgeCount >= 25 && planar.faces.length <= 3;
+  // Use raw masked edge count (pre-clustering) for undersegmentation detection
+  const rawDsmEdgeCount = maskedEdgeCount; // 31 for Fonsica — the true raw DSM edge count
+  const topologyUndersegmented = footprintAreaSqft > 2500 && rawDsmEdgeCount >= 15 && planar.faces.length <= 3;
   if (topologyUndersegmented) {
-    console.log(`  [TOPOLOGY_UNDERSEGMENTED] ${rawDsmEdgeCount} raw DSM edges collapsed to ${planar.faces.length} faces (footprint ${footprintAreaSqft.toFixed(0)} sqft)`);
+    console.log(`  [TOPOLOGY_UNDERSEGMENTED] ${rawDsmEdgeCount} raw DSM edges (${dsmInteriorEdgesPx.length} after cluster/filter) collapsed to ${planar.faces.length} faces (footprint ${footprintAreaSqft.toFixed(0)} sqft)`);
   }
 
   // Expected minimum faces based on footprint area
