@@ -2284,27 +2284,47 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`    Local regions: ${clusterDiag.local_regions_detected}, cross-region: ${clusterDiag.cross_region_rejections}, type conflicts: ${clusterDiag.type_conflict_rejections}, oversized: ${clusterDiag.oversized_plane_rejections}`);
   console.log(`    Valleys preserved: ${clusterDiag.valley_edges_preserved}, ridges preserved: ${clusterDiag.ridge_edges_preserved}, tertiary merged: ${clusterDiag.tertiary_merged}, micro-fragments rejected: ${clusterDiag.micro_fragment_rejections}`);
 
+  // ===== COMPLEX-ROOF MODE DETECTION (v16) =====
+  // Trigger when roof evidence suggests multi-assembly structure
+  const isComplexRoofMode = (
+    footprintAreaSqft > 3000 ||
+    reflexCornerCount >= 5 ||
+    maskedEdgeCount >= 25 ||
+    (clusterDiag.local_regions_detected >= 2 && maskedEdgeCount >= 15)
+  );
+  
+  // In complex-roof mode, use relaxed thresholds to preserve structural short edges
+  const effectiveScoreThreshold = isComplexRoofMode ? 0.15 : MIN_EDGE_SCORE_FOR_SOLVER;
+  const effectiveEdgeCap = isComplexRoofMode ? 40 : MAX_INTERIOR_EDGES_FOR_SOLVER;
+  
+  if (isComplexRoofMode) {
+    console.log(`  [v16 COMPLEX_ROOF_MODE] Activated: footprint=${footprintAreaSqft.toFixed(0)}sqft, reflex=${reflexCornerCount}, raw_edges=${maskedEdgeCount}, local_regions=${clusterDiag.local_regions_detected}`);
+    console.log(`    Score threshold: ${MIN_EDGE_SCORE_FOR_SOLVER} → ${effectiveScoreThreshold}, edge cap: ${MAX_INTERIOR_EDGES_FOR_SOLVER} → ${effectiveEdgeCap}`);
+  }
+
   // ===== STEP 6b: Cap interior edges =====
+  // Track score-rejected edges as deferred candidates for refinement
+  const scoreRejectedEdgesPx = clusteredEdgesPx.filter(e => e.score < effectiveScoreThreshold && e.score >= 0.10);
   let dsmInteriorEdgesPx = clusteredEdgesPx
-    .filter((e) => e.score >= MIN_EDGE_SCORE_FOR_SOLVER);
-  if (dsmInteriorEdgesPx.length > MAX_INTERIOR_EDGES_FOR_SOLVER) {
+    .filter((e) => e.score >= effectiveScoreThreshold);
+  if (dsmInteriorEdgesPx.length > effectiveEdgeCap) {
     dsmInteriorEdgesPx.sort((a, b) => {
       const lenA = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y);
       const lenB = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y);
       return (b.score * lenB) - (a.score * lenA);
     });
-    dsmInteriorEdgesPx = dsmInteriorEdgesPx.slice(0, MAX_INTERIOR_EDGES_FOR_SOLVER);
+    dsmInteriorEdgesPx = dsmInteriorEdgesPx.slice(0, effectiveEdgeCap);
   }
-  console.log(`  Edge cap: ${clusteredEdgesPx.length} → ${dsmInteriorEdgesPx.length} edges (max ${MAX_INTERIOR_EDGES_FOR_SOLVER})`);
+  console.log(`  Edge cap: ${clusteredEdgesPx.length} → ${dsmInteriorEdgesPx.length} edges (max ${effectiveEdgeCap}, score_rejected_deferred=${scoreRejectedEdgesPx.length})`);
 
   // ===== STEP 7: Planar graph with ordered intersection filtering =====
   const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
     a: e.a, b: e.b, type: e.type, score: e.score,
   }));
   const planar = effectiveDSM && footprintPxCCW.length >= 3
-    ? planarSolveRoofPlanes(footprintPxCCW, planarInput)
-    : { faces: [], edges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0, dangling_edges_removed: 0, perimeter_reinjected: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
-  console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}`);
+    ? planarSolveRoofPlanes(footprintPxCCW, planarInput, { complexRoofMode: isComplexRoofMode })
+    : { faces: [], edges: [], deferredEdges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0, dangling_edges_removed: 0, deferred_structural_edges: 0, perimeter_reinjected: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+  console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}, deferred_structural=${planar.debug.deferred_structural_edges}`);
 
   let facesRejected = 0;
   const faceRejectionTable: NonNullable<AutonomousGraphResult['face_rejection_table']> = [];
