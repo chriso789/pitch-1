@@ -668,7 +668,60 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Warranty page(s)
+    // Potential Change Orders page (if any)
+    if (changeOrderItems.length > 0) {
+      currentPage++;
+      totalPageCount++;
+      const coTotal = changeOrderItems.reduce((sum, item) => sum + item.line_total, 0);
+      pageList.push(
+        <div key="change-orders-page" className="space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <h3 className="text-sm font-semibold text-gray-900">Potential Change Orders</h3>
+          </div>
+          <p className="text-xs text-gray-500 italic mb-2">
+            The following items are not included in the contract total above. They represent potential additional work that may be required based on site conditions discovered during the project.
+          </p>
+          <div className="border border-amber-200 rounded overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-amber-50">
+                  <th className="text-left py-1.5 px-2 font-semibold text-gray-700">Item</th>
+                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-16">Qty</th>
+                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-16">Unit</th>
+                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-20">Unit Cost</th>
+                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-20">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {changeOrderItems.map((item, idx) => (
+                  <tr key={item.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}>
+                    <td className="py-1 px-2 text-gray-800">{item.item_name}</td>
+                    <td className="py-1 px-2 text-right text-gray-700">{item.qty}</td>
+                    <td className="py-1 px-2 text-right text-gray-700">{item.unit}</td>
+                    <td className="py-1 px-2 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
+                    <td className="py-1 px-2 text-right font-medium text-gray-800">{formatCurrency(item.line_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-amber-300 bg-amber-50">
+                  <td colSpan={4} className="py-1.5 px-2 text-right font-semibold text-gray-800">
+                    Potential Additional Total:
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-bold text-amber-700">
+                    {formatCurrency(coTotal)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
     warrantyPages.forEach((page, i) => {
       currentPage++;
       pageList.push(page);
