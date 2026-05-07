@@ -1731,17 +1731,71 @@ function clusterEdges(
     }
 
     const clusterEdgesArr = cluster.map(ci => edges[ci]);
+
+    // HIERARCHY: If cluster contains any secondary edge, keep it separate
+    const hasSecondary = clusterEdgesArr.some(e => e.tier === 'secondary');
+    if (hasSecondary && clusterEdgesArr.length >= 2) {
+      // Keep secondary edges individually, only merge tertiary among themselves
+      const secondary = clusterEdgesArr.filter(e => e.tier === 'secondary');
+      const tertiary = clusterEdgesArr.filter(e => e.tier === 'tertiary');
+      for (const se of secondary) {
+        result.push(se);
+        if (se.type === 'valley') diagnostics.valley_edges_preserved++;
+        if (se.type === 'ridge') diagnostics.ridge_edges_preserved++;
+      }
+      // If only 1 tertiary, keep as-is; otherwise merge tertiary below
+      if (tertiary.length <= 1) {
+        for (const te of tertiary) result.push(te);
+        diagnostics.edges_merged_count += 0;
+        continue;
+      }
+      // Fall through with only tertiary edges to merge
+      // (replace clusterEdgesArr for the merge logic below)
+      // We'll handle this inline:
+      diagnostics.tertiary_merged += tertiary.length - 1;
+      const tPts = tertiary.flatMap(e => [e.a, e.b]);
+      let tDx = 0, tDy = 0, tW = 0;
+      for (const e of tertiary) {
+        const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+        const dx = (e.b.x - e.a.x) / (len || 1);
+        const dy = (e.b.y - e.a.y) / (len || 1);
+        const sign = (tDx * dx + tDy * dy >= 0 || tW === 0) ? 1 : -1;
+        tDx += sign * dx * len; tDy += sign * dy * len; tW += len;
+      }
+      const tNorm = Math.hypot(tDx, tDy) || 1;
+      const tnx = tDx / tNorm, tny = tDy / tNorm;
+      const tcx = tPts.reduce((s, p) => s + p.x, 0) / tPts.length;
+      const tcy = tPts.reduce((s, p) => s + p.y, 0) / tPts.length;
+      const tProj = tPts.map(p => (p.x - tcx) * tnx + (p.y - tcy) * tny);
+
+      // Micro-fragment rejection: if merged tertiary is too short, drop it
+      const mergedLen = Math.max(...tProj) - Math.min(...tProj);
+      if (mergedLen < 8) {
+        diagnostics.micro_fragment_rejections++;
+        diagnostics.edges_merged_count += tertiary.length;
+        continue;
+      }
+
+      result.push({
+        a: { x: Math.round(tcx + tnx * Math.min(...tProj)), y: Math.round(tcy + tny * Math.min(...tProj)) },
+        b: { x: Math.round(tcx + tnx * Math.max(...tProj)), y: Math.round(tcy + tny * Math.max(...tProj)) },
+        type: tertiary[0].type,
+        score: Math.max(...tertiary.map(e => e.score)),
+      });
+      diagnostics.edges_merged_count += tertiary.length - 1;
+      continue;
+    }
+
+    // All-tertiary cluster — merge freely
     const allPts = clusterEdgesArr.flatMap(e => [e.a, e.b]);
     const spanX = Math.max(...allPts.map(p => p.x)) - Math.min(...allPts.map(p => p.x));
     const spanY = Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y));
     const span = Math.hypot(spanX, spanY);
     
     // TOPOLOGY GATE 4: Oversized plane prevention
-    // Estimate the area this merged edge would influence
     if (footprintAreaPx2 > 0) {
       const mergedInfluenceArea = span * CLUSTER_MIDPOINT_DIST_PX;
       if (mergedInfluenceArea > footprintAreaPx2 * CLUSTER_MAX_PLANE_AREA_RATIO && clusterEdgesArr.length > 2) {
-        // Don't merge — keep top edges individually
         diagnostics.oversized_plane_rejections++;
         clusterEdgesArr.sort((a, b) => b.score - a.score);
         const keep = Math.min(clusterEdgesArr.length, 3);
@@ -1759,8 +1813,16 @@ function clusterEdges(
       diagnostics.edges_merged_count += clusterEdgesArr.length - 2;
       continue;
     }
+
+    // Micro-fragment rejection for all-tertiary clusters
+    if (span < 8 && clusterEdgesArr.every(e => e.tier === 'tertiary')) {
+      diagnostics.micro_fragment_rejections++;
+      diagnostics.edges_merged_count += clusterEdgesArr.length;
+      continue;
+    }
     
-    // Weighted merge (same as before for valid merges)
+    // Weighted merge
+    diagnostics.tertiary_merged += clusterEdgesArr.length - 1;
     let totalWeight = 0;
     let avgDx = 0, avgDy = 0;
     for (const e of clusterEdgesArr) {
