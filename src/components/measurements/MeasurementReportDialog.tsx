@@ -174,6 +174,17 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Measurement Confidence', value: fmt(m.measurement_confidence) },
     { label: 'Validation Status', value: String(m.validation_status ?? '—') },
     { label: 'Image Source', value: String(m.selected_image_source ?? m.image_source ?? '—') },
+    // v13: registration gate
+    { label: 'Registration Passed', value: String(grj.footprint_registration_passed ?? '—') },
+    { label: 'Centroid Offset (px)', value: fmt(grj.centroid_offset_px) },
+    { label: 'Roof Overlap Score', value: fmt(grj.roof_image_overlap_score) },
+    { label: 'DSM Loaded', value: String(grj.dsm_loaded ?? '—') },
+    { label: 'Raw DSM Edges', value: fmt(grj.raw_edges) },
+    { label: 'Clustered Edges', value: fmt(grj.clustered_edges) },
+    { label: 'Topology Fidelity', value: String(grj.topology_fidelity?.topology_fidelity ?? '—') },
+    { label: 'Topo Score', value: fmt(grj.topology_fidelity?.topology_fidelity_score) },
+    { label: 'Max Plane Ratio', value: fmt(grj.topology_fidelity?.max_plane_area_ratio) },
+    { label: 'Customer Ready', value: String(m.customer_report_ready ?? '—') },
   ];
 
   const blockReason = grj.block_customer_report_reason;

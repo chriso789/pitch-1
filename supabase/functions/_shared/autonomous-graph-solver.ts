@@ -2768,14 +2768,25 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outUnclassified = outputEdges.filter(e => e.type === 'unclassified');
   const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
 
-  // ===== UNDERSEGMENTATION GATE =====
+  // ===== UNDERSEGMENTATION GATE (v13 hardened) =====
   // If we had many raw DSM edges but the planar solver collapsed to very few faces,
   // that's a topology undersegmentation — NOT an edge classification failure.
   // Use raw masked edge count (pre-clustering) for undersegmentation detection
   const rawDsmEdgeCount = maskedEdgeCount; // 31 for Fonsica — the true raw DSM edge count
-  const topologyUndersegmented = footprintAreaSqft > 2500 && rawDsmEdgeCount >= 15 && planar.faces.length <= 3;
+  // v13: also detect when max plane covers too much area
+  const planeAreas = graphFaces.map(f => f.plan_area_sqft);
+  const maxPlaneAreaSqft = planeAreas.length > 0 ? Math.max(...planeAreas) : 0;
+  const maxPlaneAreaRatio = totalPlanArea > 0 ? maxPlaneAreaSqft / totalPlanArea : 0;
+  const topologyUndersegmented = (
+    // Original: many raw edges collapsed to few faces
+    (footprintAreaSqft > 2500 && rawDsmEdgeCount >= 15 && planar.faces.length <= 3) ||
+    // v13: any single plane covers >35% of roof area on a complex roof
+    (footprintAreaSqft > 2000 && graphFaces.length >= 2 && maxPlaneAreaRatio > 0.35 && rawDsmEdgeCount >= 10) ||
+    // v13: expected_min_faces not met for this footprint size
+    (footprintAreaSqft > 3000 && graphFaces.length < 8 && rawDsmEdgeCount >= 15)
+  );
   if (topologyUndersegmented) {
-    console.log(`  [TOPOLOGY_UNDERSEGMENTED] ${rawDsmEdgeCount} raw DSM edges (${dsmInteriorEdgesPx.length} after cluster/filter) collapsed to ${planar.faces.length} faces (footprint ${footprintAreaSqft.toFixed(0)} sqft)`);
+    console.log(`  [TOPOLOGY_UNDERSEGMENTED] ${rawDsmEdgeCount} raw DSM edges (${dsmInteriorEdgesPx.length} after cluster/filter) collapsed to ${planar.faces.length} faces (footprint ${footprintAreaSqft.toFixed(0)} sqft, max_plane_ratio=${maxPlaneAreaRatio.toFixed(3)})`);
   }
 
   // Expected minimum faces based on footprint area
