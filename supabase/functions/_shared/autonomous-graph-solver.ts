@@ -2060,11 +2060,22 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v15 — Evidence-Driven Topology Refinement`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v16 — Complex-Roof Structural Edge Preservation`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
   const complexity = detectComplexRoof(input.solarSegments, input.footprintCoords);
+
+  // Count reflex corners for complex-roof mode
+  let reflexCornerCount = 0;
+  const fpLen = input.footprintCoords.length;
+  for (let i = 0; i < fpLen; i++) {
+    const prev = input.footprintCoords[(i - 1 + fpLen) % fpLen];
+    const curr = input.footprintCoords[i];
+    const next = input.footprintCoords[(i + 1) % fpLen];
+    const cross = (prev[0] - curr[0]) * (next[1] - curr[1]) - (prev[1] - curr[1]) * (next[0] - curr[0]);
+    if (cross < 0) reflexCornerCount++;
+  }
 
   if (complexity.isComplex) {
     console.log(`  COMPLEX ROOF: ${complexity.reasons.join('; ')}. Expected ≥${complexity.expectedMinFacets} facets.`);
