@@ -1639,6 +1639,16 @@ function clusterEdges(
   const used = new Set<number>();
   const result: ClusterableEdge[] = [];
 
+  // HIERARCHY GATE: Primary edges are NEVER merged — emit directly
+  for (let i = 0; i < edges.length; i++) {
+    if (edges[i].tier === 'primary') {
+      result.push(edges[i]);
+      used.add(i);
+      if (edges[i].type === 'valley') diagnostics.valley_edges_preserved++;
+      if (edges[i].type === 'ridge') diagnostics.ridge_edges_preserved++;
+    }
+  }
+
   for (let i = 0; i < edges.length; i++) {
     if (used.has(i)) continue;
     
