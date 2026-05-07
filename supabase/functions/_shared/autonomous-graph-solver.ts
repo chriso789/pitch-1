@@ -2087,25 +2087,53 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
 
   // ===== STEP 1: PRE-MASKED DSM EDGE DETECTION (v8) =====
-  // Architecture: constrain edge detection to roof region BEFORE topology,
-  // not afterward. Rasterize footprint polygon into a pixel mask and pass it
-  // to the edge detector so only roof-region pixels produce structural edges.
+  // v14: Added comprehensive pre-solver DSM/mask diagnostics for Palm Harbor failure mode
   let dsmRidges: DSMEdgeCandidate[] = [];
   let dsmValleys: DSMEdgeCandidate[] = [];
   let unmaskEdgeCount = 0;
   let maskedEdgeCount = 0;
   let roofMaskPixelCount = 0;
+  // v14: Pre-solver DSM/mask diagnostics
+  let preSolverDiagnostics: Record<string, unknown> = {};
 
   if (effectiveDSM) {
     const { width, height } = effectiveDSM;
 
-    // Build roof-region mask from footprint polygon (3px buffer for boundary edges)
+    // v14: DSM diagnostics inside footprint
+    let dsmValuesInsideFootprint = 0;
+    let dsmValidInsideFootprint = 0;
     const footprintMask = footprintPxCCW.length >= 3
       ? rasterizeFootprintMask(footprintPxCCW, width, height, 3)
       : null;
 
-    // Intersect with existing DSM mask (if any) so we don't scan noData regions
+    if (footprintMask) {
+      for (let i = 0; i < footprintMask.length; i++) {
+        if (footprintMask[i]) {
+          dsmValuesInsideFootprint++;
+          const v = effectiveDSM.data[i];
+          if (v !== effectiveDSM.noDataValue && !isNaN(v) && Number.isFinite(v)) {
+            dsmValidInsideFootprint++;
+          }
+        }
+      }
+    }
+    const dsmCoverageInsideFootprint = dsmValuesInsideFootprint > 0 ? dsmValidInsideFootprint / dsmValuesInsideFootprint : 0;
+
+    // v14: Mask diagnostics
     const existingMask = input.maskedDSM?.mask || null;
+    let maskLoaded = !!existingMask;
+    let maskUniqueValues = new Set<number>();
+    let maskMin = 255, maskMax = 0;
+    let maskPixelsBefore = 0;
+    if (existingMask) {
+      for (let i = 0; i < existingMask.length; i++) {
+        maskUniqueValues.add(existingMask[i]);
+        if (existingMask[i] > 0) maskPixelsBefore++;
+        if (existingMask[i] < maskMin) maskMin = existingMask[i];
+        if (existingMask[i] > maskMax) maskMax = existingMask[i];
+      }
+    }
+
     let roofMask: Uint8Array | null;
     if (footprintMask && existingMask) {
       roofMask = intersectMasks(footprintMask, existingMask);
@@ -2113,14 +2141,53 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       roofMask = footprintMask || existingMask;
     }
 
-    // Count mask pixels for diagnostics
     if (roofMask) {
       for (let i = 0; i < roofMask.length; i++) {
         if (roofMask[i]) roofMaskPixelCount++;
       }
     }
 
-    // Run edge detection ONLY inside roof mask
+    preSolverDiagnostics = {
+      dsm_loaded: true,
+      dsm_width: width,
+      dsm_height: height,
+      dsm_no_data_ratio: effectiveDSM.noDataValue !== undefined ? +(Array.from(effectiveDSM.data).filter(v => v === effectiveDSM.noDataValue || isNaN(v)).length / effectiveDSM.data.length).toFixed(4) : null,
+      mask_loaded: maskLoaded,
+      mask_width: maskLoaded ? width : null,
+      mask_height: maskLoaded ? height : null,
+      mask_unique_values: Array.from(maskUniqueValues).slice(0, 10),
+      mask_min: maskLoaded ? maskMin : null,
+      mask_max: maskLoaded ? maskMax : null,
+      mask_threshold_used: maskLoaded ? 'binary_>0' : null,
+      roof_mask_pixel_count_before_threshold: maskPixelsBefore,
+      roof_mask_pixel_count_after_threshold: roofMaskPixelCount,
+      dsm_values_inside_footprint_count: dsmValuesInsideFootprint,
+      dsm_valid_values_inside_footprint_count: dsmValidInsideFootprint,
+      dsm_coverage_inside_footprint_ratio: +dsmCoverageInsideFootprint.toFixed(4),
+    };
+
+    // v14: Specific failure codes for Palm Harbor — don't call this topology failure
+    if (dsmCoverageInsideFootprint < 0.05 && dsmValuesInsideFootprint > 0) {
+      console.log(`  [v14 DSM_COVERAGE_GATE] DSM has no valid values inside footprint: ${dsmValidInsideFootprint}/${dsmValuesInsideFootprint} (${(dsmCoverageInsideFootprint * 100).toFixed(1)}%)`);
+      warnings.push(`google_solar_no_dsm_coverage: only ${dsmValidInsideFootprint} valid DSM pixels inside footprint`);
+    }
+    if (maskLoaded && maskPixelsBefore > 0 && roofMaskPixelCount === 0) {
+      console.log(`  [v14 MASK_THRESHOLD_GATE] Mask had ${maskPixelsBefore} pixels before footprint intersection but 0 after — mask_threshold_failure`);
+      warnings.push(`mask_threshold_failure: ${maskPixelsBefore} mask pixels reduced to 0 after footprint intersection`);
+    }
+    if (!maskLoaded && dsmValidInsideFootprint > 0) {
+      console.log(`  [v14 MASK_MISSING] No mask available but DSM exists — using footprint as mask for diagnostic`);
+      // Derive roof mask from footprint polygon and continue diagnostic-only
+      roofMask = footprintMask;
+      if (roofMask) {
+        roofMaskPixelCount = 0;
+        for (let i = 0; i < roofMask.length; i++) {
+          if (roofMask[i]) roofMaskPixelCount++;
+        }
+      }
+      warnings.push('mask_missing_dsm_exists: derived roof mask from footprint polygon');
+    }
+
     const detection = detectStructuralEdges(effectiveDSM, roofMask);
     dsmRidges = detection.ridges;
     dsmValleys = detection.valleys;
@@ -2129,6 +2196,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     console.log(`  [v8 PRE-MASK] Roof mask: ${roofMaskPixelCount} pixels out of ${width * height} total (${(roofMaskPixelCount / (width * height) * 100).toFixed(1)}%)`);
     console.log(`  DSM edges (pre-masked): ${dsmRidges.length} ridges, ${dsmValleys.length} valleys (${detection.stats.processingMs}ms)`);
   } else {
+    preSolverDiagnostics = { dsm_loaded: false };
     warnings.push('DSM not available — structural detection limited to skeleton');
   }
 

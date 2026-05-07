@@ -501,6 +501,7 @@ async function processJob(input: any) {
     const RESIDENTIAL_MAX_SQFT = 8000; // Largest realistic residential roof; rejects parcel/yard polygons
     const MIN_COVERAGE_RATIO = 0.20;
     const MAX_FOOTPRINT_BBOX_TILE_RATIO = 0.35; // Footprint bbox may not exceed 35% of 1280×1280 tile
+    const MAX_FOOTPRINT_BBOX_TILE_RATIO_CC = 0.40; // Relaxed cap ONLY for isolated connected-component mask contours
     const MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO = 2.5; // Footprint may not be >2.5× the sum of solar segment areas
     const MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO = 1.35; // Candidate area / solar bbox area — masks that spill into yard/neighbors
     const MAX_EXTERIOR_SPILLOVER_RATIO = 0.40; // At most 40% of candidate area may lie outside the solar bbox
@@ -536,6 +537,10 @@ async function processJob(input: any) {
       roof_image_overlap_score: number | null;
       centroid_offset_px: number | null;
       footprint_registration_passed: boolean | null;
+      // v14: connected-component bbox cap diagnostics
+      bbox_cap_used: number | null;
+      bbox_cap_reason: string | null;
+      connected_component_isolated: boolean;
     };
 
     function scoreCandidate(source: string, polygon: Point[]): FootprintCandidate {
@@ -621,7 +626,20 @@ async function processJob(input: any) {
       else if (vertex_count < 4) rejected_reason = "fewer_than_4_corners";
       else if (area_sqft > 0 && area_sqft < RESIDENTIAL_MIN_SQFT) rejected_reason = `area_too_small:${Math.round(area_sqft)}sqft`;
       else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
-      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) {
+        // FIX: Montelluna — allow up to 40% ONLY for isolated connected-component mask contours
+        // that meet strict quality criteria. Do NOT loosen for OSM, parcel, hull, union, or bbox.
+        const isConnectedComponent = source === 'google_solar_mask_contour';
+        const ccQualifies = isConnectedComponent
+          && area_sqft <= 8000
+          && exteriorSpilloverRatio <= 0.10
+          && bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC;
+        if (!ccQualifies) {
+          rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+        } else {
+          console.log(`[BBOX_CAP_CC_RELAXED] Allowing ${source} at ${Math.round(bboxTileRatio * 100)}% tile (≤${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)}%): area=${Math.round(area_sqft)}sqft, spillover=${Math.round(exteriorSpilloverRatio * 100)}%`);
+        }
+      }
       else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
       else if (footprintToSolarBboxRatio != null && footprintToSolarBboxRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarBboxRatio * 100)/100}x_solar_bbox_area_max_${MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO}x`;
       else if (solarBboxPx && solarBboxPx.area > 0 && exteriorSpilloverRatio > MAX_EXTERIOR_SPILLOVER_RATIO) rejected_reason = `exterior_spillover_${Math.round(exteriorSpilloverRatio * 100)}pct_gt_${Math.round(MAX_EXTERIOR_SPILLOVER_RATIO * 100)}pct`;
@@ -633,6 +651,11 @@ async function processJob(input: any) {
         rejected_reason = "bbox_center_far_from_geocode";
       else if (isLikelyOutbuilding)
         rejected_reason = `likely_outbuilding:${Math.round(area_sqft)}sqft_${Math.round(bbox_center_distance_from_geocode_px)}px_from_geocode`;
+
+      // Determine which bbox cap was used for diagnostics
+      const isCC = source === 'google_solar_mask_contour';
+      const ccRelaxed = isCC && bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO && bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC && !rejected_reason;
+      const effectiveBboxCap = ccRelaxed ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC : MAX_FOOTPRINT_BBOX_TILE_RATIO;
 
       return {
         source,
@@ -653,6 +676,10 @@ async function processJob(input: any) {
         roof_image_overlap_score: null,
         centroid_offset_px: null,
         footprint_registration_passed: null,
+        // v14: connected-component bbox cap diagnostics
+        bbox_cap_used: bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO ? effectiveBboxCap : null,
+        bbox_cap_reason: ccRelaxed ? `cc_isolated_relaxed_${Math.round(bboxTileRatio * 100)}pct_le_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)}pct` : null,
+        connected_component_isolated: isCC,
       };
     }
 
@@ -1164,6 +1191,11 @@ async function processJob(input: any) {
         vertex_count: c.vertex_count,
         validity_score: Number(c.validity_score.toFixed(3)),
         rejected_reason: c.rejected_reason,
+        roof_image_overlap_score: c.roof_image_overlap_score,
+        centroid_offset_px: c.centroid_offset_px,
+        bbox_cap_used: c.bbox_cap_used,
+        bbox_cap_reason: c.bbox_cap_reason,
+        connected_component_isolated: c.connected_component_isolated,
       })),
       selected: selected
         ? { source: selected.source, area_sqft: Math.round(selected.area_sqft), validity_score: Number(selected.validity_score.toFixed(3)) }
