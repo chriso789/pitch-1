@@ -1236,7 +1236,10 @@ async function processJob(input: any) {
       ? (footprintAreaPxVal - footprintOverlapPx) / footprintAreaPxVal
       : 0;
     const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
-    const footprintBboxTooLarge = footprintBboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    // Use relaxed 40% cap for connected-component mask contours that passed candidate selection
+    const selectedCandidateCCRelaxed = selected?.connected_component_isolated && selected?.bbox_cap_reason?.startsWith('cc_isolated_relaxed');
+    const effectiveValidationBboxCap = selectedCandidateCCRelaxed ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC : MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    const footprintBboxTooLarge = footprintBboxTileRatio > effectiveValidationBboxCap;
     const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
     const footprintInflatedVsSolarBbox = footprintToSolarBboxAreaRatio != null && footprintToSolarBboxAreaRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO;
     const footprintSpillsOutside = solarBboxPx && solarBboxPx.area > 0 && footprintExteriorSpillover > MAX_EXTERIOR_SPILLOVER_RATIO;
@@ -1490,6 +1493,29 @@ async function processJob(input: any) {
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
         await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
         await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
+      // HARD BLOCK: if DSM completely unavailable (404 / no DataLayers), fail as no_dsm_coverage
+      if (!dsmGrid && !maskedDSM) {
+        const dsmFailCode = dsmDiag?.failure_code || "google_solar_no_dsm_coverage";
+        const failReason = dsmFailCode === "google_solar_no_datalayers" ? "google_solar_no_dsm_coverage" : dsmFailCode;
+        console.error(`[DSM_AVAILABILITY_GATE] FAIL: No DSM data available — ${failReason}`, JSON.stringify(dsmDiag));
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: true,
+          footprint_point_count: footprint.length,
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          dsm_loaded: false,
+          mask_loaded: false,
+          dsm_diagnostics: dsmDiag,
+          hard_fail_reason: failReason,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM data unavailable: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM data unavailable: ${failReason}`);
         await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
         return;
       }
