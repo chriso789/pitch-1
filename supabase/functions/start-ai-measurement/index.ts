@@ -877,6 +877,159 @@ async function processJob(input: any) {
       }
     }
 
+    // ══════════ v13: FOOTPRINT REGISTRATION GATE ══════════
+    // Build a "visible roof target" from the roof mask rasterized into satellite
+    // pixel space. Every candidate must overlap this target, not the yard/driveway.
+    let visibleRoofBboxPx: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number; area: number } | null = null;
+    let visibleRoofMaskPxGrid: Uint8Array | null = null;
+    let registrationDebug: any = { enabled: false };
+    if (roofMaskForContour && roofMaskForContour.data && roofMaskForContour.width > 0) {
+      // Rasterize roof mask into satellite pixel space
+      const mw = roofMaskForContour.width;
+      const mh = roofMaskForContour.height;
+      const mb = roofMaskForContour.bounds;
+      visibleRoofMaskPxGrid = new Uint8Array(raster.width * raster.height);
+      let minRX = raster.width, maxRX = 0, minRY = raster.height, maxRY = 0;
+      let roofPxCount = 0;
+      for (let my = 0; my < mh; my++) {
+        for (let mx = 0; mx < mw; mx++) {
+          if (roofMaskForContour.data[my * mw + mx] === 0) continue;
+          // Map mask pixel to geo
+          const lng = mb.minLng + ((mx + 0.5) / mw) * (mb.maxLng - mb.minLng);
+          const lat = mb.maxLat - ((my + 0.5) / mh) * (mb.maxLat - mb.minLat);
+          // Map geo to satellite pixel
+          const satPx = lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const sx = Math.round(satPx.x);
+          const sy = Math.round(satPx.y);
+          if (sx >= 0 && sx < raster.width && sy >= 0 && sy < raster.height) {
+            visibleRoofMaskPxGrid[sy * raster.width + sx] = 1;
+            roofPxCount++;
+            if (sx < minRX) minRX = sx;
+            if (sx > maxRX) maxRX = sx;
+            if (sy < minRY) minRY = sy;
+            if (sy > maxRY) maxRY = sy;
+          }
+        }
+      }
+      if (roofPxCount > 10) {
+        visibleRoofBboxPx = {
+          minX: minRX, minY: minRY, maxX: maxRX, maxY: maxRY,
+          width: maxRX - minRX, height: maxRY - minRY,
+          area: (maxRX - minRX) * (maxRY - minRY),
+        };
+        registrationDebug = {
+          enabled: true,
+          visible_roof_bbox_px: visibleRoofBboxPx,
+          visible_roof_pixel_count: roofPxCount,
+          tile_size: { width: raster.width, height: raster.height },
+        };
+        console.log(`[REGISTRATION_GATE] Visible roof target: ${roofPxCount} px, bbox=[${minRX},${minRY}]-[${maxRX},${maxRY}]`);
+      } else {
+        registrationDebug = { enabled: false, reason: 'roof_mask_too_few_pixels', pixel_count: roofPxCount };
+        console.log(`[REGISTRATION_GATE] Disabled — only ${roofPxCount} roof mask pixels in satellite frame`);
+      }
+    } else {
+      registrationDebug = { enabled: false, reason: 'no_roof_mask_available' };
+      console.log('[REGISTRATION_GATE] Disabled — no roof mask available for registration check');
+    }
+
+    // Validate each candidate against visible roof evidence
+    const MAX_CENTROID_OFFSET_PX = 40; // Max centroid shift from visible roof center
+    const MIN_ROOF_IMAGE_OVERLAP = 0.50; // Min overlap with visible roof mask
+    const SOLAR_STRICT_OVERLAP = 0.75; // Stricter for solar union/hull
+    const SOLAR_STRICT_CENTROID_PX = 20; // Stricter centroid offset for solar sources
+
+    for (const cand of candidates) {
+      if (cand.rejected_reason) continue; // Already rejected, skip
+      if (!visibleRoofBboxPx || !visibleRoofMaskPxGrid) {
+        cand.footprint_registration_passed = null; // Can't evaluate
+        continue;
+      }
+
+      const candBbox = cand.bbox_px;
+      if (!candBbox) { cand.footprint_registration_passed = false; continue; }
+
+      // Centroid offset from visible roof center
+      const roofCenterX = (visibleRoofBboxPx.minX + visibleRoofBboxPx.maxX) / 2;
+      const roofCenterY = (visibleRoofBboxPx.minY + visibleRoofBboxPx.maxY) / 2;
+      const candCenterX = (candBbox.minX + candBbox.maxX) / 2;
+      const candCenterY = (candBbox.minY + candBbox.maxY) / 2;
+      const centroidOffset = Math.hypot(candCenterX - roofCenterX, candCenterY - roofCenterY);
+      cand.centroid_offset_px = Math.round(centroidOffset * 10) / 10;
+
+      // Overlap score: rasterize candidate polygon into mask and compute intersection
+      const candPoly = cand.polygon;
+      let overlapPixels = 0;
+      let candPixels = 0;
+      if (candPoly.length >= 3) {
+        // Sample candidate polygon area for overlap with roof mask
+        const candGrid = new Uint8Array(raster.width * raster.height);
+        // Simple scanline rasterization
+        const candMinY = Math.max(0, Math.floor(candBbox.minY));
+        const candMaxY = Math.min(raster.height - 1, Math.ceil(candBbox.maxY));
+        for (let y = candMinY; y <= candMaxY; y++) {
+          const intersections: number[] = [];
+          for (let i = 0; i < candPoly.length; i++) {
+            const j = (i + 1) % candPoly.length;
+            const yi = candPoly[i].y, yj = candPoly[j].y;
+            if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
+              const t = (y - yi) / (yj - yi);
+              intersections.push(candPoly[i].x + t * (candPoly[j].x - candPoly[i].x));
+            }
+          }
+          intersections.sort((a, b) => a - b);
+          for (let k = 0; k < intersections.length - 1; k += 2) {
+            const x0 = Math.max(0, Math.round(intersections[k]));
+            const x1 = Math.min(raster.width - 1, Math.round(intersections[k + 1]));
+            for (let x = x0; x <= x1; x++) {
+              candPixels++;
+              if (visibleRoofMaskPxGrid[y * raster.width + x] > 0) {
+                overlapPixels++;
+              }
+            }
+          }
+        }
+      }
+      const roofOverlapScore = candPixels > 0 ? overlapPixels / candPixels : 0;
+      cand.roof_image_overlap_score = Math.round(roofOverlapScore * 1000) / 1000;
+
+      // Apply registration gate
+      const isSolarSource = cand.source.includes('solar_segments_union') || cand.source.includes('solar_segments_hull');
+      const isMaskContour = cand.source === 'google_solar_mask_contour';
+      const maxOffset = isSolarSource ? SOLAR_STRICT_CENTROID_PX : MAX_CENTROID_OFFSET_PX;
+      const minOverlap = isSolarSource ? SOLAR_STRICT_OVERLAP : MIN_ROOF_IMAGE_OVERLAP;
+
+      // Mask contour is derived FROM the mask — skip self-validation
+      if (isMaskContour) {
+        cand.footprint_registration_passed = true;
+        continue;
+      }
+
+      const centroidOk = centroidOffset <= maxOffset;
+      const overlapOk = roofOverlapScore >= minOverlap;
+      cand.footprint_registration_passed = centroidOk && overlapOk;
+
+      if (!cand.footprint_registration_passed && !cand.rejected_reason) {
+        const reasons: string[] = [];
+        if (!centroidOk) reasons.push(`centroid_offset_${Math.round(centroidOffset)}px_gt_${maxOffset}px`);
+        if (!overlapOk) reasons.push(`roof_overlap_${Math.round(roofOverlapScore * 100)}pct_lt_${Math.round(minOverlap * 100)}pct`);
+        cand.rejected_reason = `footprint_registration_mismatch:${reasons.join(',')}`;
+        console.log(`[REGISTRATION_GATE] REJECT ${cand.source}: ${cand.rejected_reason}`);
+      }
+    }
+
+    // Log registration results
+    if (registrationDebug.enabled) {
+      const regResults = candidates.map(c => ({
+        source: c.source,
+        centroid_offset_px: c.centroid_offset_px,
+        roof_image_overlap_score: c.roof_image_overlap_score,
+        registration_passed: c.footprint_registration_passed,
+        rejected: c.rejected_reason,
+      }));
+      console.log('[REGISTRATION_GATE_RESULTS]', JSON.stringify(regResults));
+    }
+
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
