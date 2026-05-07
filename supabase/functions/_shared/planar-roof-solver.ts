@@ -866,6 +866,7 @@ export interface PlanarSolverDebug {
   intersections_split: number;
   intersection_filter_skipped: number;
   dangling_edges_removed: number;
+  deferred_structural_edges: number;
   perimeter_reinjected: number;
   total_graph_segments: number;
   total_graph_nodes: number;
