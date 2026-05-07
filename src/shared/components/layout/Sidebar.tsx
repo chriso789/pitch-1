@@ -262,14 +262,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "production"
     },
     {
-      name: "Material Orders",
-      href: "material-orders",
-      path: "/material-orders",
-      icon: Truck,
-      description: "Order materials via SRS",
-      featureKey: "production"
-    },
-    {
       name: "Material Audit",
       href: "material-audit",
       path: "/material-audit",
