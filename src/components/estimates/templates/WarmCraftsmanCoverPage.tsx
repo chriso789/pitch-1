@@ -87,7 +87,7 @@ export const WarmCraftsmanCoverPage: React.FC<CoverPageProps> = ({
             <div className="text-[10px] font-bold tracking-[0.4em] text-[#C9956B] uppercase">Project Proposal</div>
           </div>
           
-          <h2 className="text-3xl font-bold text-[#3D3225] mb-3 leading-tight">{customerName}</h2>
+          <h2 className="text-2xl font-bold text-[#3D3225] mb-3 leading-tight">{customerName}</h2>
           <p className="text-sm text-[#6B5D4F] mb-2">{customerAddress}</p>
           {estimateName && <p className="text-sm text-[#C9956B] italic mt-3">{estimateName}</p>}
 

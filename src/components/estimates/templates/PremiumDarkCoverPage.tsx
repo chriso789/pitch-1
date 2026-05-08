@@ -74,7 +74,7 @@ export const PremiumDarkCoverPage: React.FC<CoverPageProps> = ({
         {/* Left — proposal content */}
         <div className="flex-1 px-10 flex flex-col justify-center">
           <div className="text-[11px] tracking-[0.5em] text-[#666] uppercase mb-4">Project Proposal</div>
-          <h1 className="text-5xl font-bold leading-tight tracking-tight mb-5" style={{ color: '#FFFFFF' }}>
+          <h1 className="text-3xl font-bold leading-tight tracking-tight mb-5" style={{ color: '#FFFFFF' }}>
             {customerName}
           </h1>
           <div className="w-20 h-[2px] mb-5" style={{ background: 'linear-gradient(90deg, #A0A0A0, #444)' }} />

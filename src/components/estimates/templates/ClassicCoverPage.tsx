@@ -96,7 +96,7 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
 
       {/* Customer info — formal centered layout */}
       <div className="text-center px-10">
-        <h2 className="text-4xl font-bold text-[#1B2A4A] mb-2" style={{ fontFamily: "'Georgia', serif" }}>
+        <h2 className="text-2xl font-bold text-[#1B2A4A] mb-2" style={{ fontFamily: "'Georgia', serif" }}>
           {customerName}
         </h2>
         <p className="text-sm text-gray-600">{customerAddress}</p>
