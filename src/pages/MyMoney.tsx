@@ -225,6 +225,15 @@ export function MyMoneyContent() {
           </CardContent>
         </Card>
       </div>
+  );
+}
+
+export default function MyMoney() {
+  return (
+    <GlobalLayout>
+      <div className="p-4 md:p-6">
+        <MyMoneyContent />
+      </div>
     </GlobalLayout>
   );
 }
