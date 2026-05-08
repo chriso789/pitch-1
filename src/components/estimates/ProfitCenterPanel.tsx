@@ -9,8 +9,9 @@ import {
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
-  CreditCard, FileEdit, Pencil, X, Check
+  CreditCard, FileEdit, Pencil, X, Check, Trash2
 } from 'lucide-react';
+import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -58,6 +59,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   className
 }) => {
   const queryClient = useQueryClient();
+  const { profile } = useActiveTenantId();
+  const userRole = (profile as any)?.role as string | undefined;
+  const canDeleteInvoices = ['master', 'owner', 'corporate', 'admin', 'office_staff'].includes(userRole || '');
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editPrice, setEditPrice] = useState('');
@@ -213,6 +218,27 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const handleInvoiceSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!canDeleteInvoices) return;
+    if (!window.confirm('Delete this imported invoice? This cannot be undone.')) return;
+    setDeletingInvoiceId(invoiceId);
+    try {
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .delete()
+        .eq('id', invoiceId);
+      if (error) throw error;
+      toast.success('Invoice deleted');
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
+    } catch (err: any) {
+      console.error('[ProfitCenterPanel] delete invoice failed', err);
+      toast.error(err?.message || 'Failed to delete invoice');
+    } finally {
+      setDeletingInvoiceId(null);
+    }
   };
 
   const handleStartEditPrice = () => {
@@ -645,6 +671,22 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                           >
                             {invoice.status}
                           </Badge>
+                          {canDeleteInvoices && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteInvoice(invoice.id)}
+                              disabled={deletingInvoiceId === invoice.id}
+                              title="Delete invoice"
+                            >
+                              {deletingInvoiceId === invoice.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );
