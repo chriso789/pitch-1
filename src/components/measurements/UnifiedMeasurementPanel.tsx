@@ -2063,7 +2063,7 @@ function MeasurementHistorySection({
     }
   };
 
-  const selectableHistoryCount = vendorReports.length + aiMeasurements.filter((m: any) => m.history_kind !== 'job').length;
+  const selectableHistoryCount = vendorReports.length + aiMeasurements.length;
   const allSelected = selectedIds.size === selectableHistoryCount && selectableHistoryCount > 0;
 
   return (
