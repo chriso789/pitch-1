@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import ContactFormDialog from "@/components/ContactFormDialog";
+import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
@@ -440,18 +440,18 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-6">
-        <ContactFormDialog
+        <EnhancedLeadCreationDialog
           trigger={
             <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary touch-manipulation active:scale-[0.98]">
               <CardContent className="p-3 md:p-6 text-center text-white">
                 <Plus className="h-5 w-5 md:h-8 md:w-8 mx-auto mb-1 md:mb-2" />
-                <h3 className="font-semibold text-xs md:text-base mb-0.5 md:mb-1">New Contact</h3>
-                <p className="text-[10px] md:text-sm opacity-90 hidden sm:block">Add a new customer contact</p>
+                <h3 className="font-semibold text-xs md:text-base mb-0.5 md:mb-1">New Lead</h3>
+                <p className="text-[10px] md:text-sm opacity-90 hidden sm:block">Add a new lead to the pipeline</p>
               </CardContent>
             </Card>
           }
-          onContactCreated={() => {
-            console.log('New contact created');
+          onLeadCreated={() => {
+            console.log('New lead created');
           }}
         />
         
