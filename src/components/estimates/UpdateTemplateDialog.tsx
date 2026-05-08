@@ -42,12 +42,12 @@ interface TemplateOption {
 }
 
 type EditableItem = {
-  id: string;
   item_name: string;
   description: string;
   item_type: 'material' | 'labor' | 'change_order';
   unit: string;
   unit_cost: number;
+  quantity?: number;
   sort_order: number;
   trade_type?: string;
 };
