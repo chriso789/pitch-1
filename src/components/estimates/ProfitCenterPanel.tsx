@@ -59,6 +59,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   className
 }) => {
   const queryClient = useQueryClient();
+  const { profile } = useActiveTenantId();
+  const userRole = (profile as any)?.role as string | undefined;
+  const canDeleteInvoices = ['master', 'owner', 'corporate', 'admin', 'office_staff'].includes(userRole || '');
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editPrice, setEditPrice] = useState('');
