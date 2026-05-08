@@ -290,57 +290,7 @@ const Dashboard = () => {
     }
   });
 
-  // Recent projects
-  const { data: recentProjects = [] } = useQuery({
-    queryKey: ['dashboard-recent-projects'],
-    queryFn: async () => {
-      const { data: projects } = await supabase
-        .from('projects')
-        .select(`
-          id,
-          project_number,
-          name,
-          status,
-          budget_data,
-          pipeline_entry_id,
-          pipeline_entries!inner (
-            id,
-            contact_id,
-            contacts (
-              first_name,
-              last_name,
-              address_street,
-              address_city,
-              address_state
-            )
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
-      return projects?.map(project => {
-        const contact = (project.pipeline_entries as any)?.contacts;
-        const budget = (project.budget_data as any) || {};
-        const total = budget.total || 0;
-        const cost = budget.total_cost || 0;
-        const profit = total > 0 ? ((total - cost) / total) * 100 : 0;
-        
-        return {
-          id: project.project_number || project.id,
-          homeowner: contact 
-            ? `${contact.first_name} ${contact.last_name}` 
-            : project.name || 'Unknown',
-          address: contact 
-            ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state}` 
-            : 'Address not available',
-          type: budget.roof_type || 'Roofing Project',
-          value: total > 0 ? `$${total.toLocaleString()}` : '$0',
-          status: project.status === 'active' ? 'Project' : project.status,
-          profit: profit > 0 ? `${profit.toFixed(1)}%` : '0%'
-        };
-      }) || [];
-    }
-  });
+
 
   // Export handlers
   const handleExportCSV = () => {
