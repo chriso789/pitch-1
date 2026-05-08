@@ -3588,7 +3588,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     attempted_face_count: planar.faces.length,
     attempted_edge_count: outputEdges.length,
     face_rejection_table: faceRejectionTable,
-    edge_classification_debug: { ...edgeClassificationDebug, ...edgeEmitDiagnostics, refinement: refinementDiagnostics },
+    edge_classification_debug: { ...edgeClassificationDebug, ...edgeEmitDiagnostics, refinement: refinementDiagnostics, backbone: backboneDiag },
     pitch_source: 'dsm_plane_fit',
     dsm_mask_valid: dsmMaskValid,
     topology_source: 'autonomous_dsm_graph_solver',
