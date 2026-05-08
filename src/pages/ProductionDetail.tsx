@@ -547,6 +547,7 @@ const ProductionDetail = () => {
               <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=production-checklist')}>
                 <ExternalLink className="h-3 w-3 mr-1" /> Open in Settings
               </Button>
+            </div>
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
