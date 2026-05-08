@@ -33,7 +33,7 @@ import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
@@ -867,13 +867,23 @@ async function processJob(input: any) {
     // before ranking secondary sources like OSM/U-Net/segment hulls.
     let roofMaskForContour: any = null;
     let selectedMaskContourGeo: Array<[number, number]> | null = null;
+    let maskContourDiagnostics: any = null;
     if (GOOGLE_SOLAR_API_KEY) {
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
         roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
           const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
+          maskContourDiagnostics = getLastContourDiagnostics();
+          if (maskContourDiagnostics) {
+            console.log("[MASK_CONTOUR_DIAG]", JSON.stringify(maskContourDiagnostics));
+          }
           if (maskContourGeo.length >= 4) {
+            // Check contour coverage — reject if it misses >5% of mask
+            const contourValid = maskContourDiagnostics?.contour_valid !== false;
+            if (!contourValid && maskContourDiagnostics) {
+              console.warn(`[MASK_CONTOUR_UNDERCOVERAGE] Contour misses ${(maskContourDiagnostics.mask_missed_pct * 100).toFixed(1)}% of mask pixels — will still add as candidate but flag`);
+            }
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
             );
@@ -1062,6 +1072,7 @@ async function processJob(input: any) {
         roofMaskForContour = roofMaskForContour || await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
           const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
+          if (!maskContourDiagnostics) maskContourDiagnostics = getLastContourDiagnostics();
           if (maskContourGeo.length >= 4) {
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
@@ -1389,6 +1400,7 @@ async function processJob(input: any) {
         missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
         footprint_source: footprintSource,
         inner_trace_detected: false,
+        mask_contour_diagnostics: maskContourDiagnostics || null,
       };
 
       // HARD GATE: perimeter under-traces the roof
