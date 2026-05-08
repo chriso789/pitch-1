@@ -3781,8 +3781,28 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         footprintAreaSqft,
       );
 
-      // Run constraint solver if autonomous score is poor
-      if (autoScore < 0.60) {
+      // Perimeter-first / reverse-geometry plan: trigger constraint solver whenever
+      // autonomous topology shows ANY structural failure mode, not only on low score.
+      // This is the "outside-first, inside-reverse-solved" path the user asked for.
+      const ridgeLfAuto = outputEdges.filter(e => e.type === 'ridge').reduce((s, e) => s + (e.length_ft || 0), 0);
+      const facetCountAuto = graphFaces.length;
+      const expectedFacets = Math.max(4, input.solarSegments.length);
+      const totalAreaAuto = graphFaces.reduce((s, f) => s + (f.plan_area_sqft || 0), 0);
+      const maxPlaneAuto = graphFaces.reduce((m, f) => Math.max(m, (f.plan_area_sqft || 0)), 0);
+      const maxPlaneRatioAuto = totalAreaAuto > 0 ? maxPlaneAuto / totalAreaAuto : 0;
+      const solarTargetArea = input.solarSegments.reduce((s, seg) => s + (seg.stats?.areaMeters2 || 0) * 10.7639, 0);
+      const areaErrorPctAuto = solarTargetArea > 0 ? Math.abs(totalAreaAuto - solarTargetArea) / solarTargetArea : 0;
+
+      const triggerReasons: string[] = [];
+      if (autoScore < 0.70) triggerReasons.push(`low_score:${autoScore.toFixed(2)}`);
+      if (facetCountAuto >= 4 && ridgeLfAuto < 1) triggerReasons.push('ridge_network_missing');
+      if (facetCountAuto <= 4 && expectedFacets >= 6) triggerReasons.push(`topology_undersegmented:${facetCountAuto}/${expectedFacets}`);
+      if (maxPlaneRatioAuto > 0.35) triggerReasons.push(`max_plane_ratio:${maxPlaneRatioAuto.toFixed(2)}`);
+      if (areaErrorPctAuto > 0.05) triggerReasons.push(`area_error:${(areaErrorPctAuto * 100).toFixed(1)}%`);
+
+      if (triggerReasons.length > 0) {
+        console.log(`[CONSTRAINT_SOLVER] Triggered by: ${triggerReasons.join(', ')}`);
+
         const dsmEvidence: DSMEdgeEvidence[] = classifiedEdges
           .filter(e => e.source === 'dsm' && (e.type === 'ridge' || e.type === 'valley' || e.type === 'hip'))
           .map(e => ({
