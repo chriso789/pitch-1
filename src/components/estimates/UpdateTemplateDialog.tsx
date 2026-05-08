@@ -142,8 +142,8 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
     }
   };
 
-  const updateItemField = (id: string, field: 'item_name' | 'description', value: string) => {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, [field]: value } : it)));
+  const updateItemField = (idx: number, field: 'item_name' | 'description', value: string) => {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
   };
 
   const writeItemsToTemplate = async (templateId: string) => {
