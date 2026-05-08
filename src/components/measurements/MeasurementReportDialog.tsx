@@ -184,6 +184,11 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Topology Fidelity', value: String(grj.topology_fidelity?.topology_fidelity ?? '—') },
     { label: 'Topo Score', value: fmt(grj.topology_fidelity?.topology_fidelity_score) },
     { label: 'Max Plane Ratio', value: fmt(grj.topology_fidelity?.max_plane_area_ratio) },
+    { label: 'Pitch Source', value: String(grj.pitch_source ?? '—') },
+    { label: 'Pitch Valid', value: String(grj.pitch_valid ?? '—') },
+    { label: 'Perimeter Inner Trace', value: String(grj.perimeter_inner_trace?.inner_trace_detected ?? '—') },
+    { label: 'Perimeter/Mask Ratio', value: fmt(grj.perimeter_inner_trace?.perimeter_to_mask_ratio) },
+    { label: 'Missed Roof Area', value: fmt(grj.perimeter_inner_trace?.missed_roof_area_sqft, 'sq ft') },
     { label: 'Customer Ready', value: String(m.customer_report_ready ?? '—') },
   ];
 

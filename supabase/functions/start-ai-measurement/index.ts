@@ -276,6 +276,117 @@ async function processJob(input: any) {
     const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
 
 
+    // ══════════ PERIMETER INNER-TRACE DETECTION GATE ══════════
+    // Detect when the selected footprint traces INNER solar/plane geometry
+    // instead of the true eave/rake roof perimeter. If the footprint area
+    // is significantly smaller than the roof mask, the perimeter is under-tracing.
+    let perimeterInnerTraceDebug: any = { checked: false };
+    if (visibleRoofMaskPxGrid && visibleRoofBboxPx && footprint.length >= 3) {
+      // Compute roof mask total area in pixels
+      let roofMaskTotalPx = 0;
+      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
+        if (visibleRoofMaskPxGrid[i] > 0) roofMaskTotalPx++;
+      }
+      const roofMaskAreaSqft = roofMaskTotalPx * sqftPerPx2;
+      const perimeterToMaskRatio = roofMaskAreaSqft > 0 ? footprintAreaSqftVal / roofMaskAreaSqft : 1;
+
+      // Check if footprint is fully inside the mask with significant missed area
+      let footprintInsideMaskPx = 0;
+      let footprintTotalPx = 0;
+      const fpBbox = bboxOf(footprint);
+      if (fpBbox) {
+        const scanMinY = Math.max(0, Math.floor(fpBbox.minY));
+        const scanMaxY = Math.min(raster.height - 1, Math.ceil(fpBbox.maxY));
+        for (let y = scanMinY; y <= scanMaxY; y++) {
+          const intersections: number[] = [];
+          for (let i = 0; i < footprint.length; i++) {
+            const j = (i + 1) % footprint.length;
+            const yi = footprint[i].y, yj = footprint[j].y;
+            if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
+              const t = (y - yi) / (yj - yi);
+              intersections.push(footprint[i].x + t * (footprint[j].x - footprint[i].x));
+            }
+          }
+          intersections.sort((a, b) => a - b);
+          for (let k = 0; k < intersections.length - 1; k += 2) {
+            const x0 = Math.max(0, Math.round(intersections[k]));
+            const x1 = Math.min(raster.width - 1, Math.round(intersections[k + 1]));
+            for (let x = x0; x <= x1; x++) {
+              footprintTotalPx++;
+              if (visibleRoofMaskPxGrid[y * raster.width + x] > 0) {
+                footprintInsideMaskPx++;
+              }
+            }
+          }
+        }
+      }
+      const footprintMaskOverlapRatio = footprintTotalPx > 0 ? footprintInsideMaskPx / footprintTotalPx : 0;
+
+      // Compute missed roof region area (mask pixels outside footprint)
+      let missedRoofPx = 0;
+      if (fpBbox && visibleRoofBboxPx) {
+        const scanMinY2 = Math.max(0, Math.floor(Math.min(fpBbox.minY, visibleRoofBboxPx.minY)));
+        const scanMaxY2 = Math.min(raster.height - 1, Math.ceil(Math.max(fpBbox.maxY, visibleRoofBboxPx.maxY)));
+        for (let y = scanMinY2; y <= scanMaxY2; y++) {
+          const scanMinX2 = Math.max(0, Math.floor(Math.min(fpBbox.minX, visibleRoofBboxPx.minX)));
+          const scanMaxX2 = Math.min(raster.width - 1, Math.ceil(Math.max(fpBbox.maxX, visibleRoofBboxPx.maxX)));
+          for (let x = scanMinX2; x <= scanMaxX2; x++) {
+            if (visibleRoofMaskPxGrid[y * raster.width + x] > 0 && !pointInPolygon({ x, y }, footprint)) {
+              missedRoofPx++;
+            }
+          }
+        }
+      }
+      const missedRoofAreaSqft = missedRoofPx * sqftPerPx2;
+      const missedRoofRatio = roofMaskTotalPx > 0 ? missedRoofPx / roofMaskTotalPx : 0;
+
+      perimeterInnerTraceDebug = {
+        checked: true,
+        roof_mask_area_sqft: Math.round(roofMaskAreaSqft),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        perimeter_to_mask_ratio: Number(perimeterToMaskRatio.toFixed(3)),
+        footprint_mask_overlap_ratio: Number(footprintMaskOverlapRatio.toFixed(3)),
+        missed_roof_area_sqft: Math.round(missedRoofAreaSqft),
+        missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
+        footprint_source: footprintSource,
+        inner_trace_detected: false,
+      };
+
+      // HARD GATE: if selected perimeter area < 85% of roof mask area AND
+      // the perimeter source is a solar-derived candidate, it's tracing inner geometry.
+      // Use 85% threshold (not 95%) to allow for mask overestimation / overhang.
+      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
+      const severeUnderTrace = perimeterToMaskRatio < 0.85 && missedRoofRatio > 0.10;
+      const moderateUnderTrace = perimeterToMaskRatio < 0.90 && isSolarDerived && missedRoofRatio > 0.08;
+
+      if (severeUnderTrace || moderateUnderTrace) {
+        perimeterInnerTraceDebug.inner_trace_detected = true;
+        const failReason = "perimeter_inner_trace_detected";
+        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL: perimeter traces inner area, not outer roof boundary`, JSON.stringify(perimeterInnerTraceDebug));
+
+        const debugPayload = {
+          ...perimeterInnerTraceDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map(p => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+          candidates_tried: candidates.length,
+          visible_roof_bbox_px: visibleRoofBboxPx,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter traces inner geometry: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter traces inner geometry: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
+      console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
+    }
+
 
     // ───────── GEOMETRY-FIRST PIPELINE ─────────
     // U-Net is OPTIONAL. Solar bbox is allowed as a CANDIDATE footprint
@@ -795,6 +906,12 @@ async function processJob(input: any) {
         const hull = convexHull(segPts);
         if (hull.length >= 4) {
           const hullCand = scoreCandidate("google_solar_segments_hull", hull);
+          // CRITICAL FIX: Solar segment hull traces INNER plane geometry, not the
+          // true eave/rake roof perimeter. Never allow it as the final footprint.
+          // It is stored for diagnostics and internal guidance only.
+          if (!hullCand.rejected_reason) {
+            hullCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
+          }
           candidates.push(hullCand);
           solarSegmentsDebug = {
             count: solarSegments.length,
@@ -817,37 +934,11 @@ async function processJob(input: any) {
           const unionPoly = rectilinearUnionPolygon(boundsPx);
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
-            // Only boost union if no larger valid OSM/mask candidate exists.
-            // When a bigger building (OSM) with high solar coverage exists, the union
-            // likely describes an outbuilding or partial structure — don't let it win.
-            const bestExistingValid = candidates
-              .filter(c => !c.rejected_reason && c.source !== "google_solar_segments_hull")
-              .sort((a, b) => b.area_sqft - a.area_sqft)[0];
-            const unionIsLargest = !bestExistingValid || unionCand.area_sqft >= bestExistingValid.area_sqft * 0.9;
-            const bestHasHighCoverage = bestExistingValid && (bestExistingValid.coverage_ratio_vs_solar_bbox ?? 0) > 0.8;
-            
-            if (unionIsLargest && !unionCand.rejected_reason) {
-              // Full boost: union is the dominant footprint
-              unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
-              unionCand.validity_score = Math.min(1,
-                unionCand.area_score * 0.30 +
-                unionCand.solar_overlap_score * 0.30 +
-                unionCand.geocode_center_score * 0.30 +
-                unionCand.polygon_shape_score * 0.10 +
-                0.08,
-              );
-            } else if (!unionCand.rejected_reason && !bestHasHighCoverage) {
-              // Moderate boost: union isn't largest but no strong alternative
-              unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.25);
-              unionCand.validity_score = Math.min(1,
-                unionCand.area_score * 0.30 +
-                unionCand.solar_overlap_score * 0.30 +
-                unionCand.geocode_center_score * 0.30 +
-                unionCand.polygon_shape_score * 0.10 +
-                0.02,
-              );
+            // CRITICAL FIX: Solar segment union traces INNER plane geometry, not
+            // the true eave/rake roof perimeter. Store for diagnostics only.
+            if (!unionCand.rejected_reason) {
+              unionCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
             }
-            // else: no boost — a larger candidate with high solar coverage exists
             candidates.push(unionCand);
             solarSegmentsDebug.union_vertices = unionPoly.length;
             solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
@@ -858,10 +949,14 @@ async function processJob(input: any) {
       }
     }
 
-    // 3b. Solar building extent rectangle as a fallback candidate (NOT auto-promoted).
+    // 3b. Solar building extent rectangle — diagnostic only, NOT a valid perimeter.
     const solarFp = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
     if (solarFp && solarFp.length >= 3) {
       const bboxCand = scoreCandidate("google_solar_bbox", solarFp);
+      // CRITICAL FIX: Solar bbox is not a roof perimeter — always reject.
+      if (!bboxCand.rejected_reason) {
+        bboxCand.rejected_reason = "solar_bbox_not_roof_perimeter";
+      }
       candidates.push(bboxCand);
       solarSegmentsDebug.bbox_area_sqft = Math.round(bboxCand.area_sqft);
       if (solarSegmentsDebug.hull_area_sqft && bboxCand.area_sqft > 0) {
@@ -1362,6 +1457,77 @@ async function processJob(input: any) {
       exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
       footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
     }));
+
+    // ══════════ PERIMETER INNER-TRACE DETECTION GATE ══════════
+    // Detect when the selected footprint traces INNER solar/plane geometry
+    // instead of the true eave/rake roof perimeter.
+    let perimeterInnerTraceDebug: any = { checked: false };
+    if (visibleRoofMaskPxGrid && visibleRoofBboxPx && footprint.length >= 3) {
+      let roofMaskTotalPx = 0;
+      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
+        if (visibleRoofMaskPxGrid[i] > 0) roofMaskTotalPx++;
+      }
+      const roofMaskAreaSqft = roofMaskTotalPx * sqftPerPx2;
+      const perimeterToMaskRatio = roofMaskAreaSqft > 0 ? footprintAreaSqftVal / roofMaskAreaSqft : 1;
+
+      // Count missed roof mask pixels outside footprint
+      let missedRoofPx = 0;
+      const fpBboxIT = bboxOf(footprint);
+      if (fpBboxIT && visibleRoofBboxPx) {
+        const yMin = Math.max(0, Math.floor(Math.min(fpBboxIT.minY, visibleRoofBboxPx.minY)));
+        const yMax = Math.min(raster.height - 1, Math.ceil(Math.max(fpBboxIT.maxY, visibleRoofBboxPx.maxY)));
+        for (let y = yMin; y <= yMax; y++) {
+          const xMin = Math.max(0, Math.floor(Math.min(fpBboxIT.minX, visibleRoofBboxPx.minX)));
+          const xMax = Math.min(raster.width - 1, Math.ceil(Math.max(fpBboxIT.maxX, visibleRoofBboxPx.maxX)));
+          for (let x = xMin; x <= xMax; x++) {
+            if (visibleRoofMaskPxGrid[y * raster.width + x] > 0 && !pointInPolygon({ x, y }, footprint)) {
+              missedRoofPx++;
+            }
+          }
+        }
+      }
+      const missedRoofRatio = roofMaskTotalPx > 0 ? missedRoofPx / roofMaskTotalPx : 0;
+      const missedRoofAreaSqft = missedRoofPx * sqftPerPx2;
+
+      perimeterInnerTraceDebug = {
+        checked: true,
+        roof_mask_area_sqft: Math.round(roofMaskAreaSqft),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        perimeter_to_mask_ratio: Number(perimeterToMaskRatio.toFixed(3)),
+        missed_roof_area_sqft: Math.round(missedRoofAreaSqft),
+        missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
+        footprint_source: footprintSource,
+        inner_trace_detected: false,
+      };
+
+      // HARD GATE: perimeter under-traces the roof
+      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
+      const severeUnderTrace = perimeterToMaskRatio < 0.85 && missedRoofRatio > 0.10;
+      const moderateUnderTrace = perimeterToMaskRatio < 0.90 && isSolarDerived && missedRoofRatio > 0.08;
+
+      if (severeUnderTrace || moderateUnderTrace) {
+        perimeterInnerTraceDebug.inner_trace_detected = true;
+        const failReason = "perimeter_inner_trace_detected";
+        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL`, JSON.stringify(perimeterInnerTraceDebug));
+        const debugPayload = {
+          ...perimeterInnerTraceDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map((p: any) => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+          visible_roof_bbox_px: visibleRoofBboxPx,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true, report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+      console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
+    }
 
     // 5. Run deterministic topology on the selected footprint.
     let cleanPlanes: RoofPlane[] = [];
@@ -3970,6 +4136,35 @@ async function processJob(input: any) {
     });
 
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+
+    // ══════════ PITCH CORRECTION — prevent nonsense pitch from collapsed topology ══════════
+    // If topology fidelity is low or faces ≤ 3 with collapsed structure,
+    // the DSM plane-fit pitch is unreliable (e.g. 0.11/12). Use Solar pitchDegrees instead.
+    let pitchSource = "dsm_plane_fit";
+    let pitchValid = true;
+    const rawDominantPitch = totals.dominant_pitch;
+    const topoFidelityForPitch = topologyFidelity?.topology_fidelity ?? 'high';
+    const fanCollapseForPitch = topologyFidelity?.fan_collapse_suspected ?? false;
+    const facetCountForPitch = topologyFidelity?.facet_count ?? planeRows.length;
+    const isBadTopology = topoFidelityForPitch === 'low' || fanCollapseForPitch || facetCountForPitch <= 3;
+    const isNonsensePitch = rawDominantPitch != null && (rawDominantPitch < 1 || rawDominantPitch > 24);
+
+    if (isBadTopology || isNonsensePitch) {
+      // Try Solar roofSegmentStats pitchDegrees as authoritative source
+      const solarPitchRise = dominantSolarPitchRise(solarData);
+      if (solarPitchRise != null && solarPitchRise >= 1 && solarPitchRise <= 24) {
+        totals.dominant_pitch = solarPitchRise;
+        pitchSource = "google_solar_roofSegmentStats";
+        console.log(`[PITCH_CORRECTION] Overrode DSM pitch ${rawDominantPitch}/12 with Solar ${solarPitchRise}/12 (bad topology: fidelity=${topoFidelityForPitch}, fan_collapse=${fanCollapseForPitch}, facets=${facetCountForPitch})`);
+      } else {
+        // No valid Solar pitch — set to null (unavailable)
+        totals.dominant_pitch = null;
+        pitchSource = "unavailable";
+        pitchValid = false;
+        console.log(`[PITCH_CORRECTION] Set pitch to unavailable — no valid source (DSM=${rawDominantPitch}/12, Solar=${solarPitchRise}, topology=${topoFidelityForPitch})`);
+      }
+    }
+
     const legacyHardFailReason = topologySource !== REQUIRED_TOPOLOGY_SOURCE ? "legacy_topology_blocked" : null;
     if (legacyHardFailReason) {
       const failedDebug = {
@@ -4486,6 +4681,8 @@ async function processJob(input: any) {
       rake_length_ft: totals.rake_length_ft,
       perimeter_length_ft: totals.perimeter_length_ft,
       dominant_pitch: totals.dominant_pitch,
+      pitch_source: pitchSource,
+      pitch_valid: pitchValid,
       pitch_breakdown: totals.pitch_breakdown,
       line_breakdown: totals.line_breakdown,
       plane_breakdown: totals.plane_breakdown,
