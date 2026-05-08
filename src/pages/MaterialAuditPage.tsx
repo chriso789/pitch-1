@@ -512,9 +512,17 @@ export const MaterialAuditContent = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </GlobalLayout>
+    </div>
   );
 };
+
+const MaterialAuditPage = () => (
+  <GlobalLayout>
+    <div className="p-4">
+      <MaterialAuditContent />
+    </div>
+  </GlobalLayout>
+);
 
 // --- Import Price List Dialog ---
 function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: string | null; suppliers: any[]; onSuccess: () => void }) {
