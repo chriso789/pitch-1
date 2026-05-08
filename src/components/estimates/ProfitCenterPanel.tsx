@@ -9,8 +9,9 @@ import {
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
-  CreditCard, FileEdit, Pencil, X, Check
+  CreditCard, FileEdit, Pencil, X, Check, Trash2
 } from 'lucide-react';
+import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
