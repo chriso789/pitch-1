@@ -1,129 +1,149 @@
-
-# Reverse-Geometry Constraint Solver for AI Measurement
+# Perimeter-First + Reverse-Geometry Measurement Rebuild
 
 ## Problem
 
-The current solver relies on DSM edge detection to discover internal roof structure. On complex roofs like Fonsica (14 facets, 6/12 pitch), it undersegments to 6 facets with 1.67/12 pitch and 0 ridges. The DSM detector cannot "see" enough edges, so detected topology collapses into a fan of large triangles.
+Current pipeline tries to detect internal hips/ridges/valleys before locking the outer roof boundary. When DSM edge detection misses interior structure, the solver collapses into giant cross-roof diagonals (Fonsica: 6 facets, 1.67/12 pitch, 0 ridges vs Roofr's 14 facets, 6/12, 30'2" ridges). Threshold tuning will not fix this — the architecture is wrong.
 
-## Solution
+## Correct Flow
 
-Add a `ConstraintRoofSolver` that treats Google Solar segment data (pitch, azimuth, area, bounding boxes) as topology priors and reverse-solves the internal geometry that best satisfies all constraints simultaneously. This runs **after** the autonomous graph solver, and if the autonomous result scores poorly, the constraint solver's best candidate replaces it.
+```text
+Aerial image / roof mask
+    └─► true outer eave/rake perimeter      (Phase 1)
+            └─► Google Solar pitch + segments (Phase 2)
+                    └─► DSM height evidence
+                            └─► candidate topology templates (Phase 3)
+                                    └─► reverse geometry optimizer
+                                            └─► final roof diagram (Phase 4)
+                                                    └─► vendor calibration (Phase 5)
+                                                            └─► customer gate (Phase 6)
+```
 
-## Architecture
+Outside boundary is fixed FIRST. Internal structure is reverse-solved against that fixed boundary using Solar/DSM as priors.
 
-### New file: `supabase/functions/_shared/constraint-roof-solver.ts`
+## Implementation
 
-Core module (~600-800 lines) containing:
+### Phase 1 — Perimeter-first extractor (NEW)
 
-**1. Pitch Locking**
-- Compute area-weighted dominant pitch from `roofSegmentStats[].pitchDegrees`
-- Lock pitch band (e.g., 6/12 +/- 1/12)
-- Reject any topology candidate producing pitch outside the locked band
-- This replaces the current post-hoc pitch correction in index.ts (lines 4045-4076) with a **pre-solver constraint**
+**New file:** `supabase/functions/_shared/perimeter-first-extractor.ts`
 
-**2. Topology Candidate Generator**
-- Generate 4-6 candidate roof graphs from the validated perimeter:
-  - Simple hip (4 facets)
-  - Hip + cross gable (8-10 facets)
-  - Hip + nested upper assembly (10-14 facets)
-  - Hip + valley connector (8-12 facets)
-  - Multi-hip complex (12-16 facets)
-- Each candidate is a planar graph of vertices and edges within the footprint polygon
-- Solar segment bounding boxes seed initial vertex placement
+Inputs: aerial RGB, roof mask, DSM tile.
+Process:
+1. Connected-component the roof mask → largest blob = primary roof body.
+2. Trace boundary contour with Suzuki-Abe; simplify with Douglas-Peucker (epsilon ≈ 1.5px).
+3. Snap vertices to DSM roof-to-ground elevation breaks (>0.6m drop) to remove tree/shadow noise.
+4. Classify each perimeter segment by adjacent-face downslope direction:
+   - segment perpendicular to facet downslope = **eave** (low edge)
+   - segment parallel to facet downslope = **rake** (sloped edge)
+5. Compute corners (interior angles), perimeter LF, footprint area.
 
-**3. Solar Segment Prior Mapping**
-- Each Solar segment becomes a candidate plane prior with preserved area, azimuth, and pitch
-- Infer ridge/valley boundaries where adjacent segment azimuths oppose (downslope away from each other = ridge) or converge (downslope toward each other = valley)
-- Perimeter edges classified: downslope edge = eave, gable perpendicular edge = rake
-- Hip edges where convex azimuth transition occurs
+Outputs (persisted in `roof_measurements.source_context.perimeter_first`):
+- `roof_outer_perimeter` (polygon, dsm_px)
+- `eave_segments[]`, `rake_segments[]`
+- `corners[]`
+- `perimeter_confidence` (0–1)
+- `perimeter_area_sqft`
 
-**4. Constraint Scoring Function**
-Each candidate topology scored on:
-- `area_error`: |candidate pitched area - Solar wholeRoofStats area| / target (weight: 0.20)
-- `pitch_error`: |candidate pitch - locked Solar pitch| (weight: 0.15)
-- `segment_area_agreement`: per-segment area match vs Solar (weight: 0.15)
-- `segment_azimuth_agreement`: per-segment azimuth match (weight: 0.10)
-- `dsm_edge_support`: how many DSM-detected edges align with candidate edges (weight: 0.10)
-- `perimeter_compatibility`: footprint boundary compliance (weight: 0.10)
-- `construction_plausibility`: realistic ridge/valley continuity, no isolated faces (weight: 0.10)
-- `facet_count_penalty`: penalty for being far from Solar segment count (weight: 0.05)
-- `max_plane_area_ratio`: penalty for any face > 35% of total (weight: 0.05)
+**Hard gate:** perimeter_confidence < 0.80 → fail with `perimeter_unreliable`. No internal solve attempted.
 
-**5. Local Search Optimization**
-Starting from the best-scoring candidate, apply local moves:
-- Add/remove split edge
-- Move interior vertex (along ridge/valley line)
-- Merge/split a face
-- Reclassify edge type
-- Accept move only if total constraint score improves
-- Max 50 iterations, terminate early on score plateau
+### Phase 2 — Lock pitch + Solar priors (REWORK existing)
 
-**6. Edge Classification from Adjacent Normals**
-For each internal edge in the winning topology:
-- Compute normal vectors of adjacent faces from pitch + azimuth
-- Opposing downslope = ridge
-- Converging downslope = valley  
-- Convex transition at perimeter = hip
-- This replaces DSM-only classification that currently produces 0 ridges
+**Edit:** `supabase/functions/_shared/google-solar-api.ts`
+Add `extractSolarTopologyPriors()` returning:
+- `dominant_pitch_degrees` (area-weighted from `roofSegmentStats`)
+- `pitch_band` `[min, max]` (e.g. ±1/12)
+- `segment_priors[]` with `{ area, azimuth, pitch, bbox }`
+- `total_area_target`
+- `expected_facet_count`
 
-### Changes to `supabase/functions/_shared/autonomous-graph-solver.ts`
+**Edit:** `supabase/functions/start-ai-measurement/index.ts`
+Move pitch locking from post-topology (current ~L4045–4076) to **pre-solver**. Pitch band is an input constraint, not an output. `pitch_source = "solar_locked_pre_solver"`.
 
-At the end of `solveAutonomousGraph()`, before returning:
-- Compute a quick constraint score for the autonomous result
-- If score < threshold (e.g., 0.60) AND Solar segments are available, invoke the constraint solver
-- Compare constraint solver's best candidate score vs autonomous score
-- Return whichever scores higher
-- Add `constraint_solver_used: boolean` and `constraint_solver_score` to the result
+### Phase 3 — Topology candidate generator + reverse solver (REWORK)
 
-### Changes to `supabase/functions/start-ai-measurement/index.ts`
+**Edit:** `supabase/functions/_shared/constraint-roof-solver.ts` (already exists from prior turn)
+Change contract: solver now consumes the **fixed perimeter** from Phase 1, not a footprint guess.
 
-**Pitch source hardening** (~line 4045-4076):
-- Move pitch locking BEFORE topology, not after
-- Pass locked pitch band into both autonomous solver and constraint solver
-- `pitch_source` becomes `"constraint_solver_locked_from_solar"` when constraint solver wins
+Candidate templates (generated inside fixed perimeter):
+- simple hip (4 facets)
+- cross hip (8–10)
+- nested upper hip (10–14)
+- valley connector (8–12)
+- multi-hip complex (12–16)
+- mirrored assemblies
 
-**Vendor benchmark comparison** (~line 4115):
-- When constraint solver runs, include its candidate scores in the vendor comparison debug output
-- Score breakdown persisted for each candidate (top 3)
+Scoring (weights):
+| Constraint | Weight |
+|---|---|
+| perimeter_fit (vertices on fixed boundary) | 0.20 |
+| pitch_fit (within Solar band) | 0.15 |
+| area_conservation (vs Solar target ±5%) | 0.15 |
+| dsm_edge_support | 0.10 |
+| solar_segment_agreement (area + azimuth) | 0.10 |
+| ridge_valley_continuity | 0.10 |
+| construction_plausibility | 0.05 |
+| facet_count vs Solar segment count | 0.05 |
+| max_plane_area_ratio penalty (>35%) | 0.05 |
+| cross_roof_diagonal penalty | 0.05 |
 
-### Changes to `supabase/functions/_shared/google-solar-api.ts`
+Local search: 50 iterations max, accept move only if total score improves. Persist top-3 candidates with score breakdown.
 
-Add a new function `extractSolarTopologyPriors()` that returns:
-- Dominant pitch (area-weighted)
-- Pitch band [min, max]
-- Segment adjacency graph (which segments are neighbors based on bounding box proximity)
-- Inferred ridge/valley directions from opposing/converging azimuths
-- Expected face count from segment count
-- Total pitched area target
+### Phase 4 — Diagram from winning topology
 
-### New memory file
+**Edit:** `supabase/functions/_shared/autonomous-graph-solver.ts`
+Replace current "DSM edges → faces" pipeline with:
+1. Take winning topology graph from Phase 3.
+2. Perimeter edges → eaves/rakes (already classified in Phase 1).
+3. Internal edges classified by adjacent-face normals:
+   - opposing downslopes → **ridge**
+   - converging downslopes → **valley**
+   - convex perimeter transition → **hip**
+4. Faces become facets; assign pitch per facet from Solar segment overlap.
 
-Save the constraint solver architecture as `mem://features/measurement-system/constraint-roof-solver`.
+### Phase 5 — Vendor calibration mode
 
-## Expected Fonsica Results
+**Edit:** `supabase/functions/_shared/vendor-benchmark.ts` (or extend existing)
+When a `roof_measurement_benchmarks` row exists, compute deltas on area, facets, pitch, eaves, hips, valleys, ridges, rakes. Feed deltas back into candidate scoring weights for that property (not to fake numbers — to bias future runs on similar geometry).
 
-- Pitch locks to 6/12 from Solar segments (not 1.67/12 from collapsed DSM planes)
-- Candidate generator produces hip+cross-gable and hip+nested-assembly topologies
-- Constraint scorer favors ~14-facet solution matching Solar segment areas
-- Ridges become non-zero (Solar segments with opposing azimuths create ridge lines)
-- Cross-roof diagonal pyramid solution loses on `max_plane_area_ratio` and `segment_area_agreement`
-- Hips/valleys increase toward Roofr targets
-- Area converges toward 3077 sqft via pitch-adjusted area calculation
+### Phase 6 — Customer gate
 
-## Technical Details
+**Edit:** `start-ai-measurement/index.ts` — extend existing gates.
+Customer-ready ONLY if all pass:
+- `perimeter_confidence ≥ 0.80`
+- `pitch_confidence ≥ 0.85`
+- `topology_score ≥ 0.70`
+- no `ridge_network_missing` flag
+- no `topology_undersegmented` flag
+- `area_error ≤ 5%`
+- `facet_count` within ±25% of Solar expected count
 
-- Constraint solver runs in DSM pixel space (same coordinate contract as autonomous solver)
-- No new database tables required (diagnostics persisted in existing `source_context` JSON)
-- No new edge functions (constraint solver is a shared module called within `start-ai-measurement`)
-- Solver must complete in < 3 seconds for a 14-facet roof
-- Candidate generation is deterministic given the same Solar data and footprint
+Otherwise → `validation_status = needs_review`, `requires_manual_review = true`, persist debug diagram + diagnostics.
 
 ## Files Changed
 
 | File | Change |
-|------|--------|
-| `supabase/functions/_shared/constraint-roof-solver.ts` | **NEW** — Core constraint solver module |
+|---|---|
+| `supabase/functions/_shared/perimeter-first-extractor.ts` | **NEW** — Phase 1 extractor |
 | `supabase/functions/_shared/google-solar-api.ts` | Add `extractSolarTopologyPriors()` |
-| `supabase/functions/_shared/autonomous-graph-solver.ts` | Integrate constraint solver fallback at end of `solveAutonomousGraph()` |
-| `supabase/functions/start-ai-measurement/index.ts` | Move pitch locking pre-solver, pass Solar priors, persist constraint solver diagnostics |
-| `mem://features/measurement-system/constraint-roof-solver` | New memory file documenting architecture |
+| `supabase/functions/_shared/constraint-roof-solver.ts` | Consume fixed perimeter; expand candidate templates |
+| `supabase/functions/_shared/autonomous-graph-solver.ts` | Replace edge-detection pipeline with topology→diagram |
+| `supabase/functions/_shared/vendor-benchmark.ts` | Calibration feedback into scoring |
+| `supabase/functions/start-ai-measurement/index.ts` | Pre-solver pitch lock; perimeter-first orchestration; new customer gate |
+| `mem://architecture/measurement-system/perimeter-first-reverse-geometry` | Architecture memory |
+
+## Expected Fonsica Results
+
+- Perimeter traces full house outline from aerial mask, ~258'9" eave LF
+- Pitch locks to 6/12 from Solar pre-solve
+- Candidate generator emits hip+cross-gable + nested-upper-hip variants
+- Constraint solver picks ~14-facet structured hierarchy
+- Cross-roof diagonal candidate rejected on `cross_roof_diagonal` + `max_plane_area_ratio` penalties
+- Ridges become non-zero (~30'2"), hips ~201', valleys ~64'
+- Area within 5% of 3077 sqft
+- Customer gate passes; diagram matches Roofr structure
+
+## Notes / Risks
+
+- Perimeter classifier (eave vs rake) needs DSM elevation gradient already implemented in `classifyEdgeByDSM`; reuse it.
+- Solar pitch band must remain a hard constraint — no post-hoc "pitch correction" overwrites.
+- Candidate generation is the new compute-heavy step; budget 3s per roof. If exceeded, return best-so-far with `time_budget_exceeded` diagnostic.
+- This is a structural change — old runs in `roof_measurements` retain their schema; new runs add `perimeter_first` block to `source_context`.
