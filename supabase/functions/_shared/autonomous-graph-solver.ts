@@ -3846,7 +3846,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             // Convert px polygon -> XY (geo via pixelToGeo if available, else keep px coords)
             const polyGeo: XY[] = cf.polygon_px.map(p => {
               try {
-                const g = pixelToGeo([p.x, p.y], effectiveDSM);
+                const g = pixelToGeo(p.x, p.y, effectiveDSM);
                 return g as XY;
               } catch {
                 return [p.x, p.y] as XY;
@@ -3870,8 +3870,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             const lengthFt = ce.length_px * pxToFt;
             let startGeo: XY = [ce.a.x, ce.a.y];
             let endGeo: XY = [ce.b.x, ce.b.y];
-            try { startGeo = pixelToGeo([ce.a.x, ce.a.y], effectiveDSM) as XY; } catch {}
-            try { endGeo = pixelToGeo([ce.b.x, ce.b.y], effectiveDSM) as XY; } catch {}
+            try { startGeo = pixelToGeo(ce.a.x, ce.a.y, effectiveDSM) as XY; } catch {}
+            try { endGeo = pixelToGeo(ce.b.x, ce.b.y, effectiveDSM) as XY; } catch {}
             return {
               id: `cs_edge_${i}`,
               type: ce.type,
