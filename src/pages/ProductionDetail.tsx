@@ -431,6 +431,11 @@ const ProductionDetail = () => {
           )}
         </TabsContent>
 
+        {/* ORDERS & ASSIGNMENTS TAB */}
+        <TabsContent value="orders" className="space-y-4">
+          <OrderAssignmentsPanel projectId={projectId!} />
+        </TabsContent>
+
         {/* TRADE BOARDS TAB */}
         <TabsContent value="trades" className="space-y-4">
           {filteredTradeBoards.length === 0 ? (
