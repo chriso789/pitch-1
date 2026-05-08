@@ -2298,7 +2298,6 @@ function MeasurementHistorySection({
                       setDeleteConfirmId(measurement.id);
                       setDeleteType('ai');
                     }}
-                    disabled={isJobOnly}
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     title="Delete from history"
                   >
