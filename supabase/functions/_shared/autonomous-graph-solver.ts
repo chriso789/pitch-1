@@ -2422,8 +2422,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`  Edge cap: ${clusteredEdgesPx.length} → ${dsmInteriorEdgesPx.length} edges (max ${effectiveEdgeCap}, score_rejected_deferred=${scoreRejectedEdgesPx.length})`);
 
   // ===== STEP 7: Planar graph with ordered intersection filtering =====
+  // v17: Boost backbone edges (ridges/valleys) to highest priority
   const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
-    a: e.a, b: e.b, type: e.type, score: e.score,
+    a: e.a, b: e.b, type: e.type,
+    // Boost ridge/valley scores so planar solver prioritizes them over hips
+    score: (e.type === 'ridge' || e.type === 'valley') ? Math.max(e.score, 0.9) : e.score,
   }));
   const planar = effectiveDSM && footprintPxCCW.length >= 3
     ? planarSolveRoofPlanes(footprintPxCCW, planarInput, { complexRoofMode: isComplexRoofMode })
