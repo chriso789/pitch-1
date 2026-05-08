@@ -303,18 +303,6 @@ const Dashboard = () => {
       { section: 'Progress', metric: 'Jobs for Approval', value: jobsForApproval },
       { section: 'Progress', metric: 'Jobs in Progress', value: jobsInProgress },
       { section: 'Progress', metric: 'Watch List', value: watchListCount },
-      {},
-      // Recent Projects
-      ...recentProjects.map(p => ({
-        section: 'Recent Projects',
-        id: p.id,
-        homeowner: p.homeowner,
-        address: p.address,
-        type: p.type,
-        value: p.value,
-        status: p.status,
-        profit: p.profit
-      }))
     ];
 
     const timestamp = format(new Date(), 'yyyyMMdd_HHmm');
