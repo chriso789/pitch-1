@@ -9,7 +9,7 @@ import { formatCurrency } from '@/lib/commission-calculator';
 import { Wallet, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-export default function MyMoney() {
+export function MyMoneyContent() {
   const navigate = useNavigate();
 
   // Get current user
