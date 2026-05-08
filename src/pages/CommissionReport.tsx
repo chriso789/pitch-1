@@ -373,7 +373,7 @@ export default function CommissionReport() {
           <div>
             <h1 className="text-2xl font-bold">Commission Report</h1>
             <p className="text-muted-foreground">
-              All jobs at Project status or beyond — with rep commission calculations
+              All converted jobs (Project status or beyond) — with rep commission calculations
             </p>
           </div>
           <div className="flex gap-2">
