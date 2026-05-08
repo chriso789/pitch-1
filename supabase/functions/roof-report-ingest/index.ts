@@ -1664,6 +1664,55 @@ If no diagram is found, return: {"diagram_found": false}`;
       }
     }
 
+    // ======= Mirror PDF + canonical.json to unet-training-data bucket =======
+    // The offline AI training pipeline (roof-training/pipeline/bucket_loader.py)
+    // discovers samples from this bucket. Every imported paid report becomes a
+    // training sample so the AI measurement system learns from professional reports.
+    if (pdfBytes) {
+      try {
+        const sampleDir = `vendor-reports/${reportRow.id}`;
+        const safeName = ((body.file_name as string | undefined) || 'report.pdf')
+          .replace(/[^a-zA-Z0-9._-]/g, '_');
+
+        const { error: trainPdfErr } = await supabase.storage
+          .from('unet-training-data')
+          .upload(`${sampleDir}/${safeName}`, pdfBytes, {
+            contentType: 'application/pdf',
+            upsert: true,
+          });
+        if (trainPdfErr) {
+          console.warn('roof-report-ingest: training-bucket pdf upload failed:', trainPdfErr.message);
+        }
+
+        const canonical = {
+          report_id: reportRow.id,
+          tenant_id: resolvedTenantId,
+          lead_id: lead_id || null,
+          provider: parsed.provider || provider,
+          address: parsed.address ?? null,
+          file_hash: pdfHash,
+          imported_at: new Date().toISOString(),
+          parsed,
+          diagram_geometry: diagramGeometry,
+          diagram_image_url: diagramImageUrl,
+        };
+        const canonicalBytes = new TextEncoder().encode(JSON.stringify(canonical, null, 2));
+        const { error: canonicalErr } = await supabase.storage
+          .from('unet-training-data')
+          .upload(`${sampleDir}/canonical.json`, canonicalBytes, {
+            contentType: 'application/json',
+            upsert: true,
+          });
+        if (canonicalErr) {
+          console.warn('roof-report-ingest: canonical.json upload failed:', canonicalErr.message);
+        } else {
+          console.log('roof-report-ingest: training sample saved at', sampleDir);
+        }
+      } catch (trainErr) {
+        console.warn('roof-report-ingest: training mirror error (non-fatal):', trainErr);
+      }
+    }
+
     // ======= Save PDF to job documents for easy access =======
     if (lead_id && pdfBytes) {
       try {
