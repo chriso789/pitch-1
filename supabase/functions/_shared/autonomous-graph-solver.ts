@@ -42,6 +42,7 @@ import {
   angleDifference,
 } from "./dsm-utils.ts";
 import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./planar-roof-solver.ts";
+import { buildBackboneNetwork, type BackboneDiagnostics } from "./backbone-network.ts";
 import {
   buildTopologyHierarchy,
   serializeHierarchySummary,
@@ -2082,7 +2083,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v16 — Complex-Roof Structural Edge Preservation`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v17 — Backbone-First Ridge/Valley Topology`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -2341,7 +2342,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: Topology-aware edge clustering =====
+  // ===== STEP 5b: BACKBONE NETWORK — Ridge/Valley-first topology (v17) =====
   const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
@@ -2352,7 +2353,24 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           score: e.score,
         }))
     : [];
-  
+
+  // Build backbone network: ridge/valley chains → assemblies → diagonal suppression
+  let backboneDiag: BackboneDiagnostics | null = null;
+  let backboneFilteredEdgesPx = rawDsmInteriorEdgesPx;
+  if (rawDsmInteriorEdgesPx.length >= 3 && footprintPxCCW.length >= 3) {
+    const backbone = buildBackboneNetwork(rawDsmInteriorEdgesPx, footprintPxCCW);
+    backboneDiag = backbone.diagnostics;
+
+    // Remove suppressed edges — keep only surviving ones
+    const survivingSet = new Set<number>();
+    backbone.constrainedEdges.forEach((be, idx) => {
+      if (be.backboneRole !== 'suppressed') survivingSet.add(idx);
+    });
+    backboneFilteredEdgesPx = rawDsmInteriorEdgesPx.filter((_, idx) => survivingSet.has(idx));
+    console.log(`  [v17 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after diagonal suppression`);
+  }
+
+  // ===== STEP 6: Topology-aware edge clustering =====
   // Compute footprint area in pixel space for oversized-plane prevention
   const footprintAreaPx2 = footprintPx.length >= 3
     ? Math.abs(footprintPx.reduce((sum, p, i) => {
@@ -2361,7 +2379,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       }, 0) / 2)
     : 0;
 
-  const clusterResult = clusterEdges(rawDsmInteriorEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
+  const clusterResult = clusterEdges(backboneFilteredEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
   const clusteredEdgesPx = clusterResult.clustered;
   const clusterDiag = clusterResult.diagnostics;
   edgeCountAfterCluster = clusteredEdgesPx.length;
@@ -2404,8 +2422,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`  Edge cap: ${clusteredEdgesPx.length} → ${dsmInteriorEdgesPx.length} edges (max ${effectiveEdgeCap}, score_rejected_deferred=${scoreRejectedEdgesPx.length})`);
 
   // ===== STEP 7: Planar graph with ordered intersection filtering =====
+  // v17: Boost backbone edges (ridges/valleys) to highest priority
   const planarInput: InteriorLine[] = dsmInteriorEdgesPx.map(e => ({
-    a: e.a, b: e.b, type: e.type, score: e.score,
+    a: e.a, b: e.b, type: e.type,
+    // Boost ridge/valley scores so planar solver prioritizes them over hips
+    score: (e.type === 'ridge' || e.type === 'valley') ? Math.max(e.score, 0.9) : e.score,
   }));
   const planar = effectiveDSM && footprintPxCCW.length >= 3
     ? planarSolveRoofPlanes(footprintPxCCW, planarInput, { complexRoofMode: isComplexRoofMode })
@@ -3490,7 +3511,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     footprint_area_sqft_diag: Number(footprintAreaSqft.toFixed(0)),
     faces_area_sqft_diag: Number(totalPlanArea.toFixed(0)),
     // v8: pre-masked edge detection diagnostics
-    engine_version: 'v16',
+    engine_version: 'v17',
     pre_mask_enabled: true,
     roof_mask_pixel_count: roofMaskPixelCount,
     roof_mask_tile_pct: effectiveDSM ? Number((roofMaskPixelCount / (effectiveDSM.width * effectiveDSM.height) * 100).toFixed(1)) : 0,
@@ -3570,7 +3591,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     attempted_face_count: planar.faces.length,
     attempted_edge_count: outputEdges.length,
     face_rejection_table: faceRejectionTable,
-    edge_classification_debug: { ...edgeClassificationDebug, ...edgeEmitDiagnostics, refinement: refinementDiagnostics },
+    edge_classification_debug: { ...edgeClassificationDebug, ...edgeEmitDiagnostics, refinement: refinementDiagnostics, backbone: backboneDiag },
     pitch_source: 'dsm_plane_fit',
     dsm_mask_valid: dsmMaskValid,
     topology_source: 'autonomous_dsm_graph_solver',
