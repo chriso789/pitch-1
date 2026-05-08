@@ -248,13 +248,121 @@ async function processJob(input: any) {
     await setMeasurementJobStatus(input.measurement_job_id, "processing", "Resolving location");
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Resolving location");
 
-    const coords = (input.latitude != null && input.longitude != null)
+    // ──────────── ACQUISITION COORDINATE AUDIT (pre-flight) ────────────
+    // Persist every coordinate we know about for this property before we
+    // commit to a tile center. This makes acquisition failures debuggable
+    // without re-running the job.
+    const acquisitionAudit: any = {
+      job_address: input.property_address || null,
+      property_address: input.property_address || null,
+      request_input_lat_lng: (input.latitude != null && input.longitude != null)
+        ? { lat: Number(input.latitude), lng: Number(input.longitude) } : null,
+      coord_candidates: [] as any[],
+      selected_measurement_lat_lng: null as any,
+      lat_lng_source: null as string | null,
+      tile_center_lat_lng: null as any,
+      distance_between_address_geocode_and_tile_center_ft: null as number | null,
+      overpass_attempts: [] as any[],
+      tile_size_decision: null as any,
+    };
+
+    const coordCandidates = await gatherCoordinateCandidates({
+      lead_id: input.lead_id || null,
+      property_address: input.property_address || null,
+      input_lat: input.latitude != null ? Number(input.latitude) : null,
+      input_lng: input.longitude != null ? Number(input.longitude) : null,
+    });
+    acquisitionAudit.coord_candidates = coordCandidates;
+
+    // Geocode the address as the canonical reference point (used to compute drift)
+    const geocoded = input.property_address ? await geocodeAddress(input.property_address) : null;
+    acquisitionAudit.geocoded_lat_lng = geocoded ? { lat: geocoded.lat, lng: geocoded.lng, type: geocoded.geocode_location_type } : null;
+
+    // Initial coords selection: prefer caller input, otherwise first candidate.
+    let coords: any = (input.latitude != null && input.longitude != null)
       ? { lat: Number(input.latitude), lng: Number(input.longitude), geocode_location_type: "STORED" }
-      : await geocodeAddress(input.property_address);
+      : (geocoded || (coordCandidates[0] ? { lat: coordCandidates[0].lat, lng: coordCandidates[0].lng, geocode_location_type: "FALLBACK" } : null));
 
     if (!coords) throw new Error("Unable to geocode property address.");
+    acquisitionAudit.selected_measurement_lat_lng = { lat: coords.lat, lng: coords.lng };
+    acquisitionAudit.lat_lng_source = (input.latitude != null && input.longitude != null) ? "request_input" : (geocoded ? "address_geocode" : "fallback_first_candidate");
 
-    const logicalMpp = metersPerPixel(coords.lat, Number(input.zoom));
+    // ──────────── PRE-FLIGHT OSM ACQUISITION (multi-coord, multi-radius) ────────────
+    // The Overpass API is the cheapest, most stable source of a building polygon.
+    // Try every coord candidate in order until at least one returns a building.
+    // Failures are non-fatal — we still try Solar mask + DSM downstream — but they
+    // tell us early whether this is an acquisition issue vs. a geometry issue.
+    let preflightOSMHit = false;
+    for (const cand of [{ lat: coords.lat, lng: coords.lng, source: acquisitionAudit.lat_lng_source }, ...coordCandidates]) {
+      const res = await fetchOSMBuildingCandidates(cand.lat, cand.lng, { radii: [50, 100, 150] });
+      acquisitionAudit.overpass_attempts.push({
+        coord_source: (cand as any).source || "request_input",
+        lat: cand.lat,
+        lng: cand.lng,
+        attempts: res.attempts || [],
+        total_candidates: res.candidates.length,
+        nearest_id: res.candidates[0]?.osmId || null,
+        nearest_distance_m: res.candidates[0]?.distanceFromPointM != null
+          ? Number(res.candidates[0].distanceFromPointM.toFixed(1)) : null,
+      });
+      if (res.candidates.length > 0) {
+        preflightOSMHit = true;
+        // If the original tile center returned nothing but a fallback coord did,
+        // promote that fallback to the working tile center for the rest of the run.
+        if ((cand as any).source && (cand as any).source !== acquisitionAudit.lat_lng_source) {
+          coords = { lat: cand.lat, lng: cand.lng, geocode_location_type: `FALLBACK_${(cand as any).source}` };
+          acquisitionAudit.selected_measurement_lat_lng = { lat: coords.lat, lng: coords.lng };
+          acquisitionAudit.lat_lng_source = (cand as any).source;
+          console.log(`[ACQUISITION_FALLBACK_COORD] Promoted ${(cand as any).source} after primary returned 0 buildings`);
+        }
+        break;
+      }
+    }
+    acquisitionAudit.preflight_osm_hit = preflightOSMHit;
+    acquisitionAudit.tile_center_lat_lng = { lat: coords.lat, lng: coords.lng };
+    if (geocoded) {
+      acquisitionAudit.distance_between_address_geocode_and_tile_center_ft = Math.round(
+        haversineFt(geocoded.lat, geocoded.lng, coords.lat, coords.lng)
+      );
+    }
+
+    // ──────────── TILE-SIZE SANITY ────────────
+    // At zoom 21 a 1280×1280 actual tile is ~42m × 42m at this latitude,
+    // which is too tight for OSM/Solar mask projection. Step zoom down
+    // until the acquisition window is at least 100m on each side.
+    const MIN_ACQUISITION_WINDOW_M = 100;
+    let effectiveZoom = Number(input.zoom);
+    const computeTileM = (z: number) => {
+      const mpp = metersPerPixel(coords.lat, z) / Number(input.raster_scale);
+      return Number(input.logical_image_width) * Number(input.raster_scale) * mpp;
+    };
+    let originalTileM = computeTileM(effectiveZoom);
+    while (computeTileM(effectiveZoom) < MIN_ACQUISITION_WINDOW_M && effectiveZoom > 18) {
+      effectiveZoom -= 1;
+    }
+    const finalTileM = computeTileM(effectiveZoom);
+    acquisitionAudit.tile_size_decision = {
+      requested_zoom: Number(input.zoom),
+      effective_zoom: effectiveZoom,
+      requested_tile_m: Number(originalTileM.toFixed(1)),
+      effective_tile_m: Number(finalTileM.toFixed(1)),
+      min_acquisition_window_m: MIN_ACQUISITION_WINDOW_M,
+      adjusted: effectiveZoom !== Number(input.zoom),
+    };
+    if (effectiveZoom !== Number(input.zoom)) {
+      console.log(`[ACQUISITION_TILE_RESIZE] Zoom ${input.zoom} → ${effectiveZoom} (tile ${originalTileM.toFixed(0)}m → ${finalTileM.toFixed(0)}m)`);
+    }
+
+    // Persist the audit early so it survives any downstream failure.
+    try {
+      await supabase.from("ai_measurement_jobs").update({
+        source_context: { acquisition_audit: acquisitionAudit },
+      }).eq("id", input.ai_measurement_job_id);
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] persist failed", (e as Error).message);
+    }
+
+    const logicalMpp = metersPerPixel(coords.lat, effectiveZoom);
     const actualMpp = logicalMpp / Number(input.raster_scale);
     const actualFpp = actualMpp * 3.280839895;
 
@@ -266,7 +374,7 @@ async function processJob(input: any) {
     const imageryResult = await fetchAerialImagery({
       lng: coords.lng,
       lat: coords.lat,
-      zoom: Number(input.zoom),
+      zoom: effectiveZoom,
       width: Number(input.logical_image_width),
       height: Number(input.logical_image_height),
     });
@@ -274,6 +382,8 @@ async function processJob(input: any) {
     const imageryProvider = imageryResult.provider;
     const imageryDecisionLog = imageryResult.decisionLog;
     const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
+
+
 
 
     // (Perimeter inner-trace detection gate runs AFTER footprint selection below)
