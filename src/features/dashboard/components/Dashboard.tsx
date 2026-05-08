@@ -19,6 +19,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { useLocation } from "@/contexts/LocationContext";
 import { DashboardAIAssistant } from "./DashboardAIAssistant";
+import DashboardCalendar from "./DashboardCalendar";
 import { cn } from "@/lib/utils";
 import { 
   DollarSign, 
@@ -289,57 +290,7 @@ const Dashboard = () => {
     }
   });
 
-  // Recent projects
-  const { data: recentProjects = [] } = useQuery({
-    queryKey: ['dashboard-recent-projects'],
-    queryFn: async () => {
-      const { data: projects } = await supabase
-        .from('projects')
-        .select(`
-          id,
-          project_number,
-          name,
-          status,
-          budget_data,
-          pipeline_entry_id,
-          pipeline_entries!inner (
-            id,
-            contact_id,
-            contacts (
-              first_name,
-              last_name,
-              address_street,
-              address_city,
-              address_state
-            )
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
-      return projects?.map(project => {
-        const contact = (project.pipeline_entries as any)?.contacts;
-        const budget = (project.budget_data as any) || {};
-        const total = budget.total || 0;
-        const cost = budget.total_cost || 0;
-        const profit = total > 0 ? ((total - cost) / total) * 100 : 0;
-        
-        return {
-          id: project.project_number || project.id,
-          homeowner: contact 
-            ? `${contact.first_name} ${contact.last_name}` 
-            : project.name || 'Unknown',
-          address: contact 
-            ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state}` 
-            : 'Address not available',
-          type: budget.roof_type || 'Roofing Project',
-          value: total > 0 ? `$${total.toLocaleString()}` : '$0',
-          status: project.status === 'active' ? 'Project' : project.status,
-          profit: profit > 0 ? `${profit.toFixed(1)}%` : '0%'
-        };
-      }) || [];
-    }
-  });
+
 
   // Export handlers
   const handleExportCSV = () => {
@@ -352,18 +303,6 @@ const Dashboard = () => {
       { section: 'Progress', metric: 'Jobs for Approval', value: jobsForApproval },
       { section: 'Progress', metric: 'Jobs in Progress', value: jobsInProgress },
       { section: 'Progress', metric: 'Watch List', value: watchListCount },
-      {},
-      // Recent Projects
-      ...recentProjects.map(p => ({
-        section: 'Recent Projects',
-        id: p.id,
-        homeowner: p.homeowner,
-        address: p.address,
-        type: p.type,
-        value: p.value,
-        status: p.status,
-        profit: p.profit
-      }))
     ];
 
     const timestamp = format(new Date(), 'yyyyMMdd_HHmm');
@@ -629,52 +568,8 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Recent Projects */}
-      <Card className="shadow-soft border-0">
-        <CardHeader className="pb-3 md:pb-6">
-          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-            <Calendar className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-            Recent Projects
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {recentProjects.length === 0 ? (
-            <div className="text-center py-6 md:py-8 text-muted-foreground">
-              <HomeIcon className="h-10 w-10 md:h-12 md:w-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm md:text-base">No projects yet. Create your first lead to get started!</p>
-            </div>
-          ) : (
-            <div className="space-y-3 md:space-y-4">
-              {recentProjects.map((project, index) => (
-                <div 
-                  key={index} 
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 md:p-4 rounded-lg bg-muted/50 hover:bg-muted transition-smooth cursor-pointer touch-manipulation active:bg-muted gap-2 sm:gap-4"
-                  onClick={() => navigate(`/jobs/${project.id}`)}
-                  data-testid="dashboard-project-card"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs md:text-sm text-muted-foreground">{project.id}</span>
-                      <Badge variant="outline" className={cn("text-xs", getStatusColor(project.status))}>
-                        {project.status}
-                      </Badge>
-                    </div>
-                    <h3 className="font-semibold text-sm md:text-base mt-1 truncate">{project.homeowner}</h3>
-                    <p className="text-xs md:text-sm text-muted-foreground truncate">{project.address}</p>
-                    <p className="text-xs md:text-sm text-primary truncate">{project.type}</p>
-                  </div>
-                  <div className="text-left sm:text-right flex sm:flex-col gap-2 sm:gap-0 flex-shrink-0">
-                    <div className="text-base md:text-lg font-bold">{project.value}</div>
-                    <div className="text-xs md:text-sm text-success">
-                      {project.profit} profit
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Calendar */}
+      <DashboardCalendar />
 
     </div>
   );

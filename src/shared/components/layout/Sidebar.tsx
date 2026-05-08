@@ -9,7 +9,7 @@ import {
   Users, 
   FileText, 
   DollarSign, 
-  Calendar, 
+   
   Settings, 
   Phone,
   MapPin,
@@ -275,15 +275,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: DollarSign,
       description: "Track invoices & payments",
       featureKey: "accounts_receivable"
-    },
-    {
-      name: "Calendar",
-      href: "calendar",
-      path: "/calendar",
-      icon: Calendar,
-      description: "Schedule & appointments",
-      testId: TEST_IDS.sidebar.calendar,
-      featureKey: "calendar"
     },
     // Documents is now an expandable section - see below
     {
