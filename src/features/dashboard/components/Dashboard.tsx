@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import ContactFormDialog from "@/components/ContactFormDialog";
+import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
