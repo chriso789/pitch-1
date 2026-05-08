@@ -128,6 +128,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "appointment-outcomes": "general",
   "calendar-sync": "general",
   payments: "business",
+  "production-checklist": "business",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
