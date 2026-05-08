@@ -468,6 +468,8 @@ export const Settings = () => {
         return <TenantStripeConnectPanel />;
       case "production-checklist":
         return <ProductionChecklistSettings />;
+      case "material-audit":
+        return <MaterialAuditContent />;
       case "demo-requests":
         return <DemoRequestsPanel />;
       case "email":
