@@ -3947,9 +3947,10 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           console.log(`[CONSTRAINT_SOLVER] APPLIED → faces=${graphFaces.length} ridge_lf=${outRidges.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} hip_lf=${outHips.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} valley_lf=${outValleys.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} pitch=${predominantPitch.toFixed(1)}deg area=${totalRoofArea.toFixed(0)}sqft`);
         }
       } else {
-        console.log(`[CONSTRAINT_SOLVER] Skipped — autonomous score ${autoScore.toFixed(3)} >= 0.60 threshold`);
+        console.log(`[CONSTRAINT_SOLVER] Skipped — autonomous topology passes all triggers (score=${autoScore.toFixed(3)}, facets=${facetCountAuto}, ridge_lf=${ridgeLfAuto.toFixed(1)}, max_plane=${(maxPlaneRatioAuto*100).toFixed(0)}%)`);
       }
     }
+
   } catch (err) {
     console.error(`[CONSTRAINT_SOLVER] Failed:`, err);
     warnings.push(`constraint_solver_failed: ${String(err)}`);
