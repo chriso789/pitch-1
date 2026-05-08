@@ -4067,6 +4067,7 @@ export function analyzeTopologyFidelity(
   if (ridgeInflationSuspected) score -= ridgeTotalFt > 120 ? 25 : 15;
 
   if (fanCollapseSuspected) score -= 20;
+  if (ridgeMissingOnComplexRoof) score -= 25;
   if (diagonalCrossRoofCount >= 2 || diagonalSpanRatio > 0.65) score -= 20;
   else if (diagonalCrossRoofCount === 1 || diagonalSpanRatio > 0.50) score -= 10;
 
