@@ -261,14 +261,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       description: "Production workflow",
       featureKey: "production"
     },
-    
-    {
-      name: "My Money",
-      href: "my-money",
-      path: "/my-money",
-      icon: Wallet,
-      description: "Track commissions & draws",
-    },
     {
       name: "Accounts Receivable",
       href: "accounts-receivable",
