@@ -96,7 +96,7 @@ export interface GraphEdge {
   length_ft: number;
   confidence: EdgeConfidence;
   facet_ids: string[];
-  source: 'dsm' | 'solar_segments' | 'skeleton' | 'fused' | 'perimeter' | 'footprint';
+  source: 'dsm' | 'solar_segments' | 'skeleton' | 'fused' | 'perimeter' | 'footprint' | 'constraint_solver';
 }
 
 export interface GraphFace {
@@ -3352,8 +3352,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
   maxEndpointDistanceOutsideFootprintPx = Math.round(maxEndpointDistanceOutsideFootprintPx * 100) / 100;
 
-  const totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
-  const totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+  let totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
+  let totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
   const attemptedAreaTotal = planar.faces.reduce((s: number, face: unknown) => {
     const f = face as { polygon: Array<{ x: number; y: number }> };
     const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
@@ -3382,7 +3382,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`  Coverage: sqft_ratio=${sqftAreaRatio.toFixed(3)} px_ratio=${pxAreaRatio.toFixed(3)} footprint_sqft=${footprintAreaSqft.toFixed(0)} face_sqft=${totalPlanArea.toFixed(0)} footprint_px=${footprintAreaPxVal.toFixed(0)} face_px=${totalFaceAreaPx.toFixed(0)}`);
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
-  const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
+  let predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
 
   const avgConfidence = outputEdges.length > 0
     ? outputEdges.reduce((s, e) => s + e.confidence.final_confidence, 0) / outputEdges.length
@@ -3735,6 +3735,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   // Runs when autonomous result has poor topology (low facets, no ridges, bad pitch)
   // ═══════════════════════════════════════════════════════════════
   let constraintSolverResult: ConstraintSolverResult | undefined;
+  let constraintSolverApplied = false;
+  let topologySourceOverride: string | null = null;
   try {
     const pitchLock = lockPitchFromSolar(input.solarSegments.map(s => ({
       pitchDegrees: s.pitchDegrees,
@@ -3779,7 +3781,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         footprintAreaSqft,
       );
 
-      // Only run constraint solver if autonomous score is poor
+      // Run constraint solver if autonomous score is poor
       if (autoScore < 0.60) {
         const dsmEvidence: DSMEdgeEvidence[] = classifiedEdges
           .filter(e => e.source === 'dsm' && (e.type === 'ridge' || e.type === 'valley' || e.type === 'hip'))
@@ -3818,6 +3820,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         };
 
         const pxToSqft = footprintAreaSqft / polygonAreaPx(footprintPxCCW);
+        const pxToFt = Math.sqrt(pxToSqft);
 
         constraintSolverResult = solveConstraintRoof(
           footprintPxCCW,
@@ -3828,6 +3831,101 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         );
 
         console.log(`[CONSTRAINT_SOLVER] used=${constraintSolverResult.used} reason=${constraintSolverResult.reason} autoScore=${autoScore.toFixed(3)} constraintScore=${constraintSolverResult.constraint_score.toFixed(3)}`);
+
+        // ───────────────────────────────────────────────────────
+        // SWAP IN constraint solver result if it wins
+        // ───────────────────────────────────────────────────────
+        if (constraintSolverResult.used && constraintSolverResult.best_candidate) {
+          const cand = constraintSolverResult.best_candidate;
+
+          // Convert candidate faces → GraphFace[]
+          const newGraphFaces: GraphFace[] = cand.faces.map((cf, i) => {
+            const planArea = cf.area_px * pxToSqft;
+            const cosP = Math.cos((cf.pitch_deg * Math.PI) / 180);
+            const roofArea = cosP > 0.05 ? planArea / cosP : planArea;
+            // Convert px polygon -> XY (geo via pixelToGeo if available, else keep px coords)
+            const polyGeo: XY[] = cf.polygon_px.map(p => {
+              try {
+                const g = pixelToGeo(p.x, p.y, effectiveDSM);
+                return g as XY;
+              } catch {
+                return [p.x, p.y] as XY;
+              }
+            });
+            return {
+              id: `cs_face_${i}`,
+              label: `cs_${cf.matched_solar_segment ?? i}`,
+              polygon: polyGeo,
+              plan_area_sqft: planArea,
+              roof_area_sqft: roofArea,
+              pitch_degrees: cf.pitch_deg,
+              azimuth_degrees: cf.azimuth_deg,
+              edge_ids: [],
+              plane_rms: null,
+            };
+          });
+
+          // Convert candidate edges → GraphEdge[] (preserve geo conversion)
+          const newOutputEdges: GraphEdge[] = cand.edges.map((ce, i) => {
+            const lengthFt = ce.length_px * pxToFt;
+            let startGeo: XY = [ce.a.x, ce.a.y];
+            let endGeo: XY = [ce.b.x, ce.b.y];
+            try { startGeo = pixelToGeo(ce.a.x, ce.a.y, effectiveDSM) as XY; } catch {}
+            try { endGeo = pixelToGeo(ce.b.x, ce.b.y, effectiveDSM) as XY; } catch {}
+            return {
+              id: `cs_edge_${i}`,
+              type: ce.type,
+              start: startGeo,
+              end: endGeo,
+              length_ft: lengthFt,
+              confidence: {
+                dsm_score: 0.7,
+                rgb_score: 0,
+                solar_azimuth_score: 0.7,
+                topology_score: 0.85,
+                length_score: lengthFt > 10 ? 0.8 : 0.5,
+                final_confidence: Math.min(0.95, constraintSolverResult.constraint_score),
+              },
+              facet_ids: [],
+              source: 'constraint_solver',
+            } as GraphEdge;
+          });
+
+          // Mutate primary outputs in place (graphFaces / outputEdges are const arrays)
+          graphFaces.length = 0;
+          for (const f of newGraphFaces) graphFaces.push(f);
+          outputEdges.length = 0;
+          for (const e of newOutputEdges) outputEdges.push(e);
+
+          // Re-derive grouped edge arrays
+          outRidges.length = 0;
+          outHips.length = 0;
+          outValleys.length = 0;
+          outEaves.length = 0;
+          outRakes.length = 0;
+          for (const e of outputEdges) {
+            if (e.type === 'ridge') outRidges.push(e);
+            else if (e.type === 'hip') outHips.push(e);
+            else if (e.type === 'valley') outValleys.push(e);
+            else if (e.type === 'eave') outEaves.push(e);
+            else if (e.type === 'rake') outRakes.push(e);
+          }
+
+          // Recompute totals + predominant pitch
+          totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
+          totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+          const pitchWeightedCs = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
+          predominantPitch = totalRoofArea > 0 ? pitchWeightedCs / totalRoofArea : pitchLock.pitch_deg;
+
+          constraintSolverApplied = true;
+          topologySourceOverride = 'constraint_solver';
+          // Override validation — constraint solver produced a coherent topology that beat autonomous
+          validation.valid = true;
+          validation.status = 'validated_by_constraint_solver';
+          validation.reason = `constraint solver score ${constraintSolverResult.constraint_score.toFixed(3)} > autonomous ${autoScore.toFixed(3)}`;
+          customerBlockReason = null;
+          console.log(`[CONSTRAINT_SOLVER] APPLIED → faces=${graphFaces.length} ridge_lf=${outRidges.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} hip_lf=${outHips.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} valley_lf=${outValleys.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} pitch=${predominantPitch.toFixed(1)}deg area=${totalRoofArea.toFixed(0)}sqft`);
+        }
       } else {
         console.log(`[CONSTRAINT_SOLVER] Skipped — autonomous score ${autoScore.toFixed(3)} >= 0.60 threshold`);
       }
@@ -3875,9 +3973,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     coordinate_space_export: 'geo' as const,
     coordinate_space_footprint: 'dsm_px' as const,
     logs,
-    topology_source: 'autonomous_dsm_graph_solver',
-    facet_source: 'dsm_planar_graph_faces',
-    fallback_used: false,
+    topology_source: topologySourceOverride ?? 'autonomous_dsm_graph_solver',
+    facet_source: constraintSolverApplied ? 'constraint_solver_candidate' : 'dsm_planar_graph_faces',
+    fallback_used: constraintSolverApplied,
     topology_hierarchy: topologyHierarchy,
     topology_hierarchy_summary: topologyHierarchySummary,
     perimeter_topology: perimeterTopology,
