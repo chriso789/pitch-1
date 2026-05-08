@@ -33604,6 +33604,60 @@ export type Database = {
           },
         ]
       }
+      roof_measurement_benchmarks: {
+        Row: {
+          address: string
+          area_sqft: number | null
+          created_at: string | null
+          eave_lf: number | null
+          facets: number | null
+          hip_lf: number | null
+          id: string
+          lat: number | null
+          lng: number | null
+          pitch_rise_per_12: number | null
+          rake_lf: number | null
+          ridge_lf: number | null
+          valley_lf: number | null
+          vendor: string
+          vendor_report_id: string | null
+        }
+        Insert: {
+          address: string
+          area_sqft?: number | null
+          created_at?: string | null
+          eave_lf?: number | null
+          facets?: number | null
+          hip_lf?: number | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          pitch_rise_per_12?: number | null
+          rake_lf?: number | null
+          ridge_lf?: number | null
+          valley_lf?: number | null
+          vendor?: string
+          vendor_report_id?: string | null
+        }
+        Update: {
+          address?: string
+          area_sqft?: number | null
+          created_at?: string | null
+          eave_lf?: number | null
+          facets?: number | null
+          hip_lf?: number | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          pitch_rise_per_12?: number | null
+          rake_lf?: number | null
+          ridge_lf?: number | null
+          valley_lf?: number | null
+          vendor?: string
+          vendor_report_id?: string | null
+        }
+        Relationships: []
+      }
       roof_measurement_corrections: {
         Row: {
           corrected_by: string | null
