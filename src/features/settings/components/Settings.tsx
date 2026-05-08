@@ -471,6 +471,8 @@ export const Settings = () => {
         return <ProductionChecklistSettings />;
       case "material-audit":
         return <MaterialAuditContent />;
+      case "my-money":
+        return <MyMoney />;
       case "demo-requests":
         return <DemoRequestsPanel />;
       case "email":
