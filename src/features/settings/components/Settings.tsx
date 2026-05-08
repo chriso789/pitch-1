@@ -464,6 +464,8 @@ export const Settings = () => {
         return <SubscriptionManagement />;
       case "payments":
         return <TenantStripeConnectPanel />;
+      case "production-checklist":
+        return <ProductionChecklistSettings />;
       case "demo-requests":
         return <DemoRequestsPanel />;
       case "email":
