@@ -170,26 +170,20 @@ Deno.serve(async (req) => {
                   },
                   line_items: {
                     type: "array",
-                    description: "All individual line items on the invoice",
+                    description: "All individual line items on the invoice. For each item, also try to identify roofing material attributes (brand, color, style, category) from the description text — e.g. 'GAF Timberline HDZ Charcoal' → brand: GAF, style: Timberline HDZ, color: Charcoal, category: shingles.",
                     items: {
                       type: "object",
                       properties: {
-                        description: {
-                          type: "string",
-                          description: "Product or service description"
-                        },
-                        quantity: {
-                          type: "number",
-                          description: "Quantity ordered"
-                        },
-                        unit_price: {
-                          type: "number",
-                          description: "Price per unit in dollars"
-                        },
-                        line_total: {
-                          type: "number",
-                          description: "Extended total for this line item in dollars"
-                        }
+                        description: { type: "string", description: "Product or service description as printed" },
+                        quantity: { type: "number", description: "Quantity ordered" },
+                        unit_price: { type: "number", description: "Price per unit in dollars" },
+                        line_total: { type: "number", description: "Extended total for this line item in dollars" },
+                        unit_of_measure: { type: "string", description: "Unit (BDL, SQ, LF, EA, ROLL, etc.) if shown" },
+                        sku: { type: "string", description: "Vendor SKU / part number if shown" },
+                        brand: { type: "string", description: "Manufacturer brand if identifiable (e.g. GAF, Owens Corning, CertainTeed, Malarkey, Atlas, IKO)" },
+                        style: { type: "string", description: "Product line / style if identifiable (e.g. Timberline HDZ, Duration, Landmark Pro)" },
+                        color: { type: "string", description: "Color name if identifiable (e.g. Charcoal, Weathered Wood, Pewter Gray, Hunter Green)" },
+                        material_category: { type: "string", description: "High-level category: shingles, underlayment, ridge_cap, starter, drip_edge, vents, flashing, nails, ice_water, siding, gutters, accessories, other" }
                       },
                       required: ["description"]
                     }
