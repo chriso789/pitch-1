@@ -226,7 +226,7 @@ function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continua
   const blockWeight = (b: RenderBlock): number => {
     if (b.type === 'item' && b.item?.description && opts?.showItemDescriptions) {
       const descLen = b.item.description.length;
-      return descLen > 120 ? 3 : 2;
+      return descLen > 200 ? 2.5 : 1.5;
     }
     return 1;
   };
