@@ -472,7 +472,7 @@ export const Settings = () => {
       case "material-audit":
         return <MaterialAuditContent />;
       case "my-money":
-        return <MyMoney />;
+        return <MyMoneyContent />;
       case "demo-requests":
         return <DemoRequestsPanel />;
       case "email":
