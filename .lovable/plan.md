@@ -1,136 +1,129 @@
 
-# AI Measurement: Backbone-First Topology Rebuild + Vendor Benchmark Gate
+# Reverse-Geometry Constraint Solver for AI Measurement
 
-## Context
+## Problem
 
-The Fonsica 4063 measurement exposes a fundamental structural flaw: the solver produces 6 facets instead of 14, zero ridges, a collapsed 1.67/12 pitch, and cross-roof diagonal hips. The perimeter is within ~35 LF but the internal topology is structurally wrong. The existing backbone-network.ts (v17) suppresses some diagonals but the core issue is that planes are still derived from DSM plane segmentation rather than from a ridge/valley skeleton.
+The current solver relies on DSM edge detection to discover internal roof structure. On complex roofs like Fonsica (14 facets, 6/12 pitch), it undersegments to 6 facets with 1.67/12 pitch and 0 ridges. The DSM detector cannot "see" enough edges, so detected topology collapses into a fan of large triangles.
 
-## Files to modify
+## Solution
 
-- `supabase/functions/_shared/backbone-network.ts` — Major rewrite: backbone-first assembly decomposition with local assembly preservation, cross-roof diagonal rejection, and deferred edge reintroduction
-- `supabase/functions/_shared/autonomous-graph-solver.ts` — Wire backbone-first flow, add ridge_network_missing gate, add cross-roof span_ratio rejection, add vendor benchmark gate, improve pitch fallback
-- `supabase/functions/start-ai-measurement/index.ts` — Pitch fallback hardening, mask component merging for perimeter, vendor benchmark comparison gate, persist new diagnostics
+Add a `ConstraintRoofSolver` that treats Google Solar segment data (pitch, azimuth, area, bounding boxes) as topology priors and reverse-solves the internal geometry that best satisfies all constraints simultaneously. This runs **after** the autonomous graph solver, and if the autonomous result scores poorly, the constraint solver's best candidate replaces it.
 
-## Changes
+## Architecture
 
-### 1. Perimeter mask component merging (index.ts)
+### New file: `supabase/functions/_shared/constraint-roof-solver.ts`
 
-Before final contour tracing, merge nearby roof-mask connected components if:
-- Component is within 8-12px of main component
-- Component aligns with visible roof boundary direction
-- Merging increases perimeter without adding non-roof area
+Core module (~600-800 lines) containing:
 
-Persist: `merged_mask_components_count`, `perimeter_length_before_merge`, `perimeter_length_after_merge`, `eave_rake_delta_after_merge`.
+**1. Pitch Locking**
+- Compute area-weighted dominant pitch from `roofSegmentStats[].pitchDegrees`
+- Lock pitch band (e.g., 6/12 +/- 1/12)
+- Reject any topology candidate producing pitch outside the locked band
+- This replaces the current post-hoc pitch correction in index.ts (lines 4045-4076) with a **pre-solver constraint**
 
-### 2. Pitch source hardening (index.ts, ~line 4045-4068)
+**2. Topology Candidate Generator**
+- Generate 4-6 candidate roof graphs from the validated perimeter:
+  - Simple hip (4 facets)
+  - Hip + cross gable (8-10 facets)
+  - Hip + nested upper assembly (10-14 facets)
+  - Hip + valley connector (8-12 facets)
+  - Multi-hip complex (12-16 facets)
+- Each candidate is a planar graph of vertices and edges within the footprint polygon
+- Solar segment bounding boxes seed initial vertex placement
 
-Current code already falls back to Solar when `isBadTopology` but the condition checks `facetCountForPitch <= 3`. The Fonsica case has 6 facets, which doesn't trigger it. Fix:
-- Add condition: `facetCountForPitch < expected_min_facets` (from topology fidelity)
-- Add condition: `rawDominantPitch < 2` (anything below 2/12 on a non-flat roof is nonsense)
-- Never output pitch from collapsed planes when topology_fidelity is "low" or "medium"
+**3. Solar Segment Prior Mapping**
+- Each Solar segment becomes a candidate plane prior with preserved area, azimuth, and pitch
+- Infer ridge/valley boundaries where adjacent segment azimuths oppose (downslope away from each other = ridge) or converge (downslope toward each other = valley)
+- Perimeter edges classified: downslope edge = eave, gable perpendicular edge = rake
+- Hip edges where convex azimuth transition occurs
 
-### 3. Backbone-first topology reconstruction (backbone-network.ts)
+**4. Constraint Scoring Function**
+Each candidate topology scored on:
+- `area_error`: |candidate pitched area - Solar wholeRoofStats area| / target (weight: 0.20)
+- `pitch_error`: |candidate pitch - locked Solar pitch| (weight: 0.15)
+- `segment_area_agreement`: per-segment area match vs Solar (weight: 0.15)
+- `segment_azimuth_agreement`: per-segment azimuth match (weight: 0.10)
+- `dsm_edge_support`: how many DSM-detected edges align with candidate edges (weight: 0.10)
+- `perimeter_compatibility`: footprint boundary compliance (weight: 0.10)
+- `construction_plausibility`: realistic ridge/valley continuity, no isolated faces (weight: 0.10)
+- `facet_count_penalty`: penalty for being far from Solar segment count (weight: 0.05)
+- `max_plane_area_ratio`: penalty for any face > 35% of total (weight: 0.05)
 
-Rewrite the flow from "filter bad edges" to "build structure first":
+**5. Local Search Optimization**
+Starting from the best-scoring candidate, apply local moves:
+- Add/remove split edge
+- Move interior vertex (along ridge/valley line)
+- Merge/split a face
+- Reclassify edge type
+- Accept move only if total constraint score improves
+- Max 50 iterations, terminate early on score plateau
 
-1. Extract ridge/valley candidate lines from DSM edge detection
-2. Build ridge chains and valley chains (existing logic, improved)
-3. Identify local assemblies from chain endpoints + footprint corners
-4. Each assembly gets its own local hip edges connecting ridge/valley endpoints to nearest footprint corners
-5. Faces are derived from the backbone graph, not from DSM planes
+**6. Edge Classification from Adjacent Normals**
+For each internal edge in the winning topology:
+- Compute normal vectors of adjacent faces from pitch + azimuth
+- Opposing downslope = ridge
+- Converging downslope = valley  
+- Convex transition at perimeter = hip
+- This replaces DSM-only classification that currently produces 0 ridges
 
-Key additions:
-- `buildLocalAssemblies()` — partition footprint into sub-regions based on backbone endpoints
-- `deriveHipsFromBackbone()` — connect ridge/valley endpoints to footprint corners within each assembly
-- Deferred edges (short structural edges rejected by length) are reintroduced if they split an oversized plane or improve ridge/valley continuity
+### Changes to `supabase/functions/_shared/autonomous-graph-solver.ts`
 
-### 4. Cross-roof diagonal suppression (autonomous-graph-solver.ts)
+At the end of `solveAutonomousGraph()`, before returning:
+- Compute a quick constraint score for the autonomous result
+- If score < threshold (e.g., 0.60) AND Solar segments are available, invoke the constraint solver
+- Compare constraint solver's best candidate score vs autonomous score
+- Return whichever scores higher
+- Add `constraint_solver_used: boolean` and `constraint_solver_score` to the result
 
-In the planar solver input stage, reject any interior edge where:
-- `span_ratio > 0.50` (edge length / roof diagonal)
-- Edge crosses more than one local assembly boundary
-- Edge would create a face > 35% of total roof area
-- Edge suppresses local valleys/ridges that have DSM evidence
+### Changes to `supabase/functions/start-ai-measurement/index.ts`
 
-Current: `DIAGONAL_SPAN_RATIO_MAX = 0.50` exists in backbone-network.ts but doesn't fully suppress Fonsica's 0.757 diagonal. The check needs to run after face generation too, rejecting faces that are too large.
+**Pitch source hardening** (~line 4045-4076):
+- Move pitch locking BEFORE topology, not after
+- Pass locked pitch band into both autonomous solver and constraint solver
+- `pitch_source` becomes `"constraint_solver_locked_from_solar"` when constraint solver wins
 
-### 5. Mandatory ridge detection gate (autonomous-graph-solver.ts)
+**Vendor benchmark comparison** (~line 4115):
+- When constraint solver runs, include its candidate scores in the vendor comparison debug output
+- Score breakdown persisted for each candidate (top 3)
 
-Add hard fail `ridge_network_missing` when:
-- `ridge_lf === 0` AND `facets >= 4`
-- Solar data indicates multiple opposing roof segments (>1 azimuth cluster)
-- Complexity flag is set
+### Changes to `supabase/functions/_shared/google-solar-api.ts`
 
-This prevents the current scenario where a complex hip roof reports zero ridges.
+Add a new function `extractSolarTopologyPriors()` that returns:
+- Dominant pitch (area-weighted)
+- Pitch band [min, max]
+- Segment adjacency graph (which segments are neighbors based on bounding box proximity)
+- Inferred ridge/valley directions from opposing/converging azimuths
+- Expected face count from segment count
+- Total pitched area target
 
-### 6. Deferred edge reintroduction (autonomous-graph-solver.ts)
+### New memory file
 
-Score-rejected and length-rejected edges are already tracked as `scoreRejectedEdgesPx`. After initial face extraction:
-- If `max_plane_area_ratio > 0.35` or `facet_count < expected_min_facets`, attempt to reintroduce deferred edges
-- Accept reintroduced edge if it: aligns with DSM extrema, improves ridge/valley continuity, reduces max plane area, increases facet count
-- This is the existing v15 refinement pass but with the additional trigger of "facet count too low"
+Save the constraint solver architecture as `mem://features/measurement-system/constraint-roof-solver`.
 
-### 7. Vendor benchmark gate (index.ts)
+## Expected Fonsica Results
 
-New table or JSON field for known benchmark addresses. For addresses with paid vendor reports, compare AI output:
-- `area_delta_pct`, `facet_delta`, `pitch_delta`, `ridge_delta_pct`, `hip_delta_pct`, `valley_delta_pct`, `eave_delta_pct`
-- `topology_score_vs_vendor` = weighted composite
+- Pitch locks to 6/12 from Solar segments (not 1.67/12 from collapsed DSM planes)
+- Candidate generator produces hip+cross-gable and hip+nested-assembly topologies
+- Constraint scorer favors ~14-facet solution matching Solar segment areas
+- Ridges become non-zero (Solar segments with opposing azimuths create ridge lines)
+- Cross-roof diagonal pyramid solution loses on `max_plane_area_ratio` and `segment_area_agreement`
+- Hips/valleys increase toward Roofr targets
+- Area converges toward 3077 sqft via pitch-adjusted area calculation
 
-Block `customer_report_ready` if:
-- Facet count off > 25%
-- Pitch off > 1/12
-- Ridge/hip/valley totals off > 25%
-- `ridge_lf = 0` on complex roof
-- `topology_score_vs_vendor < 80`
+## Technical Details
 
-Store benchmark data in `roof_measurement_benchmarks` table (migration needed).
+- Constraint solver runs in DSM pixel space (same coordinate contract as autonomous solver)
+- No new database tables required (diagnostics persisted in existing `source_context` JSON)
+- No new edge functions (constraint solver is a shared module called within `start-ai-measurement`)
+- Solver must complete in < 3 seconds for a 14-facet roof
+- Candidate generation is deterministic given the same Solar data and footprint
 
-### 8. Topology fidelity improvements (autonomous-graph-solver.ts)
+## Files Changed
 
-In `analyzeTopologyFidelity()`:
-- Add `expected_min_facets` check using Solar segment count as a floor
-- Add `ridge_missing_on_complex_roof` flag
-- Report `cross_roof_diagonal_span_ratios` for each interior edge
-- Lower the `fanCollapseSuspected` threshold when combined with zero ridges
-
-### 9. Deploy and re-run Fonsica
-
-After implementation, deploy the updated edge function and trigger a new measurement for 4063 Fonsica Ave. Expected outcomes:
-- Pitch returns near 6/12 (from Solar fallback at minimum)
-- Facet count increases toward 14
-- Ridges become non-zero
-- Cross-roof diagonals are rejected
-- Report remains blocked until vendor benchmark passes
-
-## Migration
-
-One new table:
-```sql
-CREATE TABLE roof_measurement_benchmarks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  address TEXT NOT NULL,
-  lat DECIMAL(10,8),
-  lng DECIMAL(11,8),
-  vendor TEXT NOT NULL DEFAULT 'roofr',
-  vendor_report_id TEXT,
-  area_sqft DECIMAL(10,2),
-  facets INTEGER,
-  pitch_rise_per_12 DECIMAL(5,2),
-  eave_lf DECIMAL(10,2),
-  valley_lf DECIMAL(10,2),
-  hip_lf DECIMAL(10,2),
-  ridge_lf DECIMAL(10,2),
-  rake_lf DECIMAL(10,2),
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-Seed Fonsica benchmark:
-```sql
-INSERT INTO roof_measurement_benchmarks (address, vendor, area_sqft, facets, pitch_rise_per_12, eave_lf, valley_lf, hip_lf, ridge_lf, rake_lf)
-VALUES ('4063 Fonsica Ave', 'roofr', 3077, 14, 6.0, 258.75, 64.25, 201.83, 30.17, 5.25);
-```
-
-## Technical risk
-
-The backbone-first reconstruction is a significant algorithmic change. The main risk is regression on simpler roofs (simple gables/hips) that currently work. Mitigation: the backbone flow only activates when complexity flags are set OR facet deficit is detected. Simple roofs continue through the existing path.
+| File | Change |
+|------|--------|
+| `supabase/functions/_shared/constraint-roof-solver.ts` | **NEW** — Core constraint solver module |
+| `supabase/functions/_shared/google-solar-api.ts` | Add `extractSolarTopologyPriors()` |
+| `supabase/functions/_shared/autonomous-graph-solver.ts` | Integrate constraint solver fallback at end of `solveAutonomousGraph()` |
+| `supabase/functions/start-ai-measurement/index.ts` | Move pitch locking pre-solver, pass Solar priors, persist constraint solver diagnostics |
+| `mem://features/measurement-system/constraint-roof-solver` | New memory file documenting architecture |
