@@ -1072,6 +1072,7 @@ async function processJob(input: any) {
         roofMaskForContour = roofMaskForContour || await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
           const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
+          if (!maskContourDiagnostics) maskContourDiagnostics = getLastContourDiagnostics();
           if (maskContourGeo.length >= 4) {
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
