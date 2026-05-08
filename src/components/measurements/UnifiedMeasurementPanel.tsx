@@ -1783,7 +1783,7 @@ function MeasurementHistorySection({
   const handleSelectAll = () => {
     const allIds = [
       ...vendorReports.map(r => r.id),
-      ...aiMeasurements.filter((m: any) => m.history_kind !== 'job').map(m => m.id)
+      ...aiMeasurements.map(m => m.id)
     ];
     setSelectedIds(new Set(allIds));
   };
@@ -2063,7 +2063,7 @@ function MeasurementHistorySection({
     }
   };
 
-  const selectableHistoryCount = vendorReports.length + aiMeasurements.filter((m: any) => m.history_kind !== 'job').length;
+  const selectableHistoryCount = vendorReports.length + aiMeasurements.length;
   const allSelected = selectedIds.size === selectableHistoryCount && selectableHistoryCount > 0;
 
   return (
@@ -2220,7 +2220,7 @@ function MeasurementHistorySection({
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                {selectMode && !isJobOnly && (
+                {selectMode && (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleSelection(measurement.id)}
@@ -2298,7 +2298,6 @@ function MeasurementHistorySection({
                       setDeleteConfirmId(measurement.id);
                       setDeleteType('ai');
                     }}
-                    disabled={isJobOnly}
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     title="Delete from history"
                   >
