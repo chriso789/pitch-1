@@ -17,7 +17,7 @@ import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, X
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
-const MaterialAuditPage = () => {
+export const MaterialAuditContent = () => {
   const tenantId = useEffectiveTenantId();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("price-lists");
@@ -195,8 +195,7 @@ const MaterialAuditPage = () => {
   }, [materialInvoices, searchTerm]);
 
   return (
-    <GlobalLayout>
-      <div className="p-4 space-y-4">
+    <div className="space-y-4">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
@@ -513,9 +512,17 @@ const MaterialAuditPage = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </GlobalLayout>
+    </div>
   );
 };
+
+const MaterialAuditPage = () => (
+  <GlobalLayout>
+    <div className="p-4">
+      <MaterialAuditContent />
+    </div>
+  </GlobalLayout>
+);
 
 // --- Import Price List Dialog ---
 function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: string | null; suppliers: any[]; onSuccess: () => void }) {
