@@ -70,6 +70,7 @@ import ZelleSettings from "@/components/settings/ZelleSettings";
 import { ProductionChecklistSettings } from "@/components/settings/ProductionChecklistSettings";
 import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
+import MyMoney from "@/pages/MyMoney";
 
 interface SettingsTab {
   id: string;
