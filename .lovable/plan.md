@@ -1,128 +1,136 @@
-I’ll treat this as a perimeter-first correction and stop improving inner topology until the outer eave/rake boundary is trustworthy.
 
-## Plan
+# AI Measurement: Backbone-First Topology Rebuild + Vendor Benchmark Gate
 
-### 1. Make the data model explicit in the measurement pipeline
-In `supabase/functions/start-ai-measurement/index.ts`, I’ll separate and persist these as different concepts:
+## Context
 
-- `roof_outer_perimeter` — the true roof eave/rake outline used for perimeter, reports, and topology input.
-- `solar_segment_union` — internal Google Solar plane/segment approximation only.
-- `DSM_edge_cloud` — structural edge evidence only.
-- `roof_mask_component` — raster roof region / connected component evidence.
+The Fonsica 4063 measurement exposes a fundamental structural flaw: the solver produces 6 facets instead of 14, zero ridges, a collapsed 1.67/12 pitch, and cross-roof diagonal hips. The perimeter is within ~35 LF but the internal topology is structurally wrong. The existing backbone-network.ts (v17) suppresses some diagonals but the core issue is that planes are still derived from DSM plane segmentation rather than from a ridge/valley skeleton.
 
-I’ll rename/structure the diagnostics so report JSON makes it obvious which polygon came from which source.
+## Files to modify
 
-### 2. Stop Solar segment union/hull from being selected as the final perimeter
-The current code still creates `google_solar_segments_hull` and `google_solar_segments_union` as footprint candidates, and those can win selection. I’ll change that behavior:
+- `supabase/functions/_shared/backbone-network.ts` — Major rewrite: backbone-first assembly decomposition with local assembly preservation, cross-roof diagonal rejection, and deferred edge reintroduction
+- `supabase/functions/_shared/autonomous-graph-solver.ts` — Wire backbone-first flow, add ridge_network_missing gate, add cross-roof span_ratio rejection, add vendor benchmark gate, improve pitch fallback
+- `supabase/functions/start-ai-measurement/index.ts` — Pitch fallback hardening, mask component merging for perimeter, vendor benchmark comparison gate, persist new diagnostics
 
-- Solar segment union/hull will be stored as `solar_segment_union_px` / internal guidance.
-- It will not be eligible as `roof_outer_perimeter`.
-- It can only guide internal segmentation after a valid outer perimeter exists.
-- `google_solar_bbox` remains crop/debug evidence only, never a publishable perimeter.
+## Changes
 
-This directly addresses the Fonsica failure where the green outline is an inner solar/plane trace.
+### 1. Perimeter mask component merging (index.ts)
 
-### 3. Build the outer perimeter from mask/boundary evidence first
-I’ll update perimeter selection to prioritize actual outer boundary evidence:
+Before final contour tracing, merge nearby roof-mask connected components if:
+- Component is within 8-12px of main component
+- Component aligns with visible roof boundary direction
+- Merging increases perimeter without adding non-roof area
 
-1. Google Solar roof mask connected-component outer contour.
-2. Visible satellite roof boundary / image edge evidence.
-3. DSM height break from roof to ground.
-4. Overhang/eave shadow edge.
-5. Solar segment union only as internal guidance/refinement, never final perimeter.
+Persist: `merged_mask_components_count`, `perimeter_length_before_merge`, `perimeter_length_after_merge`, `eave_rake_delta_after_merge`.
 
-The existing `extractMaskContour()` uses a selected component but then returns a convex hull of boundary pixels. I’ll replace/add a true outer contour extraction path that preserves concavities and real corners better than a convex hull.
+### 2. Pitch source hardening (index.ts, ~line 4045-4068)
 
-### 4. Add outer-boundary expansion from inner traces
-If a selected candidate is inside the roof mask, I’ll expand it outward toward the mask boundary instead of accepting it:
+Current code already falls back to Solar when `isBadTopology` but the condition checks `facetCountForPitch <= 3`. The Fonsica case has 6 facets, which doesn't trigger it. Fix:
+- Add condition: `facetCountForPitch < expected_min_facets` (from topology fidelity)
+- Add condition: `rawDominantPitch < 2` (anything below 2/12 on a non-flat roof is nonsense)
+- Never output pitch from collapsed planes when topology_fidelity is "low" or "medium"
 
-- Detect inward offset against `roof_mask_component`.
-- Expand rays/edges outward until reaching the mask boundary / visible roof edge.
-- Snap expanded corners to strong image/DSM/eave-shadow edges.
-- Preserve real corners and concavities where mask evidence supports them.
-- Include rear roof-covered/screen-enclosure areas when the mask/imagery shows continuous roof surface.
+### 3. Backbone-first topology reconstruction (backbone-network.ts)
 
-This replaces the current limited bbox-based expansion against Solar bbox, which is not enough and can still follow the inner solar geometry.
+Rewrite the flow from "filter bad edges" to "build structure first":
 
-### 5. Add hard under-tracing detection
-Before calling `solveAutonomousGraph`, I’ll add a new gate:
+1. Extract ridge/valley candidate lines from DSM edge detection
+2. Build ridge chains and valley chains (existing logic, improved)
+3. Identify local assemblies from chain endpoints + footprint corners
+4. Each assembly gets its own local hip edges connecting ridge/valley endpoints to nearest footprint corners
+5. Faces are derived from the backbone graph, not from DSM planes
 
-`perimeter_inner_trace_detected`
+Key additions:
+- `buildLocalAssemblies()` — partition footprint into sub-regions based on backbone endpoints
+- `deriveHipsFromBackbone()` — connect ridge/valley endpoints to footprint corners within each assembly
+- Deferred edges (short structural edges rejected by length) are reintroduced if they split an oversized plane or improve ridge/valley continuity
 
-It will fail when any of these are true:
+### 4. Cross-roof diagonal suppression (autonomous-graph-solver.ts)
 
-- `selected_perimeter_area / roof_mask_component_area < 0.95`
-- selected perimeter is fully inside the roof mask with missed roof regions
-- perimeter misses visible roof boundary/eave evidence
-- unknown/missed perimeter regions remain
-- eave/rake perimeter length is zero or implausible for a non-flat residential roof
+In the planar solver input stage, reject any interior edge where:
+- `span_ratio > 0.50` (edge length / roof diagonal)
+- Edge crosses more than one local assembly boundary
+- Edge would create a face > 35% of total roof area
+- Edge suppresses local valleys/ridges that have DSM evidence
 
-When this triggers, the pipeline will persist a diagnostic row and stop before internal topology. No customer report will be generated.
+Current: `DIAGONAL_SPAN_RATIO_MAX = 0.50` exists in backbone-network.ts but doesn't fully suppress Fonsica's 0.757 diagonal. The check needs to run after face generation too, rejecting faces that are too large.
 
-### 6. Feed only the validated outer perimeter into topology
-After the new perimeter gate passes:
+### 5. Mandatory ridge detection gate (autonomous-graph-solver.ts)
 
-- `solveAutonomousGraph()` receives `roof_outer_perimeter`, not `solar_segment_union`.
-- `boundaryEdges` will be built from the validated outer ring.
-- Eave/rake lengths must come from the outer perimeter gate.
-- Internal topology failure will remain separate from perimeter failure.
+Add hard fail `ridge_network_missing` when:
+- `ridge_lf === 0` AND `facets >= 4`
+- Solar data indicates multiple opposing roof segments (>1 azimuth cluster)
+- Complexity flag is set
 
-### 7. Correct pitch handling
-I’ll prevent nonsense pitch values like `0.11/12` from being saved or shown as a valid pitch.
+This prevents the current scenario where a complex hip roof reports zero ridges.
 
-Rules:
+### 6. Deferred edge reintroduction (autonomous-graph-solver.ts)
 
-- Prefer Google Solar `roofSegmentStats.pitchDegrees` when available and plausible.
-- Use DSM plane normals only after both valid perimeter and valid faces exist.
-- Never calculate final pitch from collapsed topology / 3 invalid planes.
-- If topology is invalid, save pitch as unavailable/null and show `Unavailable` instead of `0.11/12`.
-- Persist `pitch_source` and `pitch_valid` in diagnostics.
+Score-rejected and length-rejected edges are already tracked as `scoreRejectedEdgesPx`. After initial face extraction:
+- If `max_plane_area_ratio > 0.35` or `facet_count < expected_min_facets`, attempt to reintroduce deferred edges
+- Accept reintroduced edge if it: aligns with DSM extrema, improves ridge/valley continuity, reduces max plane area, increases facet count
+- This is the existing v15 refinement pass but with the additional trigger of "facet count too low"
 
-### 8. Enforce customer/report readiness rules
-Customer-ready output will require all of these:
+### 7. Vendor benchmark gate (index.ts)
 
-- true outer perimeter passed
-- eave/rake perimeter validated
-- pitch source valid
-- internal topology passed independently
-- existing DSM/topology fidelity promotion gates passed
+New table or JSON field for known benchmark addresses. For addresses with paid vendor reports, compare AI output:
+- `area_delta_pct`, `facet_delta`, `pitch_delta`, `ridge_delta_pct`, `hip_delta_pct`, `valley_delta_pct`, `eave_delta_pct`
+- `topology_score_vs_vendor` = weighted composite
 
-If perimeter passes but internal topology fails, the report can remain internal-debug only. It must not become a customer-ready measurement.
+Block `customer_report_ready` if:
+- Facet count off > 25%
+- Pitch off > 1/12
+- Ridge/hip/valley totals off > 25%
+- `ridge_lf = 0` on complex roof
+- `topology_score_vs_vendor < 80`
 
-### 9. Add the requested overlay debug layers
-I’ll update persisted `geometry_report_json.overlay_debug` and `src/components/measurements/RasterOverlayDebugView.tsx` to show four separate layers:
+Store benchmark data in `roof_measurement_benchmarks` table (migration needed).
 
-- outer roof mask contour
-- selected final perimeter
-- solar segment union
-- missed roof regions, filled red
+### 8. Topology fidelity improvements (autonomous-graph-solver.ts)
 
-The layer controls will let us visually confirm whether the green/yellow outline is the real roof boundary or an internal trace.
+In `analyzeTopologyFidelity()`:
+- Add `expected_min_facets` check using Solar segment count as a floor
+- Add `ridge_missing_on_complex_roof` flag
+- Report `cross_roof_diagonal_span_ratios` for each interior edge
+- Lower the `fanCollapseSuspected` threshold when combined with zero ridges
 
-### 10. Improve diagnostics in the report dialog
-In `src/components/measurements/MeasurementReportDialog.tsx`, I’ll add rows for:
+### 9. Deploy and re-run Fonsica
 
-- outer perimeter source
-- outer perimeter area
-- roof mask component area
-- selected/mask area ratio
-- inner-trace detected
-- missed roof region area
-- eave/rake validation status
-- pitch source
-- pitch valid
+After implementation, deploy the updated edge function and trigger a new measurement for 4063 Fonsica Ave. Expected outcomes:
+- Pitch returns near 6/12 (from Solar fallback at minimum)
+- Facet count increases toward 14
+- Ridges become non-zero
+- Cross-roof diagonals are rejected
+- Report remains blocked until vendor benchmark passes
 
-This makes the exact Fonsica failure obvious without opening logs.
+## Migration
 
-### 11. Deploy and rerun Fonsica
-After implementation, I’ll deploy the updated function and rerun/audit Fonsica. Expected outcome:
+One new table:
+```sql
+CREATE TABLE roof_measurement_benchmarks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  address TEXT NOT NULL,
+  lat DECIMAL(10,8),
+  lng DECIMAL(11,8),
+  vendor TEXT NOT NULL DEFAULT 'roofr',
+  vendor_report_id TEXT,
+  area_sqft DECIMAL(10,2),
+  facets INTEGER,
+  pitch_rise_per_12 DECIMAL(5,2),
+  eave_lf DECIMAL(10,2),
+  valley_lf DECIMAL(10,2),
+  hip_lf DECIMAL(10,2),
+  ridge_lf DECIMAL(10,2),
+  rake_lf DECIMAL(10,2),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
-- The selected perimeter expands to the actual eave/rake outline.
-- Eave and rake lengths become non-zero and realistic.
-- Pitch is either near the Roofr report from Solar pitch evidence, or marked unavailable if invalid.
-- Internal hips/ridges remain blocked until topology passes.
-- If the system still cannot trace the true outer perimeter, it fails as `perimeter_inner_trace_detected` and does not produce a customer-ready report.
+Seed Fonsica benchmark:
+```sql
+INSERT INTO roof_measurement_benchmarks (address, vendor, area_sqft, facets, pitch_rise_per_12, eave_lf, valley_lf, hip_lf, ridge_lf, rake_lf)
+VALUES ('4063 Fonsica Ave', 'roofr', 3077, 14, 6.0, 258.75, 64.25, 201.83, 30.17, 5.25);
+```
 
-## Technical notes
+## Technical risk
 
-Current code already has a registration gate and a perimeter phase, but the key bug is that `google_solar_segments_hull` / `google_solar_segments_union` are still treated as selectable footprint candidates. That allows the inner Solar plane geometry to become the perimeter. The fix is to remove solar segment geometry from the final perimeter candidate pool and make outer mask/boundary evidence authoritative before any topology work runs.
+The backbone-first reconstruction is a significant algorithmic change. The main risk is regression on simpler roofs (simple gables/hips) that currently work. Mitigation: the backbone flow only activates when complexity flags are set OR facet deficit is detected. Simple roofs continue through the existing path.

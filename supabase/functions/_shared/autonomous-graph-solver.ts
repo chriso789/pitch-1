@@ -2083,7 +2083,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   let faceCountAfterMerge = 0;
   const dsmMaskValid = input.maskedDSM?.mask ? !input.maskedDSM.mask.every(v => v === 1) : false;
 
-  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v17 — Backbone-First Ridge/Valley Topology`);
+  console.log(`[AUTONOMOUS_GRAPH_SOLVER] v18 — Backbone-First Ridge/Valley Topology with Local Assembly Hips`);
   console.log(`  Inputs: ${input.footprintCoords.length} footprint vertices, ${input.solarSegments.length} solar segments, DSM=${!!input.dsmGrid}, maskedDSM=${!!input.maskedDSM}, ${input.skeletonEdges.length} skeleton edges`);
 
   const footprintAreaSqft = polygonAreaSqft(input.footprintCoords, midLat);
@@ -2342,7 +2342,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 5b: BACKBONE NETWORK — Ridge/Valley-first topology (v17) =====
+  // ===== STEP 5b: BACKBONE NETWORK — Ridge/Valley-first topology (v18) =====
   const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
@@ -2354,7 +2354,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }))
     : [];
 
-  // Build backbone network: ridge/valley chains → assemblies → diagonal suppression
+  // Build backbone network: ridge/valley chains → assemblies → diagonal suppression → derived hips
   let backboneDiag: BackboneDiagnostics | null = null;
   let backboneFilteredEdgesPx = rawDsmInteriorEdgesPx;
   if (rawDsmInteriorEdgesPx.length >= 3 && footprintPxCCW.length >= 3) {
@@ -2367,7 +2367,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       if (be.backboneRole !== 'suppressed') survivingSet.add(idx);
     });
     backboneFilteredEdgesPx = rawDsmInteriorEdgesPx.filter((_, idx) => survivingSet.has(idx));
-    console.log(`  [v17 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after diagonal suppression`);
+
+    // Add derived hip edges from backbone endpoints to footprint corners
+    if (backbone.derivedHips.length > 0) {
+      for (const dh of backbone.derivedHips) {
+        backboneFilteredEdgesPx.push({
+          a: dh.a,
+          b: dh.b,
+          type: 'hip',
+          score: dh.score,
+        });
+      }
+      console.log(`  [v18 BACKBONE] Added ${backbone.derivedHips.length} derived local hips from backbone endpoints`);
+    }
+
+    console.log(`  [v18 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after backbone processing (${backbone.diagnostics.diagonal_suppression_events} diagonals suppressed, ${backbone.diagnostics.oversized_plane_suppressions || 0} oversized suppressions)`);
   }
 
   // ===== STEP 6: Topology-aware edge clustering =====
@@ -3940,7 +3954,12 @@ export function analyzeTopologyFidelity(
   }
 
   // Fan collapse: too many edges converging at one interior node
-  const fanCollapseSuspected = centralNodeDegree >= 6;
+  // Lower threshold when combined with zero ridges (stronger signal)
+  const fanCollapseThreshold = ridgeTotalFt === 0 && hipTotalFt > 50 ? 4 : 6;
+  const fanCollapseSuspected = centralNodeDegree >= fanCollapseThreshold;
+
+  // Ridge missing on complex roof detection
+  const ridgeMissingOnComplexRoof = ridgeTotalFt === 0 && faces.length >= 4 && footprintAreaSqft > 1500;
 
   // ── Diagonal cross-roof detection ──
   // Get roof bounding box diagonal
@@ -4032,6 +4051,9 @@ export function analyzeTopologyFidelity(
   if (planesNeedRefinement) {
     issues.push(`plane_refinement_required:largest=${largestPlane.toFixed(0)}sqft,clusters=${localClusterCount}`);
   }
+  if (ridgeMissingOnComplexRoof) {
+    issues.push(`ridge_network_missing:ridge_lf=0,facets=${faces.length},area=${footprintAreaSqft.toFixed(0)}sqft`);
+  }
 
   // ── Fidelity scoring ──
   // Start at 100, deduct for each issue
@@ -4045,6 +4067,7 @@ export function analyzeTopologyFidelity(
   if (ridgeInflationSuspected) score -= ridgeTotalFt > 120 ? 25 : 15;
 
   if (fanCollapseSuspected) score -= 20;
+  if (ridgeMissingOnComplexRoof) score -= 25;
   if (diagonalCrossRoofCount >= 2 || diagonalSpanRatio > 0.65) score -= 20;
   else if (diagonalCrossRoofCount === 1 || diagonalSpanRatio > 0.50) score -= 10;
 
