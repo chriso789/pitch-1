@@ -3382,7 +3382,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   console.log(`  Coverage: sqft_ratio=${sqftAreaRatio.toFixed(3)} px_ratio=${pxAreaRatio.toFixed(3)} footprint_sqft=${footprintAreaSqft.toFixed(0)} face_sqft=${totalPlanArea.toFixed(0)} footprint_px=${footprintAreaPxVal.toFixed(0)} face_px=${totalFaceAreaPx.toFixed(0)}`);
 
   const pitchWeighted = graphFaces.reduce((s, f) => s + f.pitch_degrees * f.roof_area_sqft, 0);
-  const predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
+  let predominantPitch = totalRoofArea > 0 ? pitchWeighted / totalRoofArea : 0;
 
   const avgConfidence = outputEdges.length > 0
     ? outputEdges.reduce((s, e) => s + e.confidence.final_confidence, 0) / outputEdges.length
