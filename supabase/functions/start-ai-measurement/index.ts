@@ -838,10 +838,14 @@ async function processJob(input: any) {
       }
     }
 
-    // 3b. Solar building extent rectangle as a fallback candidate (NOT auto-promoted).
+    // 3b. Solar building extent rectangle — diagnostic only, NOT a valid perimeter.
     const solarFp = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
     if (solarFp && solarFp.length >= 3) {
       const bboxCand = scoreCandidate("google_solar_bbox", solarFp);
+      // CRITICAL FIX: Solar bbox is not a roof perimeter — always reject.
+      if (!bboxCand.rejected_reason) {
+        bboxCand.rejected_reason = "solar_bbox_not_roof_perimeter";
+      }
       candidates.push(bboxCand);
       solarSegmentsDebug.bbox_area_sqft = Math.round(bboxCand.area_sqft);
       if (solarSegmentsDebug.hull_area_sqft && bboxCand.area_sqft > 0) {
