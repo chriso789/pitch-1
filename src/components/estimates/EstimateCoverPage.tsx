@@ -152,11 +152,11 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
               {eyebrow}
             </div>
             <h1
-              className="font-black leading-[0.85] tracking-tight drop-shadow-xl"
+              className="font-black leading-[0.9] tracking-tight drop-shadow-xl"
               style={{
-                fontSize: '92px',
-                letterSpacing: '-0.04em',
-                lineHeight: 0.85,
+                fontSize: '48px',
+                letterSpacing: '-0.03em',
+                lineHeight: 0.95,
               }}
             >
               {headlineParts[0]}
