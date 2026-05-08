@@ -17,8 +17,9 @@ import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, CheckCircle, Circle, Plus, Trash2, Edit2, Save,
   FileText, Clock, Package, Wrench, Trophy, Search, Archive,
-  Settings, Filter, AlertTriangle, ChevronRight
+  Settings, Filter, AlertTriangle, ChevronRight, ExternalLink
 } from 'lucide-react';
+import { OrderAssignmentsPanel } from '@/components/production/OrderAssignmentsPanel';
 import { cn } from '@/lib/utils';
 
 const STAGE_CONFIG = [
@@ -349,6 +350,7 @@ const ProductionDetail = () => {
       <Tabs defaultValue="checklist" className="w-full">
         <TabsList>
           <TabsTrigger value="checklist">Production Checklist</TabsTrigger>
+          <TabsTrigger value="orders">Orders & Assignments</TabsTrigger>
           <TabsTrigger value="trades">Trade Boards ({tradeBoards.length})</TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="h-4 w-4 mr-1" />
@@ -427,6 +429,11 @@ const ProductionDetail = () => {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* ORDERS & ASSIGNMENTS TAB */}
+        <TabsContent value="orders" className="space-y-4">
+          <OrderAssignmentsPanel projectId={projectId!} />
         </TabsContent>
 
         {/* TRADE BOARDS TAB */}
@@ -536,6 +543,11 @@ const ProductionDetail = () => {
             <p className="text-sm text-muted-foreground">
               Configure required checklist items for each production stage. These apply to all projects.
             </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=production-checklist')}>
+                <ExternalLink className="h-3 w-3 mr-1" /> Open in Settings
+              </Button>
+            </div>
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">

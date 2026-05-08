@@ -67,6 +67,7 @@ import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings
 import { InventoryManager } from "@/components/inventory/InventoryManager";
 
 import ZelleSettings from "@/components/settings/ZelleSettings";
+import { ProductionChecklistSettings } from "@/components/settings/ProductionChecklistSettings";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
 
 interface SettingsTab {
@@ -128,6 +129,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "appointment-outcomes": "general",
   "calendar-sync": "general",
   payments: "business",
+  "production-checklist": "business",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
@@ -462,6 +464,8 @@ export const Settings = () => {
         return <SubscriptionManagement />;
       case "payments":
         return <TenantStripeConnectPanel />;
+      case "production-checklist":
+        return <ProductionChecklistSettings />;
       case "demo-requests":
         return <DemoRequestsPanel />;
       case "email":
