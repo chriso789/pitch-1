@@ -62,7 +62,7 @@ export default function CommissionReport() {
   const navigate = useNavigate();
   const { currentLocationId } = useLocationContext();
   const [dateRange, setDateRange] = useState({
-    start: format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd'),
+    start: '2020-01-01',
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
   const [selectedRep, setSelectedRep] = useState<string>('all');
