@@ -3954,7 +3954,12 @@ export function analyzeTopologyFidelity(
   }
 
   // Fan collapse: too many edges converging at one interior node
-  const fanCollapseSuspected = centralNodeDegree >= 6;
+  // Lower threshold when combined with zero ridges (stronger signal)
+  const fanCollapseThreshold = ridgeTotalFt === 0 && hipTotalFt > 50 ? 4 : 6;
+  const fanCollapseSuspected = centralNodeDegree >= fanCollapseThreshold;
+
+  // Ridge missing on complex roof detection
+  const ridgeMissingOnComplexRoof = ridgeTotalFt === 0 && faces.length >= 4 && footprintAreaSqft > 1500;
 
   // ── Diagonal cross-roof detection ──
   // Get roof bounding box diagonal
