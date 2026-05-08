@@ -4539,10 +4539,99 @@ async function processJob(input: any) {
     }
     const measurementIsValid = sanityFailures.length === 0 && !dsmFailReason;
 
+    // ══════════ VENDOR BENCHMARK COMPARISON GATE ══════════
+    // For addresses with paid vendor reports, compare AI output and block if too far off
+    let vendorBenchmarkResult: {
+      matched: boolean;
+      benchmark_address: string | null;
+      area_delta_pct: number | null;
+      facet_delta: number | null;
+      pitch_delta: number | null;
+      ridge_delta_pct: number | null;
+      hip_delta_pct: number | null;
+      valley_delta_pct: number | null;
+      eave_delta_pct: number | null;
+      topology_score_vs_vendor: number | null;
+      block_reason: string | null;
+    } = { matched: false, benchmark_address: null, area_delta_pct: null, facet_delta: null, pitch_delta: null, ridge_delta_pct: null, hip_delta_pct: null, valley_delta_pct: null, eave_delta_pct: null, topology_score_vs_vendor: null, block_reason: null };
+
+    try {
+      const { data: benchmarks } = await supabase
+        .from("roof_measurement_benchmarks")
+        .select("*")
+        .limit(50);
+      if (benchmarks && benchmarks.length > 0) {
+        const normalizeAddr = (a: string) => (a || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const inputAddr = normalizeAddr(input.property_address || '');
+        const match = benchmarks.find(b => inputAddr.includes(normalizeAddr(b.address)));
+        if (match) {
+          const aiArea = finalRoofAreaSqft || 0;
+          const aiFacets = planeRows.length;
+          const aiPitch = totals.dominant_pitch ?? 0;
+          const aiRidge = Number(totals.ridge_length_ft) || 0;
+          const aiHip = Number(totals.hip_length_ft) || 0;
+          const aiValley = Number(totals.valley_length_ft) || 0;
+          const aiEave = Number(totals.eave_length_ft) || 0;
+
+          const deltaPct = (ai: number, vendor: number) => vendor > 0 ? Math.abs(ai - vendor) / vendor * 100 : null;
+          const areaDelta = deltaPct(aiArea, Number(match.area_sqft) || 0);
+          const facetDelta = aiFacets - (match.facets || 0);
+          const pitchDelta = Math.abs(aiPitch - (Number(match.pitch_rise_per_12) || 0));
+          const ridgeDelta = deltaPct(aiRidge, Number(match.ridge_lf) || 0);
+          const hipDelta = deltaPct(aiHip, Number(match.hip_lf) || 0);
+          const valleyDelta = deltaPct(aiValley, Number(match.valley_lf) || 0);
+          const eaveDelta = deltaPct(aiEave, Number(match.eave_lf) || 0);
+
+          // Topology score: weighted composite (0-100)
+          let topoScore = 100;
+          if (areaDelta != null && areaDelta > 10) topoScore -= Math.min(25, areaDelta);
+          if (Math.abs(facetDelta) > 2) topoScore -= Math.min(30, Math.abs(facetDelta) * 5);
+          if (pitchDelta > 1) topoScore -= Math.min(20, pitchDelta * 5);
+          if (ridgeDelta != null && ridgeDelta > 25) topoScore -= Math.min(15, ridgeDelta * 0.3);
+          if (hipDelta != null && hipDelta > 25) topoScore -= Math.min(10, hipDelta * 0.2);
+          topoScore = Math.max(0, Math.min(100, topoScore));
+
+          // Determine block reasons
+          const benchBlockReasons: string[] = [];
+          if (match.facets && Math.abs(facetDelta) / match.facets > 0.25) benchBlockReasons.push(`facet_off_${Math.abs(facetDelta)}`);
+          if (pitchDelta > 1) benchBlockReasons.push(`pitch_off_${pitchDelta.toFixed(1)}`);
+          if (ridgeDelta != null && ridgeDelta > 25) benchBlockReasons.push(`ridge_off_${ridgeDelta.toFixed(0)}pct`);
+          if (hipDelta != null && hipDelta > 25) benchBlockReasons.push(`hip_off_${hipDelta.toFixed(0)}pct`);
+          if (valleyDelta != null && valleyDelta > 25) benchBlockReasons.push(`valley_off_${valleyDelta.toFixed(0)}pct`);
+          if (aiRidge === 0 && (match.ridge_lf || 0) > 5) benchBlockReasons.push('ridge_lf_zero_on_complex');
+          if (topoScore < 80) benchBlockReasons.push(`topology_score_${topoScore.toFixed(0)}`);
+
+          vendorBenchmarkResult = {
+            matched: true,
+            benchmark_address: match.address,
+            area_delta_pct: areaDelta != null ? Number(areaDelta.toFixed(1)) : null,
+            facet_delta: facetDelta,
+            pitch_delta: Number(pitchDelta.toFixed(2)),
+            ridge_delta_pct: ridgeDelta != null ? Number(ridgeDelta.toFixed(1)) : null,
+            hip_delta_pct: hipDelta != null ? Number(hipDelta.toFixed(1)) : null,
+            valley_delta_pct: valleyDelta != null ? Number(valleyDelta.toFixed(1)) : null,
+            eave_delta_pct: eaveDelta != null ? Number(eaveDelta.toFixed(1)) : null,
+            topology_score_vs_vendor: Number(topoScore.toFixed(1)),
+            block_reason: benchBlockReasons.length > 0 ? benchBlockReasons.join('|') : null,
+          };
+
+          console.log("[VENDOR_BENCHMARK]", JSON.stringify(vendorBenchmarkResult));
+        }
+      }
+    } catch (benchErr) {
+      console.warn("[VENDOR_BENCHMARK] Failed to check benchmarks:", (benchErr as Error).message);
+    }
+
+    const vendorBenchmarkBlockReason = vendorBenchmarkResult.block_reason ? `vendor_benchmark_fail:${vendorBenchmarkResult.block_reason}` : null;
+
     const blockCustomerReportReason: string | null =
-      dsmFailReason ? dsmFailReason : (sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason);
+      dsmFailReason ? dsmFailReason
+        : (sanityFailures.length > 0 ? sanityFailures.join("|")
+          : vendorBenchmarkBlockReason ? vendorBenchmarkBlockReason
+            : ridgeStructureReviewReason);
     const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure")
-      || vendorTruthComparison?.needs_internal_review === true;
+      || vendorTruthComparison?.needs_internal_review === true
+      || !!vendorBenchmarkBlockReason;
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
