@@ -302,13 +302,12 @@ export interface OSMBuildingCandidate {
   buildingType: string;
 }
 
-export async function fetchOSMBuildingCandidates(
+async function fetchOSMOnce(
   lat: number,
   lng: number,
-  options?: { searchRadius?: number; timeout?: number }
-): Promise<{ candidates: OSMBuildingCandidate[]; error?: string }> {
-  const searchRadius = options?.searchRadius || 60;
-  const timeout = options?.timeout || 10000;
+  searchRadius: number,
+  timeout: number,
+): Promise<{ candidates: OSMBuildingCandidate[]; error?: string; endpoint?: string }> {
   const endpoints = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
@@ -323,6 +322,8 @@ export async function fetchOSMBuildingCandidates(
     out body geom;
   `;
   let response: Response | null = null;
+  let usedEndpoint: string | undefined;
+  let lastErr: string | undefined;
   for (const overpassUrl of endpoints) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -338,15 +339,17 @@ export async function fetchOSMBuildingCandidates(
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      if (response.ok) break;
+      if (response.ok) { usedEndpoint = overpassUrl; break; }
+      lastErr = `http_${response.status}`;
       response = null;
-    } catch {
+    } catch (e: any) {
       clearTimeout(timeoutId);
+      lastErr = e?.name === 'AbortError' ? 'timeout' : `fetch_error:${e?.message || e}`;
     }
   }
-  if (!response?.ok) return { candidates: [], error: 'overpass_unreachable' };
+  if (!response?.ok) return { candidates: [], error: lastErr || 'overpass_unreachable' };
   const data = await response.json();
-  if (!data.elements?.length) return { candidates: [] };
+  if (!data.elements?.length) return { candidates: [], endpoint: usedEndpoint };
   const out: OSMBuildingCandidate[] = [];
   for (const element of data.elements) {
     let ring: XY[] = [];
@@ -369,7 +372,51 @@ export async function fetchOSMBuildingCandidates(
       buildingType: element.tags?.building || 'yes',
     });
   }
-  return { candidates: out };
+  return { candidates: out, endpoint: usedEndpoint };
+}
+
+export async function fetchOSMBuildingCandidates(
+  lat: number,
+  lng: number,
+  options?: { searchRadius?: number; timeout?: number; radii?: number[] }
+): Promise<{
+  candidates: OSMBuildingCandidate[];
+  error?: string;
+  attempts?: Array<{ radius_m: number; candidate_count: number; error?: string; endpoint?: string }>;
+}> {
+  const timeout = options?.timeout || 10000;
+  // Multi-radius retry: widen until we find at least one building.
+  // Default ladder per acquisition spec: 50 → 100 → 150m.
+  const radii = options?.radii && options.radii.length > 0
+    ? options.radii
+    : (options?.searchRadius ? [options.searchRadius, 100, 150] : [50, 100, 150]);
+
+  const attempts: Array<{ radius_m: number; candidate_count: number; error?: string; endpoint?: string }> = [];
+  // Deduplicate by osmId across all radii — collect everything we find.
+  const byId = new Map<string, OSMBuildingCandidate>();
+  let lastError: string | undefined;
+  for (const r of radii) {
+    const res = await fetchOSMOnce(lat, lng, r, timeout);
+    attempts.push({
+      radius_m: r,
+      candidate_count: res.candidates.length,
+      error: res.error,
+      endpoint: res.endpoint,
+    });
+    if (res.error) lastError = res.error;
+    for (const c of res.candidates) {
+      const key = c.osmId || `${c.ring[0][0].toFixed(7)}_${c.ring[0][1].toFixed(7)}`;
+      if (!byId.has(key)) byId.set(key, c);
+    }
+    // Stop early once we have at least one polygon — no need to widen further.
+    if (byId.size >= 1) break;
+  }
+  const merged = Array.from(byId.values()).sort((a, b) => a.distanceFromPointM - b.distanceFromPointM);
+  return {
+    candidates: merged,
+    error: merged.length === 0 ? (lastError || 'no_buildings_found') : undefined,
+    attempts,
+  };
 }
 
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
