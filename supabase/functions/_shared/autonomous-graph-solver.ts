@@ -4051,6 +4051,9 @@ export function analyzeTopologyFidelity(
   if (planesNeedRefinement) {
     issues.push(`plane_refinement_required:largest=${largestPlane.toFixed(0)}sqft,clusters=${localClusterCount}`);
   }
+  if (ridgeMissingOnComplexRoof) {
+    issues.push(`ridge_network_missing:ridge_lf=0,facets=${faces.length},area=${footprintAreaSqft.toFixed(0)}sqft`);
+  }
 
   // ── Fidelity scoring ──
   // Start at 100, deduct for each issue
