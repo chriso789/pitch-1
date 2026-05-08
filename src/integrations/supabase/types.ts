@@ -29493,6 +29493,89 @@ export type Database = {
           },
         ]
       }
+      project_cost_invoice_line_items: {
+        Row: {
+          brand: string | null
+          color: string | null
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          line_number: number | null
+          line_total: number | null
+          material_category: string | null
+          normalized_description: string | null
+          pipeline_entry_id: string | null
+          project_id: string | null
+          quantity: number | null
+          raw_json: Json | null
+          search_text: unknown
+          sku: string | null
+          style: string | null
+          tenant_id: string
+          unit_of_measure: string | null
+          unit_price: number | null
+          updated_at: string
+          vendor_name: string | null
+        }
+        Insert: {
+          brand?: string | null
+          color?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          line_number?: number | null
+          line_total?: number | null
+          material_category?: string | null
+          normalized_description?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          quantity?: number | null
+          raw_json?: Json | null
+          search_text?: unknown
+          sku?: string | null
+          style?: string | null
+          tenant_id: string
+          unit_of_measure?: string | null
+          unit_price?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Update: {
+          brand?: string | null
+          color?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          line_number?: number | null
+          line_total?: number | null
+          material_category?: string | null
+          normalized_description?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          quantity?: number | null
+          raw_json?: Json | null
+          search_text?: unknown
+          sku?: string | null
+          style?: string | null
+          tenant_id?: string
+          unit_of_measure?: string | null
+          unit_price?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_cost_invoice_line_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "project_cost_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_cost_invoices: {
         Row: {
           approved_at: string | null
@@ -29503,6 +29586,7 @@ export type Database = {
           crew_name: string | null
           document_name: string | null
           document_url: string | null
+          duplicate_of: string | null
           id: string
           invoice_amount: number
           invoice_date: string | null
@@ -29528,6 +29612,7 @@ export type Database = {
           crew_name?: string | null
           document_name?: string | null
           document_url?: string | null
+          duplicate_of?: string | null
           id?: string
           invoice_amount: number
           invoice_date?: string | null
@@ -29553,6 +29638,7 @@ export type Database = {
           crew_name?: string | null
           document_name?: string | null
           document_url?: string | null
+          duplicate_of?: string | null
           id?: string
           invoice_amount?: number
           invoice_date?: string | null
@@ -29604,6 +29690,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "project_cost_invoices"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "project_cost_invoices_pipeline_entry_id_fkey"

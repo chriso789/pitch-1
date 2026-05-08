@@ -43,7 +43,9 @@ Deno.serve(async (req) => {
       tax_amount,
       document_url,
       document_name,
-      notes
+      notes,
+      line_items,
+      allow_duplicate
     } = await req.json();
 
     if (!project_id && !pipeline_entry_id) {
@@ -84,6 +86,41 @@ Deno.serve(async (req) => {
       effectivePipelineEntryId = project?.pipeline_entry_id;
     }
 
+    // ----- Duplicate detection (tenant-wide) -----
+    // Match on (tenant + vendor + invoice_number) when invoice_number present,
+    // otherwise on (tenant + vendor + invoice_date + amount).
+    let duplicateOf: string | null = null;
+    const amt = parseFloat(invoice_amount);
+    if (vendor_name) {
+      let dupQ = supabase
+        .from('project_cost_invoices')
+        .select('id, invoice_number, invoice_date, invoice_amount, project_id, pipeline_entry_id')
+        .eq('tenant_id', profile.tenant_id)
+        .ilike('vendor_name', vendor_name);
+
+      if (invoice_number) {
+        dupQ = dupQ.ilike('invoice_number', invoice_number);
+      } else if (invoice_date) {
+        dupQ = dupQ.eq('invoice_date', invoice_date).eq('invoice_amount', amt);
+      } else {
+        dupQ = dupQ.eq('invoice_amount', amt);
+      }
+      const { data: dupes } = await dupQ.is('duplicate_of', null).limit(1);
+      if (dupes && dupes.length > 0) {
+        duplicateOf = dupes[0].id;
+        if (!allow_duplicate) {
+          return new Response(
+            JSON.stringify({
+              duplicate: true,
+              duplicate_invoice: dupes[0],
+              message: `Duplicate invoice detected from ${vendor_name}${invoice_number ? ` (#${invoice_number})` : ''}. Re-submit with allow_duplicate=true to save anyway.`
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+
     // Create invoice record
     const { data: invoice, error: invoiceError } = await supabase
       .from('project_cost_invoices')
@@ -97,13 +134,14 @@ Deno.serve(async (req) => {
         crew_name: crew_name || null,
         invoice_number: invoice_number || null,
         invoice_date: invoice_date || null,
-        invoice_amount: parseFloat(invoice_amount),
+        invoice_amount: amt,
         subtotal: subtotal ? parseFloat(subtotal) : null,
         tax_amount: tax_amount ? parseFloat(tax_amount) : null,
         document_url: document_url || null,
         document_name: document_name || null,
         notes: notes || null,
         status: document_url ? 'verified' : 'pending',
+        duplicate_of: duplicateOf,
         created_by: user.id
       })
       .select()
@@ -114,7 +152,39 @@ Deno.serve(async (req) => {
       throw new Error('Failed to create invoice record');
     }
 
-    console.log(`[submit-project-invoice] Created invoice: ${invoice.id}`);
+    console.log(`[submit-project-invoice] Created invoice: ${invoice.id}${duplicateOf ? ` (marked duplicate of ${duplicateOf})` : ''}`);
+
+    // Persist line items for searchable color/style/brand history
+    if (Array.isArray(line_items) && line_items.length > 0) {
+      const rows = line_items.map((li: any, idx: number) => ({
+        tenant_id: profile.tenant_id,
+        invoice_id: invoice.id,
+        project_id: project_id || null,
+        pipeline_entry_id: effectivePipelineEntryId || null,
+        vendor_name: vendor_name || null,
+        line_number: idx + 1,
+        description: String(li.description || '').slice(0, 2000) || '(no description)',
+        normalized_description: String(li.description || '').toLowerCase().trim(),
+        quantity: li.quantity != null ? Number(li.quantity) : null,
+        unit_price: li.unit_price != null ? Number(li.unit_price) : null,
+        line_total: li.line_total != null ? Number(li.line_total) : null,
+        unit_of_measure: li.unit_of_measure || null,
+        sku: li.sku || null,
+        brand: li.brand || null,
+        color: li.color || null,
+        style: li.style || null,
+        material_category: li.material_category || null,
+        raw_json: li,
+      }));
+      const { error: liErr } = await supabase
+        .from('project_cost_invoice_line_items')
+        .insert(rows);
+      if (liErr) {
+        console.error('[submit-project-invoice] Failed to insert line items:', liErr);
+      } else {
+        console.log(`[submit-project-invoice] Inserted ${rows.length} line items`);
+      }
+    }
 
     // Create document record if a file was attached (so it shows in Documents tab)
     if (document_url) {

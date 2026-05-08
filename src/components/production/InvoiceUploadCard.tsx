@@ -43,6 +43,12 @@ interface LineItem {
   quantity?: number;
   unit_price?: number;
   line_total?: number;
+  unit_of_measure?: string;
+  sku?: string;
+  brand?: string;
+  color?: string;
+  style?: string;
+  material_category?: string;
 }
 
 interface InvoiceUploadCardProps {
@@ -247,29 +253,46 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('submit-project-invoice', {
-        body: {
-          project_id: projectId || null,
-          pipeline_entry_id: pipelineEntryId || null,
-          change_order_id: changeOrderId || null,
-          invoice_type: invoiceType,
-          ...formData,
-          invoice_amount: parseFloat(formData.invoice_amount),
-          subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
-          tax_amount: formData.tax_amount ? parseFloat(formData.tax_amount) : null,
-        }
-      });
+      const submit = async (allow_duplicate: boolean) => {
+        return supabase.functions.invoke('submit-project-invoice', {
+          body: {
+            project_id: projectId || null,
+            pipeline_entry_id: pipelineEntryId || null,
+            change_order_id: changeOrderId || null,
+            invoice_type: invoiceType,
+            ...formData,
+            invoice_amount: parseFloat(formData.invoice_amount),
+            subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
+            tax_amount: formData.tax_amount ? parseFloat(formData.tax_amount) : null,
+            line_items: lineItems,
+            allow_duplicate,
+          }
+        });
+      };
 
+      let { data, error } = await submit(false);
       if (error) throw error;
 
-      const typeLabels = {
-        material: 'Material',
-        labor: 'Labor',
-        overhead: 'Overhead'
-      };
+      if (data?.duplicate) {
+        const dup = data.duplicate_invoice;
+        const proceed = window.confirm(
+          `Duplicate invoice detected from ${formData.vendor_name || 'this vendor'}` +
+          (formData.invoice_number ? ` (#${formData.invoice_number})` : '') +
+          `.\n\nExisting amount: $${dup?.invoice_amount ?? '?'} on ${dup?.invoice_date ?? 'unknown date'}.\n\nSave this one anyway?`
+        );
+        if (!proceed) {
+          toast({ title: 'Duplicate skipped', description: 'Invoice was not saved.' });
+          setLoading(false);
+          return;
+        }
+        ({ data, error } = await submit(true));
+        if (error) throw error;
+      }
+
+      const typeLabels = { material: 'Material', labor: 'Labor', overhead: 'Overhead' };
       toast({
         title: 'Invoice Submitted',
-        description: `${typeLabels[invoiceType]} invoice recorded successfully`
+        description: `${typeLabels[invoiceType]} invoice recorded successfully${data?.invoice?.duplicate_of ? ' (flagged as duplicate)' : ''}`
       });
 
       // Reset form
@@ -402,7 +425,17 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                   <TableBody>
                     {lineItems.map((item, idx) => (
                       <TableRow key={idx}>
-                        <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{item.description}</TableCell>
+                        <TableCell className="text-xs py-1.5 max-w-[260px]">
+                          <div className="truncate">{item.description}</div>
+                          {(item.brand || item.color || item.style || item.material_category) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.brand && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.brand}</Badge>}
+                              {item.style && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{item.style}</Badge>}
+                              {item.color && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/40 text-primary">{item.color}</Badge>}
+                              {item.material_category && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">{item.material_category}</Badge>}
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs py-1.5 text-right">{item.quantity ?? '—'}</TableCell>
                         <TableCell className="text-xs py-1.5 text-right">
                           {item.unit_price != null ? `$${item.unit_price.toFixed(2)}` : '—'}
