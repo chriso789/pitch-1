@@ -4681,6 +4681,8 @@ async function processJob(input: any) {
       rake_length_ft: totals.rake_length_ft,
       perimeter_length_ft: totals.perimeter_length_ft,
       dominant_pitch: totals.dominant_pitch,
+      pitch_source: pitchSource,
+      pitch_valid: pitchValid,
       pitch_breakdown: totals.pitch_breakdown,
       line_breakdown: totals.line_breakdown,
       plane_breakdown: totals.plane_breakdown,
