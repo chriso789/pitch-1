@@ -2342,7 +2342,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 5b: BACKBONE NETWORK — Ridge/Valley-first topology (v17) =====
+  // ===== STEP 5b: BACKBONE NETWORK — Ridge/Valley-first topology (v18) =====
   const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
@@ -2354,7 +2354,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }))
     : [];
 
-  // Build backbone network: ridge/valley chains → assemblies → diagonal suppression
+  // Build backbone network: ridge/valley chains → assemblies → diagonal suppression → derived hips
   let backboneDiag: BackboneDiagnostics | null = null;
   let backboneFilteredEdgesPx = rawDsmInteriorEdgesPx;
   if (rawDsmInteriorEdgesPx.length >= 3 && footprintPxCCW.length >= 3) {
@@ -2367,7 +2367,21 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       if (be.backboneRole !== 'suppressed') survivingSet.add(idx);
     });
     backboneFilteredEdgesPx = rawDsmInteriorEdgesPx.filter((_, idx) => survivingSet.has(idx));
-    console.log(`  [v17 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after diagonal suppression`);
+
+    // Add derived hip edges from backbone endpoints to footprint corners
+    if (backbone.derivedHips.length > 0) {
+      for (const dh of backbone.derivedHips) {
+        backboneFilteredEdgesPx.push({
+          a: dh.a,
+          b: dh.b,
+          type: 'hip',
+          score: dh.score,
+        });
+      }
+      console.log(`  [v18 BACKBONE] Added ${backbone.derivedHips.length} derived local hips from backbone endpoints`);
+    }
+
+    console.log(`  [v18 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after backbone processing (${backbone.diagnostics.diagonal_suppression_events} diagonals suppressed, ${backbone.diagnostics.oversized_plane_suppressions || 0} oversized suppressions)`);
   }
 
   // ===== STEP 6: Topology-aware edge clustering =====
