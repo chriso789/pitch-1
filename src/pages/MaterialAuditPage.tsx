@@ -17,7 +17,7 @@ import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, X
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
-const MaterialAuditPage = () => {
+export const MaterialAuditContent = () => {
   const tenantId = useEffectiveTenantId();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("price-lists");
