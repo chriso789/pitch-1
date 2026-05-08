@@ -1458,6 +1458,77 @@ async function processJob(input: any) {
       footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
     }));
 
+    // ══════════ PERIMETER INNER-TRACE DETECTION GATE ══════════
+    // Detect when the selected footprint traces INNER solar/plane geometry
+    // instead of the true eave/rake roof perimeter.
+    let perimeterInnerTraceDebug: any = { checked: false };
+    if (visibleRoofMaskPxGrid && visibleRoofBboxPx && footprint.length >= 3) {
+      let roofMaskTotalPx = 0;
+      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
+        if (visibleRoofMaskPxGrid[i] > 0) roofMaskTotalPx++;
+      }
+      const roofMaskAreaSqft = roofMaskTotalPx * sqftPerPx2;
+      const perimeterToMaskRatio = roofMaskAreaSqft > 0 ? footprintAreaSqftVal / roofMaskAreaSqft : 1;
+
+      // Count missed roof mask pixels outside footprint
+      let missedRoofPx = 0;
+      const fpBboxIT = bboxOf(footprint);
+      if (fpBboxIT && visibleRoofBboxPx) {
+        const yMin = Math.max(0, Math.floor(Math.min(fpBboxIT.minY, visibleRoofBboxPx.minY)));
+        const yMax = Math.min(raster.height - 1, Math.ceil(Math.max(fpBboxIT.maxY, visibleRoofBboxPx.maxY)));
+        for (let y = yMin; y <= yMax; y++) {
+          const xMin = Math.max(0, Math.floor(Math.min(fpBboxIT.minX, visibleRoofBboxPx.minX)));
+          const xMax = Math.min(raster.width - 1, Math.ceil(Math.max(fpBboxIT.maxX, visibleRoofBboxPx.maxX)));
+          for (let x = xMin; x <= xMax; x++) {
+            if (visibleRoofMaskPxGrid[y * raster.width + x] > 0 && !pointInPolygon({ x, y }, footprint)) {
+              missedRoofPx++;
+            }
+          }
+        }
+      }
+      const missedRoofRatio = roofMaskTotalPx > 0 ? missedRoofPx / roofMaskTotalPx : 0;
+      const missedRoofAreaSqft = missedRoofPx * sqftPerPx2;
+
+      perimeterInnerTraceDebug = {
+        checked: true,
+        roof_mask_area_sqft: Math.round(roofMaskAreaSqft),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        perimeter_to_mask_ratio: Number(perimeterToMaskRatio.toFixed(3)),
+        missed_roof_area_sqft: Math.round(missedRoofAreaSqft),
+        missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
+        footprint_source: footprintSource,
+        inner_trace_detected: false,
+      };
+
+      // HARD GATE: perimeter under-traces the roof
+      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
+      const severeUnderTrace = perimeterToMaskRatio < 0.85 && missedRoofRatio > 0.10;
+      const moderateUnderTrace = perimeterToMaskRatio < 0.90 && isSolarDerived && missedRoofRatio > 0.08;
+
+      if (severeUnderTrace || moderateUnderTrace) {
+        perimeterInnerTraceDebug.inner_trace_detected = true;
+        const failReason = "perimeter_inner_trace_detected";
+        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL`, JSON.stringify(perimeterInnerTraceDebug));
+        const debugPayload = {
+          ...perimeterInnerTraceDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map((p: any) => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+          visible_roof_bbox_px: visibleRoofBboxPx,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true, report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+      console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
+    }
+
     // 5. Run deterministic topology on the selected footprint.
     let cleanPlanes: RoofPlane[] = [];
     let cleanEdges: RoofEdge[] = [];
