@@ -2342,7 +2342,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const hipCount = classifiedEdges.filter(e => e.classifiedType === 'hip').length;
   console.log(`  DSM classification: ${ridgeCount} ridges, ${valleyCount} valleys, ${hipCount} hips`);
 
-  // ===== STEP 6: Topology-aware edge clustering =====
+  // ===== STEP 5b: BACKBONE NETWORK — Ridge/Valley-first topology (v17) =====
   const rawDsmInteriorEdgesPx = effectiveDSM
     ? classifiedEdges
         .filter((e) => e.source === 'dsm' && (e.classifiedType === 'ridge' || e.classifiedType === 'hip' || e.classifiedType === 'valley'))
@@ -2353,7 +2353,24 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           score: e.score,
         }))
     : [];
-  
+
+  // Build backbone network: ridge/valley chains → assemblies → diagonal suppression
+  let backboneDiag: BackboneDiagnostics | null = null;
+  let backboneFilteredEdgesPx = rawDsmInteriorEdgesPx;
+  if (rawDsmInteriorEdgesPx.length >= 3 && footprintPxCCW.length >= 3) {
+    const backbone = buildBackboneNetwork(rawDsmInteriorEdgesPx, footprintPxCCW);
+    backboneDiag = backbone.diagnostics;
+
+    // Remove suppressed edges — keep only surviving ones
+    const survivingSet = new Set<number>();
+    backbone.constrainedEdges.forEach((be, idx) => {
+      if (be.backboneRole !== 'suppressed') survivingSet.add(idx);
+    });
+    backboneFilteredEdgesPx = rawDsmInteriorEdgesPx.filter((_, idx) => survivingSet.has(idx));
+    console.log(`  [v17 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after diagonal suppression`);
+  }
+
+  // ===== STEP 6: Topology-aware edge clustering =====
   // Compute footprint area in pixel space for oversized-plane prevention
   const footprintAreaPx2 = footprintPx.length >= 3
     ? Math.abs(footprintPx.reduce((sum, p, i) => {
@@ -2362,7 +2379,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       }, 0) / 2)
     : 0;
 
-  const clusterResult = clusterEdges(rawDsmInteriorEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
+  const clusterResult = clusterEdges(backboneFilteredEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
   const clusteredEdgesPx = clusterResult.clustered;
   const clusterDiag = clusterResult.diagnostics;
   edgeCountAfterCluster = clusteredEdgesPx.length;
