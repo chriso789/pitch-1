@@ -101,12 +101,12 @@ export const CLJSearchBar = () => {
 
       const [contactsRes, leadsRes] = await Promise.all([
         contactIds.length
-          ? supabase.from('contacts').select('id, first_name, last_name, address_street').in('id', contactIds)
+          ? supabase.from('contacts').select('id, first_name, last_name, address_street, location_id').in('id', contactIds)
           : Promise.resolve({ data: [] as any[] }),
         leadIds.length
           ? supabase
               .from('pipeline_entries')
-              .select('id, lead_name, contacts(first_name, last_name, address_street)')
+              .select('id, lead_name, location_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, location_id)')
               .in('id', leadIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
@@ -114,28 +114,31 @@ export const CLJSearchBar = () => {
       const contactMap = new Map((contactsRes.data || []).map((c: any) => [c.id, c]));
       const leadMap = new Map((leadsRes.data || []).map((l: any) => [l.id, l]));
 
-      const refreshed = cached.map(r => {
+      const refreshed = cached.flatMap(r => {
         if (r.entity_type === 'contact') {
           const c = contactMap.get(r.entity_id);
-          if (!c) return r;
+          if (!c) return [r];
+          // Drop recents whose entity doesn't belong to the active location.
+          if (locationId && c.location_id && c.location_id !== locationId) return [];
           const name = `${c.first_name || ''} ${c.last_name || ''}`.trim() || r.entity_name;
-          return { ...r, entity_name: name, entity_subtext: c.address_street || r.entity_subtext };
+          return [{ ...r, entity_name: name, entity_subtext: c.address_street || r.entity_subtext }];
         }
         if (r.entity_type === 'lead' || r.entity_type === 'job') {
           const l: any = leadMap.get(r.entity_id);
-          if (!l) return r;
-          // Lead/Project name takes precedence; fall back to contact name.
+          if (!l) return [r];
+          const entityLoc = l.location_id || l.contacts?.location_id;
+          if (locationId && entityLoc && entityLoc !== locationId) return [];
           const contactName = l.contacts
             ? `${l.contacts.first_name || ''} ${l.contacts.last_name || ''}`.trim()
             : '';
           const name = (l.lead_name && l.lead_name.trim()) || contactName || r.entity_name;
-          return {
+          return [{
             ...r,
             entity_name: name,
             entity_subtext: l.contacts?.address_street || r.entity_subtext,
-          };
+          }];
         }
-        return r;
+        return [r];
       });
 
       setRecents(refreshed);
