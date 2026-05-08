@@ -823,37 +823,11 @@ async function processJob(input: any) {
           const unionPoly = rectilinearUnionPolygon(boundsPx);
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
-            // Only boost union if no larger valid OSM/mask candidate exists.
-            // When a bigger building (OSM) with high solar coverage exists, the union
-            // likely describes an outbuilding or partial structure — don't let it win.
-            const bestExistingValid = candidates
-              .filter(c => !c.rejected_reason && c.source !== "google_solar_segments_hull")
-              .sort((a, b) => b.area_sqft - a.area_sqft)[0];
-            const unionIsLargest = !bestExistingValid || unionCand.area_sqft >= bestExistingValid.area_sqft * 0.9;
-            const bestHasHighCoverage = bestExistingValid && (bestExistingValid.coverage_ratio_vs_solar_bbox ?? 0) > 0.8;
-            
-            if (unionIsLargest && !unionCand.rejected_reason) {
-              // Full boost: union is the dominant footprint
-              unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
-              unionCand.validity_score = Math.min(1,
-                unionCand.area_score * 0.30 +
-                unionCand.solar_overlap_score * 0.30 +
-                unionCand.geocode_center_score * 0.30 +
-                unionCand.polygon_shape_score * 0.10 +
-                0.08,
-              );
-            } else if (!unionCand.rejected_reason && !bestHasHighCoverage) {
-              // Moderate boost: union isn't largest but no strong alternative
-              unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.25);
-              unionCand.validity_score = Math.min(1,
-                unionCand.area_score * 0.30 +
-                unionCand.solar_overlap_score * 0.30 +
-                unionCand.geocode_center_score * 0.30 +
-                unionCand.polygon_shape_score * 0.10 +
-                0.02,
-              );
+            // CRITICAL FIX: Solar segment union traces INNER plane geometry, not
+            // the true eave/rake roof perimeter. Store for diagnostics only.
+            if (!unionCand.rejected_reason) {
+              unionCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
             }
-            // else: no boost — a larger candidate with high solar coverage exists
             candidates.push(unionCand);
             solarSegmentsDebug.union_vertices = unionPoly.length;
             solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
