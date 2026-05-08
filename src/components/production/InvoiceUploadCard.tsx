@@ -425,7 +425,17 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                   <TableBody>
                     {lineItems.map((item, idx) => (
                       <TableRow key={idx}>
-                        <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{item.description}</TableCell>
+                        <TableCell className="text-xs py-1.5 max-w-[260px]">
+                          <div className="truncate">{item.description}</div>
+                          {(item.brand || item.color || item.style || item.material_category) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.brand && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.brand}</Badge>}
+                              {item.style && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{item.style}</Badge>}
+                              {item.color && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/40 text-primary">{item.color}</Badge>}
+                              {item.material_category && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">{item.material_category}</Badge>}
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs py-1.5 text-right">{item.quantity ?? '—'}</TableCell>
                         <TableCell className="text-xs py-1.5 text-right">
                           {item.unit_price != null ? `$${item.unit_price.toFixed(2)}` : '—'}
