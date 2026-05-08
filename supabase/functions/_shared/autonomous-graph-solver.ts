@@ -42,6 +42,7 @@ import {
   angleDifference,
 } from "./dsm-utils.ts";
 import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./planar-roof-solver.ts";
+import { buildBackboneNetwork, type BackboneDiagnostics } from "./backbone-network.ts";
 import {
   buildTopologyHierarchy,
   serializeHierarchySummary,
