@@ -18,13 +18,13 @@ const PAGE_PADDING = 24;
 const CONTENT_HEIGHT = PAGE_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - PAGE_PADDING;
 
 // Approximate row height for table items
-const ROW_HEIGHT = 28;
-const TABLE_HEADER_HEIGHT = 28;
-const SECTION_HEADER_HEIGHT = 30;
+const ROW_HEIGHT = 24;
+const TABLE_HEADER_HEIGHT = 24;
+const SECTION_HEADER_HEIGHT = 26;
 
 // Max rows per page (fit more items per page)
-const MAX_ROWS_FIRST_PAGE = 16;
-const MAX_ROWS_CONTINUATION = 22;
+const MAX_ROWS_FIRST_PAGE = 22;
+const MAX_ROWS_CONTINUATION = 30;
 
 interface CompanyInfo {
   name: string;
