@@ -4049,8 +4049,13 @@ async function processJob(input: any) {
     const topoFidelityForPitch = topologyFidelity?.topology_fidelity ?? 'high';
     const fanCollapseForPitch = topologyFidelity?.fan_collapse_suspected ?? false;
     const facetCountForPitch = topologyFidelity?.facet_count ?? planeRows.length;
-    const isBadTopology = topoFidelityForPitch === 'low' || fanCollapseForPitch || facetCountForPitch <= 3;
-    const isNonsensePitch = rawDominantPitch != null && (rawDominantPitch < 1 || rawDominantPitch > 24);
+    const expectedMinFacetsForPitch = topologyFidelity?.expected_min_facets ?? 4;
+    const facetDeficitForPitch = topologyFidelity?.facet_deficit ?? 0;
+    const isBadTopology = topoFidelityForPitch === 'low' || topoFidelityForPitch === 'medium'
+      || fanCollapseForPitch || facetCountForPitch <= 3
+      || (facetDeficitForPitch > 2 && facetCountForPitch < expectedMinFacetsForPitch);
+    // Any pitch below 2/12 on a non-flat residential roof is nonsense from collapsed planes
+    const isNonsensePitch = rawDominantPitch != null && (rawDominantPitch < 2 || rawDominantPitch > 24);
 
     if (isBadTopology || isNonsensePitch) {
       // Try Solar roofSegmentStats pitchDegrees as authoritative source
