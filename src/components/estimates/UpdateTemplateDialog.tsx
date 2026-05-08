@@ -357,9 +357,9 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
                 {items.length === 0 ? (
                   <div className="p-4 text-sm text-muted-foreground text-center">No items to save.</div>
                 ) : (
-                  items.map((it) => (
-                    <div key={it.id} className="p-3 space-y-2">
-                      <div className="flex items-center gap-2">
+                  items.map((it, idx) => (
+                    <div key={idx} className="p-3 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge
                           variant="secondary"
                           className={`text-xs shrink-0 ${
@@ -370,14 +370,19 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
                         </Badge>
                         <Input
                           value={it.item_name}
-                          onChange={(e) => updateItemField(it.id, 'item_name', e.target.value)}
+                          onChange={(e) => updateItemField(idx, 'item_name', e.target.value)}
                           placeholder="Item name (shown to customer)"
-                          className="flex-1 h-8"
+                          className="flex-1 min-w-[200px] h-8"
                         />
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                          {it.quantity != null && <span>Qty {it.quantity}</span>}
+                          {it.unit && <span>· {it.unit}</span>}
+                          {it.unit_cost != null && <span>· ${Number(it.unit_cost).toFixed(2)}</span>}
+                        </div>
                       </div>
                       <Textarea
                         value={it.description}
-                        onChange={(e) => updateItemField(it.id, 'description', e.target.value)}
+                        onChange={(e) => updateItemField(idx, 'description', e.target.value)}
                         placeholder="Description (optional — shown on customer-facing PDFs)"
                         rows={2}
                         className="text-sm"
