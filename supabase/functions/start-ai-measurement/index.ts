@@ -867,13 +867,23 @@ async function processJob(input: any) {
     // before ranking secondary sources like OSM/U-Net/segment hulls.
     let roofMaskForContour: any = null;
     let selectedMaskContourGeo: Array<[number, number]> | null = null;
+    let maskContourDiagnostics: any = null;
     if (GOOGLE_SOLAR_API_KEY) {
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
         roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
         if (roofMaskForContour) {
           const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
+          maskContourDiagnostics = getLastContourDiagnostics();
+          if (maskContourDiagnostics) {
+            console.log("[MASK_CONTOUR_DIAG]", JSON.stringify(maskContourDiagnostics));
+          }
           if (maskContourGeo.length >= 4) {
+            // Check contour coverage — reject if it misses >5% of mask
+            const contourValid = maskContourDiagnostics?.contour_valid !== false;
+            if (!contourValid && maskContourDiagnostics) {
+              console.warn(`[MASK_CONTOUR_UNDERCOVERAGE] Contour misses ${(maskContourDiagnostics.mask_missed_pct * 100).toFixed(1)}% of mask pixels — will still add as candidate but flag`);
+            }
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
             );
