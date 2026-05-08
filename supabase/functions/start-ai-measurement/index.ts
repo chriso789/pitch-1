@@ -5516,11 +5516,20 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
     }
     if (data) {
       const contact = Array.isArray((data as any).contacts) ? (data as any).contacts[0] : (data as any).contacts;
+      const contact_lat = contact?.latitude != null ? Number(contact.latitude) : null;
+      const contact_lng = contact?.longitude != null ? Number(contact.longitude) : null;
+      const verified = contact?.verified_address || null;
+      const verified_lat = verified?.lat != null ? Number(verified.lat) : null;
+      const verified_lng = verified?.lng != null ? Number(verified.lng) : null;
       return {
         id: data.id,
         tenant_id: data.tenant_id,
         company_id: null,
         address: buildContactAddress(contact),
+        contact_lat: Number.isFinite(contact_lat as number) ? contact_lat : null,
+        contact_lng: Number.isFinite(contact_lng as number) ? contact_lng : null,
+        verified_lat: Number.isFinite(verified_lat as number) ? verified_lat : null,
+        verified_lng: Number.isFinite(verified_lng as number) ? verified_lng : null,
       };
     }
   }
@@ -5537,10 +5546,105 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
       const linkedLead = await resolveSourceRecord({ lead_id: (data as any).pipeline_entry_id, project_id: null });
       if (linkedLead) return linkedLead;
     }
-    if (data) return { id: data.id, tenant_id: data.tenant_id, company_id: null, address: null };
+    if (data) return { id: data.id, tenant_id: data.tenant_id, company_id: null, address: null, contact_lat: null, contact_lng: null, verified_lat: null, verified_lng: null };
   }
   return null;
 }
+
+// Build the ranked list of coordinate candidates we will try in order
+// for source acquisition (OSM Overpass, Solar mask, DSM). The first
+// candidate that produces ≥1 OSM building OR a Solar roof mask wins
+// and becomes the rendering center for the rest of the pipeline.
+async function gatherCoordinateCandidates(args: {
+  lead_id: string | null;
+  property_address: string | null;
+  input_lat: number | null;
+  input_lng: number | null;
+}): Promise<Array<{ lat: number; lng: number; source: string; distance_from_input_ft: number | null }>> {
+  const out: Array<{ lat: number; lng: number; source: string }> = [];
+  const seen = new Set<string>();
+  const push = (lat: number | null, lng: number | null, source: string) => {
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ lat, lng, source });
+  };
+
+  // 1. Caller-supplied (lead UI, mobile, etc.)
+  push(args.input_lat, args.input_lng, "request_input");
+
+  // 2. Lead's contact / verified address coordinates
+  if (args.lead_id) {
+    try {
+      const { data } = await supabase
+        .from("pipeline_entries")
+        .select("contacts!pipeline_entries_contact_id_fkey(latitude,longitude,verified_address)")
+        .eq("id", args.lead_id)
+        .maybeSingle();
+      const contact = Array.isArray((data as any)?.contacts) ? (data as any).contacts[0] : (data as any)?.contacts;
+      const v = contact?.verified_address || null;
+      const vLat = v?.lat != null ? Number(v.lat) : null;
+      const vLng = v?.lng != null ? Number(v.lng) : null;
+      push(vLat, vLng, "contact_verified_address");
+      const cLat = contact?.latitude != null ? Number(contact.latitude) : null;
+      const cLng = contact?.longitude != null ? Number(contact.longitude) : null;
+      push(cLat, cLng, "contact_record");
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] contact lookup failed", (e as Error).message);
+    }
+
+    // 3. Most recent successful roof_measurement for the same lead
+    try {
+      const { data: prior } = await supabase
+        .from("roof_measurements")
+        .select("target_lat,target_lng,measurement_status,measurement_id:id")
+        .eq("lead_id", args.lead_id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      for (const row of (prior as any[] | null) || []) {
+        push(row?.target_lat != null ? Number(row.target_lat) : null,
+             row?.target_lng != null ? Number(row.target_lng) : null,
+             "previous_measurement");
+      }
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] previous measurement lookup failed", (e as Error).message);
+    }
+  }
+
+  // 4. Address geocode (Google) — always include even if input was provided,
+  //    so we can detect drift between stored coords and the geocoded address.
+  if (args.property_address) {
+    try {
+      const g = await geocodeAddress(args.property_address);
+      if (g) push(g.lat, g.lng, `geocoded_address_${g.geocode_location_type}`);
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] geocode failed", (e as Error).message);
+    }
+  }
+
+  const inputLat = args.input_lat;
+  const inputLng = args.input_lng;
+  return out.map((c) => ({
+    ...c,
+    distance_from_input_ft: (inputLat != null && inputLng != null && Number.isFinite(inputLat) && Number.isFinite(inputLng))
+      ? Math.round(haversineFt(inputLat, inputLng, c.lat, c.lng))
+      : null,
+  }));
+}
+
+function haversineFt(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c * 3.280839895; // m → ft
+}
+
+
 
 function buildContactAddress(contact: any): string | null {
   const formatted = contact?.verified_address?.formatted_address;
