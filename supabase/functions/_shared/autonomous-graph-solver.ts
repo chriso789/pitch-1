@@ -3730,6 +3730,113 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     warnings.push(`topology_hierarchy_build_failed: ${String(err)}`);
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // v19: CONSTRAINT SOLVER — reverse-solve topology from Solar priors
+  // Runs when autonomous result has poor topology (low facets, no ridges, bad pitch)
+  // ═══════════════════════════════════════════════════════════════
+  let constraintSolverResult: ConstraintSolverResult | undefined;
+  try {
+    const pitchLock = lockPitchFromSolar(input.solarSegments.map(s => ({
+      pitchDegrees: s.pitchDegrees,
+      azimuthDegrees: s.azimuthDegrees,
+      stats: s.stats,
+    })));
+
+    if (pitchLock && input.solarSegments.length >= 2) {
+      // Score autonomous result
+      const autoScore = scoreAutonomousResult(
+        graphFaces.map(f => ({
+          polygon: f.polygon,
+          pitch_degrees: f.pitch_degrees,
+          azimuth_degrees: f.azimuth_degrees,
+          plan_area_sqft: f.plan_area_sqft,
+          roof_area_sqft: f.roof_area_sqft,
+        })),
+        outputEdges.map(e => ({ type: e.type, length_ft: e.length_ft })),
+        {
+          dominant_pitch_deg: pitchLock.pitch_deg,
+          dominant_pitch_rise: pitchLock.pitch_rise,
+          pitch_band: pitchLock.band,
+          segments: input.solarSegments.map((s, i) => ({
+            index: i,
+            pitch_deg: s.pitchDegrees,
+            azimuth_deg: s.azimuthDegrees,
+            area_sqft: (s.stats?.areaMeters2 || 0) * 10.7639,
+            center_px: s.center ? geoToPixel([s.center.longitude, s.center.latitude], effectiveDSM) : null,
+            bbox_px: s.boundingBox ? (() => {
+              const sw = geoToPixel([s.boundingBox.sw.longitude, s.boundingBox.sw.latitude], effectiveDSM);
+              const ne = geoToPixel([s.boundingBox.ne.longitude, s.boundingBox.ne.latitude], effectiveDSM);
+              return { minX: Math.min(sw[0], ne[0]), minY: Math.min(sw[1], ne[1]), maxX: Math.max(sw[0], ne[0]), maxY: Math.max(sw[1], ne[1]) };
+            })() : null,
+          })),
+          segment_adjacency: [],
+          inferred_ridges: [],
+          inferred_valleys: [],
+          expected_facet_count: Math.max(4, input.solarSegments.length),
+          total_pitched_area_sqft: input.solarSegments.reduce((s, seg) => s + (seg.stats?.areaMeters2 || 0) * 10.7639, 0),
+          whole_roof_area_sqft: input.solarSegments.reduce((s, seg) => s + (seg.stats?.areaMeters2 || 0) * 10.7639, 0),
+        },
+        footprintAreaSqft,
+      );
+
+      // Only run constraint solver if autonomous score is poor
+      if (autoScore < 0.60) {
+        const dsmEvidence: DSMEdgeEvidence[] = classifiedEdges
+          .filter(e => e.source === 'dsm' && (e.type === 'ridge' || e.type === 'valley' || e.type === 'hip'))
+          .map(e => ({
+            a: { x: e.start[0], y: e.start[1] },
+            b: { x: e.end[0], y: e.end[1] },
+            type: e.type as 'ridge' | 'valley' | 'hip',
+            score: e.confidence?.final_confidence || 0.5,
+          }));
+
+        const solarPriors: SolarTopologyPrior = {
+          dominant_pitch_deg: pitchLock.pitch_deg,
+          dominant_pitch_rise: pitchLock.pitch_rise,
+          pitch_band: pitchLock.band,
+          segments: input.solarSegments.map((s, i) => ({
+            index: i,
+            pitch_deg: s.pitchDegrees,
+            azimuth_deg: s.azimuthDegrees,
+            area_sqft: (s.stats?.areaMeters2 || 0) * 10.7639,
+            center_px: s.center ? (() => {
+              const px = geoToPixel([s.center!.longitude, s.center!.latitude], effectiveDSM);
+              return { x: px[0], y: px[1] };
+            })() : null,
+            bbox_px: s.boundingBox ? (() => {
+              const sw = geoToPixel([s.boundingBox!.sw.longitude, s.boundingBox!.sw.latitude], effectiveDSM);
+              const ne = geoToPixel([s.boundingBox!.ne.longitude, s.boundingBox!.ne.latitude], effectiveDSM);
+              return { minX: Math.min(sw[0], ne[0]), minY: Math.min(sw[1], ne[1]), maxX: Math.max(sw[0], ne[0]), maxY: Math.max(sw[1], ne[1]) };
+            })() : null,
+          })),
+          segment_adjacency: [],
+          inferred_ridges: [],
+          inferred_valleys: [],
+          expected_facet_count: Math.max(4, input.solarSegments.length),
+          total_pitched_area_sqft: input.solarSegments.reduce((s, seg) => s + (seg.stats?.areaMeters2 || 0) * 10.7639, 0),
+          whole_roof_area_sqft: input.solarSegments.reduce((s, seg) => s + (seg.stats?.areaMeters2 || 0) * 10.7639, 0),
+        };
+
+        const pxToSqft = footprintAreaSqft / polygonAreaPx(footprintPxCCW);
+
+        constraintSolverResult = solveConstraintRoof(
+          footprintPxCCW,
+          solarPriors,
+          dsmEvidence,
+          pxToSqft,
+          autoScore,
+        );
+
+        console.log(`[CONSTRAINT_SOLVER] used=${constraintSolverResult.used} reason=${constraintSolverResult.reason} autoScore=${autoScore.toFixed(3)} constraintScore=${constraintSolverResult.constraint_score.toFixed(3)}`);
+      } else {
+        console.log(`[CONSTRAINT_SOLVER] Skipped — autonomous score ${autoScore.toFixed(3)} >= 0.60 threshold`);
+      }
+    }
+  } catch (err) {
+    console.error(`[CONSTRAINT_SOLVER] Failed:`, err);
+    warnings.push(`constraint_solver_failed: ${String(err)}`);
+  }
+
   return {
     success: validation.valid,
     graph_connected: graphFaces.length >= 2 && coverageRatio >= 0.85,
@@ -3752,7 +3859,6 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       ridge_ft: outRidges.reduce((s, e) => s + e.length_ft, 0),
       hip_ft: outHips.reduce((s, e) => s + e.length_ft, 0),
       valley_ft: outValleys.reduce((s, e) => s + e.length_ft, 0),
-      // Use perimeter Phase 0 eave/rake if available, otherwise solver output
       eave_ft: perimeterGateResult?.passed && perimeterGateResult.diagnostics.eave_length_lf > 0
         ? perimeterGateResult.diagnostics.eave_length_lf
         : outEaves.reduce((s, e) => s + e.length_ft, 0),
@@ -3777,6 +3883,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     perimeter_topology: perimeterTopology,
     perimeter_gate: perimeterGateResult,
     perimeter_diagnostics: perimeterGateResult?.diagnostics,
+    constraint_solver: constraintSolverResult,
   };
 }
 
