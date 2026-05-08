@@ -1783,7 +1783,7 @@ function MeasurementHistorySection({
   const handleSelectAll = () => {
     const allIds = [
       ...vendorReports.map(r => r.id),
-      ...aiMeasurements.filter((m: any) => m.history_kind !== 'job').map(m => m.id)
+      ...aiMeasurements.map(m => m.id)
     ];
     setSelectedIds(new Set(allIds));
   };
