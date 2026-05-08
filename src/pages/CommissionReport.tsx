@@ -62,7 +62,7 @@ export default function CommissionReport() {
   const navigate = useNavigate();
   const { currentLocationId } = useLocationContext();
   const [dateRange, setDateRange] = useState({
-    start: format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd'),
+    start: '2020-01-01',
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
   const [selectedRep, setSelectedRep] = useState<string>('all');
@@ -373,7 +373,7 @@ export default function CommissionReport() {
           <div>
             <h1 className="text-2xl font-bold">Commission Report</h1>
             <p className="text-muted-foreground">
-              All jobs at Project status or beyond — with rep commission calculations
+              All converted jobs (Project status or beyond) — with rep commission calculations
             </p>
           </div>
           <div className="flex gap-2">
