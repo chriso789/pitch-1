@@ -195,8 +195,7 @@ export const MaterialAuditContent = () => {
   }, [materialInvoices, searchTerm]);
 
   return (
-    <GlobalLayout>
-      <div className="p-4 space-y-4">
+    <div className="space-y-4">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
