@@ -350,6 +350,7 @@ const ProductionDetail = () => {
       <Tabs defaultValue="checklist" className="w-full">
         <TabsList>
           <TabsTrigger value="checklist">Production Checklist</TabsTrigger>
+          <TabsTrigger value="orders">Orders & Assignments</TabsTrigger>
           <TabsTrigger value="trades">Trade Boards ({tradeBoards.length})</TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="h-4 w-4 mr-1" />
