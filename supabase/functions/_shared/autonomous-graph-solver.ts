@@ -256,6 +256,8 @@ export interface AutonomousGraphResult {
   perimeter_topology?: PerimeterTopology;
   perimeter_gate?: PerimeterGateResult;
   perimeter_diagnostics?: PerimeterDiagnostics;
+  /** v19: Constraint solver result */
+  constraint_solver?: ConstraintSolverResult;
 }
 
 export interface AutonomousGraphLog {
