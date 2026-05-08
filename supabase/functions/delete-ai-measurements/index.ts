@@ -87,11 +87,13 @@ Deno.serve(async (req) => {
     }
 
     // Look up measurements - they may be under the pipeline entry's tenant OR the user's tenant
-    const { data: measurements, error: measurementsError } = await supabase
-      .from('roof_measurements')
-      .select('id, created_at')
-      .in('id', measurementIds)
-      .eq('customer_id', pipelineEntryId);
+    const { data: measurements, error: measurementsError } = measurementIds.length > 0
+      ? await supabase
+          .from('roof_measurements')
+          .select('id, created_at')
+          .in('id', measurementIds)
+          .eq('customer_id', pipelineEntryId)
+      : { data: [] as any[], error: null };
 
     if (measurementsError) throw measurementsError;
 
@@ -114,68 +116,102 @@ Deno.serve(async (req) => {
         .filter((value): value is string => Boolean(value))
     );
 
-    const { data: approvals, error: approvalsError } = await supabase
-      .from('measurement_approvals')
-      .select('id, measurement_id, saved_tags')
-      .eq('pipeline_entry_id', pipelineEntryId)
-      .eq('tenant_id', tenantId);
-
-    if (approvalsError) throw approvalsError;
-
-    const linkedApprovalIds = (approvals || [])
-      .filter((approval) => {
-        const importedAt = typeof approval.saved_tags === 'object' && approval.saved_tags !== null
-          ? (approval.saved_tags as Record<string, unknown>).imported_at
-          : null;
-
-        return foundMeasurementIds.includes(approval.measurement_id || '') ||
-          (typeof importedAt === 'string' && importedAtValues.has(importedAt));
-      })
-      .map((approval) => approval.id);
-
-    const approvalIdsToUnlink = (approvals || [])
-      .filter((approval) => foundMeasurementIds.includes(approval.measurement_id || ''))
-      .map((approval) => approval.id);
-
-    if (approvalIdsToUnlink.length > 0) {
-      const { error: unlinkApprovalsError } = await supabase
+    let linkedApprovalIds: string[] = [];
+    if (foundMeasurementIds.length > 0) {
+      const { data: approvals, error: approvalsError } = await supabase
         .from('measurement_approvals')
-        .update({ measurement_id: null })
-        .in('id', approvalIdsToUnlink);
+        .select('id, measurement_id, saved_tags')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', tenantId);
 
-      if (unlinkApprovalsError) throw unlinkApprovalsError;
+      if (approvalsError) throw approvalsError;
+
+      linkedApprovalIds = (approvals || [])
+        .filter((approval) => {
+          const importedAt = typeof approval.saved_tags === 'object' && approval.saved_tags !== null
+            ? (approval.saved_tags as Record<string, unknown>).imported_at
+            : null;
+
+          return foundMeasurementIds.includes(approval.measurement_id || '') ||
+            (typeof importedAt === 'string' && importedAtValues.has(importedAt));
+        })
+        .map((approval) => approval.id);
+
+      const approvalIdsToUnlink = (approvals || [])
+        .filter((approval) => foundMeasurementIds.includes(approval.measurement_id || ''))
+        .map((approval) => approval.id);
+
+      if (approvalIdsToUnlink.length > 0) {
+        const { error: unlinkApprovalsError } = await supabase
+          .from('measurement_approvals')
+          .update({ measurement_id: null })
+          .in('id', approvalIdsToUnlink);
+
+        if (unlinkApprovalsError) throw unlinkApprovalsError;
+      }
+
+      const { error: unlinkEstimatesError } = await supabase
+        .from('enhanced_estimates')
+        .update({ measurement_report_id: null })
+        .in('measurement_report_id', foundMeasurementIds);
+
+      if (unlinkEstimatesError) throw unlinkEstimatesError;
+
+      const { error: unlinkValidationError } = await supabase
+        .from('roof_measurement_validation_tests')
+        .update({ measurement_id: null })
+        .in('measurement_id', foundMeasurementIds);
+
+      if (unlinkValidationError) throw unlinkValidationError;
     }
 
-    const { error: unlinkEstimatesError } = await supabase
-      .from('enhanced_estimates')
-      .update({ measurement_report_id: null })
-      .in('measurement_report_id', foundMeasurementIds);
+    let deletedMeasurementIds: string[] = [];
+    if (foundMeasurementIds.length > 0) {
+      const { data: deletedMeasurements, error: deleteMeasurementsError } = await supabase
+        .from('roof_measurements')
+        .delete()
+        .in('id', foundMeasurementIds)
+        .select('id');
 
-    if (unlinkEstimatesError) throw unlinkEstimatesError;
+      if (deleteMeasurementsError) throw deleteMeasurementsError;
+      deletedMeasurementIds = (deletedMeasurements || []).map((m) => m.id);
+      if (deletedMeasurementIds.length !== foundMeasurementIds.length) {
+        return jsonResponse({ success: false, error: 'Some measurements could not be removed from history' }, 500);
+      }
+    }
 
-    const { error: unlinkValidationError } = await supabase
-      .from('roof_measurement_validation_tests')
-      .update({ measurement_id: null })
-      .in('measurement_id', foundMeasurementIds);
+    // ── Delete job-only history rows (raw AI Pull jobs that never produced a roof_measurements row) ──
+    let deletedJobIds: string[] = [];
+    if (jobIds.length > 0) {
+      // Verify the jobs belong to this lead before deleting (defense-in-depth; service key bypasses RLS)
+      const { data: jobsToDelete, error: jobsLookupError } = await supabase
+        .from('ai_measurement_jobs')
+        .select('id')
+        .in('id', jobIds)
+        .or(`lead_id.eq.${pipelineEntryId},source_record_id.eq.${pipelineEntryId}`);
 
-    if (unlinkValidationError) throw unlinkValidationError;
+      if (jobsLookupError) throw jobsLookupError;
 
-    const { data: deletedMeasurements, error: deleteMeasurementsError } = await supabase
-      .from('roof_measurements')
-      .delete()
-      .in('id', foundMeasurementIds)
-      .select('id');
+      const validJobIds = (jobsToDelete || []).map((j) => j.id);
+      if (validJobIds.length > 0) {
+        const { data: deletedJobs, error: deleteJobsError } = await supabase
+          .from('ai_measurement_jobs')
+          .delete()
+          .in('id', validJobIds)
+          .select('id');
 
-    if (deleteMeasurementsError) throw deleteMeasurementsError;
-
-    const deletedMeasurementIds = (deletedMeasurements || []).map((measurement) => measurement.id);
-    if (deletedMeasurementIds.length !== foundMeasurementIds.length) {
-      return jsonResponse({ success: false, error: 'Some measurements could not be removed from history' }, 500);
+        if (deleteJobsError) throw deleteJobsError;
+        deletedJobIds = (deletedJobs || []).map((j) => j.id);
+      }
     }
 
     return jsonResponse({
       success: true,
-      deletedMeasurementIds,
+      deletedMeasurementIds: [
+        ...deletedMeasurementIds,
+        ...deletedJobIds.map((id) => `job-${id}`),
+      ],
+      deletedJobIds,
       linkedApprovalIds,
     });
   } catch (error) {
