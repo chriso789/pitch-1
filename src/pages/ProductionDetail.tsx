@@ -543,6 +543,10 @@ const ProductionDetail = () => {
             <p className="text-sm text-muted-foreground">
               Configure required checklist items for each production stage. These apply to all projects.
             </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=production-checklist')}>
+                <ExternalLink className="h-3 w-3 mr-1" /> Open in Settings
+              </Button>
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
