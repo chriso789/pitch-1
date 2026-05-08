@@ -671,6 +671,22 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                           >
                             {invoice.status}
                           </Badge>
+                          {canDeleteInvoices && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteInvoice(invoice.id)}
+                              disabled={deletingInvoiceId === invoice.id}
+                              title="Delete invoice"
+                            >
+                              {deletingInvoiceId === invoice.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );
