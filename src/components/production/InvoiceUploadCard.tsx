@@ -43,6 +43,12 @@ interface LineItem {
   quantity?: number;
   unit_price?: number;
   line_total?: number;
+  unit_of_measure?: string;
+  sku?: string;
+  brand?: string;
+  color?: string;
+  style?: string;
+  material_category?: string;
 }
 
 interface InvoiceUploadCardProps {
