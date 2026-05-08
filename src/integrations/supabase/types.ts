@@ -28491,6 +28491,74 @@ export type Database = {
           },
         ]
       }
+      production_order_assignments: {
+        Row: {
+          arrival_date: string | null
+          assigned_by: string | null
+          assigned_to_crew: string | null
+          assigned_to_vendor_id: string | null
+          created_at: string
+          description: string | null
+          estimate_id: string | null
+          id: string
+          notes: string | null
+          notify_rep: boolean
+          order_type: string
+          project_id: string
+          scheduled_date: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          arrival_date?: string | null
+          assigned_by?: string | null
+          assigned_to_crew?: string | null
+          assigned_to_vendor_id?: string | null
+          created_at?: string
+          description?: string | null
+          estimate_id?: string | null
+          id?: string
+          notes?: string | null
+          notify_rep?: boolean
+          order_type: string
+          project_id: string
+          scheduled_date?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          arrival_date?: string | null
+          assigned_by?: string | null
+          assigned_to_crew?: string | null
+          assigned_to_vendor_id?: string | null
+          created_at?: string
+          description?: string | null
+          estimate_id?: string | null
+          id?: string
+          notes?: string | null
+          notify_rep?: boolean
+          order_type?: string
+          project_id?: string
+          scheduled_date?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_order_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       production_stage_history: {
         Row: {
           changed_at: string
