@@ -220,6 +220,27 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
   };
 
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!canDeleteInvoices) return;
+    if (!window.confirm('Delete this imported invoice? This cannot be undone.')) return;
+    setDeletingInvoiceId(invoiceId);
+    try {
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .delete()
+        .eq('id', invoiceId);
+      if (error) throw error;
+      toast.success('Invoice deleted');
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
+    } catch (err: any) {
+      console.error('[ProfitCenterPanel] delete invoice failed', err);
+      toast.error(err?.message || 'Failed to delete invoice');
+    } finally {
+      setDeletingInvoiceId(null);
+    }
+  };
+
   const handleStartEditPrice = () => {
     setEditPrice(sellingPrice.toFixed(2));
     setIsEditingPrice(true);
