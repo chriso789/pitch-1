@@ -2220,7 +2220,7 @@ function MeasurementHistorySection({
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                {selectMode && !isJobOnly && (
+                {selectMode && (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleSelection(measurement.id)}
