@@ -795,12 +795,31 @@ function labelConnectedComponents(grid: Uint8Array, w: number, h: number): {
   };
 }
 
+/**
+ * Extract the OUTERMOST contour of the roof mask connected component.
+ * Returns geo [lng, lat] polygon AND diagnostics via the last-call cache.
+ *
+ * Pipeline:
+ * 1. Downsample to workable resolution (max 256px)
+ * 2. Connected-component labeling
+ * 3. Select dominant component near geocode/solar centroid
+ * 4. Fill holes inside the selected component (morphological fill)
+ * 5. Morphological close to bridge small gaps
+ * 6. Trace OUTER boundary using Moore neighborhood tracing (not convex hull)
+ * 7. Simplify with Ramer-Douglas-Peucker
+ * 8. Validate contour coverage vs mask area
+ */
+
+let _lastContourDiagnostics: any = null;
+export function getLastContourDiagnostics(): any { return _lastContourDiagnostics; }
+
 export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeLng?: number): XY[] {
   const { data, width, height, bounds } = mask;
+  _lastContourDiagnostics = null;
   if (!data || width < 4 || height < 4) return [];
 
-  // Downsample to max 128px for speed
-  const maxDim = 128;
+  // ── 1. Downsample to max 256px (keep more detail than 128) ──
+  const maxDim = 256;
   const scale = Math.min(1, maxDim / Math.max(width, height));
   const sw = Math.max(4, Math.round(width * scale));
   const sh = Math.max(4, Math.round(height * scale));
@@ -816,14 +835,15 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     }
   }
 
-  // ── Connected-component isolation ──
-  // Instead of convex-hulling ALL boundary pixels (which merges neighbor roofs,
-  // yards, driveways), find the component closest to the geocode center.
-  const { labels, components } = labelConnectedComponents(grid, sw, sh);
+  // ── 2. Morphological close (dilate then erode) to bridge small gaps ──
+  const closeRadius = Math.max(1, Math.round(2 * scale));
+  const closed = morphClose(grid, sw, sh, closeRadius);
 
+  // ── 3. Connected-component labeling ──
+  const { labels, components } = labelConnectedComponents(closed, sw, sh);
   if (components.length === 0) return [];
 
-  // Geocode center in downsampled-mask pixel space
+  // ── 4. Select dominant component near geocode center ──
   let targetCx = sw / 2;
   let targetCy = sh / 2;
   if (geocodeLat != null && geocodeLng != null) {
@@ -831,8 +851,6 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     targetCy = ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) * sh;
   }
 
-  // Select component: closest to geocode center among those with ≥10% of the
-  // largest component's size (ignore tiny specks).
   const maxSize = Math.max(...components.map(c => c.size));
   const minSize = Math.max(4, maxSize * 0.10);
   const viable = components.filter(c => c.size >= minSize);
@@ -841,61 +859,262 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   let bestDist = Infinity;
   for (const c of viable) {
     const dist = Math.hypot(c.centroidX - targetCx, c.centroidY - targetCy);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestComp = c;
-    }
+    if (dist < bestDist) { bestDist = dist; bestComp = c; }
   }
 
-  console.log(`[DSM_ANALYZER] Mask components: ${components.length} total, ${viable.length} viable (min ${minSize}px²). Selected component #${bestComp.id}: ${bestComp.size}px², centroid=(${bestComp.centroidX.toFixed(0)},${bestComp.centroidY.toFixed(0)}), dist_from_center=${bestDist.toFixed(1)}px`);
+  // ── 5. Fill holes inside selected component ──
+  // Create binary mask of selected component, then flood-fill background from edges.
+  // Anything NOT reached by background flood = interior (fill it).
+  const compMask = new Uint8Array(sw * sh);
+  for (let i = 0; i < sw * sh; i++) {
+    compMask[i] = labels[i] === bestComp.id ? 1 : 0;
+  }
+  const filled = fillHoles(compMask, sw, sh);
+  const filledPixelCount = filled.reduce((s, v) => s + v, 0);
 
-  // Extract boundary pixels for selected component only
-  const boundary: Array<{ x: number; y: number }> = [];
+  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable. Selected #${bestComp.id}: ${bestComp.size}px² → filled: ${filledPixelCount}px²`);
+
+  // ── 6. Trace outer boundary using Moore neighborhood ──
+  const contourPx = traceOuterBoundary(filled, sw, sh);
+  if (contourPx.length < 4) {
+    console.warn("[MASK_CONTOUR] Outer boundary trace returned < 4 points");
+    return [];
+  }
+
+  // ── 7. Simplify with RDP ──
+  const epsilon = Math.max(0.8, sw / 120);
+  const simplified = rdpSimplify(contourPx, epsilon);
+  if (simplified.length < 3) return [];
+
+  // ── 8. Validate: contour must cover the mask well ──
+  // Rasterize contour polygon and compare to filled mask
+  let contourAreaPx = 0;
+  let maskInsideContour = 0;
+  let maskOutsideContour = 0;
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
-      if (labels[y * sw + x] !== bestComp.id) continue;
-      const isEdge =
-        x === 0 || y === 0 || x === sw - 1 || y === sh - 1 ||
-        labels[y * sw + (x - 1)] !== bestComp.id ||
-        labels[y * sw + (x + 1)] !== bestComp.id ||
-        labels[(y - 1) * sw + x] !== bestComp.id ||
-        labels[(y + 1) * sw + x] !== bestComp.id;
-      if (isEdge) boundary.push({ x, y });
+      const inside = pointInPolygonScan({ x, y }, simplified);
+      if (inside) contourAreaPx++;
+      if (filled[y * sw + x] > 0) {
+        if (inside) maskInsideContour++;
+        else maskOutsideContour++;
+      }
     }
   }
+  const maskTotal = maskInsideContour + maskOutsideContour;
+  const maskCoveredPct = maskTotal > 0 ? maskInsideContour / maskTotal : 1;
+  const maskMissedPct = maskTotal > 0 ? maskOutsideContour / maskTotal : 0;
+  const areaRatio = maskTotal > 0 ? contourAreaPx / maskTotal : 1;
 
-  if (boundary.length < 4) return [];
+  _lastContourDiagnostics = {
+    components_total: components.length,
+    viable_components: viable.length,
+    selected_component_id: bestComp.id,
+    selected_component_size_px: bestComp.size,
+    filled_component_size_px: filledPixelCount,
+    holes_filled_px: filledPixelCount - bestComp.size,
+    contour_vertices_raw: contourPx.length,
+    contour_vertices_simplified: simplified.length,
+    contour_area_px: contourAreaPx,
+    mask_total_px: maskTotal,
+    mask_covered_pct: Number(maskCoveredPct.toFixed(3)),
+    mask_missed_pct: Number(maskMissedPct.toFixed(3)),
+    contour_to_mask_area_ratio: Number(areaRatio.toFixed(3)),
+    close_radius: closeRadius,
+    downsample_scale: Number(scale.toFixed(4)),
+    grid_size: { w: sw, h: sh },
+    contour_valid: maskMissedPct < 0.05,
+  };
 
-  // Compute convex hull of SELECTED COMPONENT's boundary
-  const pts = boundary.slice().sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: typeof pts = [];
-  for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  const upper: typeof pts = [];
-  for (let i = pts.length - 1; i >= 0; i--) {
-    const p = pts[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  lower.pop();
-  upper.pop();
-  const hull = lower.concat(upper);
+  console.log(`[MASK_CONTOUR] Validation: covered=${(maskCoveredPct*100).toFixed(1)}%, missed=${(maskMissedPct*100).toFixed(1)}%, area_ratio=${areaRatio.toFixed(3)}, vertices=${simplified.length}`);
 
-  if (hull.length < 3) return [];
-
-  // Convert hull pixels to geo coordinates
-  const geoContour: XY[] = hull.map(p => {
+  // ── 9. Convert to geo coordinates ──
+  const geoContour: XY[] = simplified.map(p => {
     const lng = bounds.minLng + ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
     const lat = bounds.maxLat - ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
     return [lng, lat] as XY;
   });
 
-  console.log(`[DSM_ANALYZER] Mask contour extracted: ${geoContour.length} vertices from ${boundary.length} boundary pixels (component ${bestComp.id} of ${components.length})`);
   return geoContour;
+}
+
+// ── Morphological close: dilate then erode ──
+function morphClose(grid: Uint8Array, w: number, h: number, radius: number): Uint8Array {
+  return morphErode(morphDilate(grid, w, h, radius), w, h, radius);
+}
+
+function morphDilate(grid: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let found = false;
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h && grid[ny * w + nx] > 0) {
+            found = true;
+          }
+        }
+      }
+      if (found) out[y * w + x] = 1;
+    }
+  }
+  return out;
+}
+
+function morphErode(grid: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let allSet = true;
+      for (let dy = -r; dy <= r && allSet; dy++) {
+        for (let dx = -r; dx <= r && allSet; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h || grid[ny * w + nx] === 0) {
+            allSet = false;
+          }
+        }
+      }
+      if (allSet) out[y * w + x] = 1;
+    }
+  }
+  return out;
+}
+
+// ── Fill holes: flood-fill background from border, invert ──
+function fillHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
+  const visited = new Uint8Array(w * h);
+  const queue: number[] = [];
+  // Seed from all border pixels that are background
+  for (let x = 0; x < w; x++) {
+    if (mask[x] === 0 && !visited[x]) { visited[x] = 1; queue.push(x); }
+    const bi = (h - 1) * w + x;
+    if (mask[bi] === 0 && !visited[bi]) { visited[bi] = 1; queue.push(bi); }
+  }
+  for (let y = 0; y < h; y++) {
+    const li = y * w;
+    if (mask[li] === 0 && !visited[li]) { visited[li] = 1; queue.push(li); }
+    const ri = y * w + w - 1;
+    if (mask[ri] === 0 && !visited[ri]) { visited[ri] = 1; queue.push(ri); }
+  }
+  // BFS flood background
+  while (queue.length > 0) {
+    const ci = queue.pop()!;
+    const cx = ci % w, cy = (ci - cx) / w;
+    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]] as const) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (mask[ni] === 0 && !visited[ni]) { visited[ni] = 1; queue.push(ni); }
+    }
+  }
+  // Result: anything that's mask OR interior hole = 1
+  const result = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    result[i] = (mask[i] > 0 || !visited[i]) ? 1 : 0;
+  }
+  return result;
+}
+
+// ── Moore neighborhood boundary tracing ──
+// Returns ordered outer boundary pixels for a binary mask.
+function traceOuterBoundary(mask: Uint8Array, w: number, h: number): Array<{x: number; y: number}> {
+  // Find topmost-leftmost foreground pixel as start
+  let startX = -1, startY = -1;
+  outer: for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (mask[y * w + x] > 0) {
+        startX = x; startY = y;
+        break outer;
+      }
+    }
+  }
+  if (startX < 0) return [];
+
+  // Moore neighborhood: 8-connected directions (clockwise from left)
+  //  5 6 7
+  //  4 . 0
+  //  3 2 1
+  const dx = [1, 1, 0, -1, -1, -1, 0, 1];
+  const dy = [0, 1, 1, 1, 0, -1, -1, -1];
+
+  const boundary: Array<{x: number; y: number}> = [];
+  let cx = startX, cy = startY;
+  let dir = 7; // Start looking from top-left (entering from left)
+  const maxIter = w * h * 4; // Safety limit
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    boundary.push({ x: cx, y: cy });
+
+    // Search for next boundary pixel by rotating clockwise from (dir+5)%8
+    // (backtrack direction + 1)
+    let searchDir = (dir + 5) % 8;
+    let found = false;
+    for (let i = 0; i < 8; i++) {
+      const sd = (searchDir + i) % 8;
+      const nx = cx + dx[sd];
+      const ny = cy + dy[sd];
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && mask[ny * w + nx] > 0) {
+        cx = nx; cy = ny;
+        dir = sd;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) break; // Isolated pixel
+    if (cx === startX && cy === startY) break; // Completed loop
+  }
+
+  // Remove duplicates that might occur at corners
+  const unique: Array<{x: number; y: number}> = [];
+  for (const p of boundary) {
+    if (unique.length === 0 || unique[unique.length - 1].x !== p.x || unique[unique.length - 1].y !== p.y) {
+      unique.push(p);
+    }
+  }
+
+  return unique;
+}
+
+// ── Ramer-Douglas-Peucker line simplification ──
+function rdpSimplify(pts: Array<{x: number; y: number}>, epsilon: number): Array<{x: number; y: number}> {
+  if (pts.length <= 3) return pts;
+
+  // For closed polygons, find the point farthest from first
+  let maxDist = 0, splitIdx = 0;
+  const first = pts[0], last = pts[pts.length - 1];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = perpendicularDist(pts[i], first, last);
+    if (d > maxDist) { maxDist = d; splitIdx = i; }
+  }
+
+  if (maxDist > epsilon) {
+    const left = rdpSimplify(pts.slice(0, splitIdx + 1), epsilon);
+    const right = rdpSimplify(pts.slice(splitIdx), epsilon);
+    return left.slice(0, -1).concat(right);
+  }
+  return [first, last];
+}
+
+function perpendicularDist(p: {x: number; y: number}, a: {x: number; y: number}, b: {x: number; y: number}): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  return Math.abs(dx * (a.y - p.y) - dy * (a.x - p.x)) / Math.sqrt(lenSq);
+}
+
+// ── Point-in-polygon (scanline) for contour validation ──
+function pointInPolygonScan(pt: {x: number; y: number}, poly: Array<{x: number; y: number}>): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 export type { };
