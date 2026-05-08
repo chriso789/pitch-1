@@ -253,29 +253,46 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('submit-project-invoice', {
-        body: {
-          project_id: projectId || null,
-          pipeline_entry_id: pipelineEntryId || null,
-          change_order_id: changeOrderId || null,
-          invoice_type: invoiceType,
-          ...formData,
-          invoice_amount: parseFloat(formData.invoice_amount),
-          subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
-          tax_amount: formData.tax_amount ? parseFloat(formData.tax_amount) : null,
-        }
-      });
+      const submit = async (allow_duplicate: boolean) => {
+        return supabase.functions.invoke('submit-project-invoice', {
+          body: {
+            project_id: projectId || null,
+            pipeline_entry_id: pipelineEntryId || null,
+            change_order_id: changeOrderId || null,
+            invoice_type: invoiceType,
+            ...formData,
+            invoice_amount: parseFloat(formData.invoice_amount),
+            subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
+            tax_amount: formData.tax_amount ? parseFloat(formData.tax_amount) : null,
+            line_items: lineItems,
+            allow_duplicate,
+          }
+        });
+      };
 
+      let { data, error } = await submit(false);
       if (error) throw error;
 
-      const typeLabels = {
-        material: 'Material',
-        labor: 'Labor',
-        overhead: 'Overhead'
-      };
+      if (data?.duplicate) {
+        const dup = data.duplicate_invoice;
+        const proceed = window.confirm(
+          `Duplicate invoice detected from ${formData.vendor_name || 'this vendor'}` +
+          (formData.invoice_number ? ` (#${formData.invoice_number})` : '') +
+          `.\n\nExisting amount: $${dup?.invoice_amount ?? '?'} on ${dup?.invoice_date ?? 'unknown date'}.\n\nSave this one anyway?`
+        );
+        if (!proceed) {
+          toast({ title: 'Duplicate skipped', description: 'Invoice was not saved.' });
+          setLoading(false);
+          return;
+        }
+        ({ data, error } = await submit(true));
+        if (error) throw error;
+      }
+
+      const typeLabels = { material: 'Material', labor: 'Labor', overhead: 'Overhead' };
       toast({
         title: 'Invoice Submitted',
-        description: `${typeLabels[invoiceType]} invoice recorded successfully`
+        description: `${typeLabels[invoiceType]} invoice recorded successfully${data?.invoice?.duplicate_of ? ' (flagged as duplicate)' : ''}`
       });
 
       // Reset form
