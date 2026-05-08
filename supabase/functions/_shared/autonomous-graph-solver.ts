@@ -3352,8 +3352,8 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   }
   maxEndpointDistanceOutsideFootprintPx = Math.round(maxEndpointDistanceOutsideFootprintPx * 100) / 100;
 
-  const totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
-  const totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
+  let totalRoofArea = graphFaces.reduce((s, f) => s + f.roof_area_sqft, 0);
+  let totalPlanArea = graphFaces.reduce((s, f) => s + f.plan_area_sqft, 0);
   const attemptedAreaTotal = planar.faces.reduce((s: number, face: unknown) => {
     const f = face as { polygon: Array<{ x: number; y: number }> };
     const polygon = effectiveDSM ? f.polygon.map((p) => pxToGeoPoint(p, effectiveDSM)) : [];
