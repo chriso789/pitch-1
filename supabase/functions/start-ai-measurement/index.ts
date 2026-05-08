@@ -276,6 +276,117 @@ async function processJob(input: any) {
     const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
 
 
+    // ══════════ PERIMETER INNER-TRACE DETECTION GATE ══════════
+    // Detect when the selected footprint traces INNER solar/plane geometry
+    // instead of the true eave/rake roof perimeter. If the footprint area
+    // is significantly smaller than the roof mask, the perimeter is under-tracing.
+    let perimeterInnerTraceDebug: any = { checked: false };
+    if (visibleRoofMaskPxGrid && visibleRoofBboxPx && footprint.length >= 3) {
+      // Compute roof mask total area in pixels
+      let roofMaskTotalPx = 0;
+      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
+        if (visibleRoofMaskPxGrid[i] > 0) roofMaskTotalPx++;
+      }
+      const roofMaskAreaSqft = roofMaskTotalPx * sqftPerPx2;
+      const perimeterToMaskRatio = roofMaskAreaSqft > 0 ? footprintAreaSqftVal / roofMaskAreaSqft : 1;
+
+      // Check if footprint is fully inside the mask with significant missed area
+      let footprintInsideMaskPx = 0;
+      let footprintTotalPx = 0;
+      const fpBbox = bboxOf(footprint);
+      if (fpBbox) {
+        const scanMinY = Math.max(0, Math.floor(fpBbox.minY));
+        const scanMaxY = Math.min(raster.height - 1, Math.ceil(fpBbox.maxY));
+        for (let y = scanMinY; y <= scanMaxY; y++) {
+          const intersections: number[] = [];
+          for (let i = 0; i < footprint.length; i++) {
+            const j = (i + 1) % footprint.length;
+            const yi = footprint[i].y, yj = footprint[j].y;
+            if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
+              const t = (y - yi) / (yj - yi);
+              intersections.push(footprint[i].x + t * (footprint[j].x - footprint[i].x));
+            }
+          }
+          intersections.sort((a, b) => a - b);
+          for (let k = 0; k < intersections.length - 1; k += 2) {
+            const x0 = Math.max(0, Math.round(intersections[k]));
+            const x1 = Math.min(raster.width - 1, Math.round(intersections[k + 1]));
+            for (let x = x0; x <= x1; x++) {
+              footprintTotalPx++;
+              if (visibleRoofMaskPxGrid[y * raster.width + x] > 0) {
+                footprintInsideMaskPx++;
+              }
+            }
+          }
+        }
+      }
+      const footprintMaskOverlapRatio = footprintTotalPx > 0 ? footprintInsideMaskPx / footprintTotalPx : 0;
+
+      // Compute missed roof region area (mask pixels outside footprint)
+      let missedRoofPx = 0;
+      if (fpBbox && visibleRoofBboxPx) {
+        const scanMinY2 = Math.max(0, Math.floor(Math.min(fpBbox.minY, visibleRoofBboxPx.minY)));
+        const scanMaxY2 = Math.min(raster.height - 1, Math.ceil(Math.max(fpBbox.maxY, visibleRoofBboxPx.maxY)));
+        for (let y = scanMinY2; y <= scanMaxY2; y++) {
+          const scanMinX2 = Math.max(0, Math.floor(Math.min(fpBbox.minX, visibleRoofBboxPx.minX)));
+          const scanMaxX2 = Math.min(raster.width - 1, Math.ceil(Math.max(fpBbox.maxX, visibleRoofBboxPx.maxX)));
+          for (let x = scanMinX2; x <= scanMaxX2; x++) {
+            if (visibleRoofMaskPxGrid[y * raster.width + x] > 0 && !pointInPolygon({ x, y }, footprint)) {
+              missedRoofPx++;
+            }
+          }
+        }
+      }
+      const missedRoofAreaSqft = missedRoofPx * sqftPerPx2;
+      const missedRoofRatio = roofMaskTotalPx > 0 ? missedRoofPx / roofMaskTotalPx : 0;
+
+      perimeterInnerTraceDebug = {
+        checked: true,
+        roof_mask_area_sqft: Math.round(roofMaskAreaSqft),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        perimeter_to_mask_ratio: Number(perimeterToMaskRatio.toFixed(3)),
+        footprint_mask_overlap_ratio: Number(footprintMaskOverlapRatio.toFixed(3)),
+        missed_roof_area_sqft: Math.round(missedRoofAreaSqft),
+        missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
+        footprint_source: footprintSource,
+        inner_trace_detected: false,
+      };
+
+      // HARD GATE: if selected perimeter area < 85% of roof mask area AND
+      // the perimeter source is a solar-derived candidate, it's tracing inner geometry.
+      // Use 85% threshold (not 95%) to allow for mask overestimation / overhang.
+      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
+      const severeUnderTrace = perimeterToMaskRatio < 0.85 && missedRoofRatio > 0.10;
+      const moderateUnderTrace = perimeterToMaskRatio < 0.90 && isSolarDerived && missedRoofRatio > 0.08;
+
+      if (severeUnderTrace || moderateUnderTrace) {
+        perimeterInnerTraceDebug.inner_trace_detected = true;
+        const failReason = "perimeter_inner_trace_detected";
+        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL: perimeter traces inner area, not outer roof boundary`, JSON.stringify(perimeterInnerTraceDebug));
+
+        const debugPayload = {
+          ...perimeterInnerTraceDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map(p => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: raster.width, height: raster.height },
+          candidates_tried: candidates.length,
+          visible_roof_bbox_px: visibleRoofBboxPx,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter traces inner geometry: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter traces inner geometry: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
+      console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
+    }
+
 
     // ───────── GEOMETRY-FIRST PIPELINE ─────────
     // U-Net is OPTIONAL. Solar bbox is allowed as a CANDIDATE footprint
