@@ -43,6 +43,7 @@ import {
 } from "./dsm-utils.ts";
 import { solveRoofPlanes as planarSolveRoofPlanes, type InteriorLine } from "./planar-roof-solver.ts";
 import { buildBackboneNetwork, type BackboneDiagnostics } from "./backbone-network.ts";
+import { solveConstraintRoof, scoreAutonomousResult, lockPitchFromSolar, type SolarTopologyPrior, type DSMEdgeEvidence, type ConstraintSolverResult } from "./constraint-roof-solver.ts";
 import {
   buildTopologyHierarchy,
   serializeHierarchySummary,
