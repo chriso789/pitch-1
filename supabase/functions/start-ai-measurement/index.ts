@@ -248,13 +248,121 @@ async function processJob(input: any) {
     await setMeasurementJobStatus(input.measurement_job_id, "processing", "Resolving location");
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Resolving location");
 
-    const coords = (input.latitude != null && input.longitude != null)
+    // ──────────── ACQUISITION COORDINATE AUDIT (pre-flight) ────────────
+    // Persist every coordinate we know about for this property before we
+    // commit to a tile center. This makes acquisition failures debuggable
+    // without re-running the job.
+    const acquisitionAudit: any = {
+      job_address: input.property_address || null,
+      property_address: input.property_address || null,
+      request_input_lat_lng: (input.latitude != null && input.longitude != null)
+        ? { lat: Number(input.latitude), lng: Number(input.longitude) } : null,
+      coord_candidates: [] as any[],
+      selected_measurement_lat_lng: null as any,
+      lat_lng_source: null as string | null,
+      tile_center_lat_lng: null as any,
+      distance_between_address_geocode_and_tile_center_ft: null as number | null,
+      overpass_attempts: [] as any[],
+      tile_size_decision: null as any,
+    };
+
+    const coordCandidates = await gatherCoordinateCandidates({
+      lead_id: input.lead_id || null,
+      property_address: input.property_address || null,
+      input_lat: input.latitude != null ? Number(input.latitude) : null,
+      input_lng: input.longitude != null ? Number(input.longitude) : null,
+    });
+    acquisitionAudit.coord_candidates = coordCandidates;
+
+    // Geocode the address as the canonical reference point (used to compute drift)
+    const geocoded = input.property_address ? await geocodeAddress(input.property_address) : null;
+    acquisitionAudit.geocoded_lat_lng = geocoded ? { lat: geocoded.lat, lng: geocoded.lng, type: geocoded.geocode_location_type } : null;
+
+    // Initial coords selection: prefer caller input, otherwise first candidate.
+    let coords: any = (input.latitude != null && input.longitude != null)
       ? { lat: Number(input.latitude), lng: Number(input.longitude), geocode_location_type: "STORED" }
-      : await geocodeAddress(input.property_address);
+      : (geocoded || (coordCandidates[0] ? { lat: coordCandidates[0].lat, lng: coordCandidates[0].lng, geocode_location_type: "FALLBACK" } : null));
 
     if (!coords) throw new Error("Unable to geocode property address.");
+    acquisitionAudit.selected_measurement_lat_lng = { lat: coords.lat, lng: coords.lng };
+    acquisitionAudit.lat_lng_source = (input.latitude != null && input.longitude != null) ? "request_input" : (geocoded ? "address_geocode" : "fallback_first_candidate");
 
-    const logicalMpp = metersPerPixel(coords.lat, Number(input.zoom));
+    // ──────────── PRE-FLIGHT OSM ACQUISITION (multi-coord, multi-radius) ────────────
+    // The Overpass API is the cheapest, most stable source of a building polygon.
+    // Try every coord candidate in order until at least one returns a building.
+    // Failures are non-fatal — we still try Solar mask + DSM downstream — but they
+    // tell us early whether this is an acquisition issue vs. a geometry issue.
+    let preflightOSMHit = false;
+    for (const cand of [{ lat: coords.lat, lng: coords.lng, source: acquisitionAudit.lat_lng_source }, ...coordCandidates]) {
+      const res = await fetchOSMBuildingCandidates(cand.lat, cand.lng, { radii: [50, 100, 150] });
+      acquisitionAudit.overpass_attempts.push({
+        coord_source: (cand as any).source || "request_input",
+        lat: cand.lat,
+        lng: cand.lng,
+        attempts: res.attempts || [],
+        total_candidates: res.candidates.length,
+        nearest_id: res.candidates[0]?.osmId || null,
+        nearest_distance_m: res.candidates[0]?.distanceFromPointM != null
+          ? Number(res.candidates[0].distanceFromPointM.toFixed(1)) : null,
+      });
+      if (res.candidates.length > 0) {
+        preflightOSMHit = true;
+        // If the original tile center returned nothing but a fallback coord did,
+        // promote that fallback to the working tile center for the rest of the run.
+        if ((cand as any).source && (cand as any).source !== acquisitionAudit.lat_lng_source) {
+          coords = { lat: cand.lat, lng: cand.lng, geocode_location_type: `FALLBACK_${(cand as any).source}` };
+          acquisitionAudit.selected_measurement_lat_lng = { lat: coords.lat, lng: coords.lng };
+          acquisitionAudit.lat_lng_source = (cand as any).source;
+          console.log(`[ACQUISITION_FALLBACK_COORD] Promoted ${(cand as any).source} after primary returned 0 buildings`);
+        }
+        break;
+      }
+    }
+    acquisitionAudit.preflight_osm_hit = preflightOSMHit;
+    acquisitionAudit.tile_center_lat_lng = { lat: coords.lat, lng: coords.lng };
+    if (geocoded) {
+      acquisitionAudit.distance_between_address_geocode_and_tile_center_ft = Math.round(
+        haversineFt(geocoded.lat, geocoded.lng, coords.lat, coords.lng)
+      );
+    }
+
+    // ──────────── TILE-SIZE SANITY ────────────
+    // At zoom 21 a 1280×1280 actual tile is ~42m × 42m at this latitude,
+    // which is too tight for OSM/Solar mask projection. Step zoom down
+    // until the acquisition window is at least 100m on each side.
+    const MIN_ACQUISITION_WINDOW_M = 100;
+    let effectiveZoom = Number(input.zoom);
+    const computeTileM = (z: number) => {
+      const mpp = metersPerPixel(coords.lat, z) / Number(input.raster_scale);
+      return Number(input.logical_image_width) * Number(input.raster_scale) * mpp;
+    };
+    let originalTileM = computeTileM(effectiveZoom);
+    while (computeTileM(effectiveZoom) < MIN_ACQUISITION_WINDOW_M && effectiveZoom > 18) {
+      effectiveZoom -= 1;
+    }
+    const finalTileM = computeTileM(effectiveZoom);
+    acquisitionAudit.tile_size_decision = {
+      requested_zoom: Number(input.zoom),
+      effective_zoom: effectiveZoom,
+      requested_tile_m: Number(originalTileM.toFixed(1)),
+      effective_tile_m: Number(finalTileM.toFixed(1)),
+      min_acquisition_window_m: MIN_ACQUISITION_WINDOW_M,
+      adjusted: effectiveZoom !== Number(input.zoom),
+    };
+    if (effectiveZoom !== Number(input.zoom)) {
+      console.log(`[ACQUISITION_TILE_RESIZE] Zoom ${input.zoom} → ${effectiveZoom} (tile ${originalTileM.toFixed(0)}m → ${finalTileM.toFixed(0)}m)`);
+    }
+
+    // Persist the audit early so it survives any downstream failure.
+    try {
+      await supabase.from("ai_measurement_jobs").update({
+        source_context: { acquisition_audit: acquisitionAudit },
+      }).eq("id", input.ai_measurement_job_id);
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] persist failed", (e as Error).message);
+    }
+
+    const logicalMpp = metersPerPixel(coords.lat, effectiveZoom);
     const actualMpp = logicalMpp / Number(input.raster_scale);
     const actualFpp = actualMpp * 3.280839895;
 
@@ -266,7 +374,7 @@ async function processJob(input: any) {
     const imageryResult = await fetchAerialImagery({
       lng: coords.lng,
       lat: coords.lat,
-      zoom: Number(input.zoom),
+      zoom: effectiveZoom,
       width: Number(input.logical_image_width),
       height: Number(input.logical_image_height),
     });
@@ -274,6 +382,8 @@ async function processJob(input: any) {
     const imageryProvider = imageryResult.provider;
     const imageryDecisionLog = imageryResult.decisionLog;
     const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
+
+
 
 
     // (Perimeter inner-trace detection gate runs AFTER footprint selection below)
@@ -1516,8 +1626,14 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if footprint source is unknown, do NOT call solveAutonomousGraph.
       if (footprintSource === "none" || footprintSource === "unknown") {
-        const failReason = "missing_valid_footprint";
-        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} — blocking solver`);
+        // Distinguish acquisition failure (no source data acquired at all)
+        // from geometry failure (sources fetched but rejected by validators).
+        const noOSM = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+        const noMask = !roofMaskForContour;
+        const noDSM = !dsmGrid && !maskedDSM;
+        const acquisitionFailed = noOSM && noMask && noDSM;
+        const failReason = acquisitionFailed ? "source_acquisition_failed" : "missing_valid_footprint";
+        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} reason=${failReason}`);
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -1529,14 +1645,25 @@ async function processJob(input: any) {
           coordinate_space_match: false,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
           hard_fail_reason: failReason,
+          acquisition_failure: acquisitionFailed ? {
+            no_osm_candidates: noOSM,
+            no_solar_mask: noMask,
+            no_dsm: noDSM,
+            candidates_tried: candidates.length,
+            audit: acquisitionAudit,
+          } : null,
           footprint_px: footprint.map(p => [p.x, p.y]),
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },
         };
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
-        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", acquisitionFailed ? "Source acquisition failed — OSM, Solar mask, and DSM all empty" : `Footprint validation failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", acquisitionFailed ? "Source acquisition failed" : `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+        }).eq("id", input.ai_measurement_job_id);
         return;
       }
 
@@ -5516,11 +5643,20 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
     }
     if (data) {
       const contact = Array.isArray((data as any).contacts) ? (data as any).contacts[0] : (data as any).contacts;
+      const contact_lat = contact?.latitude != null ? Number(contact.latitude) : null;
+      const contact_lng = contact?.longitude != null ? Number(contact.longitude) : null;
+      const verified = contact?.verified_address || null;
+      const verified_lat = verified?.lat != null ? Number(verified.lat) : null;
+      const verified_lng = verified?.lng != null ? Number(verified.lng) : null;
       return {
         id: data.id,
         tenant_id: data.tenant_id,
         company_id: null,
         address: buildContactAddress(contact),
+        contact_lat: Number.isFinite(contact_lat as number) ? contact_lat : null,
+        contact_lng: Number.isFinite(contact_lng as number) ? contact_lng : null,
+        verified_lat: Number.isFinite(verified_lat as number) ? verified_lat : null,
+        verified_lng: Number.isFinite(verified_lng as number) ? verified_lng : null,
       };
     }
   }
@@ -5537,10 +5673,105 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
       const linkedLead = await resolveSourceRecord({ lead_id: (data as any).pipeline_entry_id, project_id: null });
       if (linkedLead) return linkedLead;
     }
-    if (data) return { id: data.id, tenant_id: data.tenant_id, company_id: null, address: null };
+    if (data) return { id: data.id, tenant_id: data.tenant_id, company_id: null, address: null, contact_lat: null, contact_lng: null, verified_lat: null, verified_lng: null };
   }
   return null;
 }
+
+// Build the ranked list of coordinate candidates we will try in order
+// for source acquisition (OSM Overpass, Solar mask, DSM). The first
+// candidate that produces ≥1 OSM building OR a Solar roof mask wins
+// and becomes the rendering center for the rest of the pipeline.
+async function gatherCoordinateCandidates(args: {
+  lead_id: string | null;
+  property_address: string | null;
+  input_lat: number | null;
+  input_lng: number | null;
+}): Promise<Array<{ lat: number; lng: number; source: string; distance_from_input_ft: number | null }>> {
+  const out: Array<{ lat: number; lng: number; source: string }> = [];
+  const seen = new Set<string>();
+  const push = (lat: number | null, lng: number | null, source: string) => {
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ lat, lng, source });
+  };
+
+  // 1. Caller-supplied (lead UI, mobile, etc.)
+  push(args.input_lat, args.input_lng, "request_input");
+
+  // 2. Lead's contact / verified address coordinates
+  if (args.lead_id) {
+    try {
+      const { data } = await supabase
+        .from("pipeline_entries")
+        .select("contacts!pipeline_entries_contact_id_fkey(latitude,longitude,verified_address)")
+        .eq("id", args.lead_id)
+        .maybeSingle();
+      const contact = Array.isArray((data as any)?.contacts) ? (data as any).contacts[0] : (data as any)?.contacts;
+      const v = contact?.verified_address || null;
+      const vLat = v?.lat != null ? Number(v.lat) : null;
+      const vLng = v?.lng != null ? Number(v.lng) : null;
+      push(vLat, vLng, "contact_verified_address");
+      const cLat = contact?.latitude != null ? Number(contact.latitude) : null;
+      const cLng = contact?.longitude != null ? Number(contact.longitude) : null;
+      push(cLat, cLng, "contact_record");
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] contact lookup failed", (e as Error).message);
+    }
+
+    // 3. Most recent successful roof_measurement for the same lead
+    try {
+      const { data: prior } = await supabase
+        .from("roof_measurements")
+        .select("target_lat,target_lng,measurement_status,measurement_id:id")
+        .eq("lead_id", args.lead_id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      for (const row of (prior as any[] | null) || []) {
+        push(row?.target_lat != null ? Number(row.target_lat) : null,
+             row?.target_lng != null ? Number(row.target_lng) : null,
+             "previous_measurement");
+      }
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] previous measurement lookup failed", (e as Error).message);
+    }
+  }
+
+  // 4. Address geocode (Google) — always include even if input was provided,
+  //    so we can detect drift between stored coords and the geocoded address.
+  if (args.property_address) {
+    try {
+      const g = await geocodeAddress(args.property_address);
+      if (g) push(g.lat, g.lng, `geocoded_address_${g.geocode_location_type}`);
+    } catch (e) {
+      console.warn("[ACQUISITION_AUDIT] geocode failed", (e as Error).message);
+    }
+  }
+
+  const inputLat = args.input_lat;
+  const inputLng = args.input_lng;
+  return out.map((c) => ({
+    ...c,
+    distance_from_input_ft: (inputLat != null && inputLng != null && Number.isFinite(inputLat) && Number.isFinite(inputLng))
+      ? Math.round(haversineFt(inputLat, inputLng, c.lat, c.lng))
+      : null,
+  }));
+}
+
+function haversineFt(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c * 3.280839895; // m → ft
+}
+
+
 
 function buildContactAddress(contact: any): string | null {
   const formatted = contact?.verified_address?.formatted_address;
