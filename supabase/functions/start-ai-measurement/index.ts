@@ -1399,6 +1399,7 @@ async function processJob(input: any) {
         missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
         footprint_source: footprintSource,
         inner_trace_detected: false,
+        mask_contour_diagnostics: maskContourDiagnostics || null,
       };
 
       // HARD GATE: perimeter under-traces the roof
