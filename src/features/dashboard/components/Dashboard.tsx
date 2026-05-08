@@ -19,6 +19,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { useLocation } from "@/contexts/LocationContext";
 import { DashboardAIAssistant } from "./DashboardAIAssistant";
+import DashboardCalendar from "./DashboardCalendar";
 import { cn } from "@/lib/utils";
 import { 
   DollarSign, 
