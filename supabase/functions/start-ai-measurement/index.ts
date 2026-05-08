@@ -1750,6 +1750,17 @@ async function processJob(input: any) {
       // ═══════════════════════════════════════════════════════════════
       topologyFidelity = analyzeTopologyFidelity(graph, footprintAreaSqftVal);
       autonomousDebug.topology_fidelity = topologyFidelity;
+      // v19: Constraint solver diagnostics
+      if (graph.constraint_solver) {
+        autonomousDebug.constraint_solver = {
+          used: graph.constraint_solver.used,
+          autonomous_score: graph.constraint_solver.autonomous_score,
+          constraint_score: graph.constraint_solver.constraint_score,
+          reason: graph.constraint_solver.reason,
+          candidates_evaluated: graph.constraint_solver.candidates_evaluated,
+          diagnostics: graph.constraint_solver.diagnostics,
+        };
+      }
       console.log("[TOPOLOGY_FIDELITY]", JSON.stringify({
         fidelity: topologyFidelity.topology_fidelity,
         score: topologyFidelity.topology_fidelity_score,
