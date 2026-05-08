@@ -4136,6 +4136,35 @@ async function processJob(input: any) {
     });
 
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+
+    // ══════════ PITCH CORRECTION — prevent nonsense pitch from collapsed topology ══════════
+    // If topology fidelity is low or faces ≤ 3 with collapsed structure,
+    // the DSM plane-fit pitch is unreliable (e.g. 0.11/12). Use Solar pitchDegrees instead.
+    let pitchSource = "dsm_plane_fit";
+    let pitchValid = true;
+    const rawDominantPitch = totals.dominant_pitch;
+    const topoFidelityForPitch = topologyFidelity?.topology_fidelity ?? 'high';
+    const fanCollapseForPitch = topologyFidelity?.fan_collapse_suspected ?? false;
+    const facetCountForPitch = topologyFidelity?.facet_count ?? planeRows.length;
+    const isBadTopology = topoFidelityForPitch === 'low' || fanCollapseForPitch || facetCountForPitch <= 3;
+    const isNonsensePitch = rawDominantPitch != null && (rawDominantPitch < 1 || rawDominantPitch > 24);
+
+    if (isBadTopology || isNonsensePitch) {
+      // Try Solar roofSegmentStats pitchDegrees as authoritative source
+      const solarPitchRise = dominantSolarPitchRise(solarData);
+      if (solarPitchRise != null && solarPitchRise >= 1 && solarPitchRise <= 24) {
+        totals.dominant_pitch = solarPitchRise;
+        pitchSource = "google_solar_roofSegmentStats";
+        console.log(`[PITCH_CORRECTION] Overrode DSM pitch ${rawDominantPitch}/12 with Solar ${solarPitchRise}/12 (bad topology: fidelity=${topoFidelityForPitch}, fan_collapse=${fanCollapseForPitch}, facets=${facetCountForPitch})`);
+      } else {
+        // No valid Solar pitch — set to null (unavailable)
+        totals.dominant_pitch = null;
+        pitchSource = "unavailable";
+        pitchValid = false;
+        console.log(`[PITCH_CORRECTION] Set pitch to unavailable — no valid source (DSM=${rawDominantPitch}/12, Solar=${solarPitchRise}, topology=${topoFidelityForPitch})`);
+      }
+    }
+
     const legacyHardFailReason = topologySource !== REQUIRED_TOPOLOGY_SOURCE ? "legacy_topology_blocked" : null;
     if (legacyHardFailReason) {
       const failedDebug = {
