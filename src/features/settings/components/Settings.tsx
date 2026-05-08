@@ -67,6 +67,7 @@ import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings
 import { InventoryManager } from "@/components/inventory/InventoryManager";
 
 import ZelleSettings from "@/components/settings/ZelleSettings";
+import { ProductionChecklistSettings } from "@/components/settings/ProductionChecklistSettings";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
 
 interface SettingsTab {
