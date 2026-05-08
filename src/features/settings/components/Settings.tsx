@@ -70,6 +70,7 @@ import ZelleSettings from "@/components/settings/ZelleSettings";
 import { ProductionChecklistSettings } from "@/components/settings/ProductionChecklistSettings";
 import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
+import { MyMoneyContent } from "@/pages/MyMoney";
 
 interface SettingsTab {
   id: string;
@@ -470,6 +471,8 @@ export const Settings = () => {
         return <ProductionChecklistSettings />;
       case "material-audit":
         return <MaterialAuditContent />;
+      case "my-money":
+        return <MyMoneyContent />;
       case "demo-requests":
         return <DemoRequestsPanel />;
       case "email":

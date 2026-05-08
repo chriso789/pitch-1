@@ -9,7 +9,7 @@ import { formatCurrency } from '@/lib/commission-calculator';
 import { Wallet, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-export default function MyMoney() {
+export function MyMoneyContent() {
   const navigate = useNavigate();
 
   // Get current user
@@ -127,8 +127,7 @@ export default function MyMoney() {
   const totalContract = myCommissions.reduce((sum, c) => sum + c.contractValue, 0);
 
   return (
-    <GlobalLayout>
-      <div className="p-4 md:p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -225,6 +224,15 @@ export default function MyMoney() {
             )}
           </CardContent>
         </Card>
+      </div>
+  );
+}
+
+export default function MyMoney() {
+  return (
+    <GlobalLayout>
+      <div className="p-4 md:p-6">
+        <MyMoneyContent />
       </div>
     </GlobalLayout>
   );

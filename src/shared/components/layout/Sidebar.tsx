@@ -38,8 +38,7 @@ import {
   Mic,
   ClipboardCheck,
   Search,
-  Truck,
-  Wallet
+  Truck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -260,14 +259,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: Target,
       description: "Production workflow",
       featureKey: "production"
-    },
-    
-    {
-      name: "My Money",
-      href: "my-money",
-      path: "/my-money",
-      icon: Wallet,
-      description: "Track commissions & draws",
     },
     {
       name: "Accounts Receivable",
