@@ -68,6 +68,7 @@ import { InventoryManager } from "@/components/inventory/InventoryManager";
 
 import ZelleSettings from "@/components/settings/ZelleSettings";
 import { ProductionChecklistSettings } from "@/components/settings/ProductionChecklistSettings";
+import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
 
 interface SettingsTab {
