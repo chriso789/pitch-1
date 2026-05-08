@@ -17,8 +17,9 @@ import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, CheckCircle, Circle, Plus, Trash2, Edit2, Save,
   FileText, Clock, Package, Wrench, Trophy, Search, Archive,
-  Settings, Filter, AlertTriangle, ChevronRight
+  Settings, Filter, AlertTriangle, ChevronRight, ExternalLink
 } from 'lucide-react';
+import { OrderAssignmentsPanel } from '@/components/production/OrderAssignmentsPanel';
 import { cn } from '@/lib/utils';
 
 const STAGE_CONFIG = [
