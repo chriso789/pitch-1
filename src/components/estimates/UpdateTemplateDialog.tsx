@@ -243,7 +243,7 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Save Line Items to Template</DialogTitle>
           <DialogDescription>
