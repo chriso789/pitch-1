@@ -50,9 +50,12 @@ Deno.serve(async (req) => {
         ? [body.measurementId]
         : [];
 
-    const measurementIds = [...new Set(rawIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+    const allIds = [...new Set(rawIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+    // History rows for raw AI Pull jobs (no roof_measurements row) come in with `job-<uuid>` ids
+    const jobIds = allIds.filter((id) => id.startsWith('job-')).map((id) => id.slice(4));
+    const measurementIds = allIds.filter((id) => !id.startsWith('job-'));
 
-    if (!pipelineEntryId || measurementIds.length === 0) {
+    if (!pipelineEntryId || allIds.length === 0) {
       return jsonResponse({ success: false, error: 'pipelineEntryId and measurementIds are required' }, 400);
     }
 
