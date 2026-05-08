@@ -1778,9 +1778,11 @@ async function processJob(input: any) {
         ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
         : !hasValidFaces && complexity.isComplex && graph.faces.length <= 4
           ? "ai_failed_complex_topology"
-          : graph.totals.ridge_ft === 0 && graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
-            ? "invalid_edge_classification"
-            : null;
+          : graph.totals.ridge_ft === 0 && graph.faces.length >= 4 && complexity.isComplex
+            ? "ridge_network_missing"
+            : graph.totals.ridge_ft === 0 && graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
+              ? "invalid_edge_classification"
+              : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
         console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
