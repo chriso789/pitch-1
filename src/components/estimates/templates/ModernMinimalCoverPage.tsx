@@ -54,7 +54,7 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
       {/* Large vertical space + type */}
       <div className="px-16 pt-20">
         <div className="text-[11px] tracking-[0.5em] text-gray-400 uppercase mb-6">Proposal</div>
-        <h1 className="text-6xl font-extralight text-gray-900 leading-[1.05] tracking-tight mb-4">
+        <h1 className="text-3xl font-extralight text-gray-900 leading-[1.1] tracking-tight mb-4">
           {customerName}
         </h1>
         <div className="w-16 h-[1px] bg-black mb-6" />
