@@ -246,3 +246,124 @@ export async function fetchGoogleSolarDataLayers(
     return { available: false };
   }
 }
+
+// ═══════════════════════════════════════════════════
+// SOLAR TOPOLOGY PRIORS EXTRACTION
+// ═══════════════════════════════════════════════════
+
+import type { SolarTopologyPrior, SolarSegmentPrior, InferredEdge } from "./constraint-roof-solver.ts";
+
+type PxPt = { x: number; y: number };
+
+/**
+ * Extract topology priors from Google Solar API data for the constraint solver.
+ * Converts Solar segments into constraint-ready priors with pitch locking,
+ * segment adjacency, and inferred ridge/valley directions.
+ */
+export function extractSolarTopologyPriors(
+  solarData: any,
+  geoToPx: (lat: number, lng: number) => PxPt,
+): SolarTopologyPrior | null {
+  const segments = solarData?.solarPotential?.roofSegmentStats || [];
+  if (segments.length < 2) return null;
+
+  // Compute area-weighted dominant pitch
+  let totalWeight = 0;
+  let weightedPitch = 0;
+  let totalAreaSqft = 0;
+  for (const seg of segments) {
+    const area = seg.stats?.areaMeters2 || 0;
+    const areaSqft = area * 10.7639;
+    const pitch = seg.pitchDegrees ?? 0;
+    if (pitch >= 1) {
+      weightedPitch += pitch * area;
+      totalWeight += area;
+    }
+    totalAreaSqft += areaSqft;
+  }
+  if (totalWeight === 0) return null;
+
+  const dominantPitchDeg = weightedPitch / totalWeight;
+  const dominantRise = Math.tan(dominantPitchDeg * Math.PI / 180) * 12;
+  const roundedRise = Math.round(dominantRise * 10) / 10;
+
+  // Build segment priors
+  const segmentPriors: SolarSegmentPrior[] = segments.map((seg: any, i: number) => {
+    const area = (seg.stats?.areaMeters2 || 0) * 10.7639;
+    let centerPx: PxPt | null = null;
+    let bboxPx: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+
+    if (seg.center?.latitude != null && seg.center?.longitude != null) {
+      centerPx = geoToPx(seg.center.latitude, seg.center.longitude);
+    }
+    if (seg.boundingBox?.sw && seg.boundingBox?.ne) {
+      const sw = geoToPx(seg.boundingBox.sw.latitude, seg.boundingBox.sw.longitude);
+      const ne = geoToPx(seg.boundingBox.ne.latitude, seg.boundingBox.ne.longitude);
+      bboxPx = {
+        minX: Math.min(sw.x, ne.x), minY: Math.min(sw.y, ne.y),
+        maxX: Math.max(sw.x, ne.x), maxY: Math.max(sw.y, ne.y),
+      };
+    }
+
+    return {
+      index: i,
+      pitch_deg: seg.pitchDegrees ?? dominantPitchDeg,
+      azimuth_deg: seg.azimuthDegrees ?? 0,
+      area_sqft: area,
+      center_px: centerPx,
+      bbox_px: bboxPx,
+    };
+  });
+
+  // Build adjacency from bounding box proximity
+  const adjacency: [number, number][] = [];
+  const inferredRidges: InferredEdge[] = [];
+  const inferredValleys: InferredEdge[] = [];
+
+  for (let i = 0; i < segmentPriors.length; i++) {
+    for (let j = i + 1; j < segmentPriors.length; j++) {
+      const si = segmentPriors[i];
+      const sj = segmentPriors[j];
+      if (!si.center_px || !sj.center_px) continue;
+
+      const dist = Math.hypot(si.center_px.x - sj.center_px.x, si.center_px.y - sj.center_px.y);
+      if (dist > 200) continue; // Too far apart
+
+      adjacency.push([i, j]);
+
+      // Classify edge between adjacent segments
+      const azDiff = Math.abs(si.azimuth_deg - sj.azimuth_deg);
+      const normDiff = Math.min(azDiff, 360 - azDiff);
+      const mid = si.center_px && sj.center_px
+        ? { x: (si.center_px.x + sj.center_px.x) / 2, y: (si.center_px.y + sj.center_px.y) / 2 }
+        : null;
+
+      if (normDiff > 120) {
+        inferredRidges.push({
+          from_segment: i, to_segment: j, type: 'ridge',
+          midpoint_px: mid, confidence: Math.min(1, normDiff / 180),
+        });
+      } else if (normDiff > 60) {
+        inferredValleys.push({
+          from_segment: i, to_segment: j, type: 'valley',
+          midpoint_px: mid, confidence: Math.min(1, normDiff / 120),
+        });
+      }
+    }
+  }
+
+  const wholeRoofAreaSqft = (solarData?.solarPotential?.wholeRoofStats?.areaMeters2 || 0) * 10.7639;
+
+  return {
+    dominant_pitch_deg: dominantPitchDeg,
+    dominant_pitch_rise: roundedRise,
+    pitch_band: [Math.max(0.5, roundedRise - 1), roundedRise + 1],
+    segments: segmentPriors,
+    segment_adjacency: adjacency,
+    inferred_ridges: inferredRidges,
+    inferred_valleys: inferredValleys,
+    expected_facet_count: Math.max(4, segments.length),
+    total_pitched_area_sqft: totalAreaSqft,
+    whole_roof_area_sqft: wholeRoofAreaSqft || totalAreaSqft,
+  };
+}
