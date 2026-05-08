@@ -3919,6 +3919,11 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
 
           constraintSolverApplied = true;
           topologySourceOverride = 'constraint_solver';
+          // Override validation — constraint solver produced a coherent topology that beat autonomous
+          validation.valid = true;
+          validation.status = 'validated_by_constraint_solver';
+          validation.reason = `constraint solver score ${constraintSolverResult.constraint_score.toFixed(3)} > autonomous ${autoScore.toFixed(3)}`;
+          customerBlockReason = null;
           console.log(`[CONSTRAINT_SOLVER] APPLIED → faces=${graphFaces.length} ridge_lf=${outRidges.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} hip_lf=${outHips.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} valley_lf=${outValleys.reduce((s,e)=>s+e.length_ft,0).toFixed(1)} pitch=${predominantPitch.toFixed(1)}deg area=${totalRoofArea.toFixed(0)}sqft`);
         }
       } else {
