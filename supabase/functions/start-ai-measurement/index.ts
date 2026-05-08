@@ -1626,8 +1626,14 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if footprint source is unknown, do NOT call solveAutonomousGraph.
       if (footprintSource === "none" || footprintSource === "unknown") {
-        const failReason = "missing_valid_footprint";
-        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} — blocking solver`);
+        // Distinguish acquisition failure (no source data acquired at all)
+        // from geometry failure (sources fetched but rejected by validators).
+        const noOSM = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+        const noMask = !roofMaskForContour;
+        const noDSM = !dsmGrid && !maskedDSM;
+        const acquisitionFailed = noOSM && noMask && noDSM;
+        const failReason = acquisitionFailed ? "source_acquisition_failed" : "missing_valid_footprint";
+        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} reason=${failReason}`);
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -1639,14 +1645,25 @@ async function processJob(input: any) {
           coordinate_space_match: false,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
           hard_fail_reason: failReason,
+          acquisition_failure: acquisitionFailed ? {
+            no_osm_candidates: noOSM,
+            no_solar_mask: noMask,
+            no_dsm: noDSM,
+            candidates_tried: candidates.length,
+            audit: acquisitionAudit,
+          } : null,
           footprint_px: footprint.map(p => [p.x, p.y]),
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },
         };
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
-        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", acquisitionFailed ? "Source acquisition failed — OSM, Solar mask, and DSM all empty" : `Footprint validation failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", acquisitionFailed ? "Source acquisition failed" : `Footprint validation failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+        }).eq("id", input.ai_measurement_job_id);
         return;
       }
 
