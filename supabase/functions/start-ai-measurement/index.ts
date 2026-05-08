@@ -795,6 +795,12 @@ async function processJob(input: any) {
         const hull = convexHull(segPts);
         if (hull.length >= 4) {
           const hullCand = scoreCandidate("google_solar_segments_hull", hull);
+          // CRITICAL FIX: Solar segment hull traces INNER plane geometry, not the
+          // true eave/rake roof perimeter. Never allow it as the final footprint.
+          // It is stored for diagnostics and internal guidance only.
+          if (!hullCand.rejected_reason) {
+            hullCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
+          }
           candidates.push(hullCand);
           solarSegmentsDebug = {
             count: solarSegments.length,
