@@ -81,12 +81,12 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
         lineItems
           .filter((it) => it.item_type !== 'change_order')
           .map((it, idx) => ({
-            id: it.id,
             item_name: it.item_name,
             description: it.description || '',
             item_type: it.item_type as 'material' | 'labor',
             unit: it.unit,
             unit_cost: it.unit_cost,
+            quantity: (it as any).quantity,
             sort_order: it.sort_order ?? idx,
             trade_type: it.trade_type,
           }))
