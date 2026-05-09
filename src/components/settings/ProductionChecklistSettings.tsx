@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useLocation } from '@/contexts/LocationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,9 @@ export const ProductionChecklistSettings = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
+  const { locations, currentLocationId } = useLocation();
+  // Which location's checklist we're editing. '' = company default (applies to all locations)
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(currentLocationId || '');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newItemLabel, setNewItemLabel] = useState('');
   const [newItemDescription, setNewItemDescription] = useState('');
@@ -35,14 +39,24 @@ export const ProductionChecklistSettings = () => {
   const [newItemRequired, setNewItemRequired] = useState(true);
   const [newItemTradeType, setNewItemTradeType] = useState('');
 
+  React.useEffect(() => {
+    if (currentLocationId && !selectedLocationId) setSelectedLocationId(currentLocationId);
+  }, [currentLocationId]);
+
   const { data: templates = [], isLoading } = useQuery({
-    queryKey: ['checklist-templates', effectiveTenantId],
+    queryKey: ['checklist-templates', effectiveTenantId, selectedLocationId || 'company'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('production_checklist_templates')
         .select('*')
         .eq('tenant_id', effectiveTenantId!)
         .order('sort_order');
+      if (selectedLocationId) {
+        query = query.eq('location_id', selectedLocationId);
+      } else {
+        query = query.is('location_id', null);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -59,6 +73,7 @@ export const ProductionChecklistSettings = () => {
 
       await supabase.from('production_checklist_templates').insert({
         tenant_id: effectiveTenantId,
+        location_id: selectedLocationId || null,
         stage_key: newItemStage,
         item_label: newItemLabel.trim(),
         item_description: newItemDescription.trim() || null,
@@ -94,15 +109,29 @@ export const ProductionChecklistSettings = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <ClipboardList className="h-6 w-6" />
             Pre-Build Checklist
           </h2>
           <p className="text-muted-foreground text-sm">
-            Configure checklist items for each production stage. These apply to all projects company-wide.
+            {selectedLocationId
+              ? 'Items below apply only to the selected location. Company defaults are used wherever a location has no items.'
+              : 'Company defaults — apply to every location unless overridden by a location-specific checklist.'}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-muted-foreground">Editing checklist for</label>
+          <Select value={selectedLocationId || '__company__'} onValueChange={(v) => setSelectedLocationId(v === '__company__' ? '' : v)}>
+            <SelectTrigger className="w-[240px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__company__">Company default (all locations)</SelectItem>
+              {locations.map(loc => (
+                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogTrigger asChild>
