@@ -6482,6 +6482,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     edge_classification_debug: debug?.edge_classification_debug || null,
     validated_geometry: { faces: [], edges: [] },
     dsm_planar_graph_debug: debug,
+    acquisition_audit: debug?.acquisition_audit || null,
+    source_acquisition_debug: debug?.source_acquisition_debug || null,
     // ── Phase 0: Perimeter-First Topology Contract ──
     perimeter_phase0: debug?.perimeter_phase0 ?? null,
     perimeter_ready: debug?.perimeter_ready ?? false,
@@ -6547,6 +6549,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       dsm_edges_accepted: Number(debug?.dsm_edges_accepted || 0),
       validation_status: "failed",
       hard_fail_reason: failureReason,
+      acquisition_audit: debug?.acquisition_audit || null,
+      source_acquisition_debug: debug?.source_acquisition_debug || null,
     },
   };
 
