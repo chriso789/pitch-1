@@ -20072,6 +20072,42 @@ export type Database = {
         }
         Relationships: []
       }
+      material_import_batches: {
+        Row: {
+          created_at: string
+          id: string
+          imported_by: string | null
+          items_count: number
+          notes: string | null
+          source_filename: string | null
+          source_type: string
+          supplier_name: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          imported_by?: string | null
+          items_count?: number
+          notes?: string | null
+          source_filename?: string | null
+          source_type?: string
+          supplier_name?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          imported_by?: string | null
+          items_count?: number
+          notes?: string | null
+          source_filename?: string | null
+          source_type?: string
+          supplier_name?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       material_invoice_audit_lines: {
         Row: {
           agreed_description: string | null

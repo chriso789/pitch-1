@@ -103,7 +103,7 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
-function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], tenantId, legacySuppliers, queryClient }: any) {
+function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], tenantId, legacySuppliers, queryClient }: any) {
   return (
     <TabsContent value="price-lists">
       <Card>
@@ -203,6 +203,48 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
               ))}
               {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle className="text-base">Import History</CardTitle>
+          <CardDescription>
+            Every price list loaded through the "Import Materials" button ({importBatches.length} run{importBatches.length === 1 ? "" : "s"})
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>File / Source</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead>Imported</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {importBatches.map((b: any) => (
+                <TableRow key={b.id}>
+                  <TableCell className="font-medium">{b.source_filename || b.supplier_name || "Untitled import"}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs uppercase">{b.source_type || "csv"}</Badge></TableCell>
+                  <TableCell>{b.items_count}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{b.notes || "\u2014"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {b.created_at ? new Date(b.created_at).toLocaleString() : "\u2014"}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {importBatches.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                    No imports have been logged yet. New imports run through the "Import Materials" button will appear here.
+                  </TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>
@@ -465,6 +507,20 @@ export const MaterialAuditContent = () => {
     enabled: !!tenantId,
   });
 
+  // Real audit trail of every CSV/PDF import run via the "Import Materials" button
+  const { data: importBatches = [] } = useQuery({
+    queryKey: ["material-import-batches", tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("material_import_batches" as any)
+        .select("id, source_filename, supplier_name, source_type, items_count, notes, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) return [];
+      return data || [];
+    },
+  });
+
   const { data: materialInvoices = [] } = useQuery({
     queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
@@ -612,7 +668,7 @@ export const MaterialAuditContent = () => {
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
         </TabsList>
-        <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
+        <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} importBatches={importBatches} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
         <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} />
         <UnmatchedTabContent tenantId={tenantId} unmatchedLines={unmatchedLines} queryClient={queryClient} />
