@@ -31,6 +31,7 @@ import { useNavigate } from "react-router-dom";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { useQuery } from "@tanstack/react-query";
 import { FinalInspectionCostDialog } from "@/components/production/FinalInspectionCostDialog";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface ProductionProject {
   id: string;
@@ -70,39 +71,44 @@ const ProductionKanban = () => {
   const [tradeFilter, setTradeFilter] = useState<string>('all');
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { currentLocationId } = useLocation();
 
   // Fetch FINANCIAL metrics
   const { data: financialWorksheetsNeeded = 0 } = useQuery({
-    queryKey: ['production-financial-worksheets'],
+    queryKey: ['production-financial-worksheets', currentLocationId],
     queryFn: async () => {
-      const { data: entries } = await supabase
+      let q = supabase
         .from('pipeline_entries')
         .select('id')
         .in('status', ['project', 'production']);
-      
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data: entries } = await q;
+
       if (!entries?.length) return 0;
-      
+
       const { data: documents } = await supabase
         .from('documents')
         .select('pipeline_entry_id')
         .in('pipeline_entry_id', entries.map(e => e.id))
         .ilike('document_type', '%financial%');
-      
+
       const entriesWithWorksheets = new Set(documents?.map(d => d.pipeline_entry_id) || []);
       return entries.length - entriesWithWorksheets.size;
     }
   });
 
   const { data: pendingInvoices = 0 } = useQuery({
-    queryKey: ['production-pending-invoices'],
+    queryKey: ['production-pending-invoices', currentLocationId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('pipeline_entries')
         .select('metadata')
         .in('status', ['project', 'production', 'completed']);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data } = await q;
       const pending = data?.filter(entry => {
         const metadata = entry.metadata as any;
-        return metadata?.invoice_status === 'pending' || 
+        return metadata?.invoice_status === 'pending' ||
           (metadata?.invoice_sent === true && !metadata?.invoice_paid);
       }) || [];
       return pending.length;
@@ -110,12 +116,14 @@ const ProductionKanban = () => {
   });
 
   const { data: overdueInvoices = 0 } = useQuery({
-    queryKey: ['production-overdue-invoices'],
+    queryKey: ['production-overdue-invoices', currentLocationId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('pipeline_entries')
         .select('metadata')
         .in('status', ['project', 'production', 'completed']);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data } = await q;
       const now = new Date();
       const overdue = data?.filter(entry => {
         const metadata = entry.metadata as any;
@@ -127,24 +135,28 @@ const ProductionKanban = () => {
   });
 
   const { data: canceledJobs = 0 } = useQuery({
-    queryKey: ['production-canceled-jobs'],
+    queryKey: ['production-canceled-jobs', currentLocationId],
     queryFn: async () => {
-      const { count } = await supabase
+      let q = supabase
         .from('pipeline_entries')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'cancelled');
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { count } = await q;
       return count || 0;
     }
   });
 
   // Fetch MANAGEMENT metrics
   const { data: materialOrders = 0 } = useQuery({
-    queryKey: ['production-material-orders'],
+    queryKey: ['production-material-orders', currentLocationId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('pipeline_entries')
         .select('metadata')
         .in('status', ['project', 'production']);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data } = await q;
       const needsOrders = data?.filter(entry => {
         const metadata = entry.metadata as any;
         return metadata?.materials_ordered !== true;
@@ -154,12 +166,14 @@ const ProductionKanban = () => {
   });
 
   const { data: measurementRequests = 0 } = useQuery({
-    queryKey: ['production-measurement-requests'],
+    queryKey: ['production-measurement-requests', currentLocationId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('pipeline_entries')
         .select('metadata')
         .in('status', ['estimate', 'negotiating']);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data } = await q;
       const needsMeasurement = data?.filter(entry => {
         const metadata = entry.metadata as any;
         return metadata?.measurement_requested === true || metadata?.needs_measurement === true;
@@ -169,7 +183,7 @@ const ProductionKanban = () => {
   });
 
   const { data: pendingSignatures = 0 } = useQuery({
-    queryKey: ['production-pending-signatures'],
+    queryKey: ['production-pending-signatures', currentLocationId],
     queryFn: async () => {
       const { count } = await supabase
         .from('agreement_instances')
@@ -181,7 +195,7 @@ const ProductionKanban = () => {
   });
 
   const { data: photosToday = 0 } = useQuery({
-    queryKey: ['production-photos-today'],
+    queryKey: ['production-photos-today', currentLocationId],
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       const { count } = await supabase
@@ -232,7 +246,7 @@ const ProductionKanban = () => {
     if (stages.length > 0) {
       fetchProductionData();
     }
-  }, [stages]);
+  }, [stages, currentLocationId]);
 
   // Set up real-time listeners for production workflow changes
   useEffect(() => {
@@ -326,7 +340,7 @@ const ProductionKanban = () => {
       setLoading(true);
 
       // Fetch projects with related data using explicit foreign key relationships
-      const { data: projectsData, error } = await supabase
+      let projectsQuery = supabase
         .from('projects')
         .select(`
           *,
@@ -339,6 +353,10 @@ const ProductionKanban = () => {
         `)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
+      if (currentLocationId) {
+        projectsQuery = projectsQuery.eq('location_id', currentLocationId);
+      }
+      const { data: projectsData, error } = await projectsQuery;
 
       if (error) throw error;
 
