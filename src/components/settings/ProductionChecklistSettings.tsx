@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, Save, FileText, Clock, Package, Wrench, CheckCircle, Trophy, Search, Archive, ClipboardList } from 'lucide-react';
+import { Plus, Trash2, Save, FileText, Clock, Package, Wrench, CheckCircle, Trophy, Search, Archive, ClipboardList, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STAGE_CONFIG = [
@@ -38,6 +38,7 @@ export const ProductionChecklistSettings = () => {
   const [newItemStage, setNewItemStage] = useState('submit_documents');
   const [newItemRequired, setNewItemRequired] = useState(true);
   const [newItemTradeType, setNewItemTradeType] = useState('');
+  const [editing, setEditing] = useState<any | null>(null);
 
   React.useEffect(() => {
     if (currentLocationId && !selectedLocationId) setSelectedLocationId(currentLocationId);
@@ -100,6 +101,25 @@ export const ProductionChecklistSettings = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
       toast({ title: 'Checklist item removed' });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (item: any) => {
+      const { id, item_label, item_description, stage_key, is_required, trade_type } = item;
+      await supabase.from('production_checklist_templates').update({
+        item_label: (item_label || '').trim(),
+        item_description: (item_description || '').trim() || null,
+        stage_key,
+        is_required: !!is_required,
+        trade_type: trade_type || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      setEditing(null);
+      toast({ title: 'Checklist item updated' });
     },
   });
 
@@ -235,14 +255,24 @@ export const ProductionChecklistSettings = () => {
                           </Badge>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-destructive hover:text-destructive shrink-0"
-                        onClick={() => deleteMutation.mutate(template.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => setEditing({ ...template })}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={() => deleteMutation.mutate(template.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -251,6 +281,70 @@ export const ProductionChecklistSettings = () => {
           </Card>
         );
       })}
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Checklist Item</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium">Production Stage</label>
+                <Select value={editing.stage_key} onValueChange={(v) => setEditing({ ...editing, stage_key: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STAGE_CONFIG.map(s => (
+                      <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Item Label</label>
+                <Input
+                  value={editing.item_label || ''}
+                  onChange={(e) => setEditing({ ...editing, item_label: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Description (optional)</label>
+                <Input
+                  value={editing.item_description || ''}
+                  onChange={(e) => setEditing({ ...editing, item_description: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Trade Type (optional)</label>
+                <Select value={editing.trade_type || ''} onValueChange={(v) => setEditing({ ...editing, trade_type: v })}>
+                  <SelectTrigger><SelectValue placeholder="All trades" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All trades</SelectItem>
+                    <SelectItem value="roofing">Roofing</SelectItem>
+                    <SelectItem value="siding">Siding</SelectItem>
+                    <SelectItem value="gutters">Gutters</SelectItem>
+                    <SelectItem value="solar">Solar</SelectItem>
+                    <SelectItem value="painting">Painting</SelectItem>
+                    <SelectItem value="windows">Windows</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={!!editing.is_required}
+                  onCheckedChange={(c) => setEditing({ ...editing, is_required: !!c })}
+                />
+                <label className="text-sm">Required to advance stage</label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => editing && updateMutation.mutate(editing)} disabled={!editing?.item_label?.trim()}>
+              <Save className="h-4 w-4 mr-1" /> Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
