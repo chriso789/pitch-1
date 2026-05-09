@@ -340,7 +340,7 @@ const ProductionKanban = () => {
       setLoading(true);
 
       // Fetch projects with related data using explicit foreign key relationships
-      const { data: projectsData, error } = await supabase
+      let projectsQuery = supabase
         .from('projects')
         .select(`
           *,
@@ -353,6 +353,10 @@ const ProductionKanban = () => {
         `)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
+      if (currentLocationId) {
+        projectsQuery = projectsQuery.eq('location_id', currentLocationId);
+      }
+      const { data: projectsData, error } = await projectsQuery;
 
       if (error) throw error;
 
