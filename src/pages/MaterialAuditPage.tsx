@@ -190,7 +190,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   <TableCell>
                     <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
                   </TableCell>
-                  <TableCell>{"\u2014"}</TableCell>
+                  <TableCell>{pl.items_count || "\u2014"}</TableCell>
                   <TableCell>{pl.effective_start_date} {"\u2014"} {pl.effective_end_date || "\u221E"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(pl.created_at).toLocaleDateString()}
