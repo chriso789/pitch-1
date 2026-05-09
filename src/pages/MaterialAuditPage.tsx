@@ -521,6 +521,108 @@ export const MaterialAuditContent = () => {
     },
   });
 
+  // Suppliers known only via uploaded invoices (no CSV/PDF import yet).
+  // For each, aggregate observed pricing across all invoice line items so we can
+  // hold the LOWEST observed price as the working benchmark until a real
+  // CSV/PDF price list is imported.
+  const { data: invoiceSuppliers = [] } = useQuery({
+    queryKey: ["invoice-derived-suppliers", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from("project_cost_invoice_line_items")
+        .select("vendor_name, description, normalized_description, sku, unit_of_measure, unit_price, quantity, created_at, invoice_id")
+        .eq("tenant_id", tenantId)
+        .not("vendor_name", "is", null)
+        .not("unit_price", "is", null);
+      if (error || !data) return [];
+
+      type LineRow = {
+        vendor_name: string;
+        description: string | null;
+        normalized_description: string | null;
+        sku: string | null;
+        unit_of_measure: string | null;
+        unit_price: number;
+        quantity: number | null;
+        created_at: string;
+        invoice_id: string | null;
+      };
+
+      const bySupplier: Record<string, {
+        supplier_name: string;
+        invoice_ids: Set<string>;
+        line_count: number;
+        last_invoice_at: string;
+        items: Record<string, {
+          key: string;
+          description: string;
+          sku: string | null;
+          uom: string | null;
+          observations: Array<{ unit_price: number; quantity: number; created_at: string; invoice_id: string | null }>;
+        }>;
+      }> = {};
+
+      (data as any[]).forEach((row) => {
+        const vendor = (row.vendor_name || "").trim();
+        if (!vendor) return;
+        const price = Number(row.unit_price);
+        if (!isFinite(price) || price <= 0) return;
+
+        if (!bySupplier[vendor]) {
+          bySupplier[vendor] = {
+            supplier_name: vendor,
+            invoice_ids: new Set(),
+            line_count: 0,
+            last_invoice_at: row.created_at,
+            items: {},
+          };
+        }
+        const sup = bySupplier[vendor];
+        sup.line_count++;
+        if (row.invoice_id) sup.invoice_ids.add(row.invoice_id);
+        if (row.created_at && row.created_at > sup.last_invoice_at) sup.last_invoice_at = row.created_at;
+
+        const itemKey = (row.normalized_description || row.description || row.sku || "unknown").toLowerCase().trim();
+        if (!sup.items[itemKey]) {
+          sup.items[itemKey] = {
+            key: itemKey,
+            description: row.description || row.normalized_description || row.sku || "Unknown item",
+            sku: row.sku,
+            uom: row.unit_of_measure,
+            observations: [],
+          };
+        }
+        sup.items[itemKey].observations.push({
+          unit_price: price,
+          quantity: Number(row.quantity) || 0,
+          created_at: row.created_at,
+          invoice_id: row.invoice_id,
+        });
+      });
+
+      return Object.values(bySupplier).map((sup) => {
+        const items = Object.values(sup.items).map((it) => {
+          const prices = it.observations.map((o) => o.unit_price);
+          const min = Math.min(...prices);
+          const max = Math.max(...prices);
+          const avg = prices.reduce((s, p) => s + p, 0) / prices.length;
+          const variance_pct = min > 0 ? ((max - min) / min) * 100 : 0;
+          return { ...it, min_price: min, max_price: max, avg_price: avg, variance_pct, observation_count: prices.length };
+        }).sort((a, b) => b.variance_pct - a.variance_pct);
+        return {
+          supplier_name: sup.supplier_name,
+          invoice_count: sup.invoice_ids.size,
+          line_count: sup.line_count,
+          item_count: items.length,
+          last_invoice_at: sup.last_invoice_at,
+          items,
+        };
+      }).sort((a, b) => b.line_count - a.line_count);
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: materialInvoices = [] } = useQuery({
     queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
