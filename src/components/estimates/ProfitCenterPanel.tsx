@@ -226,6 +226,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const handleDeleteInvoice = async (invoiceId: string) => {
     if (!canDeleteInvoices) return;
+    if (!isValidUuid(invoiceId)) {
+      toast.error('Invoice is still loading. Please refresh and try again.');
+      return;
+    }
     if (!window.confirm('Delete this imported invoice? This cannot be undone.')) return;
     setDeletingInvoiceId(invoiceId);
     try {
@@ -237,6 +241,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
       window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
+      const deletedInvoice = invoices?.find((invoice) => invoice.id === invoiceId);
+      window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType: deletedInvoice?.invoice_type } }));
     } catch (err: any) {
       console.error('[ProfitCenterPanel] delete invoice failed', err);
       toast.error(err?.message || 'Failed to delete invoice');
