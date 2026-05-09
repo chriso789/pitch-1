@@ -1,0 +1,1 @@
+UPDATE production_workflows SET noc_uploaded=true, permit_application_submitted=true, current_stage='permit_processing', stage_changed_at=now(), updated_at=now() WHERE id='c68a96bd-555a-4b9c-b87e-9282e7607275';
