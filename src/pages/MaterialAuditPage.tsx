@@ -103,7 +103,32 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
-function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], tenantId, legacySuppliers, queryClient }: any) {
+function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], invoiceSuppliers = [], tenantId, legacySuppliers, queryClient }: any) {
+  const [drilldownSupplier, setDrilldownSupplier] = useState<any | null>(null);
+
+  // A supplier is considered "standardized" only when its name appears in
+  // a CSV/PDF import batch OR in pricebookGroups/legacyPriceLists.
+  const standardizedSupplierNames = React.useMemo(() => {
+    const names = new Set<string>();
+    importBatches.forEach((b: any) => {
+      if (b.supplier_name) names.add(String(b.supplier_name).toLowerCase().trim());
+    });
+    pricebookGroups.forEach((g: any) => {
+      if (g.supplier_name) names.add(String(g.supplier_name).toLowerCase().trim());
+    });
+    legacyPriceLists.forEach((pl: any) => {
+      const n = pl?.material_suppliers?.supplier_name;
+      if (n) names.add(String(n).toLowerCase().trim());
+    });
+    return names;
+  }, [importBatches, pricebookGroups, legacyPriceLists]);
+
+  const invoiceOnlySuppliers = React.useMemo(
+    () => invoiceSuppliers.filter((s: any) =>
+      !standardizedSupplierNames.has(String(s.supplier_name).toLowerCase().trim())
+    ),
+    [invoiceSuppliers, standardizedSupplierNames]
+  );
   return (
     <TabsContent value="price-lists">
       <Card>
@@ -201,7 +226,28 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableCell>
                 </TableRow>
               ))}
-              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && (
+              {invoiceOnlySuppliers.map((s: any) => (
+                <TableRow
+                  key={"inv-" + s.supplier_name}
+                  className="cursor-pointer hover:bg-muted/40"
+                  onClick={() => setDrilldownSupplier(s)}
+                >
+                  <TableCell className="font-medium">{s.supplier_name}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">From Invoices</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs">Observed only</Badge>
+                  </TableCell>
+                  <TableCell>{s.item_count}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"} {"\u00b7"} {s.line_count} lines
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{"\u2014"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlySuppliers.length === 0 && (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
               )}
             </TableBody>
@@ -250,6 +296,81 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!drilldownSupplier} onOpenChange={(o) => !o && setDrilldownSupplier(null)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {drilldownSupplier?.supplier_name}
+              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">From Invoices</Badge>
+            </DialogTitle>
+            <CardDescription>
+              No CSV/PDF price list imported for this supplier yet. Pricing below is observed from
+              {" "}{drilldownSupplier?.invoice_count} invoice{drilldownSupplier?.invoice_count === 1 ? "" : "s"}.
+              The lowest observed price is held as the working benchmark until an official price list is imported.
+            </CardDescription>
+          </DialogHeader>
+          {drilldownSupplier && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <Card><CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Distinct Items</p>
+                  <p className="text-2xl font-bold">{drilldownSupplier.item_count}</p>
+                </CardContent></Card>
+                <Card><CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Invoice Lines</p>
+                  <p className="text-2xl font-bold">{drilldownSupplier.line_count}</p>
+                </CardContent></Card>
+                <Card><CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Items With Variance</p>
+                  <p className="text-2xl font-bold text-amber-600">
+                    {drilldownSupplier.items.filter((i: any) => i.variance_pct > 5).length}
+                  </p>
+                </CardContent></Card>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>UOM</TableHead>
+                    <TableHead className="text-right">Lowest (benchmark)</TableHead>
+                    <TableHead className="text-right">Avg</TableHead>
+                    <TableHead className="text-right">Highest</TableHead>
+                    <TableHead className="text-right">Variance</TableHead>
+                    <TableHead className="text-right">Seen</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {drilldownSupplier.items.map((it: any) => (
+                    <TableRow key={it.key}>
+                      <TableCell className="font-medium">
+                        {it.description}
+                        {it.sku && <span className="text-xs text-muted-foreground ml-1">({it.sku})</span>}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{it.uom || "\u2014"}</TableCell>
+                      <TableCell className="text-right font-semibold text-emerald-700">${it.min_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">${it.avg_price.toFixed(2)}</TableCell>
+                      <TableCell className={"text-right " + (it.variance_pct > 5 ? "text-destructive font-semibold" : "")}>
+                        ${it.max_price.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {it.variance_pct > 0 ? (
+                          <Badge variant={it.variance_pct > 10 ? "destructive" : "outline"} className="text-xs">
+                            {it.variance_pct.toFixed(1)}%
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">{it.observation_count}x</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </TabsContent>
   );
 }
@@ -521,6 +642,108 @@ export const MaterialAuditContent = () => {
     },
   });
 
+  // Suppliers known only via uploaded invoices (no CSV/PDF import yet).
+  // For each, aggregate observed pricing across all invoice line items so we can
+  // hold the LOWEST observed price as the working benchmark until a real
+  // CSV/PDF price list is imported.
+  const { data: invoiceSuppliers = [] } = useQuery({
+    queryKey: ["invoice-derived-suppliers", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from("project_cost_invoice_line_items")
+        .select("vendor_name, description, normalized_description, sku, unit_of_measure, unit_price, quantity, created_at, invoice_id")
+        .eq("tenant_id", tenantId)
+        .not("vendor_name", "is", null)
+        .not("unit_price", "is", null);
+      if (error || !data) return [];
+
+      type LineRow = {
+        vendor_name: string;
+        description: string | null;
+        normalized_description: string | null;
+        sku: string | null;
+        unit_of_measure: string | null;
+        unit_price: number;
+        quantity: number | null;
+        created_at: string;
+        invoice_id: string | null;
+      };
+
+      const bySupplier: Record<string, {
+        supplier_name: string;
+        invoice_ids: Set<string>;
+        line_count: number;
+        last_invoice_at: string;
+        items: Record<string, {
+          key: string;
+          description: string;
+          sku: string | null;
+          uom: string | null;
+          observations: Array<{ unit_price: number; quantity: number; created_at: string; invoice_id: string | null }>;
+        }>;
+      }> = {};
+
+      (data as any[]).forEach((row) => {
+        const vendor = (row.vendor_name || "").trim();
+        if (!vendor) return;
+        const price = Number(row.unit_price);
+        if (!isFinite(price) || price <= 0) return;
+
+        if (!bySupplier[vendor]) {
+          bySupplier[vendor] = {
+            supplier_name: vendor,
+            invoice_ids: new Set(),
+            line_count: 0,
+            last_invoice_at: row.created_at,
+            items: {},
+          };
+        }
+        const sup = bySupplier[vendor];
+        sup.line_count++;
+        if (row.invoice_id) sup.invoice_ids.add(row.invoice_id);
+        if (row.created_at && row.created_at > sup.last_invoice_at) sup.last_invoice_at = row.created_at;
+
+        const itemKey = (row.normalized_description || row.description || row.sku || "unknown").toLowerCase().trim();
+        if (!sup.items[itemKey]) {
+          sup.items[itemKey] = {
+            key: itemKey,
+            description: row.description || row.normalized_description || row.sku || "Unknown item",
+            sku: row.sku,
+            uom: row.unit_of_measure,
+            observations: [],
+          };
+        }
+        sup.items[itemKey].observations.push({
+          unit_price: price,
+          quantity: Number(row.quantity) || 0,
+          created_at: row.created_at,
+          invoice_id: row.invoice_id,
+        });
+      });
+
+      return Object.values(bySupplier).map((sup) => {
+        const items = Object.values(sup.items).map((it) => {
+          const prices = it.observations.map((o) => o.unit_price);
+          const min = Math.min(...prices);
+          const max = Math.max(...prices);
+          const avg = prices.reduce((s, p) => s + p, 0) / prices.length;
+          const variance_pct = min > 0 ? ((max - min) / min) * 100 : 0;
+          return { ...it, min_price: min, max_price: max, avg_price: avg, variance_pct, observation_count: prices.length };
+        }).sort((a, b) => b.variance_pct - a.variance_pct);
+        return {
+          supplier_name: sup.supplier_name,
+          invoice_count: sup.invoice_ids.size,
+          line_count: sup.line_count,
+          item_count: items.length,
+          last_invoice_at: sup.last_invoice_at,
+          items,
+        };
+      }).sort((a, b) => b.line_count - a.line_count);
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: materialInvoices = [] } = useQuery({
     queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
@@ -668,7 +891,7 @@ export const MaterialAuditContent = () => {
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
         </TabsList>
-        <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} importBatches={importBatches} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
+        <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} importBatches={importBatches} invoiceSuppliers={invoiceSuppliers} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
         <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} />
         <UnmatchedTabContent tenantId={tenantId} unmatchedLines={unmatchedLines} queryClient={queryClient} />
