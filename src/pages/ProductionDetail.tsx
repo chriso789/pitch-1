@@ -341,6 +341,16 @@ const ProductionDetail = () => {
               ? `Contract: $${Number(estimates[0].selling_price || 0).toLocaleString()}`
               : 'No estimate'}
           </span>
+          {project?.pipeline_entry_id && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => navigate(`/lead/${project.pipeline_entry_id}`)}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open Project
+            </Button>
+          )}
         </div>
       </div>
 
