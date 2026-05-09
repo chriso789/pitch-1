@@ -597,6 +597,7 @@ async function processJob(input: any) {
     // Compute Solar bbox in pixel space — used as the coverage reference target.
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
     const solarData = await fetchGoogleSolar(coords.lat, coords.lng);
+    const solarInsightsDebug = (globalThis as any).__solarInsightsDebug || null;
     const solarBboxPx = (() => {
       const bb = solarData?.boundingBox;
       if (!bb?.sw || !bb?.ne) return null;
@@ -1370,7 +1371,13 @@ async function processJob(input: any) {
     }
 
     if (!footprintValid) {
-      const failReason = footprint.length < 4
+      const noOSMCandidates = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+      const noMaskEvidence = !roofMaskForContour;
+      const noSolarEvidence = !solarBboxPx && solarSegments.length === 0;
+      const sourceAcquisitionFailed = noOSMCandidates && noMaskEvidence && noSolarEvidence && footprint.length < 4;
+      const failReason = sourceAcquisitionFailed
+        ? "source_acquisition_failed"
+        : footprint.length < 4
         ? "missing_valid_footprint"
         : footprintIsLatLng
           ? "footprint_coordinate_mismatch"
@@ -1440,6 +1447,17 @@ async function processJob(input: any) {
         registration_gate: registrationDebug,
         visible_roof_bbox_px: visibleRoofBboxPx,
         footprint_registration_passed: false,
+        acquisition_audit: acquisitionAudit,
+        source_acquisition_debug: {
+          source_acquisition_failed: sourceAcquisitionFailed,
+          no_osm_candidates: noOSMCandidates,
+          no_solar_mask: noMaskEvidence,
+          no_solar_building_insights: noSolarEvidence,
+          solar_insights: solarInsightsDebug,
+          solar_segments_count: solarSegments.length,
+          dsm_datalayers_diagnostics: getLastDSMDiagnostics(),
+          mask_contour_diagnostics: maskContourDiagnostics || null,
+        },
       };
 
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
@@ -1451,6 +1469,8 @@ async function processJob(input: any) {
         source_context: {
           gate_reason: failReason,
           debug: footprintDebug,
+          acquisition_audit: acquisitionAudit,
+          source_acquisition_debug: footprintDebug.source_acquisition_debug,
         },
       }).eq("id", input.ai_measurement_job_id);
       return;
@@ -5966,6 +5986,7 @@ async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number
 }
 
 async function fetchGoogleSolar(lat: number, lng: number) {
+  (globalThis as any).__solarInsightsDebug = null;
   if (!GOOGLE_SOLAR_API_KEY) return null;
   const url = new URL("https://solar.googleapis.com/v1/buildingInsights:findClosest");
   url.searchParams.set("location.latitude", String(lat));
@@ -5973,8 +5994,22 @@ async function fetchGoogleSolar(lat: number, lng: number) {
   url.searchParams.set("requiredQuality", "LOW");
   url.searchParams.set("key", GOOGLE_SOLAR_API_KEY);
   const r = await fetch(url.toString());
-  if (!r.ok) return null;
-  return await r.json();
+  const body = await r.text().catch(() => "");
+  (globalThis as any).__solarInsightsDebug = {
+    status: r.status,
+    ok: r.ok,
+    body_preview: body.slice(0, 500),
+  };
+  if (!r.ok) {
+    console.warn(`[GOOGLE_SOLAR_INSIGHTS] ${r.status}: ${body.slice(0, 240)}`);
+    return null;
+  }
+  try {
+    return JSON.parse(body);
+  } catch (e) {
+    console.warn(`[GOOGLE_SOLAR_INSIGHTS] invalid_json: ${(e as Error).message}`);
+    return null;
+  }
 }
 
 async function runSegmentation(payload: any) {
@@ -6447,6 +6482,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     edge_classification_debug: debug?.edge_classification_debug || null,
     validated_geometry: { faces: [], edges: [] },
     dsm_planar_graph_debug: debug,
+    acquisition_audit: debug?.acquisition_audit || null,
+    source_acquisition_debug: debug?.source_acquisition_debug || null,
     // ── Phase 0: Perimeter-First Topology Contract ──
     perimeter_phase0: debug?.perimeter_phase0 ?? null,
     perimeter_ready: debug?.perimeter_ready ?? false,
@@ -6512,6 +6549,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       dsm_edges_accepted: Number(debug?.dsm_edges_accepted || 0),
       validation_status: "failed",
       hard_fail_reason: failureReason,
+      acquisition_audit: debug?.acquisition_audit || null,
+      source_acquisition_debug: debug?.source_acquisition_debug || null,
     },
   };
 

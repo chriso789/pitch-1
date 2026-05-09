@@ -233,6 +233,16 @@ const buildJobOnlyHistoryRow = (job: any) => ({
   failure_reason: job.failure_reason,
   report_pdf_url: job.report_pdf_url,
   report_pdf_path: job.report_pdf_path,
+  source_context: job.source_context,
+  geometry_report_json: job.source_context?.debug
+    ? {
+        ...(job.source_context.debug || {}),
+        block_customer_report_reason: job.source_context.gate_reason || job.failure_reason || job.status_message,
+        hard_fail_reason: job.source_context.gate_reason || job.failure_reason || job.status_message,
+        acquisition_audit: job.source_context.acquisition_audit || job.source_context.debug?.acquisition_audit || null,
+        source_acquisition_debug: job.source_context.source_acquisition_debug || job.source_context.debug?.source_acquisition_debug || null,
+      }
+    : null,
   requires_manual_review: job.status !== 'completed',
   internal_debug_report_ready: true,
 });
@@ -544,7 +554,7 @@ export function UnifiedMeasurementPanel({
       const linkedJobIds = new Set(aiRoofRows.map((row: any) => row.ai_measurement_job_id).filter(Boolean));
       const { data: jobs, error: jobsError } = await supabase
         .from('ai_measurement_jobs')
-        .select('id, lead_id, source_record_id, status, status_message, failure_reason, report_pdf_url, report_pdf_path, created_at, completed_at')
+        .select('id, lead_id, source_record_id, status, status_message, failure_reason, report_pdf_url, report_pdf_path, source_context, created_at, completed_at')
         .or(`lead_id.eq.${pipelineEntryId},source_record_id.eq.${pipelineEntryId}`)
         .order('created_at', { ascending: false });
 
