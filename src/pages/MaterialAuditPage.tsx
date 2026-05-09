@@ -972,10 +972,19 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
         .concat(rows.map(r => [r.sku, r.description, r.category, r.brand, r.uom, r.price]
           .map(v => v == null ? "" : String(v).replace(/,/g, " "))
           .join(","))).join("\n");
+      const guessSupplier = data?.supplier_name
+        || (file.name.match(/srs/i) ? "SRS Distribution"
+          : file.name.match(/abc/i) ? "ABC Supply"
+          : file.name.match(/beacon/i) ? "Beacon"
+          : file.name.match(/qxo/i) ? "QXO"
+          : "");
+      const guessList = file.name.replace(/\.[^.]+$/, "");
       setForm(f => ({
         ...f,
         rawCsv: csv,
-        supplierName: f.supplierName || data?.supplier_name || "",
+        supplierName: f.supplierName || guessSupplier,
+        listName: f.listName || guessList,
+        effectiveStartDate: f.effectiveStartDate || new Date().toISOString().slice(0, 10),
       }));
       toast.success("Extracted " + rows.length + " rows \u00b7 review and import");
     } catch (e: any) {
