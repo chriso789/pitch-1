@@ -79,12 +79,21 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
     <Card>
       <CardHeader><CardTitle className="text-base">Material Spend by Vendor</CardTitle></CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData}>
+        <ResponsiveContainer width="100%" height={340}>
+          <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 110 }}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" angle={-20} textAnchor="end" height={60} fontSize={12} />
+            <XAxis
+              dataKey="name"
+              interval={0}
+              angle={-40}
+              textAnchor="end"
+              height={120}
+              fontSize={11}
+              tick={{ fill: "hsl(var(--foreground))" }}
+              tickFormatter={(v: string) => (v && v.length > 22 ? v.slice(0, 20) + "\u2026" : v)}
+            />
             <YAxis tickFormatter={formatY} />
-            <Tooltip formatter={formatTooltip} />
+            <Tooltip formatter={formatTooltip} labelFormatter={(l: string) => l} />
             <Bar dataKey="total" fill="hsl(var(--primary))" name="Spend" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
