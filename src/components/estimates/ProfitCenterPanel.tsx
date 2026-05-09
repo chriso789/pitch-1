@@ -256,7 +256,45 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     }
   };
 
-  const handleStartEditPrice = () => {
+  const handleStartRename = (invoice: InvoiceData) => {
+    if (!isValidUuid(invoice.id)) return;
+    setRenamingInvoiceId(invoice.id);
+    setRenameValue(invoice.document_name?.trim() || invoice.vendor_name?.trim() || invoice.crew_name?.trim() || '');
+  };
+
+  const handleCancelRename = () => {
+    setRenamingInvoiceId(null);
+    setRenameValue('');
+  };
+
+  const handleSaveRename = async () => {
+    if (!renamingInvoiceId) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    setIsSavingRename(true);
+    try {
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({ document_name: trimmed })
+        .eq('id', renamingInvoiceId);
+      if (error) throw error;
+      toast.success('Invoice renamed');
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+      window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
+      setRenamingInvoiceId(null);
+      setRenameValue('');
+    } catch (err: any) {
+      console.error('[ProfitCenterPanel] rename invoice failed', err);
+      toast.error(err?.message || 'Failed to rename invoice');
+    } finally {
+      setIsSavingRename(false);
+    }
+  };
+
     setEditPrice(sellingPrice.toFixed(2));
     setIsEditingPrice(true);
   };
