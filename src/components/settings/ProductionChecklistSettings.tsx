@@ -38,6 +38,7 @@ export const ProductionChecklistSettings = () => {
   const [newItemStage, setNewItemStage] = useState('submit_documents');
   const [newItemRequired, setNewItemRequired] = useState(true);
   const [newItemTradeType, setNewItemTradeType] = useState('');
+  const [editing, setEditing] = useState<any | null>(null);
 
   React.useEffect(() => {
     if (currentLocationId && !selectedLocationId) setSelectedLocationId(currentLocationId);
