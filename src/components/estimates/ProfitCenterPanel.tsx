@@ -687,7 +687,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => handleDeleteInvoice(invoice.id)}
+                              onClick={() => handleDeleteInvoice(invoice.id!)}
                               disabled={deletingInvoiceId === invoice.id}
                               title="Delete invoice"
                             >
