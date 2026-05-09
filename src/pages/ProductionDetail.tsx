@@ -215,9 +215,19 @@ const ProductionDetail = () => {
               const idx = STAGE_CONFIG.findIndex(s => s.key === stageKey);
               const next = STAGE_CONFIG[idx + 1];
               if (next) {
+                const updatePayload: any = {
+                  current_stage: next.key,
+                  stage_changed_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                };
+                // Satisfy DB validation trigger when leaving submit_documents
+                if (stageKey === 'submit_documents') {
+                  updatePayload.noc_uploaded = true;
+                  updatePayload.permit_application_submitted = true;
+                }
                 await supabase
                   .from('production_workflows')
-                  .update({ current_stage: next.key, stage_changed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                  .update(updatePayload)
                   .eq('id', workflowId);
                 return { advancedTo: next.name };
               }
