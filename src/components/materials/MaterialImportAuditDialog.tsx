@@ -300,6 +300,7 @@ export function MaterialImportAuditDialog({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setSourceFileName(file.name);
     setStep('analyzing');
 
     Papa.parse(file, {
