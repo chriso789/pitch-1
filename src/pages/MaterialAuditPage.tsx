@@ -122,11 +122,26 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
     return names;
   }, [importBatches, pricebookGroups, legacyPriceLists]);
 
+  // Normalize supplier names so aliases like "SRS" match "SRS / Suncoast Roofers Supply".
+  // Splits on common separators (/, -, |) and also does substring containment check.
+  const matchesStandardized = React.useCallback((rawName: string) => {
+    const name = String(rawName || "").toLowerCase().trim();
+    if (!name) return false;
+    if (standardizedSupplierNames.has(name)) return true;
+    const parts = name.split(/[\/\|\-–]+/).map((p) => p.trim()).filter(Boolean);
+    for (const p of parts) {
+      if (standardizedSupplierNames.has(p)) return true;
+    }
+    for (const std of standardizedSupplierNames) {
+      if (!std) continue;
+      if (name.includes(std) || std.includes(name)) return true;
+    }
+    return false;
+  }, [standardizedSupplierNames]);
+
   const invoiceOnlySuppliers = React.useMemo(
-    () => invoiceSuppliers.filter((s: any) =>
-      !standardizedSupplierNames.has(String(s.supplier_name).toLowerCase().trim())
-    ),
-    [invoiceSuppliers, standardizedSupplierNames]
+    () => invoiceSuppliers.filter((s: any) => !matchesStandardized(s.supplier_name)),
+    [invoiceSuppliers, matchesStandardized]
   );
   return (
     <TabsContent value="price-lists">
