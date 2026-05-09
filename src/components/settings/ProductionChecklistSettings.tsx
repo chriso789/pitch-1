@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, Save, FileText, Clock, Package, Wrench, CheckCircle, Trophy, Search, Archive, ClipboardList } from 'lucide-react';
+import { Plus, Trash2, Save, FileText, Clock, Package, Wrench, CheckCircle, Trophy, Search, Archive, ClipboardList, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STAGE_CONFIG = [
