@@ -1080,10 +1080,22 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
             )}
           </div>
 
-          <div>
-            <Label>CSV Data {form.rawCsv ? "(extracted — review before import)" : "*"}</Label>
-            <p className="text-xs text-muted-foreground mb-1">Headers: sku, description, category, brand, uom, price</p>
-            <Textarea rows={6} value={form.rawCsv} onChange={e => setForm(f => ({ ...f, rawCsv: e.target.value }))} placeholder={"sku,description,category,brand,uom,price\nABC-GAF-HDZ-WW,GAF Timberline HDZ Weathered Wood,Shingles,GAF,SQ,98.50"} />
+          <div className="rounded-md border bg-muted/20 p-3">
+            <Label>Extracted Price List Data *</Label>
+            {form.rawCsv ? (
+              <div className="mt-2 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Ready to import from uploaded file</span>
+                  <Badge variant="outline">{extractedRowsCount} rows</Badge>
+                </div>
+                <div className="max-h-28 overflow-auto rounded border bg-background p-2 text-xs text-muted-foreground">
+                  {form.rawCsv.split("\n").slice(0, 4).map((line, i) => <div key={i}>{line}</div>)}
+                  {extractedRowsCount > 3 && <div>…</div>}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">Upload a PDF, CSV, or image and the system will scrape the rows automatically.</p>
+            )}
           </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.replaceExisting} onChange={e => setForm(f => ({ ...f, replaceExisting: e.target.checked }))} /> Replace existing active price list for this supplier</label>
           <Button onClick={handleImport} disabled={importing || extracting} className="w-full">{importing ? "Importing…" : "Import Price List"}</Button>
