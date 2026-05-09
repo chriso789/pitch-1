@@ -239,9 +239,9 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableCell>
                   <TableCell>{s.item_count}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"} \u00b7 {s.line_count} lines
+                    {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"} {"\u00b7"} {s.line_count} lines
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">\u2014</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{"\u2014"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
                   </TableCell>
