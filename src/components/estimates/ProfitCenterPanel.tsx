@@ -77,6 +77,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     const handleInvoiceUpdate = (event: CustomEvent) => {
       if (event.detail?.pipelineEntryId === pipelineEntryId) {
         queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
       }
     };
 
@@ -222,6 +223,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const handleInvoiceSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
   };
 
   const handleDeleteInvoice = async (invoiceId: string, invoiceType: InvoiceData['invoice_type']) => {
@@ -240,6 +242,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       if (error) throw error;
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
       window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
       window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType } }));
     } catch (err: any) {
