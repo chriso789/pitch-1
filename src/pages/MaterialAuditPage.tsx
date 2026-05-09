@@ -1065,19 +1065,19 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
               disabled={extracting}
               onChange={e => handleFile(e.target.files?.[0] || null)}
             />
-            {extracting && <p className="text-xs text-muted-foreground">Extracting rows from document with AI\u2026</p>}
+            {extracting && <p className="text-xs text-muted-foreground">Extracting rows from document with AI…</p>}
             {sourceFileName && !extracting && (
               <p className="text-xs text-muted-foreground">Loaded: <span className="font-medium">{sourceFileName}</span></p>
             )}
           </div>
 
           <div>
-            <Label>CSV Data {form.rawCsv ? "(extracted \u2014 review before import)" : "*"}</Label>
+            <Label>CSV Data {form.rawCsv ? "(extracted — review before import)" : "*"}</Label>
             <p className="text-xs text-muted-foreground mb-1">Headers: sku, description, category, brand, uom, price</p>
             <Textarea rows={6} value={form.rawCsv} onChange={e => setForm(f => ({ ...f, rawCsv: e.target.value }))} placeholder={"sku,description,category,brand,uom,price\nABC-GAF-HDZ-WW,GAF Timberline HDZ Weathered Wood,Shingles,GAF,SQ,98.50"} />
           </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.replaceExisting} onChange={e => setForm(f => ({ ...f, replaceExisting: e.target.checked }))} /> Replace existing active price list for this supplier</label>
-          <Button onClick={handleImport} disabled={importing || extracting} className="w-full">{importing ? "Importing\u2026" : "Import Price List"}</Button>
+          <Button onClick={handleImport} disabled={importing || extracting} className="w-full">{importing ? "Importing…" : "Import Price List"}</Button>
         </div>
       </DialogContent>
     </Dialog>
