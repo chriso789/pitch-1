@@ -28369,6 +28369,7 @@ export type Database = {
           is_required: boolean
           item_description: string | null
           item_label: string
+          location_id: string | null
           sort_order: number
           stage_key: string
           tenant_id: string
@@ -28382,6 +28383,7 @@ export type Database = {
           is_required?: boolean
           item_description?: string | null
           item_label: string
+          location_id?: string | null
           sort_order?: number
           stage_key: string
           tenant_id: string
@@ -28395,6 +28397,7 @@ export type Database = {
           is_required?: boolean
           item_description?: string | null
           item_label?: string
+          location_id?: string | null
           sort_order?: number
           stage_key?: string
           tenant_id?: string
