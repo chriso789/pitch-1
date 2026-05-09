@@ -648,10 +648,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
                   {invoices.map((invoice) => {
-                    const displayName = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
+                    const displayName = invoice.document_name?.trim() || invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
                     const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
+                    const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     return (
-                      <div key={invoice.id} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
+                      <div key={invoice.id || `${invoice.invoice_type}-${invoice.created_at}-${invoice.invoice_amount}`} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {invoice.invoice_type === 'material' ? (
                             <Package className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
@@ -681,7 +682,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                           >
                             {invoice.status}
                           </Badge>
-                          {canDeleteInvoices && (
+                          {canDeleteInvoice && (
                             <Button
                               variant="ghost"
                               size="icon"
