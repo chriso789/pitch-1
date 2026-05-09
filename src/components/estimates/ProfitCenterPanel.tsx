@@ -295,6 +295,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     }
   };
 
+  const handleStartEditPrice = () => {
     setEditPrice(sellingPrice.toFixed(2));
     setIsEditingPrice(true);
   };
