@@ -40,17 +40,21 @@ interface SalesRepData {
 }
 
 interface InvoiceData {
-  id: string;
+  id: string | null;
   invoice_type: 'material' | 'labor' | 'overhead';
   vendor_name: string | null;
   crew_name: string | null;
   notes?: string | null;
   invoice_number: string | null;
+  document_name?: string | null;
   invoice_amount: number;
   invoice_date: string | null;
   status: string;
   created_at: string;
 }
+
+const isValidUuid = (value?: string | null) =>
+  typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   pipelineEntryId,
@@ -73,6 +77,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     const handleInvoiceUpdate = (event: CustomEvent) => {
       if (event.detail?.pipelineEntryId === pipelineEntryId) {
         queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
       }
     };
 
@@ -218,10 +223,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const handleInvoiceSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
   };
 
-  const handleDeleteInvoice = async (invoiceId: string) => {
+  const handleDeleteInvoice = async (invoiceId: string, invoiceType: InvoiceData['invoice_type']) => {
     if (!canDeleteInvoices) return;
+    if (!isValidUuid(invoiceId)) {
+      toast.error('Invoice is still loading. Please refresh and try again.');
+      return;
+    }
     if (!window.confirm('Delete this imported invoice? This cannot be undone.')) return;
     setDeletingInvoiceId(invoiceId);
     try {
@@ -232,7 +242,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       if (error) throw error;
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
       window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
+      window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType } }));
     } catch (err: any) {
       console.error('[ProfitCenterPanel] delete invoice failed', err);
       toast.error(err?.message || 'Failed to delete invoice');
@@ -638,10 +650,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
                   {invoices.map((invoice) => {
-                    const displayName = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
+                    const displayName = invoice.document_name?.trim() || invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
                     const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
+                    const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     return (
-                      <div key={invoice.id} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
+                      <div key={invoice.id || `${invoice.invoice_type}-${invoice.created_at}-${invoice.invoice_amount}`} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {invoice.invoice_type === 'material' ? (
                             <Package className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
@@ -671,12 +684,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                           >
                             {invoice.status}
                           </Badge>
-                          {canDeleteInvoices && (
+                          {canDeleteInvoice && (
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => handleDeleteInvoice(invoice.id)}
+                              onClick={() => handleDeleteInvoice(invoice.id!, invoice.invoice_type)}
                               disabled={deletingInvoiceId === invoice.id}
                               title="Delete invoice"
                             >

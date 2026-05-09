@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,6 +69,20 @@ const OVERHEAD_CATEGORIES = [
   { value: 'other', label: 'Other Overhead' },
 ];
 
+const emptyInvoiceForm = {
+  vendor_name: '',
+  crew_name: '',
+  overhead_category: '',
+  invoice_number: '',
+  invoice_date: '',
+  invoice_amount: '',
+  subtotal: '',
+  tax_amount: '',
+  document_url: '',
+  document_name: '',
+  notes: ''
+};
+
 export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   projectId,
   pipelineEntryId,
@@ -84,19 +98,27 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
   const [parsedTotals, setParsedTotals] = useState<{ subtotal?: number; tax?: number; total?: number }>({});
-  const [formData, setFormData] = useState({
-    vendor_name: '',
-    crew_name: '',
-    overhead_category: '',
-    invoice_number: '',
-    invoice_date: '',
-    invoice_amount: '',
-    subtotal: '',
-    tax_amount: '',
-    document_url: '',
-    document_name: '',
-    notes: ''
-  });
+  const [formData, setFormData] = useState(emptyInvoiceForm);
+
+  const resetImportFields = () => {
+    setFormData(emptyInvoiceForm);
+    setLineItems([]);
+    setParsedTotals({});
+    setScanSuccess(false);
+    setLineItemsOpen(false);
+  };
+
+  useEffect(() => {
+    const handleInvoiceDeleted = (event: CustomEvent) => {
+      const detail = event.detail || {};
+      if (detail.pipelineEntryId === pipelineEntryId && detail.invoiceType === invoiceType) {
+        resetImportFields();
+      }
+    };
+
+    window.addEventListener('invoice-deleted', handleInvoiceDeleted as EventListener);
+    return () => window.removeEventListener('invoice-deleted', handleInvoiceDeleted as EventListener);
+  }, [pipelineEntryId, invoiceType]);
 
   const formatLineItemsSummary = (items: LineItem[]): string => {
     if (!items.length) return '';
@@ -295,24 +317,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         description: `${typeLabels[invoiceType]} invoice recorded successfully${data?.invoice?.duplicate_of ? ' (flagged as duplicate)' : ''}`
       });
 
-      // Reset form
-      setFormData({
-        vendor_name: '',
-        crew_name: '',
-        overhead_category: '',
-        invoice_number: '',
-        invoice_date: '',
-        invoice_amount: '',
-        subtotal: '',
-        tax_amount: '',
-        document_url: '',
-        document_name: '',
-        notes: ''
-      });
-      setLineItems([]);
-      setParsedTotals({});
-      setScanSuccess(false);
-      setLineItemsOpen(false);
+      resetImportFields();
 
       onSuccess?.(data.invoice);
     } catch (error: any) {
@@ -367,10 +372,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => {
-                  setFormData(prev => ({ ...prev, document_url: '', document_name: '' }));
-                  setLineItems([]);
-                  setParsedTotals({});
-                  setScanSuccess(false);
+                  resetImportFields();
                 }}
               >
                 <X className="h-3 w-3" />
