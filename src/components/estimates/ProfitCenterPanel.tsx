@@ -638,7 +638,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
                   {invoices.map((invoice) => {
-                    const displayName = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || null;
+                    const displayName = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
                     const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
                     return (
                       <div key={invoice.id} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
