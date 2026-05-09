@@ -211,20 +211,64 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const fetchDocuments = async () => {
     try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select(`
-          *,
-          uploader:uploaded_by (
-            first_name,
-            last_name
-          )
-        `)
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .order('created_at', { ascending: false });
+      const [docsRes, invoicesRes] = await Promise.all([
+        supabase
+          .from('documents')
+          .select(`
+            *,
+            uploader:uploaded_by (
+              first_name,
+              last_name
+            )
+          `)
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('project_cost_invoices')
+          .select('id, invoice_type, vendor_name, crew_name, invoice_number, invoice_amount, document_url, document_name, notes, created_at, created_by')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (error) throw error;
-      setDocuments(data || []);
+      if (docsRes.error) throw docsRes.error;
+      if (invoicesRes.error) throw invoicesRes.error;
+
+      const docs = (docsRes.data || []) as any[];
+      const linkedIds = new Set(docs.map(d => d.linked_invoice_id).filter(Boolean));
+
+      // Surface invoices that don't already have a documents row
+      // (typically labor/overhead entries submitted without an attached file)
+      const virtualDocs = (invoicesRes.data || [])
+        .filter((inv: any) => !linkedIds.has(inv.id))
+        .map((inv: any) => {
+          const docType = inv.invoice_type === 'material' ? 'invoice_material'
+            : inv.invoice_type === 'labor' ? 'invoice_labor'
+            : 'invoice_overhead';
+          const label = inv.vendor_name?.trim() || inv.crew_name?.trim() || inv.notes?.trim() || (inv.invoice_number ? `#${inv.invoice_number}` : `${inv.invoice_type} invoice`);
+          return {
+            id: `invoice-${inv.id}`,
+            filename: inv.document_name || `${label} — $${Number(inv.invoice_amount || 0).toLocaleString()}`,
+            file_path: inv.document_url || '',
+            file_size: 0,
+            mime_type: inv.document_url ? 'application/pdf' : null,
+            document_type: docType,
+            description: inv.notes || null,
+            created_at: inv.created_at,
+            uploaded_by: inv.created_by,
+            uploader: undefined,
+            linked_invoice_id: inv.id,
+            invoice_amount: inv.invoice_amount,
+            vendor_name: inv.vendor_name,
+            invoice_number: inv.invoice_number,
+            __virtual: true,
+          };
+        });
+
+      const merged = [...docs, ...virtualDocs].sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setDocuments(merged);
     } catch (error) {
       console.error('Error fetching documents:', error);
       toast({
