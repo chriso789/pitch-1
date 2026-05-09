@@ -183,32 +183,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableCell>
                 </TableRow>
               ))}
-              {templatePriceLists.map((g: any, i: number) => (
-                <TableRow key={"tpl-" + i}>
-                  <TableCell className="font-medium">{g.supplier_name}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">Material Catalog (CSV)</Badge></TableCell>
-                  <TableCell>
-                    <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
-                      {g.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{g.item_count}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {g.categories.slice(0, 3).map((c: string) => (
-                        <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
-                      ))}
-                      {g.categories.length > 3 && <Badge variant="outline" className="text-xs">+{g.categories.length - 3}</Badge>}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {g.updated_at ? new Date(g.updated_at).toLocaleDateString() : "\u2014"}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {/* Material Catalog (CSV) category rows intentionally hidden — only real uploaded price agreements are shown here. */}
               {legacyPriceLists.map((pl: any) => (
                 <TableRow key={pl.id}>
                   <TableCell className="font-medium">{(pl as any).material_suppliers?.supplier_name}</TableCell>
