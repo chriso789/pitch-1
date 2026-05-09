@@ -208,6 +208,48 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
           </Table>
         </CardContent>
       </Card>
+
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle className="text-base">Import History</CardTitle>
+          <CardDescription>
+            Every price list loaded through the "Import Materials" button ({importBatches.length} run{importBatches.length === 1 ? "" : "s"})
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>File / Source</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead>Imported</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {importBatches.map((b: any) => (
+                <TableRow key={b.id}>
+                  <TableCell className="font-medium">{b.source_filename || b.supplier_name || "Untitled import"}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs uppercase">{b.source_type || "csv"}</Badge></TableCell>
+                  <TableCell>{b.items_count}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{b.notes || "\u2014"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {b.created_at ? new Date(b.created_at).toLocaleString() : "\u2014"}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {importBatches.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                    No imports have been logged yet. New imports run through the "Import Materials" button will appear here.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </TabsContent>
   );
 }
