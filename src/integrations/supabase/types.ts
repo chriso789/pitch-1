@@ -28361,6 +28361,48 @@ export type Database = {
           },
         ]
       }
+      production_checklist_stages: {
+        Row: {
+          color: string
+          created_at: string
+          created_by: string | null
+          icon: string
+          id: string
+          location_id: string | null
+          name: string
+          sort_order: number
+          stage_key: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          icon?: string
+          id?: string
+          location_id?: string | null
+          name: string
+          sort_order?: number
+          stage_key: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          icon?: string
+          id?: string
+          location_id?: string | null
+          name?: string
+          sort_order?: number
+          stage_key?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       production_checklist_templates: {
         Row: {
           created_at: string
