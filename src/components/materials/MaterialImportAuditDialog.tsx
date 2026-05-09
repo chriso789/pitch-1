@@ -435,7 +435,21 @@ export function MaterialImportAuditDialog({
       
       const added = selectedItems.filter(i => i.status === 'new').length;
       const updated = selectedItems.filter(i => i.status !== 'new' && i.status !== 'no_change').length;
-      
+
+      // Record import batch for audit trail
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        await supabase.from('material_import_batches' as any).insert({
+          source_filename: sourceFileName || null,
+          source_type: 'csv',
+          items_count: selectedItems.length,
+          imported_by: userData?.user?.id ?? null,
+          notes: `${added} new, ${updated} price updates`,
+        });
+      } catch (logErr) {
+        console.warn('Failed to log import batch', logErr);
+      }
+
       toast.success(`Added ${added} new materials, updated ${updated} prices`);
       onImportComplete();
       handleClose(false);
