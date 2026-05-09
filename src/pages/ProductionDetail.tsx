@@ -88,19 +88,39 @@ const ProductionDetail = () => {
     enabled: !!projectId && !!effectiveTenantId,
   });
 
-  // Fetch checklist templates
+  // Project location (for per-location checklists)
+  const projectLocationId: string | null =
+    (projectData?.project as any)?.location_id ||
+    (projectData?.project as any)?.pipeline_entries?.location_id ||
+    null;
+
+  // Fetch checklist templates: prefer location-specific items, fall back to company defaults per stage
   const { data: checklistTemplates = [] } = useQuery({
-    queryKey: ['checklist-templates', effectiveTenantId],
+    queryKey: ['checklist-templates', effectiveTenantId, projectLocationId || 'company'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('production_checklist_templates')
         .select('*')
         .eq('tenant_id', effectiveTenantId!)
         .order('sort_order');
+      if (projectLocationId) {
+        query = query.or(`location_id.eq.${projectLocationId},location_id.is.null`);
+      } else {
+        query = query.is('location_id', null);
+      }
+      const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      const all = data || [];
+      if (!projectLocationId) return all;
+      // Per-stage fallback: if a stage has any location-specific item, hide company defaults for that stage
+      const stagesWithLocation = new Set(
+        all.filter((t: any) => t.location_id === projectLocationId).map((t: any) => t.stage_key)
+      );
+      return all.filter((t: any) =>
+        t.location_id === projectLocationId || !stagesWithLocation.has(t.stage_key)
+      );
     },
-    enabled: !!effectiveTenantId,
+    enabled: !!effectiveTenantId && !!projectData,
   });
 
   // Fetch checklist completions for this workflow
