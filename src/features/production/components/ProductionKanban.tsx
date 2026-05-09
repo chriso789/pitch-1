@@ -71,6 +71,7 @@ const ProductionKanban = () => {
   const [tradeFilter, setTradeFilter] = useState<string>('all');
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { currentLocationId } = useLocation();
 
   // Fetch FINANCIAL metrics
   const { data: financialWorksheetsNeeded = 0 } = useQuery({
