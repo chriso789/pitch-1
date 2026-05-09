@@ -228,7 +228,7 @@ export const ProductionChecklistSettings = () => {
 
         return (
           <Card key={stage.key}>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <div className={cn('w-5 h-5 rounded-full flex items-center justify-center', stage.color)}>
                   <stage.icon className="h-3 w-3 text-white" />
@@ -236,6 +236,20 @@ export const ProductionChecklistSettings = () => {
                 {stage.name}
                 <Badge variant="secondary" className="text-[10px]">{stageTemplates.length} items</Badge>
               </CardTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setNewItemStage(stage.key);
+                  setNewItemLabel('');
+                  setNewItemDescription('');
+                  setNewItemTradeType('');
+                  setNewItemRequired(true);
+                  setAddDialogOpen(true);
+                }}
+              >
+                <Plus className="h-3 w-3 mr-1" /> Add Item
+              </Button>
             </CardHeader>
             <CardContent>
               {stageTemplates.length === 0 ? (
