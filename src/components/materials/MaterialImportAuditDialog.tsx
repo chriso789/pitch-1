@@ -75,6 +75,7 @@ export function MaterialImportAuditDialog({
   const [allItems, setAllItems] = useState<AuditItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [saving, setSaving] = useState(false);
+  const [sourceFileName, setSourceFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resetDialog = () => {
