@@ -246,7 +246,7 @@ const ProductionKanban = () => {
     if (stages.length > 0) {
       fetchProductionData();
     }
-  }, [stages]);
+  }, [stages, currentLocationId]);
 
   // Set up real-time listeners for production workflow changes
   useEffect(() => {
