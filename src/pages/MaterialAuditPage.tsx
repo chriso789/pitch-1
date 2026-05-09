@@ -226,7 +226,28 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableCell>
                 </TableRow>
               ))}
-              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && (
+              {invoiceOnlySuppliers.map((s: any) => (
+                <TableRow
+                  key={"inv-" + s.supplier_name}
+                  className="cursor-pointer hover:bg-muted/40"
+                  onClick={() => setDrilldownSupplier(s)}
+                >
+                  <TableCell className="font-medium">{s.supplier_name}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">From Invoices</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs">Observed only</Badge>
+                  </TableCell>
+                  <TableCell>{s.item_count}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"} \u00b7 {s.line_count} lines
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">\u2014</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlySuppliers.length === 0 && (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
               )}
             </TableBody>
