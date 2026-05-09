@@ -161,7 +161,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
               {templatePriceLists.map((g: any, i: number) => (
                 <TableRow key={"tpl-" + i}>
                   <TableCell className="font-medium">{g.supplier_name}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">Estimate Template</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs">Material Catalog (CSV)</Badge></TableCell>
                   <TableCell>
                     <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
                       {g.is_active ? "Active" : "Inactive"}
