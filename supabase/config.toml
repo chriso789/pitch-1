@@ -1183,6 +1183,9 @@ verify_jwt = false
 [functions.parse-price-list-document]
 verify_jwt = false
 
+[functions.import-supplier-price-list]
+verify_jwt = true
+
 [functions.homeowner-portal-invite]
 verify_jwt = true
 
