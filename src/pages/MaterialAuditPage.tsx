@@ -465,6 +465,20 @@ export const MaterialAuditContent = () => {
     enabled: !!tenantId,
   });
 
+  // Real audit trail of every CSV/PDF import run via the "Import Materials" button
+  const { data: importBatches = [] } = useQuery({
+    queryKey: ["material-import-batches", tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("material_import_batches" as any)
+        .select("id, source_filename, supplier_name, source_type, items_count, notes, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) return [];
+      return data || [];
+    },
+  });
+
   const { data: materialInvoices = [] } = useQuery({
     queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
