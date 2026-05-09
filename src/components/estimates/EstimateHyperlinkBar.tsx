@@ -85,7 +85,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   // Fetch actual invoices to overlay on estimated costs
   const { data: actualInvoices } = useQuery({
-    queryKey: ['pipeline-invoices', pipelineEntryId],
+    queryKey: ['pipeline-invoices-totals', pipelineEntryId],
     queryFn: async () => {
       // Try by pipeline_entry_id first
       const { data, error } = await supabase
