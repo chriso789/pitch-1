@@ -5986,6 +5986,7 @@ async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number
 }
 
 async function fetchGoogleSolar(lat: number, lng: number) {
+  (globalThis as any).__solarInsightsDebug = null;
   if (!GOOGLE_SOLAR_API_KEY) return null;
   const url = new URL("https://solar.googleapis.com/v1/buildingInsights:findClosest");
   url.searchParams.set("location.latitude", String(lat));
@@ -5993,8 +5994,22 @@ async function fetchGoogleSolar(lat: number, lng: number) {
   url.searchParams.set("requiredQuality", "LOW");
   url.searchParams.set("key", GOOGLE_SOLAR_API_KEY);
   const r = await fetch(url.toString());
-  if (!r.ok) return null;
-  return await r.json();
+  const body = await r.text().catch(() => "");
+  (globalThis as any).__solarInsightsDebug = {
+    status: r.status,
+    ok: r.ok,
+    body_preview: body.slice(0, 500),
+  };
+  if (!r.ok) {
+    console.warn(`[GOOGLE_SOLAR_INSIGHTS] ${r.status}: ${body.slice(0, 240)}`);
+    return null;
+  }
+  try {
+    return JSON.parse(body);
+  } catch (e) {
+    console.warn(`[GOOGLE_SOLAR_INSIGHTS] invalid_json: ${(e as Error).message}`);
+    return null;
+  }
 }
 
 async function runSegmentation(payload: any) {
