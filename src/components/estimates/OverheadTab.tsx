@@ -118,6 +118,8 @@ export const OverheadTab: React.FC<OverheadTabProps> = ({ pipelineEntryId }) => 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['overhead-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+      window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType: 'overhead' } }));
       toast.success('Charge removed');
     },
   });
