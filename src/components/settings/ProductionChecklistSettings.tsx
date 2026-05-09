@@ -29,6 +29,9 @@ export const ProductionChecklistSettings = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
+  const { locations, currentLocationId } = useLocation();
+  // Which location's checklist we're editing. '' = company default (applies to all locations)
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(currentLocationId || '');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newItemLabel, setNewItemLabel] = useState('');
   const [newItemDescription, setNewItemDescription] = useState('');
@@ -36,14 +39,24 @@ export const ProductionChecklistSettings = () => {
   const [newItemRequired, setNewItemRequired] = useState(true);
   const [newItemTradeType, setNewItemTradeType] = useState('');
 
+  React.useEffect(() => {
+    if (currentLocationId && !selectedLocationId) setSelectedLocationId(currentLocationId);
+  }, [currentLocationId]);
+
   const { data: templates = [], isLoading } = useQuery({
-    queryKey: ['checklist-templates', effectiveTenantId],
+    queryKey: ['checklist-templates', effectiveTenantId, selectedLocationId || 'company'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('production_checklist_templates')
         .select('*')
         .eq('tenant_id', effectiveTenantId!)
         .order('sort_order');
+      if (selectedLocationId) {
+        query = query.eq('location_id', selectedLocationId);
+      } else {
+        query = query.is('location_id', null);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
