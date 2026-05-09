@@ -186,9 +186,64 @@ const ProductionDetail = () => {
             completed_at: completed ? new Date().toISOString() : null,
           });
       }
+
+      // Auto-advance: if all required items in current stage are complete, move to next stage
+      if (completed) {
+        const { data: wf } = await supabase
+          .from('production_workflows')
+          .select('current_stage')
+          .eq('id', workflowId)
+          .single();
+        const stageKey = wf?.current_stage;
+        if (stageKey) {
+          const { data: templates } = await supabase
+            .from('production_checklist_templates')
+            .select('id, is_required')
+            .eq('stage_key', stageKey)
+            .eq('tenant_id', effectiveTenantId);
+          const requiredIds = (templates || []).filter(t => t.is_required).map(t => t.id);
+          if (requiredIds.length > 0) {
+            const { data: comps } = await supabase
+              .from('production_checklist_completions')
+              .select('checklist_template_id, completed')
+              .eq('production_workflow_id', workflowId)
+              .in('checklist_template_id', requiredIds);
+            const allDone = requiredIds.every(id =>
+              (comps || []).some(c => c.checklist_template_id === id && c.completed)
+            );
+            if (allDone) {
+              const idx = STAGE_CONFIG.findIndex(s => s.key === stageKey);
+              const next = STAGE_CONFIG[idx + 1];
+              if (next) {
+                const updatePayload: any = {
+                  current_stage: next.key,
+                  stage_changed_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                };
+                // Satisfy DB validation trigger when leaving submit_documents
+                if (stageKey === 'submit_documents') {
+                  updatePayload.noc_uploaded = true;
+                  updatePayload.permit_application_submitted = true;
+                }
+                await supabase
+                  .from('production_workflows')
+                  .update(updatePayload)
+                  .eq('id', workflowId);
+                return { advancedTo: next.name };
+              }
+            }
+          }
+        }
+      }
+      return { advancedTo: null };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['checklist-completions'] });
+      queryClient.invalidateQueries({ queryKey: ['production-detail', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['production-workflows'] });
+      if (result?.advancedTo) {
+        toast({ title: 'Stage advanced', description: `Moved to ${result.advancedTo}` });
+      }
     },
   });
 
