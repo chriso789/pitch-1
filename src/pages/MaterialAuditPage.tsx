@@ -103,7 +103,7 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
-function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], tenantId, legacySuppliers, queryClient }: any) {
+function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], tenantId, legacySuppliers, queryClient }: any) {
   return (
     <TabsContent value="price-lists">
       <Card>
