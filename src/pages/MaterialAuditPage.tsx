@@ -428,24 +428,22 @@ export const MaterialAuditContent = () => {
     enabled: !!tenantId,
   });
 
-  // Manufacturer-grouped pricing already imported into estimate templates
+  // Real imported price lists: grouped from the materials catalog (CSV imports)
   const { data: templatePriceLists = [] } = useQuery({
-    queryKey: ["template-manufacturer-price-lists", tenantId],
+    queryKey: ["catalog-price-lists", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
       const { data } = await supabase
-        .from("estimate_calc_template_items")
-        .select("manufacturer, item_type, unit_cost, created_at, updated_at, active")
-        .eq("tenant_id", tenantId)
-        .not("manufacturer", "is", null);
-      if (!data) return [];
+        .from("materials")
+        .select("category_id, base_cost, active, created_at, updated_at, material_categories(name)")
+        .eq("tenant_id", tenantId);
+      if (!data || data.length === 0) return [];
       const groups: Record<string, { supplier_name: string; item_count: number; categories: Set<string>; is_active: boolean; imported_at: string; updated_at: string }> = {};
       data.forEach((it: any) => {
-        const key = it.manufacturer || "Unknown";
-        if (!key || key === "") return;
-        if (!groups[key]) {
-          groups[key] = {
-            supplier_name: key,
+        const cat = it.material_categories?.name || "Uncategorized";
+        if (!groups[cat]) {
+          groups[cat] = {
+            supplier_name: cat,
             item_count: 0,
             categories: new Set(),
             is_active: false,
@@ -453,12 +451,12 @@ export const MaterialAuditContent = () => {
             updated_at: it.updated_at,
           };
         }
-        const g = groups[key];
+        const g = groups[cat];
         g.item_count++;
-        if (it.item_type) g.categories.add(it.item_type);
+        g.categories.add(cat);
         if (it.active) g.is_active = true;
-        if (it.created_at < g.imported_at) g.imported_at = it.created_at;
-        if (it.updated_at > g.updated_at) g.updated_at = it.updated_at;
+        if (it.created_at && it.created_at < g.imported_at) g.imported_at = it.created_at;
+        if (it.updated_at && it.updated_at > g.updated_at) g.updated_at = it.updated_at;
       });
       return Object.values(groups)
         .map(g => ({ ...g, categories: Array.from(g.categories) }))
