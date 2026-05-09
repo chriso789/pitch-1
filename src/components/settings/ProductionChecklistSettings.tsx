@@ -104,6 +104,25 @@ export const ProductionChecklistSettings = () => {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (item: any) => {
+      const { id, item_label, item_description, stage_key, is_required, trade_type } = item;
+      await supabase.from('production_checklist_templates').update({
+        item_label: (item_label || '').trim(),
+        item_description: (item_description || '').trim() || null,
+        stage_key,
+        is_required: !!is_required,
+        trade_type: trade_type || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      setEditing(null);
+      toast({ title: 'Checklist item updated' });
+    },
+  });
+
   if (isLoading) {
     return <div className="text-center py-8 text-muted-foreground">Loading checklist templates...</div>;
   }
