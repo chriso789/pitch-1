@@ -190,7 +190,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   <TableCell>
                     <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
                   </TableCell>
-                  <TableCell>{"\u2014"}</TableCell>
+                  <TableCell>{pl.items_count || "\u2014"}</TableCell>
                   <TableCell>{pl.effective_start_date} {"\u2014"} {pl.effective_end_date || "\u221E"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(pl.created_at).toLocaleDateString()}
@@ -564,10 +564,13 @@ export const MaterialAuditContent = () => {
     queryKey: ["supplier-price-lists", tenantId, selectedSupplier],
     queryFn: async () => {
       if (!tenantId) return [];
-      let q = supabase.from("supplier_price_lists").select("*, material_suppliers(supplier_name)").eq("company_id", tenantId).order("created_at", { ascending: false });
+      let q = supabase.from("supplier_price_lists").select("*, material_suppliers(supplier_name), supplier_price_list_items(count)").eq("company_id", tenantId).order("created_at", { ascending: false });
       if (selectedSupplier !== "all") q = q.eq("supplier_id", selectedSupplier);
       const { data } = await q;
-      return data || [];
+      return (data || []).map((pl: any) => ({
+        ...pl,
+        items_count: pl.supplier_price_list_items?.[0]?.count ?? 0,
+      }));
     },
     enabled: !!tenantId,
   });
