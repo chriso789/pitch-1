@@ -385,6 +385,45 @@ export const MaterialAuditContent = () => {
     enabled: !!tenantId,
   });
 
+  // Manufacturer-grouped pricing already imported into estimate templates
+  const { data: templatePriceLists = [] } = useQuery({
+    queryKey: ["template-manufacturer-price-lists", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data } = await supabase
+        .from("estimate_calc_template_items")
+        .select("manufacturer, item_type, unit_cost, created_at, updated_at, active")
+        .eq("tenant_id", tenantId)
+        .not("manufacturer", "is", null);
+      if (!data) return [];
+      const groups: Record<string, { supplier_name: string; item_count: number; categories: Set<string>; is_active: boolean; imported_at: string; updated_at: string }> = {};
+      data.forEach((it: any) => {
+        const key = it.manufacturer || "Unknown";
+        if (!key || key === "") return;
+        if (!groups[key]) {
+          groups[key] = {
+            supplier_name: key,
+            item_count: 0,
+            categories: new Set(),
+            is_active: false,
+            imported_at: it.created_at,
+            updated_at: it.updated_at,
+          };
+        }
+        const g = groups[key];
+        g.item_count++;
+        if (it.item_type) g.categories.add(it.item_type);
+        if (it.active) g.is_active = true;
+        if (it.created_at < g.imported_at) g.imported_at = it.created_at;
+        if (it.updated_at > g.updated_at) g.updated_at = it.updated_at;
+      });
+      return Object.values(groups)
+        .map(g => ({ ...g, categories: Array.from(g.categories) }))
+        .sort((a, b) => b.item_count - a.item_count);
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: materialInvoices = [] } = useQuery({
     queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
