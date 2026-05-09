@@ -31,6 +31,7 @@ import { useNavigate } from "react-router-dom";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { useQuery } from "@tanstack/react-query";
 import { FinalInspectionCostDialog } from "@/components/production/FinalInspectionCostDialog";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface ProductionProject {
   id: string;
