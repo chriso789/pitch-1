@@ -40,17 +40,21 @@ interface SalesRepData {
 }
 
 interface InvoiceData {
-  id: string;
+  id: string | null;
   invoice_type: 'material' | 'labor' | 'overhead';
   vendor_name: string | null;
   crew_name: string | null;
   notes?: string | null;
   invoice_number: string | null;
+  document_name?: string | null;
   invoice_amount: number;
   invoice_date: string | null;
   status: string;
   created_at: string;
 }
+
+const isValidUuid = (value?: string | null) =>
+  typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   pipelineEntryId,
