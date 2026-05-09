@@ -128,6 +128,8 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   if (!m) return null;
   const grj = m.geometry_report_json || {};
   const dp = grj.debug_pipeline || {};
+  const acquisitionAudit = grj.acquisition_audit || grj.source_acquisition_debug?.acquisition_audit || m.source_context?.acquisition_audit || m.source_context?.debug?.acquisition_audit || null;
+  const sourceAcquisitionDebug = grj.source_acquisition_debug || m.source_context?.source_acquisition_debug || m.source_context?.debug?.source_acquisition_debug || null;
 
   const fmt = (v: any, unit = '') => {
     if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return '—';
@@ -190,6 +192,9 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Perimeter/Mask Ratio', value: fmt(grj.perimeter_inner_trace?.perimeter_to_mask_ratio) },
     { label: 'Missed Roof Area', value: fmt(grj.perimeter_inner_trace?.missed_roof_area_sqft, 'sq ft') },
     { label: 'Customer Ready', value: String(m.customer_report_ready ?? '—') },
+    { label: 'OSM Candidates', value: fmt(sourceAcquisitionDebug?.no_osm_candidates === false ? (grj.candidates_tried ?? grj.candidates?.length) : grj.candidates_tried) },
+    { label: 'Solar Insights', value: String(sourceAcquisitionDebug?.solar_insights?.status ?? '—') },
+    { label: 'Solar Segments', value: fmt(sourceAcquisitionDebug?.solar_segments_count) },
   ];
 
   const blockReason = grj.block_customer_report_reason;
@@ -274,6 +279,17 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
                 </tbody>
               </table>
             </div>
+          </details>
+        )}
+
+        {acquisitionAudit && (
+          <details className="group rounded-md border bg-muted/20 p-3">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+              Source acquisition audit ▸
+            </summary>
+            <pre className="mt-2 max-h-72 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+              {JSON.stringify({ acquisition_audit: acquisitionAudit, source_acquisition_debug: sourceAcquisitionDebug }, null, 2)}
+            </pre>
           </details>
         )}
 
