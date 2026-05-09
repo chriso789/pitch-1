@@ -281,6 +281,70 @@ export const ProductionChecklistSettings = () => {
           </Card>
         );
       })}
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Checklist Item</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium">Production Stage</label>
+                <Select value={editing.stage_key} onValueChange={(v) => setEditing({ ...editing, stage_key: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STAGE_CONFIG.map(s => (
+                      <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Item Label</label>
+                <Input
+                  value={editing.item_label || ''}
+                  onChange={(e) => setEditing({ ...editing, item_label: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Description (optional)</label>
+                <Input
+                  value={editing.item_description || ''}
+                  onChange={(e) => setEditing({ ...editing, item_description: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Trade Type (optional)</label>
+                <Select value={editing.trade_type || ''} onValueChange={(v) => setEditing({ ...editing, trade_type: v })}>
+                  <SelectTrigger><SelectValue placeholder="All trades" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All trades</SelectItem>
+                    <SelectItem value="roofing">Roofing</SelectItem>
+                    <SelectItem value="siding">Siding</SelectItem>
+                    <SelectItem value="gutters">Gutters</SelectItem>
+                    <SelectItem value="solar">Solar</SelectItem>
+                    <SelectItem value="painting">Painting</SelectItem>
+                    <SelectItem value="windows">Windows</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={!!editing.is_required}
+                  onCheckedChange={(c) => setEditing({ ...editing, is_required: !!c })}
+                />
+                <label className="text-sm">Required to advance stage</label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => editing && updateMutation.mutate(editing)} disabled={!editing?.item_label?.trim()}>
+              <Save className="h-4 w-4 mr-1" /> Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
