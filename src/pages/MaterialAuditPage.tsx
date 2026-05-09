@@ -296,6 +296,81 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!drilldownSupplier} onOpenChange={(o) => !o && setDrilldownSupplier(null)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {drilldownSupplier?.supplier_name}
+              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">From Invoices</Badge>
+            </DialogTitle>
+            <CardDescription>
+              No CSV/PDF price list imported for this supplier yet. Pricing below is observed from
+              {" "}{drilldownSupplier?.invoice_count} invoice{drilldownSupplier?.invoice_count === 1 ? "" : "s"}.
+              The lowest observed price is held as the working benchmark until an official price list is imported.
+            </CardDescription>
+          </DialogHeader>
+          {drilldownSupplier && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <Card><CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Distinct Items</p>
+                  <p className="text-2xl font-bold">{drilldownSupplier.item_count}</p>
+                </CardContent></Card>
+                <Card><CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Invoice Lines</p>
+                  <p className="text-2xl font-bold">{drilldownSupplier.line_count}</p>
+                </CardContent></Card>
+                <Card><CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Items With Variance</p>
+                  <p className="text-2xl font-bold text-amber-600">
+                    {drilldownSupplier.items.filter((i: any) => i.variance_pct > 5).length}
+                  </p>
+                </CardContent></Card>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>UOM</TableHead>
+                    <TableHead className="text-right">Lowest (benchmark)</TableHead>
+                    <TableHead className="text-right">Avg</TableHead>
+                    <TableHead className="text-right">Highest</TableHead>
+                    <TableHead className="text-right">Variance</TableHead>
+                    <TableHead className="text-right">Seen</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {drilldownSupplier.items.map((it: any) => (
+                    <TableRow key={it.key}>
+                      <TableCell className="font-medium">
+                        {it.description}
+                        {it.sku && <span className="text-xs text-muted-foreground ml-1">({it.sku})</span>}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{it.uom || "\u2014"}</TableCell>
+                      <TableCell className="text-right font-semibold text-emerald-700">${it.min_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">${it.avg_price.toFixed(2)}</TableCell>
+                      <TableCell className={"text-right " + (it.variance_pct > 5 ? "text-destructive font-semibold" : "")}>
+                        ${it.max_price.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {it.variance_pct > 0 ? (
+                          <Badge variant={it.variance_pct > 10 ? "destructive" : "outline"} className="text-xs">
+                            {it.variance_pct.toFixed(1)}%
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">{it.observation_count}x</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </TabsContent>
   );
 }
