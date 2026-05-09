@@ -103,7 +103,32 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
-function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], tenantId, legacySuppliers, queryClient }: any) {
+function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], invoiceSuppliers = [], tenantId, legacySuppliers, queryClient }: any) {
+  const [drilldownSupplier, setDrilldownSupplier] = useState<any | null>(null);
+
+  // A supplier is considered "standardized" only when its name appears in
+  // a CSV/PDF import batch OR in pricebookGroups/legacyPriceLists.
+  const standardizedSupplierNames = React.useMemo(() => {
+    const names = new Set<string>();
+    importBatches.forEach((b: any) => {
+      if (b.supplier_name) names.add(String(b.supplier_name).toLowerCase().trim());
+    });
+    pricebookGroups.forEach((g: any) => {
+      if (g.supplier_name) names.add(String(g.supplier_name).toLowerCase().trim());
+    });
+    legacyPriceLists.forEach((pl: any) => {
+      const n = pl?.material_suppliers?.supplier_name;
+      if (n) names.add(String(n).toLowerCase().trim());
+    });
+    return names;
+  }, [importBatches, pricebookGroups, legacyPriceLists]);
+
+  const invoiceOnlySuppliers = React.useMemo(
+    () => invoiceSuppliers.filter((s: any) =>
+      !standardizedSupplierNames.has(String(s.supplier_name).toLowerCase().trim())
+    ),
+    [invoiceSuppliers, standardizedSupplierNames]
+  );
   return (
     <TabsContent value="price-lists">
       <Card>
