@@ -73,6 +73,7 @@ export const ProductionChecklistSettings = () => {
 
       await supabase.from('production_checklist_templates').insert({
         tenant_id: effectiveTenantId,
+        location_id: selectedLocationId || null,
         stage_key: newItemStage,
         item_label: newItemLabel.trim(),
         item_description: newItemDescription.trim() || null,
