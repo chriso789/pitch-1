@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, XCircle, DollarSign, TrendingUp, Copy, Package } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -928,6 +927,7 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
   const [importing, setImporting] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [sourceFileName, setSourceFileName] = useState<string>("");
+  const extractedRowsCount = React.useMemo(() => Math.max(form.rawCsv.trim().split("\n").length - 1, 0), [form.rawCsv]);
 
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -965,7 +965,7 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
       const { data, error } = await supabase.functions.invoke("parse-price-list-document", {
         body: { document_base64: base64, mime_type: file.type || (isPdf ? "application/pdf" : "image/png") },
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message || "Document extraction failed");
       const rows = (data?.rows || []) as any[];
       if (!rows.length) { toast.error("No price-list rows detected"); return; }
       const csv = ["sku,description,category,brand,uom,price"]
