@@ -94,7 +94,7 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
-function PriceListsTab({ pricebookGroups, legacyPriceLists, tenantId, legacySuppliers, queryClient }: any) {
+function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], tenantId, legacySuppliers, queryClient }: any) {
   return (
     <TabsContent value="price-lists">
       <Card>
@@ -106,25 +106,27 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, tenantId, legacySupp
           <ImportPriceListDialog tenantId={tenantId} suppliers={legacySuppliers} onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["pricebook-groups"] });
             queryClient.invalidateQueries({ queryKey: ["supplier-price-lists"] });
+            queryClient.invalidateQueries({ queryKey: ["template-manufacturer-price-lists"] });
           }} />
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Supplier</TableHead>
-                <TableHead>Effective Date</TableHead>
+                <TableHead>Supplier / Manufacturer</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Categories</TableHead>
                 <TableHead>Imported</TableHead>
+                <TableHead>Last Updated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pricebookGroups.map((g: any, i: number) => (
-                <TableRow key={i}>
+                <TableRow key={"pb-" + i}>
                   <TableCell className="font-medium">{g.supplier_name}</TableCell>
-                  <TableCell>{g.effective_date || "\u2014"}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs">Pricebook</Badge></TableCell>
                   <TableCell>
                     <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
                       {g.is_active ? "Active" : "Inactive"}
@@ -142,24 +144,56 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, tenantId, legacySupp
                   <TableCell className="text-sm text-muted-foreground">
                     {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {templatePriceLists.map((g: any, i: number) => (
+                <TableRow key={"tpl-" + i}>
+                  <TableCell className="font-medium">{g.supplier_name}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs">Estimate Template</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
+                      {g.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{g.item_count}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {g.categories.slice(0, 3).map((c: string) => (
+                        <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+                      ))}
+                      {g.categories.length > 3 && <Badge variant="outline" className="text-xs">+{g.categories.length - 3}</Badge>}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {g.updated_at ? new Date(g.updated_at).toLocaleDateString() : "\u2014"}
+                  </TableCell>
                 </TableRow>
               ))}
               {legacyPriceLists.map((pl: any) => (
                 <TableRow key={pl.id}>
                   <TableCell className="font-medium">{(pl as any).material_suppliers?.supplier_name}</TableCell>
-                  <TableCell>{pl.effective_start_date} {"\u2014"} {pl.effective_end_date || "\u221E"}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs">Imported List</Badge></TableCell>
                   <TableCell>
                     <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
                   </TableCell>
                   <TableCell>{"\u2014"}</TableCell>
-                  <TableCell>{"\u2014"}</TableCell>
+                  <TableCell>{pl.effective_start_date} {"\u2014"} {pl.effective_end_date || "\u221E"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(pl.created_at).toLocaleDateString()}
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {pl.updated_at ? new Date(pl.updated_at).toLocaleDateString() : "\u2014"}
+                  </TableCell>
                 </TableRow>
               ))}
-              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
+              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -385,6 +419,45 @@ export const MaterialAuditContent = () => {
     enabled: !!tenantId,
   });
 
+  // Manufacturer-grouped pricing already imported into estimate templates
+  const { data: templatePriceLists = [] } = useQuery({
+    queryKey: ["template-manufacturer-price-lists", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data } = await supabase
+        .from("estimate_calc_template_items")
+        .select("manufacturer, item_type, unit_cost, created_at, updated_at, active")
+        .eq("tenant_id", tenantId)
+        .not("manufacturer", "is", null);
+      if (!data) return [];
+      const groups: Record<string, { supplier_name: string; item_count: number; categories: Set<string>; is_active: boolean; imported_at: string; updated_at: string }> = {};
+      data.forEach((it: any) => {
+        const key = it.manufacturer || "Unknown";
+        if (!key || key === "") return;
+        if (!groups[key]) {
+          groups[key] = {
+            supplier_name: key,
+            item_count: 0,
+            categories: new Set(),
+            is_active: false,
+            imported_at: it.created_at,
+            updated_at: it.updated_at,
+          };
+        }
+        const g = groups[key];
+        g.item_count++;
+        if (it.item_type) g.categories.add(it.item_type);
+        if (it.active) g.is_active = true;
+        if (it.created_at < g.imported_at) g.imported_at = it.created_at;
+        if (it.updated_at > g.updated_at) g.updated_at = it.updated_at;
+      });
+      return Object.values(groups)
+        .map(g => ({ ...g, categories: Array.from(g.categories) }))
+        .sort((a, b) => b.item_count - a.item_count);
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: materialInvoices = [] } = useQuery({
     queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
     queryFn: async () => {
@@ -532,7 +605,7 @@ export const MaterialAuditContent = () => {
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
         </TabsList>
-        <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
+        <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
         <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} />
         <UnmatchedTabContent tenantId={tenantId} unmatchedLines={unmatchedLines} queryClient={queryClient} />
