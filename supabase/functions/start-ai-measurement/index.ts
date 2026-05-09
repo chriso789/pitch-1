@@ -597,6 +597,7 @@ async function processJob(input: any) {
     // Compute Solar bbox in pixel space — used as the coverage reference target.
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
     const solarData = await fetchGoogleSolar(coords.lat, coords.lng);
+    const solarInsightsDebug = (globalThis as any).__solarInsightsDebug || null;
     const solarBboxPx = (() => {
       const bb = solarData?.boundingBox;
       if (!bb?.sw || !bb?.ne) return null;
@@ -1370,7 +1371,13 @@ async function processJob(input: any) {
     }
 
     if (!footprintValid) {
-      const failReason = footprint.length < 4
+      const noOSMCandidates = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+      const noMaskEvidence = !roofMaskForContour;
+      const noSolarEvidence = !solarBboxPx && solarSegments.length === 0;
+      const sourceAcquisitionFailed = noOSMCandidates && noMaskEvidence && noSolarEvidence && footprint.length < 4;
+      const failReason = sourceAcquisitionFailed
+        ? "source_acquisition_failed"
+        : footprint.length < 4
         ? "missing_valid_footprint"
         : footprintIsLatLng
           ? "footprint_coordinate_mismatch"
@@ -1440,6 +1447,17 @@ async function processJob(input: any) {
         registration_gate: registrationDebug,
         visible_roof_bbox_px: visibleRoofBboxPx,
         footprint_registration_passed: false,
+        acquisition_audit: acquisitionAudit,
+        source_acquisition_debug: {
+          source_acquisition_failed: sourceAcquisitionFailed,
+          no_osm_candidates: noOSMCandidates,
+          no_solar_mask: noMaskEvidence,
+          no_solar_building_insights: noSolarEvidence,
+          solar_insights: solarInsightsDebug,
+          solar_segments_count: solarSegments.length,
+          dsm_datalayers_diagnostics: getLastDSMDiagnostics(),
+          mask_contour_diagnostics: maskContourDiagnostics || null,
+        },
       };
 
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
@@ -1451,6 +1469,8 @@ async function processJob(input: any) {
         source_context: {
           gate_reason: failReason,
           debug: footprintDebug,
+          acquisition_audit: acquisitionAudit,
+          source_acquisition_debug: footprintDebug.source_acquisition_debug,
         },
       }).eq("id", input.ai_measurement_job_id);
       return;
