@@ -618,38 +618,55 @@ export const MaterialAuditContent = () => {
   });
 
   // Suppliers known only via uploaded invoices (no CSV/PDF import yet).
-  // For each, aggregate observed pricing across all invoice line items so we can
-  // hold the LOWEST observed price as the working benchmark until a real
-  // CSV/PDF price list is imported.
+  // Sources from BOTH project_cost_invoices (so vendors w/o extracted line items
+  // still appear) AND line items (for observed pricing). Vendor name variants
+  // (ABC / abc / ABC Supply Co; SRS / srs / Suncoast; etc.) are canonicalized,
+  // and all permit-fee invoices (city / county / township) are bucketed into a
+  // single "Permits" category.
   const { data: invoiceSuppliers = [] } = useQuery({
-    queryKey: ["invoice-derived-suppliers", tenantId],
+    queryKey: ["invoice-derived-suppliers-v2", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data, error } = await supabase
-        .from("project_cost_invoice_line_items")
-        .select("vendor_name, description, normalized_description, sku, unit_of_measure, unit_price, quantity, created_at, invoice_id")
-        .eq("tenant_id", tenantId)
-        .not("vendor_name", "is", null)
-        .not("unit_price", "is", null);
-      if (error || !data) return [];
 
-      type LineRow = {
-        vendor_name: string;
-        description: string | null;
-        normalized_description: string | null;
-        sku: string | null;
-        unit_of_measure: string | null;
-        unit_price: number;
-        quantity: number | null;
-        created_at: string;
-        invoice_id: string | null;
+      const canonicalize = (raw: string | null | undefined): { key: string; display: string } => {
+        const v = (raw || "").trim();
+        if (!v) return { key: "__unknown__", display: "Unknown vendor" };
+        if (/permit|county|township|\btwp\b|city of|riviera beach|ridley|planning,? zoning|zoning ?& ?building/i.test(v))
+          return { key: "__permits__", display: "Permits (city / county / township)" };
+        if (/dump|dumpster/i.test(v))
+          return { key: "__dumpfees__", display: "Dump / Dumpster Fees" };
+        if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
+        if (/^srs\b|srs building|suncoast roofers/i.test(v))
+          return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
+        if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
+        if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
+        if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
+        if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
+        if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
+        if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
+        return { key: v.toLowerCase(), display: v };
       };
+
+      const [{ data: invs }, { data: lines }] = await Promise.all([
+        supabase
+          .from("project_cost_invoices")
+          .select("id, vendor_name, invoice_type, created_at, total_amount")
+          .eq("tenant_id", tenantId)
+          .not("vendor_name", "is", null),
+        supabase
+          .from("project_cost_invoice_line_items")
+          .select("vendor_name, description, normalized_description, sku, unit_of_measure, unit_price, quantity, created_at, invoice_id")
+          .eq("tenant_id", tenantId)
+          .not("vendor_name", "is", null)
+          .not("unit_price", "is", null),
+      ]);
 
       const bySupplier: Record<string, {
         supplier_name: string;
         invoice_ids: Set<string>;
         line_count: number;
         last_invoice_at: string;
+        invoice_types: Set<string>;
         items: Record<string, {
           key: string;
           description: string;
@@ -659,26 +676,38 @@ export const MaterialAuditContent = () => {
         }>;
       }> = {};
 
-      (data as any[]).forEach((row) => {
-        const vendor = (row.vendor_name || "").trim();
-        if (!vendor) return;
-        const price = Number(row.unit_price);
-        if (!isFinite(price) || price <= 0) return;
-
-        if (!bySupplier[vendor]) {
-          bySupplier[vendor] = {
-            supplier_name: vendor,
+      const ensure = (key: string, display: string, created_at: string) => {
+        if (!bySupplier[key]) {
+          bySupplier[key] = {
+            supplier_name: display,
             invoice_ids: new Set(),
             line_count: 0,
-            last_invoice_at: row.created_at,
+            last_invoice_at: created_at,
+            invoice_types: new Set(),
             items: {},
           };
         }
-        const sup = bySupplier[vendor];
+        return bySupplier[key];
+      };
+
+      // Seed every invoice — even ones with no extracted line items.
+      (invs || []).forEach((inv: any) => {
+        const { key, display } = canonicalize(inv.vendor_name);
+        const sup = ensure(key, display, inv.created_at);
+        if (inv.id) sup.invoice_ids.add(inv.id);
+        if (inv.invoice_type) sup.invoice_types.add(inv.invoice_type);
+        if (inv.created_at && inv.created_at > sup.last_invoice_at) sup.last_invoice_at = inv.created_at;
+      });
+
+      // Layer line-item pricing observations on top.
+      (lines || []).forEach((row: any) => {
+        const { key, display } = canonicalize(row.vendor_name);
+        const price = Number(row.unit_price);
+        if (!isFinite(price) || price <= 0) return;
+        const sup = ensure(key, display, row.created_at);
         sup.line_count++;
         if (row.invoice_id) sup.invoice_ids.add(row.invoice_id);
         if (row.created_at && row.created_at > sup.last_invoice_at) sup.last_invoice_at = row.created_at;
-
         const itemKey = (row.normalized_description || row.description || row.sku || "unknown").toLowerCase().trim();
         if (!sup.items[itemKey]) {
           sup.items[itemKey] = {
@@ -712,9 +741,10 @@ export const MaterialAuditContent = () => {
           line_count: sup.line_count,
           item_count: items.length,
           last_invoice_at: sup.last_invoice_at,
+          invoice_types: Array.from(sup.invoice_types),
           items,
         };
-      }).sort((a, b) => b.line_count - a.line_count);
+      }).sort((a, b) => b.invoice_count - a.invoice_count);
     },
     enabled: !!tenantId,
   });
