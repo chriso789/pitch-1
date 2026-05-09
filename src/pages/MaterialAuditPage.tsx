@@ -926,10 +926,68 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ supplierName: "", listName: "", effectiveStartDate: "", effectiveEndDate: "", replaceExisting: false, rawCsv: "" });
   const [importing, setImporting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [sourceFileName, setSourceFileName] = useState<string>("");
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => {
+        const s = String(r.result || "");
+        const i = s.indexOf(",");
+        resolve(i >= 0 ? s.slice(i + 1) : s);
+      };
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    setSourceFileName(file.name);
+    const lower = file.name.toLowerCase();
+    const isCsv = lower.endsWith(".csv") || file.type === "text/csv";
+    const isPdf = lower.endsWith(".pdf") || file.type === "application/pdf";
+    const isImg = /\.(png|jpe?g|webp)$/i.test(lower) || file.type.startsWith("image/");
+
+    if (isCsv) {
+      const text = await file.text();
+      setForm(f => ({ ...f, rawCsv: text }));
+      toast.success("Loaded CSV \u00b7 review and import");
+      return;
+    }
+    if (!isPdf && !isImg) {
+      toast.error("Upload a CSV, PDF, or image file");
+      return;
+    }
+    setExtracting(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const { data, error } = await supabase.functions.invoke("parse-price-list-document", {
+        body: { document_base64: base64, mime_type: file.type || (isPdf ? "application/pdf" : "image/png") },
+      });
+      if (error) throw error;
+      const rows = (data?.rows || []) as any[];
+      if (!rows.length) { toast.error("No price-list rows detected"); return; }
+      const csv = ["sku,description,category,brand,uom,price"]
+        .concat(rows.map(r => [r.sku, r.description, r.category, r.brand, r.uom, r.price]
+          .map(v => v == null ? "" : String(v).replace(/,/g, " "))
+          .join(","))).join("\n");
+      setForm(f => ({
+        ...f,
+        rawCsv: csv,
+        supplierName: f.supplierName || data?.supplier_name || "",
+      }));
+      toast.success("Extracted " + rows.length + " rows \u00b7 review and import");
+    } catch (e: any) {
+      toast.error(e.message || "Could not extract price list");
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const handleImport = async () => {
     if (!tenantId || !form.supplierName || !form.listName || !form.effectiveStartDate || !form.rawCsv.trim()) {
-      toast.error("Fill all required fields and paste CSV data");
+      toast.error("Fill all required fields and load price list data");
       return;
     }
     setImporting(true);
@@ -956,9 +1014,26 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
         body: { companyId: tenantId, supplierName: form.supplierName, listName: form.listName, effectiveStartDate: form.effectiveStartDate, effectiveEndDate: form.effectiveEndDate || null, replaceExisting: form.replaceExisting, rows },
       });
       if (error) throw error;
-      toast.success("Imported " + (data.imported || 0) + " items");
+      const importedCount = data?.imported || 0;
+      toast.success("Imported " + importedCount + " items");
+
+      // Log batch
+      try {
+        const userId = (await supabase.auth.getUser()).data?.user?.id || null;
+        await (supabase as any).from("material_import_batches").insert({
+          tenant_id: tenantId,
+          source_filename: sourceFileName || form.listName,
+          supplier_name: form.supplierName,
+          source_type: sourceFileName.toLowerCase().endsWith(".pdf") ? "pdf" : "csv",
+          items_count: importedCount,
+          imported_by: userId,
+          notes: form.listName,
+        });
+      } catch {}
+
       setOpen(false);
       setForm({ supplierName: "", listName: "", effectiveStartDate: "", effectiveEndDate: "", replaceExisting: false, rawCsv: "" });
+      setSourceFileName("");
       onSuccess();
     } catch (e: any) {
       toast.error(e.message || "Import failed");
@@ -972,7 +1047,7 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
       <DialogTrigger asChild>
         <Button size="sm"><Upload className="h-4 w-4 mr-1" />Import Price List</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Import Supplier Price List</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Supplier Name *</Label><Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="ABC Supply" /></div>
@@ -981,13 +1056,28 @@ function ImportPriceListDialog({ tenantId, suppliers, onSuccess }: { tenantId: s
             <div><Label>Effective Start *</Label><Input type="date" value={form.effectiveStartDate} onChange={e => setForm(f => ({ ...f, effectiveStartDate: e.target.value }))} /></div>
             <div><Label>Effective End</Label><Input type="date" value={form.effectiveEndDate} onChange={e => setForm(f => ({ ...f, effectiveEndDate: e.target.value }))} /></div>
           </div>
+
+          <div className="border rounded-md p-3 bg-muted/30 space-y-2">
+            <Label className="text-sm">Upload Price List (PDF, CSV, or image)</Label>
+            <Input
+              type="file"
+              accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/*"
+              disabled={extracting}
+              onChange={e => handleFile(e.target.files?.[0] || null)}
+            />
+            {extracting && <p className="text-xs text-muted-foreground">Extracting rows from document with AI…</p>}
+            {sourceFileName && !extracting && (
+              <p className="text-xs text-muted-foreground">Loaded: <span className="font-medium">{sourceFileName}</span></p>
+            )}
+          </div>
+
           <div>
-            <Label>Paste CSV Data *</Label>
+            <Label>CSV Data {form.rawCsv ? "(extracted — review before import)" : "*"}</Label>
             <p className="text-xs text-muted-foreground mb-1">Headers: sku, description, category, brand, uom, price</p>
             <Textarea rows={6} value={form.rawCsv} onChange={e => setForm(f => ({ ...f, rawCsv: e.target.value }))} placeholder={"sku,description,category,brand,uom,price\nABC-GAF-HDZ-WW,GAF Timberline HDZ Weathered Wood,Shingles,GAF,SQ,98.50"} />
           </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.replaceExisting} onChange={e => setForm(f => ({ ...f, replaceExisting: e.target.checked }))} /> Replace existing active price list for this supplier</label>
-          <Button onClick={handleImport} disabled={importing} className="w-full">{importing ? "Importing..." : "Import Price List"}</Button>
+          <Button onClick={handleImport} disabled={importing || extracting} className="w-full">{importing ? "Importing…" : "Import Price List"}</Button>
         </div>
       </DialogContent>
     </Dialog>

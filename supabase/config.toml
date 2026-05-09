@@ -1180,6 +1180,9 @@ verify_jwt = false
 [functions.parse-invoice-document]
 verify_jwt = false
 
+[functions.parse-price-list-document]
+verify_jwt = false
+
 [functions.homeowner-portal-invite]
 verify_jwt = true
 
