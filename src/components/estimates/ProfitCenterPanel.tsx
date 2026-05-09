@@ -224,7 +224,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
   };
 
-  const handleDeleteInvoice = async (invoiceId: string) => {
+  const handleDeleteInvoice = async (invoiceId: string, invoiceType: InvoiceData['invoice_type']) => {
     if (!canDeleteInvoices) return;
     if (!isValidUuid(invoiceId)) {
       toast.error('Invoice is still loading. Please refresh and try again.');
@@ -241,8 +241,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
       window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
-      const deletedInvoice = invoices?.find((invoice) => invoice.id === invoiceId);
-      window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType: deletedInvoice?.invoice_type } }));
+      window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType } }));
     } catch (err: any) {
       console.error('[ProfitCenterPanel] delete invoice failed', err);
       toast.error(err?.message || 'Failed to delete invoice');
@@ -687,7 +686,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => handleDeleteInvoice(invoice.id!)}
+                              onClick={() => handleDeleteInvoice(invoice.id!, invoice.invoice_type)}
                               disabled={deletingInvoiceId === invoice.id}
                               title="Delete invoice"
                             >
