@@ -36084,6 +36084,116 @@ export type Database = {
           },
         ]
       }
+      scraped_invoice_inbox: {
+        Row: {
+          attached_at: string | null
+          attached_by: string | null
+          attached_project_cost_invoice_id: string | null
+          attached_project_id: string | null
+          created_at: string
+          dismissed_at: string | null
+          dismissed_by: string | null
+          dismissed_reason: string | null
+          external_id: string | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          line_items: Json | null
+          pdf_storage_path: string | null
+          pdf_url: string | null
+          po_number: string | null
+          raw_payload: Json | null
+          scraped_at: string | null
+          ship_to_address: string | null
+          ship_to_city: string | null
+          ship_to_state: string | null
+          ship_to_zip: string | null
+          source: string
+          status: string
+          subtotal: number | null
+          suggestions: Json | null
+          tax_amount: number | null
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+          vendor_name: string
+        }
+        Insert: {
+          attached_at?: string | null
+          attached_by?: string | null
+          attached_project_cost_invoice_id?: string | null
+          attached_project_id?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          dismissed_reason?: string | null
+          external_id?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          line_items?: Json | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
+          po_number?: string | null
+          raw_payload?: Json | null
+          scraped_at?: string | null
+          ship_to_address?: string | null
+          ship_to_city?: string | null
+          ship_to_state?: string | null
+          ship_to_zip?: string | null
+          source?: string
+          status?: string
+          subtotal?: number | null
+          suggestions?: Json | null
+          tax_amount?: number | null
+          tenant_id: string
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name: string
+        }
+        Update: {
+          attached_at?: string | null
+          attached_by?: string | null
+          attached_project_cost_invoice_id?: string | null
+          attached_project_id?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          dismissed_reason?: string | null
+          external_id?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          line_items?: Json | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
+          po_number?: string | null
+          raw_payload?: Json | null
+          scraped_at?: string | null
+          ship_to_address?: string | null
+          ship_to_city?: string | null
+          ship_to_state?: string | null
+          ship_to_zip?: string | null
+          source?: string
+          status?: string
+          subtotal?: number | null
+          suggestions?: Json | null
+          tax_amount?: number | null
+          tenant_id?: string
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scraped_invoice_inbox_attached_project_cost_invoice_id_fkey"
+            columns: ["attached_project_cost_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "project_cost_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       security_alerts: {
         Row: {
           acknowledged: boolean | null
