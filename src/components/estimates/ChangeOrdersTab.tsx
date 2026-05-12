@@ -495,6 +495,84 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
           }}
         />
       )}
+
+      {editCO && effectiveProjectId && (
+        <ChangeOrderForm
+          defaultProjectId={effectiveProjectId}
+          onClose={() => setEditCO(null)}
+          onSuccess={() => {
+            const co = editCO;
+            setEditCO(null);
+            refresh();
+            if (co) setPendingPdfCO(co);
+          }}
+        />
+      )}
+
+      {/* Branded document viewer */}
+      <Dialog open={!!viewCO} onOpenChange={(o) => !o && setViewCO(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {viewCO?.co_number} — {viewCO?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {viewCO && (
+            <>
+              <ChangeOrderDocumentView
+                changeOrder={viewCO as any}
+                pipelineEntryId={pipelineEntryId}
+                domId={`co-doc-view-${viewCO.id}`}
+              />
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!viewCO || !activeTenantId) return;
+                    await saveChangeOrderPdfToDocuments({
+                      domId: `co-doc-view-${viewCO.id}`,
+                      changeOrderId: viewCO.id,
+                      coNumber: viewCO.co_number,
+                      title: viewCO.title,
+                      reason: viewCO.reason,
+                      pipelineEntryId,
+                      tenantId: activeTenantId,
+                      existingDocumentId: viewCO.document_id,
+                    });
+                    toast({ title: 'Saved to Documents tab' });
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-1" /> Re-save PDF
+                </Button>
+                <Button variant="outline" onClick={() => window.print()}>
+                  Print
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Off-screen capture surface for the auto-PDF after create/edit */}
+      {pendingPdfCO && (
+        <div
+          style={{
+            position: 'fixed',
+            left: -10000,
+            top: 0,
+            width: '8.5in',
+            pointerEvents: 'none',
+            opacity: 0,
+          }}
+          aria-hidden
+        >
+          <ChangeOrderDocumentView
+            changeOrder={pendingPdfCO as any}
+            pipelineEntryId={pipelineEntryId}
+            domId={`co-doc-capture-${pendingPdfCO.id}`}
+          />
+        </div>
+      )}
     </div>
   );
 };
