@@ -19,7 +19,8 @@ import {
   Pencil,
   Tag,
   UserPlus,
-  Trash2
+  Trash2,
+  Printer
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { TemplateEditor } from "./TemplateEditor";
