@@ -165,6 +165,7 @@ Deno.serve(async (req) => {
     console.log("[parse-invoice] Extracting data from:", document_url);
 
     let userContent: Array<Record<string, unknown>>;
+    let pdfTextFallback: string | null = null;
 
     if (isImage(document_url)) {
       // Images can be sent directly as URLs
@@ -184,6 +185,7 @@ Deno.serve(async (req) => {
         if (!extractedText.trim()) {
           throw new Error("No readable text found in PDF. Please upload a text-based supplier invoice or add line items manually.");
         }
+        pdfTextFallback = extractedText;
         userContent = [
           {
             type: "text",
@@ -301,6 +303,14 @@ Deno.serve(async (req) => {
     }
 
     if (res.status === 402) {
+      if (pdfTextFallback) {
+        const parsed = extractTextInvoiceFallback(pdfTextFallback);
+        console.log("[parse-invoice] AI credits exhausted, used PDF text fallback");
+        return new Response(
+          JSON.stringify({ parsed, warning: "AI credits exhausted; used basic PDF text extraction." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({ error: "AI credits exhausted - please add funds" }),
         { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
