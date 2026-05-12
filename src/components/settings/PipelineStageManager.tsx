@@ -565,28 +565,9 @@ export const PipelineStageManager: React.FC = () => {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={index === 0 || !!reordering}
-                        onClick={() => moveStage(stage.id, 'up')}
-                      >
-                        {reordering === stage.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <ArrowUp className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={index === stages.length - 1 || !!reordering}
-                        onClick={() => moveStage(stage.id, 'down')}
-                      >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
+                      {reordering === stage.id && (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
                       
                       <StageDialog
                         stage={stage}

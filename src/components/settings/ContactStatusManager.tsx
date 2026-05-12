@@ -489,28 +489,9 @@ export const ContactStatusManager: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={index === 0 || !!reordering}
-                        onClick={() => moveStatus(status.id, 'up')}
-                      >
-                        {reordering === status.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <ArrowUp className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={index === statuses.length - 1 || !!reordering}
-                        onClick={() => moveStatus(status.id, 'down')}
-                      >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
+                      {reordering === status.id && (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
                       
                       <StatusDialog
                         status={status}
