@@ -12,7 +12,7 @@ import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
 import { analyzeDSM, fetchDSMFromGoogleSolar, detectRidgeLinesFromDSM, detectValleyLinesFromDSM, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "./dsm-analyzer.ts";
 import { splitFootprintIntoFacets } from "./facet-splitter.ts";
-import { validateMeasurements } from "./qa-validator.ts";
+import { validateMeasurements, validateGeometryGate, type GeometryGateResult } from "./qa-validator.ts";
 import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-schema.ts";
 import { analyzeSegmentTopology, topologyToLinearFeatures, topologyToTotals } from "./segment-topology-analyzer.ts";
 import { evaluateOverlay, applyCorrections, type EvaluationResult } from "./overlay-evaluator.ts";
@@ -66,6 +66,17 @@ interface MeasureSummary {
   roof_age_source?: 'user'|'permit'|'assessor'|'unknown';
 }
 
+// Quality tracking for measurement reliability
+interface MeasurementQuality {
+  confidence: number; // 0-1 scale
+  footprintSource: 'mapbox_vector' | 'microsoft_buildings' | 'osm' | 'google_solar_bbox' | 'user_traced' | 'vendor_report' | 'unknown';
+  pitchSource: 'vendor' | 'dsm' | 'assumed' | 'user_input';
+  usedFallbacks: string[];
+  requiresManualReview: boolean;
+  warnings: string[];
+  isReliable: boolean; // false if using rectangular fallback or assumed pitch
+}
+
 interface MeasureResult {
   id?: string;
   property_id: string;
@@ -75,6 +86,7 @@ interface MeasureResult {
   summary: MeasureSummary;
   created_at?: string;
   geom_wkt?: string;
+  quality?: MeasurementQuality;
 }
 
 const corsHeaders = {
@@ -1279,12 +1291,12 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     }
   }
 
-  // Final fallback to Google's bounding box (rectangular)
+  // CRITICAL: Do NOT use rectangular bounding box as fallback
+  // This produces inaccurate geometry that causes bad measurements
   if (!coords) {
-    coords = boundingBoxToPolygon(json.boundingBox);
-    footprintSource = 'google_solar_bbox';
-    footprintConfidence = 0.70;
-    console.log(`⚠️ Using Google Solar bounding box (rectangular approximation) - this may cause inaccurate roof tracing`);
+    console.error('❌ No building footprint available from any source (Mapbox, Microsoft/Esri, OSM)');
+    console.error('   Rectangular bounding box fallback DISABLED - it produces unreliable measurements');
+    throw new Error('NO_FOOTPRINT_AVAILABLE: No building footprint found. Please upload a vendor report (EagleView, Roofr, etc.) or trace the roof manually.');
   }
 
   // Validate footprint geometry
@@ -1367,9 +1379,11 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       });
     });
   } else {
-    // No segment data, use building footprint with assumed pitch
+    // No segment data - use building footprint with assumed pitch
+    // IMPORTANT: This is an estimate only, not a real measurement
     const defaultPitch = '4/12';
     const pf = pitchFactor(defaultPitch);
+    console.warn('⚠️ No roof segment data available - using assumed pitch 4/12. Measurement requires verification.');
     faces.push({
       id: 'A',
       wkt: toPolygonWKT(coords),
@@ -1379,6 +1393,16 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     });
   }
 
+  // Track quality indicators
+  const usedAssumedPitch = roofSegments.length === 0;
+  const qualityWarnings: string[] = [];
+  if (usedAssumedPitch) {
+    qualityWarnings.push('Pitch assumed at 4/12 - not measured from imagery. Verify pitch before generating estimate.');
+  }
+  if (footprintSource === 'osm') {
+    qualityWarnings.push('Building footprint from OpenStreetMap - may be outdated or approximate.');
+  }
+
   const wastePct = 12;
   const totalArea = faces.reduce((s, f) => s + f.area_sqft, 0) * (1 + wastePct / 100);
 
@@ -1386,8 +1410,19 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   const metersPerPixelAtEquator = 156543.03392 / Math.pow(2, 20); // zoom 20
   const metersPerPixel = metersPerPixelAtEquator * Math.cos(lat * Math.PI / 180);
 
-  const result: MeasureResult & { 
-    buildingFootprint?: any; 
+  // Build quality tracking object
+  const measurementQuality: MeasurementQuality = {
+    confidence: footprintConfidence * (usedAssumedPitch ? 0.7 : 1.0),
+    footprintSource: footprintSource as MeasurementQuality['footprintSource'],
+    pitchSource: usedAssumedPitch ? 'assumed' : 'vendor',
+    usedFallbacks: usedAssumedPitch ? ['assumed_pitch_4_12'] : [],
+    requiresManualReview: usedAssumedPitch || footprintConfidence < 0.85,
+    warnings: qualityWarnings,
+    isReliable: !usedAssumedPitch && footprintConfidence >= 0.85
+  };
+
+  const result: MeasureResult & {
+    buildingFootprint?: any;
     transformConfig?: any;
     footprintSource?: string;
     footprintConfidence?: number;
@@ -1408,6 +1443,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       roof_age_source: 'unknown'
     },
     geom_wkt: unionFacesWKT(faces),
+    quality: measurementQuality,
     // Include actual footprint coordinates for frontend rendering
     buildingFootprint: {
       type: 'Polygon',
@@ -1609,24 +1645,27 @@ async function openBuildingsFGBFootprint(
 async function providerFreeFootprint(supabase: any, lat: number, lng: number, address?: any) {
   // 1. Get footprint from free provider
   const footprint = await getFootprintFromYourProvider(lat, lng, address);
-  
+
   if (footprint.plan_sqft === 0) {
     throw new Error("No building footprint found");
   }
-  
+
   // 2. Parse WKT to coordinates
   const coords = wktToCoords(footprint.faceWKT);
   const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
-  
+
   // 3. Extract roof topology (ridge/hip/valley/eave/rake)
   const topology = buildLinearFeaturesFromTopology(coords, midLat);
-  
+
   // 4. Build face with assumed pitch
+  // IMPORTANT: This is an estimate - pitch is NOT measured from imagery
   const defaultPitch = "4/12";
   const wastePct = 12;
   const pf = pitchFactor(defaultPitch);
   const adjusted = footprint.plan_sqft * pf * (1 + wastePct / 100);
-  
+
+  console.warn('⚠️ Free footprint provider: Using assumed pitch 4/12. Measurement requires verification.');
+
   const face: RoofFace = {
     id: "A",
     wkt: footprint.faceWKT,
@@ -1634,8 +1673,22 @@ async function providerFreeFootprint(supabase: any, lat: number, lng: number, ad
     pitch: defaultPitch,
     area_sqft: adjusted,
   };
-  
-  // 5. Return MeasureResult
+
+  // Build quality tracking
+  const quality: MeasurementQuality = {
+    confidence: 0.65, // Lower confidence for free provider with assumed pitch
+    footprintSource: footprint.source === 'osm' ? 'osm' : 'unknown',
+    pitchSource: 'assumed',
+    usedFallbacks: ['assumed_pitch_4_12', 'free_footprint_provider'],
+    requiresManualReview: true,
+    warnings: [
+      'Pitch assumed at 4/12 - not measured from imagery. Verify pitch before generating estimate.',
+      `Building footprint from ${footprint.source} - may be approximate.`
+    ],
+    isReliable: false // Free provider with assumed pitch is NOT reliable
+  };
+
+  // 5. Return MeasureResult with quality tracking
   const result: MeasureResult = {
     property_id: "",
     source: footprint.source,
@@ -1650,9 +1703,10 @@ async function providerFreeFootprint(supabase: any, lat: number, lng: number, ad
       roof_age_years: null,
       roof_age_source: "unknown"
     },
-    geom_wkt: `MULTIPOLYGON((${footprint.faceWKT.replace(/^POLYGON/, "")}))`
+    geom_wkt: `MULTIPOLYGON((${footprint.faceWKT.replace(/^POLYGON/, "")}))`,
+    quality
   };
-  
+
   return result;
 }
 
@@ -1698,12 +1752,28 @@ async function providerOSM(lat: number, lng: number) {
   const pf = pitchFactor(defaultPitch);
   const adjusted = plan_sqft * pf * (1 + wastePct/100);
 
+  console.warn('⚠️ OSM provider: Using assumed pitch 4/12. Measurement requires verification.');
+
   const face: RoofFace = {
     id: "A",
     wkt: toPolygonWKT(coords),
     plan_area_sqft: plan_sqft,
     pitch: defaultPitch,
     area_sqft: adjusted,
+  };
+
+  // Build quality tracking
+  const quality: MeasurementQuality = {
+    confidence: 0.65,
+    footprintSource: 'osm',
+    pitchSource: 'assumed',
+    usedFallbacks: ['assumed_pitch_4_12'],
+    requiresManualReview: true,
+    warnings: [
+      'Pitch assumed at 4/12 - not measured from imagery. Verify pitch before generating estimate.',
+      'Building footprint from OpenStreetMap - may be outdated or approximate.'
+    ],
+    isReliable: false
   };
 
   const result: MeasureResult = {
@@ -1716,7 +1786,8 @@ async function providerOSM(lat: number, lng: number) {
       waste_pct: wastePct,
       pitch_method: 'assumed'
     },
-    geom_wkt: `MULTIPOLYGON((${toPolygonWKT(coords).replace(/^POLYGON/, '')}))`
+    geom_wkt: `MULTIPOLYGON((${toPolygonWKT(coords).replace(/^POLYGON/, '')}))`,
+    quality
   };
 
   return result;
@@ -2596,17 +2667,81 @@ serve(async (req) => {
           
           // Return the CORRECTED measurement as the primary result (for backwards compatibility)
           // But include original_measurement_id for frontend to use
-          return json({ 
-            ok: true, 
-            data: { 
-              measurement: correctedMeasurementRow, 
+          const quality = meas.quality || {
+            confidence: 0.85,
+            footprintSource: 'unknown',
+            pitchSource: meas.summary.pitch_method || 'assumed',
+            usedFallbacks: [],
+            requiresManualReview: false, // User-corrected measurements don't need review
+            warnings: [],
+            isReliable: true // User corrections are considered reliable
+          };
+
+          return json({
+            ok: true,
+            data: {
+              measurement: correctedMeasurementRow,
               original_measurement_id: originalMeasurementRow.id,
               corrected_measurement_id: correctedMeasurementRow.id,
-              tags: correctedTags 
-            } 
+              tags: correctedTags,
+              quality
+            }
           }, corsHeaders);
         }
         
+        // ============= GEOMETRY VALIDATION GATE =============
+        // Critical validation before saving measurement
+        const footprintCoords = meas.geom_wkt ? wktToCoords(meas.geom_wkt) : [];
+        const linearTotals = {
+          ridges: meas.summary.ridge_ft || 0,
+          hips: meas.summary.hip_ft || 0,
+          valleys: meas.summary.valley_ft || 0,
+          eaves: meas.summary.eave_ft || 0,
+          rakes: meas.summary.rake_ft || 0,
+          features: meas.linear_features
+        };
+        const pitchData = {
+          source: (meas.summary.pitch_method || 'assumed') as 'vendor' | 'dsm' | 'assumed' | 'user_input',
+          value: meas.faces?.[0]?.pitch || '4/12',
+          confidence: meas.quality?.confidence
+        };
+
+        const gateResult = validateGeometryGate(
+          { coordinates: footprintCoords, source: meas.source, confidence: meas.quality?.confidence },
+          linearTotals,
+          pitchData,
+          meas.summary.total_area_sqft
+        );
+
+        console.log('📋 Geometry Gate Result:', {
+          passed: gateResult.passed,
+          canSave: gateResult.canSave,
+          canUseForEstimate: gateResult.canUseForEstimate,
+          confidence: (gateResult.confidence * 100).toFixed(0) + '%',
+          criticalErrors: gateResult.criticalErrors.length,
+          warnings: gateResult.warnings.length
+        });
+
+        // Add gate result to measurement quality
+        if (meas.quality) {
+          meas.quality.warnings = [...(meas.quality.warnings || []), ...gateResult.warnings];
+          meas.quality.isReliable = gateResult.canUseForEstimate;
+          meas.quality.confidence = gateResult.confidence;
+        }
+
+        // Block saving if critical geometry errors
+        if (!gateResult.canSave) {
+          console.error('❌ Geometry validation failed:', gateResult.criticalErrors);
+          return json({
+            ok: false,
+            error: 'GEOMETRY_VALIDATION_FAILED',
+            criticalErrors: gateResult.criticalErrors,
+            warnings: gateResult.warnings,
+            debugInfo: gateResult.debugInfo,
+            message: 'Measurement geometry failed validation. Please verify the building location or use manual measurement.'
+          }, corsHeaders, 400);
+        }
+
         // Standard flow (no training override) - save measurement normally
         const row = await persistMeasurement(supabase, meas, userId, { lat, lng, zoom: 20 });
         
@@ -2705,9 +2840,25 @@ serve(async (req) => {
           // Don't fail the pull request if visualization fails
         }
 
-        return json({ 
-          ok: true, 
-          data: { measurement: row, tags, engine_used: engineUsed } 
+        // Include quality information in the response
+        const quality = meas.quality || {
+          confidence: 0.85,
+          footprintSource: 'unknown',
+          pitchSource: meas.summary.pitch_method || 'assumed',
+          usedFallbacks: [],
+          requiresManualReview: meas.summary.pitch_method === 'assumed',
+          warnings: meas.summary.pitch_method === 'assumed' ? ['Pitch assumed at 4/12 - verify before generating estimate.'] : [],
+          isReliable: meas.summary.pitch_method !== 'assumed'
+        };
+
+        return json({
+          ok: true,
+          data: {
+            measurement: row,
+            tags,
+            engine_used: engineUsed,
+            quality
+          }
         }, corsHeaders);
       }
 
@@ -3800,9 +3951,24 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('Measure error:', err);
-    return json({ 
-      ok: false, 
-      error: err instanceof Error ? err.message : String(err),
+
+    // Handle specific error types with appropriate status codes
+    const errorMessage = err instanceof Error ? err.message : String(err);
+
+    // NO_FOOTPRINT_AVAILABLE: Building footprint not found - user needs to upload report or trace manually
+    if (errorMessage.includes('NO_FOOTPRINT_AVAILABLE')) {
+      return json({
+        ok: false,
+        error: 'NO_FOOTPRINT_AVAILABLE',
+        message: 'No building footprint found from any data source. Please upload a vendor report (EagleView, Roofr, etc.) or trace the roof manually.',
+        action_required: 'upload_vendor_report_or_manual_trace',
+        details: 'Mapbox, Microsoft/Esri, and OSM all failed to return a building footprint for this location.'
+      }, corsHeaders, 404);
+    }
+
+    return json({
+      ok: false,
+      error: errorMessage,
       details: err instanceof Error ? err.stack : undefined
     }, corsHeaders, 400);
   }

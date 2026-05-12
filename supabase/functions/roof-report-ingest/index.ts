@@ -121,6 +121,11 @@ function detectProvider(text: string): Provider {
   return "generic";
 }
 
+interface PageText {
+  pageNumber: number;
+  text: string;
+}
+
 function extractAllPagesText(pdfBytes: Uint8Array): Promise<string> {
   const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
   return loadingTask.promise.then(async (pdf: any) => {
@@ -129,10 +134,245 @@ function extractAllPagesText(pdfBytes: Uint8Array): Promise<string> {
       const page = await pdf.getPage(p);
       const content = await page.getTextContent();
       const strings = content.items.map((it: any) => it.str);
-      pages.push(strings.join("\n"));
+      // Add page marker for debugging and section detection
+      pages.push(`[PAGE ${p}]\n${strings.join("\n")}`);
     }
-    return pages.join("\n");
+    return pages.join("\n\n");
   });
+}
+
+// Extract text page by page for better parsing
+async function extractPagesWithStructure(pdfBytes: Uint8Array): Promise<PageText[]> {
+  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+  const pdf = await loadingTask.promise;
+  const pages: PageText[] = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const strings = content.items.map((it: any) => it.str);
+    pages.push({ pageNumber: p, text: strings.join("\n") });
+  }
+
+  console.log(`roof-report-ingest: Extracted ${pages.length} pages`);
+  return pages;
+}
+
+// Section detection for multi-page reports
+interface ReportSections {
+  summary?: string;
+  linearFeatures?: string;
+  facetDetails?: string;
+  materials?: string;
+  diagram?: string;
+}
+
+function detectSections(pages: PageText[]): ReportSections {
+  const sections: ReportSections = {};
+  const allText = pages.map(p => p.text).join("\n");
+
+  // Look for common section headers
+  const summaryMatch = allText.match(/(?:SUMMARY|OVERVIEW|REPORT\s*SUMMARY)[\s\S]{0,2000}/i);
+  if (summaryMatch) sections.summary = summaryMatch[0];
+
+  const linearMatch = allText.match(/(?:LINEAR\s*FEATURES|LINEAR\s*MEASUREMENTS|EDGE\s*MEASUREMENTS|EAVES[\s\S]{0,20}RIDGES)[\s\S]{0,3000}/i);
+  if (linearMatch) sections.linearFeatures = linearMatch[0];
+
+  const facetMatch = allText.match(/(?:FACET\s*DETAILS|FACETS|ROOF\s*SECTIONS|ROOF\s*PLANES)[\s\S]{0,3000}/i);
+  if (facetMatch) sections.facetDetails = facetMatch[0];
+
+  const materialsMatch = allText.match(/(?:MATERIALS|MATERIAL\s*QUANTITIES|SUPPLIES)[\s\S]{0,2000}/i);
+  if (materialsMatch) sections.materials = materialsMatch[0];
+
+  console.log("roof-report-ingest: Detected sections:", Object.keys(sections));
+  return sections;
+}
+
+// -----------------------------
+// Enhanced multi-page parser
+// Combines results from all pages and sections
+// -----------------------------
+function parseMultiPage(pages: PageText[]): any {
+  const results: any[] = [];
+  const allText = pages.map(p => p.text).join("\n");
+
+  // First try to detect provider
+  const provider = detectProvider(allText);
+  console.log(`roof-report-ingest: Multi-page parse for provider: ${provider}`);
+
+  // Parse each page individually to catch page-specific data
+  for (const page of pages) {
+    const pageResult = parsePageForMeasurements(page.text);
+    if (Object.values(pageResult).some(v => v !== null)) {
+      results.push({ pageNumber: page.pageNumber, ...pageResult });
+      console.log(`roof-report-ingest: Page ${page.pageNumber} extracted:`, Object.entries(pageResult).filter(([_, v]) => v !== null).map(([k, v]) => `${k}=${v}`).join(', '));
+    }
+  }
+
+  // Also detect sections and parse those
+  const sections = detectSections(pages);
+  if (sections.linearFeatures) {
+    const linearResult = parseLinearFeaturesSection(sections.linearFeatures);
+    results.push({ section: 'linearFeatures', ...linearResult });
+    console.log(`roof-report-ingest: Linear features section extracted:`, Object.entries(linearResult).filter(([_, v]) => v !== null).map(([k, v]) => `${k}=${v}`).join(', '));
+  }
+
+  // Merge results - take first non-null value for each field
+  const merged: Record<string, any> = {
+    provider,
+    address: null,
+    total_area_sqft: null,
+    pitched_area_sqft: null,
+    flat_area_sqft: null,
+    perimeter_ft: null,
+    facet_count: null,
+    predominant_pitch: null,
+    ridges_ft: null,
+    hips_ft: null,
+    valleys_ft: null,
+    rakes_ft: null,
+    eaves_ft: null,
+    drip_edge_ft: null,
+    step_flashing_ft: null,
+    pitches: null,
+    waste_table: null,
+  };
+
+  for (const result of results) {
+    for (const [key, value] of Object.entries(result)) {
+      if (merged[key] === null && value !== null) {
+        merged[key] = value;
+      }
+    }
+  }
+
+  return merged;
+}
+
+// Parse a single page for measurements
+function parsePageForMeasurements(text: string): Record<string, any> {
+  const normalized = normalizeText(text);
+  return {
+    address: extractAddress(normalized),
+    total_area_sqft: extractTotalArea(normalized),
+    perimeter_ft: extractPerimeter(normalized),
+    facet_count: extractFacetCount(normalized),
+    predominant_pitch: extractPitch(normalized),
+    ridges_ft: extractLinearFeature(normalized, 'ridge'),
+    hips_ft: extractLinearFeature(normalized, 'hip'),
+    valleys_ft: extractLinearFeature(normalized, 'valley'),
+    rakes_ft: extractLinearFeature(normalized, 'rake'),
+    eaves_ft: extractLinearFeature(normalized, 'eave'),
+    drip_edge_ft: extractLinearFeature(normalized, 'drip edge'),
+    step_flashing_ft: extractLinearFeature(normalized, 'step flashing'),
+  };
+}
+
+function extractTotalArea(text: string): number | null {
+  const patterns = [
+    /(?:total\s*)?(?:roof\s*)?area\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i,
+    /A\s*\|\s*([\d,]+(?:\.\d+)?)\s*sq\s*ft/i,
+    /Surface\s*Area\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+    /([\d,]+(?:\.\d+)?)\s*Surface\s*Area/i,
+    /Total\s+(?:roof\s+)?area\s+([\d,]+)\s*sqft/i,
+    /Total\s+pitched\s+area\s+([\d,]+)\s*sqft/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseFloatSafe(match[1]);
+      if (value && value > 100) return value;
+    }
+  }
+  return null;
+}
+
+function extractPerimeter(text: string): number | null {
+  const patterns = [
+    /(?:perimeter|perim\.?)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /P\s*\|\s*([\d,]+(?:\.\d+)?)\s*ft/i,
+    /Total\s*Perimeter\s*Length\s*([\d,]+(?:\.\d+)?)/i,
+    /([\d,]+(?:\.\d+)?)\s*Total\s*Perimeter\s*Length/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseFloatSafe(match[1]);
+      if (value && value > 10) return value;
+    }
+  }
+  return null;
+}
+
+function extractFacetCount(text: string): number | null {
+  const match = text.match(/(\d+)\s*(?:facet|facets|section|sections|plane|planes)/i)
+    || text.match(/Total\s+Roof\s+Facets\s*=\s*(\d+)/i);
+  return match ? parseIntSafe(match[1]) : null;
+}
+
+function extractPitch(text: string): string | null {
+  const patterns = [
+    /(?:predominant\s*)?pitch\s*[:=]?\s*(\d+\/\d+)/i,
+    /(\d+\/\d+)\s*pitch/i,
+    /Predominant\s+pitch\s+(\d+\/\d+)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1].replace(':', '/');
+  }
+  return null;
+}
+
+function extractAddress(text: string): string | null {
+  const patterns = [
+    /Property:\s*([^\n]+)/i,
+    /(\d+[^,\n]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i,
+    /Report summary\s*\n([^\n]+)\n/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1].trim().length > 10) return match[1].trim();
+  }
+  return null;
+}
+
+function extractLinearFeature(text: string, featureType: string): number | null {
+  const escapedType = featureType.replace(/\s+/g, '\\s*');
+  const patterns = [
+    new RegExp(`(?:total\\s*)?${escapedType}s?\\s*[:=]?\\s*([\\d,]+(?:\\.\\d+)?)\\s*(?:ft|feet|')`, 'i'),
+    new RegExp(`${escapedType}s?\\s*(?:length)?\\s*[:=]?\\s*([\\d,]+(?:\\.\\d+)?)`, 'i'),
+    new RegExp(`([\\d,]+(?:\\.\\d+)?)\\s*Total\\s*${escapedType}\\s*Length`, 'i'),
+    new RegExp(`Total\\s*${escapedType}\\s*Length\\s*([\\d,]+(?:\\.\\d+)?)`, 'i'),
+    // Pattern for "Total ridges 116 ft 4 in"
+    new RegExp(`Total\\s*${escapedType}s?\\s+(\\d+)\\s*ft\\s*(\\d+)\\s*in`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      // Handle feet and inches format
+      if (match[2]) {
+        return feetInchesToFeet(match[1], match[2]);
+      }
+      const value = parseFloatSafe(match[1]);
+      if (value !== null && value >= 0) return value;
+    }
+  }
+  return null;
+}
+
+// Parse linear features section specifically
+function parseLinearFeaturesSection(sectionText: string): Record<string, any> {
+  const text = normalizeText(sectionText);
+  return {
+    ridges_ft: extractLinearFeature(text, 'ridge'),
+    hips_ft: extractLinearFeature(text, 'hip'),
+    valleys_ft: extractLinearFeature(text, 'valley'),
+    rakes_ft: extractLinearFeature(text, 'rake'),
+    eaves_ft: extractLinearFeature(text, 'eave'),
+    step_flashing_ft: extractLinearFeature(text, 'step flashing'),
+    drip_edge_ft: extractLinearFeature(text, 'drip edge'),
+  };
 }
 
 // -----------------------------
@@ -140,7 +380,7 @@ function extractAllPagesText(pdfBytes: Uint8Array): Promise<string> {
 // -----------------------------
 function parseGeneric(textRaw: string) {
   const text = normalizeText(textRaw);
-  
+
   // Multiple patterns for area detection
   const areaPatterns = [
     /(?:total\s*)?(?:roof\s*)?area\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i,
@@ -1211,13 +1451,34 @@ serve(async (req) => {
         console.log("roof-report-ingest: Using Xactimate parser...");
         parsed = parseXactimate(extractedText);
       } else {
-        // Try generic parser first
-        parsed = parseGeneric(extractedText);
-        console.log("roof-report-ingest: Generic parse result:", parsed);
-        
-        // If generic didn't find enough, try AI text extraction
+        // Try enhanced multi-page parsing first (extracts from each page individually)
+        console.log("roof-report-ingest: Trying enhanced multi-page parsing...");
+        try {
+          const pages = await extractPagesWithStructure(pdfBytes);
+          if (pages.length > 1) {
+            console.log(`roof-report-ingest: Multi-page PDF detected (${pages.length} pages)`);
+            parsed = parseMultiPage(pages);
+            console.log("roof-report-ingest: Multi-page parse result:", {
+              total_area: parsed.total_area_sqft,
+              facets: parsed.facet_count,
+              pitch: parsed.predominant_pitch,
+              ridges: parsed.ridges_ft,
+              hips: parsed.hips_ft
+            });
+          }
+        } catch (mpErr) {
+          console.warn("roof-report-ingest: Multi-page parsing failed:", mpErr);
+        }
+
+        // Fall back to generic parser if multi-page didn't yield results
+        if (!parsed || !hasValidMeasurements(parsed)) {
+          parsed = parseGeneric(extractedText);
+          console.log("roof-report-ingest: Generic parse result:", parsed);
+        }
+
+        // If still not enough, try AI text extraction
         if (!hasValidMeasurements(parsed)) {
-          console.log("roof-report-ingest: Generic parse sparse, trying AI extraction...");
+          console.log("roof-report-ingest: Parse sparse, trying AI extraction...");
           const aiParsed = await extractWithAI(extractedText);
           if (aiParsed && hasValidMeasurements(aiParsed)) {
             parsed = aiParsed;

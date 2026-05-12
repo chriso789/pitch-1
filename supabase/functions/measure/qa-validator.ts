@@ -556,3 +556,173 @@ function calculatePerimeter(coords: XY[]): number {
 function distance(a: XY, b: XY): number {
   return Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2);
 }
+
+// ===== GEOMETRY VALIDATION GATE =====
+// Critical validation that MUST pass before measurements can be saved/used
+
+export interface GeometryGateResult {
+  passed: boolean;
+  canSave: boolean; // Can save to database (may still need review)
+  canUseForEstimate: boolean; // Can be used for material calculations
+  criticalErrors: string[];
+  warnings: string[];
+  confidence: number; // 0-1 overall confidence score
+  debugInfo: {
+    footprintAreaSqft: number;
+    footprintVertices: number;
+    linearFeatureCount: number;
+    hasRidges: boolean;
+    hasHips: boolean;
+    hasValleys: boolean;
+    pitchSource: string;
+  };
+}
+
+interface FootprintData {
+  coordinates: XY[];
+  source: string;
+  confidence?: number;
+}
+
+interface LinearData {
+  ridges: number; // total feet
+  hips: number;
+  valleys: number;
+  eaves: number;
+  rakes: number;
+  features?: Array<{ type: string; lengthFt: number }>;
+}
+
+interface PitchData {
+  source: 'vendor' | 'dsm' | 'assumed' | 'user_input';
+  value: string; // e.g., "4/12"
+  confidence?: number;
+}
+
+export function validateGeometryGate(
+  footprint: FootprintData,
+  linear: LinearData,
+  pitch: PitchData,
+  totalAreaSqft: number
+): GeometryGateResult {
+  const criticalErrors: string[] = [];
+  const warnings: string[] = [];
+
+  // === CRITICAL CHECK 1: Footprint must have valid geometry ===
+  const footprintAreaSqft = calculatePolygonArea(footprint.coordinates);
+  const footprintVertices = footprint.coordinates.length;
+
+  if (footprintVertices < 4) {
+    criticalErrors.push('INVALID_FOOTPRINT: Footprint must have at least 4 vertices');
+  }
+
+  if (footprintAreaSqft < 100) {
+    criticalErrors.push(`FOOTPRINT_TOO_SMALL: Area ${Math.round(footprintAreaSqft)} sqft is below minimum (100 sqft)`);
+  }
+
+  if (footprintAreaSqft > 100000) {
+    criticalErrors.push(`FOOTPRINT_TOO_LARGE: Area ${Math.round(footprintAreaSqft)} sqft exceeds maximum (100,000 sqft)`);
+  }
+
+  // === CRITICAL CHECK 2: Area must be reasonable ===
+  if (totalAreaSqft < 100) {
+    criticalErrors.push(`AREA_TOO_SMALL: Total area ${Math.round(totalAreaSqft)} sqft is below minimum`);
+  }
+
+  // Area should match footprint within reasonable bounds (pitch factor 1.0-1.5 typical)
+  const areaRatio = totalAreaSqft / footprintAreaSqft;
+  if (areaRatio > 2.0) {
+    criticalErrors.push(`AREA_RATIO_INVALID: Roof area ${Math.round(totalAreaSqft)} sqft is ${areaRatio.toFixed(1)}x footprint area - this is geometrically impossible`);
+  }
+  if (areaRatio < 0.9) {
+    warnings.push(`Area ratio (${areaRatio.toFixed(2)}) is below 1.0 - roof area should be >= footprint area`);
+  }
+
+  // === CRITICAL CHECK 3: Linear features must exist ===
+  const hasRidges = linear.ridges > 0;
+  const hasHips = linear.hips > 0;
+  const hasValleys = linear.valleys > 0;
+  const hasEaves = linear.eaves > 0;
+  const hasRakes = linear.rakes > 0;
+
+  if (!hasEaves && !hasRakes) {
+    criticalErrors.push('NO_PERIMETER: No eave or rake measurements - perimeter is required');
+  }
+
+  if (!hasRidges && !hasHips) {
+    warnings.push('NO_RIDGE_OR_HIP: No ridge or hip measurements detected - unusual for residential roof');
+  }
+
+  // === CRITICAL CHECK 4: Perimeter sanity check ===
+  const perimeterFt = linear.eaves + linear.rakes;
+  const expectedPerimeter = Math.sqrt(footprintAreaSqft) * 4; // Approximate for square
+
+  if (perimeterFt > expectedPerimeter * 3) {
+    criticalErrors.push(`PERIMETER_TOO_LARGE: ${Math.round(perimeterFt)} ft is unreasonably large for building area`);
+  }
+  if (perimeterFt < expectedPerimeter * 0.3) {
+    criticalErrors.push(`PERIMETER_TOO_SMALL: ${Math.round(perimeterFt)} ft is unreasonably small for building area`);
+  }
+
+  // === WARNING: Assumed pitch ===
+  if (pitch.source === 'assumed') {
+    warnings.push('ASSUMED_PITCH: Pitch is assumed (4/12) - not measured from data. Verify before generating estimate.');
+  }
+
+  // === WARNING: Low confidence footprint ===
+  if (footprint.confidence && footprint.confidence < 0.7) {
+    warnings.push(`LOW_FOOTPRINT_CONFIDENCE: ${(footprint.confidence * 100).toFixed(0)}% confidence - verify building outline`);
+  }
+
+  // Calculate overall confidence
+  let confidence = 1.0;
+  confidence -= criticalErrors.length * 0.3;
+  confidence -= warnings.length * 0.05;
+  if (pitch.source === 'assumed') confidence -= 0.2;
+  if (footprint.confidence) confidence *= footprint.confidence;
+  confidence = Math.max(0, Math.min(1, confidence));
+
+  // Determine save/use eligibility
+  const passed = criticalErrors.length === 0;
+  const canSave = criticalErrors.length === 0; // Can save if no critical errors
+  const canUseForEstimate = passed && pitch.source !== 'assumed' && confidence >= 0.7;
+
+  return {
+    passed,
+    canSave,
+    canUseForEstimate,
+    criticalErrors,
+    warnings,
+    confidence,
+    debugInfo: {
+      footprintAreaSqft,
+      footprintVertices,
+      linearFeatureCount: (linear.features?.length || 0),
+      hasRidges,
+      hasHips,
+      hasValleys,
+      pitchSource: pitch.source
+    }
+  };
+}
+
+function calculatePolygonArea(coords: XY[]): number {
+  if (coords.length < 3) return 0;
+
+  const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(midLat * Math.PI / 180);
+
+  let sum = 0;
+  for (let i = 0; i < coords.length; i++) {
+    const j = (i + 1) % coords.length;
+    const x1 = coords[i][0] * metersPerDegLng;
+    const y1 = coords[i][1] * metersPerDegLat;
+    const x2 = coords[j][0] * metersPerDegLng;
+    const y2 = coords[j][1] * metersPerDegLat;
+    sum += (x1 * y2 - x2 * y1);
+  }
+
+  const areaM2 = Math.abs(sum) / 2;
+  return areaM2 * 10.7639; // Convert to sqft
+}
