@@ -76,12 +76,11 @@ export function EnhancedPipeline() {
         .from('pipeline_stages')
         .select('*')
         .eq('is_active', true)
-        .or('is_terminal.is.null,is_terminal.eq.false')
         .order('stage_order');
 
       if (stagesError) throw stagesError;
 
-      // Load pipeline entries with contacts
+      // Load pipeline entries with contacts (exclude archived)
       const { data: entriesData, error: entriesError } = await supabase
         .from('pipeline_entries')
         .select(`
@@ -95,6 +94,7 @@ export function EnhancedPipeline() {
             qualification_status
           )
         `)
+        .is('archived_at', null)
         .order('created_at', { ascending: false });
 
       if (entriesError) throw entriesError;
