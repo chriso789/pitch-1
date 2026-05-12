@@ -51,6 +51,7 @@ interface InvoiceData {
   invoice_date: string | null;
   status: string;
   created_at: string;
+  document_url?: string | null;
 }
 
 const isValidUuid = (value?: string | null) =>
