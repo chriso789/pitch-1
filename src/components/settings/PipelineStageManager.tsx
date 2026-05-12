@@ -99,6 +99,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setProbability(0);
       setIsActive(true);
       setArchiveOnEntry(false);
+      setArchiveAfterDays(0);
     }
   }, [open, stage]);
 
