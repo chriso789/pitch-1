@@ -591,4 +591,104 @@ const SummaryTile: React.FC<SummaryTileProps> = ({ label, value, icon, valueClas
   </div>
 );
 
+interface EditDialogProps {
+  co: ChangeOrder | null;
+  onClose: () => void;
+  onSaved: (updated: ChangeOrder) => void;
+}
+
+const EditChangeOrderDialog: React.FC<EditDialogProps> = ({ co, onClose, onSaved }) => {
+  const { toast } = useToast();
+  const [title, setTitle] = useState('');
+  const [reason, setReason] = useState('');
+  const [description, setDescription] = useState('');
+  const [costImpact, setCostImpact] = useState('0');
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (co) {
+      setTitle(co.title || '');
+      setReason(co.reason || '');
+      setDescription(co.description || '');
+      setCostImpact(String(co.cost_impact ?? 0));
+    }
+  }, [co]);
+
+  if (!co) return null;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const patch = {
+        title,
+        reason: reason || null,
+        description: description || null,
+        cost_impact: parseFloat(costImpact || '0'),
+      };
+      const { data, error } = await (supabase as any)
+        .from('change_orders')
+        .update(patch)
+        .eq('id', co.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      toast({ title: 'Change order updated' });
+      onSaved((data || { ...co, ...patch }) as ChangeOrder);
+    } catch (e: any) {
+      toast({ title: 'Update failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!co} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit {co.co_number}</DialogTitle>
+          <DialogDescription>
+            Update title, reason and cost impact. Saving regenerates the PDF in the Documents tab.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Reason</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Cost Impact ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={costImpact}
+              onChange={(e) => setCostImpact(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving || !title.trim()}>
+            {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export default ChangeOrdersTab;
