@@ -73,6 +73,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   const [color, setColor] = useState(stage?.color || '#3b82f6');
   const [probability, setProbability] = useState(stage?.probability_percent || 0);
   const [isActive, setIsActive] = useState(stage?.is_active ?? true);
+  const [archiveOnEntry, setArchiveOnEntry] = useState(stage?.archive_on_entry ?? false);
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
@@ -85,6 +86,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setColor(stage.color);
       setProbability(stage.probability_percent);
       setIsActive(stage.is_active);
+      setArchiveOnEntry(stage.archive_on_entry ?? false);
     } else if (open && !stage) {
       setName('');
       setStageKey('');
@@ -92,6 +94,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setColor('#3b82f6');
       setProbability(0);
       setIsActive(true);
+      setArchiveOnEntry(false);
     }
   }, [open, stage]);
 
