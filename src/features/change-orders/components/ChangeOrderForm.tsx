@@ -84,6 +84,10 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [items, setItems] = useState<LineItem[]>([]);
+  const [overheadPct, setOverheadPct] = useState<number>(10);
+  const [profitPct, setProfitPct] = useState<number>(20);
+  const [quickLaborHours, setQuickLaborHours] = useState<number>(0);
+  const [quickLaborRate, setQuickLaborRate] = useState<number>(75);
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
