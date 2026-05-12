@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { cn } from '@/lib/utils';
+import { PipelineVisibilitySettings } from './PipelineVisibilitySettings';
 
 interface PipelineStage {
   id: string;
@@ -73,6 +74,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   const [color, setColor] = useState(stage?.color || '#3b82f6');
   const [probability, setProbability] = useState(stage?.probability_percent || 0);
   const [isActive, setIsActive] = useState(stage?.is_active ?? true);
+  const [archiveOnEntry, setArchiveOnEntry] = useState(stage?.archive_on_entry ?? false);
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
@@ -85,6 +87,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setColor(stage.color);
       setProbability(stage.probability_percent);
       setIsActive(stage.is_active);
+      setArchiveOnEntry(stage.archive_on_entry ?? false);
     } else if (open && !stage) {
       setName('');
       setStageKey('');
@@ -92,6 +95,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setColor('#3b82f6');
       setProbability(0);
       setIsActive(true);
+      setArchiveOnEntry(false);
     }
   }, [open, stage]);
 
@@ -136,6 +140,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             color,
             probability_percent: probability,
             is_active: isActive,
+            archive_on_entry: archiveOnEntry,
             updated_at: new Date().toISOString()
           })
           .eq('id', stage.id);
@@ -156,6 +161,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             color,
             probability_percent: probability,
             is_active: isActive,
+            archive_on_entry: archiveOnEntry,
             stage_order: maxOrder + 1,
             created_by: profile?.id
           });
@@ -279,6 +285,19 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             <Switch
               checked={isActive}
               onCheckedChange={setIsActive}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <Label>Auto-archive when entered</Label>
+              <p className="text-xs text-muted-foreground">
+                When a job moves to this stage AND is paid in full, it's removed from the active board.
+              </p>
+            </div>
+            <Switch
+              checked={archiveOnEntry}
+              onCheckedChange={setArchiveOnEntry}
             />
           </div>
         </div>
@@ -447,6 +466,7 @@ export const PipelineStageManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <PipelineVisibilitySettings />
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Pipeline Stages</h2>
