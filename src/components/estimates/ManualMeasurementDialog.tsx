@@ -421,24 +421,43 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
             'source': 'manual_entry',
         };
 
-        const { error: approvalError } = await supabase.from('measurement_approvals').insert({
-          tenant_id: pipelineData.tenant_id,
-          pipeline_entry_id: pipelineEntryId,
-          approved_at: new Date().toISOString(),
-          saved_tags: approvalTags,
-          approval_notes: `Manual entry - ${adjustedArea.toLocaleString()} sqft`,
-        });
+        const { data: insertedApproval, error: approvalError } = await supabase
+          .from('measurement_approvals')
+          .insert({
+            tenant_id: pipelineData.tenant_id,
+            pipeline_entry_id: pipelineEntryId,
+            approved_at: new Date().toISOString(),
+            saved_tags: approvalTags,
+            approval_notes: `Manual entry - ${adjustedArea.toLocaleString()} sqft`,
+          })
+          .select('id')
+          .single();
 
         if (approvalError) {
           console.error('Failed to create measurement_approvals record:', approvalError);
         } else {
           console.log('Measurement approval created with perimeter:', perimeter);
+
+          // Auto-activate manual entries — they take precedence over AI measurements
+          if (insertedApproval?.id) {
+            const existingMetadata = (pipelineData.metadata as Record<string, any>) || {};
+            await supabase
+              .from('pipeline_entries')
+              .update({
+                metadata: {
+                  ...existingMetadata,
+                  selected_measurement_approval_id: insertedApproval.id,
+                },
+              })
+              .eq('id', pipelineEntryId);
+          }
         }
 
         // Invalidate cache after insert succeeded
         queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
         queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
         queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
       }
 
       toast({
