@@ -167,6 +167,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             probability_percent: probability,
             is_active: isActive,
             archive_on_entry: archiveOnEntry,
+            archive_after_days: archiveOnEntry ? archiveAfterDays : 0,
             stage_order: maxOrder + 1,
             created_by: profile?.id
           });
