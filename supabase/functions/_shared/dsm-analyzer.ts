@@ -843,7 +843,9 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const { labels, components } = labelConnectedComponents(closed, sw, sh);
   if (components.length === 0) return [];
 
-  // ── 4. Select dominant component near geocode center ──
+  // ── 4. Find all viable components and MERGE them ──
+  // FIX: Previously only selected ONE component. Now merge ALL viable components
+  // to capture the full building footprint when Solar mask is fragmented by trees/shadows.
   let targetCx = sw / 2;
   let targetCy = sh / 2;
   if (geocodeLat != null && geocodeLng != null) {
@@ -855,6 +857,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const minSize = Math.max(4, maxSize * 0.10);
   const viable = components.filter(c => c.size >= minSize);
 
+  // Find the component nearest to geocode center (for diagnostics)
   let bestComp = viable[0];
   let bestDist = Infinity;
   for (const c of viable) {
@@ -862,17 +865,47 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     if (dist < bestDist) { bestDist = dist; bestComp = c; }
   }
 
-  // ── 5. Fill holes inside selected component ──
-  // Create binary mask of selected component, then flood-fill background from edges.
-  // Anything NOT reached by background flood = interior (fill it).
+  // ── 5. Merge ALL viable components into a single mask ──
+  // This captures the full building footprint even when trees/shadows fragment the Solar mask
   const compMask = new Uint8Array(sw * sh);
+  const viableIds = new Set(viable.map(c => c.id));
+  let mergedPixelCount = 0;
   for (let i = 0; i < sw * sh; i++) {
-    compMask[i] = labels[i] === bestComp.id ? 1 : 0;
+    if (viableIds.has(labels[i])) {
+      compMask[i] = 1;
+      mergedPixelCount++;
+    }
   }
-  const filled = fillHoles(compMask, sw, sh);
+
+  // ── 5b. Compute convex hull of merged components for clean building footprint ──
+  // Collect all pixels from viable components
+  const allPoints: Array<{x: number, y: number}> = [];
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (compMask[y * sw + x] > 0) {
+        allPoints.push({ x, y });
+      }
+    }
+  }
+
+  // Compute convex hull to get building footprint
+  const hullPoints = convexHull(allPoints);
+
+  // Create filled mask from convex hull
+  const hullMask = new Uint8Array(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (pointInPolygonScan({ x, y }, hullPoints)) {
+        hullMask[y * sw + x] = 1;
+      }
+    }
+  }
+
+  // Fill any remaining holes
+  const filled = fillHoles(hullMask, sw, sh);
   const filledPixelCount = filled.reduce((s, v) => s + v, 0);
 
-  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable. Selected #${bestComp.id}: ${bestComp.size}px² → filled: ${filledPixelCount}px²`);
+  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable. Merged ${viable.length} components (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`);
 
   // ── 6. Trace outer boundary using Moore neighborhood ──
   const contourPx = traceOuterBoundary(filled, sw, sh);
@@ -909,10 +942,13 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   _lastContourDiagnostics = {
     components_total: components.length,
     viable_components: viable.length,
+    merged_components: viable.length,
+    merged_pixel_count: mergedPixelCount,
+    convex_hull_vertices: hullPoints.length,
     selected_component_id: bestComp.id,
     selected_component_size_px: bestComp.size,
     filled_component_size_px: filledPixelCount,
-    holes_filled_px: filledPixelCount - bestComp.size,
+    holes_filled_px: filledPixelCount - mergedPixelCount,
     contour_vertices_raw: contourPx.length,
     contour_vertices_simplified: simplified.length,
     contour_area_px: contourAreaPx,
@@ -923,7 +959,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     close_radius: closeRadius,
     downsample_scale: Number(scale.toFixed(4)),
     grid_size: { w: sw, h: sh },
-    contour_valid: maskMissedPct < 0.05,
+    contour_valid: maskMissedPct < 0.15, // Relaxed threshold since convex hull may include some non-roof area
   };
 
   console.log(`[MASK_CONTOUR] Validation: covered=${(maskCoveredPct*100).toFixed(1)}%, missed=${(maskMissedPct*100).toFixed(1)}%, area_ratio=${areaRatio.toFixed(3)}, vertices=${simplified.length}`);
@@ -936,6 +972,47 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   });
 
   return geoContour;
+}
+
+// ── Convex Hull using Graham scan ──
+function convexHull(points: Array<{x: number; y: number}>): Array<{x: number; y: number}> {
+  if (points.length < 3) return points.slice();
+
+  // Find the point with lowest y (and leftmost if tie)
+  let start = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].y < points[start].y ||
+        (points[i].y === points[start].y && points[i].x < points[start].x)) {
+      start = i;
+    }
+  }
+  const pivot = points[start];
+
+  // Sort by polar angle with respect to pivot
+  const sorted = points
+    .filter((_, i) => i !== start)
+    .map(p => ({
+      p,
+      angle: Math.atan2(p.y - pivot.y, p.x - pivot.x),
+      dist: (p.x - pivot.x) ** 2 + (p.y - pivot.y) ** 2,
+    }))
+    .sort((a, b) => a.angle - b.angle || a.dist - b.dist)
+    .map(o => o.p);
+
+  // Cross product to determine turn direction
+  const cross = (o: {x: number; y: number}, a: {x: number; y: number}, b: {x: number; y: number}) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+  // Build hull
+  const hull: Array<{x: number; y: number}> = [pivot];
+  for (const p of sorted) {
+    while (hull.length > 1 && cross(hull[hull.length - 2], hull[hull.length - 1], p) <= 0) {
+      hull.pop();
+    }
+    hull.push(p);
+  }
+
+  return hull;
 }
 
 // ── Morphological close: dilate then erode ──
