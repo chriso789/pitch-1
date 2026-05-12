@@ -157,6 +157,8 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['change-orders'] });
     queryClient.invalidateQueries({ queryKey: ['co-invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['approved-co-cost-impact'] });
+    queryClient.invalidateQueries({ queryKey: ['estimate-costs'] });
   };
 
   const handleCreate = async () => {

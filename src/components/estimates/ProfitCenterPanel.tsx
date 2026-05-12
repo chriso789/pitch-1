@@ -145,6 +145,21 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Fetch approved change order cost impacts to add to contract value
+  const { data: approvedCOData } = useQuery({
+    queryKey: ['approved-co-cost-impact', projectId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('change_orders')
+        .select('cost_impact')
+        .eq('project_id', projectId!)
+        .eq('customer_approved', true);
+      if (error) throw error;
+      return (data || []).reduce((sum: number, co: { cost_impact: number | null }) => sum + Number(co.cost_impact || 0), 0) as number;
+    },
+    enabled: !!projectId,
+  });
+
   // Fetch budget items when projectId is present
   const { data: budgetItems } = useQuery({
     queryKey: ['project-budget-items', projectId],
@@ -181,7 +196,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   // Original costs (from estimate/locked)
   const originalMaterialCost = estimateData?.materials || 0;
   const originalLaborCost = estimateData?.labor || 0;
-  const sellingPrice = estimateData?.sale_price || 0;
+  const approvedCOTotal = approvedCOData ?? 0;
+  const sellingPrice = (estimateData?.sale_price || 0) + approvedCOTotal;
 
   // Actual costs (from invoices)
   const actualMaterialCost = (invoices || [])
