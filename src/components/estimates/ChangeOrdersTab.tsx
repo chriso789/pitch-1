@@ -96,6 +96,9 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [viewCO, setViewCO] = useState<ChangeOrder | null>(null);
+  const [editCO, setEditCO] = useState<ChangeOrder | null>(null);
+  const [pendingPdfCO, setPendingPdfCO] = useState<ChangeOrder | null>(null);
   const [form, setForm] = useState({
     title: '',
     reason: '',
