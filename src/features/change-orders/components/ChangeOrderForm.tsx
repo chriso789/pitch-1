@@ -127,6 +127,10 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const grandTotal = subtotal + overheadAmount + profitAmount;
 
   const addQuickLabor = () => {
+    if (!selectedRate) {
+      toast({ title: 'Select labor type', description: 'Choose a labor rate from the system.', variant: 'destructive' });
+      return;
+    }
     if (quickLaborHours <= 0) {
       toast({ title: 'Enter hours', description: 'Add labor hours first.', variant: 'destructive' });
       return;
@@ -136,13 +140,14 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
       {
         id: crypto.randomUUID(),
         kind: 'labor',
-        description: 'Labor',
+        description: `${selectedRate.job_type} — ${selectedRate.skill_level}`,
         quantity: quickLaborHours,
         unit_price: quickLaborRate,
         unit_of_measure: 'HR',
       },
     ]);
     setQuickLaborHours(0);
+    setSelectedLaborRateId('');
   };
 
   const updateItem = (id: string, patch: Partial<LineItem>) => {
