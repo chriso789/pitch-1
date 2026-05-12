@@ -266,7 +266,6 @@ verify_jwt = true
 
 [functions.analyze-roof-aerial]
 verify_jwt = true
-wall_clock_limit = 300
 
 [functions.generate-roof-report]
 verify_jwt = true
@@ -747,7 +746,6 @@ verify_jwt = true
 
 [functions.roof-segmentation]
 verify_jwt = false
-wall_clock_limit = 120
 
 [functions.scope-document-ingest]
 verify_jwt = true
