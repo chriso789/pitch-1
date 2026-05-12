@@ -480,53 +480,85 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
                 </div>
               )}
 
-              {/* Add labor from system labor rates */}
-              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                <h4 className="font-semibold text-sm">Add Labor Cost</h4>
-                <p className="text-xs text-muted-foreground">
-                  Pick a labor type from your system rates and enter hours.
-                </p>
-                <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-6">
-                    <label className="text-xs text-muted-foreground">Labor Type</label>
-                    <Select value={selectedLaborRateId} onValueChange={setSelectedLaborRateId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={laborRatesLoading ? 'Loading…' : 'Select labor rate'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {laborRates.length === 0 && (
-                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                            No labor rates configured. Add them in Settings → Labor Rates.
-                          </div>
-                        )}
-                        {laborRates.map((rate) => {
-                          const eff = calculateEffectiveRate(rate);
-                          return (
-                            <SelectItem key={rate.id} value={rate.id}>
-                              {rate.job_type} — {rate.skill_level} (${eff.toFixed(2)}/hr)
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
+              {/* Add labor — Per Square or Flat Fee */}
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Add Labor Cost</h4>
+                  <div className="flex gap-1 text-xs">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={laborMode === 'per_square' ? 'default' : 'outline'}
+                      onClick={() => setLaborMode('per_square')}
+                    >
+                      Per Square
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={laborMode === 'flat' ? 'default' : 'outline'}
+                      onClick={() => setLaborMode('flat')}
+                    >
+                      Flat Fee
+                    </Button>
                   </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Hours</label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={quickLaborHours || ''}
-                      onChange={(e) => setQuickLaborHours(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="col-span-2 text-sm font-medium">
-                    ${(quickLaborHours * quickLaborRate).toFixed(2)}
-                  </div>
-                  <Button type="button" size="sm" className="col-span-2" onClick={addQuickLabor}>
-                    Add
-                  </Button>
                 </div>
+
+                <Input
+                  placeholder="Description (e.g. Install Hydro Stop)"
+                  value={laborDescription}
+                  onChange={(e) => setLaborDescription(e.target.value)}
+                />
+
+                {laborMode === 'per_square' ? (
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-3">
+                      <label className="text-xs text-muted-foreground">Squares</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={laborSquares || ''}
+                        onChange={(e) => setLaborSquares(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <label className="text-xs text-muted-foreground">$ / Square</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={laborRatePerSquare || ''}
+                        onChange={(e) => setLaborRatePerSquare(parseFloat(e.target.value) || 0)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="col-span-3 text-sm font-medium">
+                      ${(laborSquares * laborRatePerSquare).toFixed(2)}
+                    </div>
+                    <Button type="button" size="sm" className="col-span-3" onClick={addQuickLabor}>
+                      Add Labor
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-6">
+                      <label className="text-xs text-muted-foreground">Flat Fee Amount</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={laborFlatAmount || ''}
+                        onChange={(e) => setLaborFlatAmount(parseFloat(e.target.value) || 0)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="col-span-3 text-sm font-medium">
+                      ${laborFlatAmount.toFixed(2)}
+                    </div>
+                    <Button type="button" size="sm" className="col-span-3" onClick={addQuickLabor}>
+                      Add Labor
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Overhead & profit controls */}
