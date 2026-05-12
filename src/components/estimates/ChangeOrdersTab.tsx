@@ -179,22 +179,28 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         data: { user },
       } = await supabase.auth.getUser();
       const co_number = `CO-${Date.now().toString(36).toUpperCase()}`;
-      const { error } = await (supabase as any).from('change_orders').insert({
-        tenant_id: activeTenantId,
-        project_id: effectiveProjectId,
-        co_number,
-        title: form.title,
-        description: form.description || null,
-        reason: form.reason || null,
-        cost_impact: parseFloat(form.cost_impact || '0'),
-        requested_by: user?.id,
-        status: 'draft',
-      });
+      const { data: inserted, error } = await (supabase as any)
+        .from('change_orders')
+        .insert({
+          tenant_id: activeTenantId,
+          project_id: effectiveProjectId,
+          co_number,
+          title: form.title,
+          description: form.description || null,
+          reason: form.reason || null,
+          cost_impact: parseFloat(form.cost_impact || '0'),
+          requested_by: user?.id,
+          status: 'draft',
+        })
+        .select('*')
+        .single();
       if (error) throw error;
       toast({ title: 'Change order created' });
       setCreateOpen(false);
       setForm({ title: '', reason: '', description: '', cost_impact: '0' });
       refresh();
+      // Trigger off-screen render + PDF capture so it appears in Documents tab
+      if (inserted) setPendingPdfCO(inserted as ChangeOrder);
     } catch (e: any) {
       toast({
         title: 'Error creating change order',
@@ -219,6 +225,54 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     toast({ title: 'Change order deleted' });
     refresh();
   };
+
+  const handleApprove = async (co: ChangeOrder) => {
+    if (!confirm(`Add ${fmt(Number(co.cost_impact || 0))} to the project budget and contract value?`)) return;
+    const { error } = await (supabase as any)
+      .from('change_orders')
+      .update({
+        status: 'approved',
+        customer_approved: true,
+        customer_approved_at: new Date().toISOString(),
+        approved_date: new Date().toISOString(),
+      })
+      .eq('id', co.id);
+    if (error) {
+      toast({ title: 'Approval failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({
+      title: 'Change order approved',
+      description: 'Cost impact added to project budget and contract value.',
+    });
+    refresh();
+  };
+
+  // Once a CO is created, render the document off-screen and persist a PDF
+  // into the Documents tab. We capture, save, then unmount.
+  React.useEffect(() => {
+    if (!pendingPdfCO || !activeTenantId) return;
+    const t = setTimeout(async () => {
+      try {
+        await saveChangeOrderPdfToDocuments({
+          domId: `co-doc-capture-${pendingPdfCO.id}`,
+          changeOrderId: pendingPdfCO.id,
+          coNumber: pendingPdfCO.co_number,
+          title: pendingPdfCO.title,
+          reason: pendingPdfCO.reason,
+          pipelineEntryId,
+          tenantId: activeTenantId,
+          existingDocumentId: pendingPdfCO.document_id,
+        });
+        toast({ title: 'Document added', description: 'Change order PDF saved to Documents tab.' });
+      } catch (e) {
+        console.warn('CO PDF capture failed', e);
+      } finally {
+        setPendingPdfCO(null);
+      }
+    }, 600); // let fonts/images settle
+    return () => clearTimeout(t);
+  }, [pendingPdfCO, activeTenantId, pipelineEntryId, toast]);
 
   const totalsFor = (coId: string) => {
     const inv = (coInvoices || []).filter((i) => i.change_order_id === coId);
