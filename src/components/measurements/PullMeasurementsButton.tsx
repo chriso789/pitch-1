@@ -243,32 +243,23 @@ export function PullMeasurementsButton({
     address
   });
 
-  // Open structure selector using coordinates from the unified hook
+  // Open structure selector — verification happens here via PIN selection.
+  // We never block the user with a destructive error; the selector itself
+  // handles missing coords by geocoding and letting the user place a PIN.
   const handleOpenStructureSelector = useCallback(async () => {
-    // Load coordinates to ensure we have the latest from database
     const freshCoords = await loadCoordinates();
-    
-    if (!freshCoords?.isValid) {
-      toast({
-        title: "Verified Address Required",
-        description: "Property coordinates not verified. Please use the 'Re-verify Address' button to confirm the exact property location before running AI measurements.",
-        variant: "destructive"
-      });
-      return;
-    }
 
-    // Log coordinate source for debugging (no longer prompting for re-verification)
-    if (freshCoords.source !== 'contact_verified_address' && freshCoords.source !== 'user_pin_selection') {
-      console.log(`📍 Using ${freshCoords.source} coordinates — address was verified at lead creation.`);
-    }
-
-    console.log('📍 Opening structure selector with fresh coords:', { 
-      lat: freshCoords.lat, 
-      lng: freshCoords.lng, 
-      source: freshCoords.source 
+    console.log('📍 Opening structure selector:', {
+      lat: freshCoords?.lat,
+      lng: freshCoords?.lng,
+      source: freshCoords?.source,
+      isValid: freshCoords?.isValid,
     });
+
+    // Always open — StructureSelectionMap geocodes the address when coords
+    // are missing and asks the user to confirm the structure pin.
     setShowStructureSelector(true);
-  }, [loadCoordinates, toast]);
+  }, [loadCoordinates]);
 
   // Use measurement job hook for async processing
   const { job, isActive: jobIsActive, startJob } = useMeasurementJob(propertyId);
