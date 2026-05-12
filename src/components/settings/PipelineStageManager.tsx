@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { cn } from '@/lib/utils';
+import { PipelineVisibilitySettings } from './PipelineVisibilitySettings';
 
 interface PipelineStage {
   id: string;
