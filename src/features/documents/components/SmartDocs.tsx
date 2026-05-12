@@ -19,7 +19,8 @@ import {
   Pencil,
   Tag,
   UserPlus,
-  Trash2
+  Trash2,
+  Printer
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { TemplateEditor } from "./TemplateEditor";
@@ -314,6 +315,27 @@ const SmartDocs = () => {
     }
   };
 
+  const handlePrint = async (doc: CompanyDoc) => {
+    try {
+      const { data: urlData } = supabase.storage
+        .from('smartdoc-assets')
+        .getPublicUrl(doc.file_path);
+      const win = window.open(urlData.publicUrl, '_blank');
+      if (!win) {
+        toast.error('Popup blocked. Allow popups to print.');
+        return;
+      }
+      const tryPrint = () => {
+        try { win.focus(); win.print(); } catch { /* noop */ }
+      };
+      win.addEventListener('load', tryPrint);
+      setTimeout(tryPrint, 1500);
+    } catch (error) {
+      console.error('Error printing file:', error);
+      toast.error('Failed to print document');
+    }
+  };
+
   const handleDeleteDoc = async () => {
     if (!deleteDoc) return;
     
@@ -457,15 +479,24 @@ const SmartDocs = () => {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="gap-1"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Preview
-                      </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => setPreviewDoc(doc)}
+                         className="gap-1"
+                       >
+                         <Eye className="h-4 w-4" />
+                         Preview
+                       </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => handlePrint(doc)}
+                         className="gap-1"
+                       >
+                         <Printer className="h-4 w-4" />
+                         Print
+                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -621,6 +652,15 @@ const SmartDocs = () => {
                     >
                       <Eye className="h-4 w-4" />
                       Preview
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handlePrint(doc)}
+                      className="gap-1"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print
                     </Button>
                     <Button
                       size="sm"

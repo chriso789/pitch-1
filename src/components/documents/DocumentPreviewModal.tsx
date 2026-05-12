@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink, Printer } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
@@ -244,6 +244,34 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     }
   };
 
+  const getDocUrl = async (): Promise<string | null> => {
+    if (!currentDoc) return null;
+    if (previewUrl && previewUrl.startsWith('http')) return previewUrl;
+    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
+    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars',
+                            'roof-reports', 'customer-photos', 'documents',
+                            'measurement-visualizations', 'measurement-reports'];
+    if (PUBLIC_BUCKETS.includes(bucket)) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
+      return data.publicUrl;
+    }
+    const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
+    return data?.signedUrl || null;
+  };
+
+  const handlePrint = async () => {
+    const url = await getDocUrl();
+    if (!url) return;
+    const win = window.open(url, '_blank');
+    if (!win) return;
+    const tryPrint = () => {
+      try { win.focus(); win.print(); } catch { /* noop */ }
+    };
+    win.addEventListener('load', tryPrint);
+    // Fallback in case load already fired
+    setTimeout(tryPrint, 1500);
+  };
+
   const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
     if (!currentDoc) return 'unsupported';
     
@@ -324,6 +352,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                     <ZoomIn className="h-4 w-4" />
                   </Button>
                 </>
+              )}
+              {currentDoc && (
+                <Button size="sm" variant="outline" onClick={handlePrint}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </Button>
               )}
               {currentDoc && (
                 <Button size="sm" variant="outline" onClick={() => onDownload(currentDoc)}>
@@ -408,6 +442,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Open in new tab
                 </Button>
+                {currentDoc && (
+                  <Button size="sm" variant="ghost" onClick={handlePrint}>
+                    <Printer className="h-4 w-4 mr-2" />
+                    Print
+                  </Button>
+                )}
                 {currentDoc && (
                   <Button size="sm" variant="ghost" onClick={() => onDownload(currentDoc)}>
                     <Download className="h-4 w-4 mr-2" />
