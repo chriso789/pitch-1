@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink, Printer } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
