@@ -180,14 +180,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Delete job-only history rows (raw AI Pull jobs that never produced a roof_measurements row) ──
+    // ── Delete job-only history rows AND parent jobs of deleted measurements ──
+    // (otherwise the parent ai_measurement_jobs row reappears as orphaned history)
+    const linkedJobIds = (measurements || [])
+      .map((m: any) => m.ai_measurement_job_id)
+      .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+    const allJobIdsToDelete = [...new Set([...jobIds, ...linkedJobIds])];
+
     let deletedJobIds: string[] = [];
-    if (jobIds.length > 0) {
+    if (allJobIdsToDelete.length > 0) {
       // Verify the jobs belong to this lead before deleting (defense-in-depth; service key bypasses RLS)
       const { data: jobsToDelete, error: jobsLookupError } = await supabase
         .from('ai_measurement_jobs')
         .select('id')
-        .in('id', jobIds)
+        .in('id', allJobIdsToDelete)
         .or(`lead_id.eq.${pipelineEntryId},source_record_id.eq.${pipelineEntryId}`);
 
       if (jobsLookupError) throw jobsLookupError;
