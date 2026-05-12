@@ -90,6 +90,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setProbability(stage.probability_percent);
       setIsActive(stage.is_active);
       setArchiveOnEntry(stage.archive_on_entry ?? false);
+      setArchiveAfterDays(stage.archive_after_days ?? 0);
     } else if (open && !stage) {
       setName('');
       setStageKey('');
