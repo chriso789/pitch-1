@@ -443,6 +443,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   Open in new tab
                 </Button>
                 {currentDoc && (
+                  <Button size="sm" variant="ghost" onClick={handlePrint}>
+                    <Printer className="h-4 w-4 mr-2" />
+                    Print
+                  </Button>
+                )}
+                {currentDoc && (
                   <Button size="sm" variant="ghost" onClick={() => onDownload(currentDoc)}>
                     <Download className="h-4 w-4 mr-2" />
                     Download
