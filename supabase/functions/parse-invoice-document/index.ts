@@ -7,6 +7,61 @@ const corsHeaders = {
 };
 
 type DocumentBytes = { arrayBuffer: ArrayBuffer; mimeType: string };
+type InvoiceLineItem = {
+  description: string;
+  quantity?: number;
+  unit_price?: number;
+  line_total?: number;
+  unit_of_measure?: string;
+};
+
+function toMoney(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const cleaned = value.replace(/[$,\s]/g, "");
+  const negative = /^\(.+\)$/.test(cleaned);
+  const numeric = Number(cleaned.replace(/[()]/g, ""));
+  if (!Number.isFinite(numeric)) return undefined;
+  return negative ? -numeric : numeric;
+}
+
+function normalizeDate(value?: string | null): string | null {
+  if (!value) return null;
+  const mdy = value.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (!mdy) return value;
+  const year = mdy[3].length === 2 ? `20${mdy[3]}` : mdy[3];
+  return `${year}-${mdy[1].padStart(2, "0")}-${mdy[2].padStart(2, "0")}`;
+}
+
+function extractTextInvoiceFallback(text: string) {
+  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const joined = lines.join("\n");
+  const vendorName = lines.find((line) => /\b(GAF|Beacon|ABC|SRS|QXO|supplier|supply|distribution|roofing)\b/i.test(line)) || lines[0] || "Supplier";
+  const invoiceNumber = joined.match(/(?:invoice|quote|estimate|document|order)\s*(?:#|no\.?|number)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-.]+)/i)?.[1] || null;
+  const invoiceDate = normalizeDate(joined.match(/(?:invoice|quote|estimate)?\s*date\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i)?.[1] || joined.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/)?.[1]);
+  const subtotal = toMoney(joined.match(/\bsub\s*total\b\s*[:\-]?\s*\$?([\d,]+\.\d{2})/i)?.[1]);
+  const taxAmount = toMoney(joined.match(/\btax\b\s*[:\-]?\s*\$?([\d,]+\.\d{2})/i)?.[1]);
+  const totalMatches = [...joined.matchAll(/\b(?:grand\s+total|total\s+amount|amount\s+due|total)\b\s*[:\-]?\s*\$?([\d,]+\.\d{2})/gi)];
+  const totalAmount = toMoney(totalMatches.at(-1)?.[1]) || subtotal || 0;
+  const lineItems: InvoiceLineItem[] = [];
+  for (const line of lines) {
+    if (/\b(sub\s*total|tax|grand\s+total|amount\s+due|balance|terms|page)\b/i.test(line)) continue;
+    const amountMatches = [...line.matchAll(/\$?([\d,]+\.\d{2})/g)];
+    if (!amountMatches.length) continue;
+    const lineTotal = toMoney(amountMatches.at(-1)?.[1]);
+    if (!lineTotal || lineTotal <= 0) continue;
+    const qtyMatch = line.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(EA|SQ|BDL|LF|FT|HR|ROLL|GAL|PC|PCS|BOX|BAG)\b/i);
+    const quantity = qtyMatch ? Number(qtyMatch[1]) : 1;
+    const unitOfMeasure = qtyMatch?.[2]?.toUpperCase() || "EA";
+    const unitPrice = amountMatches.length > 1 ? toMoney(amountMatches.at(-2)?.[1]) : lineTotal / quantity;
+    const description = line
+      .replace(/\$?[\d,]+\.\d{2}/g, " ")
+      .replace(/\b\d+(?:\.\d+)?\s*(EA|SQ|BDL|LF|FT|HR|ROLL|GAL|PC|PCS|BOX|BAG)\b/i, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (description.length >= 4) lineItems.push({ description, quantity, unit_price: unitPrice, line_total: lineTotal, unit_of_measure: unitOfMeasure });
+  }
+  return { invoice_number: invoiceNumber, invoice_date: invoiceDate, vendor_name: vendorName, line_items: lineItems.slice(0, 100), subtotal, tax_amount: taxAmount, total_amount: totalAmount, invoice_amount: totalAmount, extraction_method: "pdf_text_fallback" };
+}
 
 function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   const uint8 = new Uint8Array(arrayBuffer);
