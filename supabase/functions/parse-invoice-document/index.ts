@@ -1,9 +1,12 @@
+import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+type DocumentBytes = { arrayBuffer: ArrayBuffer; mimeType: string };
 
 function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   const uint8 = new Uint8Array(arrayBuffer);
@@ -17,7 +20,7 @@ function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
 
 // Try to download a private storage object using the service role key
 // when given either a public URL or a signed URL pointing at our Supabase storage.
-async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
+async function tryServiceRoleDownload(documentUrl: string): Promise<DocumentBytes | null> {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -37,15 +40,15 @@ async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: s
       return null;
     }
     const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
-    const buf = await resp.arrayBuffer();
-    return { dataUrl: bufferToDataUrl(buf, mimeType), mimeType };
+    const arrayBuffer = await resp.arrayBuffer();
+    return { arrayBuffer, mimeType };
   } catch (e) {
     console.log("[parse-invoice] service-role download error:", (e as Error).message);
     return null;
   }
 }
 
-async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
+async function fetchDocumentAsBytes(documentUrl: string): Promise<DocumentBytes> {
   const response = await fetch(documentUrl);
   if (!response.ok) {
     // Fallback: attempt service-role download for private buckets
@@ -57,7 +60,21 @@ async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: s
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const arrayBuffer = await response.arrayBuffer();
   const mimeType = contentType.split(";")[0].trim();
-  return { dataUrl: bufferToDataUrl(arrayBuffer, mimeType), mimeType };
+  return { arrayBuffer, mimeType };
+}
+
+async function extractPdfInvoiceText(arrayBuffer: ArrayBuffer): Promise<string> {
+  const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  try {
+    const { text } = await extractText(pdf, { mergePages: false });
+    const pages = Array.isArray(text) ? text : [String(text || "")];
+    return pages
+      .map((page, index) => `--- Page ${index + 1} ---\n${String(page || "").trim()}`)
+      .join("\n\n")
+      .slice(0, 70000);
+  } finally {
+    await pdf.destroy?.();
+  }
 }
 
 function isPdf(url: string, mimeType?: string): boolean {
