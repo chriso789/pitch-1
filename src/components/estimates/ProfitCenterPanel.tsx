@@ -151,15 +151,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
-        .select('clj_formatted_number, job_number, lead_name')
+        .select('clj_formatted_number, lead_name')
         .eq('id', pipelineEntryId)
         .maybeSingle();
       if (error) throw error;
-      return data as { clj_formatted_number: string | null; job_number: string | null; lead_name: string | null } | null;
+      return data as { clj_formatted_number: string | null; lead_name: string | null } | null;
     },
     enabled: !!pipelineEntryId,
   });
-  const jobLabel = pipelineEntry?.clj_formatted_number || pipelineEntry?.job_number || null;
+  const jobLabel = pipelineEntry?.clj_formatted_number || null;
 
   // Fetch budget items when projectId is present
   const { data: budgetItems } = useQuery({
