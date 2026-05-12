@@ -467,7 +467,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       };
 
       // 3. Create measurement_approvals entry
-      const { error: approvalError } = await supabase
+      const { data: insertedApproval, error: approvalError } = await supabase
         .from('measurement_approvals')
         .insert({
           tenant_id: tenantId,
@@ -475,7 +475,9 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
           approved_at: new Date().toISOString(),
           saved_tags: savedTags,
           approval_notes: `Imported from ${importParsedData.provider} report - ${importParsedData.total_area_sqft?.toLocaleString() || 0} sqft`,
-        });
+        })
+        .select('id')
+        .single();
 
       if (approvalError) {
         console.error('Approval save error:', approvalError);
