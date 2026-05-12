@@ -215,14 +215,24 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
           description: 'No line items detected automatically. Add them manually below.',
         });
       } else {
-        const materialRows: LineItem[] = lineItems.map((li: any) => ({
-          id: crypto.randomUUID(),
-          kind: 'material',
-          description: li.description || 'Material',
-          quantity: Number(li.quantity) || 1,
-          unit_price: Number(li.unit_price) || Number(li.line_total) || 0,
-          unit_of_measure: li.unit_of_measure || 'EA',
-        }));
+        const materialRows: LineItem[] = lineItems.map((li: any) => {
+          const qty = Number(li.quantity) || 1;
+          const lineTotal = Number(li.line_total);
+          const rawUnit = Number(li.unit_price);
+          // Prefer line_total/qty when available — protects against AI returning
+          // line_total in the unit_price field (which inflates totals).
+          const unit = Number.isFinite(lineTotal) && lineTotal > 0
+            ? lineTotal / qty
+            : (Number.isFinite(rawUnit) ? rawUnit : 0);
+          return {
+            id: crypto.randomUUID(),
+            kind: 'material' as const,
+            description: li.description || 'Material',
+            quantity: qty,
+            unit_price: unit,
+            unit_of_measure: li.unit_of_measure || 'EA',
+          };
+        });
         setItems((prev) => [...prev, ...materialRows]);
         toast({
           title: 'Invoice parsed',
