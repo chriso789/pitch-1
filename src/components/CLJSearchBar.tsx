@@ -332,20 +332,20 @@ export const CLJSearchBar = () => {
                 </>
               )}
               
-              {/* Leads Group - shown first since most searches target leads */}
-              {!loading && leads.length > 0 && (
-                <CommandGroup heading="Leads">
-                  {leads.map((result) => {
-                    const config = ENTITY_CONFIG.lead;
+              {/* Projects (Jobs) Group - shown first */}
+              {!loading && jobs.length > 0 && (
+                <CommandGroup heading="Projects">
+                  {jobs.map((result) => {
+                    const config = ENTITY_CONFIG.job;
                     const Icon = config.icon;
                     return (
                       <CommandItem
-                        key={`lead-${result.entity_id}`}
+                        key={`job-${result.entity_id}`}
                         onSelect={() => handleSelect(result)}
                         className="flex items-center justify-between cursor-pointer"
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <div className={cn("p-1 rounded", "bg-orange-50")}>
+                          <div className={cn("p-1 rounded", "bg-green-50")}>
                             <Icon className={cn("h-4 w-4", config.iconClass)} />
                           </div>
                           <div className="flex flex-col min-w-0">
@@ -370,21 +370,21 @@ export const CLJSearchBar = () => {
                   })}
                 </CommandGroup>
               )}
-              
-              {/* Jobs Group */}
-              {!loading && jobs.length > 0 && (
-                <CommandGroup heading="Jobs">
-                  {jobs.map((result) => {
-                    const config = ENTITY_CONFIG.job;
+
+              {/* Leads Group */}
+              {!loading && leads.length > 0 && (
+                <CommandGroup heading="Leads">
+                  {leads.map((result) => {
+                    const config = ENTITY_CONFIG.lead;
                     const Icon = config.icon;
                     return (
                       <CommandItem
-                        key={`job-${result.entity_id}`}
+                        key={`lead-${result.entity_id}`}
                         onSelect={() => handleSelect(result)}
                         className="flex items-center justify-between cursor-pointer"
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <div className={cn("p-1 rounded", "bg-green-50")}>
+                          <div className={cn("p-1 rounded", "bg-orange-50")}>
                             <Icon className={cn("h-4 w-4", config.iconClass)} />
                           </div>
                           <div className="flex flex-col min-w-0">
