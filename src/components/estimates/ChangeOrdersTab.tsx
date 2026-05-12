@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
+import { ChangeOrderForm } from '@/features/change-orders/components/ChangeOrderForm';
 import { format } from 'date-fns';
 
 interface ChangeOrdersTabProps {
