@@ -754,6 +754,17 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                             >
                               {invoice.status}
                             </Badge>
+                            {invoice.document_url && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                onClick={() => window.open(invoice.document_url!, '_blank', 'noopener,noreferrer')}
+                                title="Preview invoice"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             {canRenameInvoice && (
                               <Button
                                 variant="ghost"
