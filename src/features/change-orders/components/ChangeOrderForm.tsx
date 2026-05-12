@@ -88,11 +88,14 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const [overheadPct, setOverheadPct] = useState<number>(10);
   const [profitPct, setProfitPct] = useState<number>(20);
   const [quickLaborHours, setQuickLaborHours] = useState<number>(0);
-  const [quickLaborRate, setQuickLaborRate] = useState<number>(75);
+  const [selectedLaborRateId, setSelectedLaborRateId] = useState<string>('');
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
+  const { data: laborRates = [], isLoading: laborRatesLoading } = useLaborRates();
+  const selectedRate = laborRates.find((r) => r.id === selectedLaborRateId);
+  const quickLaborRate = selectedRate ? calculateEffectiveRate(selectedRate) : 0;
 
   const { data: projects } = useQuery({
     queryKey: ['projects-for-co'],
