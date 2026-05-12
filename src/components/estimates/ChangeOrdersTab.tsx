@@ -59,6 +59,14 @@ interface ChangeOrder {
   status: string;
   created_at: string;
   project_id: string | null;
+  original_scope?: string | null;
+  new_scope?: string | null;
+  time_impact_days?: number | null;
+  line_items?: any[] | null;
+  material_total?: number | null;
+  labor_total?: number | null;
+  customer_approved?: boolean | null;
+  document_id?: string | null;
 }
 
 interface COInvoice {
