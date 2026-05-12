@@ -451,7 +451,23 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     </div>
                   )}
 
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t">
+                    <Button variant="outline" size="sm" onClick={() => setViewCO(co)}>
+                      <Eye className="h-3 w-3 mr-1" /> View Document
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setEditCO(co)}>
+                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                    {!co.customer_approved && (
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleApprove(co)}
+                      >
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Add to Project Budget
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -459,7 +475,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                       onClick={() => handleDelete(co.id)}
                     >
                       <Trash2 className="h-3 w-3 mr-1" />
-                      Delete CO
+                      Delete
                     </Button>
                   </div>
                 </AccordionContent>
