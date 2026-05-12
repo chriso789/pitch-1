@@ -55,6 +55,7 @@ interface LineItem {
 interface ChangeOrderFormProps {
   onClose: () => void;
   onSuccess: () => void;
+  defaultProjectId?: string;
 }
 
 const newRow = (kind: 'material' | 'labor'): LineItem => ({
@@ -66,7 +67,7 @@ const newRow = (kind: 'material' | 'labor'): LineItem => ({
   unit_of_measure: kind === 'labor' ? 'HR' : 'EA',
 });
 
-export function ChangeOrderForm({ onClose, onSuccess }: ChangeOrderFormProps) {
+export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: ChangeOrderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [items, setItems] = useState<LineItem[]>([]);
@@ -85,11 +86,12 @@ export function ChangeOrderForm({ onClose, onSuccess }: ChangeOrderFormProps) {
       if (error) throw error;
       return data;
     },
+    enabled: !defaultProjectId,
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { time_impact_days: '0' },
+    defaultValues: { time_impact_days: '0', project_id: defaultProjectId || '' },
   });
 
   const materialTotal = items
@@ -218,30 +220,32 @@ export function ChangeOrderForm({ onClose, onSuccess }: ChangeOrderFormProps) {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="project_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Project</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select project" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {projects?.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          {project.name} ({project.project_number})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!defaultProjectId && (
+              <FormField
+                control={form.control}
+                name="project_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {projects?.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name} ({project.project_number})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

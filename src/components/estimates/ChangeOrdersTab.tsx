@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
+import { ChangeOrderForm } from '@/features/change-orders/components/ChangeOrderForm';
 import { format } from 'date-fns';
 
 interface ChangeOrdersTabProps {
@@ -397,63 +398,16 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         </Accordion>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Change Order</DialogTitle>
-            <DialogDescription>
-              Track additional scope, budget, and invoices outside the original
-              estimate.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Title</Label>
-              <Input
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="e.g. Add skylights to north slope"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Reason</Label>
-              <Textarea
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                placeholder="Why is this change needed?"
-                rows={2}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Budget (Cost Impact $)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.cost_impact}
-                onChange={(e) => setForm({ ...form, cost_impact: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Description</Label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Additional details..."
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={submitting}>
-              {submitting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {createOpen && effectiveProjectId && (
+        <ChangeOrderForm
+          defaultProjectId={effectiveProjectId}
+          onClose={() => setCreateOpen(false)}
+          onSuccess={() => {
+            setCreateOpen(false);
+            refresh();
+          }}
+        />
+      )}
     </div>
   );
 };
