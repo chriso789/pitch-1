@@ -32,6 +32,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useLaborRates, calculateEffectiveRate } from '@/hooks/useLaborRates';
 
 const formSchema = z.object({
   project_id: z.string().min(1, 'Project is required'),
@@ -87,11 +88,14 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const [overheadPct, setOverheadPct] = useState<number>(10);
   const [profitPct, setProfitPct] = useState<number>(20);
   const [quickLaborHours, setQuickLaborHours] = useState<number>(0);
-  const [quickLaborRate, setQuickLaborRate] = useState<number>(75);
+  const [selectedLaborRateId, setSelectedLaborRateId] = useState<string>('');
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
+  const { data: laborRates = [], isLoading: laborRatesLoading } = useLaborRates();
+  const selectedRate = laborRates.find((r) => r.id === selectedLaborRateId);
+  const quickLaborRate = selectedRate ? calculateEffectiveRate(selectedRate) : 0;
 
   const { data: projects } = useQuery({
     queryKey: ['projects-for-co'],
@@ -123,6 +127,10 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const grandTotal = subtotal + overheadAmount + profitAmount;
 
   const addQuickLabor = () => {
+    if (!selectedRate) {
+      toast({ title: 'Select labor type', description: 'Choose a labor rate from the system.', variant: 'destructive' });
+      return;
+    }
     if (quickLaborHours <= 0) {
       toast({ title: 'Enter hours', description: 'Add labor hours first.', variant: 'destructive' });
       return;
@@ -132,13 +140,14 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
       {
         id: crypto.randomUUID(),
         kind: 'labor',
-        description: 'Labor',
+        description: `${selectedRate.job_type} — ${selectedRate.skill_level}`,
         quantity: quickLaborHours,
         unit_price: quickLaborRate,
         unit_of_measure: 'HR',
       },
     ]);
     setQuickLaborHours(0);
+    setSelectedLaborRateId('');
   };
 
   const updateItem = (id: string, patch: Partial<LineItem>) => {
@@ -455,14 +464,37 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
                 </div>
               )}
 
-              {/* Quick labor add */}
+              {/* Add labor from system labor rates */}
               <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
                 <h4 className="font-semibold text-sm">Add Labor Cost</h4>
                 <p className="text-xs text-muted-foreground">
-                  Use this if labor isn't included in the uploaded invoice.
+                  Pick a labor type from your system rates and enter hours.
                 </p>
                 <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-4">
+                  <div className="col-span-6">
+                    <label className="text-xs text-muted-foreground">Labor Type</label>
+                    <Select value={selectedLaborRateId} onValueChange={setSelectedLaborRateId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder={laborRatesLoading ? 'Loading…' : 'Select labor rate'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {laborRates.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            No labor rates configured. Add them in Settings → Labor Rates.
+                          </div>
+                        )}
+                        {laborRates.map((rate) => {
+                          const eff = calculateEffectiveRate(rate);
+                          return (
+                            <SelectItem key={rate.id} value={rate.id}>
+                              {rate.job_type} — {rate.skill_level} (${eff.toFixed(2)}/hr)
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
                     <label className="text-xs text-muted-foreground">Hours</label>
                     <Input
                       type="number"
@@ -470,15 +502,6 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
                       value={quickLaborHours || ''}
                       onChange={(e) => setQuickLaborHours(parseFloat(e.target.value) || 0)}
                       placeholder="0"
-                    />
-                  </div>
-                  <div className="col-span-4">
-                    <label className="text-xs text-muted-foreground">Rate ($/hr)</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={quickLaborRate || ''}
-                      onChange={(e) => setQuickLaborRate(parseFloat(e.target.value) || 0)}
                     />
                   </div>
                   <div className="col-span-2 text-sm font-medium">
