@@ -315,6 +315,27 @@ const SmartDocs = () => {
     }
   };
 
+  const handlePrint = async (doc: CompanyDoc) => {
+    try {
+      const { data: urlData } = supabase.storage
+        .from('smartdoc-assets')
+        .getPublicUrl(doc.file_path);
+      const win = window.open(urlData.publicUrl, '_blank');
+      if (!win) {
+        toast.error('Popup blocked. Allow popups to print.');
+        return;
+      }
+      const tryPrint = () => {
+        try { win.focus(); win.print(); } catch { /* noop */ }
+      };
+      win.addEventListener('load', tryPrint);
+      setTimeout(tryPrint, 1500);
+    } catch (error) {
+      console.error('Error printing file:', error);
+      toast.error('Failed to print document');
+    }
+  };
+
   const handleDeleteDoc = async () => {
     if (!deleteDoc) return;
     
