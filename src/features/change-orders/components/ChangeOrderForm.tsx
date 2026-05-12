@@ -127,27 +127,43 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const grandTotal = subtotal + overheadAmount + profitAmount;
 
   const addQuickLabor = () => {
-    if (!selectedRate) {
-      toast({ title: 'Select labor type', description: 'Choose a labor rate from the system.', variant: 'destructive' });
-      return;
+    if (laborMode === 'per_square') {
+      if (laborSquares <= 0 || laborRatePerSquare <= 0) {
+        toast({ title: 'Enter squares & rate', description: 'Provide squares and $/SQ.', variant: 'destructive' });
+        return;
+      }
+      setItems((p) => [
+        ...p,
+        {
+          id: crypto.randomUUID(),
+          kind: 'labor',
+          description: laborDescription || 'Labor — Per Square',
+          quantity: laborSquares,
+          unit_price: laborRatePerSquare,
+          unit_of_measure: 'SQ',
+        },
+      ]);
+      setLaborSquares(0);
+      setLaborRatePerSquare(0);
+    } else {
+      if (laborFlatAmount <= 0) {
+        toast({ title: 'Enter amount', description: 'Provide a flat fee amount.', variant: 'destructive' });
+        return;
+      }
+      setItems((p) => [
+        ...p,
+        {
+          id: crypto.randomUUID(),
+          kind: 'labor',
+          description: laborDescription || 'Labor — Flat Fee',
+          quantity: 1,
+          unit_price: laborFlatAmount,
+          unit_of_measure: 'LS',
+        },
+      ]);
+      setLaborFlatAmount(0);
     }
-    if (quickLaborHours <= 0) {
-      toast({ title: 'Enter hours', description: 'Add labor hours first.', variant: 'destructive' });
-      return;
-    }
-    setItems((p) => [
-      ...p,
-      {
-        id: crypto.randomUUID(),
-        kind: 'labor',
-        description: `${selectedRate.job_type} — ${selectedRate.skill_level}`,
-        quantity: quickLaborHours,
-        unit_price: quickLaborRate,
-        unit_of_measure: 'HR',
-      },
-    ]);
-    setQuickLaborHours(0);
-    setSelectedLaborRateId('');
+    setLaborDescription('');
   };
 
   const updateItem = (id: string, patch: Partial<LineItem>) => {
