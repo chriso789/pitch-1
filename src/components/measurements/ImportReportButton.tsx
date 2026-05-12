@@ -533,6 +533,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       // Refresh measurement context and approvals
       queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
       
       onSuccess?.();
     } catch (err) {
