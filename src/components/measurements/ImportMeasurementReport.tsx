@@ -281,6 +281,8 @@ export function ImportMeasurementReport({
             comprehensive_measurements: comprehensiveMeasurements,
             imported_report_provider: parsedData.provider,
             imported_report_address: parsedData.address,
+            // Auto-activate imported vendor reports — they take precedence over AI
+            ...(insertedApproval?.id ? { selected_measurement_approval_id: insertedApproval.id } : {}),
           },
         })
         .eq('id', pipelineEntryId);
