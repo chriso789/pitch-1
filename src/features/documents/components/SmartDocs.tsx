@@ -656,6 +656,15 @@ const SmartDocs = () => {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => handlePrint(doc)}
+                      className="gap-1"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => handleDownload(doc)}
                       className="gap-1"
                     >
