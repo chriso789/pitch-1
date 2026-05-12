@@ -145,6 +145,22 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Fetch pipeline entry job/CLJ number for invoice labeling
+  const { data: pipelineEntry } = useQuery({
+    queryKey: ['pipeline-entry-clj', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('clj_formatted_number, lead_name')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { clj_formatted_number: string | null; lead_name: string | null } | null;
+    },
+    enabled: !!pipelineEntryId,
+  });
+  const jobLabel = pipelineEntry?.clj_formatted_number || null;
+
   // Fetch budget items when projectId is present
   const { data: budgetItems } = useQuery({
     queryKey: ['project-budget-items', projectId],
@@ -693,7 +709,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
                   {invoices.map((invoice) => {
-                    const displayName = invoice.document_name?.trim() || invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
+                    const vendorLabel = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || (invoice.invoice_type === 'material' ? 'Supplier' : invoice.invoice_type === 'labor' ? 'Crew' : 'Vendor');
+                    const displayName = `${vendorLabel}${jobLabel ? ` — ${jobLabel}` : ''}`;
                     const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
                     const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     const canRenameInvoice = isValidUuid(invoice.id);
