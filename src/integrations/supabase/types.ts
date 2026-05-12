@@ -42045,6 +42045,7 @@ export type Database = {
           id: string
           min_profit_amount_dollars: number | null
           min_profit_margin_percent: number | null
+          pipeline_lead_visibility_days: number
           portal_show_balance: boolean | null
           portal_show_documents: boolean | null
           portal_show_messages: boolean | null
@@ -42063,6 +42064,7 @@ export type Database = {
           id?: string
           min_profit_amount_dollars?: number | null
           min_profit_margin_percent?: number | null
+          pipeline_lead_visibility_days?: number
           portal_show_balance?: boolean | null
           portal_show_documents?: boolean | null
           portal_show_messages?: boolean | null
@@ -42081,6 +42083,7 @@ export type Database = {
           id?: string
           min_profit_amount_dollars?: number | null
           min_profit_margin_percent?: number | null
+          pipeline_lead_visibility_days?: number
           portal_show_balance?: boolean | null
           portal_show_documents?: boolean | null
           portal_show_messages?: boolean | null
@@ -48301,8 +48304,8 @@ export type Database = {
         Returns: undefined
       }
       try_auto_archive_pipeline_entry: {
-        Args: { p_entry_id: string }
-        Returns: boolean
+        Args: { _entry_id: string }
+        Returns: undefined
       }
       unlockrows: { Args: { "": string }; Returns: number }
       update_cache_access_stats: {
