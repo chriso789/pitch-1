@@ -235,7 +235,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
         cost_impact: grandTotal,
         material_total: materialTotal,
         labor_total: laborTotal,
-        line_items: items,
+        line_items: { items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
         material_invoice_url: invoiceFile?.url || null,
         material_invoice_storage_path: invoiceFile?.path || null,
         time_impact_days: parseInt(values.time_impact_days || '0'),
