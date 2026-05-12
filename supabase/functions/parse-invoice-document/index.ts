@@ -56,17 +56,8 @@ async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: s
 
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const arrayBuffer = await response.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-
-  // Manual base64 encoding for Deno compatibility
-  let binary = "";
-  for (let i = 0; i < uint8.length; i++) {
-    binary += String.fromCharCode(uint8[i]);
-  }
-  const base64 = btoa(binary);
-
   const mimeType = contentType.split(";")[0].trim();
-  return { dataUrl: `data:${mimeType};base64,${base64}`, mimeType };
+  return { dataUrl: bufferToDataUrl(arrayBuffer, mimeType), mimeType };
 }
 
 function isPdf(url: string, mimeType?: string): boolean {
