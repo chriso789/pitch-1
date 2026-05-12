@@ -91,8 +91,9 @@ export function usePipelineStages() {
         is_terminal: stage.is_terminal ?? false,
       }));
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes in cache
+    staleTime: 30 * 1000, // 30s — pick up stage changes from settings quickly
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
     enabled: !!tenantId,
   });
 
