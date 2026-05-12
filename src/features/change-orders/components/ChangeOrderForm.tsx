@@ -32,7 +32,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
-import { useLaborRates, calculateEffectiveRate } from '@/hooks/useLaborRates';
+
 
 const formSchema = z.object({
   project_id: z.string().min(1, 'Project is required'),
