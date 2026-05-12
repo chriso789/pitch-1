@@ -32,7 +32,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
-import { useLaborRates, calculateEffectiveRate } from '@/hooks/useLaborRates';
+
 
 const formSchema = z.object({
   project_id: z.string().min(1, 'Project is required'),
@@ -87,15 +87,15 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const [items, setItems] = useState<LineItem[]>([]);
   const [overheadPct, setOverheadPct] = useState<number>(10);
   const [profitPct, setProfitPct] = useState<number>(20);
-  const [quickLaborHours, setQuickLaborHours] = useState<number>(0);
-  const [selectedLaborRateId, setSelectedLaborRateId] = useState<string>('');
+  const [laborMode, setLaborMode] = useState<'per_square' | 'flat'>('per_square');
+  const [laborSquares, setLaborSquares] = useState<number>(0);
+  const [laborRatePerSquare, setLaborRatePerSquare] = useState<number>(0);
+  const [laborFlatAmount, setLaborFlatAmount] = useState<number>(0);
+  const [laborDescription, setLaborDescription] = useState<string>('');
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
-  const { data: laborRates = [], isLoading: laborRatesLoading } = useLaborRates();
-  const selectedRate = laborRates.find((r) => r.id === selectedLaborRateId);
-  const quickLaborRate = selectedRate ? calculateEffectiveRate(selectedRate) : 0;
 
   const { data: projects } = useQuery({
     queryKey: ['projects-for-co'],
@@ -127,27 +127,43 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const grandTotal = subtotal + overheadAmount + profitAmount;
 
   const addQuickLabor = () => {
-    if (!selectedRate) {
-      toast({ title: 'Select labor type', description: 'Choose a labor rate from the system.', variant: 'destructive' });
-      return;
+    if (laborMode === 'per_square') {
+      if (laborSquares <= 0 || laborRatePerSquare <= 0) {
+        toast({ title: 'Enter squares & rate', description: 'Provide squares and $/SQ.', variant: 'destructive' });
+        return;
+      }
+      setItems((p) => [
+        ...p,
+        {
+          id: crypto.randomUUID(),
+          kind: 'labor',
+          description: laborDescription || 'Labor — Per Square',
+          quantity: laborSquares,
+          unit_price: laborRatePerSquare,
+          unit_of_measure: 'SQ',
+        },
+      ]);
+      setLaborSquares(0);
+      setLaborRatePerSquare(0);
+    } else {
+      if (laborFlatAmount <= 0) {
+        toast({ title: 'Enter amount', description: 'Provide a flat fee amount.', variant: 'destructive' });
+        return;
+      }
+      setItems((p) => [
+        ...p,
+        {
+          id: crypto.randomUUID(),
+          kind: 'labor',
+          description: laborDescription || 'Labor — Flat Fee',
+          quantity: 1,
+          unit_price: laborFlatAmount,
+          unit_of_measure: 'LS',
+        },
+      ]);
+      setLaborFlatAmount(0);
     }
-    if (quickLaborHours <= 0) {
-      toast({ title: 'Enter hours', description: 'Add labor hours first.', variant: 'destructive' });
-      return;
-    }
-    setItems((p) => [
-      ...p,
-      {
-        id: crypto.randomUUID(),
-        kind: 'labor',
-        description: `${selectedRate.job_type} — ${selectedRate.skill_level}`,
-        quantity: quickLaborHours,
-        unit_price: quickLaborRate,
-        unit_of_measure: 'HR',
-      },
-    ]);
-    setQuickLaborHours(0);
-    setSelectedLaborRateId('');
+    setLaborDescription('');
   };
 
   const updateItem = (id: string, patch: Partial<LineItem>) => {
@@ -199,14 +215,24 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
           description: 'No line items detected automatically. Add them manually below.',
         });
       } else {
-        const materialRows: LineItem[] = lineItems.map((li: any) => ({
-          id: crypto.randomUUID(),
-          kind: 'material',
-          description: li.description || 'Material',
-          quantity: Number(li.quantity) || 1,
-          unit_price: Number(li.unit_price) || Number(li.line_total) || 0,
-          unit_of_measure: li.unit_of_measure || 'EA',
-        }));
+        const materialRows: LineItem[] = lineItems.map((li: any) => {
+          const qty = Number(li.quantity) || 1;
+          const lineTotal = Number(li.line_total);
+          const rawUnit = Number(li.unit_price);
+          // Prefer line_total/qty when available — protects against AI returning
+          // line_total in the unit_price field (which inflates totals).
+          const unit = Number.isFinite(lineTotal) && lineTotal > 0
+            ? lineTotal / qty
+            : (Number.isFinite(rawUnit) ? rawUnit : 0);
+          return {
+            id: crypto.randomUUID(),
+            kind: 'material' as const,
+            description: li.description || 'Material',
+            quantity: qty,
+            unit_price: unit,
+            unit_of_measure: li.unit_of_measure || 'EA',
+          };
+        });
         setItems((prev) => [...prev, ...materialRows]);
         toast({
           title: 'Invoice parsed',
@@ -464,53 +490,85 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
                 </div>
               )}
 
-              {/* Add labor from system labor rates */}
-              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                <h4 className="font-semibold text-sm">Add Labor Cost</h4>
-                <p className="text-xs text-muted-foreground">
-                  Pick a labor type from your system rates and enter hours.
-                </p>
-                <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-6">
-                    <label className="text-xs text-muted-foreground">Labor Type</label>
-                    <Select value={selectedLaborRateId} onValueChange={setSelectedLaborRateId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={laborRatesLoading ? 'Loading…' : 'Select labor rate'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {laborRates.length === 0 && (
-                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                            No labor rates configured. Add them in Settings → Labor Rates.
-                          </div>
-                        )}
-                        {laborRates.map((rate) => {
-                          const eff = calculateEffectiveRate(rate);
-                          return (
-                            <SelectItem key={rate.id} value={rate.id}>
-                              {rate.job_type} — {rate.skill_level} (${eff.toFixed(2)}/hr)
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
+              {/* Add labor — Per Square or Flat Fee */}
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Add Labor Cost</h4>
+                  <div className="flex gap-1 text-xs">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={laborMode === 'per_square' ? 'default' : 'outline'}
+                      onClick={() => setLaborMode('per_square')}
+                    >
+                      Per Square
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={laborMode === 'flat' ? 'default' : 'outline'}
+                      onClick={() => setLaborMode('flat')}
+                    >
+                      Flat Fee
+                    </Button>
                   </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Hours</label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={quickLaborHours || ''}
-                      onChange={(e) => setQuickLaborHours(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="col-span-2 text-sm font-medium">
-                    ${(quickLaborHours * quickLaborRate).toFixed(2)}
-                  </div>
-                  <Button type="button" size="sm" className="col-span-2" onClick={addQuickLabor}>
-                    Add
-                  </Button>
                 </div>
+
+                <Input
+                  placeholder="Description (e.g. Install Hydro Stop)"
+                  value={laborDescription}
+                  onChange={(e) => setLaborDescription(e.target.value)}
+                />
+
+                {laborMode === 'per_square' ? (
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-3">
+                      <label className="text-xs text-muted-foreground">Squares</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={laborSquares || ''}
+                        onChange={(e) => setLaborSquares(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <label className="text-xs text-muted-foreground">$ / Square</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={laborRatePerSquare || ''}
+                        onChange={(e) => setLaborRatePerSquare(parseFloat(e.target.value) || 0)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="col-span-3 text-sm font-medium">
+                      ${(laborSquares * laborRatePerSquare).toFixed(2)}
+                    </div>
+                    <Button type="button" size="sm" className="col-span-3" onClick={addQuickLabor}>
+                      Add Labor
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-6">
+                      <label className="text-xs text-muted-foreground">Flat Fee Amount</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={laborFlatAmount || ''}
+                        onChange={(e) => setLaborFlatAmount(parseFloat(e.target.value) || 0)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="col-span-3 text-sm font-medium">
+                      ${laborFlatAmount.toFixed(2)}
+                    </div>
+                    <Button type="button" size="sm" className="col-span-3" onClick={addQuickLabor}>
+                      Add Labor
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Overhead & profit controls */}
