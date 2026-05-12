@@ -1903,20 +1903,42 @@ function MeasurementHistorySection({
         'imported_at': report.created_at,
       };
 
-      await supabase.from('measurement_approvals').insert({
-        tenant_id: entry.tenant_id,
-        pipeline_entry_id: pipelineEntryId,
-        approved_at: new Date().toISOString(),
-        saved_tags: savedTags,
-        approval_notes: `Saved from ${report.provider} history - ${parsed.total_area_sqft?.toLocaleString() || 0} sqft`,
-      });
+      const { data: insertedApproval, error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .insert({
+          tenant_id: entry.tenant_id,
+          pipeline_entry_id: pipelineEntryId,
+          approved_at: new Date().toISOString(),
+          saved_tags: savedTags,
+          approval_notes: `Saved from ${report.provider} history - ${parsed.total_area_sqft?.toLocaleString() || 0} sqft`,
+        })
+        .select('id')
+        .single();
+
+      if (approvalError) throw approvalError;
+
+      // Auto-activate vendor reports — they take precedence over AI measurements
+      if (insertedApproval?.id) {
+        const existingMetadata = (entry.metadata as Record<string, any>) || {};
+        await supabase
+          .from('pipeline_entries')
+          .update({
+            metadata: {
+              ...existingMetadata,
+              selected_measurement_approval_id: insertedApproval.id,
+            },
+          })
+          .eq('id', pipelineEntryId);
+      }
 
       toast({
         title: 'Measurement Saved',
-        description: `${report.provider} measurement added to saved list`,
+        description: `${report.provider} measurement added and set as active`,
       });
 
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
       onSaveToApprovals();
     } catch (error: any) {
       console.error('Save error:', error);
