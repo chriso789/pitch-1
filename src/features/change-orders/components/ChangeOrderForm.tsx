@@ -84,6 +84,10 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [items, setItems] = useState<LineItem[]>([]);
+  const [overheadPct, setOverheadPct] = useState<number>(10);
+  const [profitPct, setProfitPct] = useState<number>(20);
+  const [quickLaborHours, setQuickLaborHours] = useState<number>(0);
+  const [quickLaborRate, setQuickLaborRate] = useState<number>(75);
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -113,7 +117,29 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const laborTotal = items
     .filter((i) => i.kind === 'labor')
     .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0);
-  const grandTotal = materialTotal + laborTotal;
+  const subtotal = materialTotal + laborTotal;
+  const overheadAmount = subtotal * (overheadPct / 100);
+  const profitAmount = (subtotal + overheadAmount) * (profitPct / 100);
+  const grandTotal = subtotal + overheadAmount + profitAmount;
+
+  const addQuickLabor = () => {
+    if (quickLaborHours <= 0) {
+      toast({ title: 'Enter hours', description: 'Add labor hours first.', variant: 'destructive' });
+      return;
+    }
+    setItems((p) => [
+      ...p,
+      {
+        id: crypto.randomUUID(),
+        kind: 'labor',
+        description: 'Labor',
+        quantity: quickLaborHours,
+        unit_price: quickLaborRate,
+        unit_of_measure: 'HR',
+      },
+    ]);
+    setQuickLaborHours(0);
+  };
 
   const updateItem = (id: string, patch: Partial<LineItem>) => {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
@@ -209,7 +235,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
         cost_impact: grandTotal,
         material_total: materialTotal,
         labor_total: laborTotal,
-        line_items: items,
+        line_items: { items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
         material_invoice_url: invoiceFile?.url || null,
         material_invoice_storage_path: invoiceFile?.path || null,
         time_impact_days: parseInt(values.time_impact_days || '0'),
@@ -429,6 +455,66 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
                 </div>
               )}
 
+              {/* Quick labor add */}
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                <h4 className="font-semibold text-sm">Add Labor Cost</h4>
+                <p className="text-xs text-muted-foreground">
+                  Use this if labor isn't included in the uploaded invoice.
+                </p>
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-4">
+                    <label className="text-xs text-muted-foreground">Hours</label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={quickLaborHours || ''}
+                      onChange={(e) => setQuickLaborHours(parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="col-span-4">
+                    <label className="text-xs text-muted-foreground">Rate ($/hr)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={quickLaborRate || ''}
+                      onChange={(e) => setQuickLaborRate(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className="col-span-2 text-sm font-medium">
+                    ${(quickLaborHours * quickLaborRate).toFixed(2)}
+                  </div>
+                  <Button type="button" size="sm" className="col-span-2" onClick={addQuickLabor}>
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              {/* Overhead & profit controls */}
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                <h4 className="font-semibold text-sm">Overhead & Profit</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Overhead %</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={overheadPct}
+                      onChange={(e) => setOverheadPct(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Profit %</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={profitPct}
+                      onChange={(e) => setProfitPct(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* totals */}
               <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-1">
                 <div className="flex justify-between">
@@ -439,8 +525,20 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
                   <span className="text-muted-foreground">Labor</span>
                   <span>${laborTotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between font-semibold border-t pt-1 mt-1">
-                  <span>Total Cost Impact</span>
+                <div className="flex justify-between border-t pt-1 mt-1">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>${subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Overhead ({overheadPct}%)</span>
+                  <span>${overheadAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Profit ({profitPct}%)</span>
+                  <span>${profitAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-semibold border-t pt-1 mt-1 text-base">
+                  <span>Total Change Order</span>
                   <span>${grandTotal.toFixed(2)}</span>
                 </div>
               </div>
