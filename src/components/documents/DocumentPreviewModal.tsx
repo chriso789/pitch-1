@@ -271,6 +271,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     // Fallback in case load already fired
     setTimeout(tryPrint, 1500);
   };
+
+  const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
     if (!currentDoc) return 'unsupported';
     
     const mimeType = currentDoc.mime_type || '';
