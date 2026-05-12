@@ -145,6 +145,22 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Fetch pipeline entry job/CLJ number for invoice labeling
+  const { data: pipelineEntry } = useQuery({
+    queryKey: ['pipeline-entry-clj', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('clj_formatted_number, job_number, lead_name')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { clj_formatted_number: string | null; job_number: string | null; lead_name: string | null } | null;
+    },
+    enabled: !!pipelineEntryId,
+  });
+  const jobLabel = pipelineEntry?.clj_formatted_number || pipelineEntry?.job_number || null;
+
   // Fetch budget items when projectId is present
   const { data: budgetItems } = useQuery({
     queryKey: ['project-budget-items', projectId],
