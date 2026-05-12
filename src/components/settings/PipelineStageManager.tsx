@@ -294,17 +294,47 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             />
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <Label>Auto-archive when entered</Label>
-              <p className="text-xs text-muted-foreground">
-                When a job moves to this stage AND is paid in full, it's removed from the active board.
-              </p>
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Closed / archive stage</Label>
+                <p className="text-xs text-muted-foreground">
+                  Mark this as a "closed" stage (e.g. Closed Won, Completed, Paid in Full).
+                  Leads in this stage will be auto-removed from the active board.
+                </p>
+              </div>
+              <Switch
+                checked={archiveOnEntry}
+                onCheckedChange={setArchiveOnEntry}
+              />
             </div>
-            <Switch
-              checked={archiveOnEntry}
-              onCheckedChange={setArchiveOnEntry}
-            />
+
+            {archiveOnEntry && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label>Remove from pipeline after</Label>
+                <Select
+                  value={String(archiveAfterDays)}
+                  onValueChange={(v) => setArchiveAfterDays(parseInt(v, 10))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Immediately (when paid in full)</SelectItem>
+                    <SelectItem value="1">1 day</SelectItem>
+                    <SelectItem value="3">3 days</SelectItem>
+                    <SelectItem value="7">7 days</SelectItem>
+                    <SelectItem value="14">14 days</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="60">60 days</SelectItem>
+                    <SelectItem value="90">90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  How long a lead stays visible in this stage before it's archived to the backend.
+                </p>
+              </div>
+            )}
           </div>
         </div>
         
