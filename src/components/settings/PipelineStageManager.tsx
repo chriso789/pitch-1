@@ -76,6 +76,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   const [probability, setProbability] = useState(stage?.probability_percent || 0);
   const [isActive, setIsActive] = useState(stage?.is_active ?? true);
   const [archiveOnEntry, setArchiveOnEntry] = useState(stage?.archive_on_entry ?? false);
+  const [archiveAfterDays, setArchiveAfterDays] = useState<number>(stage?.archive_after_days ?? 0);
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
