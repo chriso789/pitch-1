@@ -67,6 +67,19 @@ const newRow = (kind: 'material' | 'labor'): LineItem => ({
   unit_of_measure: kind === 'labor' ? 'HR' : 'EA',
 });
 
+const getFunctionErrorMessage = async (error: any): Promise<string> => {
+  try {
+    const context = error?.context;
+    if (context instanceof Response) {
+      const body = await context.clone().json();
+      if (body?.error) return body.error;
+    }
+  } catch {
+    // Fall back to the Supabase client error message below.
+  }
+  return error?.message || 'AI could not parse it. Add line items manually below.';
+};
+
 export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: ChangeOrderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -130,12 +143,19 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
 
       setInvoiceFile({ url, path, name: file.name });
 
-      // 2. Parse with AI
+      // 2. Parse with AI. Keep the uploaded invoice even if AI parsing fails.
       const { data: parsed, error: parseErr } = await supabase.functions.invoke(
         'parse-invoice-document',
         { body: { document_url: url } }
       );
-      if (parseErr) throw parseErr;
+      if (parseErr) {
+        const parseMessage = await getFunctionErrorMessage(parseErr);
+        toast({
+          title: 'Invoice uploaded',
+          description: `${parseMessage} Add material and labor line items manually below.`,
+        });
+        return;
+      }
 
       const lineItems = parsed?.parsed?.line_items || [];
       if (lineItems.length === 0) {
@@ -162,7 +182,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
       console.error('[invoice upload]', err);
       toast({
         title: 'Upload failed',
-        description: err.message || 'Could not parse invoice',
+        description: err.message || 'Could not upload invoice',
         variant: 'destructive',
       });
     } finally {

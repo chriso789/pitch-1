@@ -1,9 +1,67 @@
+import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+type DocumentBytes = { arrayBuffer: ArrayBuffer; mimeType: string };
+type InvoiceLineItem = {
+  description: string;
+  quantity?: number;
+  unit_price?: number;
+  line_total?: number;
+  unit_of_measure?: string;
+};
+
+function toMoney(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const cleaned = value.replace(/[$,\s]/g, "");
+  const negative = /^\(.+\)$/.test(cleaned);
+  const numeric = Number(cleaned.replace(/[()]/g, ""));
+  if (!Number.isFinite(numeric)) return undefined;
+  return negative ? -numeric : numeric;
+}
+
+function normalizeDate(value?: string | null): string | null {
+  if (!value) return null;
+  const mdy = value.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (!mdy) return value;
+  const year = mdy[3].length === 2 ? `20${mdy[3]}` : mdy[3];
+  return `${year}-${mdy[1].padStart(2, "0")}-${mdy[2].padStart(2, "0")}`;
+}
+
+function extractTextInvoiceFallback(text: string) {
+  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const joined = lines.join("\n");
+  const vendorName = lines.find((line) => /\b(GAF|Beacon|ABC|SRS|QXO|supplier|supply|distribution|roofing)\b/i.test(line)) || lines[0] || "Supplier";
+  const invoiceNumber = joined.match(/(?:invoice|quote|estimate|document|order)\s*(?:#|no\.?|number)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-.]+)/i)?.[1] || null;
+  const invoiceDate = normalizeDate(joined.match(/(?:invoice|quote|estimate)?\s*date\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i)?.[1] || joined.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/)?.[1]);
+  const subtotal = toMoney(joined.match(/\bsub\s*total\b\s*[:\-]?\s*\$?([\d,]+\.\d{2})/i)?.[1]);
+  const taxAmount = toMoney(joined.match(/\btax\b\s*[:\-]?\s*\$?([\d,]+\.\d{2})/i)?.[1]);
+  const totalMatches = [...joined.matchAll(/\b(?:grand\s+total|total\s+amount|amount\s+due|total)\b\s*[:\-]?\s*\$?([\d,]+\.\d{2})/gi)];
+  const totalAmount = toMoney(totalMatches.at(-1)?.[1]) || subtotal || 0;
+  const lineItems: InvoiceLineItem[] = [];
+  for (const line of lines) {
+    if (/\b(sub\s*total|tax|grand\s+total|amount\s+due|balance|terms|page)\b/i.test(line)) continue;
+    const amountMatches = [...line.matchAll(/\$?([\d,]+\.\d{2})/g)];
+    if (!amountMatches.length) continue;
+    const lineTotal = toMoney(amountMatches.at(-1)?.[1]);
+    if (!lineTotal || lineTotal <= 0) continue;
+    const qtyMatch = line.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(EA|SQ|BDL|LF|FT|HR|ROLL|GAL|PC|PCS|BOX|BAG)\b/i);
+    const quantity = qtyMatch ? Number(qtyMatch[1]) : 1;
+    const unitOfMeasure = qtyMatch?.[2]?.toUpperCase() || "EA";
+    const unitPrice = amountMatches.length > 1 ? toMoney(amountMatches.at(-2)?.[1]) : lineTotal / quantity;
+    const description = line
+      .replace(/\$?[\d,]+\.\d{2}/g, " ")
+      .replace(/\b\d+(?:\.\d+)?\s*(EA|SQ|BDL|LF|FT|HR|ROLL|GAL|PC|PCS|BOX|BAG)\b/i, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (description.length >= 4) lineItems.push({ description, quantity, unit_price: unitPrice, line_total: lineTotal, unit_of_measure: unitOfMeasure });
+  }
+  return { invoice_number: invoiceNumber, invoice_date: invoiceDate, vendor_name: vendorName, line_items: lineItems.slice(0, 100), subtotal, tax_amount: taxAmount, total_amount: totalAmount, invoice_amount: totalAmount, extraction_method: "pdf_text_fallback" };
+}
 
 function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   const uint8 = new Uint8Array(arrayBuffer);
@@ -17,7 +75,7 @@ function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
 
 // Try to download a private storage object using the service role key
 // when given either a public URL or a signed URL pointing at our Supabase storage.
-async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
+async function tryServiceRoleDownload(documentUrl: string): Promise<DocumentBytes | null> {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -37,15 +95,15 @@ async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: s
       return null;
     }
     const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
-    const buf = await resp.arrayBuffer();
-    return { dataUrl: bufferToDataUrl(buf, mimeType), mimeType };
+    const arrayBuffer = await resp.arrayBuffer();
+    return { arrayBuffer, mimeType };
   } catch (e) {
     console.log("[parse-invoice] service-role download error:", (e as Error).message);
     return null;
   }
 }
 
-async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
+async function fetchDocumentAsBytes(documentUrl: string): Promise<DocumentBytes> {
   const response = await fetch(documentUrl);
   if (!response.ok) {
     // Fallback: attempt service-role download for private buckets
@@ -57,7 +115,21 @@ async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: s
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const arrayBuffer = await response.arrayBuffer();
   const mimeType = contentType.split(";")[0].trim();
-  return { dataUrl: bufferToDataUrl(arrayBuffer, mimeType), mimeType };
+  return { arrayBuffer, mimeType };
+}
+
+async function extractPdfInvoiceText(arrayBuffer: ArrayBuffer): Promise<string> {
+  const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  try {
+    const { text } = await extractText(pdf, { mergePages: false });
+    const pages = Array.isArray(text) ? text : [String(text || "")];
+    return pages
+      .map((page, index) => `--- Page ${index + 1} ---\n${String(page || "").trim()}`)
+      .join("\n\n")
+      .slice(0, 70000);
+  } finally {
+    await pdf.destroy?.();
+  }
 }
 
 function isPdf(url: string, mimeType?: string): boolean {
@@ -92,17 +164,44 @@ Deno.serve(async (req) => {
 
     console.log("[parse-invoice] Extracting data from:", document_url);
 
-    // Determine how to send the document to the vision model
-    let imageContent: { type: string; image_url: { url: string } };
+    let userContent: Array<Record<string, unknown>>;
+    let pdfTextFallback: string | null = null;
 
     if (isImage(document_url)) {
       // Images can be sent directly as URLs
-      imageContent = { type: "image_url", image_url: { url: document_url } };
+      userContent = [
+        {
+          type: "text",
+          text: "Extract all invoice data from this document image: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
+        },
+        { type: "image_url", image_url: { url: document_url } }
+      ];
     } else {
-      // PDFs and other formats: download and send as base64 data URL
-      console.log("[parse-invoice] Non-image format detected, converting to base64 data URL");
-      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
-      imageContent = { type: "image_url", image_url: { url: dataUrl } };
+      console.log("[parse-invoice] Non-image format detected, extracting PDF text");
+      const { arrayBuffer, mimeType } = await fetchDocumentAsBytes(document_url);
+
+      if (isPdf(document_url, mimeType)) {
+        const extractedText = await extractPdfInvoiceText(arrayBuffer);
+        if (!extractedText.trim()) {
+          throw new Error("No readable text found in PDF. Please upload a text-based supplier invoice or add line items manually.");
+        }
+        pdfTextFallback = extractedText;
+        userContent = [
+          {
+            type: "text",
+            text: `Extract all invoice data from this PDF text: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount.\n\n${extractedText}`
+          }
+        ];
+      } else {
+        const dataUrl = bufferToDataUrl(arrayBuffer, mimeType);
+        userContent = [
+          {
+            type: "text",
+            text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
+          },
+          { type: "image_url", image_url: { url: dataUrl } }
+        ];
+      }
     }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -129,13 +228,7 @@ Deno.serve(async (req) => {
           },
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
-              },
-              imageContent
-            ]
+            content: userContent
           }
         ],
         tools: [
@@ -210,6 +303,14 @@ Deno.serve(async (req) => {
     }
 
     if (res.status === 402) {
+      if (pdfTextFallback) {
+        const parsed = extractTextInvoiceFallback(pdfTextFallback);
+        console.log("[parse-invoice] AI credits exhausted, used PDF text fallback");
+        return new Response(
+          JSON.stringify({ parsed, warning: "AI credits exhausted; used basic PDF text extraction." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({ error: "AI credits exhausted - please add funds" }),
         { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
