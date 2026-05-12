@@ -26230,6 +26230,7 @@ export type Database = {
       pipeline_entries: {
         Row: {
           approval_gate_status: string | null
+          archived_at: string | null
           assigned_to: string | null
           calculation_template_id: string | null
           capout_adjustments: Json | null
@@ -26276,6 +26277,7 @@ export type Database = {
         }
         Insert: {
           approval_gate_status?: string | null
+          archived_at?: string | null
           assigned_to?: string | null
           calculation_template_id?: string | null
           capout_adjustments?: Json | null
@@ -26322,6 +26324,7 @@ export type Database = {
         }
         Update: {
           approval_gate_status?: string | null
+          archived_at?: string | null
           assigned_to?: string | null
           calculation_template_id?: string | null
           capout_adjustments?: Json | null
@@ -26453,8 +26456,50 @@ export type Database = {
           },
         ]
       }
+      pipeline_stage_history: {
+        Row: {
+          created_at: string
+          duration_seconds: number | null
+          entered_at: string
+          exited_at: string | null
+          id: string
+          pipeline_entry_id: string
+          stage_status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          pipeline_entry_id: string
+          stage_status: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          pipeline_entry_id?: string
+          stage_status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stage_history_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipeline_stages: {
         Row: {
+          archive_on_entry: boolean
           auto_actions: Json | null
           auto_close_days: number | null
           color: string | null
@@ -26473,6 +26518,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          archive_on_entry?: boolean
           auto_actions?: Json | null
           auto_close_days?: number | null
           color?: string | null
@@ -26491,6 +26537,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          archive_on_entry?: boolean
           auto_actions?: Json | null
           auto_close_days?: number | null
           color?: string | null
@@ -47512,6 +47559,17 @@ export type Database = {
       normalize_phone: { Args: { phone_text: string }; Returns: string }
       normalize_street: { Args: { street: string }; Returns: string }
       normalize_supplier_name: { Args: { input: string }; Returns: string }
+      pipeline_stage_avg_durations: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          avg_days: number
+          entries_count: number
+          max_days: number
+          median_days: number
+          min_days: number
+          stage_status: string
+        }[]
+      }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
@@ -48241,6 +48299,10 @@ export type Database = {
           p_time_spent?: number
         }
         Returns: undefined
+      }
+      try_auto_archive_pipeline_entry: {
+        Args: { p_entry_id: string }
+        Returns: boolean
       }
       unlockrows: { Args: { "": string }; Returns: number }
       update_cache_access_stats: {
