@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
     const { data: measurements, error: measurementsError } = measurementIds.length > 0
       ? await supabase
           .from('roof_measurements')
-          .select('id, created_at')
+          .select('id, created_at, ai_measurement_job_id')
           .in('id', measurementIds)
           .eq('customer_id', pipelineEntryId)
       : { data: [] as any[], error: null };
