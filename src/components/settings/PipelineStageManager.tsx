@@ -30,6 +30,7 @@ interface PipelineStage {
   is_active: boolean;
   is_conversion_point: boolean;
   archive_on_entry?: boolean;
+  archive_after_days?: number;
   color: string;
   auto_actions: unknown;
   created_at: string;
