@@ -5676,6 +5676,11 @@ export type Database = {
           customer_approved_at: string | null
           description: string | null
           id: string
+          labor_total: number
+          line_items: Json
+          material_invoice_storage_path: string | null
+          material_invoice_url: string | null
+          material_total: number
           new_scope: string | null
           original_scope: string | null
           project_id: string
@@ -5700,6 +5705,11 @@ export type Database = {
           customer_approved_at?: string | null
           description?: string | null
           id?: string
+          labor_total?: number
+          line_items?: Json
+          material_invoice_storage_path?: string | null
+          material_invoice_url?: string | null
+          material_total?: number
           new_scope?: string | null
           original_scope?: string | null
           project_id: string
@@ -5724,6 +5734,11 @@ export type Database = {
           customer_approved_at?: string | null
           description?: string | null
           id?: string
+          labor_total?: number
+          line_items?: Json
+          material_invoice_storage_path?: string | null
+          material_invoice_url?: string | null
+          material_total?: number
           new_scope?: string | null
           original_scope?: string | null
           project_id?: string

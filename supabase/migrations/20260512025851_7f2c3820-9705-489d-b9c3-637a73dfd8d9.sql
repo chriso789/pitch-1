@@ -1,0 +1,6 @@
+ALTER TABLE public.change_orders
+  ADD COLUMN IF NOT EXISTS line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS material_invoice_url TEXT,
+  ADD COLUMN IF NOT EXISTS material_invoice_storage_path TEXT,
+  ADD COLUMN IF NOT EXISTS material_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS labor_total NUMERIC(12,2) NOT NULL DEFAULT 0;
