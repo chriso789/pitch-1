@@ -109,17 +109,42 @@ Deno.serve(async (req) => {
 
     console.log("[parse-invoice] Extracting data from:", document_url);
 
-    // Determine how to send the document to the vision model
-    let imageContent: { type: string; image_url: { url: string } };
+    let userContent: Array<Record<string, unknown>>;
 
     if (isImage(document_url)) {
       // Images can be sent directly as URLs
-      imageContent = { type: "image_url", image_url: { url: document_url } };
+      userContent = [
+        {
+          type: "text",
+          text: "Extract all invoice data from this document image: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
+        },
+        { type: "image_url", image_url: { url: document_url } }
+      ];
     } else {
-      // PDFs and other formats: download and send as base64 data URL
-      console.log("[parse-invoice] Non-image format detected, converting to base64 data URL");
-      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
-      imageContent = { type: "image_url", image_url: { url: dataUrl } };
+      console.log("[parse-invoice] Non-image format detected, extracting PDF text");
+      const { arrayBuffer, mimeType } = await fetchDocumentAsBytes(document_url);
+
+      if (isPdf(document_url, mimeType)) {
+        const extractedText = await extractPdfInvoiceText(arrayBuffer);
+        if (!extractedText.trim()) {
+          throw new Error("No readable text found in PDF. Please upload a text-based supplier invoice or add line items manually.");
+        }
+        userContent = [
+          {
+            type: "text",
+            text: `Extract all invoice data from this PDF text: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount.\n\n${extractedText}`
+          }
+        ];
+      } else {
+        const dataUrl = bufferToDataUrl(arrayBuffer, mimeType);
+        userContent = [
+          {
+            type: "text",
+            text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
+          },
+          { type: "image_url", image_url: { url: dataUrl } }
+        ];
+      }
     }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -146,13 +171,7 @@ Deno.serve(async (req) => {
           },
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
-              },
-              imageContent
-            ]
+            content: userContent
           }
         ],
         tools: [
