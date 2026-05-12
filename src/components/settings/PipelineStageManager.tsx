@@ -28,6 +28,7 @@ interface PipelineStage {
   probability_percent: number;
   is_active: boolean;
   is_conversion_point: boolean;
+  archive_on_entry?: boolean;
   color: string;
   auto_actions: unknown;
   created_at: string;
