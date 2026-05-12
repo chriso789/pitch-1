@@ -479,15 +479,24 @@ const SmartDocs = () => {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="gap-1"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Preview
-                      </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => setPreviewDoc(doc)}
+                         className="gap-1"
+                       >
+                         <Eye className="h-4 w-4" />
+                         Preview
+                       </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => handlePrint(doc)}
+                         className="gap-1"
+                       >
+                         <Printer className="h-4 w-4" />
+                         Print
+                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
