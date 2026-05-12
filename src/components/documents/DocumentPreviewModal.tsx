@@ -354,6 +354,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 </>
               )}
               {currentDoc && (
+                <Button size="sm" variant="outline" onClick={handlePrint}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </Button>
+              )}
+              {currentDoc && (
                 <Button size="sm" variant="outline" onClick={() => onDownload(currentDoc)}>
                   <Download className="h-4 w-4 mr-2" />
                   Download
