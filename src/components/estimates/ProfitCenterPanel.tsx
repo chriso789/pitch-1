@@ -9,7 +9,7 @@ import {
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
-  CreditCard, FileEdit, Pencil, X, Check, Trash2
+  CreditCard, FileEdit, Pencil, X, Check, Trash2, Eye
 } from 'lucide-react';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { toast } from 'sonner';
@@ -51,6 +51,7 @@ interface InvoiceData {
   invoice_date: string | null;
   status: string;
   created_at: string;
+  document_url?: string | null;
 }
 
 const isValidUuid = (value?: string | null) =>
@@ -753,6 +754,17 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                             >
                               {invoice.status}
                             </Badge>
+                            {invoice.document_url && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                onClick={() => window.open(invoice.document_url!, '_blank', 'noopener,noreferrer')}
+                                title="Preview invoice"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             {canRenameInvoice && (
                               <Button
                                 variant="ghost"
