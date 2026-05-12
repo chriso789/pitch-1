@@ -32,10 +32,16 @@ import {
   DollarSign,
   Loader2,
   Trash2,
+  Eye,
+  Pencil,
+  CheckCircle2,
+  Download,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { ChangeOrderForm } from '@/features/change-orders/components/ChangeOrderForm';
+import { ChangeOrderDocumentView, ChangeOrderRecord } from '@/components/change-orders/ChangeOrderDocumentView';
+import { saveChangeOrderPdfToDocuments } from '@/components/change-orders/saveChangeOrderPdf';
 import { format } from 'date-fns';
 
 interface ChangeOrdersTabProps {
@@ -53,6 +59,14 @@ interface ChangeOrder {
   status: string;
   created_at: string;
   project_id: string | null;
+  original_scope?: string | null;
+  new_scope?: string | null;
+  time_impact_days?: number | null;
+  line_items?: any[] | null;
+  material_total?: number | null;
+  labor_total?: number | null;
+  customer_approved?: boolean | null;
+  document_id?: string | null;
 }
 
 interface COInvoice {
@@ -82,6 +96,9 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [viewCO, setViewCO] = useState<ChangeOrder | null>(null);
+  const [editCO, setEditCO] = useState<ChangeOrder | null>(null);
+  const [pendingPdfCO, setPendingPdfCO] = useState<ChangeOrder | null>(null);
   const [form, setForm] = useState({
     title: '',
     reason: '',
@@ -162,22 +179,28 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         data: { user },
       } = await supabase.auth.getUser();
       const co_number = `CO-${Date.now().toString(36).toUpperCase()}`;
-      const { error } = await (supabase as any).from('change_orders').insert({
-        tenant_id: activeTenantId,
-        project_id: effectiveProjectId,
-        co_number,
-        title: form.title,
-        description: form.description || null,
-        reason: form.reason || null,
-        cost_impact: parseFloat(form.cost_impact || '0'),
-        requested_by: user?.id,
-        status: 'draft',
-      });
+      const { data: inserted, error } = await (supabase as any)
+        .from('change_orders')
+        .insert({
+          tenant_id: activeTenantId,
+          project_id: effectiveProjectId,
+          co_number,
+          title: form.title,
+          description: form.description || null,
+          reason: form.reason || null,
+          cost_impact: parseFloat(form.cost_impact || '0'),
+          requested_by: user?.id,
+          status: 'draft',
+        })
+        .select('*')
+        .single();
       if (error) throw error;
       toast({ title: 'Change order created' });
       setCreateOpen(false);
       setForm({ title: '', reason: '', description: '', cost_impact: '0' });
       refresh();
+      // Trigger off-screen render + PDF capture so it appears in Documents tab
+      if (inserted) setPendingPdfCO(inserted as ChangeOrder);
     } catch (e: any) {
       toast({
         title: 'Error creating change order',
@@ -202,6 +225,54 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     toast({ title: 'Change order deleted' });
     refresh();
   };
+
+  const handleApprove = async (co: ChangeOrder) => {
+    if (!confirm(`Add ${fmt(Number(co.cost_impact || 0))} to the project budget and contract value?`)) return;
+    const { error } = await (supabase as any)
+      .from('change_orders')
+      .update({
+        status: 'approved',
+        customer_approved: true,
+        customer_approved_at: new Date().toISOString(),
+        approved_date: new Date().toISOString(),
+      })
+      .eq('id', co.id);
+    if (error) {
+      toast({ title: 'Approval failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({
+      title: 'Change order approved',
+      description: 'Cost impact added to project budget and contract value.',
+    });
+    refresh();
+  };
+
+  // Once a CO is created, render the document off-screen and persist a PDF
+  // into the Documents tab. We capture, save, then unmount.
+  React.useEffect(() => {
+    if (!pendingPdfCO || !activeTenantId) return;
+    const t = setTimeout(async () => {
+      try {
+        await saveChangeOrderPdfToDocuments({
+          domId: `co-doc-capture-${pendingPdfCO.id}`,
+          changeOrderId: pendingPdfCO.id,
+          coNumber: pendingPdfCO.co_number,
+          title: pendingPdfCO.title,
+          reason: pendingPdfCO.reason,
+          pipelineEntryId,
+          tenantId: activeTenantId,
+          existingDocumentId: pendingPdfCO.document_id,
+        });
+        toast({ title: 'Document added', description: 'Change order PDF saved to Documents tab.' });
+      } catch (e) {
+        console.warn('CO PDF capture failed', e);
+      } finally {
+        setPendingPdfCO(null);
+      }
+    }, 600); // let fonts/images settle
+    return () => clearTimeout(t);
+  }, [pendingPdfCO, activeTenantId, pipelineEntryId, toast]);
 
   const totalsFor = (coId: string) => {
     const inv = (coInvoices || []).filter((i) => i.change_order_id === coId);
@@ -380,7 +451,23 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     </div>
                   )}
 
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t">
+                    <Button variant="outline" size="sm" onClick={() => setViewCO(co)}>
+                      <Eye className="h-3 w-3 mr-1" /> View Document
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setEditCO(co)}>
+                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                    {!co.customer_approved && (
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleApprove(co)}
+                      >
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Add to Project Budget
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -388,7 +475,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                       onClick={() => handleDelete(co.id)}
                     >
                       <Trash2 className="h-3 w-3 mr-1" />
-                      Delete CO
+                      Delete
                     </Button>
                   </div>
                 </AccordionContent>
@@ -407,6 +494,81 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
             refresh();
           }}
         />
+      )}
+
+      <EditChangeOrderDialog
+        co={editCO}
+        onClose={() => setEditCO(null)}
+        onSaved={(updated) => {
+          setEditCO(null);
+          refresh();
+          setPendingPdfCO(updated);
+        }}
+      />
+
+      {/* Branded document viewer */}
+      <Dialog open={!!viewCO} onOpenChange={(o) => !o && setViewCO(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {viewCO?.co_number} — {viewCO?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {viewCO && (
+            <>
+              <ChangeOrderDocumentView
+                changeOrder={viewCO as any}
+                pipelineEntryId={pipelineEntryId}
+                domId={`co-doc-view-${viewCO.id}`}
+              />
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!viewCO || !activeTenantId) return;
+                    await saveChangeOrderPdfToDocuments({
+                      domId: `co-doc-view-${viewCO.id}`,
+                      changeOrderId: viewCO.id,
+                      coNumber: viewCO.co_number,
+                      title: viewCO.title,
+                      reason: viewCO.reason,
+                      pipelineEntryId,
+                      tenantId: activeTenantId,
+                      existingDocumentId: viewCO.document_id,
+                    });
+                    toast({ title: 'Saved to Documents tab' });
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-1" /> Re-save PDF
+                </Button>
+                <Button variant="outline" onClick={() => window.print()}>
+                  Print
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Off-screen capture surface for the auto-PDF after create/edit */}
+      {pendingPdfCO && (
+        <div
+          style={{
+            position: 'fixed',
+            left: -10000,
+            top: 0,
+            width: '8.5in',
+            pointerEvents: 'none',
+            opacity: 0,
+          }}
+          aria-hidden
+        >
+          <ChangeOrderDocumentView
+            changeOrder={pendingPdfCO as any}
+            pipelineEntryId={pipelineEntryId}
+            domId={`co-doc-capture-${pendingPdfCO.id}`}
+          />
+        </div>
       )}
     </div>
   );
@@ -428,5 +590,105 @@ const SummaryTile: React.FC<SummaryTileProps> = ({ label, value, icon, valueClas
     <div className={`text-sm font-semibold ${valueClass || ''}`}>{value}</div>
   </div>
 );
+
+interface EditDialogProps {
+  co: ChangeOrder | null;
+  onClose: () => void;
+  onSaved: (updated: ChangeOrder) => void;
+}
+
+const EditChangeOrderDialog: React.FC<EditDialogProps> = ({ co, onClose, onSaved }) => {
+  const { toast } = useToast();
+  const [title, setTitle] = useState('');
+  const [reason, setReason] = useState('');
+  const [description, setDescription] = useState('');
+  const [costImpact, setCostImpact] = useState('0');
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (co) {
+      setTitle(co.title || '');
+      setReason(co.reason || '');
+      setDescription(co.description || '');
+      setCostImpact(String(co.cost_impact ?? 0));
+    }
+  }, [co]);
+
+  if (!co) return null;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const patch = {
+        title,
+        reason: reason || null,
+        description: description || null,
+        cost_impact: parseFloat(costImpact || '0'),
+      };
+      const { data, error } = await (supabase as any)
+        .from('change_orders')
+        .update(patch)
+        .eq('id', co.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      toast({ title: 'Change order updated' });
+      onSaved((data || { ...co, ...patch }) as ChangeOrder);
+    } catch (e: any) {
+      toast({ title: 'Update failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!co} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit {co.co_number}</DialogTitle>
+          <DialogDescription>
+            Update title, reason and cost impact. Saving regenerates the PDF in the Documents tab.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Reason</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Cost Impact ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={costImpact}
+              onChange={(e) => setCostImpact(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving || !title.trim()}>
+            {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 export default ChangeOrdersTab;

@@ -67,6 +67,7 @@ const DOCUMENT_CATEGORIES = [
   { value: 'permit', label: 'Permits', icon: FileCheck, color: 'bg-red-500', tracksCost: false },
   { value: 'invoice_material', label: 'Material Invoice', icon: Package, color: 'bg-amber-500', tracksCost: true },
   { value: 'invoice_labor', label: 'Labor Invoice', icon: Wrench, color: 'bg-cyan-500', tracksCost: true },
+  { value: 'change_order', label: 'Change Orders', icon: Pencil, color: 'bg-indigo-500', tracksCost: false },
   { value: 'other', label: 'Other', icon: File, color: 'bg-gray-500', tracksCost: false },
 ];
 
