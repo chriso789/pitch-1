@@ -117,7 +117,29 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
   const laborTotal = items
     .filter((i) => i.kind === 'labor')
     .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0);
-  const grandTotal = materialTotal + laborTotal;
+  const subtotal = materialTotal + laborTotal;
+  const overheadAmount = subtotal * (overheadPct / 100);
+  const profitAmount = (subtotal + overheadAmount) * (profitPct / 100);
+  const grandTotal = subtotal + overheadAmount + profitAmount;
+
+  const addQuickLabor = () => {
+    if (quickLaborHours <= 0) {
+      toast({ title: 'Enter hours', description: 'Add labor hours first.', variant: 'destructive' });
+      return;
+    }
+    setItems((p) => [
+      ...p,
+      {
+        id: crypto.randomUUID(),
+        kind: 'labor',
+        description: 'Labor',
+        quantity: quickLaborHours,
+        unit_price: quickLaborRate,
+        unit_of_measure: 'HR',
+      },
+    ]);
+    setQuickLaborHours(0);
+  };
 
   const updateItem = (id: string, patch: Partial<LineItem>) => {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
