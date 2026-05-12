@@ -139,6 +139,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             color,
             probability_percent: probability,
             is_active: isActive,
+            archive_on_entry: archiveOnEntry,
             updated_at: new Date().toISOString()
           })
           .eq('id', stage.id);
@@ -159,6 +160,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             color,
             probability_percent: probability,
             is_active: isActive,
+            archive_on_entry: archiveOnEntry,
             stage_order: maxOrder + 1,
             created_by: profile?.id
           });
