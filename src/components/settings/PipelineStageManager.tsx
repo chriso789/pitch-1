@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { cn } from '@/lib/utils';
-import { PipelineVisibilitySettings } from './PipelineVisibilitySettings';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PipelineStage {
   id: string;
@@ -30,6 +30,7 @@ interface PipelineStage {
   is_active: boolean;
   is_conversion_point: boolean;
   archive_on_entry?: boolean;
+  archive_after_days?: number;
   color: string;
   auto_actions: unknown;
   created_at: string;
@@ -75,6 +76,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   const [probability, setProbability] = useState(stage?.probability_percent || 0);
   const [isActive, setIsActive] = useState(stage?.is_active ?? true);
   const [archiveOnEntry, setArchiveOnEntry] = useState(stage?.archive_on_entry ?? false);
+  const [archiveAfterDays, setArchiveAfterDays] = useState<number>(stage?.archive_after_days ?? 0);
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
@@ -88,6 +90,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setProbability(stage.probability_percent);
       setIsActive(stage.is_active);
       setArchiveOnEntry(stage.archive_on_entry ?? false);
+      setArchiveAfterDays(stage.archive_after_days ?? 0);
     } else if (open && !stage) {
       setName('');
       setStageKey('');
@@ -96,6 +99,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
       setProbability(0);
       setIsActive(true);
       setArchiveOnEntry(false);
+      setArchiveAfterDays(0);
     }
   }, [open, stage]);
 
@@ -141,6 +145,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             probability_percent: probability,
             is_active: isActive,
             archive_on_entry: archiveOnEntry,
+            archive_after_days: archiveOnEntry ? archiveAfterDays : 0,
             updated_at: new Date().toISOString()
           })
           .eq('id', stage.id);
@@ -162,6 +167,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             probability_percent: probability,
             is_active: isActive,
             archive_on_entry: archiveOnEntry,
+            archive_after_days: archiveOnEntry ? archiveAfterDays : 0,
             stage_order: maxOrder + 1,
             created_by: profile?.id
           });
@@ -288,17 +294,47 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
             />
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <Label>Auto-archive when entered</Label>
-              <p className="text-xs text-muted-foreground">
-                When a job moves to this stage AND is paid in full, it's removed from the active board.
-              </p>
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Closed / archive stage</Label>
+                <p className="text-xs text-muted-foreground">
+                  Mark this as a "closed" stage (e.g. Closed Won, Completed, Paid in Full).
+                  Leads in this stage will be auto-removed from the active board.
+                </p>
+              </div>
+              <Switch
+                checked={archiveOnEntry}
+                onCheckedChange={setArchiveOnEntry}
+              />
             </div>
-            <Switch
-              checked={archiveOnEntry}
-              onCheckedChange={setArchiveOnEntry}
-            />
+
+            {archiveOnEntry && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label>Remove from pipeline after</Label>
+                <Select
+                  value={String(archiveAfterDays)}
+                  onValueChange={(v) => setArchiveAfterDays(parseInt(v, 10))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Immediately (when paid in full)</SelectItem>
+                    <SelectItem value="1">1 day</SelectItem>
+                    <SelectItem value="3">3 days</SelectItem>
+                    <SelectItem value="7">7 days</SelectItem>
+                    <SelectItem value="14">14 days</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="60">60 days</SelectItem>
+                    <SelectItem value="90">90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  How long a lead stays visible in this stage before it's archived to the backend.
+                </p>
+              </div>
+            )}
           </div>
         </div>
         
@@ -466,7 +502,7 @@ export const PipelineStageManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <PipelineVisibilitySettings />
+      
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Pipeline Stages</h2>

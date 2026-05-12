@@ -26499,6 +26499,7 @@ export type Database = {
       }
       pipeline_stages: {
         Row: {
+          archive_after_days: number
           archive_on_entry: boolean
           auto_actions: Json | null
           auto_close_days: number | null
@@ -26518,6 +26519,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          archive_after_days?: number
           archive_on_entry?: boolean
           auto_actions?: Json | null
           auto_close_days?: number | null
@@ -26537,6 +26539,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          archive_after_days?: number
           archive_on_entry?: boolean
           auto_actions?: Json | null
           auto_close_days?: number | null
