@@ -32,10 +32,16 @@ import {
   DollarSign,
   Loader2,
   Trash2,
+  Eye,
+  Pencil,
+  CheckCircle2,
+  Download,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { ChangeOrderForm } from '@/features/change-orders/components/ChangeOrderForm';
+import { ChangeOrderDocumentView, ChangeOrderRecord } from '@/components/change-orders/ChangeOrderDocumentView';
+import { saveChangeOrderPdfToDocuments } from '@/components/change-orders/saveChangeOrderPdf';
 import { format } from 'date-fns';
 
 interface ChangeOrdersTabProps {
