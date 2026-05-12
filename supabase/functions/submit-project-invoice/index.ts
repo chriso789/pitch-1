@@ -153,7 +153,6 @@ Deno.serve(async (req) => {
               if (fp && fp === newFp) {
                 duplicateOf = cand.id;
                 duplicateReason = `identical line items and total ($${amt.toFixed(2)})`;
-                Object.assign(dupes_first_match, cand);
                 break;
               }
             }
