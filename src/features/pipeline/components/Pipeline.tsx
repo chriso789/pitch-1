@@ -238,6 +238,7 @@ const Pipeline = () => {
             )
           `)
           .eq('is_deleted', false)
+          .is('archived_at', null)
           .eq('tenant_id', effectiveTenantId);
 
         if (currentLocationId) {
