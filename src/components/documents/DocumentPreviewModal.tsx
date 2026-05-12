@@ -244,7 +244,33 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     }
   };
 
-  const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
+  const getDocUrl = async (): Promise<string | null> => {
+    if (!currentDoc) return null;
+    if (previewUrl && previewUrl.startsWith('http')) return previewUrl;
+    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
+    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars',
+                            'roof-reports', 'customer-photos', 'documents',
+                            'measurement-visualizations', 'measurement-reports'];
+    if (PUBLIC_BUCKETS.includes(bucket)) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
+      return data.publicUrl;
+    }
+    const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
+    return data?.signedUrl || null;
+  };
+
+  const handlePrint = async () => {
+    const url = await getDocUrl();
+    if (!url) return;
+    const win = window.open(url, '_blank');
+    if (!win) return;
+    const tryPrint = () => {
+      try { win.focus(); win.print(); } catch { /* noop */ }
+    };
+    win.addEventListener('load', tryPrint);
+    // Fallback in case load already fired
+    setTimeout(tryPrint, 1500);
+  };
     if (!currentDoc) return 'unsupported';
     
     const mimeType = currentDoc.mime_type || '';
