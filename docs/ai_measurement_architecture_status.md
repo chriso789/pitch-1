@@ -78,9 +78,28 @@ All code changes from that branch have been abandoned.
 
 ### Remaining Tasks
 
-1. **Fix Solar API billing** (infrastructure, not code):
-   - Enable billing on Google Cloud project 252046246086
-   - Or configure fallback API key
+1. **Fix Solar API 403** (infrastructure, not code):
+   
+   **If billing is already enabled**, the 403 is likely caused by:
+   
+   a) **Solar API not enabled** - Go to Google Cloud Console → APIs & Services → Enable "Solar API" (it's separate from Maps APIs)
+   
+   b) **API key restrictions** - Check if `GOOGLE_SOLAR_API_KEY` has:
+      - HTTP referrer restrictions (edge functions don't send referrers)
+      - IP restrictions (Supabase edge functions have dynamic IPs)
+      - API restrictions that exclude Solar API
+   
+   c) **Wrong API key** - Verify the key in Supabase edge function secrets matches the project with Solar API enabled
+   
+   **Debug command**:
+   ```bash
+   curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/debug-dsm-fetch \
+     -H "Authorization: Bearer YOUR_ANON_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"lat": 27.9506, "lng": -82.4572}'
+   ```
+   
+   Check `building_insights_status` and `data_layers_status` in the response.
 
 2. **Optional OSM Enhancement**:
    - The OSM query may need expansion for rural areas
