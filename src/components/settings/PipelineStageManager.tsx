@@ -286,6 +286,19 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
               onCheckedChange={setIsActive}
             />
           </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <Label>Auto-archive when entered</Label>
+              <p className="text-xs text-muted-foreground">
+                When a job moves to this stage AND is paid in full, it's removed from the active board.
+              </p>
+            </div>
+            <Switch
+              checked={archiveOnEntry}
+              onCheckedChange={setArchiveOnEntry}
+            />
+          </div>
         </div>
         
         <DialogFooter>
