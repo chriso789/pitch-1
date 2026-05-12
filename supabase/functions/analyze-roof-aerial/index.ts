@@ -1001,7 +1001,11 @@ Deno.serve(async (req) => {
       timing: { totalMs: totalTime },
       data: {
         address, coordinates,
-        images: { google: googleImage.url ? 'available' : 'unavailable', mapbox: mapboxImage.url ? 'available' : 'unavailable', selected: selectedImage.source },
+        images: {
+          google: googleImage.url ? { url: googleImage.url, resolution: googleImage.resolution, available: true } : { available: false },
+          mapbox: mapboxImage.url ? { url: mapboxImage.url, resolution: mapboxImage.resolution, available: true } : { available: false },
+          selected: selectedImage.source
+        },
         solarApiData: {
           available: solarData.available,
           buildingFootprint: solarData.buildingFootprintSqft,
@@ -5352,10 +5356,10 @@ async function processSolarFastPath(
     data: {
       address,
       coordinates,
-      images: { 
-        google: googleImage.url ? 'available' : 'unavailable', 
-        mapbox: mapboxImage.url ? 'available' : 'unavailable', 
-        selected: selectedImage.source 
+      images: {
+        google: googleImage.url ? { url: googleImage.url, resolution: googleImage.resolution, available: true } : { available: false },
+        mapbox: mapboxImage.url ? { url: mapboxImage.url, resolution: mapboxImage.resolution, available: true } : { available: false },
+        selected: selectedImage.source
       },
       solarApiData: {
         available: true,

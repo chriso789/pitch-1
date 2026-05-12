@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer'
 import { CleanRoofDiagram } from './CleanRoofDiagram'
+import { MeasurementDebugPanel } from './MeasurementDebugPanel'
 import { toast } from 'sonner'
 import { useRoofOverlay, overlayToLinearFeatures, perimeterToWKT } from '@/hooks/useRoofOverlay'
 
@@ -382,6 +383,27 @@ export function RoofMeasurementTool({
             </div>
           </Card>
 
+          {/* Debug Panel - Shows quality indicators and diagnostics */}
+          <MeasurementDebugPanel
+            quality={{
+              confidence: measurementData.confidence?.score || 0,
+              footprintSource: measurementData.quality?.footprintSource || measurementData.confidence?.footprintSource,
+              pitchSource: measurementData.quality?.pitchSource || (measurementData.measurements?.predominantPitch?.includes('assumed') ? 'assumed' : 'measured'),
+              usedFallbacks: measurementData.quality?.usedFallbacks || [],
+              requiresManualReview: measurementData.confidence?.requiresReview || false,
+              warnings: measurementData.quality?.warnings || [],
+              isReliable: measurementData.quality?.isReliable !== false
+            }}
+            analysisParams={{
+              lat: effectiveLat || 0,
+              lng: effectiveLng || 0,
+              zoom: measurementData.analysisZoom || 20,
+              imageSize: measurementData.analysisImageSize || { width: 640, height: 640 }
+            }}
+            timing={measurementData.timing}
+            source={measurementData.aiAnalysis?.source}
+          />
+
           <Tabs defaultValue="diagram" className="w-full">
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="diagram" className="flex items-center gap-1">
@@ -442,7 +464,8 @@ export function RoofMeasurementTool({
                       lat: effectiveLat || 0,
                       lng: effectiveLng || 0
                     }}
-                    imageSize={640}
+                    imageSize={measurementData.analysisImageSize?.width || 640}
+                    analysisZoom={measurementData.analysisZoom || 20}
                   />
                 ) : (
                   <CleanRoofDiagram

@@ -42,6 +42,7 @@ interface MapboxRoofViewerProps {
   analysis: RoofAnalysis;
   bounds: Bounds;
   dimensions: { width: number; height: number };
+  alignmentOffset?: { x: number; y: number };
   onFacetClick?: (facetNumber: number) => void;
 }
 
@@ -64,12 +65,13 @@ const FACET_COLORS = [
   'rgba(239, 68, 68, 0.3)',    // Red
 ];
 
-export function MapboxRoofViewer({ 
-  imageUrl, 
-  analysis, 
-  bounds, 
+export function MapboxRoofViewer({
+  imageUrl,
+  analysis,
+  bounds,
   dimensions,
-  onFacetClick 
+  alignmentOffset = { x: 0, y: 0 },
+  onFacetClick
 }: MapboxRoofViewerProps) {
   const [image] = useImage(imageUrl);
   const [selectedFacet, setSelectedFacet] = useState<number | null>(null);
@@ -78,20 +80,20 @@ export function MapboxRoofViewer({
   const [showFacets, setShowFacets] = useState(true);
   const [hoveredFacet, setHoveredFacet] = useState<number | null>(null);
 
-  // Convert GPS to pixel coordinates
+  // Convert GPS to pixel coordinates with alignment offset support
   const gpsToPixel = useMemo(() => {
     if (!bounds) return (gps: { lat: number; lng: number }) => ({ x: 0, y: 0 });
-    
+
     const { topLeft, bottomRight } = bounds;
     const latRange = topLeft.lat - bottomRight.lat;
     const lngRange = bottomRight.lng - topLeft.lng;
-    
+
     return (gps: { lat: number; lng: number }) => {
-      const x = ((gps.lng - topLeft.lng) / lngRange) * dimensions.width;
-      const y = ((topLeft.lat - gps.lat) / latRange) * dimensions.height;
+      const x = ((gps.lng - topLeft.lng) / lngRange) * dimensions.width + alignmentOffset.x;
+      const y = ((topLeft.lat - gps.lat) / latRange) * dimensions.height + alignmentOffset.y;
       return { x, y };
     };
-  }, [bounds, dimensions]);
+  }, [bounds, dimensions, alignmentOffset]);
 
   // Calculate facet centroids for labels
   const facetCentroids = useMemo(() => {

@@ -25,6 +25,8 @@ interface AIRoofSkeletonViewerProps {
   perimeterWkt?: string;
   coordinates: { lat: number; lng: number };
   imageSize?: number;
+  analysisZoom?: number;
+  alignmentOffset?: { x: number; y: number };
   onAdjust?: () => void;
   className?: string;
 }
@@ -55,6 +57,8 @@ export function AIRoofSkeletonViewer({
   perimeterWkt,
   coordinates,
   imageSize = 640,
+  analysisZoom = 20,
+  alignmentOffset = { x: 0, y: 0 },
   onAdjust,
   className = '',
 }: AIRoofSkeletonViewerProps) {
@@ -68,22 +72,30 @@ export function AIRoofSkeletonViewer({
   // Parse WKT strings to pixel coordinates
   const parsedFeatures = useMemo(() => {
     return linearFeatures.map(feature => {
-      const coords = parseWKTToPixels(feature.wkt, coordinates, imageSize);
-      return { ...feature, pixelCoords: coords };
+      const coords = parseWKTToPixels(feature.wkt, coordinates, imageSize, analysisZoom);
+      // Apply alignment offset
+      const adjustedCoords = coords.map(p => ({
+        x: p.x + alignmentOffset.x,
+        y: p.y + alignmentOffset.y
+      }));
+      return { ...feature, pixelCoords: adjustedCoords };
     });
-  }, [linearFeatures, coordinates, imageSize]);
+  }, [linearFeatures, coordinates, imageSize, analysisZoom, alignmentOffset]);
 
   // Parse perimeter WKT to pixels
   const perimeterPixels = useMemo(() => {
+    let pixels: Array<{ x: number; y: number }> = [];
     if (perimeterWkt) {
-      return parseWKTPolygonToPixels(perimeterWkt, coordinates, imageSize);
+      pixels = parseWKTPolygonToPixels(perimeterWkt, coordinates, imageSize, analysisZoom);
+    } else if (perimeterVertices.length > 0) {
+      pixels = perimeterVertices.map(v => ({ x: v.x, y: v.y }));
     }
-    // Fallback to vertices if WKT not available
-    if (perimeterVertices.length > 0) {
-      return perimeterVertices.map(v => ({ x: v.x, y: v.y }));
-    }
-    return [];
-  }, [perimeterWkt, perimeterVertices, coordinates, imageSize]);
+    // Apply alignment offset
+    return pixels.map(p => ({
+      x: p.x + alignmentOffset.x,
+      y: p.y + alignmentOffset.y
+    }));
+  }, [perimeterWkt, perimeterVertices, coordinates, imageSize, analysisZoom, alignmentOffset]);
 
   // Group features by type for legend
   const featureSummary = useMemo(() => {
@@ -282,55 +294,97 @@ export function AIRoofSkeletonViewer({
 function parseWKTToPixels(
   wkt: string,
   center: { lat: number; lng: number },
-  imageSize: number
+  imageSize: number,
+  zoom: number = 20
 ): Array<{ x: number; y: number }> {
   if (!wkt) return [];
-  
+
   // Extract coordinates from LINESTRING(lng lat, lng lat, ...)
   const match = wkt.match(/LINESTRING\s*\((.*)\)/i);
   if (!match) return [];
-  
+
   const coordPairs = match[1].split(',').map(pair => {
     const [lng, lat] = pair.trim().split(/\s+/).map(Number);
     return { lng, lat };
   });
-  
-  return coordPairs.map(gps => gpsToPixel(gps, center, imageSize));
+
+  return coordPairs.map(gps => gpsToPixel(gps, center, imageSize, zoom));
 }
 
 // Helper: Parse WKT POLYGON to pixel coordinates
 function parseWKTPolygonToPixels(
   wkt: string,
   center: { lat: number; lng: number },
-  imageSize: number
+  imageSize: number,
+  zoom: number = 20
 ): Array<{ x: number; y: number }> {
   if (!wkt) return [];
-  
+
   // Extract coordinates from POLYGON((lng lat, lng lat, ...))
   const match = wkt.match(/POLYGON\s*\(\((.*)\)\)/i);
   if (!match) return [];
-  
+
   const coordPairs = match[1].split(',').map(pair => {
     const [lng, lat] = pair.trim().split(/\s+/).map(Number);
     return { lng, lat };
   });
-  
-  return coordPairs.map(gps => gpsToPixel(gps, center, imageSize));
+
+  return coordPairs.map(gps => gpsToPixel(gps, center, imageSize, zoom));
 }
 
-// Helper: Convert GPS to pixel coordinates (Web Mercator approximation)
+/**
+ * Convert GPS coordinates to pixel coordinates using Web Mercator projection.
+ * This must match the projection used by Google Static Maps API at the given zoom level.
+ *
+ * Google Static Maps uses Web Mercator (EPSG:3857) projection.
+ * At zoom level z, the world is 256 * 2^z pixels wide.
+ *
+ * Formula:
+ * - Meters per pixel at equator = 156543.03392 / 2^zoom
+ * - At latitude lat, meters per pixel = (156543.03392 / 2^zoom) * cos(lat)
+ * - Convert coordinate delta to pixel delta using this scale
+ */
 function gpsToPixel(
   gps: { lng: number; lat: number },
   center: { lat: number; lng: number },
-  imageSize: number
+  imageSize: number,
+  zoom: number = 20
 ): { x: number; y: number } {
-  // At zoom 20, approximate degrees per pixel
-  const zoom = 20;
-  const degreesPerPixel = 156543.03392 * Math.cos(center.lat * Math.PI / 180) / Math.pow(2, zoom) / 111320;
-  
-  const x = (gps.lng - center.lng) / degreesPerPixel + imageSize / 2;
-  const y = (center.lat - gps.lat) / degreesPerPixel + imageSize / 2;
-  
+  // Web Mercator constants
+  const EARTH_CIRCUMFERENCE_METERS = 40075016.686;
+  const TILE_SIZE = 256;
+
+  // Pixels per meter at the equator at this zoom level
+  const worldPixelSize = TILE_SIZE * Math.pow(2, zoom);
+  const pixelsPerMeterAtEquator = worldPixelSize / EARTH_CIRCUMFERENCE_METERS;
+
+  // Meters per degree of longitude (constant at any latitude)
+  const metersPerDegreeLng = EARTH_CIRCUMFERENCE_METERS / 360;
+
+  // Meters per degree of latitude varies with latitude
+  // Using center latitude as reference for small area approximation
+  const metersPerDegreeLat = EARTH_CIRCUMFERENCE_METERS / 360;
+
+  // Calculate delta in degrees
+  const dLng = gps.lng - center.lng;
+  const dLat = center.lat - gps.lat; // Inverted because y increases downward
+
+  // Convert to meters (using center latitude for Mercator correction)
+  const latRadians = center.lat * Math.PI / 180;
+  const dxMeters = dLng * metersPerDegreeLng * Math.cos(latRadians);
+  const dyMeters = dLat * metersPerDegreeLat;
+
+  // Convert meters to pixels at this zoom level
+  // At the center latitude, adjust for Mercator distortion
+  const pixelsPerMeter = pixelsPerMeterAtEquator * Math.cos(latRadians);
+
+  const dx = dxMeters * pixelsPerMeter;
+  const dy = dyMeters * pixelsPerMeter;
+
+  // Center of image + offset
+  const x = imageSize / 2 + dx;
+  const y = imageSize / 2 + dy;
+
   return { x, y };
 }
 

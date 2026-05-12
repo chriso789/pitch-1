@@ -232,8 +232,50 @@ function generatePDFDirectly(measurement: any, companyInfo: any): Uint8Array {
   doc.setTextColor(...lightGray)
   doc.text('PITCH', margin + (boxWidth + 5) * 2 + boxWidth/2, yPos + 26, { align: 'center' })
 
-  // Measurements Summary Section
+  // Quality Assessment Section (new)
   yPos += boxHeight + 15
+  const qualityWarnings = measurement.quality_warnings || []
+  const fallbackFlags = measurement.fallback_flags || []
+  const isReliable = measurement.is_reliable !== false
+  const footprintSource = measurement.footprint_source || 'unknown'
+  const pitchSource = measurement.pitch_source || 'unknown'
+
+  // Show quality warning box if there are issues
+  if (!isReliable || qualityWarnings.length > 0 || fallbackFlags.length > 0 || pitchSource === 'assumed') {
+    const warningYellow = [255, 193, 7] as [number, number, number]
+    const warningRed = [244, 67, 54] as [number, number, number]
+    const warningColor = isReliable ? warningYellow : warningRed
+
+    doc.setFillColor(...warningColor)
+    const warningBoxHeight = 15 + Math.min(qualityWarnings.length, 3) * 8
+    doc.roundedRect(margin, yPos, contentWidth, warningBoxHeight, 3, 3, 'F')
+
+    doc.setFontSize(11)
+    doc.setTextColor(0, 0, 0)
+    if (!isReliable) {
+      doc.text('⚠️ MEASUREMENT REQUIRES MANUAL VERIFICATION', margin + 8, yPos + 8)
+    } else {
+      doc.text('⚠️ Quality Notices', margin + 8, yPos + 8)
+    }
+
+    doc.setFontSize(9)
+    let warningY = yPos + 16
+    qualityWarnings.slice(0, 3).forEach((warning: string) => {
+      doc.text(`• ${warning}`, margin + 8, warningY)
+      warningY += 8
+    })
+
+    yPos += warningBoxHeight + 10
+  }
+
+  // Data Sources Section
+  doc.setFontSize(10)
+  doc.setTextColor(...lightGray)
+  doc.text(`Footprint: ${footprintSource.replace(/_/g, ' ')}`, margin, yPos)
+  doc.text(`Pitch: ${pitchSource === 'assumed' ? 'ASSUMED (4/12)' : pitchSource}`, margin + 80, yPos)
+  yPos += 8
+
+  // Measurements Summary Section
   doc.setFontSize(18)
   doc.setTextColor(...primaryBlue)
   doc.text('Measurements Summary', margin, yPos)
@@ -491,13 +533,23 @@ function generatePDFDirectly(measurement: any, companyInfo: any): Uint8Array {
       })
     }
 
-    // Disclaimer
+    // Disclaimer - stronger warning if unreliable
     yPos = pageHeight - 35
-    doc.setFillColor(255, 235, 238)
-    doc.roundedRect(margin, yPos, contentWidth, 15, 2, 2, 'F')
-    doc.setFontSize(9)
-    doc.setTextColor(198, 40, 40)
-    doc.text('Disclaimer: These calculations are estimates. Always verify before ordering materials.', margin + 5, yPos + 10)
+    if (!isReliable || pitchSource === 'assumed') {
+      doc.setFillColor(255, 205, 210) // Stronger red background
+      doc.roundedRect(margin, yPos, contentWidth, 20, 2, 2, 'F')
+      doc.setFontSize(10)
+      doc.setTextColor(183, 28, 28)
+      doc.text('⚠️ IMPORTANT: This measurement uses estimated values.', margin + 5, yPos + 8)
+      doc.setFontSize(8)
+      doc.text('Do NOT use for material ordering without manual verification.', margin + 5, yPos + 16)
+    } else {
+      doc.setFillColor(255, 235, 238)
+      doc.roundedRect(margin, yPos, contentWidth, 15, 2, 2, 'F')
+      doc.setFontSize(9)
+      doc.setTextColor(198, 40, 40)
+      doc.text('Disclaimer: These calculations are estimates. Always verify before ordering materials.', margin + 5, yPos + 10)
+    }
 
     // Footer
     yPos = pageHeight - 15
