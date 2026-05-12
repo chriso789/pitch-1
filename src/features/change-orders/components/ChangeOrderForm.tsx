@@ -67,6 +67,19 @@ const newRow = (kind: 'material' | 'labor'): LineItem => ({
   unit_of_measure: kind === 'labor' ? 'HR' : 'EA',
 });
 
+const getFunctionErrorMessage = async (error: any): Promise<string> => {
+  try {
+    const context = error?.context;
+    if (context instanceof Response) {
+      const body = await context.clone().json();
+      if (body?.error) return body.error;
+    }
+  } catch {
+    // Fall back to the Supabase client error message below.
+  }
+  return error?.message || 'AI could not parse it. Add line items manually below.';
+};
+
 export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: ChangeOrderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -136,9 +149,10 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
         { body: { document_url: url } }
       );
       if (parseErr) {
+        const parseMessage = await getFunctionErrorMessage(parseErr);
         toast({
           title: 'Invoice uploaded',
-          description: parseErr.message || 'AI could not parse it. Add material and labor line items manually below.',
+          description: `${parseMessage} Add material and labor line items manually below.`,
         });
         return;
       }
