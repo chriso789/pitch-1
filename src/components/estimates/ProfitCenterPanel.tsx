@@ -709,7 +709,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
                   {invoices.map((invoice) => {
-                    const displayName = invoice.document_name?.trim() || invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.notes?.trim() || (invoice.invoice_number ? `#${invoice.invoice_number}` : null);
+                    const vendorLabel = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || (invoice.invoice_type === 'material' ? 'Supplier' : invoice.invoice_type === 'labor' ? 'Crew' : 'Vendor');
+                    const displayName = `${vendorLabel}${jobLabel ? ` — ${jobLabel}` : ''}`;
                     const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
                     const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     const canRenameInvoice = isValidUuid(invoice.id);
