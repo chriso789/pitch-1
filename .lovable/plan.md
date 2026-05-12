@@ -1,149 +1,52 @@
-# Perimeter-First + Reverse-Geometry Measurement Rebuild
+## Goal
+Make change orders feel like a first-class document — viewable as an official, branded PDF-style page (same header/footer treatment as estimates), with proper edit/delete/approve actions, and surfaced in the job's Documents tab the moment they are created.
 
-## Problem
+## 1. Official Change Order document view
 
-Current pipeline tries to detect internal hips/ridges/valleys before locking the outer roof boundary. When DSM edge detection misses interior structure, the solver collapses into giant cross-roof diagonals (Fonsica: 6 facets, 1.67/12 pitch, 0 ridges vs Roofr's 14 facets, 6/12, 30'2" ridges). Threshold tuning will not fix this — the architecture is wrong.
+Create `src/components/change-orders/ChangeOrderDocumentView.tsx` — a full-page-style preview rendered inside a Dialog (same pattern as `EstimatePreviewPanel` / `EstimatePDFDocument`).
 
-## Correct Flow
+Header / footer reuse the same composition pieces estimates already use:
+- Company logo + name + address + phone/email (pulled from `companies` for the project's tenant/location, mirroring `EstimatePDFDocument` lines 276–349).
+- "CHANGE ORDER" title block with `co_number`, created date, status badge, and customer name/address.
 
-```text
-Aerial image / roof mask
-    └─► true outer eave/rake perimeter      (Phase 1)
-            └─► Google Solar pitch + segments (Phase 2)
-                    └─► DSM height evidence
-                            └─► candidate topology templates (Phase 3)
-                                    └─► reverse geometry optimizer
-                                            └─► final roof diagram (Phase 4)
-                                                    └─► vendor calibration (Phase 5)
-                                                            └─► customer gate (Phase 6)
-```
+Body sections:
+- Reason for change
+- Original scope vs. New scope (two-column block)
+- Line items table grouped by Materials / Labor (uses `change_orders.line_items` jsonb)
+- Totals block: Subtotal, Overhead %, Profit %, **Cost Impact (this CO)**, Time Impact (days)
+- Optional signature line for customer approval
 
-Outside boundary is fixed FIRST. Internal structure is reverse-solved against that fixed boundary using Solar/DSM as priors.
+The view is opened from a new **"View"** button on each row in `ChangeOrdersTab.tsx`. A **"Download PDF"** button uses the existing `html2canvas + jsPDF` helper used by estimates (scale 1.5, JPEG 0.65 per project rules).
 
-## Implementation
+## 2. Edit / Delete / Add-to-Budget actions
 
-### Phase 1 — Perimeter-first extractor (NEW)
+Replace the current row footer (single Delete) with a proper action bar on each accordion row and inside the document view:
 
-**New file:** `supabase/functions/_shared/perimeter-first-extractor.ts`
+- **Edit** — opens `ChangeOrderForm` in edit mode (preload existing record, update instead of insert).
+- **Delete** — existing behavior, kept.
+- **Add to Project Budget** — flips `customer_approved=true`, stamps `customer_approved_at`, sets `status='approved'`, and bumps the project's contracted value. Because `projects` has no price column, the "project price" total is derived from `estimates.total` + Σ approved CO `cost_impact` (via a small helper `useProjectContractValue(projectId)`). The Profit Center / Financial bars already read estimates + invoices; this hook adds the approved-CO sum so the displayed contract value increases the moment the user clicks the button. No schema migration needed.
 
-Inputs: aerial RGB, roof mask, DSM tile.
-Process:
-1. Connected-component the roof mask → largest blob = primary roof body.
-2. Trace boundary contour with Suzuki-Abe; simplify with Douglas-Peucker (epsilon ≈ 1.5px).
-3. Snap vertices to DSM roof-to-ground elevation breaks (>0.6m drop) to remove tree/shadow noise.
-4. Classify each perimeter segment by adjacent-face downslope direction:
-   - segment perpendicular to facet downslope = **eave** (low edge)
-   - segment parallel to facet downslope = **rake** (sloped edge)
-5. Compute corners (interior angles), perimeter LF, footprint area.
+## 3. Auto-create a Documents row when a CO is created
 
-Outputs (persisted in `roof_measurements.source_context.perimeter_first`):
-- `roof_outer_perimeter` (polygon, dsm_px)
-- `eave_segments[]`, `rake_segments[]`
-- `corners[]`
-- `perimeter_confidence` (0–1)
-- `perimeter_area_sqft`
+In `ChangeOrderForm.tsx` and the inline create flow inside `ChangeOrdersTab.tsx`, after successful insert into `change_orders`:
 
-**Hard gate:** perimeter_confidence < 0.80 → fail with `perimeter_unreliable`. No internal solve attempted.
+1. Generate the Change Order PDF via the same html2canvas+jsPDF path used by estimates.
+2. Upload to the `documents` storage bucket at `{tenant_id}/change-orders/{co_id}.pdf` (matches storage RLS path convention).
+3. Insert into `documents` with:
+   - `pipeline_entry_id` = the lead's pipeline entry
+   - `document_type = 'change_order'` (new value added to `DOCUMENT_CATEGORIES` in `DocumentsTab.tsx` with a FileEdit icon)
+   - `filename = '{co_number} — {title}.pdf'`
+   - `file_path` = the uploaded path
+   - `description` = CO reason
+4. If the CO is later edited, regenerate the PDF and overwrite the same documents row (matched by a new nullable `change_orders.document_id` column → small migration).
 
-### Phase 2 — Lock pitch + Solar priors (REWORK existing)
+A new `Documents` category tile labeled **Change Orders** will appear alongside Contracts / Estimates / Invoices in the Documents tab.
 
-**Edit:** `supabase/functions/_shared/google-solar-api.ts`
-Add `extractSolarTopologyPriors()` returning:
-- `dominant_pitch_degrees` (area-weighted from `roofSegmentStats`)
-- `pitch_band` `[min, max]` (e.g. ±1/12)
-- `segment_priors[]` with `{ area, azimuth, pitch, bbox }`
-- `total_area_target`
-- `expected_facet_count`
+## 4. Small schema migration
+Single migration adds `change_orders.document_id uuid references documents(id) on delete set null` so the generated PDF stays in sync with the CO record.
 
-**Edit:** `supabase/functions/start-ai-measurement/index.ts`
-Move pitch locking from post-topology (current ~L4045–4076) to **pre-solver**. Pitch band is an input constraint, not an output. `pitch_source = "solar_locked_pre_solver"`.
-
-### Phase 3 — Topology candidate generator + reverse solver (REWORK)
-
-**Edit:** `supabase/functions/_shared/constraint-roof-solver.ts` (already exists from prior turn)
-Change contract: solver now consumes the **fixed perimeter** from Phase 1, not a footprint guess.
-
-Candidate templates (generated inside fixed perimeter):
-- simple hip (4 facets)
-- cross hip (8–10)
-- nested upper hip (10–14)
-- valley connector (8–12)
-- multi-hip complex (12–16)
-- mirrored assemblies
-
-Scoring (weights):
-| Constraint | Weight |
-|---|---|
-| perimeter_fit (vertices on fixed boundary) | 0.20 |
-| pitch_fit (within Solar band) | 0.15 |
-| area_conservation (vs Solar target ±5%) | 0.15 |
-| dsm_edge_support | 0.10 |
-| solar_segment_agreement (area + azimuth) | 0.10 |
-| ridge_valley_continuity | 0.10 |
-| construction_plausibility | 0.05 |
-| facet_count vs Solar segment count | 0.05 |
-| max_plane_area_ratio penalty (>35%) | 0.05 |
-| cross_roof_diagonal penalty | 0.05 |
-
-Local search: 50 iterations max, accept move only if total score improves. Persist top-3 candidates with score breakdown.
-
-### Phase 4 — Diagram from winning topology
-
-**Edit:** `supabase/functions/_shared/autonomous-graph-solver.ts`
-Replace current "DSM edges → faces" pipeline with:
-1. Take winning topology graph from Phase 3.
-2. Perimeter edges → eaves/rakes (already classified in Phase 1).
-3. Internal edges classified by adjacent-face normals:
-   - opposing downslopes → **ridge**
-   - converging downslopes → **valley**
-   - convex perimeter transition → **hip**
-4. Faces become facets; assign pitch per facet from Solar segment overlap.
-
-### Phase 5 — Vendor calibration mode
-
-**Edit:** `supabase/functions/_shared/vendor-benchmark.ts` (or extend existing)
-When a `roof_measurement_benchmarks` row exists, compute deltas on area, facets, pitch, eaves, hips, valleys, ridges, rakes. Feed deltas back into candidate scoring weights for that property (not to fake numbers — to bias future runs on similar geometry).
-
-### Phase 6 — Customer gate
-
-**Edit:** `start-ai-measurement/index.ts` — extend existing gates.
-Customer-ready ONLY if all pass:
-- `perimeter_confidence ≥ 0.80`
-- `pitch_confidence ≥ 0.85`
-- `topology_score ≥ 0.70`
-- no `ridge_network_missing` flag
-- no `topology_undersegmented` flag
-- `area_error ≤ 5%`
-- `facet_count` within ±25% of Solar expected count
-
-Otherwise → `validation_status = needs_review`, `requires_manual_review = true`, persist debug diagram + diagnostics.
-
-## Files Changed
-
-| File | Change |
-|---|---|
-| `supabase/functions/_shared/perimeter-first-extractor.ts` | **NEW** — Phase 1 extractor |
-| `supabase/functions/_shared/google-solar-api.ts` | Add `extractSolarTopologyPriors()` |
-| `supabase/functions/_shared/constraint-roof-solver.ts` | Consume fixed perimeter; expand candidate templates |
-| `supabase/functions/_shared/autonomous-graph-solver.ts` | Replace edge-detection pipeline with topology→diagram |
-| `supabase/functions/_shared/vendor-benchmark.ts` | Calibration feedback into scoring |
-| `supabase/functions/start-ai-measurement/index.ts` | Pre-solver pitch lock; perimeter-first orchestration; new customer gate |
-| `mem://architecture/measurement-system/perimeter-first-reverse-geometry` | Architecture memory |
-
-## Expected Fonsica Results
-
-- Perimeter traces full house outline from aerial mask, ~258'9" eave LF
-- Pitch locks to 6/12 from Solar pre-solve
-- Candidate generator emits hip+cross-gable + nested-upper-hip variants
-- Constraint solver picks ~14-facet structured hierarchy
-- Cross-roof diagonal candidate rejected on `cross_roof_diagonal` + `max_plane_area_ratio` penalties
-- Ridges become non-zero (~30'2"), hips ~201', valleys ~64'
-- Area within 5% of 3077 sqft
-- Customer gate passes; diagram matches Roofr structure
-
-## Notes / Risks
-
-- Perimeter classifier (eave vs rake) needs DSM elevation gradient already implemented in `classifyEdgeByDSM`; reuse it.
-- Solar pitch band must remain a hard constraint — no post-hoc "pitch correction" overwrites.
-- Candidate generation is the new compute-heavy step; budget 3s per roof. If exceeded, return best-so-far with `time_budget_exceeded` diagnostic.
-- This is a structural change — old runs in `roof_measurements` retain their schema; new runs add `perimeter_first` block to `source_context`.
+## Technical notes
+- All queries continue to filter by `tenant_id` via `useEffectiveTenantId()`.
+- PDF generation runs client-side (no edge function needed) — same scale 1.5 / JPEG 0.65 settings as estimates to keep <10MB.
+- The "Add to Project Budget" button is gated to admins/managers only via the existing role hooks already used elsewhere in the lead view.
+- No changes to the AI Measurement pipeline.

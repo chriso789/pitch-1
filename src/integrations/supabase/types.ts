@@ -5675,6 +5675,7 @@ export type Database = {
           customer_approved: boolean | null
           customer_approved_at: string | null
           description: string | null
+          document_id: string | null
           id: string
           labor_total: number
           line_items: Json
@@ -5704,6 +5705,7 @@ export type Database = {
           customer_approved?: boolean | null
           customer_approved_at?: string | null
           description?: string | null
+          document_id?: string | null
           id?: string
           labor_total?: number
           line_items?: Json
@@ -5733,6 +5735,7 @@ export type Database = {
           customer_approved?: boolean | null
           customer_approved_at?: string | null
           description?: string | null
+          document_id?: string | null
           id?: string
           labor_total?: number
           line_items?: Json
@@ -5766,6 +5769,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "change_orders_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "change_orders_project_id_fkey"

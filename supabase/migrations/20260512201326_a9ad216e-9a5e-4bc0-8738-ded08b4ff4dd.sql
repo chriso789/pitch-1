@@ -1,0 +1,2 @@
+ALTER TABLE public.change_orders ADD COLUMN IF NOT EXISTS document_id UUID REFERENCES public.documents(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_change_orders_document_id ON public.change_orders(document_id);
