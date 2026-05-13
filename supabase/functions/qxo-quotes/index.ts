@@ -113,6 +113,38 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === 'submit') {
+      const payload = { ...body, accountId: String(accountId) };
+      delete (payload as any).action;
+      delete (payload as any).tenant_id;
+      const r = await fetch(`${BEACON_BASE_URL}/v2/rest/com/becn/submitQuote`, {
+        method: 'POST',
+        headers: { ...auth.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => ({}));
+      return new Response(JSON.stringify(data), {
+        status: r.ok ? 200 : 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action === 'list') {
+      const params = new URLSearchParams({ account: String(accountId) });
+      const passthrough = ['quoteType', 'pageSize', 'pageNo', 'filterBy', 'filter', 'jobName', 'orderBy', 'dateFrom', 'dateTo'];
+      for (const k of passthrough) {
+        const v = (body as any)[k] ?? url.searchParams.get(k);
+        if (v != null && v !== '') params.set(k, String(v));
+      }
+      const r = await fetch(`${BEACON_BASE_URL}/v2/rest/com/becn/quote?${params}`, {
+        headers: auth.headers,
+      });
+      const data = await r.json().catch(() => ({}));
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     throw new Error(`Unknown action: ${action}`);
   } catch (e: any) {
     console.error('qxo-quotes error', e);
