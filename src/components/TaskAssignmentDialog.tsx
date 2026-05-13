@@ -228,7 +228,27 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
       due_date: "",
       assigned_to: "",
     });
+    setSelectedTemplateId("");
     setOpen(false);
+  };
+
+  const applyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    let due_date = "";
+    if (tpl.default_due_offset_days != null) {
+      const d = new Date();
+      d.setDate(d.getDate() + tpl.default_due_offset_days);
+      due_date = d.toISOString().slice(0, 10);
+    }
+    setFormData((prev) => ({
+      ...prev,
+      title: tpl.title,
+      description: tpl.description || "",
+      priority: tpl.priority || "medium",
+      due_date: due_date || prev.due_date,
+    }));
   };
 
   const defaultTrigger = (
