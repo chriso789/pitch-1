@@ -549,10 +549,67 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
     ).slice(0, 200);
   }, [priceItems, search]);
 
-  const saveMapping = async () => {
-    if (!mapLine || !pickItem || !tenantId) return;
+  const [cataloging, setCataloging] = React.useState(false);
+
+  const catalogNewItem = async () => {
+    if (!mapLine || !tenantId) return;
     const sid = mapLine.supplier_id || supplierId;
-    const selectedItem = (priceItems as any[]).find((p) => p.id === pickItem);
+    if (!sid) { toast.error("No supplier on this line"); return; }
+    const chargedUnit = Number(mapLine.charged_unit_price || 0);
+    if (!chargedUnit) { toast.error("Cannot catalog – charged unit price is 0"); return; }
+    setCataloging(true);
+    try {
+      // Find or create an active price list for this supplier
+      let { data: pl } = await supabase
+        .from("supplier_price_lists")
+        .select("id")
+        .eq("supplier_id", sid)
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let priceListId = pl?.id;
+      if (!priceListId) {
+        const { data: created, error: plErr } = await supabase
+          .from("supplier_price_lists")
+          .insert({ company_id: tenantId, supplier_id: sid, list_name: "Cataloged from invoices", status: "active", effective_start_date: new Date().toISOString().slice(0, 10) })
+          .select("id")
+          .single();
+        if (plErr) throw plErr;
+        priceListId = created.id;
+      }
+      const desc = mapLine.invoice_description || "Untitled item";
+      const { data: newItem, error: itemErr } = await supabase
+        .from("supplier_price_list_items")
+        .insert({
+          company_id: tenantId,
+          supplier_id: sid,
+          price_list_id: priceListId,
+          item_description: desc,
+          normalized_description: normalizeInvoiceText(desc),
+          supplier_sku: mapLine.supplier_sku || null,
+          unit_of_measure: mapLine.invoice_uom || "ea",
+          agreed_unit_price: chargedUnit,
+        })
+        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
+        .single();
+      if (itemErr) throw itemErr;
+      setPickItem(newItem.id);
+      // Refresh the price items list so the new item appears
+      await queryClient.invalidateQueries({ queryKey: ["map-price-items", sid] });
+      toast.success(`"${desc.slice(0, 40)}" added to catalog at $${chargedUnit.toFixed(2)}`);
+      // Auto-save the mapping immediately using the freshly cataloged item
+      await saveMappingWithItem(newItem);
+    } catch (e: any) {
+      toast.error(`Catalog failed: ${e.message}`);
+    } finally {
+      setCataloging(false);
+    }
+  };
+
+  const saveMappingWithItem = async (selectedItem: any) => {
+    if (!mapLine || !tenantId) return;
+    const sid = mapLine.supplier_id || supplierId;
     const qty = Number(mapLine.quantity || 0);
     const chargedUnit = Number(mapLine.charged_unit_price || 0);
     const chargedExt = Number(mapLine.charged_extended_price ?? chargedUnit * qty);
@@ -565,12 +622,12 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       supplier_id: sid,
       normalized_invoice_description: normalizeInvoiceText(mapLine.invoice_description),
       supplier_sku: mapLine.supplier_sku || null,
-      price_list_item_id: pickItem,
+      price_list_item_id: selectedItem.id,
       created_by: (await supabase.auth.getUser()).data?.user?.id,
     });
     if (error) { toast.error(error.message); return; }
     const { error: lineError } = await supabase.from("material_invoice_audit_lines").update({
-      price_list_item_id: pickItem,
+      price_list_item_id: selectedItem.id,
       match_type: "manual_rule",
       match_confidence: 1,
       agreed_description: selectedItem?.item_description || null,
@@ -617,6 +674,13 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
     queryClient.invalidateQueries({ queryKey: ["audit-lines", auditId] });
     queryClient.invalidateQueries({ queryKey: ["material-audits"] });
     queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines"] });
+  };
+
+  const saveMapping = async () => {
+    if (!pickItem) return;
+    const selectedItem = (priceItems as any[]).find((p) => p.id === pickItem);
+    if (!selectedItem) { toast.error("Pick a price-list item first"); return; }
+    await saveMappingWithItem(selectedItem);
   };
 
   if (isLoading) return <div className="text-xs text-muted-foreground p-3">Loading lines...</div>;
@@ -712,9 +776,20 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
-                <Button onClick={saveMapping} disabled={!pickItem}>Save mapping</Button>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  variant="secondary"
+                  onClick={catalogNewItem}
+                  disabled={cataloging || !mapLine?.invoice_description || !Number(mapLine?.charged_unit_price || 0)}
+                  title="Add this invoice line as a new item in the supplier price list at the charged price"
+                >
+                  <Package className="h-4 w-4 mr-2" />
+                  {cataloging ? "Cataloging..." : "Catalog this item"}
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
+                  <Button onClick={saveMapping} disabled={!pickItem}>Save mapping</Button>
+                </div>
               </div>
             </div>
           )}
