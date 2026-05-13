@@ -777,6 +777,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     dateStr,
     opts,
     totalPages: pages.totalPages,
+    customerName,
+    customerAddress,
   };
 
   return (
