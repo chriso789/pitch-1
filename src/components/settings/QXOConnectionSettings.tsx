@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck } from 'lucide-react';
 import { QXOArDashboard } from './QXOArDashboard';
 import { QXOActivityPanel } from './QXOActivityPanel';
+import { QXOBrowser } from './QXOBrowser';
 
 interface QXOConnection {
   id: string;
