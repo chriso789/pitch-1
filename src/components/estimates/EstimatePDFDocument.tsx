@@ -914,7 +914,7 @@ const ItemsContinuationPage: React.FC<{
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
       )}
 
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
     </div>
   );
 };
