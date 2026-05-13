@@ -37,6 +37,10 @@ export function canonicalizeVendorName(raw: string | null | undefined): { key: s
   return { key: v.toLowerCase(), display: v };
 }
 
+function normalizeInvoiceText(raw: string | null | undefined): string {
+  return (raw || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 // A vendor is treated as a labor crew / subcontractor (not a material supplier) when
 // (a) any of its invoices is typed 'labor', or (b) the name reads like a service company.
 export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?: string[] }): boolean {
