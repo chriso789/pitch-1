@@ -837,34 +837,39 @@ export const MaterialAuditContent = () => {
   });
 
   const { data: materialInvoices = [] } = useQuery({
-    queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
+    queryKey: ["material-cost-invoices", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      let q = supabase
+      const { data } = await supabase
         .from("project_cost_invoices")
         .select("*, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
         .eq("tenant_id", tenantId)
         .in("invoice_type", ["material"])
         .order("created_at", { ascending: false });
-      if (selectedSupplier !== "all") {
-        q = q.ilike("vendor_name", "%" + selectedSupplier + "%");
-      }
-      const { data } = await q;
       return data || [];
     },
     enabled: !!tenantId,
   });
 
-  const supplierNames = React.useMemo(() => {
-    const names = new Set<string>();
+  // Build canonical supplier list — every variant of "ABC Supply #489 / ABC Supply Co."
+  // collapses to one entry under "ABC Supply", same for SRS / Suncoast Roofers etc.
+  const canonicalSuppliers = React.useMemo(() => {
+    const byKey = new Map<string, string>();
     materialInvoices.forEach((inv: any) => {
-      if (inv.vendor_name) names.add(inv.vendor_name);
+      if (!inv.vendor_name) return;
+      const { key, display } = canonicalizeVendorName(inv.vendor_name);
+      if (!byKey.has(key)) byKey.set(key, display);
     });
     pricebookGroups.forEach((g: any) => {
-      if (g.supplier_name) names.add(g.supplier_name);
+      if (!g.supplier_name) return;
+      const { key, display } = canonicalizeVendorName(g.supplier_name);
+      if (!byKey.has(key)) byKey.set(key, display);
     });
-    return Array.from(names).sort();
+    return Array.from(byKey.entries())
+      .map(([key, display]) => ({ key, display }))
+      .sort((a, b) => a.display.localeCompare(b.display));
   }, [materialInvoices, pricebookGroups]);
+
 
   const { data: audits = [] } = useQuery({
     queryKey: ["material-audits", tenantId],
