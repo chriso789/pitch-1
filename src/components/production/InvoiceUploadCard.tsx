@@ -374,7 +374,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     }
   };
 
-  const isMaterial = invoiceType === 'material';
+  const isMaterial = false as boolean; // material handled by BatchMaterialInvoiceCard above
   const isLabor = invoiceType === 'labor';
   const isOverhead = invoiceType === 'overhead';
   
