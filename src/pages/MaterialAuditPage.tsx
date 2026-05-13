@@ -32,8 +32,8 @@ export function canonicalizeVendorName(raw: string | null | undefined): { key: s
   if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
   if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
   if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
-  if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
-  if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
+  // QXO acquired Beacon Building Products in 2025 — treat as one vendor.
+  if (/\bqxo\b|beacon/i.test(v)) return { key: "qxo", display: "QXO (Beacon)" };
   if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
   return { key: v.toLowerCase(), display: v };
 }
