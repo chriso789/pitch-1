@@ -11,7 +11,8 @@ import { RoutingRulesManager } from "./RoutingRulesManager";
 import { SmsAutoResponseConfig } from "./SmsAutoResponseConfig";
 import { MetaCAPISettings } from "./MetaCAPISettings";
 import { SRSConnectionSettings } from "./SRSConnectionSettings";
-import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare, Facebook, Truck } from "lucide-react";
+import { QXOConnectionSettings } from "./QXOConnectionSettings";
+import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare, Facebook, Truck, Package } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
