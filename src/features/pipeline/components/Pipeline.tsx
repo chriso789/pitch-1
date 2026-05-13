@@ -1223,14 +1223,57 @@ const Pipeline = () => {
                 </Select>
               </div>
             </div>
-            
+
+            {/* Activity-based filters */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4 mt-2 sm:mt-3">
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">
+                  Last touched ≥ (days)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 7"
+                  value={filters.lastTouchedMinDays}
+                  onChange={(e) => setFilters(prev => ({ ...prev, lastTouchedMinDays: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">
+                  Time in status ≥ (days)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 14"
+                  value={filters.timeInStatusMinDays}
+                  onChange={(e) => setFilters(prev => ({ ...prev, timeInStatusMinDays: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">
+                  Estimate sent ≥ (days)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 5"
+                  value={filters.lastEmailMinDays}
+                  onChange={(e) => setFilters(prev => ({ ...prev, lastEmailMinDays: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+
             {hasActiveFilters && (
               <div className="mt-2 sm:mt-4">
                 <Button 
                   variant="outline" 
                   size="sm" 
                   className="h-7 text-xs"
-                  onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc' })}
+                  onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc', lastTouchedMinDays: '', timeInStatusMinDays: '', lastEmailMinDays: '' })}
                 >
                   <Filter className="h-3 w-3 mr-1.5" />
                   Clear Filters
