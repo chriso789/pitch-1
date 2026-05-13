@@ -153,7 +153,7 @@ Deno.serve(async (req: Request) => {
     // Fetch target invoices
     let invQ = supabase
       .from("project_cost_invoices")
-      .select("id, vendor_name, invoice_number, invoice_date, invoice_amount")
+      .select("id, vendor_name, invoice_number, invoice_date, invoice_amount, notes, project_id, pipeline_entry_id")
       .eq("tenant_id", tenantId)
       .eq("invoice_type", "material");
     if (invoiceId) invQ = invQ.eq("id", invoiceId);
@@ -191,6 +191,8 @@ Deno.serve(async (req: Request) => {
           const rows = parsed.map((line) => ({
             tenant_id: tenantId,
             invoice_id: inv.id,
+            project_id: inv.project_id || null,
+            pipeline_entry_id: inv.pipeline_entry_id || null,
             vendor_name: inv.vendor_name || null,
             ...line,
           }));
