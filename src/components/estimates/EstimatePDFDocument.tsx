@@ -415,6 +415,8 @@ const PageShell: React.FC<{
   totalPages: number;
   showHeader?: boolean;
   isSignaturePage?: boolean;
+  customerName?: string;
+  customerAddress?: string;
 }> = ({
   children,
   companyLogo,
@@ -428,6 +430,8 @@ const PageShell: React.FC<{
   totalPages,
   showHeader = true,
   isSignaturePage = false,
+  customerName,
+  customerAddress,
 }) => {
   return (
     <div 
