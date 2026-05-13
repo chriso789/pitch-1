@@ -652,24 +652,7 @@ export const MaterialAuditContent = () => {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      const canonicalize = (raw: string | null | undefined): { key: string; display: string } => {
-        const v = (raw || "").trim();
-        if (!v) return { key: "__unknown__", display: "Unknown vendor" };
-        if (/permit|county|township|\btwp\b|city of|riviera beach|ridley|planning,? zoning|zoning ?& ?building/i.test(v))
-          return { key: "__permits__", display: "Permits (city / county / township)" };
-        if (/dump|dumpster/i.test(v))
-          return { key: "__dumpfees__", display: "Dump / Dumpster Fees" };
-        if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
-        if (/^srs\b|srs building|suncoast roofers/i.test(v))
-          return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
-        if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
-        if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
-        if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
-        if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
-        if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
-        if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
-        return { key: v.toLowerCase(), display: v };
-      };
+      const canonicalize = canonicalizeVendorName;
 
       const [{ data: invs }, { data: lines }] = await Promise.all([
         supabase
