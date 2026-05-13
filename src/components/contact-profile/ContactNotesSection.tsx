@@ -16,9 +16,12 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
-import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus } from 'lucide-react';
+import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus, CheckSquare, CalendarClock } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DialogFooter } from '@/components/ui/dialog';
 
 interface ContactNotesSectionProps {
   contactId: string;
