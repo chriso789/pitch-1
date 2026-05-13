@@ -338,7 +338,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   
   const Icon = isMaterial ? Package : isLabor ? Wrench : Receipt;
   const iconColor = isMaterial ? 'text-blue-500' : isLabor ? 'text-orange-500' : 'text-purple-500';
-  const title = isMaterial ? 'Material Invoice' : isLabor ? 'Labor Invoice' : 'Overhead Cost';
+  const title = isMaterial ? 'Material Invoice' : isLabor ? 'Labor Invoice' : 'Other Charges';
 
   return (
     <Card className="border-border">
