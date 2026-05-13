@@ -42,24 +42,37 @@ export function PushToQXOButton({
     }
     setPushing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('qxo-push-order', {
+      const addr = projectAddress
+        ? (() => {
+            // Best-effort parse: "123 Main St, City, ST 12345"
+            const m = projectAddress.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
+            return m
+              ? { address1: m[1], city: m[2], state: m[3].toUpperCase(), postalCode: m[4] }
+              : { address1: projectAddress };
+          })()
+        : null;
+      const { data, error } = await supabase.functions.invoke('qxo-submit-order', {
         body: {
           tenant_id: effectiveTenantId,
-          estimate_id: estimateId,
-          job_id: jobId,
           project_id: jobId,
+          job_id: jobId,
+          job_name: customerName,
           job_number: jobNumber,
-          customer_name: customerName,
-          delivery_address: projectAddress ? { address: projectAddress } : null,
-          notes: customerName ? `For ${customerName}` : null,
-          items,
+          delivery_address: addr,
+          special_instruction: customerName ? `For ${customerName}` : undefined,
+          on_hold: true,
+          check_for_availability: 'no',
+          items: items.map((i) => ({
+            ...i,
+            unit_price: i.unit_cost,
+          })),
         },
       });
       if (error) throw error;
       if (!data?.success) {
         toast({
           title: 'QXO push failed',
-          description: data?.error || data?.hint || 'Beacon rejected the order.',
+          description: data?.message || data?.error || 'Beacon rejected the order.',
           variant: 'destructive',
         });
         return;
