@@ -167,12 +167,9 @@ export function EagleViewStyleReport({
       if (!user) throw new Error('Not authenticated');
 
       // 1. Generate PDF report first
-      const { data: reportData, error: reportError } = await supabase.functions.invoke('generate-eagleview-report', {
+      const { data: reportData, error: reportError } = await supabase.functions.invoke('generate-roof-report', {
         body: {
           measurementId,
-          measurement,
-          tags,
-          address,
           companyInfo: companyInfo || { name: 'PITCH CRM' },
         }
       });
