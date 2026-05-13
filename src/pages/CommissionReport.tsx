@@ -197,15 +197,15 @@ export default function CommissionReport() {
       if (error) throw error;
       if (!entries || entries.length === 0) return [];
 
-      // Get rep profiles with commission settings
+      // Get rep profiles with commission + overhead settings (mirrors Profit Center)
       const repIds = [...new Set(entries.map(e => e.assigned_to).filter(Boolean))] as string[];
       const { data: repProfiles } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, commission_rate, commission_structure')
+        .select('id, first_name, last_name, commission_rate, commission_structure, overhead_rate, personal_overhead_rate')
         .in('id', repIds.length > 0 ? repIds : ['none']);
       const repMap = new Map((repProfiles || []).map(p => [p.id, p]));
 
-      // Get all estimates for these pipeline entries
+      // Get all estimates for these pipeline entries (include sales_tax_amount for Profit Center parity)
       const entryIds = entries.map(e => e.id);
       const { data: estimates } = await supabase
         .from('estimates')
@@ -232,6 +232,24 @@ export default function CommissionReport() {
         return estimateByEntry.get(entry.id) || null;
       };
 
+      // Pull ACTUAL invoiced costs (mirrors ProfitCenterPanel) for every entry in one query.
+      // material + labor get netted as actual costs; "overhead" type = other charges (permits, dumps, etc.)
+      const { data: invoiceRows } = await supabase
+        .from('project_cost_invoices')
+        .select('pipeline_entry_id, invoice_type, invoice_amount, status')
+        .in('pipeline_entry_id', entryIds.length > 0 ? entryIds : ['none'])
+        .in('status', ['pending', 'approved', 'verified']);
+
+      const invoicesByEntry = new Map<string, { material: number; labor: number; other: number }>();
+      (invoiceRows || []).forEach((inv: any) => {
+        const bucket = invoicesByEntry.get(inv.pipeline_entry_id) || { material: 0, labor: 0, other: 0 };
+        const amt = Number(inv.invoice_amount) || 0;
+        if (inv.invoice_type === 'material') bucket.material += amt;
+        else if (inv.invoice_type === 'labor') bucket.labor += amt;
+        else if (inv.invoice_type === 'overhead') bucket.other += amt;
+        invoicesByEntry.set(inv.pipeline_entry_id, bucket);
+      });
+
       // Get stage names
       const { data: stages } = await supabase
         .from('pipeline_stages')
@@ -239,28 +257,44 @@ export default function CommissionReport() {
         .eq('tenant_id', currentUser.tenant_id);
       const stageMap = new Map((stages || []).map(s => [s.key, s.name]));
 
-      // Build computed commissions
+      // Build computed commissions — same formula as ProfitCenterPanel
       return entries.map(entry => {
         const rep = entry.assigned_to ? repMap.get(entry.assigned_to) : null;
         const est = resolveEstimate(entry);
         const contact = entry.contacts as any;
+        const inv = invoicesByEntry.get(entry.id) || { material: 0, labor: 0, other: 0 };
 
-        const contractValue = est?.selling_price || entry.estimated_value || 0;
-        const materialCost = est?.material_cost || 0;
-        const laborCost = est?.labor_cost || 0;
-        const overheadAmount = est?.overhead_amount || 0;
-        const grossProfit = contractValue - materialCost - laborCost;
+        const contractValue = Number(est?.selling_price) || Number(entry.estimated_value) || 0;
+        const salesTaxAmount = Number(est?.sales_tax_amount) || 0;
+        const preTaxSellingPrice = Math.max(0, contractValue - salesTaxAmount);
 
-        const commissionRate = rep?.commission_rate || 0;
+        // Effective costs: actual invoiced if present, else estimate values
+        const estMaterials = Number(est?.material_cost) || 0;
+        const estLabor = Number(est?.labor_cost) || 0;
+        const materialCost = inv.material > 0 ? inv.material : estMaterials;
+        const laborCost = inv.labor > 0 ? inv.labor : estLabor;
+        const otherCharges = inv.other; // other charges only ever come from invoices
+
+        // Overhead: prefer rep's personal_overhead_rate, else company overhead_rate, else 10%
+        const personalOverhead = Number(rep?.personal_overhead_rate) || 0;
+        const baseOverhead = Number(rep?.overhead_rate);
+        const overheadRate = personalOverhead > 0
+          ? personalOverhead
+          : (Number.isFinite(baseOverhead) && baseOverhead > 0 ? baseOverhead : 10);
+        const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
+
+        const totalCost = materialCost + laborCost + overheadAmount + otherCharges;
+        const grossProfit = preTaxSellingPrice - totalCost;
+
+        const commissionRate = Number(rep?.commission_rate) || 0;
         const commissionType = rep?.commission_structure || 'profit_split';
 
         let commissionAmount = 0;
         if (commissionType === 'percentage_contract_price' || commissionType === 'percentage_selling_price') {
           commissionAmount = contractValue * (commissionRate / 100);
         } else {
-          // profit_split
-          const netProfit = grossProfit - overheadAmount;
-          commissionAmount = Math.max(0, netProfit * (commissionRate / 100));
+          // profit_split — matches ProfitCenterPanel.repCommission
+          commissionAmount = Math.max(0, grossProfit * (commissionRate / 100));
         }
 
         const customerName = contact
@@ -282,7 +316,7 @@ export default function CommissionReport() {
           contractValue: Number(contractValue),
           materialCost: Number(materialCost),
           laborCost: Number(laborCost),
-          overheadAmount: Number(overheadAmount),
+          overheadAmount: Number(overheadAmount + otherCharges), // shown as combined overhead bucket
           grossProfit: Number(grossProfit),
           commissionRate: Number(commissionRate),
           commissionType,
