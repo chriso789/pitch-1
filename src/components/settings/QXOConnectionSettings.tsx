@@ -10,6 +10,7 @@ import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck } from 'lucide-react';
 import { QXOArDashboard } from './QXOArDashboard';
+import { QXOActivityPanel } from './QXOActivityPanel';
 
 interface QXOConnection {
   id: string;
@@ -250,7 +251,10 @@ export function QXOConnectionSettings() {
       </Card>
 
       {isConnected && activeCompanyId && (
-        <QXOArDashboard tenantId={activeCompanyId} />
+        <>
+          <QXOArDashboard tenantId={activeCompanyId} />
+          <QXOActivityPanel tenantId={activeCompanyId} />
+        </>
       )}
     </div>
   );
