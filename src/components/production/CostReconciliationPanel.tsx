@@ -382,7 +382,7 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => openInvoiceDocument(invoice.document_url)}
+                        onClick={() => setPreviewInvoice({ url: invoice.document_url, name: invoice.document_name || invoice.vendor_name || 'Invoice' })}
                       >
                         <ExternalLink className="h-4 w-4" />
                       </Button>
