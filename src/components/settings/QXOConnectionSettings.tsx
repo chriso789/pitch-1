@@ -270,6 +270,7 @@ export function QXOConnectionSettings() {
 
       {isConnected && activeCompanyId && (
         <>
+          <QXOBrowser tenantId={activeCompanyId} />
           <QXOArDashboard tenantId={activeCompanyId} />
           <QXOActivityPanel tenantId={activeCompanyId} />
         </>
