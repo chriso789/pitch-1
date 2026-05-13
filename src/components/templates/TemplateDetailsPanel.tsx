@@ -8,6 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 import type { Template } from './hooks/useTemplateEditor';
+import { TemplateVendorQuotes } from './TemplateVendorQuotes';
+import { Separator } from '@/components/ui/separator';
 
 interface TemplateDetailsPanelProps {
   template: Template;
