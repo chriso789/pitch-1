@@ -16,7 +16,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
-import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus, CheckSquare, CalendarClock } from 'lucide-react';
+import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus, CheckSquare, CalendarClock, Pencil, X, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
 import { Label } from '@/components/ui/label';
@@ -46,6 +46,9 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -249,6 +252,28 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
   const handleTogglePin = async (noteId: string, currentlyPinned: boolean) => {
     const { error } = await supabase.from('internal_notes').update({ is_pinned: !currentlyPinned }).eq('id', noteId);
     if (!error) queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+  };
+
+  const startEditNote = (noteId: string, current: string) => {
+    setEditingNoteId(noteId);
+    setEditingContent(current);
+  };
+  const cancelEditNote = () => { setEditingNoteId(null); setEditingContent(''); };
+  const handleSaveEdit = async () => {
+    if (!editingNoteId || !editingContent.trim()) return;
+    setIsSavingEdit(true);
+    const { error } = await supabase
+      .from('internal_notes')
+      .update({ content: editingContent.trim(), updated_at: new Date().toISOString() })
+      .eq('id', editingNoteId);
+    setIsSavingEdit(false);
+    if (error) {
+      toast({ title: 'Could not update note', description: error.message, variant: 'destructive' });
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+    toast({ title: 'Note updated' });
+    cancelEditNote();
   };
 
   const handleDeleteNote = async () => {
