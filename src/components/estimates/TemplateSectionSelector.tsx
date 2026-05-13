@@ -190,10 +190,10 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       }
     }
     
-    if (existingEstimate?.template_id && !selectedTemplateId) {
+    if (existingEstimate?.template_id) {
       setSelectedTemplateId(existingEstimate.template_id);
     }
-  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId, selectedTemplateId]);
+  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId]);
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
