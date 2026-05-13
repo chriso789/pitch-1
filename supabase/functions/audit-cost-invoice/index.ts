@@ -156,7 +156,8 @@ Deno.serve(async (req: Request) => {
 
     // Cache items per supplier
     const itemsCache = new Map<string, { priceListId: string | null; items: any[]; rules: any[] }>();
-    async function loadItems(supplierId: string, invoiceDate: string) {
+    async function loadItems(supplier: any, invoiceDate: string) {
+      const supplierId = supplier.id;
       if (itemsCache.has(supplierId)) return itemsCache.get(supplierId)!;
       const { data: priceListId } = await supabase.rpc("get_active_supplier_price_list", {
         p_company_id: tenantId, p_supplier_id: supplierId, p_invoice_date: invoiceDate,
@@ -178,6 +179,35 @@ Deno.serve(async (req: Request) => {
           .select("id, supplier_sku, manufacturer_sku, item_description, normalized_description, unit_of_measure, agreed_unit_price")
           .eq("price_list_id", resolvedListId);
         items = data || [];
+      }
+      if (!items.length) {
+        const supplierKeys = new Set([supplier.supplier_name, ...(supplier.aliases || [])].map((name) => canonVendor(name).key));
+        const supplierLooseKeys = new Set([supplier.supplier_name, ...(supplier.aliases || [])].map(supplierCompareKey).filter(Boolean));
+        let legacyRows: any[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase
+            .from("supplier_pricebooks")
+            .select("id, supplier_name, item_code, item_description, unit_of_measure, unit_cost, is_active, effective_date")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+            .range(from, from + 999);
+          const batch = data || [];
+          legacyRows = legacyRows.concat(batch.filter((row: any) => {
+            const rowKey = canonVendor(row.supplier_name).key;
+            const loose = supplierCompareKey(row.supplier_name);
+            return supplierKeys.has(rowKey) || Array.from(supplierLooseKeys).some((k) => loose && (loose.includes(k) || k.includes(loose) || tokenScore(loose, k) >= 0.6));
+          }));
+          if (batch.length < 1000) break;
+        }
+        items = legacyRows.map((row: any) => ({
+          id: `legacy:${row.id}`,
+          supplier_sku: row.item_code || null,
+          manufacturer_sku: null,
+          item_description: row.item_description || row.item_code || "Legacy pricebook item",
+          normalized_description: normalize(row.item_description || row.item_code),
+          unit_of_measure: row.unit_of_measure || null,
+          agreed_unit_price: row.unit_cost != null ? Number(row.unit_cost) : null,
+        }));
       }
       // Manual mapping rules saved by users for this supplier
       const { data: rules } = await supabase
@@ -219,8 +249,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
-      const { priceListId, items, rules } = await loadItems(supplier.id, invoiceDate);
-      if (!priceListId || !items.length) {
+      const { priceListId, items, rules } = await loadItems(supplier, invoiceDate);
+      if (!items.length) {
         skipInvoice(inv, `No price list for supplier "${supplier.supplier_name}"`);
         continue;
       }
