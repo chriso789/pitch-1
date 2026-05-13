@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
+import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
 
 interface CostReconciliationPanelProps {
   projectId: string;
