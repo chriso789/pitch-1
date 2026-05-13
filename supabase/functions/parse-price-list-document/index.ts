@@ -84,6 +84,19 @@ Deno.serve(async (req) => {
     const call = json?.choices?.[0]?.message?.tool_calls?.[0];
     const args = call?.function?.arguments ? JSON.parse(call.function.arguments) : { rows: [] };
 
+    // Strip stray backslash-escapes the LLM sometimes emits (e.g. `11\" Black` → `11" Black`)
+    const cleanStr = (v: any) => typeof v === "string" ? v.replace(/\\([\"'\\])/g, "$1") : v;
+    if (Array.isArray(args.rows)) {
+      args.rows = args.rows.map((r: any) => ({
+        ...r,
+        description: cleanStr(r?.description),
+        sku: cleanStr(r?.sku),
+        category: cleanStr(r?.category),
+        brand: cleanStr(r?.brand),
+        uom: cleanStr(r?.uom),
+      }));
+    }
+
     return new Response(JSON.stringify(args), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
