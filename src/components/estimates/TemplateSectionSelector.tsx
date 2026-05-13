@@ -8,11 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Trash2, Loader2, Lock, CheckCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
+import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,8 +57,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   onLockSuccess
 }) => {
   const queryClient = useQueryClient();
-  const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   const { data: companyInfo } = useCompanyInfo();
+  const { data: latestMeasurement } = useLatestMeasurement(pipelineEntryId, !!pipelineEntryId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -66,17 +69,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
   // Fetch templates for this tenant
   const { data: templates, isLoading: templatesLoading } = useQuery({
-    queryKey: ['estimate-templates', sectionType],
+    queryKey: ['estimate-templates', effectiveTenantId, sectionType],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('estimate_calculation_templates')
         .select('id, name, template_category, base_material_cost_per_sq, base_labor_rate_per_hour')
+        .eq('tenant_id', effectiveTenantId)
         .eq('is_active', true)
         .order('name');
       
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: !!effectiveTenantId
   });
 
   // First fetch the selected_estimate_id from pipeline_entries metadata
@@ -123,7 +128,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       
       const { data, error } = await supabase
         .from('enhanced_estimates')
-        .select('id, line_items, template_id, material_cost_locked_at, labor_cost_locked_at')
+        .select('id, line_items, template_id, material_cost_locked_at, labor_cost_locked_at, roof_area_sq_ft, property_details, calculation_metadata')
         .eq('id', effectiveEstimateId)
         .single();
       
@@ -192,7 +197,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
-    mutationFn: async (items: LineItem[]) => {
+    mutationFn: async (payload: LineItem[] | { items: LineItem[]; templateId?: string }) => {
+      const items = Array.isArray(payload) ? payload : payload.items;
+      const templateIdToSave = Array.isArray(payload) ? selectedTemplateId : payload.templateId ?? selectedTemplateId;
       const sectionKey = sectionType === 'material' ? 'materials' : 'labor';
       const costKey = sectionType === 'material' ? 'material_cost' : 'labor_cost';
       const total = items.reduce((sum, item) => sum + item.line_total, 0);
@@ -225,7 +232,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .update({
           line_items: updatedLineItems as any,
           [costKey]: total,
-          template_id: selectedTemplateId || null
+          template_id: templateIdToSave || null
         })
         .eq('id', effectiveEstimateId);
       if (error) throw error;
@@ -246,32 +253,114 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     }
   });
 
-  // Handle template selection - load default line items
-  const handleTemplateSelect = (templateId: string) => {
+  const buildTemplateTags = (): Record<string, number> => {
+    const tags: Record<string, number> = {};
+    const sourceTags = (latestMeasurement as any)?.tags || {};
+    Object.entries(sourceTags).forEach(([key, value]) => {
+      tags[key] = Number(value) || 0;
+    });
+
+    const totals = (latestMeasurement as any)?.measurement?.totals || {};
+    Object.entries(totals).forEach(([key, value]) => {
+      tags[key] = tags[key] || Number(value) || 0;
+    });
+
+    const estimateDetails = ((existingEstimate as any)?.property_details || {}) as Record<string, any>;
+    const estimateMeta = ((existingEstimate as any)?.calculation_metadata || {}) as Record<string, any>;
+    const roofArea = Number(
+      (existingEstimate as any)?.roof_area_sq_ft ||
+      estimateDetails.roof_area_sq_ft ||
+      estimateMeta.roof_area_sq_ft ||
+      metadata?.roof_area_sq_ft ||
+      tags['roof.total_sqft'] ||
+      tags['roof.plan_sqft'] ||
+      0
+    );
+    const squares = Number(tags['roof.squares'] || roofArea / 100 || 0);
+
+    tags['roof.total_sqft'] = tags['roof.total_sqft'] || roofArea;
+    tags['roof.area'] = tags['roof.area'] || roofArea;
+    tags['roof.squares'] = squares;
+    [8, 10, 12, 15, 17, 20].forEach((pct) => {
+      tags[`waste.${pct}pct.sqft`] = tags[`waste.${pct}pct.sqft`] || roofArea * (1 + pct / 100);
+      tags[`waste.${pct}pct.squares`] = tags[`waste.${pct}pct.squares`] || squares * (1 + pct / 100);
+    });
+    ['ridge', 'hip', 'valley', 'eave', 'rake', 'step', 'wall'].forEach((key) => {
+      tags[`lf.${key}`] = tags[`lf.${key}`] || 0;
+    });
+    tags['pen.pipe_vent'] = tags['pen.pipe_vent'] || 2;
+    return tags;
+  };
+
+  const evaluateQtyFormula = (formula: string, tags: Record<string, number>): number => {
+    if (!formula) return 1;
+    const directNumber = Number(formula);
+    if (Number.isFinite(directNumber)) return directNumber;
+
+    try {
+      const vars: Record<string, any> = { ceil: Math.ceil, floor: Math.floor, round: Math.round, max: Math.max, min: Math.min, abs: Math.abs };
+      let expression = formula.replace(/\{\{\s*(.+?)\s*\}\}/g, (_match, expr) => expr);
+      Object.entries(tags).forEach(([key, value]) => {
+        vars[key.replace(/\./g, '_')] = value;
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        expression = expression.replace(new RegExp(escapedKey, 'g'), key.replace(/\./g, '_'));
+      });
+      const value = new ExprParser().parse(expression).evaluate(vars);
+      return Number.isFinite(Number(value)) ? Number(value) : 0;
+    } catch (error) {
+      console.warn('[TemplateSectionSelector] Failed to evaluate template formula:', formula, error);
+      return 0;
+    }
+  };
+
+  // Handle template selection - load the actual saved template line items
+  const handleTemplateSelect = async (templateId: string) => {
     setSelectedTemplateId(templateId);
     const template = templates?.find(t => t.id === templateId);
-    
-    if (template) {
-      // Create default line items based on template
-      const defaultItems: LineItem[] = sectionType === 'material' 
-        ? [
-            { id: crypto.randomUUID(), item_name: 'Shingles (bundles)', qty: 45, unit: 'bundle', unit_cost: template.base_material_cost_per_sq / 3, line_total: 45 * (template.base_material_cost_per_sq / 3) },
-            { id: crypto.randomUUID(), item_name: 'Underlayment', qty: 6, unit: 'roll', unit_cost: 85, line_total: 510 },
-            { id: crypto.randomUUID(), item_name: 'Starter Strip', qty: 12, unit: 'bundle', unit_cost: 35, line_total: 420 },
-            { id: crypto.randomUUID(), item_name: 'Ridge Cap', qty: 8, unit: 'bundle', unit_cost: 52, line_total: 416 },
-            { id: crypto.randomUUID(), item_name: 'Drip Edge', qty: 20, unit: 'stick', unit_cost: 8, line_total: 160 },
-          ]
-        : [
-            { id: crypto.randomUUID(), item_name: 'Tear Off', qty: 15, unit: 'sq', unit_cost: 45, line_total: 675 },
-            { id: crypto.randomUUID(), item_name: 'Underlayment Install', qty: 15, unit: 'sq', unit_cost: 15, line_total: 225 },
-            { id: crypto.randomUUID(), item_name: 'Shingle Install', qty: 15, unit: 'sq', unit_cost: template.base_labor_rate_per_hour * 1.3, line_total: 15 * template.base_labor_rate_per_hour * 1.3 },
-            { id: crypto.randomUUID(), item_name: 'Ridge/Hip Work', qty: 48, unit: 'lf', unit_cost: 3.50, line_total: 168 },
-            { id: crypto.randomUUID(), item_name: 'Cleanup & Haul', qty: 1, unit: 'job', unit_cost: 350, line_total: 350 },
-          ];
-      
-      setLineItems(defaultItems);
-      saveLineItemsMutation.mutate(defaultItems);
+    if (!template) return;
+
+    if (!effectiveEstimateId) {
+      toast.error('Select or create an estimate before applying a template');
+      return;
     }
+
+    const { data: templateItems, error } = await supabase
+      .from('estimate_calc_template_items')
+      .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order')
+      .eq('calc_template_id', templateId)
+      .eq('tenant_id', effectiveTenantId)
+      .eq('item_type', sectionType)
+      .eq('active', true)
+      .order('sort_order');
+
+    if (error) {
+      toast.error(`Failed to load template: ${error.message}`);
+      return;
+    }
+
+    if (!templateItems?.length) {
+      toast.error(`No ${sectionType} items found in this template`);
+      return;
+    }
+
+    const tags = buildTemplateTags();
+    const calculatedItems: LineItem[] = templateItems.map((item: any) => {
+      const qty = evaluateQtyFormula(item.qty_formula, tags);
+      const unitCost = Number(item.unit_cost) || 0;
+      return {
+        id: crypto.randomUUID(),
+        item_name: item.item_name,
+        qty,
+        unit: item.unit || 'ea',
+        unit_cost: unitCost,
+        line_total: qty * unitCost,
+        notes: item.description || ''
+      };
+    });
+
+    setLineItems(calculatedItems);
+    saveLineItemsMutation.mutate({ items: calculatedItems, templateId });
+    toast.success(`${template.name} applied with ${calculatedItems.length} ${sectionType} items`);
   };
 
   // Update a line item
@@ -299,7 +388,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
   // Create estimate if none exists, then add item
   const handleCreateEstimateAndAddItem = async () => {
-    if (!profile?.tenant_id) {
+    if (!effectiveTenantId) {
       toast.error('Unable to determine tenant');
       return;
     }
@@ -311,7 +400,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .from('enhanced_estimates')
         .insert({
           pipeline_entry_id: pipelineEntryId,
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           status: 'draft',
           line_items: { materials: [], labor: [] }
         } as any)
