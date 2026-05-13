@@ -986,6 +986,7 @@ async function processJob(input: any) {
     let roofMaskForContour: any = null;
     let selectedMaskContourGeo: Array<[number, number]> | null = null;
     let maskContourDiagnostics: any = null;
+    let maskContourFailed = true;
     if (GOOGLE_SOLAR_API_KEY) {
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
@@ -1010,6 +1011,7 @@ async function processJob(input: any) {
             // Only boost if not rejected — oversized masks must NOT auto-win
             maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.25));
             candidates.push(maskCand);
+            maskContourFailed = Boolean(maskCand.rejected_reason);
             if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
           }
         }
