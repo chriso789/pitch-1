@@ -321,7 +321,7 @@ const Pipeline = () => {
       
       // Note: salesReps and locations are loaded separately above, not derived from pipeline data
 
-      // Batch-fetch selling prices from enhanced_estimates by pipeline_entry_id (not metadata)
+      // Batch-fetch selling prices from enhanced_estimates by pipeline_entry_id
       const entryIds = filteredData.map(entry => entry.id).filter(Boolean);
       
       const estimatePriceMap = new Map<string, number>();
@@ -331,25 +331,42 @@ const Pipeline = () => {
           .select('id, pipeline_entry_id, selling_price')
           .in('pipeline_entry_id', entryIds);
         
-        // Group by pipeline_entry_id, pick selected or highest-priced
+        // Group by pipeline_entry_id
         const grouped = new Map<string, any[]>();
         (estimates || []).forEach((est: any) => {
           if (est.pipeline_entry_id) {
             const list = grouped.get(est.pipeline_entry_id) || [];
-            list.push(est);
+            list.push({ ...est, selling_price: Number(est.selling_price) || 0 });
             grouped.set(est.pipeline_entry_id, list);
           }
         });
+        // Resolve per entry: selected estimate (if >0) → highest non-zero → 0 (estimated_value fallback applied below)
         grouped.forEach((list, pipelineEntryId) => {
           const entry = filteredData.find(e => e.id === pipelineEntryId);
-          const selectedId = (entry?.metadata as any)?.selected_estimate_id ?? (entry?.metadata as any)?.enhanced_estimate_id;
-          const picked = list.find(e => e.id === selectedId)
-            || list.sort((a, b) => Number(b.selling_price) - Number(a.selling_price))[0];
-          if (picked) {
-            estimatePriceMap.set(pipelineEntryId, Number(picked.selling_price) || 0);
+          const meta = (entry?.metadata as any) || {};
+          const selectedId = meta.selected_estimate_id ?? meta.enhanced_estimate_id;
+          let value = 0;
+          if (selectedId) {
+            const sel = list.find(e => e.id === selectedId);
+            if (sel && sel.selling_price > 0) value = sel.selling_price;
           }
+          if (!value) {
+            const best = list
+              .filter(e => e.selling_price > 0)
+              .sort((a, b) => b.selling_price - a.selling_price)[0];
+            if (best) value = best.selling_price;
+          }
+          if (value > 0) estimatePriceMap.set(pipelineEntryId, value);
         });
       }
+
+      // Resolve a single value per entry: estimate price → estimated_value fallback
+      const entryValue = (entry: any): number => {
+        const fromEstimate = estimatePriceMap.get(entry.id) || 0;
+        if (fromEstimate > 0) return fromEstimate;
+        const ev = Number(entry.estimated_value) || 0;
+        return ev > 0 ? ev : 0;
+      };
 
       // Group data by status and calculate stage totals
       const groupedData = {};
@@ -360,11 +377,8 @@ const Pipeline = () => {
         const stageEntries = filterBySearch(filteredData.filter(entry => entry.status === stage.key));
         groupedData[stage.key] = stageEntries;
         
-        // Calculate total estimate value for this stage using estimate prices
-        const stageTotal = stageEntries.reduce((sum, entry) => {
-          return sum + (estimatePriceMap.get(entry.id) || 0);
-        }, 0);
-        
+        // Calculate total estimate value for this stage
+        const stageTotal = stageEntries.reduce((sum, entry) => sum + entryValue(entry), 0);
         totals[stage.key] = stageTotal;
       });
 
@@ -375,8 +389,7 @@ const Pipeline = () => {
         const firstKey = jobStages[0].key;
         const orphanedFiltered = filterBySearch(orphaned);
         groupedData[firstKey] = [...(groupedData[firstKey] || []), ...orphanedFiltered];
-        // Add orphaned values to first stage total
-        const orphanedTotal = orphanedFiltered.reduce((sum, entry) => sum + (estimatePriceMap.get(entry.id) || 0), 0);
+        const orphanedTotal = orphanedFiltered.reduce((sum, entry) => sum + entryValue(entry), 0);
         totals[firstKey] = (totals[firstKey] || 0) + orphanedTotal;
       }
 
