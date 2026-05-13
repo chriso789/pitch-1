@@ -572,7 +572,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       if (!priceListId) {
         const { data: created, error: plErr } = await supabase
           .from("supplier_price_lists")
-          .insert({ company_id: tenantId, supplier_id: sid, list_name: "Cataloged from invoices", status: "active" })
+          .insert({ company_id: tenantId, supplier_id: sid, list_name: "Cataloged from invoices", status: "active", effective_start_date: new Date().toISOString().slice(0, 10) })
           .select("id")
           .single();
         if (plErr) throw plErr;
