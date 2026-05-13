@@ -13,6 +13,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useContactStatuses, type ContactStatus } from '@/hooks/useContactStatuses';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { ContactKanbanColumn } from './ContactKanbanColumn';
 import { ContactKanbanCard } from './ContactKanbanCard';
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   onEmail,
 }) => {
   const { statuses, isLoading: statusesLoading } = useContactStatuses();
+  const effectiveTenantId = useEffectiveTenantId();
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -115,7 +117,14 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
     if (!over) return;
 
     const contactId = active.id as string;
-    const newStatus = over.id as string;
+    const overId = over.id as string;
+    const statusKeys = new Set(statuses.map(status => status.key));
+    const targetContact = contacts.find(c => c.id === overId);
+    const newStatus = statusKeys.has(overId)
+      ? overId
+      : targetContact?.qualification_status || over.data.current?.sortable?.containerId || null;
+
+    if (!newStatus || !statusKeys.has(newStatus)) return;
 
     // Find the contact
     const contact = contacts.find(c => c.id === contactId);
@@ -128,6 +137,11 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
     // Don't allow dropping to uncategorized
     if (newStatus === 'uncategorized') {
       toast.error("Cannot move to uncategorized");
+      return;
+    }
+
+    if (!effectiveTenantId) {
+      toast.error('Unable to save status without an active company');
       return;
     }
 
@@ -145,7 +159,10 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
           qualification_status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('id', contactId);
+        .eq('id', contactId)
+        .eq('tenant_id', effectiveTenantId)
+        .select('id')
+        .single();
 
       if (error) throw error;
 
@@ -160,7 +177,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         onContactStatusChangedLocal(contactId, previousStatus === 'uncategorized' ? null : previousStatus);
       }
     }
-  }, [contacts, statuses, onContactStatusChangedLocal]);
+  }, [contacts, statuses, effectiveTenantId, onContactStatusChangedLocal]);
 
   if (statusesLoading) {
     return (
