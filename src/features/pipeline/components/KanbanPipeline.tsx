@@ -34,6 +34,7 @@ const KanbanPipeline = () => {
     entries, 
     groupedData, 
     stages, // Dynamic stages from database
+    stageTotals,
     isLoading, 
     userCanDelete,
     updateEntryStatus,
@@ -256,7 +257,7 @@ const KanbanPipeline = () => {
                     color={stage.color}
                     icon={DefaultStageIcon}
                     count={stageEntries.length}
-                    total={formatCurrency(0)}
+                    total={formatCurrency(stageTotals[stage.key] || 0)}
                     items={stageEntries.map(entry => entry.id)}
                   >
                     {stageEntries.map((entry) => (
