@@ -159,7 +159,7 @@ export function QXOBrowser({ tenantId }: Props) {
   useEffect(() => {
     loadOrders(1);
     loadInvoices(1);
-    loadQuotes();
+    loadQuotes(1, '', quoteType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
