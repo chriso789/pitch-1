@@ -489,7 +489,7 @@ const ContactProfile = () => {
             </TabsTrigger>
             <TabsTrigger value="notes" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <MessageSquare className="h-4 w-4" />
-              <span>Notes</span>
+              <span>Notes ({notesCount})</span>
             </TabsTrigger>
             <TabsTrigger value="communication" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <Phone className="h-4 w-4" />
