@@ -164,8 +164,11 @@ Deno.serve(async (req: Request) => {
       if (!matchedItem) {
         discrepancyType = priceListId ? "unmatched_item" : "missing_price_list";
         unmatched++;
-      } else if (matchedItem && line.unit_of_measure && matchedItem.unit_of_measure &&
-                 line.unit_of_measure.toUpperCase() !== matchedItem.unit_of_measure.toUpperCase()) {
+      } else if (
+        matchedItem && line.unit_of_measure && matchedItem.unit_of_measure &&
+        line.unit_of_measure.toUpperCase() !== matchedItem.unit_of_measure.toUpperCase() &&
+        !uomConverted
+      ) {
         discrepancyType = "uom_mismatch";
         unmatched++;
       } else if (totalDiff != null && totalDiff > 0.01) {
