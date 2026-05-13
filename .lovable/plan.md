@@ -1,45 +1,71 @@
-## Problem
+## QXO/Beacon AR Sync — Lean v1
 
-On `/commission-report`, the **Contract** column shows `$0.00` for every project, while **Gross Profit** correctly shows large negatives (e.g. `-$35,712.62`). The negatives = invoiced costs with no revenue offset, which proves the contract value isn't being read.
+Build an AR/Financials layer on top of the existing QXO auth so the Connection Details card actually populates and users can see balance, credits, and invoices in near real-time.
 
-## Root cause
+### Scope (Lean v1)
+- Profile bootstrap (account_id, profile_id, default_branch)
+- Account balance + available credit (daily snapshot)
+- Open + Paid invoices (full history pull on first sync, deltas after)
+- Basic AR dashboard UI under the QXO settings tab
+- Manual "Refresh now" button + 15-min cron
 
-`src/pages/CommissionReport.tsx` reads from the wrong table:
+Explicitly out of scope for v1: aging buckets, statements, PO matching, Material Audit tie-in, webhooks. (Easy to add later — schema will support them.)
 
-```ts
-// line 210-214
-const { data: estimates } = await supabase
-  .from('estimates')                          // ← legacy/empty table
-  .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount, created_at')
-  .in('pipeline_entry_id', entryIds)
-  .order('created_at', { ascending: false });
+### Database
+
+New tables (all tenant-scoped, RLS via `useEffectiveTenantId` pattern):
+
+- `qxo_account_profile` — one row per tenant: `account_id`, `profile_id`, `default_branch`, `company_name`, `last_synced_at`
+- `qxo_balance_snapshots` — daily snapshot: `tenant_id`, `balance`, `available_credit`, `currency`, `snapshot_date`, `raw_payload jsonb`
+- `qxo_invoices` — `tenant_id`, `qxo_invoice_id` (unique per tenant), `invoice_number`, `po_number`, `branch`, `status` (open/paid/partial/credit), `issued_date`, `due_date`, `amount`, `balance`, `job_id` (nullable, matched on PO), `raw_payload jsonb`, `last_synced_at`
+- `qxo_sync_runs` — audit log: `tenant_id`, `kind` (profile/balance/invoices), `started_at`, `finished_at`, `status`, `records_upserted`, `error`
+
+RLS: tenant-scoped read; writes only via service role from edge functions.
+
+### Edge functions
+
+- `qxo-sync-profile` — calls Beacon `/profile` + `/accounts`, upserts `qxo_account_profile`. Triggered on connect + manual refresh.
+- `qxo-sync-balance` — calls `/account/balance` + `/account/credits`, inserts daily snapshot (one per day, upsert on date).
+- `qxo-sync-invoices` — paginated pull of invoices; first run = full history, subsequent = `modified_since` delta. Upsert by `qxo_invoice_id`.
+- `qxo-sync-orchestrator` — called by cron + manual refresh; runs all three in sequence per tenant with active QXO connection.
+
+All reuse the existing QXO session-token logic from `qxo-api-proxy`.
+
+### Cron
+
+`pg_cron` job every 15 minutes invoking `qxo-sync-orchestrator` for all tenants with a valid QXO connection. Per-tenant rate limit (skip if last successful run < 10 min ago) to avoid hammering Beacon.
+
+### UI (in `QXOConnectionSettings.tsx`)
+
+Add three sections below the existing Connection Details card:
+
+1. **Connection Details card** — now actually populated (Account ID, Profile ID, Default Branch from `qxo_account_profile`)
+2. **Balance card** — current balance, available credit, "as of" timestamp, Refresh button
+3. **Invoices table** — searchable, filter tabs (All / Open / Paid / Credit), columns: Invoice #, PO #, Branch, Issued, Due, Amount, Balance, Status. Click row → drawer with raw line items from `raw_payload`.
+
+Refresh button calls `qxo-sync-orchestrator` and toasts progress; table re-fetches on success.
+
+### Sequence
+
+```text
+Connect → qxo-sync-profile → populates Connection Details
+       ↓
+   First full sync (balance + invoices)
+       ↓
+   Cron every 15 min → delta sync
+       ↓
+   Manual Refresh button → on-demand sync
 ```
 
-DB confirms: `estimates` has **0 rows**; all live data is in `enhanced_estimates` (102 rows with `selling_price > 0`). Every other surface in the app (Pipeline, MyMoney, ProfitCenter) reads `enhanced_estimates`.
+### Technical notes
+- Multi-tenancy: all queries `.eq('tenant_id', effectiveTenantId)`; edge functions resolve tenant from connection record.
+- All Beacon calls go through existing `qxo-api-proxy` pattern for session token reuse + refresh.
+- `raw_payload jsonb` on invoices/balance keeps full Beacon response for future features (aging, PO match) without schema change.
+- Indexes: `qxo_invoices(tenant_id, status)`, `qxo_invoices(tenant_id, due_date)`, `qxo_invoices(tenant_id, po_number)`.
 
-Because `est?.selling_price` resolves to `undefined`, `contractValue = 0`, and the commission formula falls through with only invoiced costs → negative gross profit, $0 contract.
+### Deliverables
+- 1 migration (4 tables + RLS + indexes + cron schedule)
+- 4 edge functions
+- 1 updated settings component (`QXOConnectionSettings.tsx`) + 1 new invoices table component
 
-A second smaller bug: line 302 reads `est?.sales_tax_amount`, but that column is never included in the `select(...)`, so pre-tax math is wrong even when an estimate is found.
-
-## Fix
-
-File: `src/pages/CommissionReport.tsx`
-
-1. Change `.from('estimates')` (line 211) to `.from('enhanced_estimates')`.
-2. Add `sales_tax_amount` to the select list.
-3. Apply the same priority rule already used in `usePipelineData` so a draft estimate with `selling_price = 0` doesn't beat a sibling with a real price:
-   - prefer `metadata.selected_estimate_id` / `enhanced_estimate_id` **only when its `selling_price > 0`**,
-   - else fall back to the highest non-zero `selling_price` for that entry.
-4. Leave the explicit "no fallback to `pipeline_entries.estimated_value`" comment in place — that intent (only count real contracts) is correct.
-
-## Verification
-
-1. Reload `/commission-report` for Chris O'Brien — Contract column shows the saved estimate selling price for each project (e.g. Brenda Herzel, Barb Drummond, Ron Gagne should now show their actual contracts).
-2. Gross Profit recomputes against real revenue (no longer all-negative).
-3. Profit Split commission column updates accordingly.
-4. Spot-check one project that has approved change orders — Contract = `enhanced_estimates.selling_price` + sum of approved CO `cost_impact`.
-5. Projects with no `enhanced_estimates` row still show `$0` Contract (intentional — no signed contract yet).
-
-## Out of scope
-
-No schema changes. No edits to ProfitCenter, MyMoney, or other surfaces — those already read `enhanced_estimates` correctly.
+Approve and I'll build it.
