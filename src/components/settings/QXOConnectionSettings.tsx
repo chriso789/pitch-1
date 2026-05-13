@@ -78,9 +78,12 @@ export function QXOConnectionSettings() {
         tenant_id: activeCompanyId,
         username,
         password,
+        client_id: clientId || null,
         site_id: siteId,
         environment,
         connection_status: 'disconnected',
+        access_token: null,
+        token_expires_at: null,
       };
       if (connection) {
         const { error } = await (supabase as any)
