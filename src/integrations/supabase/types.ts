@@ -48202,6 +48202,10 @@ export type Database = {
         }
         Returns: string
       }
+      recalculate_change_order_totals: {
+        Args: { _co_id: string }
+        Returns: undefined
+      }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
         Returns: boolean
