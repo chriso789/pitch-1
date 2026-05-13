@@ -223,10 +223,21 @@ export function QXOConnectionSettings() {
               <Label>Password</Label>
               <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>API Client ID</Label>
+              <Input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Provided by QXO/Beacon partner integrations"
+              />
+              <p className="text-xs text-muted-foreground">
+                Required to obtain Bearer access tokens for v2 endpoints (orders, quotes, invoices).
+              </p>
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Don't have API access? Contact your QXO/Beacon partner integrations rep to get your credentials provisioned.
+            Don't have API access? Contact your QXO/Beacon partner integrations rep to get your credentials and client_id provisioned.
           </p>
 
           <div className="flex flex-wrap gap-2 pt-2">
