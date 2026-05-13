@@ -423,7 +423,7 @@ Deno.serve(async (req: Request) => {
           supplier_id: supplier.id,
           price_list_id: priceListId,
           price_list_item_id: matchedItem?.id || null,
-          match_type: matchType,
+          match_type: usedDerived && matchedItem ? `derived_${matchType}` : matchType,
           match_confidence: matchConfidence || null,
           invoice_description: line.description,
           agreed_description: matchedItem?.item_description || null,
