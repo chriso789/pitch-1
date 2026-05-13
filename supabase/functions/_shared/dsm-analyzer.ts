@@ -946,6 +946,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const areaRatio = maskTotal > 0 ? contourAreaPx / maskTotal : 1;
 
   _lastContourDiagnostics = {
+    merge_strategy: "primary_component_distance_threshold_v2",
     components_total: components.length,
     viable_components: viable.length,
     merged_components: toMerge.length,
