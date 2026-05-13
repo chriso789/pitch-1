@@ -589,6 +589,11 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   }, [priceItems, search]);
 
   const [cataloging, setCataloging] = React.useState(false);
+  const [catalogName, setCatalogName] = React.useState("");
+
+  React.useEffect(() => {
+    setCatalogName(mapLine?.invoice_description || "");
+  }, [mapLine?.id, mapLine?.invoice_description]);
 
   const catalogNewItem = async () => {
     if (!mapLine || !tenantId) return;
@@ -596,6 +601,8 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
     if (!sid) { toast.error("No supplier on this line"); return; }
     const chargedUnit = Number(mapLine.charged_unit_price || 0);
     if (!chargedUnit) { toast.error("Cannot catalog – charged unit price is 0"); return; }
+    const desc = (catalogName || "").trim();
+    if (!desc) { toast.error("Please enter a name for the new catalog item"); return; }
     setCataloging(true);
     try {
       // Find or create an active price list for this supplier
