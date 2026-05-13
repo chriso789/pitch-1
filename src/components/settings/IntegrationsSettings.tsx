@@ -30,6 +30,10 @@ export const IntegrationsSettings = () => {
             <Truck className="h-4 w-4" />
             SRS Distribution
           </TabsTrigger>
+          <TabsTrigger value="qxo" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            QXO / Beacon
+          </TabsTrigger>
           <TabsTrigger value="api-keys" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
             API Keys
