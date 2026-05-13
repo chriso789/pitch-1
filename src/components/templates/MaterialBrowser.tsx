@@ -164,10 +164,10 @@ export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                      <span className="font-mono">{material.code}</span>
+                    <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground min-w-0">
+                      <span className="font-mono truncate min-w-0">{material.code}</span>
                       {material.category_name && (
-                        <Badge variant="outline" className="text-xs">{material.category_name}</Badge>
+                        <Badge variant="outline" className="text-xs shrink-0">{material.category_name}</Badge>
                       )}
                     </div>
                   </div>
