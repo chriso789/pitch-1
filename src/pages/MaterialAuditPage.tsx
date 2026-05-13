@@ -562,10 +562,30 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
   const filteredItems = React.useMemo(() => {
     if (!search) return (priceItems as any[]).slice(0, 200);
-    const q = search.toLowerCase();
-    return (priceItems as any[]).filter((p) =>
-      (p.item_description || "").toLowerCase().includes(q) || (p.supplier_sku || "").toLowerCase().includes(q)
-    ).slice(0, 200);
+    // Broad fuzzy: split query into tokens, normalize (strip punctuation/quotes/units),
+    // and require each token to appear in any searchable field. Also score by hits
+    // so closer matches surface first.
+    const normalize = (s: string) =>
+      String(s || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const tokens = normalize(search).split(" ").filter((t) => t.length >= 2);
+    if (tokens.length === 0) return (priceItems as any[]).slice(0, 200);
+    const scored = (priceItems as any[])
+      .map((p) => {
+        const haystack = normalize(
+          [p.item_description, p.supplier_sku, p.manufacturer_sku, p.brand, p.category, p.unit_of_measure]
+            .filter(Boolean)
+            .join(" ")
+        );
+        const hits = tokens.filter((t) => haystack.includes(t)).length;
+        return { p, hits };
+      })
+      .filter((x) => x.hits > 0)
+      .sort((a, b) => b.hits - a.hits);
+    return scored.slice(0, 200).map((x) => x.p);
   }, [priceItems, search]);
 
   const [cataloging, setCataloging] = React.useState(false);
