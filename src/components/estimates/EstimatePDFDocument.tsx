@@ -280,7 +280,9 @@ const PageHeader: React.FC<{
   dateStr: string;
   opts: PDFComponentOptions;
   isFirstPage?: boolean;
-}> = ({ companyLogo, companyInfo, companyName, estimateNumber, dateStr, opts, isFirstPage = false }) => {
+  customerName?: string;
+  customerAddress?: string;
+}> = ({ companyLogo, companyInfo, companyName, estimateNumber, dateStr, opts, isFirstPage = false, customerName, customerAddress }) => {
   const companyAddressParts = [
     companyInfo?.address_street,
     [companyInfo?.address_city, companyInfo?.address_state].filter(Boolean).join(', '),
