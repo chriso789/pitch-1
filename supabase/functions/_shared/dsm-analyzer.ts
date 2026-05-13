@@ -948,7 +948,9 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   _lastContourDiagnostics = {
     components_total: components.length,
     viable_components: viable.length,
-    merged_components: viable.length,
+    merged_components: toMerge.length,
+    merge_dist_threshold_px: Number(mergeDistThreshold.toFixed(1)),
+    excluded_components: viable.length - toMerge.length,
     merged_pixel_count: mergedPixelCount,
     convex_hull_vertices: hullPoints.length,
     selected_component_id: bestComp.id,
