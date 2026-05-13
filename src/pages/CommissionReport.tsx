@@ -257,6 +257,35 @@ export default function CommissionReport() {
         .eq('tenant_id', currentUser.tenant_id);
       const stageMap = new Map((stages || []).map(s => [s.key, s.name]));
 
+      // Map pipeline entries -> projects -> approved change orders, so contract value
+      // includes approved CO cost_impact (matches Profit Center / "My Money" math).
+      const { data: projectRows } = await supabase
+        .from('projects')
+        .select('id, pipeline_entry_id')
+        .in('pipeline_entry_id', entryIds.length > 0 ? entryIds : ['none']);
+      const entryByProject = new Map<string, string>();
+      const projectIds: string[] = [];
+      (projectRows || []).forEach((p: any) => {
+        if (p.id && p.pipeline_entry_id) {
+          entryByProject.set(p.id, p.pipeline_entry_id);
+          projectIds.push(p.id);
+        }
+      });
+
+      const changeOrderByEntry = new Map<string, number>();
+      if (projectIds.length > 0) {
+        const { data: coRows } = await supabase
+          .from('change_orders')
+          .select('project_id, cost_impact, status')
+          .in('project_id', projectIds)
+          .in('status', ['approved', 'completed']);
+        (coRows || []).forEach((co: any) => {
+          const eid = entryByProject.get(co.project_id);
+          if (!eid) return;
+          changeOrderByEntry.set(eid, (changeOrderByEntry.get(eid) || 0) + (Number(co.cost_impact) || 0));
+        });
+      }
+
       // Build computed commissions — same formula as ProfitCenterPanel
       return entries.map(entry => {
         const rep = entry.assigned_to ? repMap.get(entry.assigned_to) : null;
@@ -264,7 +293,12 @@ export default function CommissionReport() {
         const contact = entry.contacts as any;
         const inv = invoicesByEntry.get(entry.id) || { material: 0, labor: 0, other: 0 };
 
-        const contractValue = Number(est?.selling_price) || Number(entry.estimated_value) || 0;
+        // Contract value = active estimate's selling price + approved change orders.
+        // We deliberately do NOT fall back to pipeline_entries.estimated_value, which
+        // is just a pre-conversion cash-flow guess and not a real contract number.
+        const estimateSellingPrice = Number(est?.selling_price) || 0;
+        const approvedChangeOrders = changeOrderByEntry.get(entry.id) || 0;
+        const contractValue = estimateSellingPrice + approvedChangeOrders;
         const salesTaxAmount = Number(est?.sales_tax_amount) || 0;
         const preTaxSellingPrice = Math.max(0, contractValue - salesTaxAmount);
 
