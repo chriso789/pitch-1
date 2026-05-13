@@ -307,6 +307,18 @@ Deno.serve(async (req) => {
                   total_amount: {
                     type: "number",
                     description: "Grand total of the invoice in dollars (the final amount due)"
+                  },
+                  job_number: {
+                    type: "string",
+                    description: "Job number, PO number, or work order # tied to the customer's project (often labeled 'Job', 'Job #', 'PO', 'Job Name', 'Order #', 'CLJ', 'Reference')."
+                  },
+                  customer_name: {
+                    type: "string",
+                    description: "Homeowner / customer / job site contact name printed on the invoice (e.g. 'Bill To', 'Sold To', 'Job Name', 'Site Contact'). Prefer the homeowner over the contractor / company being billed."
+                  },
+                  service_address: {
+                    type: "string",
+                    description: "Job site / service / delivery address (NOT the billing address of the contractor). Look for 'Ship To', 'Job Site', 'Delivery Address', 'Service Address'. Return as a single-line full street address."
                   }
                 },
                 required: ["vendor_name", "total_amount"]
