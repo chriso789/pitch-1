@@ -50,16 +50,20 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Request new token
+      // Request new token (SRS expects form-urlencoded)
+      const formBody = new URLSearchParams({
+        client_id: connection.client_id,
+        client_secret: connection.client_secret,
+        grant_type: "client_credentials",
+        scope: "ALL",
+      });
       const tokenResp = await fetch(`${baseUrl}/authentication/token`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: connection.client_id,
-          client_secret: connection.client_secret,
-          grant_type: "client_credentials",
-          scope: "ALL",
-        }),
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: formBody.toString(),
       });
 
       if (!tokenResp.ok) {
