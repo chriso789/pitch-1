@@ -33281,6 +33281,91 @@ export type Database = {
           },
         ]
       }
+      referral_send_logs: {
+        Row: {
+          channel: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          recipient: string | null
+          referral_link_id: string | null
+          referrer_contact_id: string | null
+          sent_by: string | null
+          tenant_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          recipient?: string | null
+          referral_link_id?: string | null
+          referrer_contact_id?: string | null
+          sent_by?: string | null
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          recipient?: string | null
+          referral_link_id?: string | null
+          referrer_contact_id?: string | null
+          sent_by?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_send_logs_referral_link_id_fkey"
+            columns: ["referral_link_id"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          id: string
+          new_status: string
+          old_status: string | null
+          reason: string | null
+          referral_submission_id: string
+          tenant_id: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_status: string
+          old_status?: string | null
+          reason?: string | null
+          referral_submission_id: string
+          tenant_id: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_status?: string
+          old_status?: string | null
+          reason?: string | null
+          referral_submission_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_status_history_referral_submission_id_fkey"
+            columns: ["referral_submission_id"]
+            isOneToOne: false
+            referencedRelation: "referral_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       referral_submissions: {
         Row: {
           consent_to_contact: boolean
@@ -48586,6 +48671,10 @@ export type Database = {
           status: string
           tenant_id: string
         }[]
+      }
+      get_public_referral_reward_profile: {
+        Args: { _code: string }
+        Returns: Json
       }
       get_referrer_credit_balance: {
         Args: { _contact_id: string; _tenant_id: string }
