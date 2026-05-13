@@ -413,6 +413,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const tabCount = isProject ? 4 : 3;
 
   return (
+    <>
     <Card className={cn("border-primary/20", className)}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
