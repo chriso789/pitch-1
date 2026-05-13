@@ -1357,6 +1357,11 @@ export const EnhancedClientList = () => {
             <ContactKanbanBoard
               contacts={contacts}
               onContactUpdated={fetchData}
+              onContactStatusChangedLocal={(contactId, newStatus) => {
+                setContacts(prev => prev.map(c =>
+                  c.id === contactId ? { ...c, qualification_status: newStatus } : c
+                ));
+              }}
               onCall={(contact) => navigate(`/?section=dialer&contact=${contact.id}`)}
               onEmail={(contact) => setActiveEmailContact({
                 id: contact.id,
