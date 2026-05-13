@@ -50,25 +50,50 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Request new token. SRS SIPS docs require JSON for /authentication/token.
-      const tokenPayload = {
-        client_id: String(connection.client_id || "").trim(),
-        client_secret: String(connection.client_secret || "").trim(),
+      const clientId = String(connection.client_id || "").trim();
+      const clientSecret = String(connection.client_secret || "").trim();
+      if (!clientId || !clientSecret) {
+        throw new Error("Missing client_id or client_secret in saved SRS connection. Re-enter and save credentials.");
+      }
+
+      // SRS SIPS /authentication/token. Try JSON first, fall back to
+      // form-encoded if SRS rejects the JSON payload (some tenants/environments
+      // accept only application/x-www-form-urlencoded for the OAuth token call).
+      const jsonBody = JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
         grant_type: "client_credentials",
         scope: "ALL",
-      };
-      const tokenResp = await fetch(`${baseUrl}/authentication/token`, {
+      });
+      const formBody = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "client_credentials",
+        scope: "ALL",
+      }).toString();
+
+      let tokenResp = await fetch(`${baseUrl}/authentication/token`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(tokenPayload),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: jsonBody,
       });
 
       if (!tokenResp.ok) {
-        const errText = await tokenResp.text();
-        throw new Error(`Auth failed [${tokenResp.status}]: ${errText}. Confirm the selected environment matches these SRS credentials.`);
+        const firstErr = await tokenResp.text();
+        console.warn(`SRS token JSON attempt failed [${tokenResp.status}]: ${firstErr}. Retrying as form-encoded.`);
+        tokenResp = await fetch(`${baseUrl}/authentication/token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
+          body: formBody,
+        });
+
+        if (!tokenResp.ok) {
+          const errText = await tokenResp.text();
+          throw new Error(`Auth failed [${tokenResp.status}]: ${errText}. Confirm the selected environment matches these SRS credentials.`);
+        }
       }
 
       const tokenData = await tokenResp.json();
