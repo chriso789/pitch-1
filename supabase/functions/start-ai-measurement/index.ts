@@ -796,6 +796,12 @@ async function processJob(input: any) {
       };
     }
 
+    const isCenteredSolarBboxFallback = (cand: FootprintCandidate) =>
+      cand.source === "google_solar_bbox"
+      && cand.area_sqft >= 300
+      && cand.area_sqft <= RESIDENTIAL_MAX_SQFT
+      && cand.bbox_center_distance_from_geocode_px <= 200;
+
     // 1. Build OSM candidates (ALL nearby buildings, not just one).
     const candidates: FootprintCandidate[] = [];
     const projectionDiagnostics: Array<{ source: string; raw_centroid_geo: { lat: number; lng: number }; projected_centroid_px: { x: number; y: number }; on_canvas: boolean; bbox_px: any; geo_distance_m: number }> = [];
