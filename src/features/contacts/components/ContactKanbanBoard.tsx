@@ -55,8 +55,39 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   const effectiveTenantId = useEffectiveTenantId();
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [columnSorts, setColumnSorts] = useState<Record<string, ColumnSortKey>>({});
 
-  const sensors = useSensors(
+  const getSortKey = (columnId: string): ColumnSortKey =>
+    columnSorts[columnId] || 'newest';
+
+  const setColumnSort = (columnId: string, key: ColumnSortKey) =>
+    setColumnSorts((prev) => ({ ...prev, [columnId]: key }));
+
+  const sortColumnContacts = (list: Contact[], key: ColumnSortKey): Contact[] => {
+    const arr = [...list];
+    const nameOf = (c: Contact) =>
+      `${c.first_name || ''} ${c.last_name || ''}`.trim().toLowerCase();
+    const repNameOf = (c: Contact) =>
+      `${c.assigned_rep?.first_name || ''} ${c.assigned_rep?.last_name || ''}`.trim().toLowerCase();
+    const numOf = (c: Contact) => parseInt((c.contact_number || '').replace(/\D/g, '') || '0');
+    switch (key) {
+      case 'oldest':
+        return arr.sort((a, b) => numOf(a) - numOf(b));
+      case 'name_asc':
+        return arr.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+      case 'name_desc':
+        return arr.sort((a, b) => nameOf(b).localeCompare(nameOf(a)));
+      case 'score_desc':
+        return arr.sort((a, b) => (b.lead_score || 0) - (a.lead_score || 0));
+      case 'score_asc':
+        return arr.sort((a, b) => (a.lead_score || 0) - (b.lead_score || 0));
+      case 'rep_asc':
+        return arr.sort((a, b) => repNameOf(a).localeCompare(repNameOf(b)));
+      case 'newest':
+      default:
+        return arr.sort((a, b) => numOf(b) - numOf(a));
+    }
+  };
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
