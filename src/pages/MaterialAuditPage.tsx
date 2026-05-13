@@ -503,18 +503,67 @@ function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
 }
 
 // --- Audit Results Tab ---
-function AuditLineDetails({ auditId }: { auditId: string }) {
+function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; supplierId?: string | null; tenantId?: string | null }) {
+  const queryClient = useQueryClient();
+  const [mapLine, setMapLine] = useState<any>(null);
+  const [pickItem, setPickItem] = useState("");
+  const [search, setSearch] = useState("");
+
   const { data: lines = [], isLoading } = useQuery({
     queryKey: ["audit-lines", auditId],
     queryFn: async () => {
       const { data } = await supabase
         .from("material_invoice_audit_lines")
-        .select("id, invoice_description, agreed_description, quantity, charged_unit_price, agreed_unit_price, charged_extended_price, expected_extended_price, total_difference, discrepancy_type, match_type, supplier_sku, agreed_supplier_sku")
+        .select("id, supplier_id, invoice_description, agreed_description, quantity, charged_unit_price, agreed_unit_price, charged_extended_price, expected_extended_price, total_difference, discrepancy_type, match_type, supplier_sku, agreed_supplier_sku, price_list_item_id")
         .eq("audit_id", auditId)
         .order("total_difference", { ascending: false, nullsFirst: false });
       return data || [];
     },
   });
+
+  const { data: priceItems = [] } = useQuery({
+    queryKey: ["map-price-items", mapLine?.supplier_id || supplierId],
+    queryFn: async () => {
+      const sid = mapLine?.supplier_id || supplierId;
+      if (!sid) return [];
+      const { data } = await supabase
+        .from("supplier_price_list_items")
+        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
+        .eq("supplier_id", sid)
+        .order("item_description")
+        .limit(1000);
+      return data || [];
+    },
+    enabled: !!mapLine,
+  });
+
+  const filteredItems = React.useMemo(() => {
+    if (!search) return (priceItems as any[]).slice(0, 200);
+    const q = search.toLowerCase();
+    return (priceItems as any[]).filter((p) =>
+      (p.item_description || "").toLowerCase().includes(q) || (p.supplier_sku || "").toLowerCase().includes(q)
+    ).slice(0, 200);
+  }, [priceItems, search]);
+
+  const saveMapping = async () => {
+    if (!mapLine || !pickItem || !tenantId) return;
+    const sid = mapLine.supplier_id || supplierId;
+    const { error } = await supabase.from("material_item_match_rules").insert({
+      company_id: tenantId,
+      supplier_id: sid,
+      normalized_invoice_description: (mapLine.invoice_description || "").toLowerCase().trim(),
+      supplier_sku: mapLine.supplier_sku || null,
+      price_list_item_id: pickItem,
+      created_by: (await supabase.auth.getUser()).data?.user?.id,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Mapped. Re-run the audit to apply across invoices.");
+    setMapLine(null);
+    setPickItem("");
+    setSearch("");
+    queryClient.invalidateQueries({ queryKey: ["audit-lines", auditId] });
+    queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines"] });
+  };
 
   if (isLoading) return <div className="text-xs text-muted-foreground p-3">Loading lines...</div>;
   if (!lines.length) return <div className="text-xs text-muted-foreground p-3">No line items recorded.</div>;
@@ -531,6 +580,7 @@ function AuditLineDetails({ auditId }: { auditId: string }) {
             <TableHead className="text-xs text-right">Agreed</TableHead>
             <TableHead className="text-xs text-right">Difference</TableHead>
             <TableHead className="text-xs">Status</TableHead>
+            <TableHead className="text-xs"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -567,11 +617,55 @@ function AuditLineDetails({ auditId }: { auditId: string }) {
                   {isUnmatched && <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-600">Unmatched</Badge>}
                   {!isOver && !isUnder && !isUnmatched && <Badge variant="outline" className="text-[10px]">OK</Badge>}
                 </TableCell>
+                <TableCell>
+                  <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => { setMapLine(l); setPickItem(""); setSearch(""); }}>
+                    {isUnmatched ? "Map" : "Remap"}
+                  </Button>
+                </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
+
+      <Dialog open={!!mapLine} onOpenChange={(o) => { if (!o) { setMapLine(null); setPickItem(""); setSearch(""); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Map invoice line to price-list item</DialogTitle>
+          </DialogHeader>
+          {mapLine && (
+            <div className="space-y-3">
+              <div className="text-sm">
+                <div className="font-medium">{mapLine.invoice_description}</div>
+                <div className="text-xs text-muted-foreground">SKU: {mapLine.supplier_sku || "—"} · Charged ${Number(mapLine.charged_unit_price || 0).toFixed(2)}</div>
+              </div>
+              <Input placeholder="Search price list..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <div className="border rounded-md max-h-[320px] overflow-y-auto divide-y">
+                {filteredItems.map((p: any) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-accent ${pickItem === p.id ? "bg-accent" : ""}`}
+                    onClick={() => setPickItem(p.id)}
+                  >
+                    <div className="font-medium">{p.item_description}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      ${Number(p.agreed_unit_price || 0).toFixed(2)}/{p.unit_of_measure || "ea"} {p.supplier_sku ? `· ${p.supplier_sku}` : ""}
+                    </div>
+                  </button>
+                ))}
+                {filteredItems.length === 0 && (
+                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
+                <Button onClick={saveMapping} disabled={!pickItem}>Save mapping</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
