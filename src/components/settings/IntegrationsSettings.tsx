@@ -84,6 +84,10 @@ export const IntegrationsSettings = () => {
           <SRSConnectionSettings />
         </TabsContent>
 
+        <TabsContent value="qxo" className="space-y-6">
+          <QXOConnectionSettings />
+        </TabsContent>
+
         <TabsContent value="api-keys" className="space-y-6">
           <ApiKeyManager />
         </TabsContent>
