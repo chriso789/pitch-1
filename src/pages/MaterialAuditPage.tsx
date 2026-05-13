@@ -622,12 +622,12 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       supplier_id: sid,
       normalized_invoice_description: normalizeInvoiceText(mapLine.invoice_description),
       supplier_sku: mapLine.supplier_sku || null,
-      price_list_item_id: pickItem,
+      price_list_item_id: selectedItem.id,
       created_by: (await supabase.auth.getUser()).data?.user?.id,
     });
     if (error) { toast.error(error.message); return; }
     const { error: lineError } = await supabase.from("material_invoice_audit_lines").update({
-      price_list_item_id: pickItem,
+      price_list_item_id: selectedItem.id,
       match_type: "manual_rule",
       match_confidence: 1,
       agreed_description: selectedItem?.item_description || null,
@@ -674,6 +674,13 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
     queryClient.invalidateQueries({ queryKey: ["audit-lines", auditId] });
     queryClient.invalidateQueries({ queryKey: ["material-audits"] });
     queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines"] });
+  };
+
+  const saveMapping = async () => {
+    if (!pickItem) return;
+    const selectedItem = (priceItems as any[]).find((p) => p.id === pickItem);
+    if (!selectedItem) { toast.error("Pick a price-list item first"); return; }
+    await saveMappingWithItem(selectedItem);
   };
 
   if (isLoading) return <div className="text-xs text-muted-foreground p-3">Loading lines...</div>;
