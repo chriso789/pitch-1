@@ -307,6 +307,7 @@ Deno.serve(async (req) => {
           vendor_name: vendor_name || null,
           invoice_number: invoice_number || null,
           linked_invoice_id: invoice.id,
+          service_address: serviceAddress,
           uploaded_by: user.id,
         })
         .select()
