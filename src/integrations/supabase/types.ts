@@ -43955,6 +43955,84 @@ export type Database = {
           },
         ]
       }
+      vendor_quote_line_items: {
+        Row: {
+          created_at: string
+          description: string
+          document_id: string
+          id: string
+          line_number: number | null
+          line_total: number | null
+          manufacturer: string | null
+          match_status: string
+          matched_template_item_id: string | null
+          project_id: string | null
+          qty: number | null
+          raw_payload: Json | null
+          sku: string | null
+          template_id: string | null
+          tenant_id: string
+          unit: string | null
+          unit_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          document_id: string
+          id?: string
+          line_number?: number | null
+          line_total?: number | null
+          manufacturer?: string | null
+          match_status?: string
+          matched_template_item_id?: string | null
+          project_id?: string | null
+          qty?: number | null
+          raw_payload?: Json | null
+          sku?: string | null
+          template_id?: string | null
+          tenant_id: string
+          unit?: string | null
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          document_id?: string
+          id?: string
+          line_number?: number | null
+          line_total?: number | null
+          manufacturer?: string | null
+          match_status?: string
+          matched_template_item_id?: string | null
+          project_id?: string | null
+          qty?: number | null
+          raw_payload?: Json | null
+          sku?: string | null
+          template_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_quote_line_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_quote_line_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_report_diagram_pages: {
         Row: {
           company_id: string | null
