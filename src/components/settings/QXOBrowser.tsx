@@ -98,21 +98,39 @@ export function QXOBrowser({ tenantId }: Props) {
   };
 
   // ---------------- Quotes ----------------
-  const [quotes, setQuotes] = useState<any[]>([]);
+  type QuoteRow = {
+    quoteId: string;
+    quoteName?: string;
+    creationDate?: string;
+    expirationDate?: string;
+    status?: string;
+    displayStatus?: string;
+    createdBy?: string;
+  };
+  const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [quotesLoading, setQuotesLoading] = useState(false);
+  const [quotesPage, setQuotesPage] = useState(1);
+  const [quotesTotal, setQuotesTotal] = useState(0);
+  const [quotesSearch, setQuotesSearch] = useState('');
+  const [quoteType, setQuoteType] = useState<'draft' | 'inProcess' | 'received'>('received');
 
-  // Quote API has no list endpoint in spec; we surface cached rows from qxo_quotes.
-  const loadQuotes = async () => {
+  const loadQuotes = async (page = 1, term = '', type = quoteType) => {
     setQuotesLoading(true);
     try {
-      const { data, error } = await (supabase as any)
-        .from('qxo_quotes')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('last_synced_at', { ascending: false })
-        .limit(50);
+      const params: any = { tenant_id: tenantId, pageSize: 25, pageNo: page, quoteType: type };
+      if (term) {
+        params.filterBy = 'quoteName';
+        params.filter = term;
+      }
+      const { data, error } = await supabase.functions.invoke('qxo-quotes?action=list', { body: params });
       if (error) throw error;
-      setQuotes(data || []);
+      const bucket =
+        type === 'draft' ? data?.draftQuote :
+        type === 'inProcess' ? data?.inProcessQuote :
+        data?.receivedQuote;
+      setQuotes(bucket?.quoteList || []);
+      setQuotesTotal(bucket?.pagination?.totalCount || 0);
+      setQuotesPage(page);
     } catch (e: any) {
       toast({ title: 'Failed to load quotes', description: e.message, variant: 'destructive' });
     } finally {
@@ -129,7 +147,7 @@ export function QXOBrowser({ tenantId }: Props) {
       if (error) throw error;
       if (data?.quote) {
         toast({ title: 'Quote synced', description: `${data.quote.id} — ${data.quote.statusDescription || data.quote.status || ''}` });
-        loadQuotes();
+        loadQuotes(1, '', quoteType);
       } else {
         toast({ title: 'Quote not found', variant: 'destructive' });
       }
@@ -141,7 +159,7 @@ export function QXOBrowser({ tenantId }: Props) {
   useEffect(() => {
     loadOrders(1);
     loadInvoices(1);
-    loadQuotes();
+    loadQuotes(1, '', quoteType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
@@ -336,17 +354,34 @@ export function QXOBrowser({ tenantId }: Props) {
 
           {/* Quotes */}
           <TabsContent value="quotes" className="space-y-3">
+            <Tabs value={quoteType} onValueChange={(v) => { const t = v as typeof quoteType; setQuoteType(t); loadQuotes(1, quotesSearch, t); }}>
+              <TabsList>
+                <TabsTrigger value="draft">Draft</TabsTrigger>
+                <TabsTrigger value="inProcess">In Process</TabsTrigger>
+                <TabsTrigger value="received">Received</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Search by quote name"
+                  value={quotesSearch}
+                  onChange={(e) => setQuotesSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && loadQuotes(1, quotesSearch, quoteType)}
+                />
+              </div>
               <Input
-                placeholder="Quote ID to fetch from Beacon"
-                className="flex-1 min-w-[200px]"
+                placeholder="Quote ID → fetch detail"
+                className="min-w-[180px] max-w-[220px]"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     fetchQuoteById((e.target as HTMLInputElement).value.trim());
                   }
                 }}
               />
-              <Button variant="outline" onClick={loadQuotes} disabled={quotesLoading}>
+              <Button variant="outline" onClick={() => loadQuotes(1, quotesSearch, quoteType)} disabled={quotesLoading}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${quotesLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
@@ -356,32 +391,46 @@ export function QXOBrowser({ tenantId }: Props) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Quote ID</TableHead>
-                    <TableHead>Account</TableHead>
-                    <TableHead>Job</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Created</TableHead>
                     <TableHead>Expires</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created By</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {quotesLoading && (
-                    <TableRow><TableCell colSpan={6} className="text-center py-6"><Loader2 className="h-4 w-4 animate-spin inline" /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-6"><Loader2 className="h-4 w-4 animate-spin inline" /></TableCell></TableRow>
                   )}
                   {!quotesLoading && quotes.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No quotes synced. Enter a Quote ID above to fetch one from Beacon.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">No quotes found.</TableCell></TableRow>
                   )}
-                  {quotes.map((q: any) => (
-                    <TableRow key={q.beacon_quote_id}>
-                      <TableCell className="font-mono text-xs">{q.beacon_quote_id}</TableCell>
-                      <TableCell>{q.account_name || q.account_id || '—'}</TableCell>
-                      <TableCell>{q.job_name || q.job_number || '—'}</TableCell>
-                      <TableCell><Badge variant="outline">{q.status_description || q.status || '—'}</Badge></TableCell>
-                      <TableCell>{q.expires || '—'}</TableCell>
-                      <TableCell className="text-right">{fmtMoney(q.total)}</TableCell>
+                  {quotes.map((q) => (
+                    <TableRow key={q.quoteId}>
+                      <TableCell className="font-mono text-xs">{q.quoteId}</TableCell>
+                      <TableCell>{q.quoteName || '—'}</TableCell>
+                      <TableCell>{q.creationDate || '—'}</TableCell>
+                      <TableCell>{q.expirationDate || '—'}</TableCell>
+                      <TableCell><Badge variant="outline">{q.displayStatus || q.status || '—'}</Badge></TableCell>
+                      <TableCell>{q.createdBy || '—'}</TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" variant="ghost" onClick={() => fetchQuoteById(q.quoteId)}>
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </div>
+            <div className="flex justify-between items-center text-sm text-muted-foreground">
+              <span>{quotesTotal} total</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" disabled={quotesPage <= 1 || quotesLoading} onClick={() => loadQuotes(quotesPage - 1, quotesSearch, quoteType)}>Prev</Button>
+                <span className="self-center">Page {quotesPage}</span>
+                <Button size="sm" variant="outline" disabled={quotesLoading || quotes.length < 25} onClick={() => loadQuotes(quotesPage + 1, quotesSearch, quoteType)}>Next</Button>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
