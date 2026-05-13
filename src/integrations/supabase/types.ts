@@ -10074,6 +10074,69 @@ export type Database = {
           },
         ]
       }
+      derived_supplier_price_items: {
+        Row: {
+          avg_unit_price: number
+          created_at: string
+          highest_unit_price: number
+          id: string
+          item_description: string
+          last_built_at: string
+          last_seen_invoice_date: string | null
+          lowest_source_invoice_id: string | null
+          lowest_unit_price: number
+          normalized_description: string
+          sample_count: number
+          sku: string | null
+          source_invoice_count: number
+          supplier_id: string | null
+          supplier_name_canonical: string
+          supplier_name_display: string
+          tenant_id: string
+          unit_of_measure: string | null
+        }
+        Insert: {
+          avg_unit_price: number
+          created_at?: string
+          highest_unit_price: number
+          id?: string
+          item_description: string
+          last_built_at?: string
+          last_seen_invoice_date?: string | null
+          lowest_source_invoice_id?: string | null
+          lowest_unit_price: number
+          normalized_description: string
+          sample_count?: number
+          sku?: string | null
+          source_invoice_count?: number
+          supplier_id?: string | null
+          supplier_name_canonical: string
+          supplier_name_display: string
+          tenant_id: string
+          unit_of_measure?: string | null
+        }
+        Update: {
+          avg_unit_price?: number
+          created_at?: string
+          highest_unit_price?: number
+          id?: string
+          item_description?: string
+          last_built_at?: string
+          last_seen_invoice_date?: string | null
+          lowest_source_invoice_id?: string | null
+          lowest_unit_price?: number
+          normalized_description?: string
+          sample_count?: number
+          sku?: string | null
+          source_invoice_count?: number
+          supplier_id?: string | null
+          supplier_name_canonical?: string
+          supplier_name_display?: string
+          tenant_id?: string
+          unit_of_measure?: string | null
+        }
+        Relationships: []
+      }
       detected_edge_cases: {
         Row: {
           created_at: string | null
