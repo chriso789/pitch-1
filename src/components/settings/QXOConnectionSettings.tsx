@@ -59,6 +59,7 @@ export function QXOConnectionSettings() {
         setConnection(data);
         setUsername(data.username || '');
         setPassword(data.password || '');
+        setClientId(data.client_id || '');
         setSiteId(data.site_id || 'dealersChoice');
         setEnvironment(data.environment || 'staging');
       }
