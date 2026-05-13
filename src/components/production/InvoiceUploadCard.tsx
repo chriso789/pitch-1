@@ -253,21 +253,19 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       if (error) throw error;
 
-      const { data: urlData } = supabase.storage
-        .from('project-invoices')
-        .getPublicUrl(fileName);
-
-      setFormData(prev => ({
-        ...prev,
-        document_url: urlData.publicUrl,
-        document_name: file.name
-      }));
-
-      // For AI parsing we need a URL the edge function can actually fetch.
-      // The bucket is private, so create a short-lived signed URL.
+      // The bucket is private, so build a signed URL we can both preview now
+      // and (re-)sign on demand later via openInvoiceDocument().
       const { data: signed, error: signErr } = await supabase.storage
         .from('project-invoices')
         .createSignedUrl(fileName, 60 * 10); // 10 minutes
+
+      // Store the signed URL — openInvoiceDocument extracts the path and
+      // re-signs when the user clicks preview, so expiry is fine.
+      setFormData(prev => ({
+        ...prev,
+        document_url: signed?.signedUrl || '',
+        document_name: file.name
+      }));
 
       if (signErr || !signed?.signedUrl) {
         toast({

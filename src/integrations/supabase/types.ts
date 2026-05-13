@@ -38995,6 +38995,8 @@ export type Database = {
           access_token: string | null
           client_id: string | null
           client_secret: string | null
+          client_secret_last_four: string | null
+          client_secret_rotated_at: string | null
           connection_status: string
           created_at: string
           customer_code: string | null
@@ -39013,6 +39015,8 @@ export type Database = {
           access_token?: string | null
           client_id?: string | null
           client_secret?: string | null
+          client_secret_last_four?: string | null
+          client_secret_rotated_at?: string | null
           connection_status?: string
           created_at?: string
           customer_code?: string | null
@@ -39031,6 +39035,8 @@ export type Database = {
           access_token?: string | null
           client_id?: string | null
           client_secret?: string | null
+          client_secret_last_four?: string | null
+          client_secret_rotated_at?: string | null
           connection_status?: string
           created_at?: string
           customer_code?: string | null
@@ -39046,6 +39052,59 @@ export type Database = {
           valid_indicator?: boolean | null
         }
         Relationships: []
+      }
+      srs_credential_audit: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_user_id: string | null
+          connection_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          success: boolean
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_user_id?: string | null
+          connection_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          success?: boolean
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_user_id?: string | null
+          connection_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          success?: boolean
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_credential_audit_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "srs_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       srs_order_items: {
         Row: {
