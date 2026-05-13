@@ -3,7 +3,7 @@ import { GitHubConnectionGuide } from "./GitHubConnectionGuide";
 import { AIUsageDashboard } from "./AIUsageDashboard";
 import { TelnyxIntegrationPanel } from "./TelnyxIntegrationPanel";
 import { SessionActivityLog } from "./SessionActivityLog";
-import { MeasurementCorrectionsLog } from "./MeasurementCorrectionsLog";
+
 import { ApiKeyManager } from "./ApiKeyManager";
 import { WebsiteIntegration } from "./WebsiteIntegration";
 import { SLAPolicyManager } from "./SLAPolicyManager";
@@ -12,7 +12,7 @@ import { SmsAutoResponseConfig } from "./SmsAutoResponseConfig";
 import { MetaCAPISettings } from "./MetaCAPISettings";
 import { SRSConnectionSettings } from "./SRSConnectionSettings";
 import { QXOConnectionSettings } from "./QXOConnectionSettings";
-import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare, Facebook, Truck, Package } from "lucide-react";
+import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, MessageSquare, Facebook, Truck, Package } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -74,10 +74,6 @@ export const IntegrationsSettings = () => {
             <Shield className="h-4 w-4" />
             Session Activity
           </TabsTrigger>
-          <TabsTrigger value="measurement-corrections" className="flex items-center gap-2">
-            <Ruler className="h-4 w-4" />
-            AI Corrections
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="srs" className="space-y-6">
@@ -128,9 +124,6 @@ export const IntegrationsSettings = () => {
           <SessionActivityLog />
         </TabsContent>
 
-        <TabsContent value="measurement-corrections" className="space-y-6">
-          <MeasurementCorrectionsLog />
-        </TabsContent>
       </Tabs>
     </div>
   );
