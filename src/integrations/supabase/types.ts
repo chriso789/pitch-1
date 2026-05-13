@@ -42613,6 +42613,53 @@ export type Database = {
         }
         Relationships: []
       }
+      task_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_due_offset_days: number | null
+          description: string | null
+          id: string
+          priority: string
+          tenant_id: string
+          title: string
+          updated_at: string
+          use_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_due_offset_days?: number | null
+          description?: string | null
+          id?: string
+          priority?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+          use_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_due_offset_days?: number | null
+          description?: string | null
+          id?: string
+          priority?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          use_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           ai_context: Json | null
