@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, XCircle, DollarSign, TrendingUp, Copy, Package } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
+import { BulkInvoiceImportDialog } from "@/components/materials/BulkInvoiceImportDialog";
 
 // Canonicalize vendor names so aliases (SRS / SRS Building Products / Suncoast Roofers Supply,
 // ABC / ABC Supply, etc.) merge into a single bucket across charts and tables.
