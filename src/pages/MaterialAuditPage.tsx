@@ -624,7 +624,6 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
         if (plErr) throw plErr;
         priceListId = created.id;
       }
-      const desc = mapLine.invoice_description || "Untitled item";
       const { data: newItem, error: itemErr } = await supabase
         .from("supplier_price_list_items")
         .insert({
