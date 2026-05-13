@@ -724,10 +724,30 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   );
 }
 
+type SkippedAuditInvoice = {
+  invoiceId: string;
+  invoiceNumber?: string | null;
+  vendorName?: string | null;
+  documentName?: string | null;
+  projectId?: string | null;
+  pipelineEntryId?: string | null;
+  jobLabel?: string | null;
+  reason: string;
+};
+
+function getInvoiceJobLabel(inv: any): string {
+  const pe = inv?.pipeline_entries;
+  const contact = pe?.contacts;
+  const contactName = contact ? `${contact.first_name || ""} ${contact.last_name || ""}`.trim() : "";
+  const project = inv?.projects;
+  const projectNumber = project?.project_number || (project?.job_number != null ? `Job ${project.job_number}` : "");
+  return pe?.lead_name || project?.name || projectNumber || contactName || "—";
+}
+
 function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, materialInvoices }: any) {
   const [running, setRunning] = React.useState(false);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
-  const [skipped, setSkipped] = React.useState<Array<{ invoiceId: string; invoiceNumber?: string | null; vendorName?: string | null; documentName?: string | null; reason: string }>>([]);
+  const [skipped, setSkipped] = React.useState<SkippedAuditInvoice[]>([]);
   const toggle = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -793,9 +813,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                 const matchPct = a.total_invoice_lines > 0 ? Math.round((a.matched_lines / a.total_invoice_lines) * 100) : 0;
                 const supplierName = a.supplier?.supplier_name || a.invoice?.vendor_name || "—";
                 const invoiceNumber = a.invoice?.invoice_number || "—";
-                const pe = a.invoice?.pipeline_entries;
-                const contact = pe?.contacts;
-                const jobLabel = pe?.lead_name || (contact ? `${contact.first_name || ""} ${contact.last_name || ""}`.trim() : "") || "—";
+                const jobLabel = getInvoiceJobLabel(a.invoice);
                 const isOpen = expanded.has(a.id);
                 return (
                   <React.Fragment key={a.id}>
@@ -849,6 +867,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                 <TableRow>
                   <TableHead>Vendor</TableHead>
                   <TableHead>Invoice #</TableHead>
+                  <TableHead>Job / Lead</TableHead>
                   <TableHead>Reason</TableHead>
                 </TableRow>
               </TableHeader>
@@ -859,6 +878,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                     <TableRow key={s.invoiceId}>
                       <TableCell>{s.vendorName || inv?.vendor_name || "—"}</TableCell>
                       <TableCell>{s.invoiceNumber || inv?.invoice_number || s.documentName || "—"}</TableCell>
+                      <TableCell>{s.jobLabel || getInvoiceJobLabel(inv)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{s.reason}</TableCell>
                     </TableRow>
                   );
