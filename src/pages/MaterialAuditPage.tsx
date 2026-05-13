@@ -16,6 +16,37 @@ import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, X
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
+// Canonicalize vendor names so aliases (SRS / SRS Building Products / Suncoast Roofers Supply,
+// ABC / ABC Supply, etc.) merge into a single bucket across charts and tables.
+export function canonicalizeVendorName(raw: string | null | undefined): { key: string; display: string } {
+  const v = (raw || "").trim();
+  if (!v) return { key: "__unknown__", display: "Unknown vendor" };
+  if (/permit|county|township|\btwp\b|city of|riviera beach|ridley|planning,? zoning|zoning ?& ?building/i.test(v))
+    return { key: "__permits__", display: "Permits (city / county / township)" };
+  if (/dump|dumpster/i.test(v))
+    return { key: "__dumpfees__", display: "Dump / Dumpster Fees" };
+  if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
+  if (/^srs\b|srs building|suncoast roofers/i.test(v))
+    return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
+  if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
+  if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
+  if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
+  if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
+  if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
+  return { key: v.toLowerCase(), display: v };
+}
+
+// A vendor is treated as a labor crew / subcontractor (not a material supplier) when
+// (a) any of its invoices is typed 'labor', or (b) the name reads like a service company.
+export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?: string[] }): boolean {
+  if (supplier.invoice_types?.includes("labor")) return true;
+  const n = String(supplier.supplier_name || "").toLowerCase();
+  if (!n) return false;
+  if (n.startsWith("permits") || n.includes("dump")) return false;
+  return /\b(roofing|construction|flooring|services?|contractors?|installer|installation|labor|sub)\b/.test(n);
+}
+
 // --- Summary Cards ---
 function SummaryCards({ pricebookGroups, totalPricebookItems, materialInvoices, totalInvoiceAmount, unmatchedLines }: any) {
   return (
@@ -143,6 +174,14 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
     () => invoiceSuppliers.filter((s: any) => !matchesStandardized(s.supplier_name)),
     [invoiceSuppliers, matchesStandardized]
   );
+  const invoiceOnlyMaterialSuppliers = React.useMemo(
+    () => invoiceOnlySuppliers.filter((s: any) => !isCrewVendor(s)),
+    [invoiceOnlySuppliers]
+  );
+  const crewSuppliers = React.useMemo(
+    () => invoiceOnlySuppliers.filter((s: any) => isCrewVendor(s)),
+    [invoiceOnlySuppliers]
+  );
   return (
     <TabsContent value="price-lists">
       <Card>
@@ -215,7 +254,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableCell>
                 </TableRow>
               ))}
-              {invoiceOnlySuppliers.map((s: any) => {
+              {invoiceOnlyMaterialSuppliers.map((s: any) => {
                 const isPermits = s.supplier_name?.toLowerCase().startsWith("permits");
                 return (
                   <TableRow
@@ -243,13 +282,54 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableRow>
                 );
               })}
-              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlySuppliers.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
+              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlyMaterialSuppliers.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No material price lists imported yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {crewSuppliers.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-base">Crews / Subcontractors</CardTitle>
+            <CardDescription>Labor vendors observed from invoices — not material suppliers</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Crew / Subcontractor</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Invoices</TableHead>
+                  <TableHead>Last Invoice</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {crewSuppliers.map((s: any) => (
+                  <TableRow
+                    key={"crew-" + s.supplier_name}
+                    className="cursor-pointer hover:bg-muted/40"
+                    onClick={() => setDrilldownSupplier(s)}
+                  >
+                    <TableCell className="font-medium">{s.supplier_name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-700 border-purple-500/30">Labor</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"}{s.line_count > 0 ? " \u00b7 " + s.line_count + " lines" : ""}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="mt-4">
         <CardHeader>
@@ -652,24 +732,7 @@ export const MaterialAuditContent = () => {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      const canonicalize = (raw: string | null | undefined): { key: string; display: string } => {
-        const v = (raw || "").trim();
-        if (!v) return { key: "__unknown__", display: "Unknown vendor" };
-        if (/permit|county|township|\btwp\b|city of|riviera beach|ridley|planning,? zoning|zoning ?& ?building/i.test(v))
-          return { key: "__permits__", display: "Permits (city / county / township)" };
-        if (/dump|dumpster/i.test(v))
-          return { key: "__dumpfees__", display: "Dump / Dumpster Fees" };
-        if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
-        if (/^srs\b|srs building|suncoast roofers/i.test(v))
-          return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
-        if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
-        if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
-        if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
-        if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
-        if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
-        if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
-        return { key: v.toLowerCase(), display: v };
-      };
+      const canonicalize = canonicalizeVendorName;
 
       const [{ data: invs }, { data: lines }] = await Promise.all([
         supabase
@@ -867,13 +930,14 @@ export const MaterialAuditContent = () => {
   const totalPricebookItems = pricebookGroups.reduce((sum: number, g: any) => sum + g.item_count, 0);
 
   const chartData = React.useMemo(() => {
-    const byVendor: Record<string, number> = {};
+    const byVendor: Record<string, { display: string; total: number }> = {};
     materialInvoices.forEach((inv: any) => {
-      const name = inv.vendor_name || "Unknown";
-      byVendor[name] = (byVendor[name] || 0) + Number(inv.invoice_amount || 0);
+      const { key, display } = canonicalizeVendorName(inv.vendor_name);
+      if (!byVendor[key]) byVendor[key] = { display, total: 0 };
+      byVendor[key].total += Number(inv.invoice_amount || 0);
     });
-    return Object.entries(byVendor)
-      .map(([name, total]) => ({ name, total: Number(total.toFixed(2)) }))
+    return Object.values(byVendor)
+      .map(({ display, total }) => ({ name: display, total: Number(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
   }, [materialInvoices]);
