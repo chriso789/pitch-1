@@ -552,20 +552,70 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   const saveMapping = async () => {
     if (!mapLine || !pickItem || !tenantId) return;
     const sid = mapLine.supplier_id || supplierId;
+    const selectedItem = (priceItems as any[]).find((p) => p.id === pickItem);
+    const qty = Number(mapLine.quantity || 0);
+    const chargedUnit = Number(mapLine.charged_unit_price || 0);
+    const chargedExt = Number(mapLine.charged_extended_price ?? chargedUnit * qty);
+    const agreedUnit = selectedItem?.agreed_unit_price != null ? Number(selectedItem.agreed_unit_price) : null;
+    const expectedExt = agreedUnit != null ? agreedUnit * qty : null;
+    const totalDiff = expectedExt != null ? chargedExt - expectedExt : null;
+    const discrepancy = totalDiff == null ? "needs_review" : totalDiff > 0.01 ? "overcharge" : totalDiff < -0.01 ? "undercharge" : "no_issue";
     const { error } = await supabase.from("material_item_match_rules").insert({
       company_id: tenantId,
       supplier_id: sid,
-      normalized_invoice_description: (mapLine.invoice_description || "").toLowerCase().trim(),
+      normalized_invoice_description: normalizeInvoiceText(mapLine.invoice_description),
       supplier_sku: mapLine.supplier_sku || null,
       price_list_item_id: pickItem,
       created_by: (await supabase.auth.getUser()).data?.user?.id,
     });
     if (error) { toast.error(error.message); return; }
-    toast.success("Mapped. Re-run the audit to apply across invoices.");
+    const { error: lineError } = await supabase.from("material_invoice_audit_lines").update({
+      price_list_item_id: pickItem,
+      match_type: "manual_rule",
+      match_confidence: 1,
+      agreed_description: selectedItem?.item_description || null,
+      agreed_supplier_sku: selectedItem?.supplier_sku || null,
+      agreed_uom: selectedItem?.unit_of_measure || null,
+      agreed_unit_price: agreedUnit,
+      expected_extended_price: expectedExt,
+      price_difference_per_unit: agreedUnit != null ? chargedUnit - agreedUnit : null,
+      total_difference: totalDiff,
+      discrepancy_type: discrepancy,
+      discrepancy_status: discrepancy === "no_issue" ? "resolved" : "open",
+    }).eq("id", mapLine.id);
+    if (lineError) { toast.error(lineError.message); return; }
+
+    const { data: refreshedLines } = await supabase
+      .from("material_invoice_audit_lines")
+      .select("discrepancy_type,total_difference,expected_extended_price,charged_extended_price")
+      .eq("audit_id", auditId);
+    const allLines = refreshedLines || [];
+    const matchedLines = allLines.filter((l: any) => l.discrepancy_type !== "unmatched_item" && l.expected_extended_price != null).length;
+    const unmatchedLines = allLines.length - matchedLines;
+    const overchargedLines = allLines.filter((l: any) => l.discrepancy_type === "overcharge").length;
+    const underchargedLines = allLines.filter((l: any) => l.discrepancy_type === "undercharge").length;
+    const totalExpected = allLines.reduce((sum: number, l: any) => sum + Number(l.expected_extended_price || 0), 0);
+    const totalActual = allLines.reduce((sum: number, l: any) => sum + Number(l.charged_extended_price || 0), 0);
+    const totalOver = allLines.reduce((sum: number, l: any) => sum + Math.max(Number(l.total_difference || 0), 0), 0);
+    const totalUnder = allLines.reduce((sum: number, l: any) => sum + Math.max(-Number(l.total_difference || 0), 0), 0);
+    await supabase.from("material_invoice_audits").update({
+      matched_lines: matchedLines,
+      unmatched_lines: unmatchedLines,
+      overcharged_lines: overchargedLines,
+      undercharged_lines: underchargedLines,
+      total_expected_amount: totalExpected,
+      total_actual_amount: totalActual,
+      total_overcharge_amount: totalOver,
+      total_undercharge_amount: totalUnder,
+      audit_status: unmatchedLines === 0 ? "audited" : matchedLines > 0 ? "partial_match" : "needs_review",
+    }).eq("id", auditId);
+
+    toast.success("Mapped and match % updated.");
     setMapLine(null);
     setPickItem("");
     setSearch("");
     queryClient.invalidateQueries({ queryKey: ["audit-lines", auditId] });
+    queryClient.invalidateQueries({ queryKey: ["material-audits"] });
     queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines"] });
   };
 
