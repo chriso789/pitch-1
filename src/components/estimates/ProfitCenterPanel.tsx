@@ -24,6 +24,7 @@ import { ChangeOrdersTab } from '@/components/estimates/ChangeOrdersTab';
 import { CustomerPortalButton } from '@/components/lead-details/CustomerPortalButton';
 import { format } from 'date-fns';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
+import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
 
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
@@ -76,6 +77,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editPrice, setEditPrice] = useState('');
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState<{ url: string; name: string } | null>(null);
 
   // Listen for invoice updates from DocumentsTab
   useEffect(() => {
@@ -411,6 +413,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const tabCount = isProject ? 4 : 3;
 
   return (
+    <>
     <Card className={cn("border-primary/20", className)}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
@@ -777,7 +780,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                onClick={() => openInvoiceDocument(invoice.document_url)}
+                                onClick={() => setPreviewInvoice({ url: invoice.document_url!, name: (invoice as any).document_name || invoice.vendor_name || 'Invoice' })}
                                 title="Preview invoice"
                               >
                                 <Eye className="h-3.5 w-3.5" />
@@ -923,6 +926,13 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
         </Tabs>
       </CardContent>
     </Card>
+    <InvoicePreviewDialog
+      open={!!previewInvoice}
+      onOpenChange={(o) => !o && setPreviewInvoice(null)}
+      urlOrPath={previewInvoice?.url}
+      title={previewInvoice?.name}
+    />
+    </>
   );
 };
 

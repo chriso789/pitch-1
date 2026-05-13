@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
+import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
 
 interface CostReconciliationPanelProps {
   projectId: string;
@@ -28,6 +29,7 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [previewInvoice, setPreviewInvoice] = useState<{ url: string; name: string } | null>(null);
 
   // Fetch reconciliation data
   const { data: reconciliation, isLoading } = useQuery({
@@ -380,7 +382,7 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => openInvoiceDocument(invoice.document_url)}
+                        onClick={() => setPreviewInvoice({ url: invoice.document_url, name: invoice.document_name || invoice.vendor_name || 'Invoice' })}
                       >
                         <ExternalLink className="h-4 w-4" />
                       </Button>
@@ -395,6 +397,12 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
           </CardContent>
         </Card>
       )}
+      <InvoicePreviewDialog
+        open={!!previewInvoice}
+        onOpenChange={(o) => !o && setPreviewInvoice(null)}
+        urlOrPath={previewInvoice?.url}
+        title={previewInvoice?.name}
+      />
     </div>
   );
 };
