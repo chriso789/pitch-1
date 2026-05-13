@@ -83,6 +83,18 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   invoiceType,
   onSuccess
 }) => {
+  // Material invoices use the multi-file batch uploader so users can drop
+  // many invoices at once, see parsed contents, and resolve duplicates inline.
+  if (invoiceType === 'material') {
+    return (
+      <BatchMaterialInvoiceCard
+        projectId={projectId}
+        pipelineEntryId={pipelineEntryId}
+        changeOrderId={changeOrderId}
+        onSuccess={onSuccess}
+      />
+    );
+  }
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
