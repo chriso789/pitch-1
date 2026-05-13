@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
       document_name,
       notes,
       line_items,
-      allow_duplicate
+      allow_duplicate,
+      service_address: serviceAddressInput,
     } = await req.json();
 
     if (!project_id && !pipeline_entry_id) {
