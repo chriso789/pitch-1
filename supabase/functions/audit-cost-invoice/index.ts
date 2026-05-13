@@ -1,0 +1,268 @@
+// Audits material project_cost_invoices against active supplier price lists.
+// Operates on the live invoice data (project_cost_invoices + project_cost_invoice_line_items),
+// resolves vendor → material_supplier via canonical name, fetches the active
+// price list, fuzzy-matches every line, and persists results into
+// material_invoice_audits + material_invoice_audit_lines.
+import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function canonVendor(raw: string | null | undefined): { key: string; display: string } {
+  const v = (raw || "").trim();
+  if (!v) return { key: "__unknown__", display: "Unknown vendor" };
+  if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
+  if (/^srs\b|srs building|suncoast roofers/i.test(v)) return { key: "srs", display: "SRS" };
+  if (/\bqxo\b|beacon/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
+  return { key: v.toLowerCase(), display: v };
+}
+
+function normalize(s: string | null | undefined): string {
+  return (s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function tokenScore(a: string, b: string): number {
+  const A = new Set(a.split(" ").filter((w) => w.length > 2));
+  const B = new Set(b.split(" ").filter((w) => w.length > 2));
+  if (!A.size || !B.size) return 0;
+  let common = 0;
+  A.forEach((w) => { if (B.has(w)) common++; });
+  return common / Math.max(A.size, B.size);
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+    const userId = user?.id ?? null;
+
+    const body = await req.json().catch(() => ({}));
+    const { tenantId, invoiceId } = body as { tenantId?: string; invoiceId?: string };
+    if (!tenantId) {
+      return new Response(JSON.stringify({ error: "tenantId required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Pull supplier directory + their items once
+    const { data: suppliers } = await supabase
+      .from("material_suppliers")
+      .select("id, supplier_name, aliases")
+      .eq("company_id", tenantId);
+
+    const supplierByCanon = new Map<string, any>();
+    (suppliers || []).forEach((s) => {
+      const { key } = canonVendor(s.supplier_name);
+      supplierByCanon.set(key, s);
+      (s.aliases || []).forEach((a: string) => supplierByCanon.set(canonVendor(a).key, s));
+    });
+
+    // Cache items per supplier
+    const itemsCache = new Map<string, { priceListId: string | null; items: any[] }>();
+    async function loadItems(supplierId: string, invoiceDate: string) {
+      if (itemsCache.has(supplierId)) return itemsCache.get(supplierId)!;
+      const { data: priceListId } = await supabase.rpc("get_active_supplier_price_list", {
+        p_company_id: tenantId, p_supplier_id: supplierId, p_invoice_date: invoiceDate,
+      }).then((r) => r).catch(() => ({ data: null }));
+      let resolvedListId: string | null = priceListId as any;
+      // Fallback: most recent active list for this supplier
+      if (!resolvedListId) {
+        const { data: lists } = await supabase
+          .from("supplier_price_lists")
+          .select("id")
+          .eq("supplier_id", supplierId)
+          .order("effective_start_date", { ascending: false, nullsFirst: false })
+          .limit(1);
+        resolvedListId = lists?.[0]?.id ?? null;
+      }
+      let items: any[] = [];
+      if (resolvedListId) {
+        const { data } = await supabase
+          .from("supplier_price_list_items")
+          .select("id, supplier_sku, manufacturer_sku, item_description, normalized_description, unit_of_measure, agreed_unit_price")
+          .eq("price_list_id", resolvedListId);
+        items = data || [];
+      }
+      const entry = { priceListId: resolvedListId, items };
+      itemsCache.set(supplierId, entry);
+      return entry;
+    }
+
+    // Fetch target invoices
+    let invQ = supabase
+      .from("project_cost_invoices")
+      .select("id, vendor_name, invoice_number, invoice_date, invoice_amount")
+      .eq("tenant_id", tenantId)
+      .eq("invoice_type", "material");
+    if (invoiceId) invQ = invQ.eq("id", invoiceId);
+    const { data: invoices, error: invErr } = await invQ;
+    if (invErr) throw invErr;
+
+    let auditedCount = 0;
+    let totalOvercharge = 0;
+    const skipped: Array<{ invoiceId: string; reason: string }> = [];
+
+    for (const inv of invoices || []) {
+      const canon = canonVendor(inv.vendor_name);
+      const supplier = supplierByCanon.get(canon.key);
+      if (!supplier) {
+        skipped.push({ invoiceId: inv.id, reason: `No supplier match for "${inv.vendor_name}"` });
+        continue;
+      }
+
+      const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
+      const { priceListId, items } = await loadItems(supplier.id, invoiceDate);
+      if (!priceListId || !items.length) {
+        skipped.push({ invoiceId: inv.id, reason: `No price list for supplier "${supplier.supplier_name}"` });
+        continue;
+      }
+
+      const { data: lines } = await supabase
+        .from("project_cost_invoice_line_items")
+        .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
+        .eq("invoice_id", inv.id)
+        .order("line_number");
+
+      if (!lines?.length) {
+        skipped.push({ invoiceId: inv.id, reason: "No line items extracted" });
+        continue;
+      }
+
+      // Wipe any prior audit for this invoice (idempotent re-run)
+      await supabase.from("material_invoice_audits")
+        .delete()
+        .eq("invoice_document_id", inv.id);
+
+      let matched = 0, unmatched = 0, over = 0, under = 0;
+      let totExp = 0, totAct = 0, totOver = 0, totUnder = 0;
+      const auditLines: any[] = [];
+
+      for (const line of lines) {
+        const qty = Number(line.quantity || 0);
+        const chargedUnit = Number(line.unit_price ?? 0);
+        const chargedExt = Number(line.line_total ?? chargedUnit * qty);
+        const desc = line.normalized_description || normalize(line.description);
+
+        // Match: SKU exact > description fuzzy
+        let matchedItem: any = null;
+        let matchType = "unmatched";
+        let matchConfidence = 0;
+
+        if (line.sku) {
+          matchedItem = items.find((p) => p.supplier_sku === line.sku || p.manufacturer_sku === line.sku);
+          if (matchedItem) { matchType = "sku_exact"; matchConfidence = 1.0; }
+        }
+        if (!matchedItem && desc.length > 4) {
+          let best: any = null, bestScore = 0;
+          for (const p of items) {
+            const pDesc = p.normalized_description || normalize(p.item_description);
+            const s = tokenScore(desc, pDesc);
+            if (s > bestScore) { bestScore = s; best = p; }
+          }
+          if (best && bestScore >= 0.5) {
+            matchedItem = best;
+            matchType = "fuzzy_description";
+            matchConfidence = Math.min(bestScore, 0.95);
+          }
+        }
+
+        const agreedUnit = matchedItem?.agreed_unit_price != null ? Number(matchedItem.agreed_unit_price) : null;
+        const expectedExt = agreedUnit != null ? agreedUnit * qty : null;
+        const unitDiff = agreedUnit != null ? chargedUnit - agreedUnit : null;
+        const totalDiff = expectedExt != null ? chargedExt - expectedExt : null;
+
+        let discrepancy = "needs_review";
+        if (!matchedItem) { discrepancy = "unmatched_item"; unmatched++; }
+        else if (totalDiff != null && totalDiff > 0.01) { discrepancy = "overcharge"; over++; matched++; totOver += totalDiff; }
+        else if (totalDiff != null && totalDiff < -0.01) { discrepancy = "undercharge"; under++; matched++; totUnder += Math.abs(totalDiff); }
+        else if (totalDiff != null) { discrepancy = "no_issue"; matched++; }
+        else { unmatched++; }
+
+        totAct += chargedExt;
+        if (expectedExt != null) totExp += expectedExt;
+
+        auditLines.push({
+          company_id: tenantId,
+          invoice_document_id: inv.id,
+          invoice_line_item_id: line.id,
+          supplier_id: supplier.id,
+          price_list_id: priceListId,
+          price_list_item_id: matchedItem?.id || null,
+          match_type: matchType,
+          match_confidence: matchConfidence || null,
+          invoice_description: line.description,
+          agreed_description: matchedItem?.item_description || null,
+          supplier_sku: line.sku || null,
+          agreed_supplier_sku: matchedItem?.supplier_sku || null,
+          invoice_uom: line.unit_of_measure || null,
+          agreed_uom: matchedItem?.unit_of_measure || null,
+          quantity: qty,
+          charged_unit_price: chargedUnit,
+          agreed_unit_price: agreedUnit,
+          charged_extended_price: chargedExt,
+          expected_extended_price: expectedExt,
+          price_difference_per_unit: unitDiff,
+          total_difference: totalDiff,
+          discrepancy_type: discrepancy,
+          discrepancy_status: discrepancy === "no_issue" ? "resolved" : "open",
+        });
+      }
+
+      const auditStatus = unmatched === 0 ? "audited" : matched > 0 ? "partial_match" : "needs_review";
+      const { data: auditRow, error: aErr } = await supabase
+        .from("material_invoice_audits")
+        .insert({
+          company_id: tenantId,
+          invoice_document_id: inv.id,
+          supplier_id: supplier.id,
+          price_list_id: priceListId,
+          audit_run_by: userId,
+          invoice_date: invoiceDate,
+          audit_status: auditStatus,
+          total_invoice_lines: lines.length,
+          matched_lines: matched,
+          unmatched_lines: unmatched,
+          overcharged_lines: over,
+          undercharged_lines: under,
+          total_expected_amount: totExp,
+          total_actual_amount: totAct,
+          total_overcharge_amount: totOver,
+          total_undercharge_amount: totUnder,
+        })
+        .select("id")
+        .single();
+      if (aErr) { skipped.push({ invoiceId: inv.id, reason: aErr.message }); continue; }
+
+      const withId = auditLines.map((l) => ({ ...l, audit_id: auditRow.id }));
+      // Insert in chunks
+      for (let i = 0; i < withId.length; i += 200) {
+        await supabase.from("material_invoice_audit_lines").insert(withId.slice(i, i + 200));
+      }
+
+      auditedCount++;
+      totalOvercharge += totOver;
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      audited: auditedCount,
+      total_overcharge: Number(totalOvercharge.toFixed(2)),
+      skipped,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
