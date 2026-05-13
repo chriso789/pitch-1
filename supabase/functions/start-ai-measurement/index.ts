@@ -796,6 +796,12 @@ async function processJob(input: any) {
       };
     }
 
+    const isCenteredSolarBboxFallback = (cand: FootprintCandidate) =>
+      cand.source === "google_solar_bbox"
+      && cand.area_sqft >= 300
+      && cand.area_sqft <= RESIDENTIAL_MAX_SQFT
+      && cand.bbox_center_distance_from_geocode_px <= 200;
+
     // 1. Build OSM candidates (ALL nearby buildings, not just one).
     const candidates: FootprintCandidate[] = [];
     const projectionDiagnostics: Array<{ source: string; raw_centroid_geo: { lat: number; lng: number }; projected_centroid_px: { x: number; y: number }; on_canvas: boolean; bbox_px: any; geo_distance_m: number }> = [];
@@ -844,6 +850,7 @@ async function processJob(input: any) {
     } catch (e) {
       console.warn("[footprint-selection] OSM candidate scan failed:", (e as Error).message);
     }
+    const noOsmCandidatesAtSolarFallback = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
 
     // 2. Optional U-Net segmentation pass — produces a candidate footprint AND
     //    optional plane/edge refinements (used later if topology yields nothing).
@@ -909,8 +916,8 @@ async function processJob(input: any) {
         if (hull.length >= 4) {
           const hullCand = scoreCandidate("google_solar_segments_hull", hull);
           // CRITICAL FIX: Solar segment hull traces INNER plane geometry, not the
-          // true eave/rake roof perimeter. Never allow it as the final footprint.
-          // It is stored for diagnostics and internal guidance only.
+          // true eave/rake roof perimeter. Keep it diagnostic unless the later
+          // no-OSM + failed-mask fallback explicitly clears this rejection.
           if (!hullCand.rejected_reason) {
             hullCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
           }
@@ -937,7 +944,8 @@ async function processJob(input: any) {
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
             // CRITICAL FIX: Solar segment union traces INNER plane geometry, not
-            // the true eave/rake roof perimeter. Store for diagnostics only.
+            // the true eave/rake roof perimeter. Keep it diagnostic unless the
+            // later no-OSM + failed-mask fallback explicitly clears this rejection.
             if (!unionCand.rejected_reason) {
               unionCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
             }
@@ -955,8 +963,9 @@ async function processJob(input: any) {
     const solarFp = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
     if (solarFp && solarFp.length >= 3) {
       const bboxCand = scoreCandidate("google_solar_bbox", solarFp);
-      // CRITICAL FIX: Solar bbox is not a roof perimeter — always reject.
-      if (!bboxCand.rejected_reason) {
+      // Solar bbox is usually diagnostic only, but with no OSM it is a valid
+      // fallback when it is residential-sized and centered on the geocode.
+      if (!bboxCand.rejected_reason && !isCenteredSolarBboxFallback(bboxCand)) {
         bboxCand.rejected_reason = "solar_bbox_not_roof_perimeter";
       }
       candidates.push(bboxCand);
@@ -979,6 +988,7 @@ async function processJob(input: any) {
     let roofMaskForContour: any = null;
     let selectedMaskContourGeo: Array<[number, number]> | null = null;
     let maskContourDiagnostics: any = null;
+    let maskContourFailed = true;
     if (GOOGLE_SOLAR_API_KEY) {
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
@@ -1003,11 +1013,23 @@ async function processJob(input: any) {
             // Only boost if not rejected — oversized masks must NOT auto-win
             maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.25));
             candidates.push(maskCand);
+            maskContourFailed = Boolean(maskCand.rejected_reason);
             if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
           }
         }
       } catch (e) {
         console.warn("[FOOTPRINT_MASK_CONTOUR_PRIMARY] failed:", (e as Error).message);
+      }
+    }
+
+    if (noOsmCandidatesAtSolarFallback && maskContourFailed && solarSegmentTotalAreaSqft >= 300 && solarSegmentTotalAreaSqft <= RESIDENTIAL_MAX_SQFT) {
+      for (const cand of candidates) {
+        if ((cand.source === "google_solar_segments_hull" || cand.source === "google_solar_segments_union")
+          && cand.rejected_reason === "solar_inner_geometry_not_roof_perimeter") {
+          cand.rejected_reason = null;
+          cand.validity_score = Math.min(1, cand.validity_score + 0.15);
+          console.log(`[SOLAR_SEGMENT_FALLBACK_ACCEPTED] ${cand.source}: no OSM candidates, mask contour failed, segment area=${Math.round(solarSegmentTotalAreaSqft)}sqft`);
+        }
       }
     }
 
@@ -1130,11 +1152,12 @@ async function processJob(input: any) {
       // Apply registration gate
       const isSolarSource = cand.source.includes('solar_segments_union') || cand.source.includes('solar_segments_hull');
       const isMaskContour = cand.source === 'google_solar_mask_contour';
+      const isTrustedSolarBboxFallback = noOsmCandidatesAtSolarFallback && isCenteredSolarBboxFallback(cand);
       const maxOffset = isSolarSource ? SOLAR_STRICT_CENTROID_PX : MAX_CENTROID_OFFSET_PX;
       const minOverlap = isSolarSource ? SOLAR_STRICT_OVERLAP : MIN_ROOF_IMAGE_OVERLAP;
 
       // Mask contour is derived FROM the mask — skip self-validation
-      if (isMaskContour) {
+      if (isMaskContour || isTrustedSolarBboxFallback) {
         cand.footprint_registration_passed = true;
         continue;
       }
