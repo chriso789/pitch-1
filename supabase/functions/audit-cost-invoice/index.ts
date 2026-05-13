@@ -233,13 +233,42 @@ Deno.serve(async (req: Request) => {
           agreed_unit_price: row.unit_cost != null ? Number(row.unit_cost) : null,
         }));
       }
+      // FALLBACK: if supplier has no official pricelist, use the derived "lowest
+      // observed price" baseline aggregated across all invoices for the same
+      // canonical supplier. Lets us audit suppliers with no uploaded pricebook
+      // (Beacon, Premier Metal, Standing Metals, Dynamic Metal, etc.).
+      let usedDerived = false;
+      if (!items.length) {
+        const supplierCanonKeys = new Set(
+          [supplier.supplier_name, ...(supplier.aliases || [])]
+            .map((n: string) => canonVendor(n).key)
+            .filter(Boolean)
+        );
+        const { data: derived } = await supabase
+          .from("derived_supplier_price_items")
+          .select("id, sku, normalized_description, item_description, unit_of_measure, lowest_unit_price")
+          .eq("tenant_id", tenantId)
+          .in("supplier_name_canonical", Array.from(supplierCanonKeys));
+        if (derived?.length) {
+          items = derived.map((d: any) => ({
+            id: d.id,
+            supplier_sku: d.sku,
+            manufacturer_sku: null,
+            item_description: d.item_description,
+            normalized_description: d.normalized_description,
+            unit_of_measure: d.unit_of_measure,
+            agreed_unit_price: Number(d.lowest_unit_price),
+          }));
+          usedDerived = true;
+        }
+      }
       // Manual mapping rules saved by users for this supplier
       const { data: rules } = await supabase
         .from("material_item_match_rules")
         .select("supplier_sku, manufacturer_sku, normalized_invoice_description, price_list_item_id")
         .eq("company_id", tenantId)
         .eq("supplier_id", supplierId);
-      const entry = { priceListId: resolvedListId, items, rules: rules || [] };
+      const entry = { priceListId: resolvedListId, items, rules: rules || [], usedDerived };
       itemsCache.set(supplierId, entry);
       return entry;
     }
