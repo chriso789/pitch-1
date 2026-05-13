@@ -24,6 +24,7 @@ import { ChangeOrdersTab } from '@/components/estimates/ChangeOrdersTab';
 import { CustomerPortalButton } from '@/components/lead-details/CustomerPortalButton';
 import { format } from 'date-fns';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
+import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
 
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
