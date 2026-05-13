@@ -821,11 +821,19 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
               </div>
+              <div className="space-y-1.5 pt-1 border-t">
+                <label className="text-xs font-medium text-muted-foreground">New catalog item name</label>
+                <Input
+                  placeholder="Name this item as it should appear in the catalog"
+                  value={catalogName}
+                  onChange={(e) => setCatalogName(e.target.value)}
+                />
+              </div>
               <div className="flex items-center justify-between gap-2 pt-1">
                 <Button
                   variant="secondary"
                   onClick={catalogNewItem}
-                  disabled={cataloging || !mapLine?.invoice_description || !Number(mapLine?.charged_unit_price || 0)}
+                  disabled={cataloging || !catalogName.trim() || !Number(mapLine?.charged_unit_price || 0)}
                   title="Add this invoice line as a new item in the supplier price list at the charged price"
                 >
                   <Package className="h-4 w-4 mr-2" />
