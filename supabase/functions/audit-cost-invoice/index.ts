@@ -200,7 +200,7 @@ Deno.serve(async (req: Request) => {
           if (batch.length < 1000) break;
         }
         items = legacyRows.map((row: any) => ({
-          id: `legacy:${row.id}`,
+          id: row.id,
           supplier_sku: row.item_code || null,
           manufacturer_sku: null,
           item_description: row.item_description || row.item_code || "Legacy pricebook item",
