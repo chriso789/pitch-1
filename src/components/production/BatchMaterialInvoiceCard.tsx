@@ -114,19 +114,17 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         if (peId) {
           const { data: pe } = await supabase
             .from('pipeline_entries')
-            .select('property_address, contact_id')
+            .select('contact_id')
             .eq('id', peId)
             .maybeSingle();
-          if (pe?.property_address) {
-            address = pe.property_address;
-          } else if (pe?.contact_id) {
+          if (pe?.contact_id) {
             const { data: c } = await supabase
               .from('contacts')
-              .select('address, city, state, zip_code')
+              .select('address_street, address_city, address_state, address_zip')
               .eq('id', pe.contact_id)
               .maybeSingle();
             if (c) {
-              address = [c.address, c.city, c.state, c.zip_code]
+              address = [c.address_street, c.address_city, c.address_state, c.address_zip]
                 .filter(Boolean).join(', ') || null;
             }
           }
