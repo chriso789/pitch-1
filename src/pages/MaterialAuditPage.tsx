@@ -802,9 +802,39 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                   {!isOver && !isUnder && !isUnmatched && <Badge variant="outline" className="text-[10px]">OK</Badge>}
                 </TableCell>
                 <TableCell>
-                  <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => { setMapLine(l); setPickItem(""); setSearch(""); }}>
-                    {isUnmatched ? "Map" : "Remap"}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => { setMapLine(l); setPickItem(""); setSearch(""); }}>
+                      {isUnmatched ? "Map" : "Remap"}
+                    </Button>
+                    {l.price_list_item_id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px]"
+                        title="Set pack conversion (e.g. 89 tiles per SQ)"
+                        onClick={async () => {
+                          const qtyStr = window.prompt(
+                            `How many smaller units are in 1 price-list unit?\n\n(e.g. "89" if the price list is per SQ but the invoice bills per tile)`,
+                            ""
+                          );
+                          if (!qtyStr) return;
+                          const qty = Number(qtyStr);
+                          if (!qty || qty <= 0) { toast.error("Enter a positive number"); return; }
+                          const uom = window.prompt("Invoice unit code (e.g. EA, TILE, PC)", l.invoice_uom || "EA");
+                          if (!uom) return;
+                          const { error } = await supabase
+                            .from("supplier_price_list_items")
+                            .update({ pack_quantity: qty, pack_uom: uom.toUpperCase() })
+                            .eq("id", l.price_list_item_id);
+                          if (error) { toast.error(error.message); return; }
+                          toast.success(`Saved: ${qty} ${uom.toUpperCase()} per price-list unit. Re-run audit to apply.`);
+                          queryClient.invalidateQueries({ queryKey: ["audit-lines", auditId] });
+                        }}
+                      >
+                        Pack
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             );
