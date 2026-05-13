@@ -763,7 +763,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                     {isOpen && (
                       <TableRow>
                         <TableCell colSpan={7} className="p-0">
-                          <AuditLineDetails auditId={a.id} />
+                          <AuditLineDetails auditId={a.id} supplierId={a.supplier_id} tenantId={tenantId} />
                         </TableCell>
                       </TableRow>
                     )}
