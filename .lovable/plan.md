@@ -1,71 +1,21 @@
-## QXO/Beacon AR Sync — Lean v1
+# Remove "AI Corrections" tab from Integrations Settings
 
-Build an AR/Financials layer on top of the existing QXO auth so the Connection Details card actually populates and users can see balance, credits, and invoices in near real-time.
+## Problem
+- Settings → Integrations has an **AI Corrections** tab that renders `MeasurementCorrectionsLog`. It shows empty stat cards (Total Corrections 0, Avg Change 0.0%, Most Corrected N/A) and "No corrections recorded yet" — not useful in its current state.
+- The stat cards visually overlap the wrapped tab row above them (the TabsList uses `flex-wrap` and wraps onto a second line, which sits behind the cards).
+- Removing the tab eliminates both issues at once. The underlying `roof_measurement_corrections` table and any other consumers are left untouched.
 
-### Scope (Lean v1)
-- Profile bootstrap (account_id, profile_id, default_branch)
-- Account balance + available credit (daily snapshot)
-- Open + Paid invoices (full history pull on first sync, deltas after)
-- Basic AR dashboard UI under the QXO settings tab
-- Manual "Refresh now" button + 15-min cron
+## Changes
 
-Explicitly out of scope for v1: aging buckets, statements, PO matching, Material Audit tie-in, webhooks. (Easy to add later — schema will support them.)
+**`src/components/settings/IntegrationsSettings.tsx`**
+- Remove the `MeasurementCorrectionsLog` import (line 6).
+- Remove the `Ruler` icon from the lucide-react import (line 15) — no longer used.
+- Remove the `<TabsTrigger value="measurement-corrections">…AI Corrections</TabsTrigger>` block (lines 77–80).
+- Remove the matching `<TabsContent value="measurement-corrections">…</TabsContent>` block (lines 131–133).
 
-### Database
+**`src/components/settings/MeasurementCorrectionsLog.tsx`**
+- Delete the file (no other references in the codebase — verified via ripgrep, only `IntegrationsSettings.tsx` imports it).
 
-New tables (all tenant-scoped, RLS via `useEffectiveTenantId` pattern):
-
-- `qxo_account_profile` — one row per tenant: `account_id`, `profile_id`, `default_branch`, `company_name`, `last_synced_at`
-- `qxo_balance_snapshots` — daily snapshot: `tenant_id`, `balance`, `available_credit`, `currency`, `snapshot_date`, `raw_payload jsonb`
-- `qxo_invoices` — `tenant_id`, `qxo_invoice_id` (unique per tenant), `invoice_number`, `po_number`, `branch`, `status` (open/paid/partial/credit), `issued_date`, `due_date`, `amount`, `balance`, `job_id` (nullable, matched on PO), `raw_payload jsonb`, `last_synced_at`
-- `qxo_sync_runs` — audit log: `tenant_id`, `kind` (profile/balance/invoices), `started_at`, `finished_at`, `status`, `records_upserted`, `error`
-
-RLS: tenant-scoped read; writes only via service role from edge functions.
-
-### Edge functions
-
-- `qxo-sync-profile` — calls Beacon `/profile` + `/accounts`, upserts `qxo_account_profile`. Triggered on connect + manual refresh.
-- `qxo-sync-balance` — calls `/account/balance` + `/account/credits`, inserts daily snapshot (one per day, upsert on date).
-- `qxo-sync-invoices` — paginated pull of invoices; first run = full history, subsequent = `modified_since` delta. Upsert by `qxo_invoice_id`.
-- `qxo-sync-orchestrator` — called by cron + manual refresh; runs all three in sequence per tenant with active QXO connection.
-
-All reuse the existing QXO session-token logic from `qxo-api-proxy`.
-
-### Cron
-
-`pg_cron` job every 15 minutes invoking `qxo-sync-orchestrator` for all tenants with a valid QXO connection. Per-tenant rate limit (skip if last successful run < 10 min ago) to avoid hammering Beacon.
-
-### UI (in `QXOConnectionSettings.tsx`)
-
-Add three sections below the existing Connection Details card:
-
-1. **Connection Details card** — now actually populated (Account ID, Profile ID, Default Branch from `qxo_account_profile`)
-2. **Balance card** — current balance, available credit, "as of" timestamp, Refresh button
-3. **Invoices table** — searchable, filter tabs (All / Open / Paid / Credit), columns: Invoice #, PO #, Branch, Issued, Due, Amount, Balance, Status. Click row → drawer with raw line items from `raw_payload`.
-
-Refresh button calls `qxo-sync-orchestrator` and toasts progress; table re-fetches on success.
-
-### Sequence
-
-```text
-Connect → qxo-sync-profile → populates Connection Details
-       ↓
-   First full sync (balance + invoices)
-       ↓
-   Cron every 15 min → delta sync
-       ↓
-   Manual Refresh button → on-demand sync
-```
-
-### Technical notes
-- Multi-tenancy: all queries `.eq('tenant_id', effectiveTenantId)`; edge functions resolve tenant from connection record.
-- All Beacon calls go through existing `qxo-api-proxy` pattern for session token reuse + refresh.
-- `raw_payload jsonb` on invoices/balance keeps full Beacon response for future features (aging, PO match) without schema change.
-- Indexes: `qxo_invoices(tenant_id, status)`, `qxo_invoices(tenant_id, due_date)`, `qxo_invoices(tenant_id, po_number)`.
-
-### Deliverables
-- 1 migration (4 tables + RLS + indexes + cron schedule)
-- 4 edge functions
-- 1 updated settings component (`QXOConnectionSettings.tsx`) + 1 new invoices table component
-
-Approve and I'll build it.
+## Out of scope
+- No DB changes. The `roof_measurement_corrections` table stays as-is in case it's used by the measurement pipeline elsewhere.
+- No other tabs are touched. Wrapping behavior of the remaining tabs stays the same but with one fewer trigger, reducing the chance of layout overflow.
