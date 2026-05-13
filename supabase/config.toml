@@ -153,6 +153,9 @@ verify_jwt = false
 [functions.qxo-pricing]
 verify_jwt = true
 
+[functions.qxo-push-order]
+verify_jwt = true
+
 [functions.score-lead]
 verify_jwt = true
 

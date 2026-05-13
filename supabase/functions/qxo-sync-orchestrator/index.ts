@@ -21,7 +21,15 @@ async function login(conn: any) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || `Login failed (${res.status})`);
-  // Beacon uses a session cookie + JSESSIONID header; capture cookies for subsequent calls
+  // Beacon returns 200 even on bad credentials; detect in-body error strings
+  const info = data?.messageInfo;
+  if (typeof info === 'string') throw new Error(`Beacon login rejected: ${info}`);
+  if (data?.error || data?.errorMessage) {
+    throw new Error(`Beacon login rejected: ${data.error || data.errorMessage}`);
+  }
+  if (!info?.profileId && !info?.lastSelectedAccount) {
+    throw new Error(`Beacon login returned no profile (check username/password/site). Raw: ${JSON.stringify(data).slice(0, 200)}`);
+  }
   const setCookie = res.headers.get('set-cookie') || '';
   return { data, cookie: setCookie };
 }
@@ -247,7 +255,15 @@ async function syncOneTenant(supabase: any, conn: any): Promise<SyncResult> {
     result.balance = await syncBalance(supabase, c2, cookie);
     result.invoices = await syncInvoices(supabase, c2, cookie);
   } catch (e: any) {
+    // Surface login failures on the connection record so the user sees them
+    await supabase.from('qxo_connections').update({
+      connection_status: 'error',
+      last_error: e.message,
+      valid_indicator: false,
+    }).eq('id', conn.id);
     result.profile = { ok: false, error: e.message };
+    result.balance = { ok: false, error: 'skipped: login failed' };
+    result.invoices = { ok: false, error: 'skipped: login failed' };
   }
   return result;
 }

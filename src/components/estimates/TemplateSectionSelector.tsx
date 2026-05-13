@@ -14,6 +14,7 @@ import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
+import { PushToQXOButton } from '@/components/orders/PushToQXOButton';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
@@ -699,15 +700,33 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             return (
               <>
                 {lineItems.length > 0 && sectionType === 'material' && existingEstimate?.id && (
-                  <MaterialLineItemsExport
-                    estimateId={existingEstimate.id}
-                    materialItems={lineItems}
-                    totalAmount={sectionTotal}
-                    customerName={customerName}
-                    projectAddress={projectAddress}
-                    companyInfo={companyInfo || undefined}
-                    jobNumber={jobNumber}
-                  />
+                  <>
+                    <MaterialLineItemsExport
+                      estimateId={existingEstimate.id}
+                      materialItems={lineItems}
+                      totalAmount={sectionTotal}
+                      customerName={customerName}
+                      projectAddress={projectAddress}
+                      companyInfo={companyInfo || undefined}
+                      jobNumber={jobNumber}
+                    />
+                    <PushToQXOButton
+                      estimateId={existingEstimate.id}
+                      jobId={(pipelineData as any)?.id}
+                      jobNumber={jobNumber}
+                      customerName={customerName}
+                      projectAddress={projectAddress}
+                      items={lineItems.map((li: any) => ({
+                        item_name: li.item_name,
+                        qty: Number(li.qty || 0),
+                        unit: li.unit || 'EA',
+                        unit_cost: Number(li.unit_cost || 0),
+                        notes: li.notes,
+                        color_specs: li.color_specs,
+                        srs_item_code: li.srs_item_code || li.product_code,
+                      }))}
+                    />
+                  </>
                 )}
                 {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
                   <LaborOrderExport
