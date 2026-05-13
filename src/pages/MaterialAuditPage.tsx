@@ -837,34 +837,39 @@ export const MaterialAuditContent = () => {
   });
 
   const { data: materialInvoices = [] } = useQuery({
-    queryKey: ["material-cost-invoices", tenantId, selectedSupplier],
+    queryKey: ["material-cost-invoices", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      let q = supabase
+      const { data } = await supabase
         .from("project_cost_invoices")
         .select("*, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
         .eq("tenant_id", tenantId)
         .in("invoice_type", ["material"])
         .order("created_at", { ascending: false });
-      if (selectedSupplier !== "all") {
-        q = q.ilike("vendor_name", "%" + selectedSupplier + "%");
-      }
-      const { data } = await q;
       return data || [];
     },
     enabled: !!tenantId,
   });
 
-  const supplierNames = React.useMemo(() => {
-    const names = new Set<string>();
+  // Build canonical supplier list — every variant of "ABC Supply #489 / ABC Supply Co."
+  // collapses to one entry under "ABC Supply", same for SRS / Suncoast Roofers etc.
+  const canonicalSuppliers = React.useMemo(() => {
+    const byKey = new Map<string, string>();
     materialInvoices.forEach((inv: any) => {
-      if (inv.vendor_name) names.add(inv.vendor_name);
+      if (!inv.vendor_name) return;
+      const { key, display } = canonicalizeVendorName(inv.vendor_name);
+      if (!byKey.has(key)) byKey.set(key, display);
     });
     pricebookGroups.forEach((g: any) => {
-      if (g.supplier_name) names.add(g.supplier_name);
+      if (!g.supplier_name) return;
+      const { key, display } = canonicalizeVendorName(g.supplier_name);
+      if (!byKey.has(key)) byKey.set(key, display);
     });
-    return Array.from(names).sort();
+    return Array.from(byKey.entries())
+      .map(([key, display]) => ({ key, display }))
+      .sort((a, b) => a.display.localeCompare(b.display));
   }, [materialInvoices, pricebookGroups]);
+
 
   const { data: audits = [] } = useQuery({
     queryKey: ["material-audits", tenantId],
@@ -943,13 +948,19 @@ export const MaterialAuditContent = () => {
   }, [materialInvoices]);
 
   const filteredInvoices = React.useMemo(() => {
-    if (!searchTerm) return materialInvoices;
     const term = searchTerm.toLowerCase();
-    return materialInvoices.filter((inv: any) =>
-      (inv.vendor_name || "").toLowerCase().includes(term) ||
-      (inv.invoice_number || "").toLowerCase().includes(term)
-    );
-  }, [materialInvoices, searchTerm]);
+    return materialInvoices.filter((inv: any) => {
+      if (selectedSupplier !== "all") {
+        const { key } = canonicalizeVendorName(inv.vendor_name);
+        if (key !== selectedSupplier) return false;
+      }
+      if (!term) return true;
+      return (
+        (inv.vendor_name || "").toLowerCase().includes(term) ||
+        (inv.invoice_number || "").toLowerCase().includes(term)
+      );
+    });
+  }, [materialInvoices, searchTerm, selectedSupplier]);
 
   return (
     <div className="space-y-4">
@@ -963,11 +974,11 @@ export const MaterialAuditContent = () => {
       <SpendChart chartData={chartData} />
       <div className="flex gap-2 items-center">
         <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
+          <SelectTrigger className="w-[260px]"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Suppliers</SelectItem>
-            {supplierNames.map((name) => (
-              <SelectItem key={name} value={name}>{name}</SelectItem>
+            {canonicalSuppliers.map((s) => (
+              <SelectItem key={s.key} value={s.key}>{s.display}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -979,7 +990,7 @@ export const MaterialAuditContent = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="price-lists">Supplier Price Lists</TabsTrigger>
-          <TabsTrigger value="invoice-queue">Invoice Audit Queue ({materialInvoices.length})</TabsTrigger>
+          <TabsTrigger value="invoice-queue">Material Invoices ({materialInvoices.length})</TabsTrigger>
           <TabsTrigger value="audit-results">Audit Results</TabsTrigger>
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
