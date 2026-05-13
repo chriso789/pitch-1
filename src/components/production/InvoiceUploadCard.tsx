@@ -175,7 +175,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           document_url: documentUrl,
           // Auto-persist to material_invoice_documents + lines and immediately
           // run audit-material-invoice. Material invoices skip the manual queue.
-          auto_persist: invoiceType === 'material',
+          auto_persist: false,
           pipeline_entry_id: pipelineEntryId,
           project_id: projectId,
         }
