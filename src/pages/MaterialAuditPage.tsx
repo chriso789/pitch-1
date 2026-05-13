@@ -900,8 +900,42 @@ export const MaterialAuditContent = () => {
     queryKey: ["material-audits", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data } = await supabase.from("material_invoice_audits").select("*, material_suppliers!material_invoice_audits_supplier_id_fkey(supplier_name), material_invoice_documents!material_invoice_audits_invoice_document_id_fkey(invoice_number)").eq("company_id", tenantId).order("created_at", { ascending: false });
-      return data || [];
+      // NOTE: material_invoice_audits has no real FK constraints to material_suppliers
+      // or project_cost_invoices, so PostgREST embed hints fail silently and return
+      // nothing. We fetch the rows flat, then resolve supplier + invoice + project
+      // info manually so the UI actually renders.
+      const { data: rows, error } = await supabase
+        .from("material_invoice_audits")
+        .select("*")
+        .eq("company_id", tenantId)
+        .order("created_at", { ascending: false });
+      if (error) { console.error("[audits] query error", error); return []; }
+      const list = rows || [];
+      if (!list.length) return [];
+
+      const supplierIds = Array.from(new Set(list.map((r: any) => r.supplier_id).filter(Boolean)));
+      const invoiceIds = Array.from(new Set(list.map((r: any) => r.invoice_document_id).filter(Boolean)));
+
+      const [{ data: sups }, { data: invs }] = await Promise.all([
+        supplierIds.length
+          ? supabase.from("material_suppliers").select("id, supplier_name").in("id", supplierIds)
+          : Promise.resolve({ data: [] as any[] }),
+        invoiceIds.length
+          ? supabase
+              .from("project_cost_invoices")
+              .select("id, invoice_number, vendor_name, invoice_date, invoice_amount, project_id, pipeline_entry_id, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
+              .in("id", invoiceIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const supMap = new Map((sups || []).map((s: any) => [s.id, s]));
+      const invMap = new Map((invs || []).map((i: any) => [i.id, i]));
+
+      return list.map((r: any) => ({
+        ...r,
+        supplier: supMap.get(r.supplier_id) || null,
+        invoice: invMap.get(r.invoice_document_id) || null,
+      }));
     },
     enabled: !!tenantId,
   });
