@@ -35,6 +35,8 @@ interface Contact {
   lead_source: string | null;
   assigned_to?: string | null;
   assigned_rep?: { first_name: string; last_name: string } | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 }
 
 interface ContactKanbanBoardProps {
