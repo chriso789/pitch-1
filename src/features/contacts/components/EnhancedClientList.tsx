@@ -72,6 +72,7 @@ import TaskAssignmentDialog from "@/components/TaskAssignmentDialog";
 import { ContactBulkImport } from "./ContactBulkImport";
 import { ContactKanbanBoard } from "./ContactKanbanBoard";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
+import { useContactStatuses } from "@/hooks/useContactStatuses";
 
 type DisplayMode = 'table' | 'kanban';
 
