@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { supabase } from '@/integrations/supabase/client';
+import { useContactStatuses } from '@/hooks/useContactStatuses';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -235,6 +236,7 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
   const { stages } = usePipelineStages();
+  const { statuses: contactStatuses } = useContactStatuses();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'estimate');
@@ -1106,35 +1108,54 @@ const LeadDetails = () => {
               {lead.contact.first_name} {lead.contact.last_name}
               <ExternalLink className="h-3 w-3" />
             </Button>
-            <Select 
-              value={lead.contact.qualification_status || 'unqualified'}
-              onValueChange={async (newStatus) => {
-                if (!lead.contact?.id) return;
-                try {
-                  const { error } = await supabase
-                    .from('contacts')
-                    .update({ qualification_status: newStatus, updated_at: new Date().toISOString() })
-                    .eq('id', lead.contact.id);
-                  if (error) throw error;
-                  toast({ title: "Contact status updated" });
-                  refetchLead();
-                } catch (error: any) {
-                  toast({ title: "Error updating status", description: error.message, variant: "destructive" });
-                }
-              }}
-            >
-              <SelectTrigger className="h-6 w-[110px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unqualified">Unqualified</SelectItem>
-                <SelectItem value="qualified">Qualified</SelectItem>
-                <SelectItem value="interested">Interested</SelectItem>
-                <SelectItem value="storm_damage">Storm Damage</SelectItem>
-                <SelectItem value="not_interested">Not Interested</SelectItem>
-                <SelectItem value="not_home">Not Home</SelectItem>
-              </SelectContent>
-            </Select>
+            {(() => {
+              const currentKey = (lead.contact as any).qualification_status || 'unqualified';
+              const optionList = contactStatuses.some(s => s.key === currentKey)
+                ? contactStatuses
+                : [
+                    ...contactStatuses,
+                    {
+                      id: `current-${currentKey}`,
+                      name: currentKey
+                        .split('_')
+                        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+                        .join(' '),
+                      key: currentKey,
+                      color: '#6b7280',
+                      description: null,
+                      status_order: 9999,
+                      is_active: true,
+                    },
+                  ];
+              return (
+                <Select
+                  value={currentKey}
+                  onValueChange={async (newStatus) => {
+                    if (!lead.contact?.id) return;
+                    try {
+                      const { error } = await supabase
+                        .from('contacts')
+                        .update({ qualification_status: newStatus, updated_at: new Date().toISOString() })
+                        .eq('id', lead.contact.id);
+                      if (error) throw error;
+                      toast({ title: "Contact status updated" });
+                      refetchLead();
+                    } catch (error: any) {
+                      toast({ title: "Error updating status", description: error.message, variant: "destructive" });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-6 w-[150px] text-xs">
+                    <SelectValue placeholder="Set status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {optionList.map((s) => (
+                      <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              );
+            })()}
             <Button
               variant={(lead.contact as any).portal_access_enabled ? 'default' : 'outline'}
               size="sm"
