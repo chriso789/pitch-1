@@ -250,7 +250,76 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     refresh();
   };
 
-  // Once a CO is created, render the document off-screen and persist a PDF
+  const handlePushToInvoice = async (co: ChangeOrder) => {
+    const amount = Number(co.cost_impact || 0);
+    if (amount <= 0) {
+      toast({ title: 'Cost impact is $0', description: 'Set a cost impact before invoicing.', variant: 'destructive' });
+      return;
+    }
+    if (!confirm(`Push ${fmt(amount)} to the contract and create a customer invoice?`)) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Bump project contract value
+      const { data: proj } = await (supabase as any)
+        .from('projects')
+        .select('contract_value')
+        .eq('id', co.project_id)
+        .maybeSingle();
+      const newContract = Number(proj?.contract_value || 0) + amount;
+      await (supabase as any)
+        .from('projects')
+        .update({ contract_value: newContract })
+        .eq('id', co.project_id);
+
+      // 2. Create a customer invoice for this CO
+      const { count } = await (supabase as any)
+        .from('project_invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('pipeline_entry_id', pipelineEntryId);
+      const invoiceNumber = `INV-${pipelineEntryId.slice(0, 6).toUpperCase()}-${String((count || 0) + 1).padStart(3, '0')}`;
+      const lineItems = [{
+        id: co.id,
+        description: `${co.co_number} — ${co.title}`,
+        quantity: 1,
+        unit_price: amount,
+        line_total: amount,
+      }];
+      const { error: invErr } = await (supabase as any).from('project_invoices').insert({
+        tenant_id: activeTenantId,
+        pipeline_entry_id: pipelineEntryId,
+        invoice_number: invoiceNumber,
+        amount,
+        balance: amount,
+        status: 'draft',
+        notes: `Change Order ${co.co_number}: ${co.title}`,
+        created_by: user.id,
+        line_items: lineItems as any,
+      });
+      if (invErr) throw invErr;
+
+      // 3. Mark CO as invoiced + approved
+      await (supabase as any)
+        .from('change_orders')
+        .update({
+          status: 'invoiced',
+          customer_approved: true,
+          customer_approved_at: new Date().toISOString(),
+          approved_date: new Date().toISOString(),
+        })
+        .eq('id', co.id);
+
+      toast({
+        title: 'Pushed to contract',
+        description: `Contract value updated and invoice ${invoiceNumber} created.`,
+      });
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['project-invoices'] });
+    } catch (e: any) {
+      toast({ title: 'Push failed', description: e.message, variant: 'destructive' });
+    }
+  };
   // into the Documents tab. We capture, save, then unmount.
   React.useEffect(() => {
     if (!pendingPdfCO || !activeTenantId) return;
