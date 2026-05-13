@@ -242,42 +242,60 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
       >
         <div className="flex gap-4 overflow-x-auto pb-4 max-h-[calc(100vh-280px)]" style={{ overscrollBehaviorX: 'contain' }}>
           {/* New / Unassigned column FIRST — always visible */}
-          <ContactKanbanColumn
-            id="uncategorized"
-            title="New / Unqualified"
-            color="#f59e0b"
-            count={groupedContacts['uncategorized']?.length || 0}
-            items={groupedContacts['uncategorized']?.map(c => c.id) || []}
-          >
-            {groupedContacts['uncategorized']?.map((contact) => (
-              <ContactKanbanCard
-                key={contact.id}
-                contact={contact}
-                onCall={onCall}
-                onEmail={onEmail}
-              />
-            ))}
-          </ContactKanbanColumn>
+          {(() => {
+            const sorted = sortColumnContacts(
+              groupedContacts['uncategorized'] || [],
+              getSortKey('uncategorized')
+            );
+            return (
+              <ContactKanbanColumn
+                id="uncategorized"
+                title="New / Unqualified"
+                color="#f59e0b"
+                count={sorted.length}
+                items={sorted.map((c) => c.id)}
+                sortKey={getSortKey('uncategorized')}
+                onSortChange={(k) => setColumnSort('uncategorized', k)}
+              >
+                {sorted.map((contact) => (
+                  <ContactKanbanCard
+                    key={contact.id}
+                    contact={contact}
+                    onCall={onCall}
+                    onEmail={onEmail}
+                  />
+                ))}
+              </ContactKanbanColumn>
+            );
+          })()}
 
-          {statuses.map((status) => (
-            <ContactKanbanColumn
-              key={status.key}
-              id={status.key}
-              title={status.name}
-              color={status.color}
-              count={groupedContacts[status.key]?.length || 0}
-              items={groupedContacts[status.key]?.map(c => c.id) || []}
-            >
-              {groupedContacts[status.key]?.map((contact) => (
-                <ContactKanbanCard
-                  key={contact.id}
-                  contact={contact}
-                  onCall={onCall}
-                  onEmail={onEmail}
-                />
-              ))}
-            </ContactKanbanColumn>
-          ))}
+          {statuses.map((status) => {
+            const sorted = sortColumnContacts(
+              groupedContacts[status.key] || [],
+              getSortKey(status.key)
+            );
+            return (
+              <ContactKanbanColumn
+                key={status.key}
+                id={status.key}
+                title={status.name}
+                color={status.color}
+                count={sorted.length}
+                items={sorted.map((c) => c.id)}
+                sortKey={getSortKey(status.key)}
+                onSortChange={(k) => setColumnSort(status.key, k)}
+              >
+                {sorted.map((contact) => (
+                  <ContactKanbanCard
+                    key={contact.id}
+                    contact={contact}
+                    onCall={onCall}
+                    onEmail={onEmail}
+                  />
+                ))}
+              </ContactKanbanColumn>
+            );
+          })}
         </div>
 
         <DragOverlay>
