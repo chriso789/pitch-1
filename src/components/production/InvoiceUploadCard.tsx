@@ -26,14 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -99,6 +91,36 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
   const [parsedTotals, setParsedTotals] = useState<{ subtotal?: number; tax?: number; total?: number }>({});
   const [formData, setFormData] = useState(emptyInvoiceForm);
+
+  const updateLineItem = (idx: number, patch: Partial<LineItem>) => {
+    setLineItems(prev => {
+      const next = prev.map((item, itemIdx) => {
+        if (itemIdx !== idx) return item;
+        const merged = { ...item, ...patch };
+        const qty = Number(merged.quantity || 0);
+        const unitPrice = Number(merged.unit_price || 0);
+        return {
+          ...merged,
+          line_total: qty > 0 && unitPrice > 0 ? Number((qty * unitPrice).toFixed(2)) : merged.line_total,
+        };
+      });
+
+      const editedSubtotal = next.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+      if (editedSubtotal > 0) {
+        const tax = Number(formData.tax_amount || parsedTotals.tax || 0);
+        const total = Number((editedSubtotal + tax).toFixed(2));
+        setParsedTotals(prevTotals => ({ ...prevTotals, subtotal: editedSubtotal, total }));
+        setFormData(prevForm => ({
+          ...prevForm,
+          subtotal: editedSubtotal.toFixed(2),
+          invoice_amount: total.toFixed(2),
+          notes: formatLineItemsSummary(next),
+        }));
+      }
+
+      return next;
+    });
+  };
 
   const resetImportFields = () => {
     setFormData(emptyInvoiceForm);
