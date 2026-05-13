@@ -32659,10 +32659,15 @@ export type Database = {
           expires_at: string | null
           id: string
           is_active: boolean | null
+          landing_headline: string | null
+          landing_hero_image_url: string | null
+          landing_message: string | null
           max_uses: number | null
           metadata: Json | null
           reward_type: string
           reward_value: number
+          source_job_id: string | null
+          status: string | null
           tenant_id: string
           updated_at: string | null
         }
@@ -32674,10 +32679,15 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          landing_headline?: string | null
+          landing_hero_image_url?: string | null
+          landing_message?: string | null
           max_uses?: number | null
           metadata?: Json | null
           reward_type?: string
           reward_value?: number
+          source_job_id?: string | null
+          status?: string | null
           tenant_id: string
           updated_at?: string | null
         }
@@ -32689,10 +32699,15 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          landing_headline?: string | null
+          landing_hero_image_url?: string | null
+          landing_message?: string | null
           max_uses?: number | null
           metadata?: Json | null
           reward_type?: string
           reward_value?: number
+          source_job_id?: string | null
+          status?: string | null
           tenant_id?: string
           updated_at?: string | null
         }
@@ -32809,6 +32824,383 @@ export type Database = {
           },
         ]
       }
+      referral_credit_ledger: {
+        Row: {
+          amount: number
+          balance_after: number
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          referral_payout_id: string | null
+          referrer_contact_id: string
+          related_job_id: string | null
+          tenant_id: string
+          transaction_type: string
+        }
+        Insert: {
+          amount: number
+          balance_after?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          referral_payout_id?: string | null
+          referrer_contact_id: string
+          related_job_id?: string | null
+          tenant_id: string
+          transaction_type: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          referral_payout_id?: string | null
+          referrer_contact_id?: string
+          related_job_id?: string | null
+          tenant_id?: string
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_credit_ledger_referral_payout_id_fkey"
+            columns: ["referral_payout_id"]
+            isOneToOne: false
+            referencedRelation: "referral_payouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_events: {
+        Row: {
+          browser: string | null
+          campaign_id: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          device_type: string | null
+          event_source: string | null
+          event_type: string
+          fbclid: string | null
+          gclid: string | null
+          id: string
+          ip_hash: string | null
+          landing_url: string | null
+          metadata: Json | null
+          msclkid: string | null
+          os: string | null
+          ref_channel: string | null
+          referral_link_id: string | null
+          referrer_contact_id: string | null
+          referrer_url: string | null
+          region: string | null
+          sent_by_user_id: string | null
+          session_id: string | null
+          tenant_id: string
+          ttclid: string | null
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          visitor_id: string | null
+        }
+        Insert: {
+          browser?: string | null
+          campaign_id?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          device_type?: string | null
+          event_source?: string | null
+          event_type: string
+          fbclid?: string | null
+          gclid?: string | null
+          id?: string
+          ip_hash?: string | null
+          landing_url?: string | null
+          metadata?: Json | null
+          msclkid?: string | null
+          os?: string | null
+          ref_channel?: string | null
+          referral_link_id?: string | null
+          referrer_contact_id?: string | null
+          referrer_url?: string | null
+          region?: string | null
+          sent_by_user_id?: string | null
+          session_id?: string | null
+          tenant_id: string
+          ttclid?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          visitor_id?: string | null
+        }
+        Update: {
+          browser?: string | null
+          campaign_id?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          device_type?: string | null
+          event_source?: string | null
+          event_type?: string
+          fbclid?: string | null
+          gclid?: string | null
+          id?: string
+          ip_hash?: string | null
+          landing_url?: string | null
+          metadata?: Json | null
+          msclkid?: string | null
+          os?: string | null
+          ref_channel?: string | null
+          referral_link_id?: string | null
+          referrer_contact_id?: string | null
+          referrer_url?: string | null
+          region?: string | null
+          sent_by_user_id?: string | null
+          session_id?: string | null
+          tenant_id?: string
+          ttclid?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          visitor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_events_referral_link_id_fkey"
+            columns: ["referral_link_id"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_flags: {
+        Row: {
+          created_at: string
+          description: string | null
+          event_id: string | null
+          flag_type: string
+          id: string
+          referral_link_id: string | null
+          referral_submission_id: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          event_id?: string | null
+          flag_type: string
+          id?: string
+          referral_link_id?: string | null
+          referral_submission_id?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          event_id?: string | null
+          flag_type?: string
+          id?: string
+          referral_link_id?: string | null
+          referral_submission_id?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_flags_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "referral_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_flags_referral_link_id_fkey"
+            columns: ["referral_link_id"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_flags_referral_submission_id_fkey"
+            columns: ["referral_submission_id"]
+            isOneToOne: false
+            referencedRelation: "referral_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_payouts: {
+        Row: {
+          approval_user_id: string | null
+          approved_at: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          paid_at: string | null
+          payment_reference: string | null
+          payout_amount: number
+          payout_method: string
+          payout_status: string
+          referral_link_id: string | null
+          referral_submission_id: string | null
+          referrer_contact_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_user_id?: string | null
+          approved_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          payment_reference?: string | null
+          payout_amount: number
+          payout_method: string
+          payout_status?: string
+          referral_link_id?: string | null
+          referral_submission_id?: string | null
+          referrer_contact_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approval_user_id?: string | null
+          approved_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          payment_reference?: string | null
+          payout_amount?: number
+          payout_method?: string
+          payout_status?: string
+          referral_link_id?: string | null
+          referral_submission_id?: string | null
+          referrer_contact_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_payouts_referral_link_id_fkey"
+            columns: ["referral_link_id"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_payouts_referral_submission_id_fkey"
+            columns: ["referral_submission_id"]
+            isOneToOne: false
+            referencedRelation: "referral_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_program_settings: {
+        Row: {
+          allow_gift_card: boolean
+          allow_stored_balance: boolean
+          allow_venmo: boolean
+          allow_zelle: boolean
+          block_self_referrals: boolean
+          brand_primary_color: string | null
+          created_at: string
+          default_landing_headline: string | null
+          default_landing_message: string | null
+          default_reward_type: string
+          duplicate_window_days: number
+          fixed_reward_amount: number
+          hero_image_url: string | null
+          id: string
+          is_enabled: boolean
+          max_rewards_per_referrer_per_year: number | null
+          minimum_collected_revenue: number
+          payout_trigger: string
+          percentage_reward_rate: number
+          require_admin_approval: boolean
+          tenant_id: string
+          terms_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          allow_gift_card?: boolean
+          allow_stored_balance?: boolean
+          allow_venmo?: boolean
+          allow_zelle?: boolean
+          block_self_referrals?: boolean
+          brand_primary_color?: string | null
+          created_at?: string
+          default_landing_headline?: string | null
+          default_landing_message?: string | null
+          default_reward_type?: string
+          duplicate_window_days?: number
+          fixed_reward_amount?: number
+          hero_image_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          max_rewards_per_referrer_per_year?: number | null
+          minimum_collected_revenue?: number
+          payout_trigger?: string
+          percentage_reward_rate?: number
+          require_admin_approval?: boolean
+          tenant_id: string
+          terms_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allow_gift_card?: boolean
+          allow_stored_balance?: boolean
+          allow_venmo?: boolean
+          allow_zelle?: boolean
+          block_self_referrals?: boolean
+          brand_primary_color?: string | null
+          created_at?: string
+          default_landing_headline?: string | null
+          default_landing_message?: string | null
+          default_reward_type?: string
+          duplicate_window_days?: number
+          fixed_reward_amount?: number
+          hero_image_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          max_rewards_per_referrer_per_year?: number | null
+          minimum_collected_revenue?: number
+          payout_trigger?: string
+          percentage_reward_rate?: number
+          require_admin_approval?: boolean
+          tenant_id?: string
+          terms_text?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       referral_rewards: {
         Row: {
           created_at: string | null
@@ -32888,6 +33280,176 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      referral_submissions: {
+        Row: {
+          consent_to_contact: boolean
+          created_at: string
+          crm_contact_id: string | null
+          crm_job_id: string | null
+          crm_lead_id: string | null
+          estimated_value: number | null
+          id: string
+          ip_hash: string | null
+          message: string | null
+          metadata: Json | null
+          payout_eligibility_reason: string | null
+          payout_eligible: boolean
+          preferred_contact_method: string | null
+          project_type: string | null
+          referral_link_id: string | null
+          referred_city: string | null
+          referred_email: string | null
+          referred_first_name: string
+          referred_last_name: string
+          referred_phone: string
+          referred_property_address: string | null
+          referred_state: string | null
+          referred_zip: string | null
+          referrer_contact_id: string | null
+          roof_type_interest: string | null
+          service_needed: string | null
+          sold_value: number | null
+          source_job_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          consent_to_contact?: boolean
+          created_at?: string
+          crm_contact_id?: string | null
+          crm_job_id?: string | null
+          crm_lead_id?: string | null
+          estimated_value?: number | null
+          id?: string
+          ip_hash?: string | null
+          message?: string | null
+          metadata?: Json | null
+          payout_eligibility_reason?: string | null
+          payout_eligible?: boolean
+          preferred_contact_method?: string | null
+          project_type?: string | null
+          referral_link_id?: string | null
+          referred_city?: string | null
+          referred_email?: string | null
+          referred_first_name: string
+          referred_last_name: string
+          referred_phone: string
+          referred_property_address?: string | null
+          referred_state?: string | null
+          referred_zip?: string | null
+          referrer_contact_id?: string | null
+          roof_type_interest?: string | null
+          service_needed?: string | null
+          sold_value?: number | null
+          source_job_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          consent_to_contact?: boolean
+          created_at?: string
+          crm_contact_id?: string | null
+          crm_job_id?: string | null
+          crm_lead_id?: string | null
+          estimated_value?: number | null
+          id?: string
+          ip_hash?: string | null
+          message?: string | null
+          metadata?: Json | null
+          payout_eligibility_reason?: string | null
+          payout_eligible?: boolean
+          preferred_contact_method?: string | null
+          project_type?: string | null
+          referral_link_id?: string | null
+          referred_city?: string | null
+          referred_email?: string | null
+          referred_first_name?: string
+          referred_last_name?: string
+          referred_phone?: string
+          referred_property_address?: string | null
+          referred_state?: string | null
+          referred_zip?: string | null
+          referrer_contact_id?: string | null
+          roof_type_interest?: string | null
+          service_needed?: string | null
+          sold_value?: number | null
+          source_job_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_submissions_referral_link_id_fkey"
+            columns: ["referral_link_id"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrer_payout_profiles: {
+        Row: {
+          created_at: string
+          gift_card_email: string | null
+          id: string
+          payout_terms_accepted: boolean | null
+          preferred_payout_method: string | null
+          referrer_contact_id: string
+          stored_balance_enabled: boolean | null
+          tax_acknowledgment: boolean | null
+          tenant_id: string
+          updated_at: string
+          venmo_handle: string | null
+          zelle_email: string | null
+          zelle_phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          gift_card_email?: string | null
+          id?: string
+          payout_terms_accepted?: boolean | null
+          preferred_payout_method?: string | null
+          referrer_contact_id: string
+          stored_balance_enabled?: boolean | null
+          tax_acknowledgment?: boolean | null
+          tenant_id: string
+          updated_at?: string
+          venmo_handle?: string | null
+          zelle_email?: string | null
+          zelle_phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          gift_card_email?: string | null
+          id?: string
+          payout_terms_accepted?: boolean | null
+          preferred_payout_method?: string | null
+          referrer_contact_id?: string
+          stored_balance_enabled?: boolean | null
+          tax_acknowledgment?: boolean | null
+          tenant_id?: string
+          updated_at?: string
+          venmo_handle?: string | null
+          zelle_email?: string | null
+          zelle_phone?: string | null
+        }
+        Relationships: []
       }
       rep_overhead_rules: {
         Row: {
@@ -47439,6 +48001,10 @@ export type Database = {
         Args: { new_price: number; old_price: number }
         Returns: number
       }
+      calculate_referral_reward: {
+        Args: { _submission_id: string; _tenant_id: string }
+        Returns: number
+      }
       calculate_rep_commission: {
         Args: { project_id_param: string; sales_rep_id_param: string }
         Returns: Json
@@ -47621,6 +48187,10 @@ export type Database = {
         Returns: string
       }
       generate_project_job_number: { Args: never; Returns: string }
+      generate_referral_code: {
+        Args: { _contact_id: string; _tenant_id: string }
+        Returns: string
+      }
       generate_share_token: { Args: never; Returns: string }
       generate_signature_access_token: { Args: never; Returns: string }
       generate_simple_job_number:
@@ -48000,6 +48570,27 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_public_referral_link: {
+        Args: { _code: string }
+        Returns: {
+          brand_primary_color: string
+          code: string
+          hero_image_url: string
+          is_active: boolean
+          landing_headline: string
+          landing_hero_image_url: string
+          landing_message: string
+          referral_link_id: string
+          referrer_first_name: string
+          referrer_last_name: string
+          status: string
+          tenant_id: string
+        }[]
+      }
+      get_referrer_credit_balance: {
+        Args: { _contact_id: string; _tenant_id: string }
+        Returns: number
+      }
       get_scope_network_stats: { Args: never; Returns: Json }
       get_tenant_sms_number: { Args: { p_tenant_id: string }; Returns: string }
       get_tenant_voice_number: {
@@ -48283,6 +48874,10 @@ export type Database = {
           _tenant_id: string
         }
         Returns: string
+      }
+      save_referrer_payout_preference: {
+        Args: { _payload: Json }
+        Returns: Json
       }
       search_by_clj: {
         Args: { p_clj: string; p_tenant_id: string }
@@ -48936,6 +49531,7 @@ export type Database = {
         Args: { folder_name: string; user_id: string }
         Returns: boolean
       }
+      submit_public_referral: { Args: { _payload: Json }; Returns: Json }
       switch_active_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       switch_developer_context: {
         Args: { target_tenant_id: string }
@@ -48945,6 +49541,7 @@ export type Database = {
         Args: { p_property_id: string }
         Returns: string
       }
+      track_public_referral_event: { Args: { _payload: Json }; Returns: string }
       track_slide_view: {
         Args: {
           p_session_id: string
