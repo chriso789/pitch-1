@@ -8,11 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Trash2, Loader2, Lock, CheckCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
+import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,8 +57,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   onLockSuccess
 }) => {
   const queryClient = useQueryClient();
-  const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   const { data: companyInfo } = useCompanyInfo();
+  const { data: latestMeasurement } = useLatestMeasurement(pipelineEntryId, !!pipelineEntryId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -66,17 +69,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
   // Fetch templates for this tenant
   const { data: templates, isLoading: templatesLoading } = useQuery({
-    queryKey: ['estimate-templates', sectionType],
+    queryKey: ['estimate-templates', effectiveTenantId, sectionType],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('estimate_calculation_templates')
         .select('id, name, template_category, base_material_cost_per_sq, base_labor_rate_per_hour')
+        .eq('tenant_id', effectiveTenantId)
         .eq('is_active', true)
         .order('name');
       
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: !!effectiveTenantId
   });
 
   // First fetch the selected_estimate_id from pipeline_entries metadata
