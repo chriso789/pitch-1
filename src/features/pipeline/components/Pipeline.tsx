@@ -60,7 +60,10 @@ const Pipeline = () => {
     salesRep: 'all',
     dateFrom: '',
     dateTo: '',
-    sortOrder: 'desc' as 'asc' | 'desc'
+    sortOrder: 'desc' as 'asc' | 'desc',
+    lastTouchedMinDays: '' as string, // days since last note/task created
+    timeInStatusMinDays: '' as string, // days in current pipeline stage
+    lastEmailMinDays: '' as string, // days since last outbound email (e.g. estimate sent)
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
