@@ -39,6 +39,7 @@ export function QXOConnectionSettings() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [clientId, setClientId] = useState('');
   const [siteId, setSiteId] = useState('dealersChoice');
   const [environment, setEnvironment] = useState('staging');
 
