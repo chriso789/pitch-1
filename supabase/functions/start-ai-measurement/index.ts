@@ -1152,11 +1152,12 @@ async function processJob(input: any) {
       // Apply registration gate
       const isSolarSource = cand.source.includes('solar_segments_union') || cand.source.includes('solar_segments_hull');
       const isMaskContour = cand.source === 'google_solar_mask_contour';
+      const isTrustedSolarBboxFallback = noOsmCandidatesAtSolarFallback && isCenteredSolarBboxFallback(cand);
       const maxOffset = isSolarSource ? SOLAR_STRICT_CENTROID_PX : MAX_CENTROID_OFFSET_PX;
       const minOverlap = isSolarSource ? SOLAR_STRICT_OVERLAP : MIN_ROOF_IMAGE_OVERLAP;
 
       // Mask contour is derived FROM the mask — skip self-validation
-      if (isMaskContour) {
+      if (isMaskContour || isTrustedSolarBboxFallback) {
         cand.footprint_registration_passed = true;
         continue;
       }
