@@ -147,7 +147,7 @@ export function QXOBrowser({ tenantId }: Props) {
       if (error) throw error;
       if (data?.quote) {
         toast({ title: 'Quote synced', description: `${data.quote.id} — ${data.quote.statusDescription || data.quote.status || ''}` });
-        loadQuotes();
+        loadQuotes(1, '', quoteType);
       } else {
         toast({ title: 'Quote not found', variant: 'destructive' });
       }
