@@ -727,7 +727,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, materialInvoices }: any) {
   const [running, setRunning] = React.useState(false);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
-  const [skipped, setSkipped] = React.useState<Array<{ invoiceId: string; reason: string }>>([]);
+  const [skipped, setSkipped] = React.useState<Array<{ invoiceId: string; invoiceNumber?: string | null; vendorName?: string | null; documentName?: string | null; reason: string }>>([]);
   const toggle = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -857,8 +857,8 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                   const inv = invoiceById.get(s.invoiceId);
                   return (
                     <TableRow key={s.invoiceId}>
-                      <TableCell>{inv?.vendor_name || "—"}</TableCell>
-                      <TableCell>{inv?.invoice_number || "—"}</TableCell>
+                      <TableCell>{s.vendorName || inv?.vendor_name || "—"}</TableCell>
+                      <TableCell>{s.invoiceNumber || inv?.invoice_number || s.documentName || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{s.reason}</TableCell>
                     </TableRow>
                   );
