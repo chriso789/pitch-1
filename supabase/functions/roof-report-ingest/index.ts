@@ -1762,6 +1762,18 @@ If no diagram is found, return: {"diagram_found": false}`;
               mime_type: 'application/pdf',
               description: `${label} Report - ${sqft} sqft`,
             });
+
+            // Persist the source-PDF location on the vendor report so the UI
+            // can show the ORIGINAL imported report (not the AI diagnostic).
+            try {
+              await supabase
+                .from('roof_vendor_reports')
+                .update({ file_bucket: 'documents', file_path: docPath })
+                .eq('id', reportRow.id);
+            } catch (vendorUpdateErr) {
+              console.warn('roof-report-ingest: failed to persist file_path on vendor report', vendorUpdateErr);
+            }
+
             console.log("roof-report-ingest: Saved document to job:", docPath);
           } else {
             console.warn("roof-report-ingest: Storage upload failed:", uploadErr.message);

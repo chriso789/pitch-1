@@ -715,6 +715,67 @@ export function UnifiedMeasurementPanel({
       const linkedMeasurementId = getApprovalMeasurementId(approval);
       const approvalTags = approval.saved_tags || {};
 
+      // If this approval came from an imported vendor/paid report (Roofr,
+      // EagleView, Hover, RoofScope, Xactimate), open the ORIGINAL imported
+      // PDF instead of the AI diagnostic dialog.
+      const sourceTag = String(approvalTags.source || '').toLowerCase();
+      const vendorProviders = ['roofr', 'eagleview', 'hover', 'roofscope', 'xactimate'];
+      const matchedProvider = vendorProviders.find((p) => sourceTag.includes(p));
+      if (matchedProvider) {
+        try {
+          // 1. Try the canonical source: roof_vendor_reports.file_bucket/file_path
+          const { data: vendorReports } = await supabase
+            .from('roof_vendor_reports')
+            .select('id, file_bucket, file_path, file_url, created_at')
+            .eq('lead_id', pipelineEntryId)
+            .eq('provider', matchedProvider)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          let openedUrl: string | null = null;
+          const vr = vendorReports?.[0];
+          if (vr?.file_bucket && vr?.file_path) {
+            const { data: signed } = await supabase.storage
+              .from(vr.file_bucket)
+              .createSignedUrl(vr.file_path, 60 * 10);
+            openedUrl = signed?.signedUrl ?? null;
+          }
+          if (!openedUrl && vr?.file_url) openedUrl = vr.file_url;
+
+          // 2. Fallback: find the most recent measurement document on this lead
+          if (!openedUrl) {
+            const { data: docs } = await supabase
+              .from('documents')
+              .select('file_path, filename, created_at')
+              .eq('pipeline_entry_id', pipelineEntryId)
+              .ilike('description', `%${matchedProvider}%`)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            const doc = docs?.[0];
+            if (doc?.file_path) {
+              const { data: signed } = await supabase.storage
+                .from('documents')
+                .createSignedUrl(doc.file_path, 60 * 10);
+              openedUrl = signed?.signedUrl ?? null;
+            }
+          }
+
+          if (openedUrl) {
+            window.open(openedUrl, '_blank', 'noopener,noreferrer');
+            return;
+          }
+
+          toast({
+            title: 'Original report not found',
+            description: `Couldn't locate the imported ${matchedProvider} PDF for this lead. Showing data summary instead.`,
+            variant: 'destructive',
+          });
+        } catch (vendorErr: any) {
+          console.error('Failed to open vendor report PDF:', vendorErr);
+          // Fall through to the AI dialog so the user still sees something.
+        }
+      }
+
       if (!linkedMeasurementId) {
         setReportState({
           open: true,
