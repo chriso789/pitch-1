@@ -974,11 +974,11 @@ export const MaterialAuditContent = () => {
       <SpendChart chartData={chartData} />
       <div className="flex gap-2 items-center">
         <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
+          <SelectTrigger className="w-[260px]"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Suppliers</SelectItem>
-            {supplierNames.map((name) => (
-              <SelectItem key={name} value={name}>{name}</SelectItem>
+            {canonicalSuppliers.map((s) => (
+              <SelectItem key={s.key} value={s.key}>{s.display}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -990,7 +990,7 @@ export const MaterialAuditContent = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="price-lists">Supplier Price Lists</TabsTrigger>
-          <TabsTrigger value="invoice-queue">Invoice Audit Queue ({materialInvoices.length})</TabsTrigger>
+          <TabsTrigger value="invoice-queue">Material Invoices ({materialInvoices.length})</TabsTrigger>
           <TabsTrigger value="audit-results">Audit Results</TabsTrigger>
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
