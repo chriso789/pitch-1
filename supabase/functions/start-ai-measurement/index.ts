@@ -916,8 +916,8 @@ async function processJob(input: any) {
         if (hull.length >= 4) {
           const hullCand = scoreCandidate("google_solar_segments_hull", hull);
           // CRITICAL FIX: Solar segment hull traces INNER plane geometry, not the
-          // true eave/rake roof perimeter. Never allow it as the final footprint.
-          // It is stored for diagnostics and internal guidance only.
+          // true eave/rake roof perimeter. Keep it diagnostic unless the later
+          // no-OSM + failed-mask fallback explicitly clears this rejection.
           if (!hullCand.rejected_reason) {
             hullCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
           }
@@ -944,7 +944,8 @@ async function processJob(input: any) {
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
             // CRITICAL FIX: Solar segment union traces INNER plane geometry, not
-            // the true eave/rake roof perimeter. Store for diagnostics only.
+            // the true eave/rake roof perimeter. Keep it diagnostic unless the
+            // later no-OSM + failed-mask fallback explicitly clears this rejection.
             if (!unionCand.rejected_reason) {
               unionCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
             }
@@ -962,8 +963,9 @@ async function processJob(input: any) {
     const solarFp = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
     if (solarFp && solarFp.length >= 3) {
       const bboxCand = scoreCandidate("google_solar_bbox", solarFp);
-      // CRITICAL FIX: Solar bbox is not a roof perimeter — always reject.
-      if (!bboxCand.rejected_reason) {
+      // Solar bbox is usually diagnostic only, but with no OSM it is a valid
+      // fallback when it is residential-sized and centered on the geocode.
+      if (!bboxCand.rejected_reason && !isCenteredSolarBboxFallback(bboxCand)) {
         bboxCand.rejected_reason = "solar_bbox_not_roof_perimeter";
       }
       candidates.push(bboxCand);
