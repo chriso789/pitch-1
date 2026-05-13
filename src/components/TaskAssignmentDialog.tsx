@@ -180,6 +180,17 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
 
       if (error) throw error;
 
+      // Increment template use_count if a template was used
+      if (selectedTemplateId) {
+        const tpl = templates.find((t) => t.id === selectedTemplateId);
+        if (tpl) {
+          await supabase
+            .from("task_templates")
+            .update({ use_count: (tpl.use_count || 0) + 1 })
+            .eq("id", selectedTemplateId);
+        }
+      }
+
       toast({
         title: "Task Created",
         description: `Task "${formData.title}" has been assigned successfully.`,
