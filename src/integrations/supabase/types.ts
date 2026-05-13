@@ -32077,6 +32077,72 @@ export type Database = {
           },
         ]
       }
+      qxo_connections: {
+        Row: {
+          access_token: string | null
+          account_id: string | null
+          client_id: string | null
+          connection_status: string
+          created_at: string
+          default_branch_code: string | null
+          environment: string
+          id: string
+          last_error: string | null
+          last_validated_at: string | null
+          password: string | null
+          profile_id: string | null
+          refresh_token: string | null
+          site_id: string | null
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+          username: string | null
+          valid_indicator: boolean
+        }
+        Insert: {
+          access_token?: string | null
+          account_id?: string | null
+          client_id?: string | null
+          connection_status?: string
+          created_at?: string
+          default_branch_code?: string | null
+          environment?: string
+          id?: string
+          last_error?: string | null
+          last_validated_at?: string | null
+          password?: string | null
+          profile_id?: string | null
+          refresh_token?: string | null
+          site_id?: string | null
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+          username?: string | null
+          valid_indicator?: boolean
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string | null
+          client_id?: string | null
+          connection_status?: string
+          created_at?: string
+          default_branch_code?: string | null
+          environment?: string
+          id?: string
+          last_error?: string | null
+          last_validated_at?: string | null
+          password?: string | null
+          profile_id?: string | null
+          refresh_token?: string | null
+          site_id?: string | null
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          username?: string | null
+          valid_indicator?: boolean
+        }
+        Relationships: []
+      }
       rate_limits: {
         Row: {
           id: string
