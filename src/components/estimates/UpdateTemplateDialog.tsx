@@ -285,7 +285,7 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
                 No templates yet. Switch to "Add New Template" to create one.
               </div>
             ) : (
-              <ScrollArea className="max-h-[180px]">
+              <ScrollArea className="max-h-[220px]">
                 <div className="space-y-1 pr-2">
                   {templates.map((template) => (
                     <button
