@@ -593,10 +593,50 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                               const qty = Number(it.quantity ?? it.qty ?? 1);
                               const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
                               const total = Number(it.line_total ?? it.total ?? qty * price);
+                              const isEditing = editingLine?.coId === co.id && editingLine?.idx === idx;
+                              if (isEditing) {
+                                return (
+                                  <div key={it.id || idx} className="px-3 py-2 text-xs space-y-2 bg-muted/30">
+                                    <Input
+                                      value={lineDraft.description}
+                                      onChange={(e) => setLineDraft((d) => ({ ...d, description: e.target.value }))}
+                                      placeholder="Description"
+                                      className="h-8 text-xs"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        type="number"
+                                        value={lineDraft.quantity}
+                                        onChange={(e) => setLineDraft((d) => ({ ...d, quantity: e.target.value }))}
+                                        placeholder="Qty"
+                                        className="h-8 text-xs w-20"
+                                      />
+                                      <span className="text-muted-foreground">×</span>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={lineDraft.unit_price}
+                                        onChange={(e) => setLineDraft((d) => ({ ...d, unit_price: e.target.value }))}
+                                        placeholder="Unit price"
+                                        className="h-8 text-xs w-28"
+                                      />
+                                      <span className="ml-auto font-medium">
+                                        {fmt((Number(lineDraft.quantity) || 0) * (Number(lineDraft.unit_price) || 0))}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                      <Button size="sm" variant="ghost" onClick={() => setEditingLine(null)} disabled={savingLine}>Cancel</Button>
+                                      <Button size="sm" onClick={() => saveEditLine(co)} disabled={savingLine}>
+                                        {savingLine ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              }
                               return (
                                 <div
                                   key={it.id || idx}
-                                  className="flex items-center justify-between px-3 py-2 text-xs gap-2"
+                                  className="flex items-center justify-between px-3 py-2 text-xs gap-2 group"
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     {it.kind && (
@@ -613,6 +653,24 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                                       {qty} × {fmt(price)}
                                     </span>
                                     <span className="font-medium w-20">{fmt(total)}</span>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6"
+                                        onClick={() => beginEditLine(co.id, idx, it)}
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-destructive hover:text-destructive"
+                                        onClick={() => deleteLine(co, idx)}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
                               );
