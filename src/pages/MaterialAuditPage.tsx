@@ -16,6 +16,37 @@ import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, X
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
+// Canonicalize vendor names so aliases (SRS / SRS Building Products / Suncoast Roofers Supply,
+// ABC / ABC Supply, etc.) merge into a single bucket across charts and tables.
+export function canonicalizeVendorName(raw: string | null | undefined): { key: string; display: string } {
+  const v = (raw || "").trim();
+  if (!v) return { key: "__unknown__", display: "Unknown vendor" };
+  if (/permit|county|township|\btwp\b|city of|riviera beach|ridley|planning,? zoning|zoning ?& ?building/i.test(v))
+    return { key: "__permits__", display: "Permits (city / county / township)" };
+  if (/dump|dumpster/i.test(v))
+    return { key: "__dumpfees__", display: "Dump / Dumpster Fees" };
+  if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
+  if (/^srs\b|srs building|suncoast roofers/i.test(v))
+    return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
+  if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
+  if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
+  if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
+  if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
+  if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
+  return { key: v.toLowerCase(), display: v };
+}
+
+// A vendor is treated as a labor crew / subcontractor (not a material supplier) when
+// (a) any of its invoices is typed 'labor', or (b) the name reads like a service company.
+export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?: string[] }): boolean {
+  if (supplier.invoice_types?.includes("labor")) return true;
+  const n = String(supplier.supplier_name || "").toLowerCase();
+  if (!n) return false;
+  if (n.startsWith("permits") || n.includes("dump")) return false;
+  return /\b(roofing|construction|flooring|services?|contractors?|installer|installation|labor|sub)\b/.test(n);
+}
+
 // --- Summary Cards ---
 function SummaryCards({ pricebookGroups, totalPricebookItems, materialInvoices, totalInvoiceAmount, unmatchedLines }: any) {
   return (
