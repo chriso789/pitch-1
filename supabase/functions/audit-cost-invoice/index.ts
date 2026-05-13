@@ -112,6 +112,7 @@ Deno.serve(async (req: Request) => {
       .eq("company_id", tenantId);
 
     const supplierByCanon = new Map<string, any>();
+    const supplierList = suppliers || [];
     (suppliers || []).forEach((s) => {
       const { key } = canonVendor(s.supplier_name);
       supplierByCanon.set(key, s);
@@ -122,6 +123,21 @@ Deno.serve(async (req: Request) => {
       const canon = canonVendor(invVendor);
       const existing = supplierByCanon.get(canon.key);
       if (existing) return existing;
+
+      const invKey = supplierCompareKey(invVendor);
+      const fuzzyExisting = invKey
+        ? supplierList.find((s: any) => {
+            const names = [s.supplier_name, ...(s.aliases || [])];
+            return names.some((name) => {
+              const supKey = supplierCompareKey(name);
+              return supKey && (supKey.includes(invKey) || invKey.includes(supKey) || tokenScore(invKey, supKey) >= 0.6);
+            });
+          })
+        : null;
+      if (fuzzyExisting) {
+        supplierByCanon.set(canon.key, fuzzyExisting);
+        return fuzzyExisting;
+      }
 
       const { data: created, error } = await supabase
         .from("material_suppliers")
@@ -186,19 +202,26 @@ Deno.serve(async (req: Request) => {
 
     let auditedCount = 0;
     let totalOvercharge = 0;
-    const skipped: Array<{ invoiceId: string; reason: string }> = [];
+    const skipped: SkippedInvoice[] = [];
+    const skipInvoice = (inv: any, reason: string) => skipped.push({
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoice_number || null,
+      vendorName: inv.vendor_name || null,
+      documentName: inv.document_name || null,
+      reason,
+    });
 
     for (const inv of invoices || []) {
       const supplier = await resolveSupplier(inv.vendor_name);
       if (!supplier) {
-        skipped.push({ invoiceId: inv.id, reason: `No supplier match for "${inv.vendor_name}"` });
+        skipInvoice(inv, `No supplier match for "${inv.vendor_name}"`);
         continue;
       }
 
       const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
       const { priceListId, items, rules } = await loadItems(supplier.id, invoiceDate);
       if (!priceListId || !items.length) {
-        skipped.push({ invoiceId: inv.id, reason: `No price list for supplier "${supplier.supplier_name}"` });
+        skipInvoice(inv, `No price list for supplier "${supplier.supplier_name}"`);
         continue;
       }
       const itemsById = new Map(items.map((i) => [i.id, i]));
