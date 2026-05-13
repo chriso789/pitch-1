@@ -197,7 +197,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
-    mutationFn: async (items: LineItem[]) => {
+    mutationFn: async (payload: LineItem[] | { items: LineItem[]; templateId?: string }) => {
+      const items = Array.isArray(payload) ? payload : payload.items;
+      const templateIdToSave = Array.isArray(payload) ? selectedTemplateId : payload.templateId ?? selectedTemplateId;
       const sectionKey = sectionType === 'material' ? 'materials' : 'labor';
       const costKey = sectionType === 'material' ? 'material_cost' : 'labor_cost';
       const total = items.reduce((sum, item) => sum + item.line_total, 0);
@@ -230,7 +232,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .update({
           line_items: updatedLineItems as any,
           [costKey]: total,
-          template_id: selectedTemplateId || null
+          template_id: templateIdToSave || null
         })
         .eq('id', effectiveEstimateId);
       if (error) throw error;
