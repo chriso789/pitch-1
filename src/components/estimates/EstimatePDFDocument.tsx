@@ -280,7 +280,9 @@ const PageHeader: React.FC<{
   dateStr: string;
   opts: PDFComponentOptions;
   isFirstPage?: boolean;
-}> = ({ companyLogo, companyInfo, companyName, estimateNumber, dateStr, opts, isFirstPage = false }) => {
+  customerName?: string;
+  customerAddress?: string;
+}> = ({ companyLogo, companyInfo, companyName, estimateNumber, dateStr, opts, isFirstPage = false, customerName, customerAddress }) => {
   const companyAddressParts = [
     companyInfo?.address_street,
     [companyInfo?.address_city, companyInfo?.address_state].filter(Boolean).join(', '),
@@ -315,13 +317,16 @@ const PageHeader: React.FC<{
         )}
       </div>
       
-      <div className="text-right">
-        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimate</p>
-        {opts.showEstimateNumber && (
-          <h2 className="text-base font-bold text-gray-900">{estimateNumber}</h2>
+      <div className="text-right max-w-[55%]">
+        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Prepared For</p>
+        {opts.showCustomerName && customerName && (
+          <h2 className="text-base font-bold text-gray-900 leading-tight">{customerName}</h2>
+        )}
+        {opts.showCustomerAddress && customerAddress && (
+          <p className="text-xs text-gray-600">{customerAddress}</p>
         )}
         {opts.showDate && (
-          <p className="text-xs text-gray-500">{dateStr}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{dateStr}</p>
         )}
       </div>
     </div>
@@ -410,6 +415,8 @@ const PageShell: React.FC<{
   totalPages: number;
   showHeader?: boolean;
   isSignaturePage?: boolean;
+  customerName?: string;
+  customerAddress?: string;
 }> = ({
   children,
   companyLogo,
@@ -423,6 +430,8 @@ const PageShell: React.FC<{
   totalPages,
   showHeader = true,
   isSignaturePage = false,
+  customerName,
+  customerAddress,
 }) => {
   return (
     <div 
@@ -453,6 +462,8 @@ const PageShell: React.FC<{
             dateStr={dateStr}
             opts={opts}
             isFirstPage={pageNumber === 1}
+            customerName={customerName}
+            customerAddress={customerAddress}
           />
         </div>
       )}
@@ -766,6 +777,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     dateStr,
     opts,
     totalPages: pages.totalPages,
+    customerName,
+    customerAddress,
   };
 
   return (
@@ -846,25 +859,7 @@ const FirstPage: React.FC<{
           <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
         </div>
       )}
-      {/* Customer Info */}
-      {(opts.showCustomerName || opts.showCustomerAddress) && (
-        <div className="p-2 bg-gray-50 rounded">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Prepared For</h3>
-          {opts.showCustomerName && (
-            <p className="font-semibold text-sm text-gray-900">{customerName || 'Customer'}</p>
-          )}
-          {opts.showCustomerAddress && (
-            <p className="text-gray-600 text-xs">{customerAddress || 'Address not specified'}</p>
-          )}
-          {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="text-xs text-gray-500">
-              {customerPhone && <span>{customerPhone}</span>}
-              {customerPhone && customerEmail && <span> • </span>}
-              {customerEmail && <span>{customerEmail}</span>}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Customer info now appears in the page header (Prepared For) on every page */}
 
       {/* Show Only Total Mode */}
       {opts.showOnlyTotal && (
