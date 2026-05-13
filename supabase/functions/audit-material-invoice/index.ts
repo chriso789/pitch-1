@@ -129,6 +129,29 @@ Deno.serve(async (req: Request) => {
       if (chargedUnit == null && chargedExt != null && qty > 0) chargedUnit = chargedExt / qty;
 
       let agreedUnit: number | null = matchedItem?.agreed_unit_price ?? null;
+
+      // ---- Pack-quantity UOM normalization ----
+      // If the price-list item is sold in a bulk UOM (e.g. SQ) but the invoice
+      // bills in a smaller pack UOM (e.g. EA / TILE), divide the agreed price
+      // by pack_quantity so charged-vs-agreed compares apples to apples.
+      // Example: Eagle Field Tile @ $120/SQ with pack_quantity=89 EA
+      //          → equivalent agreed = $120 / 89 = $1.348/EA
+      const packQty = matchedItem?.pack_quantity != null ? Number(matchedItem.pack_quantity) : null;
+      const packUom = matchedItem?.pack_uom ? String(matchedItem.pack_uom).toUpperCase() : null;
+      const invUomU = line.unit_of_measure ? String(line.unit_of_measure).toUpperCase() : null;
+      const agreedUomU = matchedItem?.unit_of_measure ? String(matchedItem.unit_of_measure).toUpperCase() : null;
+      let uomConverted = false;
+      if (
+        agreedUnit != null &&
+        packQty && packQty > 0 &&
+        packUom && invUomU &&
+        invUomU === packUom &&
+        (!agreedUomU || agreedUomU !== packUom)
+      ) {
+        agreedUnit = agreedUnit / packQty;
+        uomConverted = true;
+      }
+
       let expectedExt: number | null = agreedUnit != null ? agreedUnit * qty : null;
       let unitDiff: number | null = (chargedUnit != null && agreedUnit != null) ? chargedUnit - agreedUnit : null;
       let totalDiff: number | null = (chargedExt != null && expectedExt != null) ? chargedExt - expectedExt : null;
@@ -141,8 +164,11 @@ Deno.serve(async (req: Request) => {
       if (!matchedItem) {
         discrepancyType = priceListId ? "unmatched_item" : "missing_price_list";
         unmatched++;
-      } else if (matchedItem && line.unit_of_measure && matchedItem.unit_of_measure &&
-                 line.unit_of_measure.toUpperCase() !== matchedItem.unit_of_measure.toUpperCase()) {
+      } else if (
+        matchedItem && line.unit_of_measure && matchedItem.unit_of_measure &&
+        line.unit_of_measure.toUpperCase() !== matchedItem.unit_of_measure.toUpperCase() &&
+        !uomConverted
+      ) {
         discrepancyType = "uom_mismatch";
         unmatched++;
       } else if (totalDiff != null && totalDiff > 0.01) {

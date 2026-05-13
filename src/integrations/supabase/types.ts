@@ -41508,6 +41508,8 @@ export type Database = {
           metadata: Json | null
           min_qty: number | null
           normalized_description: string
+          pack_quantity: number | null
+          pack_uom: string | null
           price_list_id: string
           supplier_id: string
           supplier_sku: string | null
@@ -41532,6 +41534,8 @@ export type Database = {
           metadata?: Json | null
           min_qty?: number | null
           normalized_description: string
+          pack_quantity?: number | null
+          pack_uom?: string | null
           price_list_id: string
           supplier_id: string
           supplier_sku?: string | null
@@ -41556,6 +41560,8 @@ export type Database = {
           metadata?: Json | null
           min_qty?: number | null
           normalized_description?: string
+          pack_quantity?: number | null
+          pack_uom?: string | null
           price_list_id?: string
           supplier_id?: string
           supplier_sku?: string | null
