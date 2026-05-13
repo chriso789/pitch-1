@@ -537,7 +537,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
     queryFn: async () => {
       const { data } = await supabase
         .from("material_invoice_audit_lines")
-        .select("id, supplier_id, invoice_description, agreed_description, quantity, charged_unit_price, agreed_unit_price, charged_extended_price, expected_extended_price, total_difference, discrepancy_type, match_type, supplier_sku, agreed_supplier_sku, price_list_item_id")
+        .select("id, supplier_id, invoice_description, agreed_description, quantity, charged_unit_price, agreed_unit_price, charged_extended_price, expected_extended_price, total_difference, discrepancy_type, match_type, supplier_sku, agreed_supplier_sku, price_list_item_id, invoice_uom, agreed_uom")
         .eq("audit_id", auditId)
         .order("total_difference", { ascending: false, nullsFirst: false });
       return data || [];
