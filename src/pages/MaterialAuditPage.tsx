@@ -877,7 +877,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                   return (
                     <TableRow key={s.invoiceId}>
                       <TableCell>{s.vendorName || inv?.vendor_name || "—"}</TableCell>
-                      <TableCell>{s.invoiceNumber || inv?.invoice_number || s.documentName || "—"}</TableCell>
+                      <TableCell>{s.invoiceNumber || inv?.invoice_number || s.documentName || inv?.document_name || "—"}</TableCell>
                       <TableCell>{s.jobLabel || getInvoiceJobLabel(inv)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{s.reason}</TableCell>
                     </TableRow>
