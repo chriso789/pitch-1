@@ -302,7 +302,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       let expression = formula.replace(/\{\{\s*(.+?)\s*\}\}/g, (_match, expr) => expr);
       Object.entries(tags).forEach(([key, value]) => {
         vars[key.replace(/\./g, '_')] = value;
-        expression = expression.replace(new RegExp(key.replace(/\./g, '\\.').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), key.replace(/\./g, '_'));
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        expression = expression.replace(new RegExp(escapedKey, 'g'), key.replace(/\./g, '_'));
       });
       const value = new ExprParser().parse(expression).evaluate(vars);
       return Number.isFinite(Number(value)) ? Number(value) : 0;
