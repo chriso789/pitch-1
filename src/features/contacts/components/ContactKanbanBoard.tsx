@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useContactStatuses, type ContactStatus } from '@/hooks/useContactStatuses';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
-import { ContactKanbanColumn } from './ContactKanbanColumn';
+import { ContactKanbanColumn, type ColumnSortKey } from './ContactKanbanColumn';
 import { ContactKanbanCard } from './ContactKanbanCard';
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
