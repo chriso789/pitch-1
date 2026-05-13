@@ -1002,7 +1002,13 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
                       <TableCell className={Number(a.total_overcharge_amount || 0) > 0 ? "text-destructive font-medium" : ""}>
                         ${Number(a.total_overcharge_amount || 0).toFixed(2)}
                       </TableCell>
-                      <TableCell>{getAuditStatusBadge(a.audit_status)}</TableCell>
+                      <TableCell>
+                        {Number(a.total_overcharge_amount || 0) > 0 ? (
+                          <Badge className="bg-amber-600 hover:bg-amber-700">Credit Claim Ready</Badge>
+                        ) : (
+                          getAuditStatusBadge(a.audit_status)
+                        )}
+                      </TableCell>
                     </TableRow>
                     {isOpen && (
                       <TableRow>
