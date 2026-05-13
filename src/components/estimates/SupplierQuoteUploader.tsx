@@ -164,9 +164,16 @@ export const SupplierQuoteUploader: React.FC<SupplierQuoteUploaderProps> = ({
 
       for (const p of items) {
         const qty = Number(p.quantity ?? 0) || 0;
-        const unitCost = Number(p.unit_price ?? 0) || 0;
-        const lineTotal =
-          Number(p.line_total ?? 0) || +(qty * unitCost).toFixed(2);
+        let unitCost = Number(p.unit_price ?? 0) || 0;
+        let lineTotal = Number(p.line_total ?? 0) || 0;
+        // Derive whichever value the AI missed so we never end up with $0
+        // when the other side of the equation is known.
+        if (!unitCost && lineTotal && qty > 0) {
+          unitCost = +(lineTotal / qty).toFixed(4);
+        }
+        if (!lineTotal && unitCost && qty > 0) {
+          lineTotal = +(qty * unitCost).toFixed(2);
+        }
 
         // Match against current items first, then against items appended in this same upload
         const combinedCandidates: LineItem[] = [...currentItems, ...appended];
