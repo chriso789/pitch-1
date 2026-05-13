@@ -293,7 +293,12 @@ export default function CommissionReport() {
         const contact = entry.contacts as any;
         const inv = invoicesByEntry.get(entry.id) || { material: 0, labor: 0, other: 0 };
 
-        const contractValue = Number(est?.selling_price) || Number(entry.estimated_value) || 0;
+        // Contract value = active estimate's selling price + approved change orders.
+        // We deliberately do NOT fall back to pipeline_entries.estimated_value, which
+        // is just a pre-conversion cash-flow guess and not a real contract number.
+        const estimateSellingPrice = Number(est?.selling_price) || 0;
+        const approvedChangeOrders = changeOrderByEntry.get(entry.id) || 0;
+        const contractValue = estimateSellingPrice + approvedChangeOrders;
         const salesTaxAmount = Number(est?.sales_tax_amount) || 0;
         const preTaxSellingPrice = Math.max(0, contractValue - salesTaxAmount);
 
