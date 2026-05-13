@@ -493,10 +493,65 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     </TabsContent>
                   </Tabs>
 
+                  {/* Built-in line items captured when the CO was created */}
+                  {(() => {
+                    const items = ((co.line_items as any)?.items || []) as any[];
+                    if (!items.length && !co.material_invoice_url) return null;
+                    return (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                          <FileText className="h-3 w-3" /> Change Order Line Items ({items.length})
+                        </div>
+                        {co.material_invoice_url && (
+                          <a
+                            href={co.material_invoice_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary underline inline-flex items-center gap-1"
+                          >
+                            <Download className="h-3 w-3" /> View source invoice
+                          </a>
+                        )}
+                        {items.length > 0 && (
+                          <div className="border rounded-md divide-y">
+                            {items.map((it, idx) => {
+                              const qty = Number(it.quantity ?? it.qty ?? 1);
+                              const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
+                              const total = Number(it.line_total ?? it.total ?? qty * price);
+                              return (
+                                <div
+                                  key={it.id || idx}
+                                  className="flex items-center justify-between px-3 py-2 text-xs gap-2"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {it.kind && (
+                                      <Badge variant="outline" className="capitalize text-[10px]">
+                                        {it.kind}
+                                      </Badge>
+                                    )}
+                                    <span className="truncate">
+                                      {it.description || it.name || it.code || `Line ${idx + 1}`}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-right flex-shrink-0">
+                                    <span className="text-muted-foreground">
+                                      {qty} × {fmt(price)}
+                                    </span>
+                                    <span className="font-medium w-20">{fmt(total)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {(coInvoices || []).filter((i) => i.change_order_id === co.id).length > 0 && (
                     <div className="space-y-1">
                       <div className="text-xs font-medium text-muted-foreground">
-                        Recorded invoices
+                        Recorded actual-cost invoices
                       </div>
                       <div className="border rounded-md divide-y">
                         {(coInvoices || [])
@@ -529,14 +584,24 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     <Button variant="outline" size="sm" onClick={() => setEditCO(co)}>
                       <Pencil className="h-3 w-3 mr-1" /> Edit
                     </Button>
-                    {!co.customer_approved && (
+                    {co.status !== 'invoiced' && (
                       <Button
                         size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        className="bg-primary hover:bg-primary/90"
+                        onClick={() => handlePushToInvoice(co)}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        Push to Contract &amp; Invoice
+                      </Button>
+                    )}
+                    {!co.customer_approved && co.status !== 'invoiced' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleApprove(co)}
                       >
                         <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Add to Project Budget
+                        Approve Only
                       </Button>
                     )}
                     <Button
