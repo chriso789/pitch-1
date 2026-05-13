@@ -24,8 +24,17 @@ async function login(conn: any) {
       siteId: conn.site_id || 'dealersChoice',
     }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || `Login failed (${res.status})`);
+  // Beacon returns 200 even on bad credentials; the real error is inside messageInfo
+  const info = data?.messageInfo;
+  if (typeof info === 'string') throw new Error(`Beacon: ${info}`);
+  if (data?.error || data?.errorMessage) {
+    throw new Error(`Beacon: ${data.error || data.errorMessage}`);
+  }
+  if (!info?.profileId && !info?.lastSelectedAccount) {
+    throw new Error('Beacon login returned no profile — verify username, password, and site.');
+  }
   return data;
 }
 
