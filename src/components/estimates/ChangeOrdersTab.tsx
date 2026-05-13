@@ -69,6 +69,7 @@ interface ChangeOrder {
   labor_total?: number | null;
   customer_approved?: boolean | null;
   document_id?: string | null;
+  material_invoice_url?: string | null;
 }
 
 interface COInvoice {
