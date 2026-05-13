@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -12,6 +12,7 @@ import {
 import { arrayMove } from '@dnd-kit/sortable';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { useContactStatuses, type ContactStatus } from '@/hooks/useContactStatuses';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { ContactKanbanColumn, type ColumnSortKey } from './ContactKanbanColumn';
