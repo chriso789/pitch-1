@@ -204,6 +204,7 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
         due_date: "",
         assigned_to: "",
       });
+      setSelectedTemplateId("");
 
       setOpen(false);
       onTaskCreated?.(data);
