@@ -890,7 +890,7 @@ const FirstPage: React.FC<{
       )}
 
       {/* Terms & Fine Print (only if fits on first page) */}
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
     </div>
   );
 };
