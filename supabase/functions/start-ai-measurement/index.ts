@@ -1022,6 +1022,17 @@ async function processJob(input: any) {
       }
     }
 
+    if (noOsmCandidatesAtSolarFallback && maskContourFailed && solarSegmentTotalAreaSqft >= 300 && solarSegmentTotalAreaSqft <= RESIDENTIAL_MAX_SQFT) {
+      for (const cand of candidates) {
+        if ((cand.source === "google_solar_segments_hull" || cand.source === "google_solar_segments_union")
+          && cand.rejected_reason === "solar_inner_geometry_not_roof_perimeter") {
+          cand.rejected_reason = null;
+          cand.validity_score = Math.min(1, cand.validity_score + 0.15);
+          console.log(`[SOLAR_SEGMENT_FALLBACK_ACCEPTED] ${cand.source}: no OSM candidates, mask contour failed, segment area=${Math.round(solarSegmentTotalAreaSqft)}sqft`);
+        }
+      }
+    }
+
     // ══════════ v13: FOOTPRINT REGISTRATION GATE ══════════
     // Build a "visible roof target" from the roof mask rasterized into satellite
     // pixel space. Every candidate must overlap this target, not the yard/driveway.
