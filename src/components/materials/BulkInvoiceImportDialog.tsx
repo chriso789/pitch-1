@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { Upload, FileText, Loader2, CheckCircle2, AlertTriangle, X, Search } from "lucide-react";
 
 const MAX_FILES = 100;
-const BUCKET = "project-documents";
+const BUCKET = "project-invoices";
 
 type JobCandidate = {
   id: string;
