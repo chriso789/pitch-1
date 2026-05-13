@@ -39,6 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveTenantId } from "@/hooks/useActiveTenantId";
 import { useContactStatuses } from "@/hooks/useContactStatuses";
+import { useQuery } from "@tanstack/react-query";
 
 const ContactProfile = () => {
   const { id } = useParams();
