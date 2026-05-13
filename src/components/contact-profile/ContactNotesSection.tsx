@@ -293,12 +293,18 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
               <span>Contact Notes</span>
               {notes.length > 0 && <Badge variant="secondary" className="text-xs">{notes.length}</Badge>}
             </CardTitle>
-            {notes.length > 0 && (
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowAllNotes(true)}>
-                <History className="h-3 w-3 mr-1" />
-                View All
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowTaskDialog(true)}>
+                <CheckSquare className="h-3 w-3 mr-1" />
+                Assign Task
               </Button>
-            )}
+              {notes.length > 0 && (
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowAllNotes(true)}>
+                  <History className="h-3 w-3 mr-1" />
+                  View All
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-0 space-y-3">
