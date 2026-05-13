@@ -23,8 +23,8 @@ const TABLE_HEADER_HEIGHT = 24;
 const SECTION_HEADER_HEIGHT = 26;
 
 // Max rows per page (fit more items per page)
-const MAX_ROWS_FIRST_PAGE = 22;
-const MAX_ROWS_CONTINUATION = 30;
+const MAX_ROWS_FIRST_PAGE = 32;
+const MAX_ROWS_CONTINUATION = 42;
 
 interface CompanyInfo {
   name: string;
