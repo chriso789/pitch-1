@@ -69,18 +69,53 @@ export const ContactKanbanColumn: React.FC<ContactKanbanColumnProps> = ({
       <Card className="shadow-soft border-0">
         <CardHeader className="p-2">
           <CardTitle className="flex items-center justify-between text-[10px]">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
               <div 
-                className="w-4 h-4 rounded-full flex items-center justify-center"
+                className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
                 style={colorStyle}
               >
                 <Users className="h-2.5 w-2.5 text-white" />
               </div>
               <span className="font-medium truncate">{title}</span>
             </div>
-            <span className="text-muted-foreground font-normal text-[9px]">
-              {count}
-            </span>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span className="text-muted-foreground font-normal text-[9px]">
+                {count}
+              </span>
+              {onSortChange && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      title="Sort column"
+                    >
+                      <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 z-50 bg-popover">
+                    <DropdownMenuLabel className="text-xs">Sort by</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {COLUMN_SORT_OPTIONS.map((opt) => (
+                      <DropdownMenuItem
+                        key={opt.key}
+                        onClick={() => onSortChange(opt.key)}
+                        className="text-xs"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-3 w-3",
+                            sortKey === opt.key ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {opt.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </CardTitle>
         </CardHeader>
       </Card>
