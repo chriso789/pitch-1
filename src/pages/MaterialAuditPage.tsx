@@ -458,12 +458,22 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
 
 // --- Invoice Queue Tab ---
 function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const queryClient = useQueryClient();
   return (
     <TabsContent value="invoice-queue">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Material Invoice Queue</CardTitle>
-          <CardDescription>Material invoices uploaded to projects {"\u2014"} compare against price lists</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Material Invoice Queue</CardTitle>
+              <CardDescription>Material invoices uploaded to projects {"\u2014"} compare against price lists</CardDescription>
+            </div>
+            <Button size="sm" onClick={() => setBulkOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Bulk Import Invoices
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
