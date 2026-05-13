@@ -911,7 +911,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const filled = fillHoles(hullMask, sw, sh);
   const filledPixelCount = filled.reduce((s, v) => s + v, 0);
 
-  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable. Merged ${viable.length} components (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`);
+  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable, ${toMerge.length} within merge threshold (${mergeDistThreshold.toFixed(1)}px of primary). Merged ${toMerge.length} (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`);
 
   // ── 6. Trace outer boundary using Moore neighborhood ──
   const contourPx = traceOuterBoundary(filled, sw, sh);
