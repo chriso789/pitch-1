@@ -51,8 +51,32 @@ type SkippedInvoice = {
   invoiceNumber: string | null;
   vendorName: string | null;
   documentName: string | null;
+  projectId: string | null;
+  pipelineEntryId: string | null;
+  jobLabel: string | null;
   reason: string;
 };
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const trimmed = String(value || "").trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function buildJobLabel(inv: any): string | null {
+  const contact = inv.pipeline_entries?.contacts;
+  const contactName = contact ? `${contact.first_name || ""} ${contact.last_name || ""}`.trim() : null;
+  const project = inv.projects;
+  const projectNumber = project?.project_number || (project?.job_number != null ? `Job ${project.job_number}` : null);
+  return firstNonEmpty(
+    inv.pipeline_entries?.lead_name,
+    project?.name,
+    projectNumber,
+    contactName,
+  );
+}
 
 function parseNoteLineItems(notes: string | null | undefined): any[] {
   if (!notes) return [];
@@ -223,7 +247,7 @@ Deno.serve(async (req: Request) => {
     // Fetch target invoices
     let invQ = supabase
       .from("project_cost_invoices")
-      .select("id, vendor_name, invoice_number, invoice_date, invoice_amount, notes, project_id, pipeline_entry_id")
+      .select("id, vendor_name, invoice_number, document_name, invoice_date, invoice_amount, notes, project_id, pipeline_entry_id, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name)), projects!project_cost_invoices_project_id_fkey(id, name, job_number, project_number)")
       .eq("tenant_id", tenantId)
       .eq("invoice_type", "material");
     if (invoiceId) invQ = invQ.eq("id", invoiceId);
@@ -235,9 +259,12 @@ Deno.serve(async (req: Request) => {
     const skipped: SkippedInvoice[] = [];
     const skipInvoice = (inv: any, reason: string) => skipped.push({
       invoiceId: inv.id,
-      invoiceNumber: inv.invoice_number || null,
+      invoiceNumber: firstNonEmpty(inv.invoice_number, inv.document_name),
       vendorName: inv.vendor_name || null,
       documentName: inv.document_name || null,
+      projectId: inv.project_id || null,
+      pipelineEntryId: inv.pipeline_entry_id || null,
+      jobLabel: buildJobLabel(inv),
       reason,
     });
 
