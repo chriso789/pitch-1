@@ -209,7 +209,7 @@ export default function CommissionReport() {
       const entryIds = entries.map(e => e.id);
       const { data: estimates } = await supabase
         .from('estimates')
-        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount, sales_tax_amount, created_at')
+        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount, created_at')
         .in('pipeline_entry_id', entryIds)
         .order('created_at', { ascending: false });
 
