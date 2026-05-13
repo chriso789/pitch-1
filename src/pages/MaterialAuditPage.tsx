@@ -1753,6 +1753,7 @@ export const MaterialAuditContent = () => {
           <TabsTrigger value="audit-results">Audit Results</TabsTrigger>
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
+          <TabsTrigger value="price-leverage">Price Leverage</TabsTrigger>
         </TabsList>
         <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} importBatches={importBatches} invoiceSuppliers={invoiceSuppliers} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
