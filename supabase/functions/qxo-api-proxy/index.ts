@@ -5,13 +5,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const BASE_URLS: Record<string, string> = {
-  staging: 'https://api-stg.becn.com',
-  production: 'https://api.becn.com',
-};
+// Beacon Partner Integrations API only exposes a single public host.
+// There is no separately-resolvable public staging hostname, so all
+// environments route to api.becn.com (Beacon gates non-prod data per credential).
+const BEACON_BASE_URL = 'https://api.becn.com';
 
-function baseUrl(env: string) {
-  return BASE_URLS[env] || BASE_URLS.staging;
+function baseUrl(_env: string) {
+  return BEACON_BASE_URL;
 }
 
 async function login(conn: any) {
