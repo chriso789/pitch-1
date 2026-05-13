@@ -20229,13 +20229,6 @@ export type Database = {
             referencedRelation: "material_invoice_audits"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "material_invoice_audit_lines_invoice_line_item_id_fkey"
-            columns: ["invoice_line_item_id"]
-            isOneToOne: false
-            referencedRelation: "material_invoice_line_items"
-            referencedColumns: ["id"]
-          },
         ]
       }
       material_invoice_audits: {
@@ -20309,13 +20302,6 @@ export type Database = {
           unmatched_lines?: number | null
         }
         Relationships: [
-          {
-            foreignKeyName: "material_invoice_audits_invoice_document_id_fkey"
-            columns: ["invoice_document_id"]
-            isOneToOne: false
-            referencedRelation: "material_invoice_documents"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "material_invoice_audits_price_list_id_fkey"
             columns: ["price_list_id"]
