@@ -38,6 +38,7 @@ interface Contact {
 interface ContactKanbanBoardProps {
   contacts: Contact[];
   onContactUpdated: () => void;
+  onContactStatusChangedLocal?: (contactId: string, newStatus: string | null) => void;
   onCall?: (contact: Contact) => void;
   onEmail?: (contact: Contact) => void;
 }
@@ -45,6 +46,7 @@ interface ContactKanbanBoardProps {
 export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   contacts,
   onContactUpdated,
+  onContactStatusChangedLocal,
   onCall,
   onEmail,
 }) => {
@@ -114,14 +116,14 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
 
     const contactId = active.id as string;
     const newStatus = over.id as string;
-    
+
     // Find the contact
     const contact = contacts.find(c => c.id === contactId);
     if (!contact) return;
 
     // Check if status actually changed
-    const currentStatus = contact.qualification_status || 'uncategorized';
-    if (currentStatus === newStatus) return;
+    const previousStatus = contact.qualification_status || 'uncategorized';
+    if (previousStatus === newStatus) return;
 
     // Don't allow dropping to uncategorized
     if (newStatus === 'uncategorized') {
@@ -129,10 +131,17 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
       return;
     }
 
+    // Optimistic update — mutate the contact in place so the column re-renders immediately.
+    // Avoids a full refetch (which would blank the page with "Loading client data...").
+    contact.qualification_status = newStatus;
+    if (onContactStatusChangedLocal) {
+      onContactStatusChangedLocal(contactId, newStatus);
+    }
+
     try {
       const { error } = await supabase
         .from('contacts')
-        .update({ 
+        .update({
           qualification_status: newStatus,
           updated_at: new Date().toISOString()
         })
@@ -142,12 +151,16 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
 
       const statusName = statuses.find(s => s.key === newStatus)?.name || newStatus;
       toast.success(`Contact moved to ${statusName}`);
-      onContactUpdated();
     } catch (error) {
       console.error('Error updating contact status:', error);
       toast.error('Failed to update contact status');
+      // Revert optimistic change
+      contact.qualification_status = previousStatus === 'uncategorized' ? null : previousStatus;
+      if (onContactStatusChangedLocal) {
+        onContactStatusChangedLocal(contactId, previousStatus === 'uncategorized' ? null : previousStatus);
+      }
     }
-  }, [contacts, statuses, onContactUpdated]);
+  }, [contacts, statuses, onContactStatusChangedLocal]);
 
   if (statusesLoading) {
     return (
