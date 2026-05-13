@@ -305,9 +305,9 @@ Deno.serve(async (req: Request) => {
       }
 
       const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
-      const { priceListId, items, rules } = await loadItems(supplier, invoiceDate);
+      const { priceListId, items, rules, usedDerived } = await loadItems(supplier, invoiceDate);
       if (!items.length) {
-        skipInvoice(inv, `No price list for supplier "${supplier.supplier_name}"`);
+        skipInvoice(inv, `No price list for supplier "${supplier.supplier_name}" (no derived prices yet — run "Build Derived Pricelists")`);
         continue;
       }
       const itemsById = new Map(items.map((i) => [i.id, i]));
