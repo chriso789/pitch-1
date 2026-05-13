@@ -12,8 +12,51 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null;
+  const userAgent = req.headers.get("user-agent") || null;
+
+  // Resolve caller identity from JWT (best-effort)
+  let actorUserId: string | null = null;
+  let actorEmail: string | null = null;
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const authHeader = req.headers.get("authorization") || "";
+    if (authHeader.startsWith("Bearer ")) {
+      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || "", {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      if (user) { actorUserId = user.id; actorEmail = user.email ?? null; }
+    }
+  } catch (_) { /* anonymous call ok */ }
+
+  async function audit(args: {
+    tenant_id: string;
+    connection_id?: string | null;
+    action: string;
+    success?: boolean;
+    error?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    try {
+      await supabase.from("srs_credential_audit").insert({
+        tenant_id: args.tenant_id,
+        connection_id: args.connection_id ?? null,
+        action: args.action,
+        actor_user_id: actorUserId,
+        actor_email: actorEmail,
+        ip_address: ip,
+        user_agent: userAgent,
+        success: args.success ?? true,
+        error: args.error ?? null,
+        metadata: args.metadata ?? {},
+      });
+    } catch (e) {
+      console.warn("audit log failed:", e);
+    }
+  }
+
+  try {
     const body = await req.json();
     const { action, tenant_id, ...params } = body;
 
@@ -24,7 +67,74 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Load SRS connection for this tenant
+    // ------------------------------------------------------------------
+    // Credential write actions: must run BEFORE we require an existing row.
+    // ------------------------------------------------------------------
+    if (action === "save_credentials" || action === "rotate_credentials") {
+      const { client_id, client_secret, customer_code, environment } = params as Record<string, string>;
+      if (!client_id || !client_secret) {
+        await audit({ tenant_id, action, success: false, error: "missing client_id/client_secret" });
+        return new Response(JSON.stringify({ error: "client_id and client_secret required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const last4 = client_secret.trim().slice(-4);
+      const nowIso = new Date().toISOString();
+
+      const { data: existing } = await supabase
+        .from("srs_connections").select("id").eq("tenant_id", tenant_id).maybeSingle();
+
+      const payload: Record<string, unknown> = {
+        tenant_id,
+        client_id: client_id.trim(),
+        client_secret: client_secret.trim(),
+        client_secret_last_four: last4,
+        client_secret_rotated_at: nowIso,
+        customer_code: (customer_code || "").trim() || null,
+        environment: environment || "staging",
+        connection_status: "disconnected",
+        access_token: null,
+        token_expires_at: null,
+        valid_indicator: false,
+        last_error: null,
+      };
+
+      let connId: string | null = existing?.id ?? null;
+      if (existing) {
+        const { error } = await supabase.from("srs_connections").update(payload).eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("srs_connections").insert(payload).select("id").single();
+        if (error) throw error;
+        connId = data.id;
+      }
+      await audit({ tenant_id, connection_id: connId, action, success: true, metadata: { last_four: last4, environment } });
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "revoke_credentials") {
+      const { data: existing } = await supabase
+        .from("srs_connections").select("id").eq("tenant_id", tenant_id).maybeSingle();
+      if (existing) {
+        await supabase.from("srs_connections").update({
+          client_secret: null,
+          client_secret_last_four: null,
+          access_token: null,
+          token_expires_at: null,
+          connection_status: "disconnected",
+          valid_indicator: false,
+          last_error: "Credentials revoked",
+        }).eq("id", existing.id);
+      }
+      await audit({ tenant_id, connection_id: existing?.id ?? null, action: "revoke", success: true });
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Load SRS connection for this tenant (all other actions require it)
     const { data: connection, error: connErr } = await supabase
       .from("srs_connections")
       .select("*")
@@ -107,6 +217,7 @@ Deno.serve(async (req) => {
         .update({ access_token: newToken, token_expires_at: expiresAt })
         .eq("id", connection.id);
 
+      await audit({ tenant_id, connection_id: connection.id, action: "token_fetch", success: true, metadata: { expires_at: expiresAt } });
       return newToken;
     }
 
@@ -184,17 +295,20 @@ Deno.serve(async (req) => {
             jobAccountNumber,
             defaultBranch,
           };
+          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: isValid, metadata: { jobAccountNumber } });
         } catch (err: any) {
+          const msg = err instanceof Error ? err.message : String(err);
           await supabase
             .from("srs_connections")
             .update({
               connection_status: "error",
-              last_error: err instanceof Error ? err.message : String(err),
+              last_error: msg,
               last_validated_at: new Date().toISOString(),
             })
             .eq("id", connection.id);
 
-          result = { success: false, error: err instanceof Error ? err.message : String(err) };
+          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: false, error: msg });
+          result = { success: false, error: msg };
         }
         break;
       }
