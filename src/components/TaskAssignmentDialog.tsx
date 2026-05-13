@@ -85,12 +85,15 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("tenant_id")
+        .select("tenant_id, role")
         .eq("id", user.id)
         .maybeSingle();
 
       if (profileError) throw profileError;
       if (!profile?.tenant_id) throw new Error("No tenant found");
+
+      // Managers (sales_manager and above) can manage templates
+      setCanManageTemplates(getRoleLevel((profile as any).role || "") <= 6);
 
       const { data: tenantUsers, error: usersError } = await supabase
         .from("profiles")
