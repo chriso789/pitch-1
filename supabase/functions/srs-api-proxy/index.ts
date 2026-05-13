@@ -295,17 +295,20 @@ Deno.serve(async (req) => {
             jobAccountNumber,
             defaultBranch,
           };
+          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: isValid, metadata: { jobAccountNumber } });
         } catch (err: any) {
+          const msg = err instanceof Error ? err.message : String(err);
           await supabase
             .from("srs_connections")
             .update({
               connection_status: "error",
-              last_error: err instanceof Error ? err.message : String(err),
+              last_error: msg,
               last_validated_at: new Date().toISOString(),
             })
             .eq("id", connection.id);
 
-          result = { success: false, error: err instanceof Error ? err.message : String(err) };
+          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: false, error: msg });
+          result = { success: false, error: msg };
         }
         break;
       }
