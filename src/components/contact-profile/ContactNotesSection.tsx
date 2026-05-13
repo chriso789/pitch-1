@@ -16,9 +16,12 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
-import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus } from 'lucide-react';
+import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus, CheckSquare, CalendarClock } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DialogFooter } from '@/components/ui/dialog';
 
 interface ContactNotesSectionProps {
   contactId: string;
@@ -47,6 +50,51 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddingNote, setIsAddingNote] = useState(false);
+
+  // Task assignment state
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [taskAssignee, setTaskAssignee] = useState<string>('');
+  const [taskName, setTaskName] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskDueDate, setTaskDueDate] = useState('');
+  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  const resetTaskForm = () => {
+    setTaskAssignee(''); setTaskName(''); setTaskDescription('');
+    setTaskDueDate(''); setTaskPriority('medium');
+  };
+
+  const handleCreateTask = async () => {
+    if (!taskAssignee || !taskName.trim() || !taskDueDate || !user?.id) {
+      toast({ title: 'Missing fields', description: 'Assignee, task name, and due date are required.', variant: 'destructive' });
+      return;
+    }
+    setIsCreatingTask(true);
+    try {
+      const { error } = await supabase.functions.invoke('assign-contact-task', {
+        body: {
+          contact_id: contactId,
+          tenant_id: tenantId,
+          assigned_to: taskAssignee,
+          assigned_by: user.id,
+          task_name: taskName.trim(),
+          description: taskDescription.trim() || undefined,
+          due_date: new Date(taskDueDate).toISOString(),
+          priority: taskPriority,
+        },
+      });
+      if (error) throw error;
+      toast({ title: 'Task assigned', description: 'Email sent and added to calendar.' });
+      setShowTaskDialog(false);
+      resetTaskForm();
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: 'Failed to assign task', description: e.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setIsCreatingTask(false);
+    }
+  };
 
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile-role', user?.id],
@@ -245,12 +293,18 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
               <span>Contact Notes</span>
               {notes.length > 0 && <Badge variant="secondary" className="text-xs">{notes.length}</Badge>}
             </CardTitle>
-            {notes.length > 0 && (
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowAllNotes(true)}>
-                <History className="h-3 w-3 mr-1" />
-                View All
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowTaskDialog(true)}>
+                <CheckSquare className="h-3 w-3 mr-1" />
+                Assign Task
               </Button>
-            )}
+              {notes.length > 0 && (
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowAllNotes(true)}>
+                  <History className="h-3 w-3 mr-1" />
+                  View All
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-0 space-y-3">
@@ -414,6 +468,73 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showTaskDialog} onOpenChange={(o) => { setShowTaskDialog(o); if (!o) resetTaskForm(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckSquare className="h-5 w-5 text-primary" />
+              Assign Task
+            </DialogTitle>
+            <DialogDescription>
+              Create a task for a teammate. They'll get an email and it will sync to their calendar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Assign to *</Label>
+              <Select value={taskAssignee} onValueChange={setTaskAssignee}>
+                <SelectTrigger><SelectValue placeholder="Select a team member" /></SelectTrigger>
+                <SelectContent>
+                  {teamMembers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {getFullName(m.first_name, m.last_name)}{m.email ? ` — ${m.email}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Task name *</Label>
+              <Input value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="e.g. Follow up with homeowner" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+                placeholder="What needs to be done?"
+                className="min-h-[80px]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1"><CalendarClock className="h-3 w-3" /> Due *</Label>
+                <Input type="datetime-local" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select value={taskPriority} onValueChange={(v: any) => setTaskPriority(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowTaskDialog(false)} disabled={isCreatingTask}>Cancel</Button>
+            <Button onClick={handleCreateTask} disabled={isCreatingTask}>
+              {isCreatingTask ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckSquare className="h-4 w-4 mr-2" />}
+              Assign Task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
