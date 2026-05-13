@@ -120,14 +120,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Cache items per supplier
-    const itemsCache = new Map<string, { priceListId: string | null; items: any[] }>();
+    const itemsCache = new Map<string, { priceListId: string | null; items: any[]; rules: any[] }>();
     async function loadItems(supplierId: string, invoiceDate: string) {
       if (itemsCache.has(supplierId)) return itemsCache.get(supplierId)!;
       const { data: priceListId } = await supabase.rpc("get_active_supplier_price_list", {
         p_company_id: tenantId, p_supplier_id: supplierId, p_invoice_date: invoiceDate,
       }).then((r) => r).catch(() => ({ data: null }));
       let resolvedListId: string | null = priceListId as any;
-      // Fallback: most recent active list for this supplier
       if (!resolvedListId) {
         const { data: lists } = await supabase
           .from("supplier_price_lists")
@@ -145,7 +144,13 @@ Deno.serve(async (req: Request) => {
           .eq("price_list_id", resolvedListId);
         items = data || [];
       }
-      const entry = { priceListId: resolvedListId, items };
+      // Manual mapping rules saved by users for this supplier
+      const { data: rules } = await supabase
+        .from("material_item_match_rules")
+        .select("supplier_sku, manufacturer_sku, normalized_invoice_description, price_list_item_id")
+        .eq("company_id", tenantId)
+        .eq("supplier_id", supplierId);
+      const entry = { priceListId: resolvedListId, items, rules: rules || [] };
       itemsCache.set(supplierId, entry);
       return entry;
     }
