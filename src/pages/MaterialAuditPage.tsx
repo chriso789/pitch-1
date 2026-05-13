@@ -503,13 +503,38 @@ function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
 }
 
 // --- Audit Results Tab ---
-function AuditResultsTab({ audits, getAuditStatusBadge }: any) {
+function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient }: any) {
+  const [running, setRunning] = React.useState(false);
+  const runAuditAll = async () => {
+    if (!tenantId) return;
+    setRunning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("audit-cost-invoice", { body: { tenantId } });
+      if (error) throw error;
+      const skipped = (data as any)?.skipped?.length || 0;
+      toast.success(`Audited ${(data as any)?.audited || 0} invoices · $${(data as any)?.total_overcharge || 0} overcharge${skipped ? ` · ${skipped} skipped` : ""}`);
+      queryClient.invalidateQueries({ queryKey: ["material-audits", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines", tenantId] });
+    } catch (e: any) {
+      toast.error(`Audit failed: ${e.message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
   return (
     <TabsContent value="audit-results">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Audit History</CardTitle>
-          <CardDescription>Results from automated price verification runs</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Audit History</CardTitle>
+              <CardDescription>Results from automated price verification runs</CardDescription>
+            </div>
+            <Button onClick={runAuditAll} disabled={running} size="sm">
+              <Play className="h-4 w-4 mr-2" />
+              {running ? "Auditing..." : "Run Audit on All Invoices"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
