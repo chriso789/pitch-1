@@ -84,7 +84,14 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
     const checkExistingLocation = async () => {
       if (!userId || !activeTenantId || !locations || locations.length <= 1) return;
 
-      // Check if user already has a saved location in database
+      // 1. Try localStorage first for instant resume
+      const cached = localStorage.getItem('pitch_current_location');
+      if (cached && locations.some(l => l.id === cached)) {
+        onLocationSelected(cached);
+        return;
+      }
+
+      // 2. Check database for saved location
       const { data: existingSetting } = await supabase
         .from('app_settings')
         .select('setting_value')
@@ -93,9 +100,10 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
         .eq('setting_key', 'current_location_id')
         .maybeSingle();
 
-      if (existingSetting?.setting_value) {
-        // User already has a saved location, use it
-        onLocationSelected(existingSetting.setting_value as string);
+      const savedId = existingSetting?.setting_value as string | undefined;
+      if (savedId && locations.some(l => l.id === savedId)) {
+        localStorage.setItem('pitch_current_location', savedId);
+        onLocationSelected(savedId);
       } else {
         // No saved location, show dialog for selection
         setOpen(true);
@@ -105,6 +113,7 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
     if (locations && locations.length === 1) {
       // User has only one location, auto-select it and save
       const locationId = locations[0].id;
+      localStorage.setItem('pitch_current_location', locationId);
       onLocationSelected(locationId);
     } else if (locations && locations.length > 1 && activeTenantId) {
       checkExistingLocation();
@@ -119,32 +128,32 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
 
     setIsSaving(true);
     try {
-      console.log('[LocationSelectionDialog] Calling initialize-user-context with location:', selectedLocation);
-      
-      // Call edge function to initialize context with selected location
-      const { data, error } = await supabase.functions.invoke('initialize-user-context', {
-        body: { location_id: selectedLocation }
-      });
+      // Save directly to app_settings (RLS allows users to manage their own settings).
+      // Avoids the previous edge-function call that was failing silently.
+      const { error: upsertError } = await supabase
+        .from('app_settings')
+        .upsert({
+          user_id: userId,
+          tenant_id: activeTenantId,
+          setting_key: 'current_location_id',
+          setting_value: selectedLocation,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,tenant_id,setting_key' });
 
-      if (error) {
-        console.error('[LocationSelectionDialog] Failed to initialize context:', error);
-        throw error;
+      if (upsertError) {
+        console.error('[LocationSelectionDialog] Upsert failed:', upsertError);
+        throw upsertError;
       }
 
-      console.log('[LocationSelectionDialog] Context initialized:', data);
-
-      // Save to localStorage for immediate access
+      // Save to localStorage for immediate access on next login
       localStorage.setItem('pitch_current_location', selectedLocation);
-
-      // Refresh session to pick up updated metadata
-      await supabase.auth.refreshSession();
 
       // Notify callback
       onLocationSelected(selectedLocation);
-      
+
       // Close dialog
       setOpen(false);
-      
+
       toast.success('Location selected');
 
       // Navigate without hard reload
