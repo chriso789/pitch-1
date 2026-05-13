@@ -191,31 +191,44 @@ export function usePipelineData() {
 
   const userCanDelete = profile?.role && ['master', 'corporate', 'office_admin'].includes(profile.role);
 
+  type CacheShape = { entries: PipelineEntry[]; valueMap: Record<string, number> };
+  const cacheKey = ['pipeline-entries', currentLocationId, effectiveTenantId];
+
   // Optimistic update for drag operations
   const updateEntryStatus = (entryId: string, fromStatus: string, toStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
+    queryClient.setQueryData<CacheShape>(cacheKey, (old) => {
       if (!old) return old;
-      return old.map(entry => 
-        entry.id === entryId ? { ...entry, status: toStatus } : entry
-      );
+      return {
+        ...old,
+        entries: old.entries.map(entry =>
+          entry.id === entryId ? { ...entry, status: toStatus } : entry
+        ),
+      };
     });
   };
 
   // Revert optimistic update
   const revertEntryStatus = (entryId: string, originalStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
+    queryClient.setQueryData<CacheShape>(cacheKey, (old) => {
       if (!old) return old;
-      return old.map(entry => 
-        entry.id === entryId ? { ...entry, status: originalStatus } : entry
-      );
+      return {
+        ...old,
+        entries: old.entries.map(entry =>
+          entry.id === entryId ? { ...entry, status: originalStatus } : entry
+        ),
+      };
     });
   };
 
   // Remove entry from cache (for delete)
   const removeEntry = (entryId: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
+    queryClient.setQueryData<CacheShape>(cacheKey, (old) => {
       if (!old) return old;
-      return old.filter(entry => entry.id !== entryId);
+      const { [entryId]: _drop, ...remainingValues } = old.valueMap;
+      return {
+        entries: old.entries.filter(entry => entry.id !== entryId),
+        valueMap: remainingValues,
+      };
     });
   };
 
@@ -224,10 +237,27 @@ export function usePipelineData() {
     queryClient.invalidateQueries({ queryKey: ['pipeline-entries'] });
   };
 
+  const entries = query.data?.entries || [];
+  const valueMap = query.data?.valueMap || {};
+  const groupedData = groupByStatus(entries, stages);
+
+  // Per-stage totals using saved estimate selling_price (with fallback to estimated_value)
+  const stageTotals: Record<string, number> = {};
+  Object.entries(groupedData).forEach(([stageKey, list]) => {
+    stageTotals[stageKey] = (list as PipelineEntry[]).reduce(
+      (sum, e) => sum + (valueMap[e.id] || 0),
+      0
+    );
+  });
+
+  const entryValue = (entryId: string) => valueMap[entryId] || 0;
+
   return {
-    entries: query.data || [],
-    groupedData: groupByStatus(query.data || [], stages),
+    entries,
+    groupedData,
     stages, // NEW: expose dynamic stages
+    stageTotals,
+    entryValue,
     isLoading: query.isLoading || stagesLoading,
     isError: query.isError,
     error: query.error,
