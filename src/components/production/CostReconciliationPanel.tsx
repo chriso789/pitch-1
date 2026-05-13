@@ -380,7 +380,7 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => window.open(invoice.document_url, '_blank')}
+                        onClick={() => openInvoiceDocument(invoice.document_url)}
                       >
                         <ExternalLink className="h-4 w-4" />
                       </Button>
