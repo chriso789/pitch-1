@@ -859,25 +859,7 @@ const FirstPage: React.FC<{
           <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
         </div>
       )}
-      {/* Customer Info */}
-      {(opts.showCustomerName || opts.showCustomerAddress) && (
-        <div className="p-2 bg-gray-50 rounded">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Prepared For</h3>
-          {opts.showCustomerName && (
-            <p className="font-semibold text-sm text-gray-900">{customerName || 'Customer'}</p>
-          )}
-          {opts.showCustomerAddress && (
-            <p className="text-gray-600 text-xs">{customerAddress || 'Address not specified'}</p>
-          )}
-          {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="text-xs text-gray-500">
-              {customerPhone && <span>{customerPhone}</span>}
-              {customerPhone && customerEmail && <span> • </span>}
-              {customerEmail && <span>{customerEmail}</span>}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Customer info now appears in the page header (Prepared For) on every page */}
 
       {/* Show Only Total Mode */}
       {opts.showOnlyTotal && (
