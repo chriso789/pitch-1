@@ -102,6 +102,80 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   const [viewCO, setViewCO] = useState<ChangeOrder | null>(null);
   const [editCO, setEditCO] = useState<ChangeOrder | null>(null);
   const [pendingPdfCO, setPendingPdfCO] = useState<ChangeOrder | null>(null);
+  const [editingLine, setEditingLine] = useState<{ coId: string; idx: number } | null>(null);
+  const [lineDraft, setLineDraft] = useState<{ description: string; quantity: string; unit_price: string }>({ description: '', quantity: '1', unit_price: '0' });
+  const [savingLine, setSavingLine] = useState(false);
+
+  const beginEditLine = (coId: string, idx: number, item: any) => {
+    setEditingLine({ coId, idx });
+    setLineDraft({
+      description: item.description || item.name || item.code || '',
+      quantity: String(item.quantity ?? item.qty ?? 1),
+      unit_price: String(item.unit_price ?? item.price ?? item.rate ?? 0),
+    });
+  };
+
+  const saveEditLine = async (co: ChangeOrder) => {
+    if (!editingLine) return;
+    setSavingLine(true);
+    try {
+      const container: any = (co.line_items as any) || {};
+      const items: any[] = Array.isArray(container.items) ? [...container.items] : [];
+      const qty = Number(lineDraft.quantity) || 0;
+      const price = Number(lineDraft.unit_price) || 0;
+      const updated = {
+        ...items[editingLine.idx],
+        description: lineDraft.description,
+        quantity: qty,
+        unit_price: price,
+        line_total: qty * price,
+      };
+      items[editingLine.idx] = updated;
+      const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + Number(i.line_total ?? (Number(i.quantity ?? i.qty ?? 1) * Number(i.unit_price ?? i.price ?? 0))), 0);
+      const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + Number(i.line_total ?? (Number(i.quantity ?? i.qty ?? 1) * Number(i.unit_price ?? i.price ?? 0))), 0);
+      const newCost = newMaterial + newLabor;
+      const { error } = await (supabase as any)
+        .from('change_orders')
+        .update({
+          line_items: { ...container, items },
+          material_total: newMaterial,
+          labor_total: newLabor,
+          cost_impact: newCost,
+        })
+        .eq('id', co.id);
+      if (error) throw error;
+      toast({ title: 'Line item updated' });
+      setEditingLine(null);
+      refresh();
+    } catch (e: any) {
+      toast({ title: 'Failed to update', description: e.message, variant: 'destructive' });
+    } finally {
+      setSavingLine(false);
+    }
+  };
+
+  const deleteLine = async (co: ChangeOrder, idx: number) => {
+    const container: any = (co.line_items as any) || {};
+    const items: any[] = Array.isArray(container.items) ? [...container.items] : [];
+    items.splice(idx, 1);
+    const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + Number(i.line_total ?? 0), 0);
+    const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + Number(i.line_total ?? 0), 0);
+    const { error } = await (supabase as any)
+      .from('change_orders')
+      .update({
+        line_items: { ...container, items },
+        material_total: newMaterial,
+        labor_total: newLabor,
+        cost_impact: newMaterial + newLabor,
+      })
+      .eq('id', co.id);
+    if (error) {
+      toast({ title: 'Failed to delete', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Line item removed' });
+    refresh();
+  };
   const [form, setForm] = useState({
     title: '',
     reason: '',
@@ -519,10 +593,50 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                               const qty = Number(it.quantity ?? it.qty ?? 1);
                               const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
                               const total = Number(it.line_total ?? it.total ?? qty * price);
+                              const isEditing = editingLine?.coId === co.id && editingLine?.idx === idx;
+                              if (isEditing) {
+                                return (
+                                  <div key={it.id || idx} className="px-3 py-2 text-xs space-y-2 bg-muted/30">
+                                    <Input
+                                      value={lineDraft.description}
+                                      onChange={(e) => setLineDraft((d) => ({ ...d, description: e.target.value }))}
+                                      placeholder="Description"
+                                      className="h-8 text-xs"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        type="number"
+                                        value={lineDraft.quantity}
+                                        onChange={(e) => setLineDraft((d) => ({ ...d, quantity: e.target.value }))}
+                                        placeholder="Qty"
+                                        className="h-8 text-xs w-20"
+                                      />
+                                      <span className="text-muted-foreground">×</span>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={lineDraft.unit_price}
+                                        onChange={(e) => setLineDraft((d) => ({ ...d, unit_price: e.target.value }))}
+                                        placeholder="Unit price"
+                                        className="h-8 text-xs w-28"
+                                      />
+                                      <span className="ml-auto font-medium">
+                                        {fmt((Number(lineDraft.quantity) || 0) * (Number(lineDraft.unit_price) || 0))}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                      <Button size="sm" variant="ghost" onClick={() => setEditingLine(null)} disabled={savingLine}>Cancel</Button>
+                                      <Button size="sm" onClick={() => saveEditLine(co)} disabled={savingLine}>
+                                        {savingLine ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              }
                               return (
                                 <div
                                   key={it.id || idx}
-                                  className="flex items-center justify-between px-3 py-2 text-xs gap-2"
+                                  className="flex items-center justify-between px-3 py-2 text-xs gap-2 group"
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     {it.kind && (
@@ -539,6 +653,24 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                                       {qty} × {fmt(price)}
                                     </span>
                                     <span className="font-medium w-20">{fmt(total)}</span>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6"
+                                        onClick={() => beginEditLine(co.id, idx, it)}
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-destructive hover:text-destructive"
+                                        onClick={() => deleteLine(co, idx)}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
                               );
