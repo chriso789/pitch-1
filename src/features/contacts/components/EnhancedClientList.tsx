@@ -138,6 +138,7 @@ export const EnhancedClientList = () => {
   const { currentLocationId, locations } = useLocation();
   const { activeCompanyId } = useCompanySwitcher();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
+  const { statuses: contactStatuses } = useContactStatuses();
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
