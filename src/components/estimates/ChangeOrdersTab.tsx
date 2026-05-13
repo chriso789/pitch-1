@@ -36,6 +36,8 @@ import {
   Pencil,
   CheckCircle2,
   Download,
+  FileText,
+  Send,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
@@ -67,6 +69,7 @@ interface ChangeOrder {
   labor_total?: number | null;
   customer_approved?: boolean | null;
   document_id?: string | null;
+  material_invoice_url?: string | null;
 }
 
 interface COInvoice {
@@ -248,7 +251,76 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     refresh();
   };
 
-  // Once a CO is created, render the document off-screen and persist a PDF
+  const handlePushToInvoice = async (co: ChangeOrder) => {
+    const amount = Number(co.cost_impact || 0);
+    if (amount <= 0) {
+      toast({ title: 'Cost impact is $0', description: 'Set a cost impact before invoicing.', variant: 'destructive' });
+      return;
+    }
+    if (!confirm(`Push ${fmt(amount)} to the contract and create a customer invoice?`)) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Bump project contract value
+      const { data: proj } = await (supabase as any)
+        .from('projects')
+        .select('contract_value')
+        .eq('id', co.project_id)
+        .maybeSingle();
+      const newContract = Number(proj?.contract_value || 0) + amount;
+      await (supabase as any)
+        .from('projects')
+        .update({ contract_value: newContract })
+        .eq('id', co.project_id);
+
+      // 2. Create a customer invoice for this CO
+      const { count } = await (supabase as any)
+        .from('project_invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('pipeline_entry_id', pipelineEntryId);
+      const invoiceNumber = `INV-${pipelineEntryId.slice(0, 6).toUpperCase()}-${String((count || 0) + 1).padStart(3, '0')}`;
+      const lineItems = [{
+        id: co.id,
+        description: `${co.co_number} — ${co.title}`,
+        quantity: 1,
+        unit_price: amount,
+        line_total: amount,
+      }];
+      const { error: invErr } = await (supabase as any).from('project_invoices').insert({
+        tenant_id: activeTenantId,
+        pipeline_entry_id: pipelineEntryId,
+        invoice_number: invoiceNumber,
+        amount,
+        balance: amount,
+        status: 'draft',
+        notes: `Change Order ${co.co_number}: ${co.title}`,
+        created_by: user.id,
+        line_items: lineItems as any,
+      });
+      if (invErr) throw invErr;
+
+      // 3. Mark CO as invoiced + approved
+      await (supabase as any)
+        .from('change_orders')
+        .update({
+          status: 'invoiced',
+          customer_approved: true,
+          customer_approved_at: new Date().toISOString(),
+          approved_date: new Date().toISOString(),
+        })
+        .eq('id', co.id);
+
+      toast({
+        title: 'Pushed to contract',
+        description: `Contract value updated and invoice ${invoiceNumber} created.`,
+      });
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['project-invoices'] });
+    } catch (e: any) {
+      toast({ title: 'Push failed', description: e.message, variant: 'destructive' });
+    }
+  };
   // into the Documents tab. We capture, save, then unmount.
   React.useEffect(() => {
     if (!pendingPdfCO || !activeTenantId) return;
@@ -422,10 +494,65 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     </TabsContent>
                   </Tabs>
 
+                  {/* Built-in line items captured when the CO was created */}
+                  {(() => {
+                    const items = ((co.line_items as any)?.items || []) as any[];
+                    if (!items.length && !co.material_invoice_url) return null;
+                    return (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                          <FileText className="h-3 w-3" /> Change Order Line Items ({items.length})
+                        </div>
+                        {co.material_invoice_url && (
+                          <a
+                            href={co.material_invoice_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary underline inline-flex items-center gap-1"
+                          >
+                            <Download className="h-3 w-3" /> View source invoice
+                          </a>
+                        )}
+                        {items.length > 0 && (
+                          <div className="border rounded-md divide-y">
+                            {items.map((it, idx) => {
+                              const qty = Number(it.quantity ?? it.qty ?? 1);
+                              const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
+                              const total = Number(it.line_total ?? it.total ?? qty * price);
+                              return (
+                                <div
+                                  key={it.id || idx}
+                                  className="flex items-center justify-between px-3 py-2 text-xs gap-2"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {it.kind && (
+                                      <Badge variant="outline" className="capitalize text-[10px]">
+                                        {it.kind}
+                                      </Badge>
+                                    )}
+                                    <span className="truncate">
+                                      {it.description || it.name || it.code || `Line ${idx + 1}`}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-right flex-shrink-0">
+                                    <span className="text-muted-foreground">
+                                      {qty} × {fmt(price)}
+                                    </span>
+                                    <span className="font-medium w-20">{fmt(total)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {(coInvoices || []).filter((i) => i.change_order_id === co.id).length > 0 && (
                     <div className="space-y-1">
                       <div className="text-xs font-medium text-muted-foreground">
-                        Recorded invoices
+                        Recorded actual-cost invoices
                       </div>
                       <div className="border rounded-md divide-y">
                         {(coInvoices || [])
@@ -458,14 +585,24 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     <Button variant="outline" size="sm" onClick={() => setEditCO(co)}>
                       <Pencil className="h-3 w-3 mr-1" /> Edit
                     </Button>
-                    {!co.customer_approved && (
+                    {co.status !== 'invoiced' && (
                       <Button
                         size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        className="bg-primary hover:bg-primary/90"
+                        onClick={() => handlePushToInvoice(co)}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        Push to Contract &amp; Invoice
+                      </Button>
+                    )}
+                    {!co.customer_approved && co.status !== 'invoiced' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleApprove(co)}
                       >
                         <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Add to Project Budget
+                        Approve Only
                       </Button>
                     )}
                     <Button
