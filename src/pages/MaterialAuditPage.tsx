@@ -503,16 +503,100 @@ function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
 }
 
 // --- Audit Results Tab ---
-function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient }: any) {
+function AuditLineDetails({ auditId }: { auditId: string }) {
+  const { data: lines = [], isLoading } = useQuery({
+    queryKey: ["audit-lines", auditId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("material_invoice_audit_lines")
+        .select("id, invoice_description, agreed_description, quantity, charged_unit_price, agreed_unit_price, charged_extended_price, expected_extended_price, total_difference, discrepancy_type, match_type, supplier_sku, agreed_supplier_sku")
+        .eq("audit_id", auditId)
+        .order("total_difference", { ascending: false, nullsFirst: false });
+      return data || [];
+    },
+  });
+
+  if (isLoading) return <div className="text-xs text-muted-foreground p-3">Loading lines...</div>;
+  if (!lines.length) return <div className="text-xs text-muted-foreground p-3">No line items recorded.</div>;
+
+  return (
+    <div className="bg-muted/30 p-3 rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs">Invoice Item</TableHead>
+            <TableHead className="text-xs">Matched To</TableHead>
+            <TableHead className="text-xs text-right">Qty</TableHead>
+            <TableHead className="text-xs text-right">Charged</TableHead>
+            <TableHead className="text-xs text-right">Agreed</TableHead>
+            <TableHead className="text-xs text-right">Difference</TableHead>
+            <TableHead className="text-xs">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lines.map((l: any) => {
+            const diff = Number(l.total_difference || 0);
+            const isOver = l.discrepancy_type === "overcharge";
+            const isUnder = l.discrepancy_type === "undercharge";
+            const isUnmatched = l.discrepancy_type === "unmatched_item";
+            return (
+              <TableRow key={l.id}>
+                <TableCell className="text-xs max-w-[260px]">
+                  <div className="font-medium truncate">{l.invoice_description || "—"}</div>
+                  {l.supplier_sku && <div className="text-[10px] text-muted-foreground">SKU {l.supplier_sku}</div>}
+                </TableCell>
+                <TableCell className="text-xs max-w-[240px]">
+                  {l.agreed_description ? (
+                    <>
+                      <div className="truncate">{l.agreed_description}</div>
+                      <div className="text-[10px] text-muted-foreground">{l.match_type}</div>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">No price-list match</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-xs text-right">{Number(l.quantity || 0)}</TableCell>
+                <TableCell className="text-xs text-right">${Number(l.charged_unit_price || 0).toFixed(2)}</TableCell>
+                <TableCell className="text-xs text-right">{l.agreed_unit_price != null ? `$${Number(l.agreed_unit_price).toFixed(2)}` : "—"}</TableCell>
+                <TableCell className={`text-xs text-right font-medium ${isOver ? "text-destructive" : isUnder ? "text-emerald-600" : ""}`}>
+                  {l.total_difference != null ? `${diff > 0 ? "+" : ""}$${diff.toFixed(2)}` : "—"}
+                </TableCell>
+                <TableCell>
+                  {isOver && <Badge variant="destructive" className="text-[10px]">Overcharge</Badge>}
+                  {isUnder && <Badge className="bg-emerald-600 text-[10px]">Undercharge</Badge>}
+                  {isUnmatched && <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-600">Unmatched</Badge>}
+                  {!isOver && !isUnder && !isUnmatched && <Badge variant="outline" className="text-[10px]">OK</Badge>}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, materialInvoices }: any) {
   const [running, setRunning] = React.useState(false);
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  const [skipped, setSkipped] = React.useState<Array<{ invoiceId: string; reason: string }>>([]);
+  const toggle = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   const runAuditAll = async () => {
     if (!tenantId) return;
     setRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke("audit-cost-invoice", { body: { tenantId } });
       if (error) throw error;
-      const skipped = (data as any)?.skipped?.length || 0;
-      toast.success(`Audited ${(data as any)?.audited || 0} invoices · $${(data as any)?.total_overcharge || 0} overcharge${skipped ? ` · ${skipped} skipped` : ""}`);
+      const skippedArr = (data as any)?.skipped || [];
+      setSkipped(skippedArr);
+      toast.success(`Audited ${(data as any)?.audited || 0} invoices · $${(data as any)?.total_overcharge || 0} overcharge${skippedArr.length ? ` · ${skippedArr.length} skipped` : ""}`);
       queryClient.invalidateQueries({ queryKey: ["material-audits", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["unmatched-audit-lines", tenantId] });
     } catch (e: any) {
@@ -521,6 +605,13 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient }:
       setRunning(false);
     }
   };
+
+  const invoiceById = React.useMemo(() => {
+    const m = new Map<string, any>();
+    (materialInvoices || []).forEach((i: any) => m.set(i.id, i));
+    return m;
+  }, [materialInvoices]);
+
   return (
     <TabsContent value="audit-results">
       <Card>
@@ -528,7 +619,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient }:
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">Audit History</CardTitle>
-              <CardDescription>Results from automated price verification runs</CardDescription>
+              <CardDescription>Results from automated price verification runs · click a row to see line-by-line discrepancies</CardDescription>
             </div>
             <Button onClick={runAuditAll} disabled={running} size="sm">
               <Play className="h-4 w-4 mr-2" />
@@ -542,6 +633,7 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient }:
               <TableRow>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Invoice</TableHead>
+                <TableHead>Job / Lead</TableHead>
                 <TableHead>Lines</TableHead>
                 <TableHead>Match %</TableHead>
                 <TableHead>Overcharge</TableHead>
@@ -551,30 +643,83 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient }:
             <TableBody>
               {audits.map((a: any) => {
                 const matchPct = a.total_invoice_lines > 0 ? Math.round((a.matched_lines / a.total_invoice_lines) * 100) : 0;
+                const supplierName = a.supplier?.supplier_name || a.invoice?.vendor_name || "—";
+                const invoiceNumber = a.invoice?.invoice_number || "—";
+                const pe = a.invoice?.pipeline_entries;
+                const contact = pe?.contacts;
+                const jobLabel = pe?.lead_name || (contact ? `${contact.first_name || ""} ${contact.last_name || ""}`.trim() : "") || "—";
+                const isOpen = expanded.has(a.id);
                 return (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">{(a as any).material_suppliers?.supplier_name || "\u2014"}</TableCell>
-                    <TableCell>{(a as any).material_invoice_documents?.invoice_number || "\u2014"}</TableCell>
-                    <TableCell>{a.total_invoice_lines}</TableCell>
-                    <TableCell>
-                      <Badge variant={matchPct >= 90 ? "default" : "outline"} className={matchPct >= 90 ? "bg-emerald-600" : matchPct >= 70 ? "border-yellow-500 text-yellow-600" : "border-destructive text-destructive"}>
-                        {matchPct}%
-                      </Badge>
-                    </TableCell>
-                    <TableCell className={Number(a.total_overcharge_amount || 0) > 0 ? "text-destructive font-medium" : ""}>
-                      ${Number(a.total_overcharge_amount || 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell>{getAuditStatusBadge(a.audit_status)}</TableCell>
-                  </TableRow>
+                  <React.Fragment key={a.id}>
+                    <TableRow className="cursor-pointer hover:bg-muted/40" onClick={() => toggle(a.id)}>
+                      <TableCell className="font-medium">{supplierName}</TableCell>
+                      <TableCell>{invoiceNumber}</TableCell>
+                      <TableCell className="text-sm">{jobLabel}</TableCell>
+                      <TableCell>{a.total_invoice_lines}</TableCell>
+                      <TableCell>
+                        <Badge variant={matchPct >= 90 ? "default" : "outline"} className={matchPct >= 90 ? "bg-emerald-600" : matchPct >= 70 ? "border-yellow-500 text-yellow-600" : "border-destructive text-destructive"}>
+                          {matchPct}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell className={Number(a.total_overcharge_amount || 0) > 0 ? "text-destructive font-medium" : ""}>
+                        ${Number(a.total_overcharge_amount || 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell>{getAuditStatusBadge(a.audit_status)}</TableCell>
+                    </TableRow>
+                    {isOpen && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="p-0">
+                          <AuditLineDetails auditId={a.id} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 );
               })}
               {audits.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No audits run yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No audits run yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {skipped.length > 0 && (
+        <Card className="mt-4 border-yellow-500/40">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              Skipped Invoices ({skipped.length})
+            </CardTitle>
+            <CardDescription>
+              These invoices were not audited on the last run. Most common causes: vendor name doesn't match a supplier in your directory, no active price list for that supplier, or no line items extracted.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {skipped.map((s) => {
+                  const inv = invoiceById.get(s.invoiceId);
+                  return (
+                    <TableRow key={s.invoiceId}>
+                      <TableCell>{inv?.vendor_name || "—"}</TableCell>
+                      <TableCell>{inv?.invoice_number || "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{s.reason}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </TabsContent>
   );
 }
@@ -900,8 +1045,42 @@ export const MaterialAuditContent = () => {
     queryKey: ["material-audits", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data } = await supabase.from("material_invoice_audits").select("*, material_suppliers!material_invoice_audits_supplier_id_fkey(supplier_name), material_invoice_documents!material_invoice_audits_invoice_document_id_fkey(invoice_number)").eq("company_id", tenantId).order("created_at", { ascending: false });
-      return data || [];
+      // NOTE: material_invoice_audits has no real FK constraints to material_suppliers
+      // or project_cost_invoices, so PostgREST embed hints fail silently and return
+      // nothing. We fetch the rows flat, then resolve supplier + invoice + project
+      // info manually so the UI actually renders.
+      const { data: rows, error } = await supabase
+        .from("material_invoice_audits")
+        .select("*")
+        .eq("company_id", tenantId)
+        .order("created_at", { ascending: false });
+      if (error) { console.error("[audits] query error", error); return []; }
+      const list = rows || [];
+      if (!list.length) return [];
+
+      const supplierIds = Array.from(new Set(list.map((r: any) => r.supplier_id).filter(Boolean)));
+      const invoiceIds = Array.from(new Set(list.map((r: any) => r.invoice_document_id).filter(Boolean)));
+
+      const [{ data: sups }, { data: invs }] = await Promise.all([
+        supplierIds.length
+          ? supabase.from("material_suppliers").select("id, supplier_name").in("id", supplierIds)
+          : Promise.resolve({ data: [] as any[] }),
+        invoiceIds.length
+          ? supabase
+              .from("project_cost_invoices")
+              .select("id, invoice_number, vendor_name, invoice_date, invoice_amount, project_id, pipeline_entry_id, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
+              .in("id", invoiceIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const supMap = new Map((sups || []).map((s: any) => [s.id, s]));
+      const invMap = new Map((invs || []).map((i: any) => [i.id, i]));
+
+      return list.map((r: any) => ({
+        ...r,
+        supplier: supMap.get(r.supplier_id) || null,
+        invoice: invMap.get(r.invoice_document_id) || null,
+      }));
     },
     enabled: !!tenantId,
   });
@@ -1022,7 +1201,7 @@ export const MaterialAuditContent = () => {
         </TabsList>
         <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} importBatches={importBatches} invoiceSuppliers={invoiceSuppliers} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
-        <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} tenantId={tenantId} queryClient={queryClient} />
+        <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} tenantId={tenantId} queryClient={queryClient} materialInvoices={materialInvoices} />
         <UnmatchedTabContent tenantId={tenantId} unmatchedLines={unmatchedLines} queryClient={queryClient} />
         <CreditClaimsTab claims={claims} />
       </Tabs>
