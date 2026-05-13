@@ -27,6 +27,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ProfessionalTemplatesDialog } from '@/components/documents/ProfessionalTemplatesDialog';
 import { BudgetChips } from '@/components/production/BudgetChips';
 import { CostConfirmationDialog } from '@/components/production/CostConfirmationDialog';
+import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 
 interface JobDetailsData {
   id: string;
@@ -395,6 +396,9 @@ const JobDetails = () => {
               <Sparkles className="h-4 w-4 mr-2" />
               Generate Report
             </Button>
+            {job.contact?.id && ['completed', 'sold', 'paid'].includes(job.status) && (
+              <SendReferralLinkButton contactId={job.contact.id} jobId={job.id} />
+            )}
             <Button 
               onClick={handleSaveAndExit}
               size="sm"
