@@ -14,6 +14,7 @@ import { ContactCommunicationTab } from "@/components/contact-profile/ContactCom
 import { SkipTraceButton } from "@/components/skip-trace/SkipTraceButton";
 import { CallButton, CallHistory } from "@/components/telephony";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
+import { SendReferralLinkButton } from "@/components/referrals/SendReferralLinkButton";
 import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
 import { JobApprovalDialog } from "@/components/JobApprovalDialog";
 import {
@@ -381,6 +382,7 @@ const ContactProfile = () => {
                   </Button>
                 }
               />
+              <SendReferralLinkButton contactId={contact.id} />
             </div>
           </div>
         </div>
