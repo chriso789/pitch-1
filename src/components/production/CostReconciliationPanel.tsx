@@ -29,6 +29,7 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [previewInvoice, setPreviewInvoice] = useState<{ url: string; name: string } | null>(null);
 
   // Fetch reconciliation data
   const { data: reconciliation, isLoading } = useQuery({
