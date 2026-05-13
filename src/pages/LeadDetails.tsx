@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { supabase } from '@/integrations/supabase/client';
+import { useContactStatuses } from '@/hooks/useContactStatuses';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
