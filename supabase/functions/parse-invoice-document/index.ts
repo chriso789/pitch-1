@@ -170,7 +170,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { document_url } = await req.json();
+    const body = await req.json();
+    const { document_url, auto_persist, pipeline_entry_id, project_id, source_file_name } = body || {};
+    let tenant_id: string | null = body?.tenant_id || null;
 
     if (!document_url) {
       return new Response(
