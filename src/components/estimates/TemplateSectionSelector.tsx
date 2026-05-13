@@ -387,7 +387,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
   // Create estimate if none exists, then add item
   const handleCreateEstimateAndAddItem = async () => {
-    if (!profile?.tenant_id) {
+    if (!effectiveTenantId) {
       toast.error('Unable to determine tenant');
       return;
     }
@@ -399,7 +399,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .from('enhanced_estimates')
         .insert({
           pipeline_entry_id: pipelineEntryId,
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           status: 'draft',
           line_items: { materials: [], labor: [] }
         } as any)
