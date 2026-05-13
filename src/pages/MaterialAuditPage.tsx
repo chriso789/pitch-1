@@ -776,9 +776,20 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
-                <Button onClick={saveMapping} disabled={!pickItem}>Save mapping</Button>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  variant="secondary"
+                  onClick={catalogNewItem}
+                  disabled={cataloging || !mapLine?.invoice_description || !Number(mapLine?.charged_unit_price || 0)}
+                  title="Add this invoice line as a new item in the supplier price list at the charged price"
+                >
+                  <Package className="h-4 w-4 mr-2" />
+                  {cataloging ? "Cataloging..." : "Catalog this item"}
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
+                  <Button onClick={saveMapping} disabled={!pickItem}>Save mapping</Button>
+                </div>
               </div>
             </div>
           )}
