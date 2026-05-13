@@ -238,7 +238,7 @@ export function BulkInvoiceImportDialog({ open, onOpenChange, onComplete }: Prop
         invoice_amount: p.total_amount ?? p.invoice_amount,
         subtotal: p.subtotal,
         tax_amount: p.tax_amount,
-        document_url: row.documentUrl,
+        document_url: row.storedUrl || row.documentUrl,
         document_name: row.file.name,
         line_items: p.line_items,
         service_address: p.service_address,
