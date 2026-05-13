@@ -23,8 +23,8 @@ const TABLE_HEADER_HEIGHT = 24;
 const SECTION_HEADER_HEIGHT = 26;
 
 // Max rows per page (fit more items per page)
-const MAX_ROWS_FIRST_PAGE = 22;
-const MAX_ROWS_CONTINUATION = 30;
+const MAX_ROWS_FIRST_PAGE = 32;
+const MAX_ROWS_CONTINUATION = 42;
 
 interface CompanyInfo {
   name: string;
@@ -890,7 +890,7 @@ const FirstPage: React.FC<{
       )}
 
       {/* Terms & Fine Print (only if fits on first page) */}
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
     </div>
   );
 };
@@ -914,7 +914,7 @@ const ItemsContinuationPage: React.FC<{
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
       )}
 
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
     </div>
   );
 };
@@ -1085,7 +1085,11 @@ const PricingSummary: React.FC<{
 };
 
 // Terms Section
-const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOptions }> = ({ finePrintContent, opts }) => {
+const TermsSection: React.FC<{
+  finePrintContent?: string;
+  opts: PDFComponentOptions;
+  breakdown?: EstimatePDFDocumentProps['breakdown'];
+}> = ({ finePrintContent, opts, breakdown }) => {
   return (
     <div className="space-y-3 mt-3">
       {opts.showTermsAndConditions && (
@@ -1102,16 +1106,24 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
       )}
 
       {opts.showSignatureBlock && (
-        <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t border-gray-200" data-signature-block="true">
-          <div>
-            <p className="text-xs text-gray-500 mb-6">Customer Signature</p>
-            <div className="border-b border-gray-400" data-signature-line="customer"></div>
-            <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-6">Company Representative</p>
-            <div className="border-b border-gray-400" data-signature-line="company"></div>
-            <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
+        <div className="mt-4 pt-3 border-t border-gray-200" data-signature-block="true">
+          {breakdown && (
+            <div className="flex items-center justify-between mb-3 px-2 py-1.5 bg-blue-50 rounded">
+              <span className="text-xs font-semibold text-gray-700">Total Investment (signing for)</span>
+              <span className="text-sm font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500 mb-6">Customer Signature</p>
+              <div className="border-b border-gray-400" data-signature-line="customer"></div>
+              <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-6">Company Representative</p>
+              <div className="border-b border-gray-400" data-signature-line="company"></div>
+              <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
+            </div>
           </div>
         </div>
       )}
