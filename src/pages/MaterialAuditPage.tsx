@@ -1758,7 +1758,7 @@ export const MaterialAuditContent = () => {
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
         <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} tenantId={tenantId} queryClient={queryClient} materialInvoices={materialInvoices} />
         <UnmatchedTabContent tenantId={tenantId} unmatchedLines={unmatchedLines} queryClient={queryClient} />
-        <CreditClaimsTab claims={claims} />
+        <CreditClaimsTab claims={claims} tenantId={tenantId} audits={audits} />
       </Tabs>
     </div>
   );
