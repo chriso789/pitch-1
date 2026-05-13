@@ -124,9 +124,6 @@ export const IntegrationsSettings = () => {
           <SessionActivityLog />
         </TabsContent>
 
-        <TabsContent value="measurement-corrections" className="space-y-6">
-          <MeasurementCorrectionsLog />
-        </TabsContent>
       </Tabs>
     </div>
   );
