@@ -948,13 +948,19 @@ export const MaterialAuditContent = () => {
   }, [materialInvoices]);
 
   const filteredInvoices = React.useMemo(() => {
-    if (!searchTerm) return materialInvoices;
     const term = searchTerm.toLowerCase();
-    return materialInvoices.filter((inv: any) =>
-      (inv.vendor_name || "").toLowerCase().includes(term) ||
-      (inv.invoice_number || "").toLowerCase().includes(term)
-    );
-  }, [materialInvoices, searchTerm]);
+    return materialInvoices.filter((inv: any) => {
+      if (selectedSupplier !== "all") {
+        const { key } = canonicalizeVendorName(inv.vendor_name);
+        if (key !== selectedSupplier) return false;
+      }
+      if (!term) return true;
+      return (
+        (inv.vendor_name || "").toLowerCase().includes(term) ||
+        (inv.invoice_number || "").toLowerCase().includes(term)
+      );
+    });
+  }, [materialInvoices, searchTerm, selectedSupplier]);
 
   return (
     <div className="space-y-4">
