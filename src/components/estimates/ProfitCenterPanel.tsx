@@ -926,6 +926,13 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
         </Tabs>
       </CardContent>
     </Card>
+    <InvoicePreviewDialog
+      open={!!previewInvoice}
+      onOpenChange={(o) => !o && setPreviewInvoice(null)}
+      urlOrPath={previewInvoice?.url}
+      title={previewInvoice?.name}
+    />
+    </>
   );
 };
 
