@@ -16,7 +16,8 @@ function canonVendor(raw: string | null | undefined): { key: string; display: st
   if (!v) return { key: "__unknown__", display: "Unknown vendor" };
   if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
   if (/^srs\b|srs building|suncoast roofers/i.test(v)) return { key: "srs", display: "SRS" };
-  if (/\bqxo\b|beacon/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
   if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
   return { key: v.toLowerCase(), display: v };
 }
@@ -32,6 +33,36 @@ function tokenScore(a: string, b: string): number {
   let common = 0;
   A.forEach((w) => { if (B.has(w)) common++; });
   return common / Math.max(A.size, B.size);
+}
+
+function parseNoteLineItems(notes: string | null | undefined): any[] {
+  if (!notes) return [];
+  return notes.split(/\r?\n/).map((raw, idx) => {
+    const line = raw.trim();
+    if (!line) return null;
+    const totalMatch = line.match(/(?:^|\s)[—–-]\s*\$?([0-9,]+(?:\.\d{2})?)\s*$/);
+    const qtyMatch = line.match(/(?:^|\s)[—–-]\s*Qty\s*:\s*([0-9,]+(?:\.\d+)?)/i);
+    if (!totalMatch && !qtyMatch) return null;
+    const lineTotal = totalMatch ? Number(totalMatch[1].replace(/,/g, "")) : null;
+    const qty = qtyMatch ? Number(qtyMatch[1].replace(/,/g, "")) : 1;
+    const description = line
+      .replace(/\s*[—–-]\s*Qty\s*:\s*[0-9,]+(?:\.\d+)?/i, "")
+      .replace(/\s*[—–-]\s*\$?[0-9,]+(?:\.\d{2})?\s*$/, "")
+      .trim();
+    if (!description || !Number.isFinite(qty) || qty <= 0) return null;
+    const sku = description.match(/^([A-Z0-9][A-Z0-9-]{2,})\b/)?.[1] || null;
+    return {
+      line_number: idx + 1,
+      description,
+      normalized_description: normalize(description),
+      quantity: qty,
+      unit_price: lineTotal != null ? Number((lineTotal / qty).toFixed(4)) : null,
+      line_total: lineTotal,
+      sku,
+      unit_of_measure: null,
+      raw_json: { source: "invoice_notes_fallback", raw },
+    };
+  }).filter(Boolean);
 }
 
 Deno.serve(async (req: Request) => {
