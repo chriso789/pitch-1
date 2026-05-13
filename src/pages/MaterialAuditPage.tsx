@@ -640,6 +640,26 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
         .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
         .single();
       if (itemErr) throw itemErr;
+
+      // Mirror into the global materials catalog so it appears in materials search
+      // across estimates and the rest of the app (not just inside the audit mapper).
+      try {
+        const code = `SPLI-${newItem.id}`;
+        await supabase.from("materials" as any).insert({
+          tenant_id: tenantId,
+          code,
+          name: desc,
+          description: desc,
+          uom: mapLine.invoice_uom || "ea",
+          base_cost: chargedUnit,
+          supplier_sku: mapLine.supplier_sku || null,
+          active: true,
+        });
+      } catch (mirrorErr) {
+        // Non-fatal: price list item is the source of truth for the audit
+        console.warn("[catalogNewItem] materials mirror failed", mirrorErr);
+      }
+
       setPickItem(newItem.id);
       // Refresh the price items list so the new item appears
       await queryClient.invalidateQueries({ queryKey: ["map-price-items", sid] });
