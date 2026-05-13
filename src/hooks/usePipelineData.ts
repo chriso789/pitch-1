@@ -15,6 +15,8 @@ export interface PipelineEntry {
   updated_at: string;
   location_id?: string;
   lead_name?: string | null;
+  estimated_value?: number | null;
+  metadata?: Record<string, any> | null;
   contacts: {
     id: string;
     contact_number: string;
