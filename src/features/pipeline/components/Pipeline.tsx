@@ -60,7 +60,10 @@ const Pipeline = () => {
     salesRep: 'all',
     dateFrom: '',
     dateTo: '',
-    sortOrder: 'desc' as 'asc' | 'desc'
+    sortOrder: 'desc' as 'asc' | 'desc',
+    lastTouchedMinDays: '' as string, // days since last note/task created
+    timeInStatusMinDays: '' as string, // days in current pipeline stage
+    lastEmailMinDays: '' as string, // days since last outbound email (e.g. estimate sent)
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
@@ -323,6 +326,80 @@ const Pipeline = () => {
 
       // Batch-fetch selling prices from enhanced_estimates by pipeline_entry_id
       const entryIds = filteredData.map(entry => entry.id).filter(Boolean);
+      const contactIds = Array.from(new Set(filteredData.map(e => e.contact_id).filter(Boolean)));
+
+      // ----- Activity-based filters: last note/task, last outbound email -----
+      const lastTouchedMap = new Map<string, number>(); // entryId -> ms timestamp
+      const lastEmailMap = new Map<string, number>(); // contactId -> ms timestamp
+
+      if (entryIds.length > 0) {
+        const [notesRes, tasksRes] = await Promise.all([
+          supabase
+            .from('internal_notes')
+            .select('pipeline_entry_id, created_at')
+            .in('pipeline_entry_id', entryIds),
+          supabase
+            .from('tasks')
+            .select('pipeline_entry_id, created_at')
+            .in('pipeline_entry_id', entryIds),
+        ]);
+        const accumulate = (rows: any[] | null) => {
+          (rows || []).forEach((r: any) => {
+            if (!r.pipeline_entry_id || !r.created_at) return;
+            const t = new Date(r.created_at).getTime();
+            const prev = lastTouchedMap.get(r.pipeline_entry_id) || 0;
+            if (t > prev) lastTouchedMap.set(r.pipeline_entry_id, t);
+          });
+        };
+        accumulate(notesRes.data);
+        accumulate(tasksRes.data);
+      }
+
+      if (contactIds.length > 0) {
+        const { data: emailRows } = await supabase
+          .from('communication_history')
+          .select('contact_id, created_at')
+          .in('contact_id', contactIds)
+          .eq('communication_type', 'email')
+          .eq('direction', 'outbound');
+        (emailRows || []).forEach((r: any) => {
+          if (!r.contact_id || !r.created_at) return;
+          const t = new Date(r.created_at).getTime();
+          const prev = lastEmailMap.get(r.contact_id) || 0;
+          if (t > prev) lastEmailMap.set(r.contact_id, t);
+        });
+      }
+
+      const now = Date.now();
+      const daysAgo = (ms: number) => Math.floor((now - ms) / 86400000);
+      const minTouched = filters.lastTouchedMinDays ? Number(filters.lastTouchedMinDays) : null;
+      const minInStatus = filters.timeInStatusMinDays ? Number(filters.timeInStatusMinDays) : null;
+      const minEmail = filters.lastEmailMinDays ? Number(filters.lastEmailMinDays) : null;
+
+      if (minTouched !== null || minInStatus !== null || minEmail !== null) {
+        filteredData = filteredData.filter((entry: any) => {
+          // Last touched (note/task) — never touched counts as Infinity days
+          if (minTouched !== null) {
+            const ts = lastTouchedMap.get(entry.id);
+            const days = ts ? daysAgo(ts) : Infinity;
+            if (days < minTouched) return false;
+          }
+          // Time in status
+          if (minInStatus !== null) {
+            const stageTs = entry.status_entered_at || entry.updated_at || entry.created_at;
+            const days = stageTs ? daysAgo(new Date(stageTs).getTime()) : Infinity;
+            if (days < minInStatus) return false;
+          }
+          // Last outbound email
+          if (minEmail !== null) {
+            const ts = lastEmailMap.get(entry.contact_id);
+            const days = ts ? daysAgo(ts) : Infinity;
+            if (days < minEmail) return false;
+          }
+          return true;
+        });
+      }
+
       
       const estimatePriceMap = new Map<string, number>();
       if (entryIds.length > 0) {
@@ -1029,7 +1106,7 @@ const Pipeline = () => {
   };
 
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const hasActiveFilters = filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc';
+  const hasActiveFilters = filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc' || !!filters.lastTouchedMinDays || !!filters.timeInStatusMinDays || !!filters.lastEmailMinDays;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -1146,14 +1223,57 @@ const Pipeline = () => {
                 </Select>
               </div>
             </div>
-            
+
+            {/* Activity-based filters */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4 mt-2 sm:mt-3">
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">
+                  Last touched ≥ (days)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 7"
+                  value={filters.lastTouchedMinDays}
+                  onChange={(e) => setFilters(prev => ({ ...prev, lastTouchedMinDays: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">
+                  Time in status ≥ (days)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 14"
+                  value={filters.timeInStatusMinDays}
+                  onChange={(e) => setFilters(prev => ({ ...prev, timeInStatusMinDays: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">
+                  Estimate sent ≥ (days)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 5"
+                  value={filters.lastEmailMinDays}
+                  onChange={(e) => setFilters(prev => ({ ...prev, lastEmailMinDays: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+
             {hasActiveFilters && (
               <div className="mt-2 sm:mt-4">
                 <Button 
                   variant="outline" 
                   size="sm" 
                   className="h-7 text-xs"
-                  onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc' })}
+                  onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc', lastTouchedMinDays: '', timeInStatusMinDays: '', lastEmailMinDays: '' })}
                 >
                   <Filter className="h-3 w-3 mr-1.5" />
                   Clear Filters
