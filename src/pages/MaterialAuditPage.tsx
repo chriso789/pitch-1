@@ -1053,12 +1053,248 @@ function UnmatchedTabContent({ tenantId, unmatchedLines, queryClient }: any) {
 }
 
 // --- Credit Claims Tab ---
-function CreditClaimsTab({ claims }: any) {
+type ClaimableLine = {
+  id: string;
+  audit_id: string;
+  invoice_document_id: string;
+  supplier_id: string | null;
+  supplier_name: string;
+  invoice_number: string;
+  invoice_date: string | null;
+  service_address: string | null;
+  job_label: string;
+  description: string;
+  supplier_sku: string | null;
+  quantity: number;
+  charged_unit_price: number;
+  agreed_unit_price: number | null;
+  charged_extended_price: number;
+  expected_extended_price: number | null;
+  total_difference: number;
+};
+
+function buildClaimDocumentHtml(supplierName: string, lines: ClaimableLine[]): string {
+  const totalCredit = lines.reduce((s, l) => s + Number(l.total_difference || 0), 0);
+  const today = new Date().toLocaleDateString();
+  const byInvoice = new Map<string, ClaimableLine[]>();
+  lines.forEach((l) => {
+    const k = l.invoice_number || l.invoice_document_id;
+    if (!byInvoice.has(k)) byInvoice.set(k, []);
+    byInvoice.get(k)!.push(l);
+  });
+  const invoiceBlocks = Array.from(byInvoice.entries()).map(([invNo, ls]) => {
+    const invTotal = ls.reduce((s, l) => s + Number(l.total_difference || 0), 0);
+    const addr = ls.find((l) => l.service_address)?.service_address || "—";
+    const date = ls.find((l) => l.invoice_date)?.invoice_date || "";
+    const job = ls.find((l) => l.job_label)?.job_label || "";
+    const rows = ls.map((l) => `
+      <tr>
+        <td>${escapeHtml(l.description || "")}${l.supplier_sku ? `<div style="color:#666;font-size:11px">SKU: ${escapeHtml(l.supplier_sku)}</div>` : ""}</td>
+        <td style="text-align:right">${Number(l.quantity || 0)}</td>
+        <td style="text-align:right">$${Number(l.charged_unit_price || 0).toFixed(2)}</td>
+        <td style="text-align:right">${l.agreed_unit_price != null ? "$" + Number(l.agreed_unit_price).toFixed(2) : "—"}</td>
+        <td style="text-align:right">$${Number(l.charged_extended_price || 0).toFixed(2)}</td>
+        <td style="text-align:right">${l.expected_extended_price != null ? "$" + Number(l.expected_extended_price).toFixed(2) : "—"}</td>
+        <td style="text-align:right;color:#b91c1c;font-weight:600">$${Number(l.total_difference || 0).toFixed(2)}</td>
+      </tr>`).join("");
+    return `
+      <div style="margin-top:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px;page-break-inside:avoid">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:13px;color:#666">Invoice #</div>
+            <div style="font-size:18px;font-weight:600">${escapeHtml(invNo)}</div>
+            ${date ? `<div style="font-size:12px;color:#666;margin-top:2px">Dated ${escapeHtml(date)}</div>` : ""}
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:13px;color:#666">Service address</div>
+            <div style="font-size:14px">${escapeHtml(addr)}</div>
+            ${job ? `<div style="font-size:12px;color:#666;margin-top:2px">Job: ${escapeHtml(job)}</div>` : ""}
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:#f3f4f6;text-align:left">
+              <th style="padding:8px">Item</th>
+              <th style="padding:8px;text-align:right">Qty</th>
+              <th style="padding:8px;text-align:right">Charged Unit</th>
+              <th style="padding:8px;text-align:right">Agreed Unit</th>
+              <th style="padding:8px;text-align:right">Charged Total</th>
+              <th style="padding:8px;text-align:right">Agreed Total</th>
+              <th style="padding:8px;text-align:right">Overcharge</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="text-align:right;margin-top:8px;font-size:13px"><strong>Invoice credit due: <span style="color:#b91c1c">$${invTotal.toFixed(2)}</span></strong></div>
+      </div>`;
+  }).join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Credit Claim — ${escapeHtml(supplierName)}</title>
+    <style>body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111;max-width:900px;margin:32px auto;padding:0 24px}
+    h1{font-size:24px;margin:0}@media print{.noprint{display:none}}</style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px">
+      <div><h1>Supplier Credit Claim</h1><div style="color:#666;margin-top:4px">Generated ${escapeHtml(today)}</div></div>
+      <div style="text-align:right"><div style="font-size:13px;color:#666">Supplier</div><div style="font-size:18px;font-weight:600">${escapeHtml(supplierName)}</div></div>
+    </div>
+    <div style="margin-top:16px;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">
+      <div style="font-size:13px;color:#7f1d1d">Total credit requested across ${byInvoice.size} invoice${byInvoice.size === 1 ? "" : "s"}</div>
+      <div style="font-size:28px;font-weight:700;color:#b91c1c">$${totalCredit.toFixed(2)}</div>
+    </div>
+    ${invoiceBlocks}
+    <div style="margin-top:32px;font-size:12px;color:#444">Please review the line-level discrepancies above and apply the corresponding credit to our account. Each item was charged above the agreed price-list rate on file.</div>
+    <div class="noprint" style="margin-top:24px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer">Print / Save as PDF</button></div>
+    </body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+function CreditClaimsTab({ claims, tenantId, audits }: { claims: any[]; tenantId: string | null; audits: any[] }) {
+  const { data: claimableLines = [] } = useQuery({
+    queryKey: ["claimable-overcharges", tenantId, audits.length],
+    queryFn: async (): Promise<ClaimableLine[]> => {
+      if (!tenantId || !audits.length) return [];
+      // Fully-matched audits (100%) that still carry overcharge
+      const fullyMatched = audits.filter(
+        (a: any) =>
+          a.total_invoice_lines > 0 &&
+          a.matched_lines === a.total_invoice_lines &&
+          Number(a.total_overcharge_amount || 0) > 0
+      );
+      if (!fullyMatched.length) return [];
+      const auditIds = fullyMatched.map((a) => a.id);
+      const { data: lines } = await supabase
+        .from("material_invoice_audit_lines")
+        .select("id, audit_id, invoice_document_id, supplier_id, invoice_description, supplier_sku, quantity, charged_unit_price, agreed_unit_price, charged_extended_price, expected_extended_price, total_difference")
+        .eq("company_id", tenantId)
+        .in("audit_id", auditIds)
+        .gt("total_difference", 0);
+      const auditById = new Map(fullyMatched.map((a: any) => [a.id, a]));
+      return (lines || []).map((l: any) => {
+        const a: any = auditById.get(l.audit_id);
+        const inv = a?.invoice;
+        return {
+          id: l.id,
+          audit_id: l.audit_id,
+          invoice_document_id: l.invoice_document_id,
+          supplier_id: l.supplier_id,
+          supplier_name: a?.supplier?.supplier_name || inv?.vendor_name || "Unknown supplier",
+          invoice_number: inv?.invoice_number || "—",
+          invoice_date: inv?.invoice_date || null,
+          service_address: inv?.service_address || null,
+          job_label: getInvoiceJobLabel(inv),
+          description: l.invoice_description || "",
+          supplier_sku: l.supplier_sku,
+          quantity: Number(l.quantity || 0),
+          charged_unit_price: Number(l.charged_unit_price || 0),
+          agreed_unit_price: l.agreed_unit_price != null ? Number(l.agreed_unit_price) : null,
+          charged_extended_price: Number(l.charged_extended_price || 0),
+          expected_extended_price: l.expected_extended_price != null ? Number(l.expected_extended_price) : null,
+          total_difference: Number(l.total_difference || 0),
+        };
+      });
+    },
+    enabled: !!tenantId,
+  });
+
+  const grouped = React.useMemo(() => {
+    const map = new Map<string, { supplier_name: string; lines: ClaimableLine[]; total: number; invoiceCount: number }>();
+    claimableLines.forEach((l) => {
+      const key = l.supplier_id || l.supplier_name;
+      if (!map.has(key)) map.set(key, { supplier_name: l.supplier_name, lines: [], total: 0, invoiceCount: 0 });
+      const g = map.get(key)!;
+      g.lines.push(l);
+      g.total += l.total_difference;
+    });
+    map.forEach((g) => {
+      g.invoiceCount = new Set(g.lines.map((l) => l.invoice_document_id)).size;
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [claimableLines]);
+
+  const openClaimDoc = (supplierName: string, lines: ClaimableLine[]) => {
+    const html = buildClaimDocumentHtml(supplierName, lines);
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Pop-up blocked. Allow pop-ups to view the claim document."); return; }
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
-    <TabsContent value="credit-claims">
+    <TabsContent value="credit-claims" className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Supplier Credit Claims</CardTitle>
+          <CardTitle className="text-base">Claimable Overcharges from Audited Invoices</CardTitle>
+          <CardDescription>
+            Invoices with 100% line matches that were still billed above the agreed price. Build a per-supplier credit claim document showing every overcharge with invoice number and service address.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {grouped.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8 text-sm">
+              No overcharges to claim. Once an audited invoice shows 100% match with a positive overcharge, it will appear here.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {grouped.map((g) => (
+                <div key={g.supplier_name} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="font-semibold text-base">{g.supplier_name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {g.lines.length} overcharge line{g.lines.length === 1 ? "" : "s"} across {g.invoiceCount} invoice{g.invoiceCount === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">Credit due</div>
+                        <div className="text-lg font-bold text-destructive">${g.total.toFixed(2)}</div>
+                      </div>
+                      <Button size="sm" onClick={() => openClaimDoc(g.supplier_name, g.lines)}>
+                        <FileText className="h-4 w-4 mr-2" />
+                        Build Credit Claim
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Invoice</TableHead>
+                          <TableHead className="text-xs">Service Address</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs text-right">Qty</TableHead>
+                          <TableHead className="text-xs text-right">Charged</TableHead>
+                          <TableHead className="text-xs text-right">Agreed</TableHead>
+                          <TableHead className="text-xs text-right">Overcharge</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {g.lines.map((l) => (
+                          <TableRow key={l.id}>
+                            <TableCell className="text-xs font-medium">{l.invoice_number}</TableCell>
+                            <TableCell className="text-xs">{l.service_address || "—"}</TableCell>
+                            <TableCell className="text-xs">{l.description}</TableCell>
+                            <TableCell className="text-xs text-right">{l.quantity}</TableCell>
+                            <TableCell className="text-xs text-right">${l.charged_unit_price.toFixed(2)}</TableCell>
+                            <TableCell className="text-xs text-right">{l.agreed_unit_price != null ? `$${l.agreed_unit_price.toFixed(2)}` : "—"}</TableCell>
+                            <TableCell className="text-xs text-right text-destructive font-medium">${l.total_difference.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Filed Credit Claims</CardTitle>
           <CardDescription>Track disputed charges and credit requests</CardDescription>
         </CardHeader>
         <CardContent>
@@ -1095,7 +1331,7 @@ function CreditClaimsTab({ claims }: any) {
                 </TableRow>
               ))}
               {claims.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No credit claims yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No credit claims filed yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
