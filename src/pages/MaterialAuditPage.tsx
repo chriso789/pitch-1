@@ -592,7 +592,8 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   const [catalogName, setCatalogName] = React.useState("");
 
   React.useEffect(() => {
-    setCatalogName(mapLine?.invoice_description || "");
+    const raw = mapLine?.invoice_description || "";
+    setCatalogName(raw.replace(/\\(["'\\])/g, "$1"));
   }, [mapLine?.id, mapLine?.invoice_description]);
 
   const catalogNewItem = async () => {

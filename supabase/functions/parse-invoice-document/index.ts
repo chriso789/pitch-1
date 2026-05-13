@@ -442,7 +442,7 @@ Deno.serve(async (req) => {
             const items: any[] = Array.isArray(parsed.line_items) ? parsed.line_items : [];
             if (items.length) {
               const lineRows = items.map((li: any, idx: number) => {
-                const desc = String(li.description || "").trim();
+                const desc = String(li.description || "").replace(/\\([\"'\\])/g, "$1").trim();
                 return {
                   company_id: tenant_id,
                   invoice_document_id: invDoc.id,
