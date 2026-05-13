@@ -70,8 +70,12 @@ Deno.serve(async (req) => {
       if (data) order = data;
     }
     if (!order && po) {
-      const { data } = await supabase.from('srs_orders').select('*').eq('order_number', po).maybeSingle();
-      if (data) order = data;
+      // Try raw PO, then strip optional `job:` prefix used when submitting orders
+      const candidates = Array.from(new Set([po, po.replace(/^job:/i, '').trim()])).filter(Boolean);
+      for (const candidate of candidates) {
+        const { data } = await supabase.from('srs_orders').select('*').eq('order_number', candidate).maybeSingle();
+        if (data) { order = data; break; }
+      }
     }
 
     if (!order) {

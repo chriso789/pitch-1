@@ -253,7 +253,9 @@ Deno.serve(async (req) => {
           jobAccountNumber: connection.job_account_number,
           deliveryMethod: order.delivery_method || "delivery",
           requestedDeliveryDate: order.delivery_date,
-          poNumber: order.order_number,
+          // Prefix with `job:` so RoofHub webhooks echo back a unique, parseable PO
+          // (subscriberReferenceNum). roofhub-webhook strips the prefix when matching.
+          poNumber: `job:${order.order_number}`,
           notes: order.notes,
           orderItems: order.srs_order_items.map((item: any) => ({
             productId: item.srs_product_id,
