@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck } from 'lucide-react';
+import { QXOArDashboard } from './QXOArDashboard';
 
 interface QXOConnection {
   id: string;
@@ -248,34 +249,8 @@ export function QXOConnectionSettings() {
         </CardContent>
       </Card>
 
-      {isConnected && connection && (
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Connection Details</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Profile ID</span>
-                <p className="font-medium">{connection.profile_id || '—'}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Account ID</span>
-                <p className="font-medium">{connection.account_id || '—'}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Default Branch</span>
-                <p className="font-medium">{connection.default_branch_code || '—'}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Last Validated</span>
-                <p className="font-medium">
-                  {connection.last_validated_at
-                    ? new Date(connection.last_validated_at).toLocaleDateString()
-                    : '—'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {isConnected && activeCompanyId && (
+        <QXOArDashboard tenantId={activeCompanyId} />
       )}
     </div>
   );

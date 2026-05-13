@@ -32063,6 +32063,84 @@ export type Database = {
           },
         ]
       }
+      qxo_account_profile: {
+        Row: {
+          account_id: string | null
+          account_name: string | null
+          created_at: string
+          default_branch_code: string | null
+          default_branch_name: string | null
+          id: string
+          last_synced_at: string | null
+          profile_id: string | null
+          raw_payload: Json | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          account_name?: string | null
+          created_at?: string
+          default_branch_code?: string | null
+          default_branch_name?: string | null
+          id?: string
+          last_synced_at?: string | null
+          profile_id?: string | null
+          raw_payload?: Json | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          account_name?: string | null
+          created_at?: string
+          default_branch_code?: string | null
+          default_branch_name?: string | null
+          id?: string
+          last_synced_at?: string | null
+          profile_id?: string | null
+          raw_payload?: Json | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qxo_balance_snapshots: {
+        Row: {
+          available_credit: number | null
+          balance: number | null
+          created_at: string
+          credit_limit: number | null
+          currency: string | null
+          id: string
+          raw_payload: Json | null
+          snapshot_date: string
+          tenant_id: string
+        }
+        Insert: {
+          available_credit?: number | null
+          balance?: number | null
+          created_at?: string
+          credit_limit?: number | null
+          currency?: string | null
+          id?: string
+          raw_payload?: Json | null
+          snapshot_date?: string
+          tenant_id: string
+        }
+        Update: {
+          available_credit?: number | null
+          balance?: number | null
+          created_at?: string
+          credit_limit?: number | null
+          currency?: string | null
+          id?: string
+          raw_payload?: Json | null
+          snapshot_date?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       qxo_connections: {
         Row: {
           access_token: string | null
@@ -32126,6 +32204,105 @@ export type Database = {
           updated_at?: string
           username?: string | null
           valid_indicator?: boolean
+        }
+        Relationships: []
+      }
+      qxo_invoices: {
+        Row: {
+          amount: number | null
+          balance: number | null
+          branch_code: string | null
+          branch_name: string | null
+          created_at: string
+          currency: string | null
+          due_date: string | null
+          id: string
+          invoice_number: string | null
+          issued_date: string | null
+          job_id: string | null
+          last_synced_at: string
+          po_number: string | null
+          qxo_invoice_id: string
+          raw_payload: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number | null
+          balance?: number | null
+          branch_code?: string | null
+          branch_name?: string | null
+          created_at?: string
+          currency?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_number?: string | null
+          issued_date?: string | null
+          job_id?: string | null
+          last_synced_at?: string
+          po_number?: string | null
+          qxo_invoice_id: string
+          raw_payload?: Json | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number | null
+          balance?: number | null
+          branch_code?: string | null
+          branch_name?: string | null
+          created_at?: string
+          currency?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_number?: string | null
+          issued_date?: string | null
+          job_id?: string | null
+          last_synced_at?: string
+          po_number?: string | null
+          qxo_invoice_id?: string
+          raw_payload?: Json | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qxo_sync_runs: {
+        Row: {
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          kind: string
+          records_upserted: number | null
+          started_at: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind: string
+          records_upserted?: number | null
+          started_at?: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          records_upserted?: number | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
         }
         Relationships: []
       }
