@@ -16,6 +16,9 @@ function canonVendor(raw: string | null | undefined): { key: string; display: st
   if (!v) return { key: "__unknown__", display: "Unknown vendor" };
   if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
   if (/^srs\b|srs building|suncoast roofers/i.test(v)) return { key: "srs", display: "SRS" };
+  if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
+  if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
+  if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
   if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
   if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
   if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
@@ -34,6 +37,22 @@ function tokenScore(a: string, b: string): number {
   A.forEach((w) => { if (B.has(w)) common++; });
   return common / Math.max(A.size, B.size);
 }
+
+function supplierCompareKey(raw: string | null | undefined): string {
+  return normalize(raw)
+    .replace(/\b(company|co|inc|llc|ltd|corp|corporation|mfg|manufacturing|products|supply|supplies)\b/g, " ")
+    .replace(/\bmetals\b/g, "metal")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type SkippedInvoice = {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  vendorName: string | null;
+  documentName: string | null;
+  reason: string;
+};
 
 function parseNoteLineItems(notes: string | null | undefined): any[] {
   if (!notes) return [];
