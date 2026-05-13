@@ -557,7 +557,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         onChange={(e) => handleUpdateItem(item.id, 'notes', e.target.value)}
                         onBlur={handleSave}
                         placeholder="e.g. Weathered Wood"
-                        className="h-8 text-sm"
+                        className="h-8 text-sm font-medium"
                       />
                     )}
                   </TableCell>
