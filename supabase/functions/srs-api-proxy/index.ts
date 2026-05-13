@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
         .update({ access_token: newToken, token_expires_at: expiresAt })
         .eq("id", connection.id);
 
+      await audit({ tenant_id, connection_id: connection.id, action: "token_fetch", success: true, metadata: { expires_at: expiresAt } });
       return newToken;
     }
 
