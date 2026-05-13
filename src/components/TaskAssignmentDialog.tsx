@@ -16,10 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, BookmarkPlus, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { TEST_IDS } from "../../tests/utils/test-ids";
+import { TaskTemplatesManager, type TaskTemplate } from "./TaskTemplatesManager";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { getRoleLevel } from "@/lib/roleUtils";
 
 interface TaskAssignmentDialogProps {
   trigger?: React.ReactNode;
@@ -41,9 +44,13 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
   buttonVariant = "default",
 }) => {
   const { toast } = useToast();
+  const tenantId = useEffectiveTenantId();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [canManageTemplates, setCanManageTemplates] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -55,8 +62,20 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
   useEffect(() => {
     if (open) {
       fetchTenantUsers();
+      fetchTemplates();
     }
   }, [open]);
+
+  const fetchTemplates = async () => {
+    if (!tenantId) return;
+    const { data } = await supabase
+      .from("task_templates")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("use_count", { ascending: false })
+      .order("title", { ascending: true });
+    setTemplates((data as TaskTemplate[]) || []);
+  };
 
   const fetchTenantUsers = async () => {
     try {
@@ -66,12 +85,15 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("tenant_id")
+        .select("tenant_id, role")
         .eq("id", user.id)
         .maybeSingle();
 
       if (profileError) throw profileError;
       if (!profile?.tenant_id) throw new Error("No tenant found");
+
+      // Managers (sales_manager and above) can manage templates
+      setCanManageTemplates(getRoleLevel((profile as any).role || "") <= 6);
 
       const { data: tenantUsers, error: usersError } = await supabase
         .from("profiles")
@@ -158,6 +180,17 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
 
       if (error) throw error;
 
+      // Increment template use_count if a template was used
+      if (selectedTemplateId) {
+        const tpl = templates.find((t) => t.id === selectedTemplateId);
+        if (tpl) {
+          await supabase
+            .from("task_templates")
+            .update({ use_count: (tpl.use_count || 0) + 1 })
+            .eq("id", selectedTemplateId);
+        }
+      }
+
       toast({
         title: "Task Created",
         description: `Task "${formData.title}" has been assigned successfully.`,
@@ -171,6 +204,7 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
         due_date: "",
         assigned_to: "",
       });
+      setSelectedTemplateId("");
 
       setOpen(false);
       onTaskCreated?.(data);
@@ -194,7 +228,27 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
       due_date: "",
       assigned_to: "",
     });
+    setSelectedTemplateId("");
     setOpen(false);
+  };
+
+  const applyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    let due_date = "";
+    if (tpl.default_due_offset_days != null) {
+      const d = new Date();
+      d.setDate(d.getDate() + tpl.default_due_offset_days);
+      due_date = d.toISOString().slice(0, 10);
+    }
+    setFormData((prev) => ({
+      ...prev,
+      title: tpl.title,
+      description: tpl.description || "",
+      priority: tpl.priority || "medium",
+      due_date: due_date || prev.due_date,
+    }));
   };
 
   const defaultTrigger = (
@@ -217,6 +271,45 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Template selector */}
+          <div className="bg-muted/40 rounded-md p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <BookmarkPlus className="h-4 w-4 text-primary" />
+                Use a saved task
+              </label>
+              {canManageTemplates && (
+                <TaskTemplatesManager
+                  onChanged={fetchTemplates}
+                  trigger={
+                    <Button type="button" variant="ghost" size="sm" className="h-7">
+                      <Settings className="h-3.5 w-3.5 mr-1" /> Manage
+                    </Button>
+                  }
+                />
+              )}
+            </div>
+            <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    templates.length === 0
+                      ? "No templates yet — type a task below"
+                      : "Pick a saved task to prefill…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.title}
+                    {t.use_count > 0 ? ` · used ${t.use_count}×` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Task Title */}
           <div>
             <label className="text-sm font-medium mb-1.5 block">Task Title *</label>
