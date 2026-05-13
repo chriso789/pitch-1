@@ -1249,3 +1249,6 @@ verify_jwt = true
 
 [functions.audit-cost-invoice]
 verify_jwt = true
+
+[functions.assign-contact-task]
+verify_jwt = true
