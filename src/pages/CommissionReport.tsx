@@ -135,19 +135,19 @@ export default function CommissionReport() {
         if (userIds.length === 0) return [];
         const { data } = await supabase
           .from('profiles')
-          .select('id, first_name, last_name')
+          .select('id, first_name, last_name, is_developer')
           .eq('tenant_id', currentUser.tenant_id)
           .in('id', userIds)
           .order('first_name');
-        return data || [];
+        return (data || []).filter(r => !r.is_developer);
       }
 
       const { data } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name')
+        .select('id, first_name, last_name, is_developer')
         .eq('tenant_id', currentUser.tenant_id)
         .order('first_name');
-      return data || [];
+      return (data || []).filter(r => !r.is_developer);
     },
     enabled: !!currentUser?.tenant_id,
   });
