@@ -119,7 +119,8 @@ export function BulkInvoiceImportDialog({ open, onOpenChange, onComplete }: Prop
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, row.file, { upsert: false });
       if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      const documentUrl = pub.publicUrl;
+      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 30);
+      const documentUrl = signed?.signedUrl || pub.publicUrl;
 
       // 2. Parse via edge function
       updateRow(row.id, { status: "parsing", documentUrl });
