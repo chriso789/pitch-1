@@ -1,21 +1,21 @@
-# Remove "AI Corrections" tab from Integrations Settings
+# Fix: "Save Line Items to Template" dialog hides most items
 
-## Problem
-- Settings → Integrations has an **AI Corrections** tab that renders `MeasurementCorrectionsLog`. It shows empty stat cards (Total Corrections 0, Avg Change 0.0%, Most Corrected N/A) and "No corrections recorded yet" — not useful in its current state.
-- The stat cards visually overlap the wrapped tab row above them (the TabsList uses `flex-wrap` and wraps onto a second line, which sits behind the cards).
-- Removing the tab eliminates both issues at once. The underlying `roof_measurement_corrections` table and any other consumers are left untouched.
+## Diagnosis
+- Confirmed via `src/components/estimates/MultiTemplateSelector.tsx` (line 2853) that the dialog receives the full `lineItems` array — nothing is filtered upstream.
+- In `UpdateTemplateDialog.tsx`, the items state is built from all non-`change_order` line items (lines 78–95) and rendered with `items.map(...)` (line 360) — no slice/limit. The header counter ("18 materials, 0 labor items will be saved") matches the real count, so all 18 items **are** in state.
+- The actual bug is presentational: the editable list is wrapped in `<ScrollArea className="flex-1 max-h-[300px] border rounded-md">` (line 355). The `max-h-[300px]` cap means only ~2 items are visible at once even though the parent dialog is `max-h-[90vh]`. There is no visible affordance telling the user the list is internally scrollable, so it looks like items are missing.
+- A second smaller issue: the "Update Existing" template picker uses `max-h-[180px]` for the same reason but is less impactful.
 
-## Changes
+## Fix
 
-**`src/components/settings/IntegrationsSettings.tsx`**
-- Remove the `MeasurementCorrectionsLog` import (line 6).
-- Remove the `Ruler` icon from the lucide-react import (line 15) — no longer used.
-- Remove the `<TabsTrigger value="measurement-corrections">…AI Corrections</TabsTrigger>` block (lines 77–80).
-- Remove the matching `<TabsContent value="measurement-corrections">…</TabsContent>` block (lines 131–133).
+**`src/components/estimates/UpdateTemplateDialog.tsx`**
+1. Make the editable line-items section grow to fill the remaining dialog height instead of being capped at 300px:
+   - Change the wrapper `<div className="mt-3 flex-1 overflow-hidden flex flex-col">` to keep `flex-1` (it already does) and remove the `max-h-[300px]` from the inner `ScrollArea`, replacing it with `className="flex-1 border rounded-md"` so it expands within the flex column.
+2. Add a small header above the list showing the live count, e.g. `Edit Line Items (18)`, using `items.length`. This makes it obvious all items are loaded and the list just needs to be scrolled.
+3. Bump the templates picker `ScrollArea` from `max-h-[180px]` to `max-h-[220px]` so longer template lists aren't clipped either (minor polish, same root cause).
 
-**`src/components/settings/MeasurementCorrectionsLog.tsx`**
-- Delete the file (no other references in the codebase — verified via ripgrep, only `IntegrationsSettings.tsx` imports it).
+No data, query, or save-logic changes — the underlying items are already complete.
 
 ## Out of scope
-- No DB changes. The `roof_measurement_corrections` table stays as-is in case it's used by the measurement pipeline elsewhere.
-- No other tabs are touched. Wrapping behavior of the remaining tabs stays the same but with one fewer trigger, reducing the chance of layout overflow.
+- No changes to `MultiTemplateSelector.tsx` or any DB write path.
+- No change to which item types are saved (still excludes `change_order`, includes all materials and labor).

@@ -285,7 +285,7 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
                 No templates yet. Switch to "Add New Template" to create one.
               </div>
             ) : (
-              <ScrollArea className="max-h-[180px]">
+              <ScrollArea className="max-h-[220px]">
                 <div className="space-y-1 pr-2">
                   {templates.map((template) => (
                     <button
@@ -350,9 +350,9 @@ export const UpdateTemplateDialog: React.FC<UpdateTemplateDialogProps> = ({
           </TabsContent>
 
           {/* Editable item list (shared between modes) */}
-          <div className="mt-3 flex-1 overflow-hidden flex flex-col">
-            <div className="text-sm font-medium mb-2">Edit Line Items</div>
-            <ScrollArea className="flex-1 max-h-[300px] border rounded-md">
+          <div className="mt-3 flex-1 overflow-hidden flex flex-col min-h-[280px]">
+            <div className="text-sm font-medium mb-2">Edit Line Items ({items.length})</div>
+            <ScrollArea className="flex-1 border rounded-md">
               <div className="divide-y">
                 {items.length === 0 ? (
                   <div className="p-4 text-sm text-muted-foreground text-center">No items to save.</div>
