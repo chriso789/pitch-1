@@ -271,6 +271,45 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Template selector */}
+          <div className="bg-muted/40 rounded-md p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <BookmarkPlus className="h-4 w-4 text-primary" />
+                Use a saved task
+              </label>
+              {canManageTemplates && (
+                <TaskTemplatesManager
+                  onChanged={fetchTemplates}
+                  trigger={
+                    <Button type="button" variant="ghost" size="sm" className="h-7">
+                      <Settings className="h-3.5 w-3.5 mr-1" /> Manage
+                    </Button>
+                  }
+                />
+              )}
+            </div>
+            <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    templates.length === 0
+                      ? "No templates yet — type a task below"
+                      : "Pick a saved task to prefill…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.title}
+                    {t.use_count > 0 ? ` · used ${t.use_count}×` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Task Title */}
           <div>
             <label className="text-sm font-medium mb-1.5 block">Task Title *</label>
