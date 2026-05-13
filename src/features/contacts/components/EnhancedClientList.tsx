@@ -1150,12 +1150,15 @@ export const EnhancedClientList = () => {
                       Contacts
                     </div>
                   </SelectItem>
-                  <SelectItem value="jobs">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="h-4 w-4" />
-                      Jobs
-                    </div>
-                  </SelectItem>
+                  {/* Jobs view only available in table mode (Contacts board is contact-only) */}
+                  {!(activeView === 'contacts' && displayMode === 'kanban') && (
+                    <SelectItem value="jobs">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        Jobs
+                      </div>
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               
