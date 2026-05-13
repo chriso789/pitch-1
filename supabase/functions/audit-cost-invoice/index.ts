@@ -177,11 +177,12 @@ Deno.serve(async (req: Request) => {
       }
 
       const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
-      const { priceListId, items } = await loadItems(supplier.id, invoiceDate);
+      const { priceListId, items, rules } = await loadItems(supplier.id, invoiceDate);
       if (!priceListId || !items.length) {
         skipped.push({ invoiceId: inv.id, reason: `No price list for supplier "${supplier.supplier_name}"` });
         continue;
       }
+      const itemsById = new Map(items.map((i) => [i.id, i]));
 
       const { data: storedLines } = await supabase
         .from("project_cost_invoice_line_items")
