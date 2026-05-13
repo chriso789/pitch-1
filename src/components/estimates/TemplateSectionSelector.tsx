@@ -128,7 +128,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       
       const { data, error } = await supabase
         .from('enhanced_estimates')
-        .select('id, line_items, template_id, material_cost_locked_at, labor_cost_locked_at')
+        .select('id, line_items, template_id, material_cost_locked_at, labor_cost_locked_at, roof_area_sq_ft, property_details, calculation_metadata')
         .eq('id', effectiveEstimateId)
         .single();
       
@@ -190,10 +190,10 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       }
     }
     
-    if (existingEstimate?.template_id) {
+    if (existingEstimate?.template_id && !selectedTemplateId) {
       setSelectedTemplateId(existingEstimate.template_id);
     }
-  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId]);
+  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId, selectedTemplateId]);
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
