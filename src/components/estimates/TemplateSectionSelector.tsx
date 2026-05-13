@@ -253,32 +253,113 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     }
   });
 
-  // Handle template selection - load default line items
-  const handleTemplateSelect = (templateId: string) => {
+  const buildTemplateTags = (): Record<string, number> => {
+    const tags: Record<string, number> = {};
+    const sourceTags = (latestMeasurement as any)?.tags || {};
+    Object.entries(sourceTags).forEach(([key, value]) => {
+      tags[key] = Number(value) || 0;
+    });
+
+    const totals = (latestMeasurement as any)?.measurement?.totals || {};
+    Object.entries(totals).forEach(([key, value]) => {
+      tags[key] = tags[key] || Number(value) || 0;
+    });
+
+    const estimateDetails = ((existingEstimate as any)?.property_details || {}) as Record<string, any>;
+    const estimateMeta = ((existingEstimate as any)?.calculation_metadata || {}) as Record<string, any>;
+    const roofArea = Number(
+      (existingEstimate as any)?.roof_area_sq_ft ||
+      estimateDetails.roof_area_sq_ft ||
+      estimateMeta.roof_area_sq_ft ||
+      metadata?.roof_area_sq_ft ||
+      tags['roof.total_sqft'] ||
+      tags['roof.plan_sqft'] ||
+      0
+    );
+    const squares = Number(tags['roof.squares'] || roofArea / 100 || 0);
+
+    tags['roof.total_sqft'] = tags['roof.total_sqft'] || roofArea;
+    tags['roof.area'] = tags['roof.area'] || roofArea;
+    tags['roof.squares'] = squares;
+    [8, 10, 12, 15, 17, 20].forEach((pct) => {
+      tags[`waste.${pct}pct.sqft`] = tags[`waste.${pct}pct.sqft`] || roofArea * (1 + pct / 100);
+      tags[`waste.${pct}pct.squares`] = tags[`waste.${pct}pct.squares`] || squares * (1 + pct / 100);
+    });
+    ['ridge', 'hip', 'valley', 'eave', 'rake', 'step', 'wall'].forEach((key) => {
+      tags[`lf.${key}`] = tags[`lf.${key}`] || 0;
+    });
+    tags['pen.pipe_vent'] = tags['pen.pipe_vent'] || 2;
+    return tags;
+  };
+
+  const evaluateQtyFormula = (formula: string, tags: Record<string, number>): number => {
+    if (!formula) return 1;
+    const directNumber = Number(formula);
+    if (Number.isFinite(directNumber)) return directNumber;
+
+    try {
+      const vars: Record<string, any> = { ceil: Math.ceil, floor: Math.floor, round: Math.round, max: Math.max, min: Math.min, abs: Math.abs };
+      let expression = formula.replace(/\{\{\s*(.+?)\s*\}\}/g, (_match, expr) => expr);
+      Object.entries(tags).forEach(([key, value]) => {
+        vars[key.replace(/\./g, '_')] = value;
+        expression = expression.replace(new RegExp(key.replace(/\./g, '\\.').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), key.replace(/\./g, '_'));
+      });
+      const value = new ExprParser().parse(expression).evaluate(vars);
+      return Number.isFinite(Number(value)) ? Number(value) : 0;
+    } catch (error) {
+      console.warn('[TemplateSectionSelector] Failed to evaluate template formula:', formula, error);
+      return 0;
+    }
+  };
+
+  // Handle template selection - load the actual saved template line items
+  const handleTemplateSelect = async (templateId: string) => {
     setSelectedTemplateId(templateId);
     const template = templates?.find(t => t.id === templateId);
-    
-    if (template) {
-      // Create default line items based on template
-      const defaultItems: LineItem[] = sectionType === 'material' 
-        ? [
-            { id: crypto.randomUUID(), item_name: 'Shingles (bundles)', qty: 45, unit: 'bundle', unit_cost: template.base_material_cost_per_sq / 3, line_total: 45 * (template.base_material_cost_per_sq / 3) },
-            { id: crypto.randomUUID(), item_name: 'Underlayment', qty: 6, unit: 'roll', unit_cost: 85, line_total: 510 },
-            { id: crypto.randomUUID(), item_name: 'Starter Strip', qty: 12, unit: 'bundle', unit_cost: 35, line_total: 420 },
-            { id: crypto.randomUUID(), item_name: 'Ridge Cap', qty: 8, unit: 'bundle', unit_cost: 52, line_total: 416 },
-            { id: crypto.randomUUID(), item_name: 'Drip Edge', qty: 20, unit: 'stick', unit_cost: 8, line_total: 160 },
-          ]
-        : [
-            { id: crypto.randomUUID(), item_name: 'Tear Off', qty: 15, unit: 'sq', unit_cost: 45, line_total: 675 },
-            { id: crypto.randomUUID(), item_name: 'Underlayment Install', qty: 15, unit: 'sq', unit_cost: 15, line_total: 225 },
-            { id: crypto.randomUUID(), item_name: 'Shingle Install', qty: 15, unit: 'sq', unit_cost: template.base_labor_rate_per_hour * 1.3, line_total: 15 * template.base_labor_rate_per_hour * 1.3 },
-            { id: crypto.randomUUID(), item_name: 'Ridge/Hip Work', qty: 48, unit: 'lf', unit_cost: 3.50, line_total: 168 },
-            { id: crypto.randomUUID(), item_name: 'Cleanup & Haul', qty: 1, unit: 'job', unit_cost: 350, line_total: 350 },
-          ];
-      
-      setLineItems(defaultItems);
-      saveLineItemsMutation.mutate(defaultItems);
+    if (!template) return;
+
+    if (!effectiveEstimateId) {
+      toast.error('Select or create an estimate before applying a template');
+      return;
     }
+
+    const { data: templateItems, error } = await supabase
+      .from('estimate_calc_template_items')
+      .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order')
+      .eq('calc_template_id', templateId)
+      .eq('tenant_id', effectiveTenantId)
+      .eq('item_type', sectionType)
+      .eq('active', true)
+      .order('sort_order');
+
+    if (error) {
+      toast.error(`Failed to load template: ${error.message}`);
+      return;
+    }
+
+    if (!templateItems?.length) {
+      toast.error(`No ${sectionType} items found in this template`);
+      return;
+    }
+
+    const tags = buildTemplateTags();
+    const calculatedItems: LineItem[] = templateItems.map((item: any) => {
+      const qty = evaluateQtyFormula(item.qty_formula, tags);
+      const unitCost = Number(item.unit_cost) || 0;
+      return {
+        id: crypto.randomUUID(),
+        item_name: item.item_name,
+        qty,
+        unit: item.unit || 'ea',
+        unit_cost: unitCost,
+        line_total: qty * unitCost,
+        notes: item.description || ''
+      };
+    });
+
+    setLineItems(calculatedItems);
+    saveLineItemsMutation.mutate({ items: calculatedItems, templateId });
+    toast.success(`${template.name} applied with ${calculatedItems.length} ${sectionType} items`);
   };
 
   // Update a line item
