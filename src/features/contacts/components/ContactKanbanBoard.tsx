@@ -88,6 +88,8 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         return arr.sort((a, b) => numOf(b) - numOf(a));
     }
   };
+
+  const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
