@@ -173,14 +173,14 @@ export const SupplierQuoteUploader: React.FC<SupplierQuoteUploaderProps> = ({
         const best = findBestMatch(p, combinedCandidates);
         if (best && best.score >= 0.4) {
           const existing = updatedById.get(best.item.id) || best.item;
+          // Only update cost from supplier quote — never overwrite the
+          // measurement-driven quantity. Line total is recalculated from
+          // the existing qty and the new unit cost.
+          const newUnitCost = unitCost || existing.unit_cost;
           updatedById.set(existing.id, {
             ...existing,
-            qty: qty || existing.qty,
-            unit_cost: unitCost || existing.unit_cost,
-            line_total:
-              qty && unitCost
-                ? +(qty * unitCost).toFixed(2)
-                : lineTotal || existing.line_total,
+            unit_cost: newUnitCost,
+            line_total: +((existing.qty || 0) * newUnitCost).toFixed(2),
             is_override: true,
           });
           matched += 1;
