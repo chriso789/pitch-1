@@ -98,16 +98,16 @@ Deno.serve(async (req) => {
     if (measurementsError) throw measurementsError;
 
     const foundMeasurementIds = (measurements || []).map((measurement) => measurement.id);
-    if (foundMeasurementIds.length !== measurementIds.length) {
-      const missingIds = measurementIds.filter((id) => !foundMeasurementIds.includes(id));
-      console.error('Missing measurement IDs:', missingIds, 'tenantId:', tenantId, 'peTenantId:', peTenantId);
-      return jsonResponse({
-        success: false,
-        error: missingIds.length === 1
-          ? 'Measurement could not be removed from history'
-          : 'Some measurements could not be removed from history',
-        missingIds,
-      }, 404);
+    // IDs that no longer exist in roof_measurements are treated as already-deleted
+    // (idempotent delete). The UI may have a stale cache from a prior deletion or
+    // an out-of-band cleanup. We still report them as "deleted" so the cache clears.
+    const alreadyMissingIds = measurementIds.filter((id) => !foundMeasurementIds.includes(id));
+    if (alreadyMissingIds.length > 0) {
+      console.warn('delete-ai-measurements: treating missing IDs as already-deleted', {
+        missingIds: alreadyMissingIds,
+        tenantId,
+        peTenantId,
+      });
     }
 
     const importedAtValues = new Set(
