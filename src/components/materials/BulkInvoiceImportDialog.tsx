@@ -125,7 +125,7 @@ export function BulkInvoiceImportDialog({ open, onOpenChange, onComplete }: Prop
       const storedUrl = pub.publicUrl;
 
       // 2. Parse via edge function
-      updateRow(row.id, { status: "parsing", documentUrl });
+      updateRow(row.id, { status: "parsing", documentUrl, storedUrl });
       const { data: parseData, error: parseErr } = await supabase.functions.invoke("parse-invoice-document", {
         body: { document_url: documentUrl, source_file_name: row.file.name, auto_persist: false },
       });
