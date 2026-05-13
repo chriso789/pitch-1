@@ -98,21 +98,39 @@ export function QXOBrowser({ tenantId }: Props) {
   };
 
   // ---------------- Quotes ----------------
-  const [quotes, setQuotes] = useState<any[]>([]);
+  type QuoteRow = {
+    quoteId: string;
+    quoteName?: string;
+    creationDate?: string;
+    expirationDate?: string;
+    status?: string;
+    displayStatus?: string;
+    createdBy?: string;
+  };
+  const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [quotesLoading, setQuotesLoading] = useState(false);
+  const [quotesPage, setQuotesPage] = useState(1);
+  const [quotesTotal, setQuotesTotal] = useState(0);
+  const [quotesSearch, setQuotesSearch] = useState('');
+  const [quoteType, setQuoteType] = useState<'draft' | 'inProcess' | 'received'>('received');
 
-  // Quote API has no list endpoint in spec; we surface cached rows from qxo_quotes.
-  const loadQuotes = async () => {
+  const loadQuotes = async (page = 1, term = '', type = quoteType) => {
     setQuotesLoading(true);
     try {
-      const { data, error } = await (supabase as any)
-        .from('qxo_quotes')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('last_synced_at', { ascending: false })
-        .limit(50);
+      const params: any = { tenant_id: tenantId, pageSize: 25, pageNo: page, quoteType: type };
+      if (term) {
+        params.filterBy = 'quoteName';
+        params.filter = term;
+      }
+      const { data, error } = await supabase.functions.invoke('qxo-quotes?action=list', { body: params });
       if (error) throw error;
-      setQuotes(data || []);
+      const bucket =
+        type === 'draft' ? data?.draftQuote :
+        type === 'inProcess' ? data?.inProcessQuote :
+        data?.receivedQuote;
+      setQuotes(bucket?.quoteList || []);
+      setQuotesTotal(bucket?.pagination?.totalCount || 0);
+      setQuotesPage(page);
     } catch (e: any) {
       toast({ title: 'Failed to load quotes', description: e.message, variant: 'destructive' });
     } finally {
