@@ -513,6 +513,14 @@ function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
           </Table>
         </CardContent>
       </Card>
+      <BulkInvoiceImportDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        onComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["material-invoices"] });
+          queryClient.invalidateQueries({ queryKey: ["project-cost-invoices"] });
+        }}
+      />
     </TabsContent>
   );
 }
