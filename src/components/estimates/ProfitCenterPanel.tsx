@@ -23,6 +23,7 @@ import { PaymentsTab } from '@/components/estimates/PaymentsTab';
 import { ChangeOrdersTab } from '@/components/estimates/ChangeOrdersTab';
 import { CustomerPortalButton } from '@/components/lead-details/CustomerPortalButton';
 import { format } from 'date-fns';
+import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
 
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
