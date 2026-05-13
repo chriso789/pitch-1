@@ -34,6 +34,7 @@ const KanbanPipeline = () => {
     entries, 
     groupedData, 
     stages, // Dynamic stages from database
+    stageTotals,
     isLoading, 
     userCanDelete,
     updateEntryStatus,
