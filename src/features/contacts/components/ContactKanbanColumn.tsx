@@ -21,7 +21,12 @@ export type ColumnSortKey =
   | 'name_desc'
   | 'score_desc'
   | 'score_asc'
-  | 'rep_asc';
+  | 'rep_asc'
+  | 'last_touched_desc'
+  | 'last_touched_asc'
+  | 'time_in_status_desc'
+  | 'estimate_sent_desc'
+  | 'estimate_sent_asc';
 
 export const COLUMN_SORT_OPTIONS: { key: ColumnSortKey; label: string }[] = [
   { key: 'newest', label: 'Newest first' },
@@ -31,6 +36,11 @@ export const COLUMN_SORT_OPTIONS: { key: ColumnSortKey; label: string }[] = [
   { key: 'score_desc', label: 'Lead score (high → low)' },
   { key: 'score_asc', label: 'Lead score (low → high)' },
   { key: 'rep_asc', label: 'Assigned rep (A–Z)' },
+  { key: 'last_touched_desc', label: 'Last touched (recent)' },
+  { key: 'last_touched_asc', label: 'Last touched (oldest)' },
+  { key: 'time_in_status_desc', label: 'Time in status (longest)' },
+  { key: 'estimate_sent_desc', label: 'Estimate sent (recent)' },
+  { key: 'estimate_sent_asc', label: 'Estimate sent (oldest)' },
 ];
 
 interface ContactKanbanColumnProps {
