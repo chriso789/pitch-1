@@ -30,6 +30,7 @@ type Row = {
   status: "pending" | "uploading" | "parsing" | "matching" | "ready" | "saving" | "saved" | "duplicate" | "error";
   message?: string;
   documentUrl?: string;
+  storedUrl?: string;
   parsed?: any;
   candidates: JobCandidate[];
   selectedJobId?: string;
