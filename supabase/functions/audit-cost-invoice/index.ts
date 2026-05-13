@@ -16,6 +16,9 @@ function canonVendor(raw: string | null | undefined): { key: string; display: st
   if (!v) return { key: "__unknown__", display: "Unknown vendor" };
   if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
   if (/^srs\b|srs building|suncoast roofers/i.test(v)) return { key: "srs", display: "SRS" };
+  if (/standing metal/i.test(v)) return { key: "standing-metals", display: "Standing Metals" };
+  if (/dynamic metal/i.test(v)) return { key: "dynamic-metals", display: "Dynamic Metals" };
+  if (/premier metal/i.test(v)) return { key: "premier-metal", display: "Premier Metal Roof Mfg" };
   if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
   if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
   if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
@@ -34,6 +37,22 @@ function tokenScore(a: string, b: string): number {
   A.forEach((w) => { if (B.has(w)) common++; });
   return common / Math.max(A.size, B.size);
 }
+
+function supplierCompareKey(raw: string | null | undefined): string {
+  return normalize(raw)
+    .replace(/\b(company|co|inc|llc|ltd|corp|corporation|mfg|manufacturing|products|supply|supplies)\b/g, " ")
+    .replace(/\bmetals\b/g, "metal")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type SkippedInvoice = {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  vendorName: string | null;
+  documentName: string | null;
+  reason: string;
+};
 
 function parseNoteLineItems(notes: string | null | undefined): any[] {
   if (!notes) return [];
@@ -93,6 +112,7 @@ Deno.serve(async (req: Request) => {
       .eq("company_id", tenantId);
 
     const supplierByCanon = new Map<string, any>();
+    const supplierList = suppliers || [];
     (suppliers || []).forEach((s) => {
       const { key } = canonVendor(s.supplier_name);
       supplierByCanon.set(key, s);
@@ -103,6 +123,21 @@ Deno.serve(async (req: Request) => {
       const canon = canonVendor(invVendor);
       const existing = supplierByCanon.get(canon.key);
       if (existing) return existing;
+
+      const invKey = supplierCompareKey(invVendor);
+      const fuzzyExisting = invKey
+        ? supplierList.find((s: any) => {
+            const names = [s.supplier_name, ...(s.aliases || [])];
+            return names.some((name) => {
+              const supKey = supplierCompareKey(name);
+              return supKey && (supKey.includes(invKey) || invKey.includes(supKey) || tokenScore(invKey, supKey) >= 0.6);
+            });
+          })
+        : null;
+      if (fuzzyExisting) {
+        supplierByCanon.set(canon.key, fuzzyExisting);
+        return fuzzyExisting;
+      }
 
       const { data: created, error } = await supabase
         .from("material_suppliers")
@@ -121,7 +156,8 @@ Deno.serve(async (req: Request) => {
 
     // Cache items per supplier
     const itemsCache = new Map<string, { priceListId: string | null; items: any[]; rules: any[] }>();
-    async function loadItems(supplierId: string, invoiceDate: string) {
+    async function loadItems(supplier: any, invoiceDate: string) {
+      const supplierId = supplier.id;
       if (itemsCache.has(supplierId)) return itemsCache.get(supplierId)!;
       const { data: priceListId } = await supabase.rpc("get_active_supplier_price_list", {
         p_company_id: tenantId, p_supplier_id: supplierId, p_invoice_date: invoiceDate,
@@ -143,6 +179,35 @@ Deno.serve(async (req: Request) => {
           .select("id, supplier_sku, manufacturer_sku, item_description, normalized_description, unit_of_measure, agreed_unit_price")
           .eq("price_list_id", resolvedListId);
         items = data || [];
+      }
+      if (!items.length) {
+        const supplierKeys = new Set([supplier.supplier_name, ...(supplier.aliases || [])].map((name) => canonVendor(name).key));
+        const supplierLooseKeys = new Set([supplier.supplier_name, ...(supplier.aliases || [])].map(supplierCompareKey).filter(Boolean));
+        let legacyRows: any[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase
+            .from("supplier_pricebooks")
+            .select("id, supplier_name, item_code, item_description, unit_of_measure, unit_cost, is_active, effective_date")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+            .range(from, from + 999);
+          const batch = data || [];
+          legacyRows = legacyRows.concat(batch.filter((row: any) => {
+            const rowKey = canonVendor(row.supplier_name).key;
+            const loose = supplierCompareKey(row.supplier_name);
+            return supplierKeys.has(rowKey) || Array.from(supplierLooseKeys).some((k) => loose && (loose.includes(k) || k.includes(loose) || tokenScore(loose, k) >= 0.6));
+          }));
+          if (batch.length < 1000) break;
+        }
+        items = legacyRows.map((row: any) => ({
+          id: row.id,
+          supplier_sku: row.item_code || null,
+          manufacturer_sku: null,
+          item_description: row.item_description || row.item_code || "Legacy pricebook item",
+          normalized_description: normalize(row.item_description || row.item_code),
+          unit_of_measure: row.unit_of_measure || null,
+          agreed_unit_price: row.unit_cost != null ? Number(row.unit_cost) : null,
+        }));
       }
       // Manual mapping rules saved by users for this supplier
       const { data: rules } = await supabase
@@ -167,19 +232,26 @@ Deno.serve(async (req: Request) => {
 
     let auditedCount = 0;
     let totalOvercharge = 0;
-    const skipped: Array<{ invoiceId: string; reason: string }> = [];
+    const skipped: SkippedInvoice[] = [];
+    const skipInvoice = (inv: any, reason: string) => skipped.push({
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoice_number || null,
+      vendorName: inv.vendor_name || null,
+      documentName: inv.document_name || null,
+      reason,
+    });
 
     for (const inv of invoices || []) {
       const supplier = await resolveSupplier(inv.vendor_name);
       if (!supplier) {
-        skipped.push({ invoiceId: inv.id, reason: `No supplier match for "${inv.vendor_name}"` });
+        skipInvoice(inv, `No supplier match for "${inv.vendor_name}"`);
         continue;
       }
 
       const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
-      const { priceListId, items, rules } = await loadItems(supplier.id, invoiceDate);
-      if (!priceListId || !items.length) {
-        skipped.push({ invoiceId: inv.id, reason: `No price list for supplier "${supplier.supplier_name}"` });
+      const { priceListId, items, rules } = await loadItems(supplier, invoiceDate);
+      if (!items.length) {
+        skipInvoice(inv, `No price list for supplier "${supplier.supplier_name}"`);
         continue;
       }
       const itemsById = new Map(items.map((i) => [i.id, i]));
@@ -208,7 +280,7 @@ Deno.serve(async (req: Request) => {
             .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
             .order("line_number");
           if (insertErr) {
-            skipped.push({ invoiceId: inv.id, reason: `Could not save extracted line items: ${insertErr.message}` });
+            skipInvoice(inv, `Could not save extracted line items: ${insertErr.message}`);
             continue;
           }
           lines = inserted || [];
@@ -216,7 +288,7 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!lines?.length) {
-        skipped.push({ invoiceId: inv.id, reason: "No line items extracted from upload or invoice notes" });
+        skipInvoice(inv, "No line items extracted from upload or invoice notes");
         continue;
       }
 
@@ -245,6 +317,7 @@ Deno.serve(async (req: Request) => {
           if (line.sku && (r.supplier_sku === line.sku || r.manufacturer_sku === line.sku)) return true;
           if (r.normalized_invoice_description && r.normalized_invoice_description === desc) return true;
           if (r.normalized_invoice_description && desc && desc.includes(r.normalized_invoice_description)) return true;
+          if (r.normalized_invoice_description && desc && tokenScore(desc, r.normalized_invoice_description) >= 0.75) return true;
           return false;
         });
         if (ruleHit?.price_list_item_id && itemsById.has(ruleHit.price_list_item_id)) {
@@ -337,7 +410,7 @@ Deno.serve(async (req: Request) => {
         })
         .select("id")
         .single();
-      if (aErr) { skipped.push({ invoiceId: inv.id, reason: aErr.message }); continue; }
+      if (aErr) { skipInvoice(inv, aErr.message); continue; }
 
       const withId = auditLines.map((l) => ({ ...l, audit_id: auditRow.id }));
       // Insert in chunks
