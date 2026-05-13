@@ -99,6 +99,26 @@ Deno.serve(async (req: Request) => {
       (s.aliases || []).forEach((a: string) => supplierByCanon.set(canonVendor(a).key, s));
     });
 
+    async function resolveSupplier(invVendor: string | null | undefined) {
+      const canon = canonVendor(invVendor);
+      const existing = supplierByCanon.get(canon.key);
+      if (existing) return existing;
+
+      const { data: created, error } = await supabase
+        .from("material_suppliers")
+        .upsert({
+          company_id: tenantId,
+          supplier_name: canon.display,
+          normalized_name: canon.key,
+          status: "active",
+        }, { onConflict: "company_id,normalized_name" })
+        .select("id, supplier_name, aliases")
+        .single();
+      if (error || !created) return null;
+      supplierByCanon.set(canon.key, created);
+      return created;
+    }
+
     // Cache items per supplier
     const itemsCache = new Map<string, { priceListId: string | null; items: any[] }>();
     async function loadItems(supplierId: string, invoiceDate: string) {
@@ -145,8 +165,7 @@ Deno.serve(async (req: Request) => {
     const skipped: Array<{ invoiceId: string; reason: string }> = [];
 
     for (const inv of invoices || []) {
-      const canon = canonVendor(inv.vendor_name);
-      const supplier = supplierByCanon.get(canon.key);
+      const supplier = await resolveSupplier(inv.vendor_name);
       if (!supplier) {
         skipped.push({ invoiceId: inv.id, reason: `No supplier match for "${inv.vendor_name}"` });
         continue;
@@ -159,14 +178,37 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const { data: lines } = await supabase
+      const { data: storedLines } = await supabase
         .from("project_cost_invoice_line_items")
         .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
         .eq("invoice_id", inv.id)
         .order("line_number");
 
+      let lines = storedLines || [];
+      if (!lines.length) {
+        const parsed = parseNoteLineItems((inv as any).notes);
+        if (parsed.length) {
+          const rows = parsed.map((line) => ({
+            tenant_id: tenantId,
+            invoice_id: inv.id,
+            vendor_name: inv.vendor_name || null,
+            ...line,
+          }));
+          const { data: inserted, error: insertErr } = await supabase
+            .from("project_cost_invoice_line_items")
+            .insert(rows)
+            .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
+            .order("line_number");
+          if (insertErr) {
+            skipped.push({ invoiceId: inv.id, reason: `Could not save extracted line items: ${insertErr.message}` });
+            continue;
+          }
+          lines = inserted || [];
+        }
+      }
+
       if (!lines?.length) {
-        skipped.push({ invoiceId: inv.id, reason: "No line items extracted" });
+        skipped.push({ invoiceId: inv.id, reason: "No line items extracted from upload or invoice notes" });
         continue;
       }
 
