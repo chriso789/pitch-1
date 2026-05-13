@@ -777,7 +777,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                onClick={() => window.open(invoice.document_url!, '_blank', 'noopener,noreferrer')}
+                                onClick={() => openInvoiceDocument(invoice.document_url)}
                                 title="Preview invoice"
                               >
                                 <Eye className="h-3.5 w-3.5" />
