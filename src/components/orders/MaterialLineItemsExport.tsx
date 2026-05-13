@@ -170,17 +170,30 @@ export function MaterialLineItemsExport({
       doc.text('Material Items', margin, yPos);
       yPos += 10;
 
+      // Column X positions (dedicated Color/Specs column)
+      const colItemX = margin + 2;
+      const colColorX = margin + 60;   // Color / Specs column
+      const colQtyX = pageWidth - 100;
+      const colUnitX = pageWidth - 80;
+      const colCostX = pageWidth - 55;
+      const colTotalX = pageWidth - 30;
+
       // Table headers
       doc.setFillColor(249, 250, 251);
       doc.rect(margin, yPos - 5, pageWidth - 2 * margin, 8, 'F');
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
-      doc.text('Item', margin + 2, yPos);
-      doc.text('Qty', pageWidth - 100, yPos);
-      doc.text('Unit', pageWidth - 80, yPos);
-      doc.text('Unit Cost', pageWidth - 55, yPos);
-      doc.text('Total', pageWidth - 30, yPos);
+      doc.text('Item', colItemX, yPos);
+      doc.text('Color / Specs', colColorX, yPos);
+      doc.text('Qty', colQtyX, yPos);
+      doc.text('Unit', colUnitX, yPos);
+      doc.text('Unit Cost', colCostX, yPos);
+      doc.text('Total', colTotalX, yPos);
       yPos += 10;
+
+      // Helper to truncate text to fit column width
+      const truncate = (txt: string, max: number) =>
+        txt.length > max ? txt.substring(0, max - 1) + '…' : txt;
 
       // Table rows
       doc.setFont('helvetica', 'normal');
@@ -189,29 +202,42 @@ export function MaterialLineItemsExport({
           doc.addPage();
           yPos = 20;
         }
-        
-        const itemName = item.item_name.length > 40 
-          ? item.item_name.substring(0, 40) + '...' 
-          : item.item_name;
-        
-        const colorSpec = item.notes || item.color_specs;
-        
-        doc.text(itemName, margin + 2, yPos);
-        doc.text(item.qty.toFixed(1), pageWidth - 100, yPos);
-        doc.text(item.unit, pageWidth - 80, yPos);
-        doc.text(`$${item.unit_cost.toFixed(2)}`, pageWidth - 55, yPos);
-        doc.text(`$${item.line_total.toFixed(2)}`, pageWidth - 30, yPos);
-        
-        // Add color/specs on a second line if present
+
+        const itemName = truncate(item.item_name || '', 32);
+        const colorSpec = (item.notes || item.color_specs || '').trim();
+
+        // Item name
+        doc.setTextColor(0, 0, 0);
+        doc.text(itemName, colItemX, yPos);
+
+        // Color / Specs (dedicated column, bold + amber when present)
         if (colorSpec) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(180, 83, 9);
+          doc.text(truncate(colorSpec, 22), colColorX, yPos);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+        } else {
+          doc.setTextColor(156, 163, 175);
+          doc.text('—', colColorX, yPos);
+          doc.setTextColor(0, 0, 0);
+        }
+
+        doc.text(item.qty.toFixed(1), colQtyX, yPos);
+        doc.text(item.unit, colUnitX, yPos);
+        doc.text(`$${item.unit_cost.toFixed(2)}`, colCostX, yPos);
+        doc.text(`$${item.line_total.toFixed(2)}`, colTotalX, yPos);
+
+        // If color text was truncated, print the full value on a wrapped line
+        if (colorSpec && colorSpec.length > 22) {
           yPos += 5;
           doc.setFontSize(9);
-          doc.setTextColor(180, 83, 9); // Amber color for visibility
-          doc.text(`Color/Specs: ${colorSpec}`, margin + 4, yPos);
+          doc.setTextColor(180, 83, 9);
+          doc.text(`Color/Specs: ${colorSpec}`, colItemX + 2, yPos);
           doc.setTextColor(0, 0, 0);
           doc.setFontSize(10);
         }
-        
+
         yPos += 8;
       });
 
