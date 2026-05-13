@@ -1,52 +1,34 @@
 ## Goal
-Make change orders feel like a first-class document — viewable as an official, branded PDF-style page (same header/footer treatment as estimates), with proper edit/delete/approve actions, and surfaced in the job's Documents tab the moment they are created.
 
-## 1. Official Change Order document view
+Fix `extractMaskContour` in `supabase/functions/_shared/dsm-analyzer.ts` so it stops merging Solar mask components from neighboring buildings into a single convex hull. Today (lines 846–878), every viable component is merged, which inflates the footprint at addresses like 4063 Fonsica Ave to ~75,825 sqft and trips the `area_too_large` gate.
 
-Create `src/components/change-orders/ChangeOrderDocumentView.tsx` — a full-page-style preview rendered inside a Dialog (same pattern as `EstimatePreviewPanel` / `EstimatePDFDocument`).
+## Change
 
-Header / footer reuse the same composition pieces estimates already use:
-- Company logo + name + address + phone/email (pulled from `companies` for the project's tenant/location, mirroring `EstimatePDFDocument` lines 276–349).
-- "CHANGE ORDER" title block with `co_number`, created date, status badge, and customer name/address.
+In `extractMaskContour` (lines ~846–908):
 
-Body sections:
-- Reason for change
-- Original scope vs. New scope (two-column block)
-- Line items table grouped by Materials / Labor (uses `change_orders.line_items` jsonb)
-- Totals block: Subtotal, Overhead %, Profit %, **Cost Impact (this CO)**, Time Impact (days)
-- Optional signature line for customer approval
+1. Keep the existing geocode-target + viable filtering (lines 849–858) and the "nearest to geocode" primary pick (lines 861–866).
+2. After picking `bestComp`, compute a distance threshold from the primary's effective radius:
+   - `primaryRadius = Math.sqrt(bestComp.size / Math.PI)`
+   - `mergeDistThreshold = Math.min(60, Math.max(20, primaryRadius * 2.5))`
+3. Build `toMerge = viable.filter(c => c.id === bestComp.id || hypot(c.centroid - bestComp.centroid) <= mergeDistThreshold)`.
+4. Replace `viableIds` with `mergeIds = new Set(toMerge.map(c => c.id))` when constructing `compMask`. Everything downstream (convex hull, fill, trace) stays the same.
+5. Update the console log to:
+   `[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable, ${toMerge.length} within merge threshold (${mergeDistThreshold.toFixed(1)}px of primary). Merged ${toMerge.length} (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`
+6. Update `_lastContourDiagnostics`:
+   - `merged_components: toMerge.length` (was `viable.length`)
+   - add `merge_dist_threshold_px: Number(mergeDistThreshold.toFixed(1))`
+   - add `excluded_components: viable.length - toMerge.length`
 
-The view is opened from a new **"View"** button on each row in `ChangeOrdersTab.tsx`. A **"Download PDF"** button uses the existing `html2canvas + jsPDF` helper used by estimates (scale 1.5, JPEG 0.65 per project rules).
+No other functions, gates, or callers change. Editing this edge function will trigger automatic redeployment.
 
-## 2. Edit / Delete / Add-to-Budget actions
+## Expected outcome at 4063 Fonsica Ave
 
-Replace the current row footer (single Delete) with a proper action bar on each accordion row and inside the document view:
+- `merged_components`: 6 → 1–2
+- `excluded_components`: 4–5
+- Contour area: ~75,825 sqft → ~2,000–4,000 sqft
+- Footprint passes the `area_too_large` sanity gate; downstream solver runs.
 
-- **Edit** — opens `ChangeOrderForm` in edit mode (preload existing record, update instead of insert).
-- **Delete** — existing behavior, kept.
-- **Add to Project Budget** — flips `customer_approved=true`, stamps `customer_approved_at`, sets `status='approved'`, and bumps the project's contracted value. Because `projects` has no price column, the "project price" total is derived from `estimates.total` + Σ approved CO `cost_impact` (via a small helper `useProjectContractValue(projectId)`). The Profit Center / Financial bars already read estimates + invoices; this hook adds the approved-CO sum so the displayed contract value increases the moment the user clicks the button. No schema migration needed.
+## Verification
 
-## 3. Auto-create a Documents row when a CO is created
-
-In `ChangeOrderForm.tsx` and the inline create flow inside `ChangeOrdersTab.tsx`, after successful insert into `change_orders`:
-
-1. Generate the Change Order PDF via the same html2canvas+jsPDF path used by estimates.
-2. Upload to the `documents` storage bucket at `{tenant_id}/change-orders/{co_id}.pdf` (matches storage RLS path convention).
-3. Insert into `documents` with:
-   - `pipeline_entry_id` = the lead's pipeline entry
-   - `document_type = 'change_order'` (new value added to `DOCUMENT_CATEGORIES` in `DocumentsTab.tsx` with a FileEdit icon)
-   - `filename = '{co_number} — {title}.pdf'`
-   - `file_path` = the uploaded path
-   - `description` = CO reason
-4. If the CO is later edited, regenerate the PDF and overwrite the same documents row (matched by a new nullable `change_orders.document_id` column → small migration).
-
-A new `Documents` category tile labeled **Change Orders** will appear alongside Contracts / Estimates / Invoices in the Documents tab.
-
-## 4. Small schema migration
-Single migration adds `change_orders.document_id uuid references documents(id) on delete set null` so the generated PDF stays in sync with the CO record.
-
-## Technical notes
-- All queries continue to filter by `tenant_id` via `useEffectiveTenantId()`.
-- PDF generation runs client-side (no edge function needed) — same scale 1.5 / JPEG 0.65 settings as estimates to keep <10MB.
-- The "Add to Project Budget" button is gated to admins/managers only via the existing role hooks already used elsewhere in the lead view.
-- No changes to the AI Measurement pipeline.
+- After deploy, re-run the Fonsica Ave measurement and check edge function logs for the new `[MASK_CONTOUR]` line and `_lastContourDiagnostics` fields.
+- Confirm a previously-passing single-building address still yields `excluded_components: 0` and unchanged contour area (no regression on clean tiles).

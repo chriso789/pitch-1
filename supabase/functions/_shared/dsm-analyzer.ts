@@ -843,9 +843,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const { labels, components } = labelConnectedComponents(closed, sw, sh);
   if (components.length === 0) return [];
 
-  // ── 4. Find all viable components and MERGE them ──
-  // FIX: Previously only selected ONE component. Now merge ALL viable components
-  // to capture the full building footprint when Solar mask is fragmented by trees/shadows.
+  // ── 4. Find viable components near the primary building ──
   let targetCx = sw / 2;
   let targetCy = sh / 2;
   if (geocodeLat != null && geocodeLng != null) {
@@ -857,7 +855,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const minSize = Math.max(4, maxSize * 0.10);
   const viable = components.filter(c => c.size >= minSize);
 
-  // Find the component nearest to geocode center (for diagnostics)
+  // Primary component = nearest to geocode
   let bestComp = viable[0];
   let bestDist = Infinity;
   for (const c of viable) {
@@ -865,13 +863,21 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     if (dist < bestDist) { bestDist = dist; bestComp = c; }
   }
 
-  // ── 5. Merge ALL viable components into a single mask ──
-  // This captures the full building footprint even when trees/shadows fragment the Solar mask
+  // Only merge fragments close to the primary — excludes neighboring buildings
+  const primaryRadius = Math.sqrt(bestComp.size / Math.PI);
+  const mergeDistThreshold = Math.min(60, Math.max(20, primaryRadius * 2.5));
+  const toMerge = viable.filter(c => {
+    if (c.id === bestComp.id) return true;
+    const dist = Math.hypot(c.centroidX - bestComp.centroidX, c.centroidY - bestComp.centroidY);
+    return dist <= mergeDistThreshold;
+  });
+
+  // ── 5. Merge nearby components into a single mask ──
   const compMask = new Uint8Array(sw * sh);
-  const viableIds = new Set(viable.map(c => c.id));
+  const mergeIds = new Set(toMerge.map(c => c.id));
   let mergedPixelCount = 0;
   for (let i = 0; i < sw * sh; i++) {
-    if (viableIds.has(labels[i])) {
+    if (mergeIds.has(labels[i])) {
       compMask[i] = 1;
       mergedPixelCount++;
     }
