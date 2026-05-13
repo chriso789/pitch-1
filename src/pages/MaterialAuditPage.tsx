@@ -254,7 +254,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableCell>
                 </TableRow>
               ))}
-              {invoiceOnlySuppliers.map((s: any) => {
+              {invoiceOnlyMaterialSuppliers.map((s: any) => {
                 const isPermits = s.supplier_name?.toLowerCase().startsWith("permits");
                 return (
                   <TableRow
@@ -282,13 +282,54 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
                   </TableRow>
                 );
               })}
-              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlySuppliers.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price lists imported yet</TableCell></TableRow>
+              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlyMaterialSuppliers.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No material price lists imported yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {crewSuppliers.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-base">Crews / Subcontractors</CardTitle>
+            <CardDescription>Labor vendors observed from invoices — not material suppliers</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Crew / Subcontractor</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Invoices</TableHead>
+                  <TableHead>Last Invoice</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {crewSuppliers.map((s: any) => (
+                  <TableRow
+                    key={"crew-" + s.supplier_name}
+                    className="cursor-pointer hover:bg-muted/40"
+                    onClick={() => setDrilldownSupplier(s)}
+                  >
+                    <TableCell className="font-medium">{s.supplier_name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-700 border-purple-500/30">Labor</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"}{s.line_count > 0 ? " \u00b7 " + s.line_count + " lines" : ""}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="mt-4">
         <CardHeader>
