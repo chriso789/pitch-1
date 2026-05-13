@@ -644,7 +644,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       // Mirror into the global materials catalog so it appears in materials search
       // across estimates and the rest of the app (not just inside the audit mapper).
       try {
-        const code = (mapLine.supplier_sku || newItem.id.slice(0, 8)).toString().slice(0, 64);
+        const code = `SPLI-${newItem.id}`;
         await supabase.from("materials" as any).insert({
           tenant_id: tenantId,
           code,
