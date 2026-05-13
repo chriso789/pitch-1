@@ -16,10 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, BookmarkPlus, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { TEST_IDS } from "../../tests/utils/test-ids";
+import { TaskTemplatesManager, type TaskTemplate } from "./TaskTemplatesManager";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { getRoleLevel } from "@/lib/roleUtils";
 
 interface TaskAssignmentDialogProps {
   trigger?: React.ReactNode;
