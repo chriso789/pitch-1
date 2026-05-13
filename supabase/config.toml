@@ -1252,3 +1252,24 @@ verify_jwt = true
 
 [functions.assign-contact-task]
 verify_jwt = true
+
+[functions.referral-track-event]
+verify_jwt = false
+
+[functions.submit-referral-lead]
+verify_jwt = false
+
+[functions.save-referral-payout-preference]
+verify_jwt = false
+
+[functions.create-referral-link]
+verify_jwt = false
+
+[functions.approve-referral-payout]
+verify_jwt = false
+
+[functions.mark-referral-payout-paid]
+verify_jwt = false
+
+[functions.apply-referral-credit-to-job]
+verify_jwt = false
