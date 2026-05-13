@@ -878,15 +878,38 @@ function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, m
     <TabsContent value="audit-results">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
               <CardTitle className="text-base">Audit History</CardTitle>
               <CardDescription>Results from automated price verification runs · click a row to see line-by-line discrepancies</CardDescription>
             </div>
-            <Button onClick={runAuditAll} disabled={running} size="sm">
-              <Play className="h-4 w-4 mr-2" />
-              {running ? "Auditing..." : "Run Audit on All Invoices"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={running}
+                onClick={async () => {
+                  if (!tenantId) return;
+                  setRunning(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("build-derived-pricelists", { body: { tenantId } });
+                    if (error) throw error;
+                    toast.success(`Built derived pricelists: ${(data as any)?.items || 0} items across ${(data as any)?.suppliers || 0} suppliers`);
+                  } catch (e: any) {
+                    toast.error(`Build failed: ${e.message}`);
+                  } finally {
+                    setRunning(false);
+                  }
+                }}
+              >
+                <Package className="h-4 w-4 mr-2" />
+                Build Derived Pricelists
+              </Button>
+              <Button onClick={runAuditAll} disabled={running} size="sm">
+                <Play className="h-4 w-4 mr-2" />
+                {running ? "Auditing..." : "Run Audit on All Invoices"}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
