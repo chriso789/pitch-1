@@ -255,7 +255,15 @@ async function syncOneTenant(supabase: any, conn: any): Promise<SyncResult> {
     result.balance = await syncBalance(supabase, c2, cookie);
     result.invoices = await syncInvoices(supabase, c2, cookie);
   } catch (e: any) {
+    // Surface login failures on the connection record so the user sees them
+    await supabase.from('qxo_connections').update({
+      connection_status: 'error',
+      last_error: e.message,
+      valid_indicator: false,
+    }).eq('id', conn.id);
     result.profile = { ok: false, error: e.message };
+    result.balance = { ok: false, error: 'skipped: login failed' };
+    result.invoices = { ok: false, error: 'skipped: login failed' };
   }
   return result;
 }
