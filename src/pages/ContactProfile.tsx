@@ -39,6 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveTenantId } from "@/hooks/useActiveTenantId";
 import { useContactStatuses } from "@/hooks/useContactStatuses";
+import { useQuery } from "@tanstack/react-query";
 
 const ContactProfile = () => {
   const { id } = useParams();
@@ -56,6 +57,21 @@ const ContactProfile = () => {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [assigningRep, setAssigningRep] = useState(false);
   const { statuses: contactStatuses } = useContactStatuses();
+
+  const { data: notesCount = 0 } = useQuery({
+    queryKey: ['contact-notes-count', id],
+    queryFn: async () => {
+      if (!id) return 0;
+      const { count } = await supabase
+        .from('internal_notes')
+        .select('id', { count: 'exact', head: true })
+        .eq('contact_id', id)
+        .is('pipeline_entry_id', null);
+      return count ?? 0;
+    },
+    enabled: !!id,
+  });
+
   // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
     if (id === 'new' || !id) {
@@ -473,7 +489,7 @@ const ContactProfile = () => {
             </TabsTrigger>
             <TabsTrigger value="notes" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <MessageSquare className="h-4 w-4" />
-              <span>Notes</span>
+              <span>Notes ({notesCount})</span>
             </TabsTrigger>
             <TabsTrigger value="communication" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <Phone className="h-4 w-4" />
