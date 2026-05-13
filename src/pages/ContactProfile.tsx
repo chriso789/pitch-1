@@ -57,6 +57,21 @@ const ContactProfile = () => {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [assigningRep, setAssigningRep] = useState(false);
   const { statuses: contactStatuses } = useContactStatuses();
+
+  const { data: notesCount = 0 } = useQuery({
+    queryKey: ['contact-notes-count', id],
+    queryFn: async () => {
+      if (!id) return 0;
+      const { count } = await supabase
+        .from('internal_notes')
+        .select('id', { count: 'exact', head: true })
+        .eq('contact_id', id)
+        .is('pipeline_entry_id', null);
+      return count ?? 0;
+    },
+    enabled: !!id,
+  });
+
   // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
     if (id === 'new' || !id) {
