@@ -16,7 +16,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
-import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus, CheckSquare, CalendarClock } from 'lucide-react';
+import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus, CheckSquare, CalendarClock, Pencil, X, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
 import { Label } from '@/components/ui/label';
@@ -46,6 +46,9 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -251,6 +254,28 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
     if (!error) queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
   };
 
+  const startEditNote = (noteId: string, current: string) => {
+    setEditingNoteId(noteId);
+    setEditingContent(current);
+  };
+  const cancelEditNote = () => { setEditingNoteId(null); setEditingContent(''); };
+  const handleSaveEdit = async () => {
+    if (!editingNoteId || !editingContent.trim()) return;
+    setIsSavingEdit(true);
+    const { error } = await supabase
+      .from('internal_notes')
+      .update({ content: editingContent.trim(), updated_at: new Date().toISOString() })
+      .eq('id', editingNoteId);
+    setIsSavingEdit(false);
+    if (error) {
+      toast({ title: 'Could not update note', description: error.message, variant: 'destructive' });
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+    toast({ title: 'Note updated' });
+    cancelEditNote();
+  };
+
   const handleDeleteNote = async () => {
     if (!deleteNoteId) return;
     const { error } = await supabase.from('internal_notes').delete().eq('id', deleteNoteId);
@@ -376,12 +401,35 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
                         <span className="text-[10px] text-muted-foreground">{format(new Date(note.created_at), 'MMM d, h:mm a')}</span>
                         {note.is_pinned && <Pin className="h-3 w-3 text-warning" />}
                       </div>
-                      <p className="text-xs mt-1 whitespace-pre-wrap break-words">{renderNoteContent(note.content)}</p>
+                      {editingNoteId === note.id ? (
+                        <div className="mt-1 space-y-1">
+                          <Textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            className="text-xs min-h-[60px]"
+                          />
+                          <div className="flex gap-1 justify-end">
+                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={cancelEditNote}>
+                              <X className="h-3 w-3 mr-1" /> Cancel
+                            </Button>
+                            <Button size="sm" className="h-6 px-2 text-xs" onClick={handleSaveEdit} disabled={isSavingEdit || !editingContent.trim()}>
+                              {isSavingEdit ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Check className="h-3 w-3 mr-1" />} Save
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs mt-1 whitespace-pre-wrap break-words">{renderNoteContent(note.content)}</p>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleTogglePin(note.id, note.is_pinned)}>
                         {note.is_pinned ? <PinOff className="h-3 w-3 text-muted-foreground" /> : <Pin className="h-3 w-3 text-muted-foreground" />}
                       </Button>
+                      {canDeleteNotes && editingNoteId !== note.id && (
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEditNote(note.id, note.content)} title="Edit note">
+                          <Pencil className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      )}
                       {canDeleteNotes && (
                         <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setDeleteNoteId(note.id)}>
                           <Trash2 className="h-3 w-3" />
@@ -432,12 +480,35 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
                         <span className="text-xs text-muted-foreground">{format(new Date(note.created_at), 'MMM d, yyyy at h:mm a')}</span>
                         {note.is_pinned && <Pin className="h-3 w-3 text-warning" />}
                       </div>
-                      <p className="text-sm mt-2 whitespace-pre-wrap break-words">{renderNoteContent(note.content)}</p>
+                      {editingNoteId === note.id ? (
+                        <div className="mt-2 space-y-2">
+                          <Textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            className="text-sm min-h-[80px]"
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="ghost" onClick={cancelEditNote}>
+                              <X className="h-3 w-3 mr-1" /> Cancel
+                            </Button>
+                            <Button size="sm" onClick={handleSaveEdit} disabled={isSavingEdit || !editingContent.trim()}>
+                              {isSavingEdit ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Check className="h-3 w-3 mr-1" />} Save
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm mt-2 whitespace-pre-wrap break-words">{renderNoteContent(note.content)}</p>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTogglePin(note.id, note.is_pinned)}>
                         {note.is_pinned ? <PinOff className="h-4 w-4 text-muted-foreground" /> : <Pin className="h-4 w-4 text-muted-foreground" />}
                       </Button>
+                      {canDeleteNotes && editingNoteId !== note.id && (
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditNote(note.id, note.content)} title="Edit note">
+                          <Pencil className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      )}
                       {canDeleteNotes && (
                         <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteNoteId(note.id)}>
                           <Trash2 className="h-4 w-4" />
