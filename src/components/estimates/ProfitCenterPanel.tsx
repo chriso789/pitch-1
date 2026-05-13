@@ -77,6 +77,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editPrice, setEditPrice] = useState('');
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState<{ url: string; name: string } | null>(null);
 
   // Listen for invoice updates from DocumentsTab
   useEffect(() => {
