@@ -31292,6 +31292,10 @@ export type Database = {
       purchase_orders: {
         Row: {
           actual_delivery_date: string | null
+          beacon_message: string | null
+          beacon_message_code: string | null
+          beacon_order_id: string | null
+          beacon_uuid: string | null
           branch_code: string | null
           created_at: string | null
           created_by: string | null
@@ -31315,6 +31319,10 @@ export type Database = {
         }
         Insert: {
           actual_delivery_date?: string | null
+          beacon_message?: string | null
+          beacon_message_code?: string | null
+          beacon_order_id?: string | null
+          beacon_uuid?: string | null
           branch_code?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -31338,6 +31346,10 @@ export type Database = {
         }
         Update: {
           actual_delivery_date?: string | null
+          beacon_message?: string | null
+          beacon_message_code?: string | null
+          beacon_order_id?: string | null
+          beacon_uuid?: string | null
           branch_code?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -32213,6 +32225,8 @@ export type Database = {
           balance: number | null
           branch_code: string | null
           branch_name: string | null
+          branch_number: number | null
+          company: number | null
           created_at: string
           currency: string | null
           due_date: string | null
@@ -32221,9 +32235,13 @@ export type Database = {
           issued_date: string | null
           job_id: string | null
           last_synced_at: string
+          mincron_invoice_pdf_url: string | null
+          other_charges: number | null
           po_number: string | null
           qxo_invoice_id: string
           raw_payload: Json | null
+          sales: number | null
+          sales_plus_other_charges: number | null
           status: string
           tenant_id: string
           updated_at: string
@@ -32233,6 +32251,8 @@ export type Database = {
           balance?: number | null
           branch_code?: string | null
           branch_name?: string | null
+          branch_number?: number | null
+          company?: number | null
           created_at?: string
           currency?: string | null
           due_date?: string | null
@@ -32241,9 +32261,13 @@ export type Database = {
           issued_date?: string | null
           job_id?: string | null
           last_synced_at?: string
+          mincron_invoice_pdf_url?: string | null
+          other_charges?: number | null
           po_number?: string | null
           qxo_invoice_id: string
           raw_payload?: Json | null
+          sales?: number | null
+          sales_plus_other_charges?: number | null
           status?: string
           tenant_id: string
           updated_at?: string
@@ -32253,6 +32277,8 @@ export type Database = {
           balance?: number | null
           branch_code?: string | null
           branch_name?: string | null
+          branch_number?: number | null
+          company?: number | null
           created_at?: string
           currency?: string | null
           due_date?: string | null
@@ -32261,12 +32287,178 @@ export type Database = {
           issued_date?: string | null
           job_id?: string | null
           last_synced_at?: string
+          mincron_invoice_pdf_url?: string | null
+          other_charges?: number | null
           po_number?: string | null
           qxo_invoice_id?: string
           raw_payload?: Json | null
+          sales?: number | null
+          sales_plus_other_charges?: number | null
           status?: string
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      qxo_orders: {
+        Row: {
+          account_id: string | null
+          beacon_order_id: string
+          created_at: string
+          currency: string | null
+          customer_uuid: string | null
+          id: string
+          invoiced_date: string | null
+          job_name: string | null
+          job_number: string | null
+          last_synced_at: string | null
+          on_hold: boolean | null
+          order_placed_date: string | null
+          payment_status: string | null
+          po_number: string | null
+          raw_payload: Json | null
+          selling_branch: string | null
+          ship_address: Json | null
+          shipping_branch: string | null
+          shipping_method: string | null
+          status_code: string | null
+          status_value: string | null
+          sub_total: number | null
+          tax: number | null
+          tenant_id: string
+          total: number | null
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          beacon_order_id: string
+          created_at?: string
+          currency?: string | null
+          customer_uuid?: string | null
+          id?: string
+          invoiced_date?: string | null
+          job_name?: string | null
+          job_number?: string | null
+          last_synced_at?: string | null
+          on_hold?: boolean | null
+          order_placed_date?: string | null
+          payment_status?: string | null
+          po_number?: string | null
+          raw_payload?: Json | null
+          selling_branch?: string | null
+          ship_address?: Json | null
+          shipping_branch?: string | null
+          shipping_method?: string | null
+          status_code?: string | null
+          status_value?: string | null
+          sub_total?: number | null
+          tax?: number | null
+          tenant_id: string
+          total?: number | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          beacon_order_id?: string
+          created_at?: string
+          currency?: string | null
+          customer_uuid?: string | null
+          id?: string
+          invoiced_date?: string | null
+          job_name?: string | null
+          job_number?: string | null
+          last_synced_at?: string | null
+          on_hold?: boolean | null
+          order_placed_date?: string | null
+          payment_status?: string | null
+          po_number?: string | null
+          raw_payload?: Json | null
+          selling_branch?: string | null
+          ship_address?: Json | null
+          shipping_branch?: string | null
+          shipping_method?: string | null
+          status_code?: string | null
+          status_value?: string | null
+          sub_total?: number | null
+          tax?: number | null
+          tenant_id?: string
+          total?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qxo_quotes: {
+        Row: {
+          account_id: string | null
+          account_name: string | null
+          beacon_quote_id: string
+          created_at: string
+          creation_date: string | null
+          expires: string | null
+          id: string
+          job_name: string | null
+          job_number: string | null
+          last_synced_at: string | null
+          mincron_id: string | null
+          quote_items: Json | null
+          quote_notes: string | null
+          raw_payload: Json | null
+          status: string | null
+          status_description: string | null
+          sub_total: number | null
+          tax: number | null
+          tenant_id: string
+          total: number | null
+          updated_at: string
+          work_type: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          account_name?: string | null
+          beacon_quote_id: string
+          created_at?: string
+          creation_date?: string | null
+          expires?: string | null
+          id?: string
+          job_name?: string | null
+          job_number?: string | null
+          last_synced_at?: string | null
+          mincron_id?: string | null
+          quote_items?: Json | null
+          quote_notes?: string | null
+          raw_payload?: Json | null
+          status?: string | null
+          status_description?: string | null
+          sub_total?: number | null
+          tax?: number | null
+          tenant_id: string
+          total?: number | null
+          updated_at?: string
+          work_type?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          account_name?: string | null
+          beacon_quote_id?: string
+          created_at?: string
+          creation_date?: string | null
+          expires?: string | null
+          id?: string
+          job_name?: string | null
+          job_number?: string | null
+          last_synced_at?: string | null
+          mincron_id?: string | null
+          quote_items?: Json | null
+          quote_notes?: string | null
+          raw_payload?: Json | null
+          status?: string | null
+          status_description?: string | null
+          sub_total?: number | null
+          tax?: number | null
+          tenant_id?: string
+          total?: number | null
+          updated_at?: string
+          work_type?: string | null
         }
         Relationships: []
       }
