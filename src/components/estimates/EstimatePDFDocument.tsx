@@ -317,13 +317,16 @@ const PageHeader: React.FC<{
         )}
       </div>
       
-      <div className="text-right">
-        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimate</p>
-        {opts.showEstimateNumber && (
-          <h2 className="text-base font-bold text-gray-900">{estimateNumber}</h2>
+      <div className="text-right max-w-[55%]">
+        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Prepared For</p>
+        {opts.showCustomerName && customerName && (
+          <h2 className="text-base font-bold text-gray-900 leading-tight">{customerName}</h2>
+        )}
+        {opts.showCustomerAddress && customerAddress && (
+          <p className="text-xs text-gray-600">{customerAddress}</p>
         )}
         {opts.showDate && (
-          <p className="text-xs text-gray-500">{dateStr}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{dateStr}</p>
         )}
       </div>
     </div>
