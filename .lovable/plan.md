@@ -1,34 +1,33 @@
 ## Goal
 
-Fix `extractMaskContour` in `supabase/functions/_shared/dsm-analyzer.ts` so it stops merging Solar mask components from neighboring buildings into a single convex hull. Today (lines 846–878), every viable component is merged, which inflates the footprint at addresses like 4063 Fonsica Ave to ~75,825 sqft and trips the `area_too_large` gate.
+Allow AI Measurement to complete on addresses with no OSM building polygon (e.g. 4063 Fonsica Ave, North Port FL) by (a) confirming the proximity-merge filter in `dsm-analyzer.ts` is deployed and (b) adding a last-resort Solar fallback in `start-ai-measurement/index.ts`.
 
-## Change
+## Status check
 
-In `extractMaskContour` (lines ~846–908):
+- `supabase/functions/_shared/dsm-analyzer.ts` (lines ~867–878) **already contains** the proximity filter exactly as specified (`primaryRadius`, `mergeDistThreshold`, `toMerge`, `mergeIds`). No logic change needed — only a trivial touch to force redeploy of any edge function that bundles it.
+- `supabase/functions/start-ai-measurement/index.ts` line **1169** has `const selected = validCandidates[0] || null;` — needs the two requested changes.
 
-1. Keep the existing geocode-target + viable filtering (lines 849–858) and the "nearest to geocode" primary pick (lines 861–866).
-2. After picking `bestComp`, compute a distance threshold from the primary's effective radius:
-   - `primaryRadius = Math.sqrt(bestComp.size / Math.PI)`
-   - `mergeDistThreshold = Math.min(60, Math.max(20, primaryRadius * 2.5))`
-3. Build `toMerge = viable.filter(c => c.id === bestComp.id || hypot(c.centroid - bestComp.centroid) <= mergeDistThreshold)`.
-4. Replace `viableIds` with `mergeIds = new Set(toMerge.map(c => c.id))` when constructing `compMask`. Everything downstream (convex hull, fill, trace) stays the same.
-5. Update the console log to:
-   `[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable, ${toMerge.length} within merge threshold (${mergeDistThreshold.toFixed(1)}px of primary). Merged ${toMerge.length} (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`
-6. Update `_lastContourDiagnostics`:
-   - `merged_components: toMerge.length` (was `viable.length`)
-   - add `merge_dist_threshold_px: Number(mergeDistThreshold.toFixed(1))`
-   - add `excluded_components: viable.length - toMerge.length`
+## Changes
 
-No other functions, gates, or callers change. Editing this edge function will trigger automatic redeployment.
+### 1. `supabase/functions/_shared/dsm-analyzer.ts`
+Touch the top-of-file header comment (bump date) so Supabase rebuilds and redeploys every edge function that imports it (notably `start-ai-measurement`). No code change.
 
-## Expected outcome at 4063 Fonsica Ave
+### 2. `supabase/functions/start-ai-measurement/index.ts`
+At line 1169:
+- Change `const selected` → `let selected`.
+- Immediately after, insert the last-resort fallback block:
+  - Only triggers when `selected` is null AND no `osm_overpass` candidate has `rejected_reason === null`.
+  - Picks Solar candidates rejected as `solar_bbox_not_roof_perimeter` or `solar_inner_geometry_not_roof_perimeter` whose `area_sqft` is within `[RESIDENTIAL_MIN_SQFT, RESIDENTIAL_MAX_SQFT]`.
+  - Ranks `google_solar_segments_hull` > `google_solar_segments_union` > `google_solar_bbox`, tiebreak on `validity_score`.
+  - Clears `rejected_reason` on the chosen candidate, assigns it to `selected`, and logs `[FOOTPRINT_FALLBACK] …` so it's traceable in edge logs.
 
-- `merged_components`: 6 → 1–2
-- `excluded_components`: 4–5
-- Contour area: ~75,825 sqft → ~2,000–4,000 sqft
-- Footprint passes the `area_too_large` sanity gate; downstream solver runs.
+No other call sites, gates, schemas, or downstream solver code change. Both files are bundled into the same edge function deploy.
 
 ## Verification
 
-- After deploy, re-run the Fonsica Ave measurement and check edge function logs for the new `[MASK_CONTOUR]` line and `_lastContourDiagnostics` fields.
-- Confirm a previously-passing single-building address still yields `excluded_components: 0` and unchanged contour area (no regression on clean tiles).
+1. After deploy, re-run AI Measurement on **4063 Fonsica Ave, North Port FL 34286**.
+2. Edge logs should show:
+   - `[MASK_CONTOUR] … within merge threshold …` confirming the proximity filter is live.
+   - `[FOOTPRINT_FALLBACK] … Promoting google_solar_segments_hull (~2,744 sqft) …`.
+3. Measurement job should complete with planes/edges/area instead of `missing_valid_footprint`.
+4. Spot-check one previously-passing OSM-backed address to confirm `hasValidOsm` short-circuits the fallback (no regression).
