@@ -1180,7 +1180,7 @@ export const MaterialAuditContent = () => {
       if (!tenantId) return [];
       const { data } = await supabase
         .from("project_cost_invoices")
-        .select("*, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
+        .select("*, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name)), projects!project_cost_invoices_project_id_fkey(id, name, job_number, project_number)")
         .eq("tenant_id", tenantId)
         .in("invoice_type", ["material"])
         .order("created_at", { ascending: false });
@@ -1236,7 +1236,7 @@ export const MaterialAuditContent = () => {
         invoiceIds.length
           ? supabase
               .from("project_cost_invoices")
-              .select("id, invoice_number, vendor_name, invoice_date, invoice_amount, project_id, pipeline_entry_id, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name))")
+              .select("id, invoice_number, vendor_name, invoice_date, invoice_amount, project_id, pipeline_entry_id, pipeline_entries!project_cost_invoices_pipeline_entry_id_fkey(id, lead_name, contacts!pipeline_entries_contact_id_fkey(first_name, last_name)), projects!project_cost_invoices_project_id_fkey(id, name, job_number, project_number)")
               .in("id", invoiceIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
