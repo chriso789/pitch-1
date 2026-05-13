@@ -1228,3 +1228,6 @@ verify_jwt = true
 
 [functions.get-blueprint-document]
 verify_jwt = true
+
+[functions.audit-cost-invoice]
+verify_jwt = true
