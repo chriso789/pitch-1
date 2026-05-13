@@ -881,13 +881,14 @@ export const MaterialAuditContent = () => {
   const totalPricebookItems = pricebookGroups.reduce((sum: number, g: any) => sum + g.item_count, 0);
 
   const chartData = React.useMemo(() => {
-    const byVendor: Record<string, number> = {};
+    const byVendor: Record<string, { display: string; total: number }> = {};
     materialInvoices.forEach((inv: any) => {
-      const name = inv.vendor_name || "Unknown";
-      byVendor[name] = (byVendor[name] || 0) + Number(inv.invoice_amount || 0);
+      const { key, display } = canonicalizeVendorName(inv.vendor_name);
+      if (!byVendor[key]) byVendor[key] = { display, total: 0 };
+      byVendor[key].total += Number(inv.invoice_amount || 0);
     });
-    return Object.entries(byVendor)
-      .map(([name, total]) => ({ name, total: Number(total.toFixed(2)) }))
+    return Object.values(byVendor)
+      .map(({ display, total }) => ({ name: display, total: Number(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
   }, [materialInvoices]);
