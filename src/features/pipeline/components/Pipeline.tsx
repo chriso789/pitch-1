@@ -1106,7 +1106,7 @@ const Pipeline = () => {
   };
 
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const hasActiveFilters = filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc';
+  const hasActiveFilters = filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc' || !!filters.lastTouchedMinDays || !!filters.timeInStatusMinDays || !!filters.lastEmailMinDays;
 
   return (
     <div className="space-y-4 sm:space-y-6">
