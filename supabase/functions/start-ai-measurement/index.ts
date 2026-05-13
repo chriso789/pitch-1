@@ -850,6 +850,7 @@ async function processJob(input: any) {
     } catch (e) {
       console.warn("[footprint-selection] OSM candidate scan failed:", (e as Error).message);
     }
+    const noOsmCandidatesAtSolarFallback = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
 
     // 2. Optional U-Net segmentation pass — produces a candidate footprint AND
     //    optional plane/edge refinements (used later if topology yields nothing).
