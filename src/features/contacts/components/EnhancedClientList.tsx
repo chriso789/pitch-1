@@ -1213,14 +1213,11 @@ export const EnhancedClientList = () => {
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   {activeView === 'contacts' ? (
-                    <>
-                      <SelectItem value="lead">Lead</SelectItem>
-                      <SelectItem value="qualified">Qualified</SelectItem>
-                      <SelectItem value="unqualified">Unqualified</SelectItem>
-                      <SelectItem value="hot">Hot</SelectItem>
-                      <SelectItem value="warm">Warm</SelectItem>
-                      <SelectItem value="cold">Cold</SelectItem>
-                    </>
+                    contactStatuses.map((s) => (
+                      <SelectItem key={s.id} value={s.key}>
+                        {s.name}
+                      </SelectItem>
+                    ))
                   ) : (
                     <>
                       <SelectItem value="pending">Pending</SelectItem>
