@@ -242,6 +242,7 @@ Deno.serve(async (req) => {
         notes: notes || null,
         status: document_url ? 'verified' : 'pending',
         duplicate_of: duplicateOf,
+        service_address: serviceAddress,
         created_by: user.id
       })
       .select()
