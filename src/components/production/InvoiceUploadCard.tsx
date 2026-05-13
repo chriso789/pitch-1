@@ -26,14 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -99,6 +91,36 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
   const [parsedTotals, setParsedTotals] = useState<{ subtotal?: number; tax?: number; total?: number }>({});
   const [formData, setFormData] = useState(emptyInvoiceForm);
+
+  const updateLineItem = (idx: number, patch: Partial<LineItem>) => {
+    setLineItems(prev => {
+      const next = prev.map((item, itemIdx) => {
+        if (itemIdx !== idx) return item;
+        const merged = { ...item, ...patch };
+        const qty = Number(merged.quantity || 0);
+        const unitPrice = Number(merged.unit_price || 0);
+        return {
+          ...merged,
+          line_total: qty > 0 && unitPrice > 0 ? Number((qty * unitPrice).toFixed(2)) : merged.line_total,
+        };
+      });
+
+      const editedSubtotal = next.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+      if (editedSubtotal > 0) {
+        const tax = Number(formData.tax_amount || parsedTotals.tax || 0);
+        const total = Number((editedSubtotal + tax).toFixed(2));
+        setParsedTotals(prevTotals => ({ ...prevTotals, subtotal: editedSubtotal, total }));
+        setFormData(prevForm => ({
+          ...prevForm,
+          subtotal: editedSubtotal.toFixed(2),
+          invoice_amount: total.toFixed(2),
+          notes: formatLineItemsSummary(next),
+        }));
+      }
+
+      return next;
+    });
+  };
 
   const resetImportFields = () => {
     setFormData(emptyInvoiceForm);
@@ -415,41 +437,50 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2">
-              <div className="rounded-md border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-xs py-1.5">Description</TableHead>
-                      <TableHead className="text-xs py-1.5 text-right w-16">Qty</TableHead>
-                      <TableHead className="text-xs py-1.5 text-right w-20">Unit $</TableHead>
-                      <TableHead className="text-xs py-1.5 text-right w-24">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {lineItems.map((item, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-xs py-1.5 max-w-[260px]">
-                          <div className="truncate">{item.description}</div>
-                          {(item.brand || item.color || item.style || item.material_category) && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {item.brand && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.brand}</Badge>}
-                              {item.style && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{item.style}</Badge>}
-                              {item.color && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/40 text-primary">{item.color}</Badge>}
-                              {item.material_category && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">{item.material_category}</Badge>}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs py-1.5 text-right">{item.quantity ?? '—'}</TableCell>
-                        <TableCell className="text-xs py-1.5 text-right">
-                          {item.unit_price != null ? `$${item.unit_price.toFixed(2)}` : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs py-1.5 text-right font-medium">
-                          {item.line_total != null ? `$${item.line_total.toFixed(2)}` : '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="rounded-md border border-border overflow-hidden text-xs">
+                <div className="grid grid-cols-[minmax(0,1fr)_4.25rem_5.5rem_5.5rem] gap-1 bg-muted/50 px-2 py-1.5 font-medium text-muted-foreground">
+                  <span>Description</span>
+                  <span className="text-right">Qty</span>
+                  <span className="text-right">Unit $</span>
+                  <span className="text-right">Total</span>
+                </div>
+                <div className="divide-y divide-border">
+                  {lineItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-[minmax(0,1fr)_4.25rem_5.5rem_5.5rem] gap-1 px-2 py-1.5 items-start">
+                      <div className="min-w-0">
+                        <Input
+                          value={item.description}
+                          onChange={(e) => updateLineItem(idx, { description: e.target.value })}
+                          className="h-7 min-w-0 text-xs px-2"
+                        />
+                        {(item.brand || item.color || item.style || item.material_category) && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {item.brand && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.brand}</Badge>}
+                            {item.style && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{item.style}</Badge>}
+                            {item.color && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/40 text-primary">{item.color}</Badge>}
+                            {item.material_category && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">{item.material_category}</Badge>}
+                          </div>
+                        )}
+                      </div>
+                      <Input
+                        type="number"
+                        value={item.quantity ?? ''}
+                        onChange={(e) => updateLineItem(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                        className="h-7 text-xs text-right px-1.5"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.unit_price ?? ''}
+                        onChange={(e) => updateLineItem(idx, { unit_price: parseFloat(e.target.value) || 0 })}
+                        className="h-7 text-xs text-right px-1.5"
+                      />
+                      <div className="h-7 flex items-center justify-end font-mono font-medium whitespace-nowrap">
+                        {item.line_total != null ? `$${item.line_total.toFixed(2)}` : '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
                 {(parsedTotals.subtotal != null || parsedTotals.tax != null || parsedTotals.total != null) && (
                   <div className="border-t border-border bg-muted/30 px-3 py-2 space-y-0.5">
                     {parsedTotals.subtotal != null && (
