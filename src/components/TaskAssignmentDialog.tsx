@@ -44,9 +44,13 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
   buttonVariant = "default",
 }) => {
   const { toast } = useToast();
+  const tenantId = useEffectiveTenantId();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [canManageTemplates, setCanManageTemplates] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -58,8 +62,20 @@ export const TaskAssignmentDialog: React.FC<TaskAssignmentDialogProps> = ({
   useEffect(() => {
     if (open) {
       fetchTenantUsers();
+      fetchTemplates();
     }
   }, [open]);
+
+  const fetchTemplates = async () => {
+    if (!tenantId) return;
+    const { data } = await supabase
+      .from("task_templates")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("use_count", { ascending: false })
+      .order("title", { ascending: true });
+    setTemplates((data as TaskTemplate[]) || []);
+  };
 
   const fetchTenantUsers = async () => {
     try {
