@@ -1341,6 +1341,168 @@ function CreditClaimsTab({ claims, tenantId, audits }: { claims: any[]; tenantId
   );
 }
 
+
+interface LeverageLine {
+  id: string;
+  audit_id: string;
+  invoice_document_id: string;
+  supplier_id: string | null;
+  supplier_name: string;
+  invoice_number: string;
+  invoice_date: string | null;
+  service_address: string | null;
+  description: string;
+  supplier_sku: string | null;
+  quantity: number;
+  charged_unit_price: number;
+  agreed_unit_price: number | null;
+  savings_per_unit: number;
+  total_savings: number;
+}
+
+function PriceLeverageTab({ tenantId, audits }: { tenantId: string | null; audits: any[] }) {
+  const [search, setSearch] = React.useState("");
+  const { data: leverageLines = [] } = useQuery({
+    queryKey: ["price-leverage", tenantId, audits.length],
+    queryFn: async (): Promise<LeverageLine[]> => {
+      if (!tenantId) return [];
+      const { data: lines } = await supabase
+        .from("material_invoice_audit_lines")
+        .select("id, audit_id, invoice_document_id, supplier_id, invoice_description, supplier_sku, quantity, charged_unit_price, agreed_unit_price, total_difference")
+        .eq("company_id", tenantId)
+        .lt("total_difference", 0)
+        .not("agreed_unit_price", "is", null)
+        .limit(2000);
+      const auditById = new Map(audits.map((a: any) => [a.id, a]));
+      return (lines || []).map((l: any) => {
+        const a: any = auditById.get(l.audit_id);
+        const inv = a?.invoice;
+        const charged = Number(l.charged_unit_price || 0);
+        const agreed = l.agreed_unit_price != null ? Number(l.agreed_unit_price) : null;
+        return {
+          id: l.id,
+          audit_id: l.audit_id,
+          invoice_document_id: l.invoice_document_id,
+          supplier_id: l.supplier_id,
+          supplier_name: a?.supplier?.supplier_name || inv?.vendor_name || "Unknown supplier",
+          invoice_number: inv?.invoice_number || "—",
+          invoice_date: inv?.invoice_date || null,
+          service_address: inv?.service_address || null,
+          description: l.invoice_description || "",
+          supplier_sku: l.supplier_sku,
+          quantity: Number(l.quantity || 0),
+          charged_unit_price: charged,
+          agreed_unit_price: agreed,
+          savings_per_unit: agreed != null ? Math.max(agreed - charged, 0) : 0,
+          total_savings: Math.abs(Number(l.total_difference || 0)),
+        };
+      });
+    },
+    enabled: !!tenantId,
+  });
+
+  // Group by item (description + sku) keeping the lowest charged price as the leverage benchmark
+  const grouped = React.useMemo(() => {
+    const map = new Map<string, { key: string; description: string; supplier_sku: string | null; lowest: LeverageLine; history: LeverageLine[]; total_saved: number }>();
+    leverageLines.forEach((l) => {
+      const key = `${(l.supplier_sku || "").toLowerCase()}|${l.description.toLowerCase().trim()}`;
+      if (!map.has(key)) {
+        map.set(key, { key, description: l.description, supplier_sku: l.supplier_sku, lowest: l, history: [], total_saved: 0 });
+      }
+      const g = map.get(key)!;
+      g.history.push(l);
+      g.total_saved += l.total_savings;
+      if (l.charged_unit_price < g.lowest.charged_unit_price) g.lowest = l;
+    });
+    let arr = Array.from(map.values()).sort((a, b) => b.total_saved - a.total_saved);
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      arr = arr.filter((g) => g.description.toLowerCase().includes(s) || (g.supplier_sku || "").toLowerCase().includes(s) || g.history.some((h) => h.supplier_name.toLowerCase().includes(s)));
+    }
+    return arr;
+  }, [leverageLines, search]);
+
+  return (
+    <TabsContent value="price-leverage" className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Negotiation Leverage — Items Invoiced Below Base Price</CardTitle>
+          <CardDescription>
+            Historical proof points where you were charged less than your agreed base price. Use these as references when negotiating future invoices on the same items.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search item, SKU, or supplier..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+          </div>
+          {grouped.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8 text-sm">
+              No favorable pricing found yet. Once an audited line is invoiced below its agreed price, it will appear here.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {grouped.map((g) => (
+                <div key={g.key} className="border rounded-lg p-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{g.description}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {g.supplier_sku ? `SKU ${g.supplier_sku} · ` : ""}{g.history.length} favorable invoice{g.history.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">Best price seen</div>
+                        <div className="text-base font-bold text-emerald-600">${g.lowest.charged_unit_price.toFixed(2)}</div>
+                        <div className="text-[10px] text-muted-foreground">vs agreed ${g.lowest.agreed_unit_price?.toFixed(2) ?? "—"}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">Total saved</div>
+                        <div className="text-base font-bold text-emerald-600">${g.total_saved.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Supplier</TableHead>
+                          <TableHead className="text-xs">Invoice</TableHead>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Service Address</TableHead>
+                          <TableHead className="text-xs text-right">Qty</TableHead>
+                          <TableHead className="text-xs text-right">Charged</TableHead>
+                          <TableHead className="text-xs text-right">Agreed</TableHead>
+                          <TableHead className="text-xs text-right">Saved</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {g.history.sort((a, b) => a.charged_unit_price - b.charged_unit_price).map((l) => (
+                          <TableRow key={l.id}>
+                            <TableCell className="text-xs">{l.supplier_name}</TableCell>
+                            <TableCell className="text-xs font-medium">{l.invoice_number}</TableCell>
+                            <TableCell className="text-xs">{l.invoice_date ? new Date(l.invoice_date).toLocaleDateString() : "—"}</TableCell>
+                            <TableCell className="text-xs">{l.service_address || "—"}</TableCell>
+                            <TableCell className="text-xs text-right">{l.quantity}</TableCell>
+                            <TableCell className="text-xs text-right font-medium text-emerald-600">${l.charged_unit_price.toFixed(2)}</TableCell>
+                            <TableCell className="text-xs text-right">{l.agreed_unit_price != null ? `$${l.agreed_unit_price.toFixed(2)}` : "—"}</TableCell>
+                            <TableCell className="text-xs text-right text-emerald-600">${l.total_savings.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </TabsContent>
+  );
+}
+
 // --- Main Component ---
 export const MaterialAuditContent = () => {
   const tenantId = useEffectiveTenantId();
@@ -1753,12 +1915,14 @@ export const MaterialAuditContent = () => {
           <TabsTrigger value="audit-results">Audit Results</TabsTrigger>
           <TabsTrigger value="unmatched">Unmatched Mapping ({unmatchedLines.length})</TabsTrigger>
           <TabsTrigger value="credit-claims">Credit Claims</TabsTrigger>
+          <TabsTrigger value="price-leverage">Price Leverage</TabsTrigger>
         </TabsList>
         <PriceListsTab pricebookGroups={pricebookGroups} legacyPriceLists={legacyPriceLists} templatePriceLists={templatePriceLists} importBatches={importBatches} invoiceSuppliers={invoiceSuppliers} tenantId={tenantId} legacySuppliers={legacySuppliers} queryClient={queryClient} />
         <InvoiceQueueTab filteredInvoices={filteredInvoices} getInvoiceStatusBadge={getInvoiceStatusBadge} />
         <AuditResultsTab audits={audits} getAuditStatusBadge={getAuditStatusBadge} tenantId={tenantId} queryClient={queryClient} materialInvoices={materialInvoices} />
         <UnmatchedTabContent tenantId={tenantId} unmatchedLines={unmatchedLines} queryClient={queryClient} />
         <CreditClaimsTab claims={claims} tenantId={tenantId} audits={audits} />
+        <PriceLeverageTab tenantId={tenantId} audits={audits} />
       </Tabs>
     </div>
   );
