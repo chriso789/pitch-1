@@ -87,37 +87,111 @@ Deno.serve(async (req) => {
     }
 
     // ----- Duplicate detection (tenant-wide) -----
-    // Match on (tenant + vendor + invoice_number) when invoice_number present,
-    // otherwise on (tenant + vendor + invoice_date + amount).
+    // Tier 1: vendor + invoice_number match (case-insensitive) → duplicate
+    // Tier 2: vendor + amount + identical line-item fingerprint → duplicate
+    // Tier 3: vendor + invoice_date + amount → duplicate
     let duplicateOf: string | null = null;
+    let duplicateReason = '';
     const amt = parseFloat(invoice_amount);
-    if (vendor_name) {
-      let dupQ = supabase
-        .from('project_cost_invoices')
-        .select('id, invoice_number, invoice_date, invoice_amount, project_id, pipeline_entry_id')
-        .eq('tenant_id', profile.tenant_id)
-        .ilike('vendor_name', vendor_name);
 
+    const buildFingerprint = (items: any[]): string => {
+      if (!Array.isArray(items) || items.length === 0) return '';
+      const norm = items
+        .map((li: any) => ({
+          d: String(li.description || '').toLowerCase().replace(/\s+/g, ' ').trim(),
+          q: li.quantity != null ? Number(li.quantity) : null,
+          t: li.line_total != null ? Number(Number(li.line_total).toFixed(2)) : null,
+        }))
+        .filter((x) => x.d.length > 0)
+        .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+      return JSON.stringify(norm);
+    };
+
+    if (vendor_name) {
+      // Tier 1: vendor + invoice_number
       if (invoice_number) {
-        dupQ = dupQ.ilike('invoice_number', invoice_number);
-      } else if (invoice_date) {
-        dupQ = dupQ.eq('invoice_date', invoice_date).eq('invoice_amount', amt);
-      } else {
-        dupQ = dupQ.eq('invoice_amount', amt);
-      }
-      const { data: dupes } = await dupQ.is('duplicate_of', null).limit(1);
-      if (dupes && dupes.length > 0) {
-        duplicateOf = dupes[0].id;
-        if (!allow_duplicate) {
-          return new Response(
-            JSON.stringify({
-              duplicate: true,
-              duplicate_invoice: dupes[0],
-              message: `Duplicate invoice detected from ${vendor_name}${invoice_number ? ` (#${invoice_number})` : ''}. Re-submit with allow_duplicate=true to save anyway.`
-            }),
-            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+        const { data: dupes } = await supabase
+          .from('project_cost_invoices')
+          .select('id, invoice_number, invoice_date, invoice_amount, project_id, pipeline_entry_id')
+          .eq('tenant_id', profile.tenant_id)
+          .ilike('vendor_name', vendor_name)
+          .ilike('invoice_number', invoice_number)
+          .is('duplicate_of', null)
+          .limit(1);
+        if (dupes && dupes.length > 0) {
+          duplicateOf = dupes[0].id;
+          duplicateReason = `same invoice number #${invoice_number}`;
         }
+      }
+
+      // Tier 2: vendor + amount + line-item fingerprint
+      if (!duplicateOf && Array.isArray(line_items) && line_items.length > 0) {
+        const newFp = buildFingerprint(line_items);
+        if (newFp) {
+          const { data: candidates } = await supabase
+            .from('project_cost_invoices')
+            .select('id, invoice_number, invoice_date, invoice_amount, project_id, pipeline_entry_id')
+            .eq('tenant_id', profile.tenant_id)
+            .ilike('vendor_name', vendor_name)
+            .eq('invoice_amount', amt)
+            .is('duplicate_of', null)
+            .limit(20);
+          if (candidates && candidates.length > 0) {
+            const ids = candidates.map((c) => c.id);
+            const { data: existingLI } = await supabase
+              .from('project_cost_invoice_line_items')
+              .select('invoice_id, description, quantity, line_total')
+              .in('invoice_id', ids);
+            const grouped = new Map<string, any[]>();
+            (existingLI || []).forEach((li: any) => {
+              const arr = grouped.get(li.invoice_id) || [];
+              arr.push(li);
+              grouped.set(li.invoice_id, arr);
+            });
+            for (const cand of candidates) {
+              const fp = buildFingerprint(grouped.get(cand.id) || []);
+              if (fp && fp === newFp) {
+                duplicateOf = cand.id;
+                duplicateReason = `identical line items and total ($${amt.toFixed(2)})`;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Tier 3: vendor + date + amount
+      if (!duplicateOf && invoice_date) {
+        const { data: dupes } = await supabase
+          .from('project_cost_invoices')
+          .select('id, invoice_number, invoice_date, invoice_amount, project_id, pipeline_entry_id')
+          .eq('tenant_id', profile.tenant_id)
+          .ilike('vendor_name', vendor_name)
+          .eq('invoice_date', invoice_date)
+          .eq('invoice_amount', amt)
+          .is('duplicate_of', null)
+          .limit(1);
+        if (dupes && dupes.length > 0) {
+          duplicateOf = dupes[0].id;
+          duplicateReason = `same vendor, date, and amount`;
+        }
+      }
+
+      if (duplicateOf && !allow_duplicate) {
+        const { data: dupRow } = await supabase
+          .from('project_cost_invoices')
+          .select('id, invoice_number, invoice_date, invoice_amount, project_id, pipeline_entry_id')
+          .eq('id', duplicateOf)
+          .single();
+        return new Response(
+          JSON.stringify({
+            duplicate: true,
+            duplicate_invoice: dupRow,
+            duplicate_reason: duplicateReason,
+            message: `Duplicate invoice detected from ${vendor_name} (${duplicateReason}). Re-submit with allow_duplicate=true to save anyway.`
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
 

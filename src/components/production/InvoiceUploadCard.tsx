@@ -297,10 +297,11 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       if (data?.duplicate) {
         const dup = data.duplicate_invoice;
+        const reason = data.duplicate_reason ? `\nReason: ${data.duplicate_reason}` : '';
         const proceed = window.confirm(
           `Duplicate invoice detected from ${formData.vendor_name || 'this vendor'}` +
           (formData.invoice_number ? ` (#${formData.invoice_number})` : '') +
-          `.\n\nExisting amount: $${dup?.invoice_amount ?? '?'} on ${dup?.invoice_date ?? 'unknown date'}.\n\nSave this one anyway?`
+          `.${reason}\n\nExisting amount: $${dup?.invoice_amount ?? '?'} on ${dup?.invoice_date ?? 'unknown date'}.\n\nSave this one anyway?`
         );
         if (!proceed) {
           toast({ title: 'Duplicate skipped', description: 'Invoice was not saved.' });
