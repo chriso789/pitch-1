@@ -237,7 +237,7 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
 
       setNewNote('');
       setIsAddingNote(false);
-      queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+      queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] }); queryClient.invalidateQueries({ queryKey: ['contact-notes-count', contactId] });
       toast({ title: 'Note added' });
     } catch (error) {
       console.error('Error adding note:', error);
@@ -251,7 +251,7 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
 
   const handleTogglePin = async (noteId: string, currentlyPinned: boolean) => {
     const { error } = await supabase.from('internal_notes').update({ is_pinned: !currentlyPinned }).eq('id', noteId);
-    if (!error) queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+    if (!error) queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] }); queryClient.invalidateQueries({ queryKey: ['contact-notes-count', contactId] });
   };
 
   const startEditNote = (noteId: string, current: string) => {
@@ -271,7 +271,7 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
       toast({ title: 'Could not update note', description: error.message, variant: 'destructive' });
       return;
     }
-    queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+    queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] }); queryClient.invalidateQueries({ queryKey: ['contact-notes-count', contactId] });
     toast({ title: 'Note updated' });
     cancelEditNote();
   };
@@ -280,7 +280,7 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
     if (!deleteNoteId) return;
     const { error } = await supabase.from('internal_notes').delete().eq('id', deleteNoteId);
     if (!error) {
-      queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
+      queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] }); queryClient.invalidateQueries({ queryKey: ['contact-notes-count', contactId] });
       toast({ title: 'Note deleted' });
     }
     setDeleteNoteId(null);
