@@ -174,6 +174,14 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
     () => invoiceSuppliers.filter((s: any) => !matchesStandardized(s.supplier_name)),
     [invoiceSuppliers, matchesStandardized]
   );
+  const invoiceOnlyMaterialSuppliers = React.useMemo(
+    () => invoiceOnlySuppliers.filter((s: any) => !isCrewVendor(s)),
+    [invoiceOnlySuppliers]
+  );
+  const crewSuppliers = React.useMemo(
+    () => invoiceOnlySuppliers.filter((s: any) => isCrewVendor(s)),
+    [invoiceOnlySuppliers]
+  );
   return (
     <TabsContent value="price-lists">
       <Card>
