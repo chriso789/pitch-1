@@ -36,6 +36,8 @@ import {
   Pencil,
   CheckCircle2,
   Download,
+  FileText,
+  Send,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
