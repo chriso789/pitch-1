@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
       document_name,
       notes,
       line_items,
-      allow_duplicate
+      allow_duplicate,
+      service_address: serviceAddressInput,
     } = await req.json();
 
     if (!project_id && !pipeline_entry_id) {
@@ -84,6 +85,29 @@ Deno.serve(async (req) => {
         .eq('id', project_id)
         .single();
       effectivePipelineEntryId = project?.pipeline_entry_id;
+    }
+
+    // Resolve service address — caller may supply, otherwise derive from
+    // the linked pipeline_entry → contact so every invoice carries the
+    // property address it was filed against.
+    let serviceAddress: string | null = serviceAddressInput || null;
+    if (!serviceAddress && effectivePipelineEntryId) {
+      const { data: pe } = await supabase
+        .from('pipeline_entries')
+        .select('contact_id')
+        .eq('id', effectivePipelineEntryId)
+        .maybeSingle();
+      if (pe?.contact_id) {
+        const { data: c } = await supabase
+          .from('contacts')
+          .select('address_street, address_city, address_state, address_zip')
+          .eq('id', pe.contact_id)
+          .maybeSingle();
+        if (c) {
+          serviceAddress = [c.address_street, c.address_city, c.address_state, c.address_zip]
+            .filter(Boolean).join(', ') || null;
+        }
+      }
     }
 
     // ----- Duplicate detection (tenant-wide) -----
@@ -216,6 +240,7 @@ Deno.serve(async (req) => {
         notes: notes || null,
         status: document_url ? 'verified' : 'pending',
         duplicate_of: duplicateOf,
+        service_address: serviceAddress,
         created_by: user.id
       })
       .select()
@@ -280,6 +305,7 @@ Deno.serve(async (req) => {
           vendor_name: vendor_name || null,
           invoice_number: invoice_number || null,
           linked_invoice_id: invoice.id,
+          service_address: serviceAddress,
           uploaded_by: user.id,
         })
         .select()

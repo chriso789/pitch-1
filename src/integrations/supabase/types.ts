@@ -11065,6 +11065,7 @@ export type Database = {
           mime_type: string | null
           pipeline_entry_id: string | null
           project_id: string | null
+          service_address: string | null
           sha256_hash: string | null
           tenant_id: string | null
           updated_at: string | null
@@ -11093,6 +11094,7 @@ export type Database = {
           mime_type?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          service_address?: string | null
           sha256_hash?: string | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -11121,6 +11123,7 @@ export type Database = {
           mime_type?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          service_address?: string | null
           sha256_hash?: string | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -29738,6 +29741,7 @@ export type Database = {
           pipeline_entry_id: string | null
           project_id: string | null
           rejection_reason: string | null
+          service_address: string | null
           status: string | null
           subtotal: number | null
           tax_amount: number | null
@@ -29764,6 +29768,7 @@ export type Database = {
           pipeline_entry_id?: string | null
           project_id?: string | null
           rejection_reason?: string | null
+          service_address?: string | null
           status?: string | null
           subtotal?: number | null
           tax_amount?: number | null
@@ -29790,6 +29795,7 @@ export type Database = {
           pipeline_entry_id?: string | null
           project_id?: string | null
           rejection_reason?: string | null
+          service_address?: string | null
           status?: string | null
           subtotal?: number | null
           tax_amount?: number | null

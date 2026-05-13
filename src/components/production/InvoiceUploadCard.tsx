@@ -29,6 +29,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { BatchMaterialInvoiceCard } from './BatchMaterialInvoiceCard';
 
 interface LineItem {
   description: string;
@@ -82,6 +83,18 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   invoiceType,
   onSuccess
 }) => {
+  // Material invoices use the multi-file batch uploader so users can drop
+  // many invoices at once, see parsed contents, and resolve duplicates inline.
+  if (invoiceType === 'material') {
+    return (
+      <BatchMaterialInvoiceCard
+        projectId={projectId}
+        pipelineEntryId={pipelineEntryId}
+        changeOrderId={changeOrderId}
+        onSuccess={onSuccess}
+      />
+    );
+  }
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -162,7 +175,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           document_url: documentUrl,
           // Auto-persist to material_invoice_documents + lines and immediately
           // run audit-material-invoice. Material invoices skip the manual queue.
-          auto_persist: invoiceType === 'material',
+          auto_persist: false,
           pipeline_entry_id: pipelineEntryId,
           project_id: projectId,
         }
@@ -361,7 +374,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     }
   };
 
-  const isMaterial = invoiceType === 'material';
+  const isMaterial = false as boolean; // material handled by BatchMaterialInvoiceCard above
   const isLabor = invoiceType === 'labor';
   const isOverhead = invoiceType === 'overhead';
   
