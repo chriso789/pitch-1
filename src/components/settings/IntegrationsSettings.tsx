@@ -74,10 +74,6 @@ export const IntegrationsSettings = () => {
             <Shield className="h-4 w-4" />
             Session Activity
           </TabsTrigger>
-          <TabsTrigger value="measurement-corrections" className="flex items-center gap-2">
-            <Ruler className="h-4 w-4" />
-            AI Corrections
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="srs" className="space-y-6">
