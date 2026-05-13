@@ -191,6 +191,11 @@ export const TemplateDetailsPanel = ({
           ))}
         </div>
       </div>
+
+      <Separator />
+
+      {/* Vendor Quotes (auto-apply costs to estimates from this template) */}
+      <TemplateVendorQuotes templateId={template.id} />
     </div>
   );
 };
