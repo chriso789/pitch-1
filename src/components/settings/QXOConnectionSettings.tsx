@@ -21,6 +21,7 @@ interface QXOConnection {
   account_id: string | null;
   profile_id: string | null;
   default_branch_code: string | null;
+  client_id: string | null;
   connection_status: string;
   last_validated_at: string | null;
   last_error: string | null;
@@ -38,6 +39,7 @@ export function QXOConnectionSettings() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [clientId, setClientId] = useState('');
   const [siteId, setSiteId] = useState('dealersChoice');
   const [environment, setEnvironment] = useState('staging');
 
@@ -57,6 +59,7 @@ export function QXOConnectionSettings() {
         setConnection(data);
         setUsername(data.username || '');
         setPassword(data.password || '');
+        setClientId(data.client_id || '');
         setSiteId(data.site_id || 'dealersChoice');
         setEnvironment(data.environment || 'staging');
       }
@@ -75,9 +78,12 @@ export function QXOConnectionSettings() {
         tenant_id: activeCompanyId,
         username,
         password,
+        client_id: clientId || null,
         site_id: siteId,
         environment,
         connection_status: 'disconnected',
+        access_token: null,
+        token_expires_at: null,
       };
       if (connection) {
         const { error } = await (supabase as any)
@@ -217,10 +223,21 @@ export function QXOConnectionSettings() {
               <Label>Password</Label>
               <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>API Client ID</Label>
+              <Input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Provided by QXO/Beacon partner integrations"
+              />
+              <p className="text-xs text-muted-foreground">
+                Required to obtain Bearer access tokens for v2 endpoints (orders, quotes, invoices).
+              </p>
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Don't have API access? Contact your QXO/Beacon partner integrations rep to get your credentials provisioned.
+            Don't have API access? Contact your QXO/Beacon partner integrations rep to get your credentials and client_id provisioned.
           </p>
 
           <div className="flex flex-wrap gap-2 pt-2">
