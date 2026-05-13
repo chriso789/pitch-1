@@ -1,4 +1,26 @@
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
+import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+
+// Canonicalize supplier names so all variants of "ABC Supply", "SRS / Suncoast", etc.
+// collapse to a single supplier row. Mirrors src/pages/MaterialAuditPage.tsx.
+function canonicalizeVendorName(raw: string): { key: string; display: string } {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return { key: "unknown", display: "Unknown" };
+  const lower = trimmed.toLowerCase();
+  if (/\bsrs\b|suncoast roofers|srs building/.test(lower)) {
+    return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
+  }
+  if (/\babc supply\b|abc roof/.test(lower)) {
+    return { key: "abc-supply", display: "ABC Supply" };
+  }
+  if (/\bbeacon\b/.test(lower)) {
+    return { key: "beacon", display: "Beacon Roofing Supply" };
+  }
+  if (/home depot/.test(lower)) return { key: "home-depot", display: "Home Depot" };
+  if (/\blowes?\b|lowe's/.test(lower)) return { key: "lowes", display: "Lowe's" };
+  if (/\bgaf\b/.test(lower)) return { key: "gaf", display: "GAF" };
+  return { key: lower.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), display: trimmed };
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -148,7 +170,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { document_url } = await req.json();
+    const body = await req.json();
+    const { document_url, auto_persist, pipeline_entry_id, project_id, source_file_name } = body || {};
+    let tenant_id: string | null = body?.tenant_id || null;
 
     if (!document_url) {
       return new Response(
@@ -343,8 +367,122 @@ Deno.serve(async (req) => {
     
     console.log("[parse-invoice] Extracted:", JSON.stringify(parsed));
 
+    // Auto-persist + auto-audit (so the user never sees a manual "audit queue").
+    let auditResult: any = null;
+    if (auto_persist) {
+      try {
+        const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+        const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+        // Resolve tenant from caller if not provided
+        const authHeader = req.headers.get("Authorization") || "";
+        if (!tenant_id && authHeader) {
+          const { data: { user } } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
+          if (user) {
+            const { data: prof } = await admin.from("profiles")
+              .select("active_tenant_id, tenant_id").eq("id", user.id).maybeSingle();
+            tenant_id = prof?.active_tenant_id || prof?.tenant_id || null;
+          }
+        }
+
+        if (!tenant_id) {
+          console.warn("[parse-invoice] auto_persist requested but tenant_id could not be resolved");
+        } else {
+          // 1. Resolve / create canonical supplier
+          const { key: supKey, display: supDisplay } = canonicalizeVendorName(parsed.vendor_name || "");
+          let supplierId: string | null = null;
+          const { data: existingSupplier } = await admin.from("material_suppliers")
+            .select("id").eq("company_id", tenant_id).eq("normalized_name", supKey).maybeSingle();
+          if (existingSupplier) {
+            supplierId = existingSupplier.id;
+          } else {
+            const { data: newSup, error: supErr } = await admin.from("material_suppliers")
+              .insert({ company_id: tenant_id, supplier_name: supDisplay, normalized_name: supKey, status: "active" })
+              .select("id").single();
+            if (supErr) console.warn("[parse-invoice] supplier insert failed:", supErr.message);
+            supplierId = newSup?.id || null;
+          }
+
+          // 2. Insert invoice document
+          const { data: invDoc, error: invErr } = await admin.from("material_invoice_documents").insert({
+            company_id: tenant_id,
+            supplier_id: supplierId,
+            job_id: project_id || null,
+            source_file_url: document_url,
+            source_file_name: source_file_name || null,
+            supplier_detected_name: parsed.vendor_name || null,
+            supplier_confidence: supplierId ? 0.9 : 0.3,
+            invoice_number: parsed.invoice_number || null,
+            invoice_date: parsed.invoice_date || null,
+            subtotal: parsed.subtotal ?? null,
+            tax_total: parsed.tax_amount ?? null,
+            invoice_total: parsed.total_amount ?? parsed.invoice_amount ?? null,
+            scrape_status: "complete",
+            audit_status: supplierId ? "pending" : "needs_review",
+            raw_extraction_json: parsed,
+          }).select("id").single();
+
+          if (invErr) {
+            console.warn("[parse-invoice] invoice doc insert failed:", invErr.message);
+          } else if (invDoc) {
+            // 3. Insert line items
+            const items: any[] = Array.isArray(parsed.line_items) ? parsed.line_items : [];
+            if (items.length) {
+              const lineRows = items.map((li: any, idx: number) => {
+                const desc = String(li.description || "").trim();
+                return {
+                  company_id: tenant_id,
+                  invoice_document_id: invDoc.id,
+                  supplier_id: supplierId,
+                  line_number: idx + 1,
+                  supplier_sku: li.sku || null,
+                  manufacturer_sku: null,
+                  item_description: desc,
+                  normalized_description: desc.toLowerCase().replace(/\s+/g, " "),
+                  category: li.material_category || null,
+                  brand: li.brand || null,
+                  unit_of_measure: li.unit_of_measure || null,
+                  quantity: typeof li.quantity === "number" ? li.quantity : null,
+                  charged_unit_price: typeof li.unit_price === "number" ? li.unit_price : null,
+                  charged_extended_price: typeof li.line_total === "number" ? li.line_total : null,
+                  raw_line_json: li,
+                };
+              });
+              const { error: linesErr } = await admin.from("material_invoice_line_items").insert(lineRows);
+              if (linesErr) console.warn("[parse-invoice] line insert failed:", linesErr.message);
+            }
+
+            // 4. Auto-invoke audit (uses caller's auth so audit_run_by is correct)
+            if (supplierId && items.length) {
+              try {
+                const auditRes = await fetch(`${SUPABASE_URL}/functions/v1/audit-material-invoice`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: authHeader || `Bearer ${SERVICE_ROLE}`,
+                    apikey: SERVICE_ROLE,
+                  },
+                  body: JSON.stringify({ invoiceDocumentId: invDoc.id }),
+                });
+                auditResult = await auditRes.json();
+                console.log("[parse-invoice] auto-audit:", JSON.stringify(auditResult));
+              } catch (auditErr) {
+                console.warn("[parse-invoice] auto-audit failed:", (auditErr as Error).message);
+              }
+            }
+
+            (parsed as any).invoice_document_id = invDoc.id;
+            (parsed as any).supplier_id = supplierId;
+          }
+        }
+      } catch (persistErr) {
+        console.warn("[parse-invoice] auto_persist failed:", (persistErr as Error).message);
+      }
+    }
+
     return new Response(
-      JSON.stringify({ parsed }),
+      JSON.stringify({ parsed, audit: auditResult }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

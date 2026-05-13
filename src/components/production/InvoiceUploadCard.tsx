@@ -158,7 +158,14 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     setScanSuccess(false);
     try {
       const { data, error } = await supabase.functions.invoke('parse-invoice-document', {
-        body: { document_url: documentUrl }
+        body: {
+          document_url: documentUrl,
+          // Auto-persist to material_invoice_documents + lines and immediately
+          // run audit-material-invoice. Material invoices skip the manual queue.
+          auto_persist: invoiceType === 'material',
+          pipeline_entry_id: pipelineEntryId,
+          project_id: projectId,
+        }
       });
 
       if (error) {
