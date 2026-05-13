@@ -51,6 +51,51 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddingNote, setIsAddingNote] = useState(false);
 
+  // Task assignment state
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [taskAssignee, setTaskAssignee] = useState<string>('');
+  const [taskName, setTaskName] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskDueDate, setTaskDueDate] = useState('');
+  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  const resetTaskForm = () => {
+    setTaskAssignee(''); setTaskName(''); setTaskDescription('');
+    setTaskDueDate(''); setTaskPriority('medium');
+  };
+
+  const handleCreateTask = async () => {
+    if (!taskAssignee || !taskName.trim() || !taskDueDate || !user?.id) {
+      toast({ title: 'Missing fields', description: 'Assignee, task name, and due date are required.', variant: 'destructive' });
+      return;
+    }
+    setIsCreatingTask(true);
+    try {
+      const { error } = await supabase.functions.invoke('assign-contact-task', {
+        body: {
+          contact_id: contactId,
+          tenant_id: tenantId,
+          assigned_to: taskAssignee,
+          assigned_by: user.id,
+          task_name: taskName.trim(),
+          description: taskDescription.trim() || undefined,
+          due_date: new Date(taskDueDate).toISOString(),
+          priority: taskPriority,
+        },
+      });
+      if (error) throw error;
+      toast({ title: 'Task assigned', description: 'Email sent and added to calendar.' });
+      setShowTaskDialog(false);
+      resetTaskForm();
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: 'Failed to assign task', description: e.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setIsCreatingTask(false);
+    }
+  };
+
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile-role', user?.id],
     queryFn: async () => {
