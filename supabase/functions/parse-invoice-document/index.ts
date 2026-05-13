@@ -1,4 +1,26 @@
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
+import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+
+// Canonicalize supplier names so all variants of "ABC Supply", "SRS / Suncoast", etc.
+// collapse to a single supplier row. Mirrors src/pages/MaterialAuditPage.tsx.
+function canonicalizeVendorName(raw: string): { key: string; display: string } {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return { key: "unknown", display: "Unknown" };
+  const lower = trimmed.toLowerCase();
+  if (/\bsrs\b|suncoast roofers|srs building/.test(lower)) {
+    return { key: "srs", display: "SRS / Suncoast Roofers Supply" };
+  }
+  if (/\babc supply\b|abc roof/.test(lower)) {
+    return { key: "abc-supply", display: "ABC Supply" };
+  }
+  if (/\bbeacon\b/.test(lower)) {
+    return { key: "beacon", display: "Beacon Roofing Supply" };
+  }
+  if (/home depot/.test(lower)) return { key: "home-depot", display: "Home Depot" };
+  if (/\blowes?\b|lowe's/.test(lower)) return { key: "lowes", display: "Lowe's" };
+  if (/\bgaf\b/.test(lower)) return { key: "gaf", display: "GAF" };
+  return { key: lower.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), display: trimmed };
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
