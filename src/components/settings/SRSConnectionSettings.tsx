@@ -71,9 +71,9 @@ export function SRSConnectionSettings() {
     try {
       const payload = {
         tenant_id: activeCompanyId,
-        client_id: clientId,
-        client_secret: clientSecret,
-        customer_code: customerCode,
+        client_id: clientId.trim(),
+        client_secret: clientSecret.trim(),
+        customer_code: customerCode.trim(),
         environment,
         connection_status: 'disconnected',
       };
@@ -208,8 +208,13 @@ export function SRSConnectionSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {connection?.last_error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">
-              {connection.last_error}
+            <div className="space-y-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">
+              <p>{connection.last_error}</p>
+              {connection.last_error.includes('Auth failed [400]') && (
+                <p className="text-xs">
+                  SRS rejected the OAuth token exchange. If your login details are correct, make sure the Environment dropdown matches the credentials SRS issued: QA/Staging credentials only work on Staging, and Production credentials only work on Production.
+                </p>
+              )}
             </div>
           )}
 
