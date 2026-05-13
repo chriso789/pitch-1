@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
         .from('user_company_access')
         .select('id')
         .eq('user_id', user.id)
-        .eq('company_id', peTenantId)
+        .eq('tenant_id', peTenantId)
         .maybeSingle();
 
       if (!access) {
