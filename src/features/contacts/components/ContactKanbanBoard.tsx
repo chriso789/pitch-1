@@ -38,6 +38,7 @@ interface Contact {
 interface ContactKanbanBoardProps {
   contacts: Contact[];
   onContactUpdated: () => void;
+  onContactStatusChangedLocal?: (contactId: string, newStatus: string | null) => void;
   onCall?: (contact: Contact) => void;
   onEmail?: (contact: Contact) => void;
 }
@@ -45,6 +46,7 @@ interface ContactKanbanBoardProps {
 export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   contacts,
   onContactUpdated,
+  onContactStatusChangedLocal,
   onCall,
   onEmail,
 }) => {
