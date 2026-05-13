@@ -120,14 +120,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Cache items per supplier
-    const itemsCache = new Map<string, { priceListId: string | null; items: any[] }>();
+    const itemsCache = new Map<string, { priceListId: string | null; items: any[]; rules: any[] }>();
     async function loadItems(supplierId: string, invoiceDate: string) {
       if (itemsCache.has(supplierId)) return itemsCache.get(supplierId)!;
       const { data: priceListId } = await supabase.rpc("get_active_supplier_price_list", {
         p_company_id: tenantId, p_supplier_id: supplierId, p_invoice_date: invoiceDate,
       }).then((r) => r).catch(() => ({ data: null }));
       let resolvedListId: string | null = priceListId as any;
-      // Fallback: most recent active list for this supplier
       if (!resolvedListId) {
         const { data: lists } = await supabase
           .from("supplier_price_lists")
@@ -145,7 +144,13 @@ Deno.serve(async (req: Request) => {
           .eq("price_list_id", resolvedListId);
         items = data || [];
       }
-      const entry = { priceListId: resolvedListId, items };
+      // Manual mapping rules saved by users for this supplier
+      const { data: rules } = await supabase
+        .from("material_item_match_rules")
+        .select("supplier_sku, manufacturer_sku, normalized_invoice_description, price_list_item_id")
+        .eq("company_id", tenantId)
+        .eq("supplier_id", supplierId);
+      const entry = { priceListId: resolvedListId, items, rules: rules || [] };
       itemsCache.set(supplierId, entry);
       return entry;
     }
@@ -172,11 +177,12 @@ Deno.serve(async (req: Request) => {
       }
 
       const invoiceDate = inv.invoice_date || new Date().toISOString().split("T")[0];
-      const { priceListId, items } = await loadItems(supplier.id, invoiceDate);
+      const { priceListId, items, rules } = await loadItems(supplier.id, invoiceDate);
       if (!priceListId || !items.length) {
         skipped.push({ invoiceId: inv.id, reason: `No price list for supplier "${supplier.supplier_name}"` });
         continue;
       }
+      const itemsById = new Map(items.map((i) => [i.id, i]));
 
       const { data: storedLines } = await supabase
         .from("project_cost_invoice_line_items")
@@ -234,10 +240,24 @@ Deno.serve(async (req: Request) => {
         let matchType = "unmatched";
         let matchConfidence = 0;
 
-        if (line.sku) {
+        // 1. Manual mapping rule (highest priority)
+        const ruleHit = (rules || []).find((r: any) => {
+          if (line.sku && (r.supplier_sku === line.sku || r.manufacturer_sku === line.sku)) return true;
+          if (r.normalized_invoice_description && r.normalized_invoice_description === desc) return true;
+          if (r.normalized_invoice_description && desc && desc.includes(r.normalized_invoice_description)) return true;
+          return false;
+        });
+        if (ruleHit?.price_list_item_id && itemsById.has(ruleHit.price_list_item_id)) {
+          matchedItem = itemsById.get(ruleHit.price_list_item_id);
+          matchType = "manual_rule";
+          matchConfidence = 1.0;
+        }
+        // 2. SKU exact
+        if (!matchedItem && line.sku) {
           matchedItem = items.find((p) => p.supplier_sku === line.sku || p.manufacturer_sku === line.sku);
           if (matchedItem) { matchType = "sku_exact"; matchConfidence = 1.0; }
         }
+        // 3. Fuzzy description
         if (!matchedItem && desc.length > 4) {
           let best: any = null, bestScore = 0;
           for (const p of items) {
@@ -245,7 +265,7 @@ Deno.serve(async (req: Request) => {
             const s = tokenScore(desc, pDesc);
             if (s > bestScore) { bestScore = s; best = p; }
           }
-          if (best && bestScore >= 0.5) {
+          if (best && bestScore >= 0.4) {
             matchedItem = best;
             matchType = "fuzzy_description";
             matchConfidence = Math.min(bestScore, 0.95);
