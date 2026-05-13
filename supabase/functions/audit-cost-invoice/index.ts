@@ -16,7 +16,8 @@ function canonVendor(raw: string | null | undefined): { key: string; display: st
   if (!v) return { key: "__unknown__", display: "Unknown vendor" };
   if (/^abc\b|abc supply/i.test(v)) return { key: "abc-supply", display: "ABC Supply" };
   if (/^srs\b|srs building|suncoast roofers/i.test(v)) return { key: "srs", display: "SRS" };
-  if (/\bqxo\b|beacon/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/\bqxo\b/i.test(v)) return { key: "qxo", display: "QXO" };
+  if (/beacon/i.test(v)) return { key: "beacon", display: "Beacon" };
   if (/home depot/i.test(v)) return { key: "home-depot", display: "Home Depot" };
   return { key: v.toLowerCase(), display: v };
 }
@@ -32,6 +33,36 @@ function tokenScore(a: string, b: string): number {
   let common = 0;
   A.forEach((w) => { if (B.has(w)) common++; });
   return common / Math.max(A.size, B.size);
+}
+
+function parseNoteLineItems(notes: string | null | undefined): any[] {
+  if (!notes) return [];
+  return notes.split(/\r?\n/).map((raw, idx) => {
+    const line = raw.trim();
+    if (!line) return null;
+    const totalMatch = line.match(/(?:^|\s)[—–-]\s*\$?([0-9,]+(?:\.\d{2})?)\s*$/);
+    const qtyMatch = line.match(/(?:^|\s)[—–-]\s*Qty\s*:\s*([0-9,]+(?:\.\d+)?)/i);
+    if (!totalMatch && !qtyMatch) return null;
+    const lineTotal = totalMatch ? Number(totalMatch[1].replace(/,/g, "")) : null;
+    const qty = qtyMatch ? Number(qtyMatch[1].replace(/,/g, "")) : 1;
+    const description = line
+      .replace(/\s*[—–-]\s*Qty\s*:\s*[0-9,]+(?:\.\d+)?/i, "")
+      .replace(/\s*[—–-]\s*\$?[0-9,]+(?:\.\d{2})?\s*$/, "")
+      .trim();
+    if (!description || !Number.isFinite(qty) || qty <= 0) return null;
+    const sku = description.match(/^([A-Z0-9][A-Z0-9-]{2,})\b/)?.[1] || null;
+    return {
+      line_number: idx + 1,
+      description,
+      normalized_description: normalize(description),
+      quantity: qty,
+      unit_price: lineTotal != null ? Number((lineTotal / qty).toFixed(4)) : null,
+      line_total: lineTotal,
+      sku,
+      unit_of_measure: null,
+      raw_json: { source: "invoice_notes_fallback", raw },
+    };
+  }).filter(Boolean);
 }
 
 Deno.serve(async (req: Request) => {
@@ -68,6 +99,26 @@ Deno.serve(async (req: Request) => {
       (s.aliases || []).forEach((a: string) => supplierByCanon.set(canonVendor(a).key, s));
     });
 
+    async function resolveSupplier(invVendor: string | null | undefined) {
+      const canon = canonVendor(invVendor);
+      const existing = supplierByCanon.get(canon.key);
+      if (existing) return existing;
+
+      const { data: created, error } = await supabase
+        .from("material_suppliers")
+        .upsert({
+          company_id: tenantId,
+          supplier_name: canon.display,
+          normalized_name: canon.key,
+          status: "active",
+        }, { onConflict: "company_id,normalized_name" })
+        .select("id, supplier_name, aliases")
+        .single();
+      if (error || !created) return null;
+      supplierByCanon.set(canon.key, created);
+      return created;
+    }
+
     // Cache items per supplier
     const itemsCache = new Map<string, { priceListId: string | null; items: any[] }>();
     async function loadItems(supplierId: string, invoiceDate: string) {
@@ -102,7 +153,7 @@ Deno.serve(async (req: Request) => {
     // Fetch target invoices
     let invQ = supabase
       .from("project_cost_invoices")
-      .select("id, vendor_name, invoice_number, invoice_date, invoice_amount")
+      .select("id, vendor_name, invoice_number, invoice_date, invoice_amount, notes, project_id, pipeline_entry_id")
       .eq("tenant_id", tenantId)
       .eq("invoice_type", "material");
     if (invoiceId) invQ = invQ.eq("id", invoiceId);
@@ -114,8 +165,7 @@ Deno.serve(async (req: Request) => {
     const skipped: Array<{ invoiceId: string; reason: string }> = [];
 
     for (const inv of invoices || []) {
-      const canon = canonVendor(inv.vendor_name);
-      const supplier = supplierByCanon.get(canon.key);
+      const supplier = await resolveSupplier(inv.vendor_name);
       if (!supplier) {
         skipped.push({ invoiceId: inv.id, reason: `No supplier match for "${inv.vendor_name}"` });
         continue;
@@ -128,14 +178,39 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const { data: lines } = await supabase
+      const { data: storedLines } = await supabase
         .from("project_cost_invoice_line_items")
         .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
         .eq("invoice_id", inv.id)
         .order("line_number");
 
+      let lines = storedLines || [];
+      if (!lines.length) {
+        const parsed = parseNoteLineItems((inv as any).notes);
+        if (parsed.length) {
+          const rows = parsed.map((line) => ({
+            tenant_id: tenantId,
+            invoice_id: inv.id,
+            project_id: inv.project_id || null,
+            pipeline_entry_id: inv.pipeline_entry_id || null,
+            vendor_name: inv.vendor_name || null,
+            ...line,
+          }));
+          const { data: inserted, error: insertErr } = await supabase
+            .from("project_cost_invoice_line_items")
+            .insert(rows)
+            .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
+            .order("line_number");
+          if (insertErr) {
+            skipped.push({ invoiceId: inv.id, reason: `Could not save extracted line items: ${insertErr.message}` });
+            continue;
+          }
+          lines = inserted || [];
+        }
+      }
+
       if (!lines?.length) {
-        skipped.push({ invoiceId: inv.id, reason: "No line items extracted" });
+        skipped.push({ invoiceId: inv.id, reason: "No line items extracted from upload or invoice notes" });
         continue;
       }
 
