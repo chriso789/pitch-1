@@ -250,7 +250,7 @@ Deno.serve(async (req: Request) => {
             .select("id, line_number, description, normalized_description, quantity, unit_price, line_total, sku, unit_of_measure")
             .order("line_number");
           if (insertErr) {
-            skipped.push({ invoiceId: inv.id, reason: `Could not save extracted line items: ${insertErr.message}` });
+            skipInvoice(inv, `Could not save extracted line items: ${insertErr.message}`);
             continue;
           }
           lines = inserted || [];
@@ -258,7 +258,7 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!lines?.length) {
-        skipped.push({ invoiceId: inv.id, reason: "No line items extracted from upload or invoice notes" });
+        skipInvoice(inv, "No line items extracted from upload or invoice notes");
         continue;
       }
 
@@ -287,6 +287,7 @@ Deno.serve(async (req: Request) => {
           if (line.sku && (r.supplier_sku === line.sku || r.manufacturer_sku === line.sku)) return true;
           if (r.normalized_invoice_description && r.normalized_invoice_description === desc) return true;
           if (r.normalized_invoice_description && desc && desc.includes(r.normalized_invoice_description)) return true;
+          if (r.normalized_invoice_description && desc && tokenScore(desc, r.normalized_invoice_description) >= 0.75) return true;
           return false;
         });
         if (ruleHit?.price_list_item_id && itemsById.has(ruleHit.price_list_item_id)) {
@@ -379,7 +380,7 @@ Deno.serve(async (req: Request) => {
         })
         .select("id")
         .single();
-      if (aErr) { skipped.push({ invoiceId: inv.id, reason: aErr.message }); continue; }
+      if (aErr) { skipInvoice(inv, aErr.message); continue; }
 
       const withId = auditLines.map((l) => ({ ...l, audit_id: auditRow.id }));
       // Insert in chunks
