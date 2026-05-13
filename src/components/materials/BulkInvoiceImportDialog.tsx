@@ -122,6 +122,7 @@ export function BulkInvoiceImportDialog({ open, onOpenChange, onComplete }: Prop
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
       const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 30);
       const documentUrl = signed?.signedUrl || pub.publicUrl;
+      const storedUrl = pub.publicUrl;
 
       // 2. Parse via edge function
       updateRow(row.id, { status: "parsing", documentUrl });
