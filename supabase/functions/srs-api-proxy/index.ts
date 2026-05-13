@@ -50,25 +50,25 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Request new token (SRS expects form-urlencoded)
-      const formBody = new URLSearchParams({
-        client_id: connection.client_id,
-        client_secret: connection.client_secret,
+      // Request new token. SRS SIPS docs require JSON for /authentication/token.
+      const tokenPayload = {
+        client_id: String(connection.client_id || "").trim(),
+        client_secret: String(connection.client_secret || "").trim(),
         grant_type: "client_credentials",
         scope: "ALL",
-      });
+      };
       const tokenResp = await fetch(`${baseUrl}/authentication/token`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: formBody.toString(),
+        body: JSON.stringify(tokenPayload),
       });
 
       if (!tokenResp.ok) {
         const errText = await tokenResp.text();
-        throw new Error(`Auth failed [${tokenResp.status}]: ${errText}`);
+        throw new Error(`Auth failed [${tokenResp.status}]: ${errText}. Confirm the selected environment matches these SRS credentials.`);
       }
 
       const tokenData = await tokenResp.json();
@@ -113,11 +113,12 @@ Deno.serve(async (req) => {
           await getAccessToken();
 
           // Validate customer
+          const accountNumber = encodeURIComponent(String(connection.customer_code || "").trim());
           const validateData = await srsApiCall(
-            `/api/customer/validate?customerCode=${connection.customer_code}`
+            `/customers/validate/?accountNumber=${accountNumber}`
           );
 
-          const isValid = validateData?.validIndicator === true;
+          const isValid = validateData?.validIndicator === "Y" || validateData?.validIndicator === true;
 
           // If valid, get customer branch locations for job account number
           let jobAccountNumber = null;
