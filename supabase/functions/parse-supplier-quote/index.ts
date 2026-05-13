@@ -132,7 +132,9 @@ EXTRACTION RULES:
 - IGNORE labor lines, taxes, shipping, freight, fees, discounts — materials only
 - Capture vendor name, quote number, quote date, subtotal, tax, total (from final summary page)
 - Use exact dollar amounts — never round
-- Return null for fields you cannot determine`,
+- PRICING IS MANDATORY: every line MUST include both unit_price AND line_total. If the quote shows only one of the two, COMPUTE the other (unit_price = line_total / quantity, or line_total = quantity * unit_price). Never return null for unit_price or line_total when quantity and the other field are present.
+- If a price column appears blank on a row but the same SKU/description has a price elsewhere in the document (price list, header block, prior page), use that price.
+- Only return null for unit_price/line_total when the quote genuinely shows no pricing anywhere for that material (e.g. "TBD", "call for quote").
           },
           {
             role: "user",
