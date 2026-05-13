@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Search, Upload, Play, FileText, Download, AlertTriangle, CheckCircle, XCircle, DollarSign, TrendingUp, Copy, Package } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
+import { BulkInvoiceImportDialog } from "@/components/materials/BulkInvoiceImportDialog";
 
 // Canonicalize vendor names so aliases (SRS / SRS Building Products / Suncoast Roofers Supply,
 // ABC / ABC Supply, etc.) merge into a single bucket across charts and tables.
@@ -457,12 +458,22 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
 
 // --- Invoice Queue Tab ---
 function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const queryClient = useQueryClient();
   return (
     <TabsContent value="invoice-queue">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Material Invoice Queue</CardTitle>
-          <CardDescription>Material invoices uploaded to projects {"\u2014"} compare against price lists</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Material Invoice Queue</CardTitle>
+              <CardDescription>Material invoices uploaded to projects {"\u2014"} compare against price lists</CardDescription>
+            </div>
+            <Button size="sm" onClick={() => setBulkOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Bulk Import Invoices
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -502,6 +513,14 @@ function InvoiceQueueTab({ filteredInvoices, getInvoiceStatusBadge }: any) {
           </Table>
         </CardContent>
       </Card>
+      <BulkInvoiceImportDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        onComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["material-invoices"] });
+          queryClient.invalidateQueries({ queryKey: ["project-cost-invoices"] });
+        }}
+      />
     </TabsContent>
   );
 }
