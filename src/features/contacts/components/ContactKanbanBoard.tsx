@@ -66,6 +66,59 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   const setColumnSort = (columnId: string, key: ColumnSortKey) =>
     setColumnSorts((prev) => ({ ...prev, [columnId]: key }));
 
+  // Enrichment data for advanced sort options
+  const contactIds = useMemo(() => contacts.map((c) => c.id), [contacts]);
+
+  const { data: enrichment } = useQuery({
+    queryKey: ['contact-kanban-enrichment', effectiveTenantId, contactIds.length],
+    enabled: !!effectiveTenantId && contactIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      // Latest internal note per contact (last touched)
+      const { data: notes } = await supabase
+        .from('internal_notes')
+        .select('contact_id, created_at')
+        .in('contact_id', contactIds)
+        .order('created_at', { ascending: false });
+
+      const lastNoteAt = new Map<string, string>();
+      (notes || []).forEach((n: any) => {
+        if (n.contact_id && !lastNoteAt.has(n.contact_id)) {
+          lastNoteAt.set(n.contact_id, n.created_at);
+        }
+      });
+
+      // Latest estimate per contact via pipeline_entries (estimate sent proxy)
+      const { data: pes } = await supabase
+        .from('pipeline_entries')
+        .select('id, contact_id')
+        .in('contact_id', contactIds);
+
+      const peToContact = new Map<string, string>();
+      (pes || []).forEach((p: any) => {
+        if (p.id && p.contact_id) peToContact.set(p.id, p.contact_id);
+      });
+
+      const peIds = Array.from(peToContact.keys());
+      let lastEstimateAt = new Map<string, string>();
+      if (peIds.length > 0) {
+        const { data: ests } = await supabase
+          .from('estimates')
+          .select('pipeline_entry_id, created_at')
+          .in('pipeline_entry_id', peIds)
+          .order('created_at', { ascending: false });
+        (ests || []).forEach((e: any) => {
+          const cid = peToContact.get(e.pipeline_entry_id);
+          if (cid && !lastEstimateAt.has(cid)) {
+            lastEstimateAt.set(cid, e.created_at);
+          }
+        });
+      }
+
+      return { lastNoteAt, lastEstimateAt };
+    },
+  });
+
   const sortColumnContacts = (list: Contact[], key: ColumnSortKey): Contact[] => {
     const arr = [...list];
     const nameOf = (c: Contact) =>
@@ -73,6 +126,14 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
     const repNameOf = (c: Contact) =>
       `${c.assigned_rep?.first_name || ''} ${c.assigned_rep?.last_name || ''}`.trim().toLowerCase();
     const numOf = (c: Contact) => parseInt((c.contact_number || '').replace(/\D/g, '') || '0');
+    const tsOf = (s?: string | null) => (s ? new Date(s).getTime() : 0);
+    const lastTouchedOf = (c: Contact) => {
+      const noteAt = enrichment?.lastNoteAt.get(c.id);
+      return Math.max(tsOf(c.updated_at), tsOf(noteAt));
+    };
+    const statusChangedOf = (c: Contact) => tsOf(c.updated_at);
+    const estimateSentOf = (c: Contact) => tsOf(enrichment?.lastEstimateAt.get(c.id));
+
     switch (key) {
       case 'oldest':
         return arr.sort((a, b) => numOf(a) - numOf(b));
@@ -86,6 +147,29 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         return arr.sort((a, b) => (a.lead_score || 0) - (b.lead_score || 0));
       case 'rep_asc':
         return arr.sort((a, b) => repNameOf(a).localeCompare(repNameOf(b)));
+      case 'last_touched_desc':
+        return arr.sort((a, b) => lastTouchedOf(b) - lastTouchedOf(a));
+      case 'last_touched_asc':
+        return arr.sort((a, b) => {
+          const av = lastTouchedOf(a) || Infinity;
+          const bv = lastTouchedOf(b) || Infinity;
+          return av - bv;
+        });
+      case 'time_in_status_desc':
+        // Longest time in status = oldest status change first
+        return arr.sort((a, b) => {
+          const av = statusChangedOf(a) || Infinity;
+          const bv = statusChangedOf(b) || Infinity;
+          return av - bv;
+        });
+      case 'estimate_sent_desc':
+        return arr.sort((a, b) => estimateSentOf(b) - estimateSentOf(a));
+      case 'estimate_sent_asc':
+        return arr.sort((a, b) => {
+          const av = estimateSentOf(a) || Infinity;
+          const bv = estimateSentOf(b) || Infinity;
+          return av - bv;
+        });
       case 'newest':
       default:
         return arr.sort((a, b) => numOf(b) - numOf(a));
