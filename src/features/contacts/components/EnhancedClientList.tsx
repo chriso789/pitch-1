@@ -72,6 +72,7 @@ import TaskAssignmentDialog from "@/components/TaskAssignmentDialog";
 import { ContactBulkImport } from "./ContactBulkImport";
 import { ContactKanbanBoard } from "./ContactKanbanBoard";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
+import { useContactStatuses } from "@/hooks/useContactStatuses";
 
 type DisplayMode = 'table' | 'kanban';
 
@@ -137,6 +138,7 @@ export const EnhancedClientList = () => {
   const { currentLocationId, locations } = useLocation();
   const { activeCompanyId } = useCompanySwitcher();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
+  const { statuses: contactStatuses } = useContactStatuses();
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -1148,12 +1150,15 @@ export const EnhancedClientList = () => {
                       Contacts
                     </div>
                   </SelectItem>
-                  <SelectItem value="jobs">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="h-4 w-4" />
-                      Jobs
-                    </div>
-                  </SelectItem>
+                  {/* Jobs view only available in table mode (Contacts board is contact-only) */}
+                  {!(activeView === 'contacts' && displayMode === 'kanban') && (
+                    <SelectItem value="jobs">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        Jobs
+                      </div>
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               
@@ -1208,14 +1213,11 @@ export const EnhancedClientList = () => {
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   {activeView === 'contacts' ? (
-                    <>
-                      <SelectItem value="lead">Lead</SelectItem>
-                      <SelectItem value="qualified">Qualified</SelectItem>
-                      <SelectItem value="unqualified">Unqualified</SelectItem>
-                      <SelectItem value="hot">Hot</SelectItem>
-                      <SelectItem value="warm">Warm</SelectItem>
-                      <SelectItem value="cold">Cold</SelectItem>
-                    </>
+                    contactStatuses.map((s) => (
+                      <SelectItem key={s.id} value={s.key}>
+                        {s.name}
+                      </SelectItem>
+                    ))
                   ) : (
                     <>
                       <SelectItem value="pending">Pending</SelectItem>
