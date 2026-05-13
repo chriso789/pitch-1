@@ -462,6 +462,8 @@ const PageShell: React.FC<{
             dateStr={dateStr}
             opts={opts}
             isFirstPage={pageNumber === 1}
+            customerName={customerName}
+            customerAddress={customerAddress}
           />
         </div>
       )}
