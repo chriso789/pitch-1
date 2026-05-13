@@ -156,6 +156,21 @@ verify_jwt = true
 [functions.qxo-push-order]
 verify_jwt = true
 
+[functions.qxo-submit-order]
+verify_jwt = true
+
+[functions.qxo-submit-quote-order]
+verify_jwt = true
+
+[functions.qxo-orders]
+verify_jwt = true
+
+[functions.qxo-invoices-v4]
+verify_jwt = true
+
+[functions.qxo-quotes]
+verify_jwt = true
+
 [functions.score-lead]
 verify_jwt = true
 
