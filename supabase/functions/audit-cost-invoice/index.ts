@@ -240,10 +240,24 @@ Deno.serve(async (req: Request) => {
         let matchType = "unmatched";
         let matchConfidence = 0;
 
-        if (line.sku) {
+        // 1. Manual mapping rule (highest priority)
+        const ruleHit = (rules || []).find((r: any) => {
+          if (line.sku && (r.supplier_sku === line.sku || r.manufacturer_sku === line.sku)) return true;
+          if (r.normalized_invoice_description && r.normalized_invoice_description === desc) return true;
+          if (r.normalized_invoice_description && desc && desc.includes(r.normalized_invoice_description)) return true;
+          return false;
+        });
+        if (ruleHit?.price_list_item_id && itemsById.has(ruleHit.price_list_item_id)) {
+          matchedItem = itemsById.get(ruleHit.price_list_item_id);
+          matchType = "manual_rule";
+          matchConfidence = 1.0;
+        }
+        // 2. SKU exact
+        if (!matchedItem && line.sku) {
           matchedItem = items.find((p) => p.supplier_sku === line.sku || p.manufacturer_sku === line.sku);
           if (matchedItem) { matchType = "sku_exact"; matchConfidence = 1.0; }
         }
+        // 3. Fuzzy description
         if (!matchedItem && desc.length > 4) {
           let best: any = null, bestScore = 0;
           for (const p of items) {
@@ -251,7 +265,7 @@ Deno.serve(async (req: Request) => {
             const s = tokenScore(desc, pDesc);
             if (s > bestScore) { bestScore = s; best = p; }
           }
-          if (best && bestScore >= 0.5) {
+          if (best && bestScore >= 0.4) {
             matchedItem = best;
             matchType = "fuzzy_description";
             matchConfidence = Math.min(bestScore, 0.95);
