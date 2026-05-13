@@ -468,6 +468,73 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showTaskDialog} onOpenChange={(o) => { setShowTaskDialog(o); if (!o) resetTaskForm(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckSquare className="h-5 w-5 text-primary" />
+              Assign Task
+            </DialogTitle>
+            <DialogDescription>
+              Create a task for a teammate. They'll get an email and it will sync to their calendar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Assign to *</Label>
+              <Select value={taskAssignee} onValueChange={setTaskAssignee}>
+                <SelectTrigger><SelectValue placeholder="Select a team member" /></SelectTrigger>
+                <SelectContent>
+                  {teamMembers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {getFullName(m.first_name, m.last_name)}{m.email ? ` — ${m.email}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Task name *</Label>
+              <Input value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="e.g. Follow up with homeowner" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+                placeholder="What needs to be done?"
+                className="min-h-[80px]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1"><CalendarClock className="h-3 w-3" /> Due *</Label>
+                <Input type="datetime-local" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select value={taskPriority} onValueChange={(v: any) => setTaskPriority(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowTaskDialog(false)} disabled={isCreatingTask}>Cancel</Button>
+            <Button onClick={handleCreateTask} disabled={isCreatingTask}>
+              {isCreatingTask ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckSquare className="h-4 w-4 mr-2" />}
+              Assign Task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
