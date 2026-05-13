@@ -208,27 +208,34 @@ export default function CommissionReport() {
       // Get all estimates for these pipeline entries (include sales_tax_amount for Profit Center parity)
       const entryIds = entries.map(e => e.id);
       const { data: estimates } = await supabase
-        .from('estimates')
-        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount, created_at')
+        .from('enhanced_estimates')
+        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount, sales_tax_amount, created_at')
         .in('pipeline_entry_id', entryIds)
         .order('created_at', { ascending: false });
 
-      // Index estimates by id and by pipeline_entry_id (highest selling_price wins per entry)
+      // Index estimates by id and by pipeline_entry_id (highest non-zero selling_price wins per entry)
       const estimateById = new Map<string, any>();
       const estimateByEntry = new Map<string, any>();
       (estimates || []).forEach(est => {
         estimateById.set(est.id, est);
+        const price = Number(est.selling_price) || 0;
+        if (price <= 0) return;
         const existing = estimateByEntry.get(est.pipeline_entry_id);
-        if (!existing || (Number(est.selling_price) || 0) > (Number(existing.selling_price) || 0)) {
+        if (!existing || price > (Number(existing.selling_price) || 0)) {
           estimateByEntry.set(est.pipeline_entry_id, est);
         }
       });
 
-      // Resolve "active" estimate per pipeline entry using metadata first, then highest-price fallback
+      // Resolve "active" estimate per pipeline entry: prefer the explicitly selected
+      // estimate ONLY when it has a real selling_price; otherwise fall back to the
+      // highest non-zero priced estimate for that entry. Mirrors usePipelineData rules.
       const resolveEstimate = (entry: any) => {
         const meta = (entry.metadata || {}) as any;
         const selId = meta.selected_estimate_id || meta.enhanced_estimate_id;
-        if (selId && estimateById.has(selId)) return estimateById.get(selId);
+        if (selId && estimateById.has(selId)) {
+          const sel = estimateById.get(selId);
+          if ((Number(sel?.selling_price) || 0) > 0) return sel;
+        }
         return estimateByEntry.get(entry.id) || null;
       };
 
