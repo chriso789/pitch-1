@@ -21,6 +21,7 @@ interface QXOConnection {
   account_id: string | null;
   profile_id: string | null;
   default_branch_code: string | null;
+  client_id: string | null;
   connection_status: string;
   last_validated_at: string | null;
   last_error: string | null;
