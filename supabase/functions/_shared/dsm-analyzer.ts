@@ -843,9 +843,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const { labels, components } = labelConnectedComponents(closed, sw, sh);
   if (components.length === 0) return [];
 
-  // ── 4. Find all viable components and MERGE them ──
-  // FIX: Previously only selected ONE component. Now merge ALL viable components
-  // to capture the full building footprint when Solar mask is fragmented by trees/shadows.
+  // ── 4. Find viable components near the primary building ──
   let targetCx = sw / 2;
   let targetCy = sh / 2;
   if (geocodeLat != null && geocodeLng != null) {
@@ -857,7 +855,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const minSize = Math.max(4, maxSize * 0.10);
   const viable = components.filter(c => c.size >= minSize);
 
-  // Find the component nearest to geocode center (for diagnostics)
+  // Primary component = nearest to geocode
   let bestComp = viable[0];
   let bestDist = Infinity;
   for (const c of viable) {
@@ -865,13 +863,21 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     if (dist < bestDist) { bestDist = dist; bestComp = c; }
   }
 
-  // ── 5. Merge ALL viable components into a single mask ──
-  // This captures the full building footprint even when trees/shadows fragment the Solar mask
+  // Only merge fragments close to the primary — excludes neighboring buildings
+  const primaryRadius = Math.sqrt(bestComp.size / Math.PI);
+  const mergeDistThreshold = Math.min(60, Math.max(20, primaryRadius * 2.5));
+  const toMerge = viable.filter(c => {
+    if (c.id === bestComp.id) return true;
+    const dist = Math.hypot(c.centroidX - bestComp.centroidX, c.centroidY - bestComp.centroidY);
+    return dist <= mergeDistThreshold;
+  });
+
+  // ── 5. Merge nearby components into a single mask ──
   const compMask = new Uint8Array(sw * sh);
-  const viableIds = new Set(viable.map(c => c.id));
+  const mergeIds = new Set(toMerge.map(c => c.id));
   let mergedPixelCount = 0;
   for (let i = 0; i < sw * sh; i++) {
-    if (viableIds.has(labels[i])) {
+    if (mergeIds.has(labels[i])) {
       compMask[i] = 1;
       mergedPixelCount++;
     }
@@ -905,7 +911,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const filled = fillHoles(hullMask, sw, sh);
   const filledPixelCount = filled.reduce((s, v) => s + v, 0);
 
-  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable. Merged ${viable.length} components (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`);
+  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable, ${toMerge.length} within merge threshold (${mergeDistThreshold.toFixed(1)}px of primary). Merged ${toMerge.length} (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`);
 
   // ── 6. Trace outer boundary using Moore neighborhood ──
   const contourPx = traceOuterBoundary(filled, sw, sh);
@@ -942,7 +948,9 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   _lastContourDiagnostics = {
     components_total: components.length,
     viable_components: viable.length,
-    merged_components: viable.length,
+    merged_components: toMerge.length,
+    merge_dist_threshold_px: Number(mergeDistThreshold.toFixed(1)),
+    excluded_components: viable.length - toMerge.length,
     merged_pixel_count: mergedPixelCount,
     convex_hull_vertices: hullPoints.length,
     selected_component_id: bestComp.id,
