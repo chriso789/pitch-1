@@ -215,9 +215,11 @@ Deno.serve(async (req) => {
       success: true,
       deletedMeasurementIds: [
         ...deletedMeasurementIds,
+        ...alreadyMissingIds,
         ...deletedJobIds.map((id) => `job-${id}`),
       ],
       deletedJobIds,
+      alreadyMissingIds,
       linkedApprovalIds,
     });
   } catch (error) {
