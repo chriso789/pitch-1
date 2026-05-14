@@ -35,6 +35,7 @@ import { validateFootprintConstraints } from "../_shared/footprint-constraint-va
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
+import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -1513,231 +1514,452 @@ async function processJob(input: any) {
       footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
     }));
 
-    // ══════════ PERIMETER INNER-TRACE DETECTION GATE ══════════
-    // Detect when the selected footprint traces INNER solar/plane geometry
-    // instead of the true eave/rake roof perimeter.
-    //
-    // v2 (target-mask isolation): The previous version compared the selected
-    // perimeter against the GLOBAL visible roof mask, which often includes
-    // neighboring roofs, trees, shadows, driveways, and other connected
-    // bright regions. That produced false `perimeter_inner_trace_detected`
-    // failures when the selected perimeter was actually correct. We now:
-    //   1) extract connected components of the visible roof mask,
-    //   2) pick the component aligned with the footprint (centroid + overlap),
-    //   3) compare ratios against THAT component, not the global mask,
-    //   4) apply a sanity guard against Solar segment area / vendor priors.
+    // ══════════ TARGET-MASK ISOLATION + PERIMETER PHASE 0 ══════════
+    // This MUST run before any inner-trace decision. Global visible-mask area is
+    // diagnostic only; perimeter failure may only compare against the isolated
+    // target roof mask component.
     let perimeterInnerTraceDebug: any = { checked: false };
-    if (visibleRoofMaskPxGrid && visibleRoofBboxPx && footprint.length >= 3) {
-      const W = raster.width;
-      const H = raster.height;
+    let perimeterPhase0Snapshot: any = null;
+    let perimeterTopologySnapshot: any = null;
+    let perimeterGateSnapshot: any = null;
 
-      // ── Compute footprint centroid + bbox ──
-      let cxSum = 0, cySum = 0;
-      for (const p of footprint) { cxSum += p.x; cySum += p.y; }
-      const fpCentroid = { x: cxSum / footprint.length, y: cySum / footprint.length };
-      const fpBboxIT = bboxOf(footprint);
-
-      // ── Global mask total ──
-      let globalMaskPx = 0;
-      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
-        if (visibleRoofMaskPxGrid[i] > 0) globalMaskPx++;
+    const lookupBenchmarkAreaSqftForPerimeter = async (): Promise<{ area_sqft: number | null; source: string | null }> => {
+      try {
+        const { data: benchmarks } = await supabase
+          .from("roof_measurement_benchmarks")
+          .select("address, area_sqft")
+          .limit(50);
+        const normalizeAddr = (a: string) => (a || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const inputAddr = normalizeAddr(input.property_address || resolved_address || '');
+        const match = (benchmarks || []).find((b: any) => inputAddr.includes(normalizeAddr(b.address || '')));
+        const area = Number((match as any)?.area_sqft || 0);
+        return Number.isFinite(area) && area > 0
+          ? { area_sqft: area, source: `benchmark:${(match as any).address}` }
+          : { area_sqft: null, source: null };
+      } catch (benchErr) {
+        console.warn("[PERIMETER_BENCHMARK_SANITY] lookup failed:", (benchErr as Error).message);
+        return { area_sqft: null, source: null };
       }
+    };
+
+    const isolateTargetRoofMask = (params: {
+      perimeter: Point[];
+      maskGrid: Uint8Array | null;
+      width: number;
+      height: number;
+      geocodePoint: Point;
+      solarCentroid: Point | null;
+      expectedAreaSqft: number | null;
+      benchmarkAreaSqft: number | null;
+      footprintAreaSqft: number;
+      footprintSource: string;
+      globalBbox: any;
+    }) => {
+      const { perimeter, maskGrid, width: W, height: H } = params;
+      if (!maskGrid || perimeter.length < 3) {
+        return {
+          checked: false,
+          reason: !maskGrid ? 'no_visible_roof_mask' : 'invalid_perimeter',
+          target_mask_grid: null as Uint8Array | null,
+          target_mask_area_sqft: null,
+          global_mask_area_sqft: null,
+          missed_target_roof_pct: null,
+          area_sanity_ok: false,
+          solar_sanity_ok: false,
+          benchmark_sanity_ok: false,
+          mask_components_table: [],
+        };
+      }
+
+      let globalMaskPx = 0;
+      for (let i = 0; i < maskGrid.length; i++) if (maskGrid[i] > 0) globalMaskPx++;
       const globalMaskAreaSqft = globalMaskPx * sqftPerPx2;
 
-      // ── Connected-component labeling (4-connectivity, BFS) ──
-      // Restricted to a bbox around the footprint expanded by 80px to keep cost bounded.
-      const pad = 80;
-      const yLo = Math.max(0, Math.floor((fpBboxIT?.minY ?? 0) - pad));
-      const yHi = Math.min(H - 1, Math.ceil((fpBboxIT?.maxY ?? H - 1) + pad));
-      const xLo = Math.max(0, Math.floor((fpBboxIT?.minX ?? 0) - pad));
-      const xHi = Math.min(W - 1, Math.ceil((fpBboxIT?.maxX ?? W - 1) + pad));
+      const fpBbox = bboxOf(perimeter);
+      let sx = 0, sy = 0;
+      for (const p of perimeter) { sx += p.x; sy += p.y; }
+      const fpCentroid = { x: sx / perimeter.length, y: sy / perimeter.length };
+      const footprintAreaPx = Math.max(1, polygonAreaPx(perimeter));
 
-      const labels = new Int32Array((yHi - yLo + 1) * (xHi - xLo + 1));
+      // Localize component labeling around the selected perimeter. This prevents
+      // a huge connected/global visible mask from becoming the gate reference.
+      const pad = 120;
+      const yLo = Math.max(0, Math.floor((fpBbox?.minY ?? 0) - pad));
+      const yHi = Math.min(H - 1, Math.ceil((fpBbox?.maxY ?? H - 1) + pad));
+      const xLo = Math.max(0, Math.floor((fpBbox?.minX ?? 0) - pad));
+      const xHi = Math.min(W - 1, Math.ceil((fpBbox?.maxX ?? W - 1) + pad));
       const lw = xHi - xLo + 1;
-      type Comp = { id: number; pixels: number; cx: number; cy: number; minX: number; maxX: number; minY: number; maxY: number; insideFpPixels: number };
-      const components: Comp[] = [];
-      let nextLabel = 0;
+      const labels = new Int32Array((yHi - yLo + 1) * lw);
+      type TargetComp = {
+        id: number; pixels: number; cx: number; cy: number;
+        minX: number; maxX: number; minY: number; maxY: number;
+        insidePerimeterPixels: number;
+      };
+      const components: TargetComp[] = [];
       const queue: number[] = [];
+      let nextLabel = 0;
+
       for (let y = yLo; y <= yHi; y++) {
         for (let x = xLo; x <= xHi; x++) {
           const li = (y - yLo) * lw + (x - xLo);
-          if (labels[li] !== 0) continue;
-          if (visibleRoofMaskPxGrid[y * W + x] <= 0) continue;
+          if (labels[li] !== 0 || maskGrid[y * W + x] <= 0) continue;
           nextLabel++;
           labels[li] = nextLabel;
-          let pixels = 0, sx = 0, sy = 0, mnX = x, mxX = x, mnY = y, mxY = y, inFp = 0;
+          let pixels = 0, sumX = 0, sumY = 0, inPerimeter = 0;
+          let mnX = x, mxX = x, mnY = y, mxY = y;
           queue.length = 0;
           queue.push(x, y);
           while (queue.length) {
-            const cy0 = queue.pop()!; const cx0 = queue.pop()!;
-            pixels++; sx += cx0; sy += cy0;
+            const cy0 = queue.pop()!;
+            const cx0 = queue.pop()!;
+            pixels++; sumX += cx0; sumY += cy0;
             if (cx0 < mnX) mnX = cx0; if (cx0 > mxX) mxX = cx0;
             if (cy0 < mnY) mnY = cy0; if (cy0 > mxY) mxY = cy0;
-            if (pointInPolygon({ x: cx0, y: cy0 }, footprint)) inFp++;
-            // 4-neighbors
+            if (pointInPolygon({ x: cx0, y: cy0 }, perimeter)) inPerimeter++;
             const neigh = [[cx0 + 1, cy0], [cx0 - 1, cy0], [cx0, cy0 + 1], [cx0, cy0 - 1]];
             for (const [nx, ny] of neigh) {
               if (nx < xLo || nx > xHi || ny < yLo || ny > yHi) continue;
               const nli = (ny - yLo) * lw + (nx - xLo);
-              if (labels[nli] !== 0) continue;
-              if (visibleRoofMaskPxGrid[ny * W + nx] <= 0) continue;
+              if (labels[nli] !== 0 || maskGrid[ny * W + nx] <= 0) continue;
               labels[nli] = nextLabel;
               queue.push(nx, ny);
             }
           }
-          // Skip tiny noise components (<150 px ≈ <30 sqft typical)
-          if (pixels < 150) continue;
+          if (pixels < 100) continue;
           components.push({
             id: nextLabel,
             pixels,
-            cx: sx / pixels,
-            cy: sy / pixels,
-            minX: mnX, maxX: mxX, minY: mnY, maxY: mxY,
-            insideFpPixels: inFp,
+            cx: sumX / pixels,
+            cy: sumY / pixels,
+            minX: mnX,
+            maxX: mxX,
+            minY: mnY,
+            maxY: mxY,
+            insidePerimeterPixels: inPerimeter,
           });
         }
       }
 
-      // ── Pick the TARGET component: max overlap with footprint, then proximity to centroid ──
-      const fpAreaPxApprox = Math.max(1, components.reduce((a, c) => a + c.insideFpPixels, 0));
-      let target: Comp | null = null;
+      const refAreas = [params.expectedAreaSqft, params.benchmarkAreaSqft, solarSegmentTotalAreaSqft]
+        .filter((v): v is number => Number.isFinite(Number(v)) && Number(v) > 0);
+      let target: TargetComp | null = null;
       let bestScore = -Infinity;
       for (const c of components) {
-        const overlapRatio = c.insideFpPixels / Math.max(1, c.pixels);
-        const dx = c.cx - fpCentroid.x, dy = c.cy - fpCentroid.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const distScore = 1 / (1 + dist / 100);
-        // Prefer components that meaningfully overlap the footprint
-        const score = overlapRatio * 2 + distScore + (c.insideFpPixels / fpAreaPxApprox) * 1.5;
+        const componentAreaSqft = c.pixels * sqftPerPx2;
+        const insideRatio = c.insidePerimeterPixels / Math.max(1, c.pixels);
+        const footprintCoverage = c.insidePerimeterPixels / footprintAreaPx;
+        const centroidDist = Math.hypot(c.cx - fpCentroid.x, c.cy - fpCentroid.y);
+        const geocodeDist = Math.hypot(c.cx - params.geocodePoint.x, c.cy - params.geocodePoint.y);
+        const solarDist = params.solarCentroid ? Math.hypot(c.cx - params.solarCentroid.x, c.cy - params.solarCentroid.y) : 0;
+        const expectedAreaScore = refAreas.length
+          ? Math.max(...refAreas.map(ref => Math.max(0, 1 - Math.abs(componentAreaSqft - ref) / Math.max(ref, 1))))
+          : 0.5;
+        const score =
+          insideRatio * 2.4 +
+          Math.min(1, footprintCoverage) * 1.6 +
+          (1 / (1 + centroidDist / 80)) * 1.2 +
+          (1 / (1 + geocodeDist / 160)) * 0.7 +
+          (params.solarCentroid ? (1 / (1 + solarDist / 120)) * 0.7 : 0) +
+          expectedAreaScore * 1.2;
         if (score > bestScore) { bestScore = score; target = c; }
       }
 
-      const targetMaskAreaSqft = target ? target.pixels * sqftPerPx2 : 0;
-      const targetMaskBbox = target ? { minX: target.minX, minY: target.minY, maxX: target.maxX, maxY: target.maxY } : null;
-      const targetOverlapRatio = target ? target.insideFpPixels / Math.max(1, target.pixels) : 0;
-      const globalInflationRatio = targetMaskAreaSqft > 0 ? globalMaskAreaSqft / targetMaskAreaSqft : null;
-
-      // ── Ratios computed against TARGET component, not global mask ──
-      const perimeterToTargetMaskRatio = targetMaskAreaSqft > 0
-        ? footprintAreaSqftVal / targetMaskAreaSqft
-        : 1;
-      // Missed target roof = target component pixels OUTSIDE the footprint
+      const targetMaskGrid = new Uint8Array(W * H);
       let missedTargetPx = 0;
       if (target) {
         for (let y = target.minY; y <= target.maxY; y++) {
           for (let x = target.minX; x <= target.maxX; x++) {
             const li = (y - yLo) * lw + (x - xLo);
             if (labels[li] !== target.id) continue;
-            if (!pointInPolygon({ x, y }, footprint)) missedTargetPx++;
+            targetMaskGrid[y * W + x] = 1;
+            if (!pointInPolygon({ x, y }, perimeter)) missedTargetPx++;
           }
         }
       }
+
+      const targetMaskAreaSqft = target ? target.pixels * sqftPerPx2 : 0;
       const missedTargetRatio = target && target.pixels > 0 ? missedTargetPx / target.pixels : 0;
-      const missedTargetAreaSqft = missedTargetPx * sqftPerPx2;
-
-      // ── Sanity guard: if perimeter is within 10% of Solar segment total,
-      //    do NOT fail solely because the global mask is inflated. ──
+      const missedTargetRoofPct = missedTargetRatio * 100;
+      const perimeterToTargetMaskRatio = targetMaskAreaSqft > 0 ? params.footprintAreaSqft / targetMaskAreaSqft : null;
+      const targetOverlap = target ? target.insidePerimeterPixels / Math.max(1, target.pixels) : 0;
+      const globalInflationRatio = targetMaskAreaSqft > 0 ? globalMaskAreaSqft / targetMaskAreaSqft : null;
       const solarSanityOk = solarSegmentTotalAreaSqft > 0
-        && Math.abs(footprintAreaSqftVal - solarSegmentTotalAreaSqft) / solarSegmentTotalAreaSqft <= 0.10;
+        && Math.abs(params.footprintAreaSqft - solarSegmentTotalAreaSqft) / solarSegmentTotalAreaSqft <= 0.10;
+      const benchmarkSanityOk = params.benchmarkAreaSqft != null && params.benchmarkAreaSqft > 0
+        && Math.abs(params.footprintAreaSqft - params.benchmarkAreaSqft) / params.benchmarkAreaSqft <= 0.10;
+      const expectedSanityOk = params.expectedAreaSqft != null && params.expectedAreaSqft > 0
+        && Math.abs(params.footprintAreaSqft - params.expectedAreaSqft) / params.expectedAreaSqft <= 0.10;
+      const areaSanityOk = solarSanityOk || benchmarkSanityOk || expectedSanityOk;
 
-      perimeterInnerTraceDebug = {
+      return {
         checked: true,
-        // Target-mask metrics (authoritative for the gate)
-        target_roof_mask_area_sqft: Math.round(targetMaskAreaSqft),
+        target_mask_grid: target ? targetMaskGrid : null,
+        target_mask_area_sqft: target ? Math.round(targetMaskAreaSqft) : null,
         target_mask_component_id: target?.id ?? null,
+        target_mask_bbox_px: target ? { minX: target.minX, minY: target.minY, maxX: target.maxX, maxY: target.maxY } : null,
+        target_mask_overlap_with_perimeter: Number(targetOverlap.toFixed(3)),
+        target_component_overlap_with_perimeter: Number(targetOverlap.toFixed(3)),
         target_mask_component_count: components.length,
-        selected_component_area_sqft: Math.round(targetMaskAreaSqft),
-        target_component_overlap_with_perimeter: Number(targetOverlapRatio.toFixed(3)),
-        target_visible_roof_bbox_px: targetMaskBbox,
-        perimeter_to_target_mask_ratio: Number(perimeterToTargetMaskRatio.toFixed(3)),
-        missed_target_roof_area_sqft: Math.round(missedTargetAreaSqft),
-        missed_target_roof_ratio: Number(missedTargetRatio.toFixed(3)),
-        // Global-mask metrics (diagnostic only)
+        global_mask_area_sqft: Math.round(globalMaskAreaSqft),
         global_roof_mask_area_sqft: Math.round(globalMaskAreaSqft),
-        global_visible_roof_bbox_px: visibleRoofBboxPx,
+        global_visible_roof_bbox_px: params.globalBbox,
         global_mask_inflation_ratio: globalInflationRatio != null ? Number(globalInflationRatio.toFixed(2)) : null,
+        missed_target_roof_pct: Number(missedTargetRoofPct.toFixed(2)),
+        missed_target_roof_ratio: Number(missedTargetRatio.toFixed(4)),
+        missed_target_roof_area_sqft: Math.round(missedTargetPx * sqftPerPx2),
+        perimeter_to_target_mask_ratio: perimeterToTargetMaskRatio != null ? Number(perimeterToTargetMaskRatio.toFixed(3)) : null,
+        solar_sanity_ok: solarSanityOk,
+        benchmark_sanity_ok: benchmarkSanityOk,
+        expected_area_sanity_ok: expectedSanityOk,
+        area_sanity_ok: areaSanityOk,
+        expected_area_sqft: params.expectedAreaSqft,
+        benchmark_area_sqft: params.benchmarkAreaSqft,
+        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+        footprint_area_sqft: Math.round(params.footprintAreaSqft),
+        footprint_source: params.footprintSource,
         mask_components_table: components
+          .slice()
           .sort((a, b) => b.pixels - a.pixels)
-          .slice(0, 6)
+          .slice(0, 12)
           .map(c => ({
             id: c.id,
+            selected: target?.id === c.id,
             area_sqft: Math.round(c.pixels * sqftPerPx2),
-            inside_fp_ratio: Number((c.insideFpPixels / Math.max(1, c.pixels)).toFixed(3)),
-            centroid: [Math.round(c.cx), Math.round(c.cy)],
+            inside_perimeter_ratio: Number((c.insidePerimeterPixels / Math.max(1, c.pixels)).toFixed(3)),
+            centroid_px: [Math.round(c.cx), Math.round(c.cy)],
+            bbox_px: { minX: c.minX, minY: c.minY, maxX: c.maxX, maxY: c.maxY },
           })),
-        // Sanity references
-        footprint_area_sqft: Math.round(footprintAreaSqftVal),
-        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
-        solar_sanity_ok: solarSanityOk,
-        // Legacy fields (kept for backward compatibility, now reflect TARGET)
-        roof_mask_area_sqft: Math.round(targetMaskAreaSqft),
-        perimeter_to_mask_ratio: Number(perimeterToTargetMaskRatio.toFixed(3)),
-        missed_roof_area_sqft: Math.round(missedTargetAreaSqft),
-        missed_roof_ratio: Number(missedTargetRatio.toFixed(3)),
-        footprint_source: footprintSource,
-        inner_trace_detected: false,
-        mask_contour_diagnostics: maskContourDiagnostics || null,
+        // Legacy names retained for old debug readers, now TARGET-based.
+        roof_mask_area_sqft: target ? Math.round(targetMaskAreaSqft) : null,
+        perimeter_to_mask_ratio: perimeterToTargetMaskRatio != null ? Number(perimeterToTargetMaskRatio.toFixed(3)) : null,
+        missed_roof_ratio: Number(missedTargetRatio.toFixed(4)),
+        missed_roof_area_sqft: Math.round(missedTargetPx * sqftPerPx2),
       };
+    };
 
-      // ── Decide failure mode ──
-      // Case A: target isolation failed (no plausible component) → distinct failure
-      if (!target || targetMaskAreaSqft < 200) {
-        perimeterInnerTraceDebug.inner_trace_detected = false;
-        perimeterInnerTraceDebug.target_mask_isolation_failed = true;
-        const failReason = "target_mask_isolation_failed";
-        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL`, JSON.stringify(perimeterInnerTraceDebug));
-        const debugPayload = {
-          ...perimeterInnerTraceDebug,
-          hard_fail_reason: failReason,
-          footprint_px: footprint.map((p: any) => [p.x, p.y]),
-          raster_url: imageUrl,
-          raster_size: { width: W, height: H },
+    const buildPhase0Snapshot = (isolation: any, forcedFailureReasons: string[] = []) => {
+      const footprintGeoForPhase0 = footprint.map((p) =>
+        pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]
+      );
+      const perimeterEdgesGeo = footprintGeoForPhase0.map((p, i) => [p, footprintGeoForPhase0[(i + 1) % footprintGeoForPhase0.length]] as [[number, number], [number, number]]);
+      const targetMaskGrid = isolation?.target_mask_grid || null;
+      const targetMaskPxCount = targetMaskGrid
+        ? targetMaskGrid.reduce((sum: number, v: number) => sum + (v > 0 ? 1 : 0), 0)
+        : 0;
+      const maskedTarget = targetMaskGrid ? { mask: targetMaskGrid } : null;
+      const targetMaskAreaSqft = Number(isolation?.target_mask_area_sqft || 0) || footprintAreaSqftVal;
+
+      try {
+        const topology = buildPerimeterTopology({
+          footprint_geo: footprintGeoForPhase0,
+          footprint_px: footprint,
+          footprint_area_sqft: footprintAreaSqftVal,
+          footprint_source: footprintSource,
+          dsm_grid: null,
+          masked_dsm: maskedTarget,
+          solar_segments: solarSegments.map((s: any) => ({
+            pitch_degrees: Number(s?.pitchDegrees || 0),
+            azimuth_degrees: Number(s?.azimuthDegrees || 0),
+            area_sqft: Number(s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0) * 10.7639,
+            center_geo: s?.center ? [Number(s.center.longitude), Number(s.center.latitude)] as [number, number] : null,
+          })),
+          roof_mask_pixel_count: targetMaskPxCount,
+          dsm_width: raster.width,
+          dsm_height: raster.height,
+          lat: coords.lat,
+          meters_per_pixel: actualMpp,
+          boundary_eaves: perimeterEdgesGeo.map(([start_geo, end_geo], i) => ({
+            start_geo,
+            end_geo,
+            start_px: footprint[i],
+            end_px: footprint[(i + 1) % footprint.length],
+          })),
+          boundary_rakes: [],
+        });
+        const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft);
+        let failureReasons = [...(gate.failure_reasons || []), ...forcedFailureReasons];
+
+        // Benchmark/Solar sanity exception: a selected perimeter within 10% of
+        // expected area must not fail just because target/global mask area is noisy.
+        if (isolation?.area_sanity_ok) {
+          failureReasons = failureReasons.filter((r) =>
+            !String(r).startsWith('fonsica_area_off') &&
+            !String(r).startsWith('fonsica_missed_roof_high') &&
+            !String(r).startsWith('perimeter_area_mismatch')
+          );
+        }
+
+        const passed = failureReasons.length === 0;
+        const diagnostics = {
+          ...gate.diagnostics,
+          perimeter_ready: passed,
+          perimeter_gate_passed: passed,
+          perimeter_failure_reasons: failureReasons,
+          target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
+          target_mask_component_id: isolation?.target_mask_component_id ?? null,
+          target_mask_bbox_px: isolation?.target_mask_bbox_px ?? null,
+          target_mask_overlap_with_perimeter: isolation?.target_mask_overlap_with_perimeter ?? null,
+          global_mask_area_sqft: isolation?.global_mask_area_sqft ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+          missed_target_roof_pct: isolation?.missed_target_roof_pct ?? null,
+          solar_sanity_ok: isolation?.solar_sanity_ok ?? false,
+          benchmark_sanity_ok: isolation?.benchmark_sanity_ok ?? false,
+          area_sanity_ok: isolation?.area_sanity_ok ?? false,
+          mask_components_table: isolation?.mask_components_table ?? [],
+          target_mask_isolation: {
+            ...isolation,
+            target_mask_grid: undefined,
+          },
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Target mask isolation failed`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Target mask isolation failed`);
-        await supabase.from("ai_measurement_jobs").update({
-          needs_review: true, report_blocked: true,
-          source_context: { gate_reason: failReason, debug: debugPayload },
-        }).eq("id", input.ai_measurement_job_id);
-        return;
-      }
 
-      // Case B: under-trace test against TARGET mask only
-      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
-      const severeUnderTrace = perimeterToTargetMaskRatio < 0.85 && missedTargetRatio > 0.10;
-      const moderateUnderTrace = perimeterToTargetMaskRatio < 0.90 && isSolarDerived && missedTargetRatio > 0.08;
-
-      if ((severeUnderTrace || moderateUnderTrace) && !solarSanityOk) {
-        perimeterInnerTraceDebug.inner_trace_detected = true;
-        const failReason = "perimeter_inner_trace_detected";
-        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL`, JSON.stringify(perimeterInnerTraceDebug));
-        const debugPayload = {
-          ...perimeterInnerTraceDebug,
-          hard_fail_reason: failReason,
-          footprint_px: footprint.map((p: any) => [p.x, p.y]),
-          raster_url: imageUrl,
-          raster_size: { width: W, height: H },
+        return {
+          topology,
+          gate: { ...gate, passed, perimeter_ready: passed, customer_perimeter_ready: passed && gate.customer_perimeter_ready, failure_reasons: failureReasons, diagnostics },
+          diagnostics,
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`);
-        await supabase.from("ai_measurement_jobs").update({
-          needs_review: true, report_blocked: true,
-          source_context: { gate_reason: failReason, debug: debugPayload },
-        }).eq("id", input.ai_measurement_job_id);
-        return;
+      } catch (err) {
+        console.error('[PERIMETER_PHASE_0] local build failed:', err);
+        const closed = footprint.length > 2 ? [...footprint, footprint[0]] : footprint;
+        const totalLf = polylineLengthPx(closed) * actualFpp;
+        const failureReasons = ['perimeter_phase0_build_failed', ...forcedFailureReasons];
+        const diagnostics = {
+          perimeter_ready: false,
+          perimeter_source: footprintSource,
+          perimeter_area_sqft: footprintAreaSqftVal,
+          perimeter_overlap_score: null,
+          perimeter_centroid_offset_px: null,
+          perimeter_bbox_match_score: null,
+          eave_length_lf: Number(totalLf.toFixed(2)),
+          rake_length_lf: 0,
+          unknown_perimeter_lf: 0,
+          perimeter_failure_reasons: failureReasons,
+          perimeter_candidate_table: [],
+          total_perimeter_lf: Number(totalLf.toFixed(2)),
+          unknown_ratio: 0,
+          perimeter_vs_mask_iou: null,
+          missed_roof_area_pct: isolation?.missed_target_roof_pct ?? null,
+          perimeter_gate_passed: false,
+          target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
+          global_mask_area_sqft: isolation?.global_mask_area_sqft ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+          missed_target_roof_pct: isolation?.missed_target_roof_pct ?? null,
+          solar_sanity_ok: isolation?.solar_sanity_ok ?? false,
+          benchmark_sanity_ok: isolation?.benchmark_sanity_ok ?? false,
+          area_sanity_ok: isolation?.area_sanity_ok ?? false,
+          mask_components_table: isolation?.mask_components_table ?? [],
+          target_mask_isolation: { ...isolation, target_mask_grid: undefined },
+        };
+        return { topology: null, gate: { passed: false, perimeter_ready: false, customer_perimeter_ready: false, failure_reasons: failureReasons, diagnostics }, diagnostics };
       }
+    };
 
-      // Case C: under-trace ratios fired but Solar sanity protects — log warning, continue.
-      if (severeUnderTrace || moderateUnderTrace) {
-        perimeterInnerTraceDebug.warning = "global_mask_inflated_solar_sanity_override";
-        console.warn(`[PERIMETER_INNER_TRACE_GATE] WARN override (solar sanity)`, JSON.stringify(perimeterInnerTraceDebug));
-      } else {
-        console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
-      }
+    const benchmarkForPerimeter = await lookupBenchmarkAreaSqftForPerimeter();
+    const solarCentroidPx = (() => {
+      const centers = (solarSegments || [])
+        .map((seg: any) => {
+          const lat = Number(seg?.center?.latitude);
+          const lng = Number(seg?.center?.longitude);
+          return Number.isFinite(lat) && Number.isFinite(lng)
+            ? lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+            : null;
+        })
+        .filter(Boolean) as Point[];
+      if (!centers.length) return null;
+      return {
+        x: centers.reduce((s, p) => s + p.x, 0) / centers.length,
+        y: centers.reduce((s, p) => s + p.y, 0) / centers.length,
+      };
+    })();
+
+    const targetMaskIsolation = isolateTargetRoofMask({
+      perimeter: footprint,
+      maskGrid: visibleRoofMaskPxGrid,
+      width: raster.width,
+      height: raster.height,
+      geocodePoint: geocodePx,
+      solarCentroid: solarCentroidPx,
+      expectedAreaSqft: solarSegmentTotalAreaSqft > 0 ? solarSegmentTotalAreaSqft : benchmarkForPerimeter.area_sqft,
+      benchmarkAreaSqft: benchmarkForPerimeter.area_sqft,
+      footprintAreaSqft: footprintAreaSqftVal,
+      footprintSource,
+      globalBbox: visibleRoofBboxPx,
+    });
+
+    perimeterInnerTraceDebug = {
+      ...targetMaskIsolation,
+      target_mask_grid: undefined,
+      checked: targetMaskIsolation.checked,
+      benchmark_area_source: benchmarkForPerimeter.source,
+      inner_trace_detected: false,
+      mask_contour_diagnostics: maskContourDiagnostics || null,
+    };
+
+    const targetIsolationFailed = targetMaskIsolation.checked && !targetMaskIsolation.target_mask_area_sqft;
+    const missedTargetPct = Number(targetMaskIsolation.missed_target_roof_pct ?? 0);
+    const targetInnerTraceDetected = missedTargetPct > 5 && !targetMaskIsolation.area_sanity_ok;
+    const forcedPhase0Failures: string[] = [];
+    if (targetIsolationFailed) forcedPhase0Failures.push('target_mask_isolation_failed');
+    if (targetInnerTraceDetected) forcedPhase0Failures.push('perimeter_inner_trace_detected');
+
+    const phase0 = buildPhase0Snapshot(targetMaskIsolation, forcedPhase0Failures);
+    perimeterPhase0Snapshot = phase0.diagnostics;
+    perimeterTopologySnapshot = phase0.topology;
+    perimeterGateSnapshot = phase0.gate;
+    perimeterInnerTraceDebug.perimeter_phase0_ran = true;
+    perimeterInnerTraceDebug.perimeter_gate_passed = phase0.gate?.passed ?? false;
+    perimeterInnerTraceDebug.perimeter_failure_reasons = phase0.gate?.failure_reasons ?? [];
+
+    console.log('[TARGET_MASK_ISOLATION]', JSON.stringify(perimeterInnerTraceDebug));
+    console.log('[PERIMETER_PHASE_0_SNAPSHOT]', JSON.stringify({
+      perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
+      perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
+      target_mask_area_sqft: perimeterPhase0Snapshot?.target_mask_area_sqft,
+      global_mask_area_sqft: perimeterPhase0Snapshot?.global_mask_area_sqft,
+      missed_target_roof_pct: perimeterPhase0Snapshot?.missed_target_roof_pct,
+      failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons,
+    }));
+
+    if (targetIsolationFailed || targetInnerTraceDetected) {
+      const failReason = targetIsolationFailed ? 'target_mask_isolation_failed' : 'perimeter_inner_trace_detected';
+      perimeterInnerTraceDebug.inner_trace_detected = targetInnerTraceDetected;
+      const debugPayload = {
+        ...perimeterInnerTraceDebug,
+        hard_fail_reason: failReason,
+        failure_stage: 'perimeter',
+        result_state: 'ai_failed_perimeter',
+        footprint_source: footprintSource,
+        footprint_valid: true,
+        footprint_point_count: footprint.length,
+        footprint_area_px: Math.round(footprintAreaPxVal),
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        footprint_px: footprint.map((p: any) => [p.x, p.y]),
+        raster_url: imageUrl,
+        raster_size: { width: raster.width, height: raster.height },
+        perimeter_inner_trace: perimeterInnerTraceDebug,
+        perimeter_phase0: perimeterPhase0Snapshot,
+        perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed ?? false,
+        perimeter_ready: false,
+        perimeter_source: perimeterTopologySnapshot?.perimeter_source ?? footprintSource,
+        perimeter_eave_ft: perimeterPhase0Snapshot?.eave_length_lf ?? null,
+        perimeter_rake_ft: perimeterPhase0Snapshot?.rake_length_lf ?? null,
+        perimeter_total_ft: perimeterPhase0Snapshot?.total_perimeter_lf ?? null,
+        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? null,
+        perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft ?? Math.round(footprintAreaSqftVal),
+        perimeter_failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons ?? [failReason],
+        perimeter_topology: perimeterTopologySnapshot,
+      };
+      console.error(`[PERIMETER_TARGET_MASK_GATE] FAIL: ${failReason}`, JSON.stringify(debugPayload));
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter target-mask gate failed: ${failReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter target-mask gate failed: ${failReason}`);
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        result_state: 'ai_failed_perimeter',
+        source_context: { gate_reason: failReason, debug: debugPayload },
+      }).eq("id", input.ai_measurement_job_id);
+      return;
     }
-
 
     // 5. Run deterministic topology on the selected footprint.
     let cleanPlanes: RoofPlane[] = [];
@@ -2056,18 +2278,19 @@ async function processJob(input: any) {
           source: e.source,
         })) : [],
         // ── PERIMETER PHASE 0 ──
-        perimeter_phase0: graph.perimeter_diagnostics || null,
-        perimeter_gate_passed: graph.perimeter_gate?.passed ?? null,
-        perimeter_ready: graph.perimeter_gate?.passed ? true : false,
-        perimeter_source: graph.perimeter_topology?.perimeter_source ?? null,
-        perimeter_eave_ft: graph.perimeter_gate?.diagnostics?.eave_length_lf ?? null,
-        perimeter_rake_ft: graph.perimeter_gate?.diagnostics?.rake_length_lf ?? null,
-        perimeter_total_ft: graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? null,
-        unknown_perimeter_lf: graph.perimeter_gate?.diagnostics?.unknown_length_lf ?? null,
-        perimeter_area_sqft: graph.perimeter_topology?.perimeter_area_sqft ?? null,
-        perimeter_failure_reasons: graph.perimeter_gate?.failure_reasons ?? [],
+        perimeter_phase0: perimeterPhase0Snapshot || graph.perimeter_diagnostics || null,
+        perimeter_gate_passed: perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed ?? null,
+        perimeter_ready: (perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed) ? true : false,
+        perimeter_source: perimeterTopologySnapshot?.perimeter_source ?? graph.perimeter_topology?.perimeter_source ?? null,
+        perimeter_eave_ft: perimeterPhase0Snapshot?.eave_length_lf ?? graph.perimeter_gate?.diagnostics?.eave_length_lf ?? null,
+        perimeter_rake_ft: perimeterPhase0Snapshot?.rake_length_lf ?? graph.perimeter_gate?.diagnostics?.rake_length_lf ?? null,
+        perimeter_total_ft: perimeterPhase0Snapshot?.total_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? null,
+        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? null,
+        perimeter_area_sqft: perimeterTopologySnapshot?.perimeter_area_sqft ?? perimeterPhase0Snapshot?.perimeter_area_sqft ?? graph.perimeter_topology?.perimeter_area_sqft ?? null,
+        perimeter_failure_reasons: perimeterGateSnapshot?.failure_reasons ?? graph.perimeter_gate?.failure_reasons ?? [],
+        target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
         // Full perimeter topology object (used for DB persistence: true_outer_roof_perimeter_*, eave_edges, rake_edges, corners)
-        perimeter_topology: graph.perimeter_topology ?? null,
+        perimeter_topology: perimeterTopologySnapshot ?? graph.perimeter_topology ?? null,
       };
 
       // ═══════════════════════════════════════════════════════════════
@@ -6731,6 +6954,11 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     unknown_perimeter_lf: debug?.unknown_perimeter_lf ?? null,
     perimeter_area_sqft: debug?.perimeter_area_sqft ?? null,
     perimeter_failure_reasons: debug?.perimeter_failure_reasons ?? [],
+    target_mask_area_sqft: debug?.perimeter_phase0?.target_mask_area_sqft ?? debug?.perimeter_inner_trace?.target_mask_area_sqft ?? null,
+    global_mask_area_sqft: debug?.perimeter_phase0?.global_mask_area_sqft ?? debug?.perimeter_inner_trace?.global_mask_area_sqft ?? null,
+    global_mask_inflation_ratio: debug?.perimeter_phase0?.global_mask_inflation_ratio ?? debug?.perimeter_inner_trace?.global_mask_inflation_ratio ?? null,
+    missed_target_roof_pct: debug?.perimeter_phase0?.missed_target_roof_pct ?? debug?.perimeter_inner_trace?.missed_target_roof_pct ?? null,
+    mask_components_table: debug?.perimeter_phase0?.mask_components_table ?? debug?.perimeter_inner_trace?.mask_components_table ?? [],
     // Footprint diagnostics (always present)
     footprint_source: debug?.footprint_source || "unknown",
     footprint_valid: debug?.footprint_valid ?? false,
@@ -6833,11 +7061,31 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     gate_decision: "failed",
     gate_reason: failureReason,
     customer_report_ready: false,
+    result_state: debug?.result_state ?? (failureReason.includes('perimeter') || failureReason.includes('target_mask') ? 'ai_failed_perimeter' : `ai_failed_${debug?.failure_stage || 'solver'}`),
     internal_debug_report_ready: true,
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
     engine_used: "autonomous_dsm_graph_solver",
     geometry_source: 'heuristic_estimate',
+    true_outer_roof_perimeter_px: debug?.perimeter_topology?.perimeter_ring_px ?? (debug?.footprint_px || null),
+    true_outer_roof_perimeter_geo: debug?.perimeter_topology?.perimeter_ring_geo ?? null,
+    eave_edges: debug?.perimeter_topology?.eave_edges ?? null,
+    rake_edges: debug?.perimeter_topology?.rake_edges ?? null,
+    roof_corners: debug?.perimeter_topology?.corner_nodes ?? null,
+    missed_roof_regions: debug?.perimeter_phase0?.missed_roof_regions ?? null,
+    perimeter_confidence: debug?.perimeter_topology?.perimeter_confidence ?? null,
+    perimeter_source: debug?.perimeter_source ?? debug?.perimeter_topology?.perimeter_source ?? null,
+    perimeter_hints: debug?.perimeter_phase0?.perimeter_candidate_table ?? null,
+    perimeter_gate_metrics: debug?.perimeter_phase0 ?? null,
+    perimeter_status: debug?.perimeter_gate_passed === true ? 'pass' : debug?.perimeter_gate_passed === false ? 'fail' : 'not_run',
+    perimeter_area_sqft: debug?.perimeter_phase0?.perimeter_area_sqft ?? debug?.perimeter_area_sqft ?? null,
+    perimeter_total_lf: debug?.perimeter_phase0?.total_perimeter_lf ?? debug?.perimeter_total_ft ?? null,
+    eave_lf: debug?.perimeter_phase0?.eave_length_lf ?? debug?.perimeter_eave_ft ?? null,
+    rake_lf: debug?.perimeter_phase0?.rake_length_lf ?? debug?.perimeter_rake_ft ?? null,
+    perimeter_vs_mask_iou: debug?.perimeter_phase0?.perimeter_vs_mask_iou ?? debug?.perimeter_phase0?.perimeter_overlap_score ?? null,
+    missed_roof_area_pct: debug?.perimeter_phase0?.missed_roof_area_pct ?? debug?.perimeter_phase0?.missed_target_roof_pct ?? null,
+    centroid_offset_px: debug?.perimeter_phase0?.perimeter_centroid_offset_px ?? null,
+    perimeter_gate_passed: debug?.perimeter_gate_passed ?? null,
     last_failure_reason: failureReason,
     last_failure_stage: debug?.failure_stage || (failureReason.includes('footprint') ? 'footprint_validation' : failureReason.includes('dsm') ? 'dsm_ingestion' : failureReason.includes('topology') ? 'topology_validation' : 'solver'),
     dsm_contract_debug: {
