@@ -5463,6 +5463,27 @@ async function processJob(input: any) {
           : autonomousDebug?.perimeter_gate_passed === false
             ? 'fail'
             : 'not_run',
+        // ── Acceptance metrics (perimeter-first checkpoint v1) ──
+        perimeter_area_sqft: autonomousDebug?.perimeter_topology?.perimeter_area_sqft
+          ?? autonomousDebug?.perimeter_phase0?.perimeter_area_sqft
+          ?? null,
+        perimeter_total_lf: autonomousDebug?.perimeter_phase0?.total_perimeter_lf
+          ?? autonomousDebug?.perimeter_total_ft
+          ?? null,
+        eave_lf: autonomousDebug?.perimeter_phase0?.eave_length_lf
+          ?? autonomousDebug?.perimeter_eave_ft
+          ?? null,
+        rake_lf: autonomousDebug?.perimeter_phase0?.rake_length_lf
+          ?? autonomousDebug?.perimeter_rake_ft
+          ?? null,
+        perimeter_vs_mask_iou: autonomousDebug?.perimeter_phase0?.perimeter_vs_mask_iou
+          ?? autonomousDebug?.perimeter_phase0?.perimeter_overlap_score
+          ?? null,
+        missed_roof_area_pct: autonomousDebug?.perimeter_phase0?.missed_roof_area_pct ?? null,
+        centroid_offset_px: autonomousDebug?.perimeter_phase0?.perimeter_centroid_offset_px
+          ?? autonomousDebug?.centroid_offset_px
+          ?? null,
+        perimeter_gate_passed: autonomousDebug?.perimeter_gate_passed ?? null,
       })
       .select("id")
       .single();
