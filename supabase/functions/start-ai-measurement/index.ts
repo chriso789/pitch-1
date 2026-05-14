@@ -97,6 +97,33 @@ const UNET_ENDPOINT = Deno.env.get("PITCH_UNET_ENDPOINT") || Deno.env.get("INTER
 const UNET_API_KEY = Deno.env.get("PITCH_UNET_API_KEY") || Deno.env.get("INTERNAL_UNET_KEY") || "";
 const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
 
+// ─── RUNTIME BUILD / VERSION STAMP ────────────────────────────────────
+// Bump these when you change perimeter/phase0 control flow so deployed
+// runs can be audited. They are persisted into measurement records and
+// returned by the debug-measurement-runtime endpoint.
+export const AI_MEASUREMENT_ENGINE_VERSION = "perimeter-phase0-v2-target-mask";
+export const PERIMETER_CONTRACT_VERSION = "perimeter-contract-v2";
+export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
+export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
+export const DEPLOYED_AT = new Date().toISOString();
+export const RUNTIME_VERSION_STAMP = {
+  ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+  perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+  phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+  git_commit_sha: GIT_COMMIT_SHA,
+  deployed_at: DEPLOYED_AT,
+} as const;
+
+function vlog(marker: string, payload: Record<string, unknown> = {}) {
+  try {
+    console.log(`[VTRACE] ${marker}`, JSON.stringify({ ...RUNTIME_VERSION_STAMP, ...payload }));
+  } catch {
+    console.log(`[VTRACE] ${marker}`, payload);
+  }
+}
+// ──────────────────────────────────────────────────────────────────────
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -108,6 +135,8 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
+
+  vlog("ENTER_start_ai_measurement", { url: req.url });
 
   try {
     const body = await req.json();
@@ -193,7 +222,7 @@ Deno.serve(async (req) => {
         lat: latitude,
         lng: longitude,
         pitch_override,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
       })
       .select("id")
       .single();
@@ -226,7 +255,7 @@ Deno.serve(async (req) => {
         actual_image_width: actualW,
         actual_image_height: actualH,
         raster_scale,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
         entrypoint: "start-ai-measurement",
         // Patent Rule 1: roof-target confirmation audit trail.
         original_geocode_lat,
@@ -1794,6 +1823,12 @@ async function processJob(input: any) {
       const maskedTarget = targetMaskGrid ? { mask: targetMaskGrid } : null;
       const targetMaskAreaSqft = Number(isolation?.target_mask_area_sqft || 0) || footprintAreaSqftVal;
 
+      vlog("ENTER_build_perimeter_phase0", {
+        footprint_source: footprintSource,
+        footprint_px_count: footprint.length,
+        target_mask_area_sqft: targetMaskAreaSqft,
+      });
+
       try {
         const topology = buildPerimeterTopology({
           footprint_geo: footprintGeoForPhase0,
@@ -1821,11 +1856,19 @@ async function processJob(input: any) {
           })),
           boundary_rakes: [],
         });
+        vlog("ENTER_evaluate_perimeter_gate", {
+          target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
+          benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
+        });
         const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft, {
           target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
           benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
           solar_expected_area_sqft: isolation?.solar_segment_area_sqft ?? null,
           global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+        });
+        vlog("EXIT_evaluate_perimeter_gate", {
+          passed: (gate.failure_reasons || []).length === 0,
+          failure_reasons: gate.failure_reasons || [],
         });
         let failureReasons = [...(gate.failure_reasons || []), ...forcedFailureReasons];
 
@@ -1921,6 +1964,12 @@ async function processJob(input: any) {
       };
     })();
 
+    vlog("ENTER_target_mask_isolation", {
+      footprint_source: footprintSource,
+      footprint_px_count: footprint.length,
+      mask_grid_present: !!visibleRoofMaskPxGrid,
+    });
+
     console.log('[PHASE0_TRACE] target_mask_isolation:start', JSON.stringify({
       footprint_source: footprintSource,
       footprint_area_sqft: Math.round(footprintAreaSqftVal),
@@ -1955,6 +2004,12 @@ async function processJob(input: any) {
       area_sanity_ok: targetMaskIsolation.area_sanity_ok,
       mask_components: targetMaskIsolation.mask_components_table?.length ?? 0,
     }));
+
+    vlog("EXIT_target_mask_isolation", {
+      checked: targetMaskIsolation.checked,
+      target_mask_area_sqft: targetMaskIsolation.target_mask_area_sqft,
+      missed_target_roof_pct: targetMaskIsolation.missed_target_roof_pct,
+    });
 
     perimeterInnerTraceDebug = {
       ...targetMaskIsolation,
@@ -5416,7 +5471,7 @@ async function processJob(input: any) {
       edge_source: edgeRows.length ? (cleanEdges[0]?.source || resolvedGeometrySource) : "none",
       report_json: {
         source_button: input.source_button,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
         footprint_source: footprintSource,
         topology_source: topologySource,
         simple_roof_type: simpleRoofTypeDebug,
@@ -5690,7 +5745,7 @@ async function processJob(input: any) {
     const dbFootprintSource = normalizeRoofMeasurementFootprintSource(footprintSource);
     const aiDetectionData = {
       source_button: input.source_button,
-      engine_version: "geometry_first_v2",
+      engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
       geometry_source: resolvedGeometrySource,
       final_edge_source: finalEdgeSource,
       footprint_source: footprintSource,
@@ -5920,7 +5975,7 @@ async function processJob(input: any) {
         gate_decision: reviewRequired ? "needs_review" : "approved",
         gate_reason: blockCustomerReportReason,
         source_button: input.source_button,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
         engine_used: "geometry_first_v2",
         inference_source: resolvedGeometrySource,
         geometry_source: promotedGeometrySource,
