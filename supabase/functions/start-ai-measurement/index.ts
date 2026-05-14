@@ -1876,6 +1876,15 @@ async function processJob(input: any) {
       };
     })();
 
+    console.log('[PHASE0_TRACE] target_mask_isolation:start', JSON.stringify({
+      footprint_source: footprintSource,
+      footprint_area_sqft: Math.round(footprintAreaSqftVal),
+      mask_grid_present: !!visibleRoofMaskPxGrid,
+      benchmark_area_sqft: benchmarkForPerimeter.area_sqft,
+      benchmark_source: benchmarkForPerimeter.source,
+      solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+    }));
+
     const targetMaskIsolation = isolateTargetRoofMask({
       perimeter: footprint,
       maskGrid: visibleRoofMaskPxGrid,
@@ -1889,6 +1898,18 @@ async function processJob(input: any) {
       footprintSource,
       globalBbox: visibleRoofBboxPx,
     });
+
+    console.log('[PHASE0_TRACE] target_mask_isolation:done', JSON.stringify({
+      checked: targetMaskIsolation.checked,
+      target_mask_area_sqft: targetMaskIsolation.target_mask_area_sqft,
+      global_mask_area_sqft: targetMaskIsolation.global_mask_area_sqft,
+      global_mask_inflation_ratio: targetMaskIsolation.global_mask_inflation_ratio,
+      missed_target_roof_pct: targetMaskIsolation.missed_target_roof_pct,
+      benchmark_sanity_ok: targetMaskIsolation.benchmark_sanity_ok,
+      solar_sanity_ok: targetMaskIsolation.solar_sanity_ok,
+      area_sanity_ok: targetMaskIsolation.area_sanity_ok,
+      mask_components: targetMaskIsolation.mask_components_table?.length ?? 0,
+    }));
 
     perimeterInnerTraceDebug = {
       ...targetMaskIsolation,
@@ -1906,6 +1927,14 @@ async function processJob(input: any) {
     if (targetIsolationFailed) forcedPhase0Failures.push('target_mask_isolation_failed');
     if (targetInnerTraceDetected) forcedPhase0Failures.push('perimeter_inner_trace_detected');
 
+    console.log('[PHASE0_TRACE] phase0_build:start', JSON.stringify({
+      forced_failures: forcedPhase0Failures,
+      target_isolation_failed: targetIsolationFailed,
+      target_inner_trace_detected: targetInnerTraceDetected,
+      missed_target_pct: missedTargetPct,
+      area_sanity_ok: targetMaskIsolation.area_sanity_ok,
+    }));
+
     const phase0 = buildPhase0Snapshot(targetMaskIsolation, forcedPhase0Failures);
     perimeterPhase0Snapshot = phase0.diagnostics;
     perimeterTopologySnapshot = phase0.topology;
@@ -1914,6 +1943,14 @@ async function processJob(input: any) {
     perimeterInnerTraceDebug.perimeter_gate_passed = phase0.gate?.passed ?? false;
     perimeterInnerTraceDebug.perimeter_failure_reasons = phase0.gate?.failure_reasons ?? [];
 
+    console.log('[PHASE0_TRACE] phase0_build:done', JSON.stringify({
+      gate_passed: phase0.gate?.passed ?? false,
+      failure_reasons: phase0.gate?.failure_reasons ?? [],
+      diagnostics_present: !!perimeterPhase0Snapshot,
+      perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
+      eave_lf: perimeterPhase0Snapshot?.eave_length_lf,
+      rake_lf: perimeterPhase0Snapshot?.rake_length_lf,
+    }));
     console.log('[TARGET_MASK_ISOLATION]', JSON.stringify(perimeterInnerTraceDebug));
     console.log('[PERIMETER_PHASE_0_SNAPSHOT]', JSON.stringify({
       perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
