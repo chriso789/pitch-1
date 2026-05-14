@@ -358,9 +358,11 @@ export function evaluatePerimeterGate(
     failures.push(`perimeter_self_intersections:${perimeter.perimeter_self_intersections}`);
   }
 
-  // Gate 3: Area conservation against roof mask
-  const areaRatio = roofMaskAreaSqft > 0 ? perimeter.perimeter_area_sqft / roofMaskAreaSqft : 1;
-  if (roofMaskAreaSqft > 0) {
+  // Gate 3: Area conservation against the SELECTED target roof component
+  // (not the global mask). The reference area must be the isolated target.
+  const areaRatio = referenceAreaSqft > 0 ? perimeter.perimeter_area_sqft / referenceAreaSqft : 1;
+  const warnings: string[] = [];
+  if (referenceAreaSqft > 0 && !areaSanityOk) {
     if (areaRatio < 0.95 || areaRatio > 1.05) {
       // Relax to 10% for non-vendor sources since footprint != roof outline exactly
       if (perimeter.perimeter_source !== 'vendor_verified' && (areaRatio >= 0.90 && areaRatio <= 1.10)) {
@@ -369,6 +371,11 @@ export function evaluatePerimeterGate(
         failures.push(`perimeter_area_mismatch:ratio=${areaRatio.toFixed(3)}`);
       }
     }
+  }
+
+  // Global mask inflation is diagnostic only — never a hard fail.
+  if (context.global_mask_inflation_ratio != null && context.global_mask_inflation_ratio > 2) {
+    warnings.push(`global_mask_inflated:${context.global_mask_inflation_ratio.toFixed(2)}x`);
   }
 
   // Gate 4: Perimeter must overlap roof mask at >= 85%
@@ -393,23 +400,18 @@ export function evaluatePerimeterGate(
   const rakeLf = perimeter.rake_edges.reduce((s, e) => s + e.length_ft, 0);
 
   // ── Fonsica acceptance gates (perimeter-first checkpoint v1) ──
-  // Use the mask-overlap (registration) score as a proxy for IoU when a
-  // dedicated mask polygon is not available. computeMaskOverlap already
-  // computes intersection_over_perimeter which is the dominant IoU signal.
   const perimeterVsMaskIou = perimeter.perimeter_registration_score;
-  // missed_roof_area_pct = portion of mask area NOT enclosed by perimeter.
-  // If perimeter under-traces the roof, mask area > perimeter area.
-  const missedRoofAreaPct = roofMaskAreaSqft > 0
-    ? Math.max(0, (roofMaskAreaSqft - perimeter.perimeter_area_sqft) / roofMaskAreaSqft) * 100
+  // missed_roof_area_pct = portion of TARGET mask area NOT enclosed by perimeter.
+  const missedRoofAreaPct = referenceAreaSqft > 0
+    ? Math.max(0, (referenceAreaSqft - perimeter.perimeter_area_sqft) / referenceAreaSqft) * 100
     : 0;
   const eavesRakesLf = eaveLf + rakeLf;
   const eavesRakesRatio = totalLen > 0 ? eavesRakesLf / totalLen : null;
 
   const fonsica = {
-    area_within_5pct: roofMaskAreaSqft > 0
+    area_within_5pct: referenceAreaSqft > 0
       ? (areaRatio >= 0.95 && areaRatio <= 1.05)
       : true,
-    // Expect eaves+rakes to cover >= 92% of total perimeter
     eaves_rakes_within_8pct: eavesRakesRatio !== null ? eavesRakesRatio >= 0.92 : false,
     missed_roof_lt_5pct: missedRoofAreaPct < 5,
     confidence_gte_85: perimeter.perimeter_confidence >= 0.85,
@@ -417,9 +419,12 @@ export function evaluatePerimeterGate(
     eaves_rakes_ratio: eavesRakesRatio !== null ? Number(eavesRakesRatio.toFixed(4)) : null,
   };
 
-  if (!fonsica.area_within_5pct) failures.push(`fonsica_area_off:${areaRatio.toFixed(3)}`);
+  // Sanity exception: if perimeter is within ±10% of benchmark or solar
+  // expected area, suppress fonsica area/missed-roof failures even when the
+  // (possibly noisy) target mask area disagrees.
+  if (!fonsica.area_within_5pct && !areaSanityOk) failures.push(`fonsica_area_off:${areaRatio.toFixed(3)}`);
   if (!fonsica.eaves_rakes_within_8pct) failures.push(`fonsica_eaves_rakes_low:${(eavesRakesRatio ?? 0).toFixed(3)}`);
-  if (!fonsica.missed_roof_lt_5pct) failures.push(`fonsica_missed_roof_high:${missedRoofAreaPct.toFixed(1)}%`);
+  if (!fonsica.missed_roof_lt_5pct && !areaSanityOk) failures.push(`fonsica_missed_roof_high:${missedRoofAreaPct.toFixed(1)}%`);
   if (!fonsica.confidence_gte_85) failures.push(`fonsica_perimeter_confidence_low:${perimeter.perimeter_confidence.toFixed(3)}`);
 
   const passed = failures.length === 0;
