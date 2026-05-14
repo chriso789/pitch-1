@@ -2240,7 +2240,7 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          result_state: normalizeResultState('ai_failed_perimeter'),
+          result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
           source_context: { gate_reason: developerBug, hard_fail_reason: developerBug, debug: debugPayload },
         }).eq("id", input.ai_measurement_job_id);
         return;
