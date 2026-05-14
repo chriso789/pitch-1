@@ -502,6 +502,14 @@ export function evaluatePerimeterGate(
     fonsica_gate: fonsica,
   };
 
+  // ── Phase 2A: forward classification debug & candidate breakdown ──
+  (diagnostics as any).eave_rake_classification_debug = (perimeter as any).eave_rake_classification_debug ?? null;
+  (diagnostics as any).archetype_debug = (perimeter as any).archetype_debug ?? null;
+  (diagnostics as any).perimeter_edge_pitch_relation = (perimeter as any).perimeter_edge_pitch_relation ?? null;
+  (diagnostics as any).eave_candidate_lf = (perimeter as any).eave_candidate_lf ?? 0;
+  (diagnostics as any).rake_candidate_lf = (perimeter as any).rake_candidate_lf ?? 0;
+  (diagnostics as any).eave_rake_confidence = (perimeter as any).eave_rake_confidence ?? null;
+
   console.log(`[PERIMETER_GATE] ${passed ? 'PASSED' : 'FAILED'}: ${failures.length > 0 ? failures.join(', ') : 'all gates clear'}. Eave=${eaveLf.toFixed(0)}ft, Rake=${rakeLf.toFixed(0)}ft, Unknown=${unknownLen.toFixed(0)}ft (${(unknownRatio * 100).toFixed(1)}%), missed=${missedRoofAreaPct.toFixed(1)}%, IoU=${perimeterVsMaskIou.toFixed(3)}`);
 
   return {
