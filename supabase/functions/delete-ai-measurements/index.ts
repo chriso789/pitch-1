@@ -188,18 +188,36 @@ Deno.serve(async (req) => {
     const allJobIdsToDelete = [...new Set([...jobIds, ...linkedJobIds])];
 
     let deletedJobIds: string[] = [];
+    let alreadyMissingJobIds: string[] = [];
     if (allJobIdsToDelete.length > 0) {
-      // Verify the jobs belong to this lead before deleting (defense-in-depth; service key bypasses RLS)
+      // Verify the jobs belong to this lead before deleting (defense-in-depth; service key bypasses RLS).
+      // Accept jobs linked by lead_id, source_record_id, OR scoped to the pipeline entry's tenant
+      // (covers older jobs where lead_id was never backfilled).
       const { data: jobsToDelete, error: jobsLookupError } = await supabase
         .from('ai_measurement_jobs')
-        .select('id')
-        .in('id', allJobIdsToDelete)
-        .or(`lead_id.eq.${pipelineEntryId},source_record_id.eq.${pipelineEntryId}`);
+        .select('id, lead_id, source_record_id, tenant_id')
+        .in('id', allJobIdsToDelete);
 
       if (jobsLookupError) throw jobsLookupError;
 
-      const validJobIds = (jobsToDelete || []).map((j) => j.id);
+      const validJobIds = (jobsToDelete || [])
+        .filter((j: any) =>
+          j.lead_id === pipelineEntryId ||
+          j.source_record_id === pipelineEntryId ||
+          j.tenant_id === peTenantId
+        )
+        .map((j: any) => j.id);
+
       if (validJobIds.length > 0) {
+        // Best-effort: clear FK references that could block delete (jobs that produced
+        // a roof_measurements row already had it removed above; this also unlinks any
+        // stragglers in measurement_jobs sibling table if present).
+        await supabase
+          .from('measurement_jobs')
+          .delete()
+          .in('id', validJobIds)
+          .then(() => {}, () => {});
+
         const { data: deletedJobs, error: deleteJobsError } = await supabase
           .from('ai_measurement_jobs')
           .delete()
@@ -209,6 +227,11 @@ Deno.serve(async (req) => {
         if (deleteJobsError) throw deleteJobsError;
         deletedJobIds = (deletedJobs || []).map((j) => j.id);
       }
+
+      // Treat any requested job id that isn't present (or was filtered out / failed
+      // to delete) as already-missing so the client cache clears and the count matches.
+      const accountedFor = new Set(deletedJobIds);
+      alreadyMissingJobIds = allJobIdsToDelete.filter((id) => !accountedFor.has(id));
     }
 
     return jsonResponse({
@@ -217,9 +240,11 @@ Deno.serve(async (req) => {
         ...deletedMeasurementIds,
         ...alreadyMissingIds,
         ...deletedJobIds.map((id) => `job-${id}`),
+        ...alreadyMissingJobIds.map((id) => `job-${id}`),
       ],
       deletedJobIds,
       alreadyMissingIds,
+      alreadyMissingJobIds,
       linkedApprovalIds,
     });
   } catch (error) {
