@@ -137,7 +137,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
 
       const { data: inserted, error: insertErr } = await supabase
         .from('enhanced_estimates')
-        .insert(insertPayload)
+        .insert(insertPayload as any)
         .select('id, estimate_number')
         .single();
       if (insertErr) throw insertErr;
