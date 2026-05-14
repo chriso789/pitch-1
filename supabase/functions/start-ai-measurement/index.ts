@@ -6468,12 +6468,31 @@ async function processJob(input: any) {
       _resultState = normalizeResultState(`ai_failed_${_stage}`);
     }
 
+    // ── Phase 3A hard sanity gate ──
+    // If the eave/rake classifier collapsed (eave=0 on long perimeter, etc.)
+    // force ai_failed_perimeter — never let downstream "perimeter_only"
+    // mask a classification collapse.
+    const _phase3A = buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null);
+    if (_phase3A.perimeter_classification_invalid) {
+      _resultState = 'ai_failed_perimeter';
+    }
+
     // ── Phase 3G: derive diagram_render_intent ──
     // Failed geometry must NOT be rendered as the official measured diagram.
-    const _diagramRenderIntent = deriveDiagramRenderIntent(_resultState, _perimeterPassed);
+    const _perimeterPassedFinal = _perimeterPassed && !_phase3A.perimeter_classification_invalid;
+    const _diagramRenderIntent = String(_resultState).startsWith('ai_failed_')
+      ? 'rejected_only'
+      : deriveDiagramRenderIntent(_resultState, _perimeterPassedFinal);
+    const _customerReadyFinal = _resultState === 'customer_report_ready';
     try {
       (geometryReportJson as any).diagram_render_intent = _diagramRenderIntent;
       (geometryReportJson as any).result_state = _resultState;
+      (geometryReportJson as any).phase3A = _phase3A;
+      if (_phase3A.perimeter_classification_invalid) {
+        (geometryReportJson as any).hard_fail_reason =
+          (geometryReportJson as any).hard_fail_reason
+          || `perimeter_classification_invalid:${_phase3A.eave_rake_failure_reason}`;
+      }
     } catch { /* best-effort */ }
 
     // Persist patent gate outcome onto the measurement row.
