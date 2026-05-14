@@ -1823,6 +1823,12 @@ async function processJob(input: any) {
       const maskedTarget = targetMaskGrid ? { mask: targetMaskGrid } : null;
       const targetMaskAreaSqft = Number(isolation?.target_mask_area_sqft || 0) || footprintAreaSqftVal;
 
+      vlog("ENTER_build_perimeter_phase0", {
+        footprint_source: footprintSource,
+        footprint_px_count: footprint.length,
+        target_mask_area_sqft: targetMaskAreaSqft,
+      });
+
       try {
         const topology = buildPerimeterTopology({
           footprint_geo: footprintGeoForPhase0,
@@ -1949,6 +1955,12 @@ async function processJob(input: any) {
         y: centers.reduce((s, p) => s + p.y, 0) / centers.length,
       };
     })();
+
+    vlog("ENTER_target_mask_isolation", {
+      footprint_source: footprintSource,
+      footprint_px_count: footprint.length,
+      mask_grid_present: !!visibleRoofMaskPxGrid,
+    });
 
     console.log('[PHASE0_TRACE] target_mask_isolation:start', JSON.stringify({
       footprint_source: footprintSource,
