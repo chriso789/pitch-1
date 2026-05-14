@@ -656,10 +656,23 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
                             ${commission.company_profit?.toLocaleString() || 0}
                           </span>
                         </div>
+                        <hr />
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Draws Already Paid:</span>
+                          <span className="text-red-600">
+                            -${totalJobDraws.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between font-bold text-base">
+                          <span>Net Commission Owed:</span>
+                          <span className={netCommissionOwed >= 0 ? 'text-success' : 'text-destructive'}>
+                            ${netCommissionOwed.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="mt-6 p-4 bg-muted/30 rounded-lg">
                     <h4 className="font-medium mb-2">Commission Summary</h4>
                     <p className="text-sm text-muted-foreground mb-2">
