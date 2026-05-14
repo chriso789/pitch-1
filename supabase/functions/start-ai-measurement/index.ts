@@ -2922,6 +2922,9 @@ async function processJob(input: any) {
         boundaryEdges: { eaveEdges: perimeterEdges, rakeEdges: [] },
       };
       const graph = solveAutonomousGraph(graphInput);
+      const phase3CBlock = buildPhase3CBlock(graph.logs || {});
+      const phase3DBlock = buildPhase3DBlock(graph.logs || {});
+      const phase3EBlock = buildPhase3EBlock(graph.constraint_solver?.diagnostics || graph.logs || {});
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
       // Faces with valid plane fits should contribute to totals even if edge classification issues remain
       const graphValidated = graph.validation_status === "validated" || 
@@ -3061,6 +3064,14 @@ async function processJob(input: any) {
         unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? null,
         perimeter_area_sqft: perimeterTopologySnapshot?.perimeter_area_sqft ?? perimeterPhase0Snapshot?.perimeter_area_sqft ?? graph.perimeter_topology?.perimeter_area_sqft ?? null,
         perimeter_failure_reasons: perimeterGateSnapshot?.failure_reasons ?? graph.perimeter_gate?.failure_reasons ?? [],
+        phase3_5: phase3A5Diagnostics ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics }) : buildPhase3A5Block(null),
+        phase3A_5: phase3A5Diagnostics ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics }) : buildPhase3A5Block(null),
+        phase3C: phase3CBlock,
+        phase3D: phase3DBlock,
+        phase3E: phase3EBlock,
+        phase3C_deferred_edges_version: 'v1',
+        phase3D_backbone_seed_version: 'v1',
+        phase3E_constraint_repair_version: 'v1',
         target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
         // Full perimeter topology object (used for DB persistence: true_outer_roof_perimeter_*, eave_edges, rake_edges, corners)
         perimeter_topology: perimeterTopologySnapshot ?? graph.perimeter_topology ?? null,
