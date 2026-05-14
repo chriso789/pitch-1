@@ -469,7 +469,6 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   // Auto-regenerate stale saved PDFs once per session: when a CO has line
   // items / totals but its saved PDF was rendered before those existed (so the
   // Documents tab shows $0), silently re-render & re-save in the background.
-  const regeneratedRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
     if (!changeOrders || !activeTenantId || pendingPdfCO) return;
     const stale = (changeOrders as any[]).find((c) => {
