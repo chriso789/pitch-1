@@ -668,7 +668,7 @@ export default function CommissionReport() {
 
                             <CollapsibleContent asChild>
                               <TableRow className="bg-muted/30">
-                                <TableCell colSpan={isManager ? 8 : 7} className="p-4">
+                                <TableCell colSpan={isManager ? 7 : 6} className="p-4">
                                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
                                     <div>
                                       <span className="text-muted-foreground">Materials:</span>
