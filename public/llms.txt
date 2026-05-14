@@ -1,0 +1,19 @@
+# Pitch CRM
+
+> AI-powered construction and roofing CRM with power dialer, AI roof measurements, estimates, proposals, territory canvassing, and pipeline management.
+
+Pitch CRM replaces tools like AccuLynx, JobNimbus, CompanyCam, EagleView, Mojo Dialer, Roofr, and DocuSign in a single platform built for residential roofing, general construction, home improvement, and solar contractors.
+
+## Pages
+
+- [Home](/): Product overview and intro to Pitch CRM.
+- [Features](/features): Power dialer, AI measurements, estimates, proposals, territory mapping, automation, and analytics.
+- [Pricing](/pricing): Plans for CRM, Live Canvass, and AI Measuring tiers.
+- [Request a demo](/demo-request): Book a guided walkthrough with the team.
+- [Login](/login): Customer sign-in.
+
+## Optional
+
+- [Privacy](/legal/privacy): Privacy policy.
+- [Terms](/legal/terms): Terms of service.
+- [Security](/legal/security): Security practices.
