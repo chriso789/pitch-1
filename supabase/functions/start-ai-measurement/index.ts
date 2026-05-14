@@ -2269,6 +2269,11 @@ async function processJob(input: any) {
         perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft ?? Math.round(footprintAreaSqftVal),
         perimeter_failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons ?? [failReason],
         perimeter_topology: perimeterTopologySnapshot,
+        // Phase 3F/3G: failed perimeter forces rejected_only diagram intent.
+        diagram_render_intent: 'rejected_only',
+        ...PHASE3_VERSION_BLOCK,
+        phase3A: buildPhase3ABlock(perimeterPhase0Snapshot ?? null),
+        phase3B: buildPhase3BBlock([]),
       };
       console.error(`[PERIMETER_TARGET_MASK_GATE] FAIL: ${failReason}`, JSON.stringify(debugPayload));
       console.log('[PHASE0_TRACE] phase0_persist:start', JSON.stringify({
