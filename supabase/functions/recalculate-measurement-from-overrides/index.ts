@@ -12,10 +12,8 @@ import {
   type RoofLineAttribute,
   type RoofLineSource,
 } from "../_shared/roof-lines.ts";
-import {
-  assertCustomerReportReady,
-  ALLOWED_LAYER1_SOURCES,
-} from "../_shared/layer-model.ts";
+import { assertCustomerReportReady } from "../_shared/measurement-gates.ts";
+import { ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
