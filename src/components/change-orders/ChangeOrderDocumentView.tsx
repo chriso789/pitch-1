@@ -258,40 +258,39 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
         </section>
       )}
 
-      {/* Line items */}
-      {(materials.length > 0 || labor.length > 0) && (
+      {/* Materials included — descriptions only, no per-line pricing */}
+      {materials.length > 0 && (
         <section className="mt-6">
-          {materials.length > 0 && (
-            <LineItemsTable
-              title="Materials"
-              items={materials}
-              total={materialTotal}
-            />
-          )}
-          {labor.length > 0 && (
-            <LineItemsTable
-              title="Labor"
-              items={labor}
-              total={laborTotal}
-              className="mt-4"
-            />
-          )}
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">
+            Materials Included
+          </div>
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-gray-100 text-left text-[11px] uppercase tracking-wide text-gray-600">
+                <th className="py-1.5 px-2">Description</th>
+                <th className="py-1.5 px-2 text-right w-20">Qty</th>
+                <th className="py-1.5 px-2 text-right w-20">UoM</th>
+              </tr>
+            </thead>
+            <tbody>
+              {materials.map((i: any, idx: number) => (
+                <tr key={i.id || idx} className="border-b border-gray-100">
+                  <td className="py-1.5 px-2">{i.description || '—'}</td>
+                  <td className="py-1.5 px-2 text-right">{Number(i.quantity) || 0}</td>
+                  <td className="py-1.5 px-2 text-right">{i.unit_of_measure || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
 
-      {/* Totals */}
+      {/* Customer-facing total — single price to client, no labor / unit pricing */}
       <section className="mt-6 flex justify-end">
         <div className="w-72 border-t-2 border-gray-900 pt-2 text-sm">
-          {(materialTotal > 0 || laborTotal > 0) && (
-            <>
-              <Row label="Materials" value={fmt(materialTotal)} />
-              <Row label="Labor" value={fmt(laborTotal)} />
-              <Row label="Subtotal" value={fmt(subtotal)} />
-            </>
-          )}
           <Row
-            label="Cost Impact (this CO)"
-            value={fmt(grandTotal)}
+            label="Price to Client"
+            value={fmt(priceToClient)}
             bold
           />
         </div>
