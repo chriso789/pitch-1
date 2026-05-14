@@ -739,21 +739,48 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     }
   }
 
-  // ── Phase 2A: detect roof archetype (hip-like vs gable-like) ──
-  // Bucket azimuths to 45° bins. ≥4 distinct buckets → hip-like, perimeter
-  // should be ~all eaves with little/no rake.
+  // ── Phase 3A: detect roof archetype (hip-like vs gable-like) ──
+  // Bucket azimuths to 45° bins. ≥3 distinct buckets → hip-like (perimeter
+  // should be ~all eaves with little/no rake). The threshold was lowered
+  // from 4 to 3 because Fonsica-class hip roofs frequently expose only 3
+  // azimuth buckets to the Solar API yet still have zero true rakes.
   const azimuthBuckets = new Set<number>();
   for (const ds of solarDownslopes) {
     azimuthBuckets.add(Math.round(((ds.azimuth % 360) + 360) % 360 / 45));
   }
-  const isHipLike = azimuthBuckets.size >= 4;
-  const isGableLike = azimuthBuckets.size <= 2 && solarDownslopes.length >= 2;
+  const isHipLike = azimuthBuckets.size >= 3;
+
+  // A true GABLE end requires two solar segments with ~opposing azimuths
+  // (≥120° apart) meeting along the edge. Without that pairing, classifying
+  // an edge as a rake is unsupported by evidence.
+  let hasOpposingAzimuthPair = false;
+  for (let i = 0; i < solarDownslopes.length && !hasOpposingAzimuthPair; i++) {
+    for (let j = i + 1; j < solarDownslopes.length; j++) {
+      const a = solarDownslopes[i].azimuth;
+      const b = solarDownslopes[j].azimuth;
+      let delta = Math.abs(((a - b) % 360) + 360) % 360;
+      if (delta > 180) delta = 360 - delta;
+      if (delta >= 120) { hasOpposingAzimuthPair = true; break; }
+    }
+  }
+  const isGableLike = hasOpposingAzimuthPair && solarDownslopes.length >= 2 && !isHipLike;
+
+  // Mean edge length is used to flag "short" edges (rake candidates).
+  const meanEdgeLenFt = edges.length > 0
+    ? edges.reduce((s, e) => s + e.length_ft, 0) / edges.length
+    : 0;
+
   (input as any)._archetype_debug = {
     azimuth_bucket_count: azimuthBuckets.size,
     is_hip_like: isHipLike,
     is_gable_like: isGableLike,
+    has_opposing_azimuth_pair: hasOpposingAzimuthPair,
     solar_segment_count: solarDownslopes.length,
+    mean_edge_length_ft: Number(meanEdgeLenFt.toFixed(2)),
   };
+
+  // Per-edge classification table emitted to diagnostics for debugging.
+  const classificationTable: any[] = [];
 
   for (const edge of edges) {
     const evidence = edge.classification_evidence;
