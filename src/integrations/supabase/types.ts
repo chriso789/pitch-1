@@ -35748,6 +35748,7 @@ export type Database = {
           report_pdf_path: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
+          result_state: string | null
           review_required: boolean | null
           roof_corners: Json | null
           roof_perimeter: Json | null
@@ -35932,6 +35933,7 @@ export type Database = {
           report_pdf_path?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
+          result_state?: string | null
           review_required?: boolean | null
           roof_corners?: Json | null
           roof_perimeter?: Json | null
@@ -36116,6 +36118,7 @@ export type Database = {
           report_pdf_path?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
+          result_state?: string | null
           review_required?: boolean | null
           roof_corners?: Json | null
           roof_perimeter?: Json | null
