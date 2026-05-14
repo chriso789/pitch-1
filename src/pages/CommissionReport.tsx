@@ -625,12 +625,7 @@ export default function CommissionReport() {
                                 {formatCurrency(c.contractValue)}
                               </TableCell>
                               <TableCell className="text-right">
-                                {formatCurrency(c.grossProfit)}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">
-                                  {c.commissionType === 'profit_split' ? 'Profit Split' : 'Selling Price'}
-                                </Badge>
+                                {c.contractValue > 0 ? `${((c.grossProfit / c.contractValue) * 100).toFixed(1)}%` : '—'}
                               </TableCell>
                               <TableCell className="text-right font-bold text-green-600">
                                 {formatCurrency(c.commissionAmount)}
