@@ -136,6 +136,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
+  vlog("ENTER_start_ai_measurement", { url: req.url });
+
   try {
     const body = await req.json();
 
