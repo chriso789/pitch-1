@@ -259,6 +259,20 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     queryClient.invalidateQueries({ queryKey: ['co-invoices'] });
   };
 
+  const handleDeleteCoInvoice = async (invoiceId: string) => {
+    if (!confirm('Delete this actual-cost invoice? This cannot be undone.')) return;
+    const { error } = await (supabase as any)
+      .from('project_cost_invoices')
+      .delete()
+      .eq('id', invoiceId);
+    if (error) {
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Invoice deleted' });
+    queryClient.invalidateQueries({ queryKey: ['co-invoices'] });
+  };
+
   const handleCreate = async () => {
     if (!form.title.trim()) {
       toast({ title: 'Title required', variant: 'destructive' });
