@@ -2145,7 +2145,7 @@ async function processJob(input: any) {
           developer_bug: developerBug,
           hard_fail_reason: developerBug,
           failure_stage: 'perimeter',
-          result_state: 'ai_failed_developer_bug',
+          result_state: normalizeResultState('ai_failed_perimeter'),
           footprint_source: footprintSource,
           footprint_point_count: footprint.length,
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
@@ -2158,7 +2158,8 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          result_state: 'ai_failed_developer_bug',
+          result_state: normalizeResultState('ai_failed_perimeter'),
+          hard_fail_reason: developerBug,
           source_context: { gate_reason: developerBug, debug: debugPayload },
         }).eq("id", input.ai_measurement_job_id);
         return;
