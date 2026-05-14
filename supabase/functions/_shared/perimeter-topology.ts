@@ -387,9 +387,37 @@ export function evaluatePerimeterGate(
 // INTERNAL HELPERS
 // ═══════════════════════════════════════════════════════════════════
 
+/**
+ * TrueRoofPerimeter forbidden-source list.
+ * These sources may NEVER be used as the final outer eave/rake perimeter.
+ * They may only be retained as `perimeter_hints[]` for debug overlay.
+ *
+ * The user-approved perimeter-first contract requires that the outer roof
+ * boundary be derived from aerial / Google roof-mask / DSM evidence — never
+ * from solar-segment unions, hulls, bboxes, parcel boundaries, or loose OSM
+ * polygons (which represent buildings, not roofs).
+ */
+export const FORBIDDEN_PERIMETER_SOURCES = [
+  'solar_segment_union',
+  'solar_segment_hull',
+  'solar_bbox',
+  'parcel_boundary',
+  'osm_loose_outline',
+] as const;
+
+export type ForbiddenPerimeterSource = typeof FORBIDDEN_PERIMETER_SOURCES[number];
+
+export function isForbiddenPerimeterSource(footprintSource: string | null | undefined): boolean {
+  if (!footprintSource) return false;
+  const src = footprintSource.toLowerCase();
+  return FORBIDDEN_PERIMETER_SOURCES.some(f => src.includes(f));
+}
+
 function resolvePerimeterSource(footprintSource: string): PerimeterSource {
   const src = (footprintSource || '').toLowerCase();
   if (src.includes('vendor') || src.includes('eagleview') || src.includes('roofr')) return 'vendor_verified';
+  // Hard reject: forbidden sources collapse to parcel_footprint so the gate fails them.
+  if (isForbiddenPerimeterSource(src)) return 'parcel_footprint';
   if (src.includes('mask') || src.includes('contour')) return 'google_solar_mask_contour';
   if (src.includes('solar') || src.includes('segment') || src.includes('union') || src.includes('hull')) return 'google_solar_segments_refined';
   if (src.includes('mapbox') || src.includes('osm') || src.includes('building')) return 'mapbox_osm_footprint';
