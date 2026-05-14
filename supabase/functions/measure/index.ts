@@ -22,6 +22,16 @@ import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts
 import { solveAutonomousGraph, detectComplexRoof, validateAutonomousResult, type AutonomousGraphResult, type AutonomousGraphInput } from "./autonomous-graph-solver.ts";
 import { evaluateDSMContract, analyzeGraphTopology, computeOverlayRegistration, type DSMContractInput, type DSMContractGateResult } from "./dsm-geometry-contract.ts";
 
+// Legacy route provenance — this function is NOT the canonical AI measurement route.
+// Canonical route is `start-ai-measurement`. Every DB write here is stamped non-canonical
+// so MeasurementReportDialog and audits can detect stale rows.
+export const LEGACY_MEASURE_PROVENANCE = {
+  created_by_function: "measure",
+  solver_entrypoint: "legacy.measure",
+  canonical_measurement_route: false,
+  route_audit_version: "measurement-route-audit-v1",
+} as const;
+
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
 const OSM_ENABLED = true;
@@ -2590,6 +2600,7 @@ Deno.serve(async (req) => {
             if (propertyId && unifiedResult.fused) {
               const fused = unifiedResult.fused;
               await supabase.from('roof_measurements').insert({
+                ...LEGACY_MEASURE_PROVENANCE,
                 property_id: propertyId,
                 source: 'unified_pipeline',
                 measurement_data: {
@@ -3675,7 +3686,7 @@ Deno.serve(async (req) => {
 
             const { error: rmErr } = await adminSupabase
               .from('roof_measurements')
-              .insert(rmRow);
+              .insert({ ...LEGACY_MEASURE_PROVENANCE, ...rmRow });
             if (rmErr) {
               console.error('[pull] roof_measurements geo-mirror insert failed:', rmErr.message);
             } else {
@@ -4032,6 +4043,7 @@ Deno.serve(async (req) => {
 
           // Update measurement with QA results
           await supabase.from('roof_measurements').update({
+            ...LEGACY_MEASURE_PROVENANCE,
             manual_review_recommended: validationResult.manualReviewRecommended,
             quality_checks: validationResult,
             dsm_available: dsmAvailable,
@@ -5290,7 +5302,7 @@ Deno.serve(async (req) => {
 
                     const { data: insertedRow, error: insertErr } = await adminSupabase
                       .from('roof_measurements')
-                      .insert(insertRow)
+                      .insert({ ...LEGACY_MEASURE_PROVENANCE, ...insertRow })
                       .select('id')
                       .single();
 
@@ -5368,7 +5380,7 @@ Deno.serve(async (req) => {
                   };
                   const { data: seeded, error: seedErr } = await adminSupabase
                     .from('roof_measurements')
-                    .insert(seedRow)
+                    .insert({ ...LEGACY_MEASURE_PROVENANCE, ...seedRow })
                     .select('id')
                     .single();
                   if (!seedErr && seeded?.id) {

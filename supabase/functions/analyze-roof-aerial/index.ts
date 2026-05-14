@@ -1,6 +1,15 @@
 // NOTE: Avoid remote std/esm.sh imports where possible to prevent Supabase bundle timeouts.
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
 
+// Legacy route provenance — analyze-roof-aerial is NOT the canonical AI measurement route.
+// Canonical route is `start-ai-measurement`. All inserts/updates here are stamped non-canonical.
+const LEGACY_ANALYZE_PROVENANCE = {
+  created_by_function: "analyze-roof-aerial",
+  solver_entrypoint: "legacy.analyze-roof-aerial",
+  canonical_measurement_route: false,
+  route_audit_version: "measurement-route-audit-v1",
+} as const;
+
 // Import worksheet engine - single source of truth for calculations
 import {
   parsePitch,
@@ -4127,6 +4136,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
   }
 
   const { data, error } = await supabase.from('roof_measurements').insert({
+    ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
     property_address: address,
@@ -4289,6 +4299,7 @@ async function saveVerticesToDatabase(
   
   if (interiorJunctions.length > 0) {
     await supabase.from('roof_measurements').update({ 
+      ...LEGACY_ANALYZE_PROVENANCE,
       interior_vertex_count: interiorJunctions.length,
       vertex_count: perimeterVertices.length + interiorJunctions.length,
       edge_count: 0
@@ -4360,7 +4371,7 @@ async function saveEdgesToDatabase(
       console.error('⚠️ Failed to save edges:', error.message)
     } else {
       console.log(`💾 Saved ${edgeRecords.length} edges`)
-      await supabase.from('roof_measurements').update({ edge_count: edgeRecords.length }).eq('id', measurementId)
+      await supabase.from('roof_measurements').update({ ...LEGACY_ANALYZE_PROVENANCE, edge_count: edgeRecords.length }).eq('id', measurementId)
     }
   }
 }
@@ -5413,6 +5424,7 @@ async function processSolarFastPath(
 
   // Save to database
   const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
+    ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
     property_address: address || 'Unknown Address',
