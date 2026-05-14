@@ -233,6 +233,28 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const netProfit = commission ? commission.net_profit || 0 : grossProfit;
   const companyProfit = commission ? commission.company_profit || 0 : grossProfit;
 
+  const pipelineEntryId = project.pipeline_entries?.id || project.pipeline_entry_id;
+  const tenantIdForDraws = project.tenant_id || project.pipeline_entries?.tenant_id;
+  const repCommissionAmount = Number(commission?.commission_amount || 0);
+
+  const { data: jobDraws = [] } = useQuery({
+    queryKey: ['project-draws', pipelineEntryId, salesRep?.id],
+    queryFn: async () => {
+      if (!pipelineEntryId || !salesRep?.id) return [];
+      const { data } = await supabase
+        .from('commission_draws')
+        .select('id, amount, draw_date, notes')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('user_id', salesRep.id)
+        .order('draw_date', { ascending: false });
+      return data || [];
+    },
+    enabled: !!pipelineEntryId && !!salesRep?.id,
+  });
+
+  const totalJobDraws = jobDraws.reduce((s: number, d: any) => s + Number(d.amount), 0);
+  const netCommissionOwed = repCommissionAmount - totalJobDraws;
+
   const contactId = contact?.id;
   const contactName = contact ? `${contact.first_name} ${contact.last_name}` : '';
   const contactAddress = contact
