@@ -398,7 +398,7 @@ export default function CommissionReport() {
     }
   };
 
-  const sortedCommissions = [...commissions].sort((a, b) => {
+  const sortedCommissions = [...earnedCommissions].sort((a, b) => {
     let valA: any, valB: any;
     switch (sortColumn) {
       case 'leadName': valA = a.leadName?.toLowerCase() || ''; valB = b.leadName?.toLowerCase() || ''; break;
