@@ -2186,7 +2186,7 @@ async function processJob(input: any) {
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
-        result_state: 'ai_failed_perimeter',
+        result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
         source_context: { gate_reason: failReason, debug: debugPayload },
       }).eq("id", input.ai_measurement_job_id);
       console.log('[PHASE0_TRACE] phase0_persist:done', JSON.stringify({
