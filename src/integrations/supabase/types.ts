@@ -1640,6 +1640,7 @@ export type Database = {
         Row: {
           actual_image_height: number | null
           actual_image_width: number | null
+          ai_measurement_engine_version: string | null
           company_id: string | null
           completed_at: string | null
           confidence_score: number | null
@@ -1651,6 +1652,7 @@ export type Database = {
           failure_reason: string | null
           geocode_location_type: string | null
           geometry_quality_score: number | null
+          git_commit_sha: string | null
           id: string
           latitude: number | null
           lead_id: string | null
@@ -1664,6 +1666,8 @@ export type Database = {
           needs_review: boolean
           original_geocode_lat: number | null
           original_geocode_lng: number | null
+          perimeter_contract_version: string | null
+          phase0_control_flow_version: string | null
           project_id: string | null
           property_address: string
           raster_scale: number | null
@@ -1674,6 +1678,7 @@ export type Database = {
           roof_target_admin_override: boolean
           roof_target_confirmed_at: string | null
           roof_target_confirmed_by: string | null
+          runtime_deployed_at: string | null
           source_button: string | null
           source_context: Json | null
           source_priority: Json | null
@@ -1691,6 +1696,7 @@ export type Database = {
         Insert: {
           actual_image_height?: number | null
           actual_image_width?: number | null
+          ai_measurement_engine_version?: string | null
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
@@ -1702,6 +1708,7 @@ export type Database = {
           failure_reason?: string | null
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
+          git_commit_sha?: string | null
           id?: string
           latitude?: number | null
           lead_id?: string | null
@@ -1715,6 +1722,8 @@ export type Database = {
           needs_review?: boolean
           original_geocode_lat?: number | null
           original_geocode_lng?: number | null
+          perimeter_contract_version?: string | null
+          phase0_control_flow_version?: string | null
           project_id?: string | null
           property_address: string
           raster_scale?: number | null
@@ -1725,6 +1734,7 @@ export type Database = {
           roof_target_admin_override?: boolean
           roof_target_confirmed_at?: string | null
           roof_target_confirmed_by?: string | null
+          runtime_deployed_at?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -1742,6 +1752,7 @@ export type Database = {
         Update: {
           actual_image_height?: number | null
           actual_image_width?: number | null
+          ai_measurement_engine_version?: string | null
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
@@ -1753,6 +1764,7 @@ export type Database = {
           failure_reason?: string | null
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
+          git_commit_sha?: string | null
           id?: string
           latitude?: number | null
           lead_id?: string | null
@@ -1766,6 +1778,8 @@ export type Database = {
           needs_review?: boolean
           original_geocode_lat?: number | null
           original_geocode_lng?: number | null
+          perimeter_contract_version?: string | null
+          phase0_control_flow_version?: string | null
           project_id?: string | null
           property_address?: string
           raster_scale?: number | null
@@ -1776,6 +1790,7 @@ export type Database = {
           roof_target_admin_override?: boolean
           roof_target_confirmed_at?: string | null
           roof_target_confirmed_by?: string | null
+          runtime_deployed_at?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -22075,22 +22090,27 @@ export type Database = {
       measurement_jobs: {
         Row: {
           address: string | null
+          ai_measurement_engine_version: string | null
           ai_measurement_job_id: string | null
           completed_at: string | null
           created_at: string
           engine_version: string | null
           error: string | null
           geocode_location_type: string | null
+          git_commit_sha: string | null
           id: string
           lat: number | null
           lead_id: string | null
           lng: number | null
           measurement_id: string | null
+          perimeter_contract_version: string | null
+          phase0_control_flow_version: string | null
           pipeline_entry_id: string
           pitch_override: string | null
           progress_message: string | null
           project_id: string | null
           result_state: string | null
+          runtime_deployed_at: string | null
           source_button: string | null
           source_record_id: string | null
           source_record_type: string | null
@@ -22102,22 +22122,27 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
           completed_at?: string | null
           created_at?: string
           engine_version?: string | null
           error?: string | null
           geocode_location_type?: string | null
+          git_commit_sha?: string | null
           id?: string
           lat?: number | null
           lead_id?: string | null
           lng?: number | null
           measurement_id?: string | null
+          perimeter_contract_version?: string | null
+          phase0_control_flow_version?: string | null
           pipeline_entry_id: string
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
           result_state?: string | null
+          runtime_deployed_at?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -22129,22 +22154,27 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
           completed_at?: string | null
           created_at?: string
           engine_version?: string | null
           error?: string | null
           geocode_location_type?: string | null
+          git_commit_sha?: string | null
           id?: string
           lat?: number | null
           lead_id?: string | null
           lng?: number | null
           measurement_id?: string | null
+          perimeter_contract_version?: string | null
+          phase0_control_flow_version?: string | null
           pipeline_entry_id?: string
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
           result_state?: string | null
+          runtime_deployed_at?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -35620,6 +35650,7 @@ export type Database = {
           accuracy_vs_manual_percent: number | null
           ai_analysis: Json | null
           ai_detection_data: Json
+          ai_measurement_engine_version: string | null
           ai_measurement_job_id: string | null
           ai_model_version: string | null
           ai_vision_detection_attempts: number | null
@@ -35672,6 +35703,7 @@ export type Database = {
           geometry_quality_score: number | null
           geometry_report_json: Json | null
           geometry_source: string | null
+          git_commit_sha: string | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
           gps_accuracy_meters: number | null
@@ -35717,6 +35749,7 @@ export type Database = {
           patent_model: Json | null
           perimeter_area_sqft: number | null
           perimeter_confidence: number | null
+          perimeter_contract_version: string | null
           perimeter_gate_metrics: Json | null
           perimeter_gate_passed: boolean | null
           perimeter_hints: Json | null
@@ -35726,6 +35759,7 @@ export type Database = {
           perimeter_vertex_count: number | null
           perimeter_vs_mask_iou: number | null
           perimeter_wkt: string | null
+          phase0_control_flow_version: string | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
           pitch_source: string | null
@@ -35753,6 +35787,7 @@ export type Database = {
           roof_corners: Json | null
           roof_perimeter: Json | null
           roof_type: string | null
+          runtime_deployed_at: string | null
           satellite_overlay_url: string | null
           scale_confidence: string | null
           scale_method: string | null
@@ -35805,6 +35840,7 @@ export type Database = {
           accuracy_vs_manual_percent?: number | null
           ai_analysis?: Json | null
           ai_detection_data: Json
+          ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
           ai_model_version?: string | null
           ai_vision_detection_attempts?: number | null
@@ -35857,6 +35893,7 @@ export type Database = {
           geometry_quality_score?: number | null
           geometry_report_json?: Json | null
           geometry_source?: string | null
+          git_commit_sha?: string | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
@@ -35902,6 +35939,7 @@ export type Database = {
           patent_model?: Json | null
           perimeter_area_sqft?: number | null
           perimeter_confidence?: number | null
+          perimeter_contract_version?: string | null
           perimeter_gate_metrics?: Json | null
           perimeter_gate_passed?: boolean | null
           perimeter_hints?: Json | null
@@ -35911,6 +35949,7 @@ export type Database = {
           perimeter_vertex_count?: number | null
           perimeter_vs_mask_iou?: number | null
           perimeter_wkt?: string | null
+          phase0_control_flow_version?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pitch_source?: string | null
@@ -35938,6 +35977,7 @@ export type Database = {
           roof_corners?: Json | null
           roof_perimeter?: Json | null
           roof_type?: string | null
+          runtime_deployed_at?: string | null
           satellite_overlay_url?: string | null
           scale_confidence?: string | null
           scale_method?: string | null
@@ -35990,6 +36030,7 @@ export type Database = {
           accuracy_vs_manual_percent?: number | null
           ai_analysis?: Json | null
           ai_detection_data?: Json
+          ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
           ai_model_version?: string | null
           ai_vision_detection_attempts?: number | null
@@ -36042,6 +36083,7 @@ export type Database = {
           geometry_quality_score?: number | null
           geometry_report_json?: Json | null
           geometry_source?: string | null
+          git_commit_sha?: string | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
@@ -36087,6 +36129,7 @@ export type Database = {
           patent_model?: Json | null
           perimeter_area_sqft?: number | null
           perimeter_confidence?: number | null
+          perimeter_contract_version?: string | null
           perimeter_gate_metrics?: Json | null
           perimeter_gate_passed?: boolean | null
           perimeter_hints?: Json | null
@@ -36096,6 +36139,7 @@ export type Database = {
           perimeter_vertex_count?: number | null
           perimeter_vs_mask_iou?: number | null
           perimeter_wkt?: string | null
+          phase0_control_flow_version?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pitch_source?: string | null
@@ -36123,6 +36167,7 @@ export type Database = {
           roof_corners?: Json | null
           roof_perimeter?: Json | null
           roof_type?: string | null
+          runtime_deployed_at?: string | null
           satellite_overlay_url?: string | null
           scale_confidence?: string | null
           scale_method?: string | null
