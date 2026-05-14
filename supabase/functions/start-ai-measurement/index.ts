@@ -2159,8 +2159,7 @@ async function processJob(input: any) {
           needs_review: true,
           report_blocked: true,
           result_state: normalizeResultState('ai_failed_perimeter'),
-          hard_fail_reason: developerBug,
-          source_context: { gate_reason: developerBug, debug: debugPayload },
+          source_context: { gate_reason: developerBug, hard_fail_reason: developerBug, debug: debugPayload },
         }).eq("id", input.ai_measurement_job_id);
         return;
       }
