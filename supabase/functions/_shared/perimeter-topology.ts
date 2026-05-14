@@ -266,6 +266,14 @@ export function buildPerimeterTopology(input: PerimeterInput): PerimeterTopology
   if (selfIntersections > 0) confidence *= 0.7;
   if (!closed) confidence *= 0.5;
 
+  const eaveCandidateLf = eaveEdges.filter(e => (e as any).is_candidate).reduce((s, e) => s + e.length_ft, 0);
+  const rakeCandidateLf = rakeEdges.filter(e => (e as any).is_candidate).reduce((s, e) => s + e.length_ft, 0);
+  const unknownLf = edges.filter(e => e.type === 'unknown').reduce((s, e) => s + e.length_ft, 0);
+  const totalEdgeLf = edges.reduce((s, e) => s + e.length_ft, 0);
+  const meanEaveRakeConf = edges.length > 0
+    ? edges.reduce((s, e) => s + e.classification_confidence, 0) / edges.length
+    : 0;
+
   const result: PerimeterTopology = {
     perimeter_ring_px: perimeterPx,
     perimeter_ring_geo: perimeterGeo,
@@ -286,6 +294,23 @@ export function buildPerimeterTopology(input: PerimeterInput): PerimeterTopology
     perimeter_confidence: confidence,
     customer_perimeter_ready: autoReady,
   };
+
+  // ── Phase 2A: surface classification debug ──
+  (result as any).eave_rake_classification_debug = (input as any)._classification_debug || null;
+  (result as any).archetype_debug = (input as any)._archetype_debug || null;
+  (result as any).eave_candidate_lf = Number(eaveCandidateLf.toFixed(2));
+  (result as any).rake_candidate_lf = Number(rakeCandidateLf.toFixed(2));
+  (result as any).unknown_perimeter_lf = Number(unknownLf.toFixed(2));
+  (result as any).eave_rake_confidence = Number(meanEaveRakeConf.toFixed(3));
+  (result as any).perimeter_edge_pitch_relation = edges.map((e, i) => ({
+    edge_index: i,
+    type: e.type,
+    confidence: Number(e.classification_confidence.toFixed(3)),
+    length_ft: Number(e.length_ft.toFixed(2)),
+    edge_downslope_angle_deg: e.classification_evidence?.edge_downslope_angle_deg ?? null,
+    reclassified_from: (e as any).reclassified_from ?? null,
+    reclassified_reason: (e as any).reclassified_reason ?? null,
+  }));
 
   console.log(`[PERIMETER_PHASE_0] Built: ${edges.length} edges (${eaveEdges.length} eave, ${rakeEdges.length} rake), ${nodes.length} nodes (${reflexCorners.length} reflex), source=${perimeterSource}, overlap=${overlapScore.toFixed(3)}, closed=${closed}, confidence=${confidence.toFixed(3)}`);
 
@@ -427,6 +452,19 @@ export function evaluatePerimeterGate(
   if (!fonsica.missed_roof_lt_5pct && !areaSanityOk) failures.push(`fonsica_missed_roof_high:${missedRoofAreaPct.toFixed(1)}%`);
   if (!fonsica.confidence_gte_85) failures.push(`fonsica_perimeter_confidence_low:${perimeter.perimeter_confidence.toFixed(3)}`);
 
+  // ── Phase 2A hard sanity gate ──
+  // If we end up with zero eaves on a >100 LF perimeter, classification has
+  // collapsed (all-rake bug). Block as perimeter_classification_invalid so
+  // result_state -> ai_failed_perimeter and we never advance to topology.
+  if (eaveLf === 0 && totalLen > 100) {
+    failures.push(`perimeter_classification_invalid:eave_lf_zero_on_${Math.round(totalLen)}lf_perimeter`);
+  }
+  // Symmetric guard: rake_lf swallowing the entire perimeter is also invalid
+  // (a true gable roof has eaves+rakes both > 0).
+  if (rakeLf > 0 && eaveLf === 0 && totalLen > 50) {
+    failures.push(`perimeter_classification_invalid:all_rake_no_eave`);
+  }
+
   const passed = failures.length === 0;
   const customerReady = passed && perimeter.customer_perimeter_ready;
 
@@ -463,6 +501,14 @@ export function evaluatePerimeterGate(
     perimeter_gate_passed: passed,
     fonsica_gate: fonsica,
   };
+
+  // ── Phase 2A: forward classification debug & candidate breakdown ──
+  (diagnostics as any).eave_rake_classification_debug = (perimeter as any).eave_rake_classification_debug ?? null;
+  (diagnostics as any).archetype_debug = (perimeter as any).archetype_debug ?? null;
+  (diagnostics as any).perimeter_edge_pitch_relation = (perimeter as any).perimeter_edge_pitch_relation ?? null;
+  (diagnostics as any).eave_candidate_lf = (perimeter as any).eave_candidate_lf ?? 0;
+  (diagnostics as any).rake_candidate_lf = (perimeter as any).rake_candidate_lf ?? 0;
+  (diagnostics as any).eave_rake_confidence = (perimeter as any).eave_rake_confidence ?? null;
 
   console.log(`[PERIMETER_GATE] ${passed ? 'PASSED' : 'FAILED'}: ${failures.length > 0 ? failures.join(', ') : 'all gates clear'}. Eave=${eaveLf.toFixed(0)}ft, Rake=${rakeLf.toFixed(0)}ft, Unknown=${unknownLen.toFixed(0)}ft (${(unknownRatio * 100).toFixed(1)}%), missed=${missedRoofAreaPct.toFixed(1)}%, IoU=${perimeterVsMaskIou.toFixed(3)}`);
 
@@ -682,16 +728,32 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
   const elevRange = globalMaxElevation - globalMinElevation;
 
   // Compute dominant downslope vectors from solar segments
-  const solarDownslopes: Array<{ dx: number; dy: number; area: number }> = [];
+  const solarDownslopes: Array<{ dx: number; dy: number; area: number; azimuth: number }> = [];
   for (const seg of input.solar_segments) {
     if (seg.azimuth_degrees !== undefined && seg.pitch_degrees > 0) {
       const azRad = (seg.azimuth_degrees * Math.PI) / 180;
       // Downslope direction in pixel space (azimuth: 0=N, 90=E, etc.)
       const dx = Math.sin(azRad);
       const dy = -Math.cos(azRad); // pixel Y inverted
-      solarDownslopes.push({ dx, dy, area: seg.area_sqft });
+      solarDownslopes.push({ dx, dy, area: seg.area_sqft, azimuth: seg.azimuth_degrees });
     }
   }
+
+  // ── Phase 2A: detect roof archetype (hip-like vs gable-like) ──
+  // Bucket azimuths to 45° bins. ≥4 distinct buckets → hip-like, perimeter
+  // should be ~all eaves with little/no rake.
+  const azimuthBuckets = new Set<number>();
+  for (const ds of solarDownslopes) {
+    azimuthBuckets.add(Math.round(((ds.azimuth % 360) + 360) % 360 / 45));
+  }
+  const isHipLike = azimuthBuckets.size >= 4;
+  const isGableLike = azimuthBuckets.size <= 2 && solarDownslopes.length >= 2;
+  (input as any)._archetype_debug = {
+    azimuth_bucket_count: azimuthBuckets.size,
+    is_hip_like: isHipLike,
+    is_gable_like: isGableLike,
+    solar_segment_count: solarDownslopes.length,
+  };
 
   for (const edge of edges) {
     const evidence = edge.classification_evidence;
@@ -766,16 +828,51 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
 
     // Classify
     const threshold = 0.3;
+    let provisional: 'eave' | 'rake' | 'unknown';
+    let provisionalConf: number;
     if (eaveScore > rakeScore && eaveScore >= threshold) {
-      edge.type = 'eave';
-      edge.classification_confidence = Math.min(1, eaveScore);
+      provisional = 'eave';
+      provisionalConf = Math.min(1, eaveScore);
     } else if (rakeScore > eaveScore && rakeScore >= threshold) {
-      edge.type = 'rake';
-      edge.classification_confidence = Math.min(1, rakeScore);
+      provisional = 'rake';
+      provisionalConf = Math.min(1, rakeScore);
     } else {
-      edge.type = 'unknown';
-      edge.classification_confidence = Math.max(eaveScore, rakeScore);
+      provisional = 'unknown';
+      provisionalConf = Math.max(eaveScore, rakeScore);
     }
+
+    // ── Phase 2A: hip-roof prior ──
+    // True hip roofs have ~0 rakes. If solar shows ≥4 azimuth buckets and we
+    // have no actual gable evidence, demote weak rake calls to eave_candidate
+    // and never let confidence in a rake exceed the per-edge cap.
+    if (isHipLike && provisional === 'rake' && provisionalConf < 0.7) {
+      provisional = 'eave';
+      provisionalConf = Math.max(0.45, eaveScore || 0.45); // candidate confidence
+      (edge as any).reclassified_from = 'rake';
+      (edge as any).reclassified_reason = 'hip_roof_prior';
+    } else if (isHipLike && provisional === 'unknown') {
+      // Hip-like default: free perimeter edges are eaves
+      provisional = 'eave';
+      provisionalConf = Math.max(0.4, eaveScore || 0.4);
+      (edge as any).reclassified_from = 'unknown';
+      (edge as any).reclassified_reason = 'hip_roof_default';
+    }
+
+    edge.type = provisional;
+    edge.classification_confidence = provisionalConf;
+    (edge as any).is_candidate = provisionalConf < 0.6;
+  }
+  // Stash classification debug on input for downstream pickup
+  (input as any)._classification_debug = {
+    is_hip_like: isHipLike,
+    is_gable_like: isGableLike,
+    azimuth_bucket_count: azimuthBuckets.size,
+    edges_total: edges.length,
+    edges_eave: edges.filter(e => e.type === 'eave').length,
+    edges_rake: edges.filter(e => e.type === 'rake').length,
+    edges_unknown: edges.filter(e => e.type === 'unknown').length,
+    edges_low_confidence: edges.filter(e => e.classification_confidence < 0.6).length,
+    edges_reclassified: edges.filter(e => (e as any).reclassified_from).length,
   }
 }
 

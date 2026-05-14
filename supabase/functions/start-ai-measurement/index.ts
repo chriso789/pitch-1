@@ -2067,6 +2067,12 @@ async function processJob(input: any) {
       perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
       eave_lf: perimeterPhase0Snapshot?.eave_length_lf,
       rake_lf: perimeterPhase0Snapshot?.rake_length_lf,
+      eave_candidate_lf: perimeterPhase0Snapshot?.eave_candidate_lf,
+      rake_candidate_lf: perimeterPhase0Snapshot?.rake_candidate_lf,
+      unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf,
+      eave_rake_confidence: perimeterPhase0Snapshot?.eave_rake_confidence,
+      archetype: perimeterPhase0Snapshot?.archetype_debug,
+      perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
     }));
     console.log('[TARGET_MASK_ISOLATION]', JSON.stringify(perimeterInnerTraceDebug));
     console.log('[PERIMETER_PHASE_0_SNAPSHOT]', JSON.stringify({
@@ -6098,6 +6104,14 @@ async function processJob(input: any) {
           ?? autonomousDebug?.centroid_offset_px
           ?? null,
         perimeter_gate_passed: autonomousDebug?.perimeter_gate_passed ?? null,
+        // ── Phase 2A: classification debug ──
+        eave_candidate_lf: autonomousDebug?.perimeter_phase0?.eave_candidate_lf ?? null,
+        rake_candidate_lf: autonomousDebug?.perimeter_phase0?.rake_candidate_lf ?? null,
+        unknown_perimeter_lf: autonomousDebug?.perimeter_phase0?.unknown_perimeter_lf ?? null,
+        eave_rake_confidence: autonomousDebug?.perimeter_phase0?.eave_rake_confidence ?? null,
+        archetype_debug: autonomousDebug?.perimeter_phase0?.archetype_debug ?? null,
+        eave_rake_classification_debug: autonomousDebug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
+        perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
       })
       .select("id")
       .single();
@@ -7567,6 +7581,13 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     missed_roof_area_pct: debug?.perimeter_phase0?.missed_roof_area_pct ?? debug?.perimeter_phase0?.missed_target_roof_pct ?? null,
     centroid_offset_px: debug?.perimeter_phase0?.perimeter_centroid_offset_px ?? null,
     perimeter_gate_passed: debug?.perimeter_gate_passed ?? null,
+    eave_candidate_lf: debug?.perimeter_phase0?.eave_candidate_lf ?? null,
+    rake_candidate_lf: debug?.perimeter_phase0?.rake_candidate_lf ?? null,
+    unknown_perimeter_lf: debug?.perimeter_phase0?.unknown_perimeter_lf ?? null,
+    eave_rake_confidence: debug?.perimeter_phase0?.eave_rake_confidence ?? null,
+    archetype_debug: debug?.perimeter_phase0?.archetype_debug ?? null,
+    eave_rake_classification_debug: debug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
+    perimeter_edge_pitch_relation: debug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
     last_failure_reason: failureReason,
     last_failure_stage: debug?.failure_stage || (failureReason.includes('footprint') ? 'footprint_validation' : failureReason.includes('dsm') ? 'dsm_ingestion' : failureReason.includes('topology') ? 'topology_validation' : 'solver'),
     dsm_contract_debug: {
