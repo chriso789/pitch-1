@@ -217,6 +217,9 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
+  const failureReasonStr = String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
+  const phase0MissingBug = !phase0 && /perimeter_inner_trace_detected/i.test(failureReasonStr);
+
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
   if (m.validation_status === 'needs_manual_measurement') errorList.push('Validation: needs_manual_measurement');
