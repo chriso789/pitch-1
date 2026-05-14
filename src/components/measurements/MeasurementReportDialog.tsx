@@ -895,7 +895,31 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               </Button>
             );
           })()}
+          {canOverride && effectiveMeasurement?.id && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-2"
+              onClick={() => setOverrideEditorOpen(true)}
+              title="Open the patent override editor (master/admin only)"
+            >
+              <ShieldCheck className="h-4 w-4 mr-2" />
+              Edit measurement
+            </Button>
+          )}
         </DialogHeader>
+
+        {effectiveMeasurement?.id && (
+          <MeasurementOverrideEditor
+            measurementId={effectiveMeasurement.id}
+            open={overrideEditorOpen}
+            onOpenChange={setOverrideEditorOpen}
+            onRecalculated={() => {
+              // Refresh the dialog by clearing local cache; parent typically refetches.
+              setFullMeasurement(null);
+            }}
+          />
+        )}
 
         <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
           <div ref={reportContentRef}>
