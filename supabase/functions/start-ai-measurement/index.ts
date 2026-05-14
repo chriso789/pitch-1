@@ -34,6 +34,7 @@ import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPo
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
+import { refineTrueOuterRoofPerimeter, type PerimeterRefinementResult } from "../_shared/perimeter-refinement.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
 import { classifyLayer1, ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
@@ -2738,13 +2739,134 @@ async function processJob(input: any) {
         return;
       }
 
-      const perimeterEdges = footprintGeo.map((p, i) => [p, footprintGeo[(i + 1) % footprintGeo.length]] as [[number, number], [number, number]]);
+      // ══════════ PHASE 3A.5 — TRUE OUTER ROOF PERIMETER REFINEMENT (HARD GATE) ══════════
+      // Refines the Layer-1 perimeter against DSM + target mask, rejecting tree
+      // canopy / patio / shadow bulges. If refinement fails, we STOP here as
+      // ai_failed_perimeter and never call solveAutonomousGraph.
+      let phase3A5Diagnostics: any = null;
+      let phase3A5Result: PerimeterRefinementResult | null = null;
+      let footprintGeoForSolver: [number, number][] = footprintGeo;
+      let phase3A5SelectedSource: string = (perimeterTopologySnapshot?.perimeter_source ?? footprintSource) as string;
+      try {
+        const dsmForRefine: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
+        if (dsmForRefine) {
+          const dsmW = dsmForRefine.width as number;
+          const dsmH = dsmForRefine.height as number;
+          const mppRefine = (dsmForRefine.resolution as number) || actualMpp || 0.1;
+          // Project Layer-1 perimeter (geo) → DSM pixel space.
+          const rawPerimDsmPx: [number, number][] = footprintGeo.map((g) => {
+            const [px, py] = geoToPixel(g as any, dsmForRefine);
+            return [px, py] as [number, number];
+          });
+          // Centroid in DSM px.
+          const cX = rawPerimDsmPx.reduce((s, p) => s + p[0], 0) / Math.max(1, rawPerimDsmPx.length);
+          const cY = rawPerimDsmPx.reduce((s, p) => s + p[1], 0) / Math.max(1, rawPerimDsmPx.length);
+
+          phase3A5Result = refineTrueOuterRoofPerimeter({
+            raw_perimeter_px: rawPerimDsmPx,
+            raw_perimeter_source: phase3A5SelectedSource,
+            dsm_grid: (dsmForRefine.data as Float32Array) || null,
+            target_mask_grid: (roofMask?.data as Uint8Array) || (maskedDSM?.mask as Uint8Array) || null,
+            width: dsmW,
+            height: dsmH,
+            meters_per_pixel: mppRefine,
+            rgba: null,
+            solar_segment_masks_px: null,
+            roof_centroid_px: [cX, cY],
+            benchmark_area_sqft: null,
+          });
+          phase3A5Diagnostics = phase3A5Result.diagnostics;
+        } else {
+          phase3A5Diagnostics = {
+            phase3A_5_perimeter_refinement_version: 'v1',
+            perimeter_refinement_passed: false,
+            perimeter_refinement_reason: 'no_dsm_grid_available_for_refinement',
+            phase3_5_perimeter_refinement_enabled: false,
+          };
+        }
+      } catch (e) {
+        console.error('[PHASE3A5] refineTrueOuterRoofPerimeter threw:', (e as Error).message);
+        phase3A5Diagnostics = {
+          phase3A_5_perimeter_refinement_version: 'v1',
+          perimeter_refinement_passed: false,
+          perimeter_refinement_reason: `refinement_exception: ${(e as Error).message}`,
+          phase3_5_perimeter_refinement_enabled: true,
+        };
+      }
+
+      // HARD GATE: if refinement was attempted and failed, stop before topology.
+      if (phase3A5Result && !phase3A5Result.passed) {
+        const failReason = phase3A5Result.hard_fail_reason || 'perimeter_refinement_failed';
+        console.error(`[PHASE3A5_GATE] FAIL: ${failReason}`,
+          JSON.stringify({ iou: phase3A5Diagnostics?.perimeter_vs_mask_iou,
+                           ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio,
+                           confidence: phase3A5Diagnostics?.perimeter_confidence }));
+        const debugPayload = {
+          topology_source: REQUIRED_TOPOLOGY_SOURCE,
+          footprint_source: footprintSource,
+          footprint_valid: true,
+          footprint_point_count: footprint.length,
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          dsm_loaded: true,
+          mask_loaded: !!roofMask,
+          dsm_coordinate_match: dsmCoordinateMatchDebug,
+          // Phase 3A.5 verbatim diagnostics
+          phase3_5_perimeter_refinement_enabled: true,
+          phase3A_5: phase3A5Diagnostics,
+          refinement_passed: false,
+          refinement_iou: phase3A5Diagnostics?.perimeter_vs_mask_iou ?? null,
+          perimeter_to_target_mask_ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio ?? null,
+          tree_shadow_exclusion_regions: phase3A5Diagnostics?.tree_shadow_exclusion_regions ?? [],
+          patio_screen_exclusion_regions: phase3A5Diagnostics?.patio_screen_exclusion_regions ?? [],
+          refinement_diagnostics: phase3A5Diagnostics,
+          // Routing — these all map to ai_failed_perimeter via the normalizer.
+          hard_fail_reason: failReason,
+          block_customer_report_reason: 'perimeter_shape_not_accurate',
+          customer_report_ready: false,
+          failure_stage: 'perimeter',
+          result_state: 'ai_failed_perimeter',
+          diagram_render_intent: 'rejected_only',
+          perimeter_phase0: perimeterPhase0Snapshot,
+          perimeter_topology: perimeterTopologySnapshot,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Phase 3A.5 perimeter refinement failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Phase 3A.5 perimeter refinement failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
+      // GATE PASSED (or not attempted): if we have a refined perimeter, project it
+      // back to geo and use that as the solver footprint.
+      if (phase3A5Result && phase3A5Result.passed && phase3A5Result.refined_perimeter_px.length >= 4) {
+        const dsmRef: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
+        if (dsmRef) {
+          const b = dsmRef.bounds;
+          const refinedGeo: [number, number][] = phase3A5Result.refined_perimeter_px.map(([px, py]) => {
+            const lng = b.minLng + (px / dsmRef.width) * (b.maxLng - b.minLng);
+            const lat = b.maxLat - (py / dsmRef.height) * (b.maxLat - b.minLat);
+            return [lng, lat] as [number, number];
+          });
+          if (refinedGeo.length >= 4) {
+            footprintGeoForSolver = refinedGeo;
+            phase3A5SelectedSource = 'refined_true_outer_roof_perimeter';
+            console.log(`[PHASE3A5_GATE] PASS: replacing solver perimeter with refined (${refinedGeo.length} verts, iou=${phase3A5Diagnostics?.perimeter_vs_mask_iou}, ratio=${phase3A5Diagnostics?.perimeter_to_target_mask_ratio})`);
+          }
+        }
+      }
+
+      const perimeterEdges = footprintGeoForSolver.map((p, i) => [p, footprintGeoForSolver[(i + 1) % footprintGeoForSolver.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
         lng: coords.lng,
         coordinateSpaceSolver: "dsm_px", // Legacy field — solver now self-reports truthful space in output
-        footprintCoords: footprintGeo,
-        footprintSource: footprintSource,
+        footprintCoords: footprintGeoForSolver,
+        footprintSource: phase3A5SelectedSource,
         solarSegments,
         dsmGrid,
         maskedDSM,
@@ -2902,6 +3024,15 @@ async function processJob(input: any) {
       // ═══════════════════════════════════════════════════════════════
       topologyFidelity = analyzeTopologyFidelity(graph, footprintAreaSqftVal);
       autonomousDebug.topology_fidelity = topologyFidelity;
+      // Phase 3A.5 visibility — surface refinement diagnostics on the solver debug bag.
+      if (phase3A5Diagnostics) {
+        autonomousDebug.phase3A_5 = phase3A5Diagnostics;
+        autonomousDebug.phase3_5_perimeter_refinement_enabled = true;
+        autonomousDebug.refinement_passed = phase3A5Result?.passed ?? false;
+        autonomousDebug.refinement_iou = phase3A5Diagnostics.perimeter_vs_mask_iou ?? null;
+        autonomousDebug.perimeter_to_target_mask_ratio = phase3A5Diagnostics.perimeter_to_target_mask_ratio ?? null;
+        autonomousDebug.selected_perimeter_source = phase3A5SelectedSource;
+      }
       // v19: Constraint solver diagnostics
       if (graph.constraint_solver) {
         autonomousDebug.constraint_solver = {

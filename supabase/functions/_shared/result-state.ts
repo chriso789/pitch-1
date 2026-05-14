@@ -63,7 +63,12 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('footprint_invalid') ||
     s.includes('classification_invalid') ||
     s.includes('eave_rake') ||
-    s.includes('all_rake_no_eave')
+    s.includes('all_rake_no_eave') ||
+    // Phase 3A.5 explicit tokens
+    s.includes('perimeter_refinement_failed') ||
+    s.includes('perimeter_shape_not_accurate') ||
+    s.includes('iou_below_gate') ||
+    s.includes('ratio_above_gate')
   ) return 'ai_failed_perimeter';
 
   if (
@@ -78,7 +83,12 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('backbone') ||
     s.includes('connectivity_collapse') ||
     s.includes('seed_collapse') ||
-    s.includes('patent')
+    s.includes('patent') ||
+    // Phase 3D / 3E explicit tokens
+    s.includes('backbone_not_applied') ||
+    s.includes('seed_chain_unlocked') ||
+    s.includes('repair_required_but_unavailable') ||
+    s.includes('topology_undersegmented_after_backbone_repair')
   ) return 'ai_failed_topology';
 
   if (s.includes('pitch') || s.includes('collapsed_plane')) return 'ai_failed_pitch';
