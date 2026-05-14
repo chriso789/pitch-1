@@ -478,6 +478,8 @@ function getPhase3DbColumns(): Record<string, unknown> {
     phase3E_constraint_repair_version: PHASE3_VERSION_BLOCK.phase3E_constraint_repair_version,
     phase3F_result_state_version: PHASE3_VERSION_BLOCK.phase3F_result_state_version,
     phase3G_diagram_render_intent_version: PHASE3_VERSION_BLOCK.phase3G_diagram_render_intent_version,
+    // Canonical route provenance (stable top-level columns).
+    ...getCanonicalRouteDbColumns(),
   };
 }
 
