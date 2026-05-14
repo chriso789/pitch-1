@@ -439,6 +439,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     }
   };
   // into the Documents tab. We capture, save, then unmount.
+  const regeneratedRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
     if (!pendingPdfCO || !activeTenantId) return;
     const t = setTimeout(async () => {
