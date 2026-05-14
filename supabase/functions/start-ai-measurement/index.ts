@@ -6503,8 +6503,10 @@ async function processJob(input: any) {
       await supabase.from('roof_measurements').update({
         block_customer_report_reason: mergedBlockReason,
         override_validation_status: patentBlockReason ? 'pending' : null,
-        report_blocked: !_customerReady,
-        needs_review: !_customerReady,
+        report_blocked: !_customerReadyFinal,
+        needs_review: !_customerReadyFinal,
+        customer_report_ready: _customerReadyFinal,
+        result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
       }).eq('id', measurementId);
     }
 
@@ -6512,17 +6514,20 @@ async function processJob(input: any) {
     await supabase.from("ai_measurement_jobs").update({
       source_context: {
         geometry_source: promotedGeometrySource,
-        customer_report_ready: _customerReady,
+        customer_report_ready: _customerReadyFinal,
         promotion_gate_passed: promotionGatePassed,
         promotion_gate_failed_reasons: promotionGateFailedReasons,
         perimeter_gate_passed: _perimeterPassed,
         patent_gate_block_reason: patentBlockReason,
         patent_gate: patentLog,
         result_state: _resultState,
+        diagram_render_intent: _diagramRenderIntent,
+        phase3: PHASE3_VERSION_BLOCK,
+        phase3A_failure_reason: _phase3A.eave_rake_failure_reason,
       },
-      report_blocked: !_customerReady,
-      needs_review: !_customerReady,
-      result_state: _resultState,
+      report_blocked: !_customerReadyFinal,
+      needs_review: !_customerReadyFinal,
+      result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
     }).eq("id", input.ai_measurement_job_id);
 
     // Generate the customer-visible SVG report pages from the measured geometry.
