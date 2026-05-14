@@ -505,10 +505,12 @@ export function evaluatePerimeterGate(
     fonsica_gate: fonsica,
   };
 
-  // ── Phase 2A: forward classification debug & candidate breakdown ──
+  // ── Phase 2A/3A: forward classification debug & candidate breakdown ──
   (diagnostics as any).eave_rake_classification_debug = (perimeter as any).eave_rake_classification_debug ?? null;
   (diagnostics as any).archetype_debug = (perimeter as any).archetype_debug ?? null;
   (diagnostics as any).perimeter_edge_pitch_relation = (perimeter as any).perimeter_edge_pitch_relation ?? null;
+  (diagnostics as any).perimeter_edge_classification_table =
+    (perimeter as any).perimeter_edge_classification_table ?? [];
   (diagnostics as any).eave_candidate_lf = (perimeter as any).eave_candidate_lf ?? 0;
   (diagnostics as any).rake_candidate_lf = (perimeter as any).rake_candidate_lf ?? 0;
   (diagnostics as any).eave_rake_confidence = (perimeter as any).eave_rake_confidence ?? null;
