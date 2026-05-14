@@ -133,14 +133,19 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       items[editingLine.idx] = updated;
       const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + Number(i.line_total ?? (Number(i.quantity ?? i.qty ?? 1) * Number(i.unit_price ?? i.price ?? 0))), 0);
       const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + Number(i.line_total ?? (Number(i.quantity ?? i.qty ?? 1) * Number(i.unit_price ?? i.price ?? 0))), 0);
-      const newCost = newMaterial + newLabor;
+      const overheadPct = Number(container.overhead_pct ?? 10);
+      const profitPct = Number(container.profit_pct ?? 25);
+      const cost = newMaterial + newLabor;
+      const overheadAmount = cost * (overheadPct / 100);
+      const profitAmount = (cost + overheadAmount) * (profitPct / 100);
+      const sellingPrice = cost + overheadAmount + profitAmount;
       const { error } = await (supabase as any)
         .from('change_orders')
         .update({
-          line_items: { ...container, items },
+          line_items: { ...container, items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal: cost },
           material_total: newMaterial,
           labor_total: newLabor,
-          cost_impact: newCost,
+          cost_impact: sellingPrice,
         })
         .eq('id', co.id);
       if (error) throw error;
@@ -168,13 +173,19 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     items.splice(idx, 1);
     const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + lineAmount(i), 0);
     const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + lineAmount(i), 0);
+    const overheadPct = Number(container.overhead_pct ?? 10);
+    const profitPct = Number(container.profit_pct ?? 25);
+    const cost = newMaterial + newLabor;
+    const overheadAmount = cost * (overheadPct / 100);
+    const profitAmount = (cost + overheadAmount) * (profitPct / 100);
+    const sellingPrice = cost + overheadAmount + profitAmount;
     const { error } = await (supabase as any)
       .from('change_orders')
       .update({
-        line_items: { ...container, items },
+        line_items: { ...container, items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal: cost },
         material_total: newMaterial,
         labor_total: newLabor,
-        cost_impact: newMaterial + newLabor,
+        cost_impact: sellingPrice,
       })
       .eq('id', co.id);
     if (error) {
@@ -432,22 +443,46 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     const inv = (coInvoices || []).filter((i) => i.change_order_id === coId);
     let material = inv.filter((i) => i.invoice_type === 'material').reduce((s, i) => s + Number(i.invoice_amount), 0);
     let labor = inv.filter((i) => i.invoice_type === 'labor').reduce((s, i) => s + Number(i.invoice_amount), 0);
-    let overhead = inv.filter((i) => i.invoice_type === 'overhead').reduce((s, i) => s + Number(i.invoice_amount), 0);
+    let overheadInvoiced = inv.filter((i) => i.invoice_type === 'overhead').reduce((s, i) => s + Number(i.invoice_amount), 0);
 
     // Include built-in CO line items captured when the CO was created
     const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
-    const items = ((co?.line_items as any)?.items || []) as any[];
+    const container: any = (co?.line_items as any) || {};
+    const items = (container.items || []) as any[];
     for (const it of items) {
       const qty = Number(it.quantity ?? it.qty ?? 1);
       const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
       const total = Number(it.line_total ?? it.total ?? qty * price) || 0;
       const cat = String(it.category ?? it.type ?? it.kind ?? 'material').toLowerCase();
       if (cat.startsWith('lab')) labor += total;
-      else if (cat.startsWith('over')) overhead += total;
+      else if (cat.startsWith('over')) overheadInvoiced += total;
       else material += total;
     }
 
-    return { material, labor, overhead, total: material + labor + overhead };
+    // Build sellable price (Budget) the same way estimates do:
+    //   cost = material + labor
+    //   overhead = cost * overhead_pct  (defaults to 10%)
+    //   profit  = (cost + overhead) * profit_pct  (defaults to 25%)
+    //   selling price = cost + overhead + profit
+    const overheadPct = Number(container.overhead_pct ?? 10);
+    const profitPct = Number(container.profit_pct ?? 25);
+    const cost = material + labor;
+    const overheadCalc = cost * (overheadPct / 100);
+    const overhead = Math.max(overheadInvoiced, overheadCalc);
+    const profit = (cost + overhead) * (profitPct / 100);
+    const sellingPrice = cost + overhead + profit;
+
+    // Honor an explicitly-set cost_impact if it's higher than computed (e.g. fixed quote)
+    const budget = Math.max(Number(co?.cost_impact || 0), sellingPrice);
+
+    return {
+      material,
+      labor,
+      overhead,
+      profit,
+      total: cost + overheadInvoiced, // actual spent (raw costs)
+      budget,
+    };
   };
 
   if (!effectiveProjectId) {
@@ -493,7 +528,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         <Accordion type="single" collapsible className="space-y-2">
           {(changeOrders || []).map((co) => {
             const t = totalsFor(co.id);
-            const budget = Number(co.cost_impact || 0);
+            const budget = t.budget;
             const variance = budget - t.total;
             return (
               <AccordionItem
