@@ -6075,6 +6075,31 @@ async function processJob(input: any) {
       aiDetectionData.topology_fidelity = topologyFidelity;
     }
 
+    const preInsertPhase3A = buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null);
+    const preInsertResultState: ResultState = preInsertPhase3A.perimeter_classification_invalid
+      ? 'ai_failed_perimeter'
+      : promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review && !topologyMismatch
+        ? 'customer_report_ready'
+        : autonomousDebug?.perimeter_gate_passed === true
+          ? (topologyMismatch ? 'ai_failed_topology' : 'perimeter_only')
+          : normalizeResultStateForWrite(blockCustomerReportReason ?? geometryReportJson.block_customer_report_reason ?? 'ai_failed_unknown', geometryReportJson as any);
+    const preInsertDiagramIntent = String(preInsertResultState).startsWith('ai_failed_')
+      ? 'rejected_only'
+      : deriveDiagramRenderIntent(preInsertResultState, autonomousDebug?.perimeter_gate_passed === true && !preInsertPhase3A.perimeter_classification_invalid);
+    Object.assign(geometryReportJson, {
+      ...PHASE3_VERSION_BLOCK,
+      phase3A: preInsertPhase3A,
+      phase3B: buildPhase3BBlock(edgeRows),
+      result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+      diagram_render_intent: preInsertDiagramIntent,
+      customer_report_ready: preInsertResultState === 'customer_report_ready',
+      ...(preInsertPhase3A.perimeter_classification_invalid ? {
+        hard_fail_reason: 'perimeter_classification_invalid',
+        block_customer_report_reason: 'perimeter_classification_invalid',
+        failure_stage: 'perimeter',
+      } : {}),
+    });
+
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
       .insert({
