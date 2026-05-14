@@ -14,6 +14,7 @@ import {
 } from "../_shared/roof-lines.ts";
 import { assertCustomerReportReady } from "../_shared/measurement-gates.ts";
 import { ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
+import { normalizeResultStateForWrite } from "../_shared/result-state.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -285,11 +286,15 @@ const handler = async (req: Request): Promise<Response> => {
   });
 
   const customerReady = ready.ready;
-  const newResultState = customerReady
-    ? "customer_report_ready"
-    : layer1Line
-    ? "perimeter_only"
-    : "ai_failed_perimeter";
+  const overrideForensics: Record<string, any> = {};
+  const newResultState = normalizeResultStateForWrite(
+    customerReady
+      ? "customer_report_ready"
+      : layer1Line
+      ? "perimeter_only"
+      : "ai_failed_perimeter",
+    overrideForensics,
+  );
 
   // Write totals back to roof_measurements + verification stamps
   const update: Record<string, unknown> = {

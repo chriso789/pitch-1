@@ -39,6 +39,12 @@ import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perime
 import { classifyLayer1, ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
 import { buildRoofLine, aggregateLineTotalsByAttribute, totalsHaveTypedBacking, type RoofLine, type RoofLineAttribute } from "../_shared/roof-lines.ts";
 import { assertCustomerReportReady } from "../_shared/measurement-gates.ts";
+import {
+  ALLOWED_RESULT_STATES as _SHARED_ALLOWED_RESULT_STATES,
+  normalizeResultState as _sharedNormalizeResultState,
+  normalizeResultStateForWrite,
+  type ResultState as _SharedResultState,
+} from "../_shared/result-state.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -123,41 +129,15 @@ function vlog(marker: string, payload: Record<string, unknown> = {}) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// result_state normalizer.
+// result_state normalizer (re-exported from shared module).
 // DB constraint (roof_measurements / ai_measurement_jobs / measurement_jobs)
-// only accepts the 10 stable values below. Any detailed reason MUST live in
-// hard_fail_reason / block_customer_report_reason / geometry_report_json,
-// never in result_state itself.
+// only accepts the 10 stable values defined in `../_shared/result-state.ts`.
+// Detailed reasons live in hard_fail_reason / block_customer_report_reason /
+// geometry_report_json — NEVER in result_state.
 // ──────────────────────────────────────────────────────────────────────
-export const ALLOWED_RESULT_STATES = [
-  'customer_report_ready',
-  'perimeter_only',
-  'diagnostic_only',
-  'ai_failed_target_unconfirmed',
-  'ai_failed_source_acquisition',
-  'ai_failed_perimeter',
-  'ai_failed_topology',
-  'ai_failed_pitch',
-  'ai_failed_schema',
-  'ai_failed_unknown',
-] as const;
-export type ResultState = (typeof ALLOWED_RESULT_STATES)[number];
-
-export function normalizeResultState(raw: unknown): ResultState {
-  if (raw == null) return 'ai_failed_unknown';
-  const s = String(raw).toLowerCase();
-  if ((ALLOWED_RESULT_STATES as readonly string[]).includes(s)) return s as ResultState;
-  if (s.includes('target') && s.includes('unconfirm')) return 'ai_failed_target_unconfirmed';
-  if (s.includes('source') || s.includes('acquisition')) return 'ai_failed_source_acquisition';
-  if (s.includes('perimeter') || s.includes('target_mask') || s.includes('inner_trace')) return 'ai_failed_perimeter';
-  if (s.includes('topology') || s.includes('patent') || s.includes('layer1') || s.includes('undersegment')) return 'ai_failed_topology';
-  if (s.includes('pitch')) return 'ai_failed_pitch';
-  if (s.includes('schema') || s.includes('constraint')) return 'ai_failed_schema';
-  if (s.includes('ready')) return 'customer_report_ready';
-  if (s.includes('perimeter_only')) return 'perimeter_only';
-  if (s.includes('diagnostic')) return 'diagnostic_only';
-  return 'ai_failed_unknown';
-}
+export const ALLOWED_RESULT_STATES = _SHARED_ALLOWED_RESULT_STATES;
+export type ResultState = _SharedResultState;
+export const normalizeResultState = _sharedNormalizeResultState;
 // ──────────────────────────────────────────────────────────────────────
 
 
@@ -2206,7 +2186,7 @@ async function processJob(input: any) {
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
-        result_state: 'ai_failed_perimeter',
+        result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
         source_context: { gate_reason: failReason, debug: debugPayload },
       }).eq("id", input.ai_measurement_job_id);
       console.log('[PHASE0_TRACE] phase0_persist:done', JSON.stringify({
