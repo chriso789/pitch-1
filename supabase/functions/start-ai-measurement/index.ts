@@ -34,6 +34,7 @@ import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPo
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
+import { refineTrueOuterRoofPerimeter, type PerimeterRefinementResult } from "../_shared/perimeter-refinement.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
 import { classifyLayer1, ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
