@@ -1643,6 +1643,8 @@ export type Database = {
           company_id: string | null
           completed_at: string | null
           confidence_score: number | null
+          confirmed_roof_center_lat: number | null
+          confirmed_roof_center_lng: number | null
           created_at: string
           engine_version: string | null
           entrypoint: string
@@ -1657,8 +1659,11 @@ export type Database = {
           logical_image_height: number | null
           logical_image_width: number | null
           longitude: number | null
+          marker_offset_ft: number | null
           measurement_quality_score: number | null
           needs_review: boolean
+          original_geocode_lat: number | null
+          original_geocode_lng: number | null
           project_id: string | null
           property_address: string
           raster_scale: number | null
@@ -1666,6 +1671,9 @@ export type Database = {
           report_pdf_path: string | null
           report_pdf_url: string | null
           result_state: string | null
+          roof_target_admin_override: boolean
+          roof_target_confirmed_at: string | null
+          roof_target_confirmed_by: string | null
           source_button: string | null
           source_context: Json | null
           source_priority: Json | null
@@ -1676,6 +1684,7 @@ export type Database = {
           status_message: string | null
           tenant_id: string | null
           updated_at: string
+          user_confirmed_roof_target: boolean
           user_id: string | null
           waste_factor_percent: number | null
         }
@@ -1685,6 +1694,8 @@ export type Database = {
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
+          confirmed_roof_center_lat?: number | null
+          confirmed_roof_center_lng?: number | null
           created_at?: string
           engine_version?: string | null
           entrypoint?: string
@@ -1699,8 +1710,11 @@ export type Database = {
           logical_image_height?: number | null
           logical_image_width?: number | null
           longitude?: number | null
+          marker_offset_ft?: number | null
           measurement_quality_score?: number | null
           needs_review?: boolean
+          original_geocode_lat?: number | null
+          original_geocode_lng?: number | null
           project_id?: string | null
           property_address: string
           raster_scale?: number | null
@@ -1708,6 +1722,9 @@ export type Database = {
           report_pdf_path?: string | null
           report_pdf_url?: string | null
           result_state?: string | null
+          roof_target_admin_override?: boolean
+          roof_target_confirmed_at?: string | null
+          roof_target_confirmed_by?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -1718,6 +1735,7 @@ export type Database = {
           status_message?: string | null
           tenant_id?: string | null
           updated_at?: string
+          user_confirmed_roof_target?: boolean
           user_id?: string | null
           waste_factor_percent?: number | null
         }
@@ -1727,6 +1745,8 @@ export type Database = {
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
+          confirmed_roof_center_lat?: number | null
+          confirmed_roof_center_lng?: number | null
           created_at?: string
           engine_version?: string | null
           entrypoint?: string
@@ -1741,8 +1761,11 @@ export type Database = {
           logical_image_height?: number | null
           logical_image_width?: number | null
           longitude?: number | null
+          marker_offset_ft?: number | null
           measurement_quality_score?: number | null
           needs_review?: boolean
+          original_geocode_lat?: number | null
+          original_geocode_lng?: number | null
           project_id?: string | null
           property_address?: string
           raster_scale?: number | null
@@ -1750,6 +1773,9 @@ export type Database = {
           report_pdf_path?: string | null
           report_pdf_url?: string | null
           result_state?: string | null
+          roof_target_admin_override?: boolean
+          roof_target_confirmed_at?: string | null
+          roof_target_confirmed_by?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -1760,6 +1786,7 @@ export type Database = {
           status_message?: string | null
           tenant_id?: string | null
           updated_at?: string
+          user_confirmed_roof_target?: boolean
           user_id?: string | null
           waste_factor_percent?: number | null
         }
@@ -22192,6 +22219,63 @@ export type Database = {
         }
         Relationships: []
       }
+      measurement_overrides: {
+        Row: {
+          after: Json | null
+          before: Json | null
+          created_at: string
+          created_by: string | null
+          id: string
+          measurement_id: string
+          override_kind: string
+          override_source: string
+          target_line_id: string | null
+          target_plane_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          measurement_id: string
+          override_kind: string
+          override_source?: string
+          target_line_id?: string | null
+          target_plane_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          measurement_id?: string
+          override_kind?: string
+          override_source?: string
+          target_line_id?: string | null
+          target_plane_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_overrides_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_overrides_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_qa_queue: {
         Row: {
           assigned_at: string | null
@@ -34932,6 +35016,69 @@ export type Database = {
           },
         ]
       }
+      roof_lines: {
+        Row: {
+          adjacent_plane_ids: string[] | null
+          can_be_customer_reported: boolean
+          confidence: number | null
+          created_at: string
+          geometry_geo: Json | null
+          geometry_px: Json
+          id: string
+          layer_id: string
+          length_lf: number | null
+          measurement_id: string
+          non_dimensional_attribute: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          adjacent_plane_ids?: string[] | null
+          can_be_customer_reported?: boolean
+          confidence?: number | null
+          created_at?: string
+          geometry_geo?: Json | null
+          geometry_px: Json
+          id?: string
+          layer_id?: string
+          length_lf?: number | null
+          measurement_id: string
+          non_dimensional_attribute: string
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          adjacent_plane_ids?: string[] | null
+          can_be_customer_reported?: boolean
+          confidence?: number | null
+          created_at?: string
+          geometry_geo?: Json | null
+          geometry_px?: Json
+          id?: string
+          layer_id?: string
+          length_lf?: number | null
+          measurement_id?: string
+          non_dimensional_attribute?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_lines_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_lines_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_material_detections: {
         Row: {
           color_detected: string | null
@@ -35480,6 +35627,7 @@ export type Database = {
           analysis_image_size: Json | null
           analysis_zoom: number | null
           api_variance_percent: number | null
+          block_customer_report_reason: string | null
           bounding_box: Json | null
           centroid_offset_px: number | null
           complexity_rating: string | null
@@ -35564,6 +35712,7 @@ export type Database = {
           notes: string | null
           organization_id: string | null
           overlay_schema: Json | null
+          override_validation_status: string | null
           passes_strict_3pct: boolean | null
           patent_model: Json | null
           perimeter_area_sqft: number | null
@@ -35579,6 +35728,7 @@ export type Database = {
           perimeter_wkt: string | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
+          pitch_source: string | null
           pixels_per_foot: number | null
           plane_breakdown: Json | null
           predominant_pitch: string | null
@@ -35593,6 +35743,7 @@ export type Database = {
           quality_score: number | null
           rake_edges: Json | null
           rake_lf: number | null
+          recalculated_from_overrides: boolean
           report_generated_at: string | null
           report_pdf_path: string | null
           report_pdf_url: string | null
@@ -35660,6 +35811,7 @@ export type Database = {
           analysis_image_size?: Json | null
           analysis_zoom?: number | null
           api_variance_percent?: number | null
+          block_customer_report_reason?: string | null
           bounding_box?: Json | null
           centroid_offset_px?: number | null
           complexity_rating?: string | null
@@ -35744,6 +35896,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
+          override_validation_status?: string | null
           passes_strict_3pct?: boolean | null
           patent_model?: Json | null
           perimeter_area_sqft?: number | null
@@ -35759,6 +35912,7 @@ export type Database = {
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
+          pitch_source?: string | null
           pixels_per_foot?: number | null
           plane_breakdown?: Json | null
           predominant_pitch?: string | null
@@ -35773,6 +35927,7 @@ export type Database = {
           quality_score?: number | null
           rake_edges?: Json | null
           rake_lf?: number | null
+          recalculated_from_overrides?: boolean
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
@@ -35840,6 +35995,7 @@ export type Database = {
           analysis_image_size?: Json | null
           analysis_zoom?: number | null
           api_variance_percent?: number | null
+          block_customer_report_reason?: string | null
           bounding_box?: Json | null
           centroid_offset_px?: number | null
           complexity_rating?: string | null
@@ -35924,6 +36080,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
+          override_validation_status?: string | null
           passes_strict_3pct?: boolean | null
           patent_model?: Json | null
           perimeter_area_sqft?: number | null
@@ -35939,6 +36096,7 @@ export type Database = {
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
+          pitch_source?: string | null
           pixels_per_foot?: number | null
           plane_breakdown?: Json | null
           predominant_pitch?: string | null
@@ -35953,6 +36111,7 @@ export type Database = {
           quality_score?: number | null
           rake_edges?: Json | null
           rake_lf?: number | null
+          recalculated_from_overrides?: boolean
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
