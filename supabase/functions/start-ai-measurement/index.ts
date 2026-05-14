@@ -1776,7 +1776,12 @@ async function processJob(input: any) {
           })),
           boundary_rakes: [],
         });
-        const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft);
+        const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft, {
+          target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
+          benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
+          solar_expected_area_sqft: isolation?.solar_segment_area_sqft ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+        });
         let failureReasons = [...(gate.failure_reasons || []), ...forcedFailureReasons];
 
         // Benchmark/Solar sanity exception: a selected perimeter within 10% of
