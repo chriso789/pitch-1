@@ -6358,7 +6358,7 @@ async function processJob(input: any) {
       && !reviewRequired
       && !vendorTruthComparison?.needs_internal_review
       && !patentBlockReason;
-    let _resultState: string;
+    let _resultState: ResultState;
     if (_customerReady) {
       _resultState = 'customer_report_ready';
     } else if (_perimeterPassed) {
@@ -6367,7 +6367,7 @@ async function processJob(input: any) {
       const _stage = patentBlockReason ? 'patent'
         : topologyMismatch ? 'topology'
         : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
-      _resultState = `ai_failed_${_stage}`;
+      _resultState = normalizeResultState(`ai_failed_${_stage}`);
     }
 
     // Persist patent gate outcome onto the measurement row.
