@@ -453,7 +453,9 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
           tenantId: activeTenantId,
           existingDocumentId: pendingPdfCO.document_id,
         });
-        toast({ title: 'Document added', description: 'Change order PDF saved to Documents tab.' });
+        if (!regeneratedRef.current.has(pendingPdfCO.id)) {
+          toast({ title: 'Document added', description: 'Change order PDF saved to Documents tab.' });
+        }
       } catch (e) {
         console.warn('CO PDF capture failed', e);
       } finally {
