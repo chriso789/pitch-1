@@ -452,6 +452,19 @@ export function evaluatePerimeterGate(
   if (!fonsica.missed_roof_lt_5pct && !areaSanityOk) failures.push(`fonsica_missed_roof_high:${missedRoofAreaPct.toFixed(1)}%`);
   if (!fonsica.confidence_gte_85) failures.push(`fonsica_perimeter_confidence_low:${perimeter.perimeter_confidence.toFixed(3)}`);
 
+  // ── Phase 2A hard sanity gate ──
+  // If we end up with zero eaves on a >100 LF perimeter, classification has
+  // collapsed (all-rake bug). Block as perimeter_classification_invalid so
+  // result_state -> ai_failed_perimeter and we never advance to topology.
+  if (eaveLf === 0 && totalLen > 100) {
+    failures.push(`perimeter_classification_invalid:eave_lf_zero_on_${Math.round(totalLen)}lf_perimeter`);
+  }
+  // Symmetric guard: rake_lf swallowing the entire perimeter is also invalid
+  // (a true gable roof has eaves+rakes both > 0).
+  if (rakeLf > 0 && eaveLf === 0 && totalLen > 50) {
+    failures.push(`perimeter_classification_invalid:all_rake_no_eave`);
+  }
+
   const passed = failures.length === 0;
   const customerReady = passed && perimeter.customer_perimeter_ready;
 
