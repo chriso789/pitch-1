@@ -65,6 +65,7 @@ const Terms = React.lazy(() => import("@/pages/legal/Terms"));
 const Security = React.lazy(() => import("@/pages/legal/Security"));
 const HomeownerProtectedRoute = React.lazy(() => import("@/components/auth/HomeownerProtectedRoute").then(m => ({ default: m.HomeownerProtectedRoute })));
 const Unsubscribe = React.lazy(() => import("@/pages/Unsubscribe"));
+const PublicChangeOrderView = React.lazy(() => import("@/pages/PublicChangeOrderView"));
 
 // Route-level loading fallback
 const PageLoader = () => (
