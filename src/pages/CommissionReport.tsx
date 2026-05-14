@@ -584,9 +584,8 @@ export default function CommissionReport() {
                         <div className="flex items-center justify-end">Contract <SortIcon column="contractValue" /></div>
                       </TableHead>
                       <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('grossProfit')}>
-                        <div className="flex items-center justify-end">Gross Profit <SortIcon column="grossProfit" /></div>
+                        <div className="flex items-center justify-end">GP % <SortIcon column="grossProfit" /></div>
                       </TableHead>
-                      <TableHead>Plan</TableHead>
                       <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('commissionAmount')}>
                         <div className="flex items-center justify-end">Commission <SortIcon column="commissionAmount" /></div>
                       </TableHead>
