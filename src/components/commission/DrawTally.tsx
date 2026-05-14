@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '@/lib/commission-calculator';
@@ -22,27 +25,84 @@ interface DrawTallyProps {
   totalEarnedCommissions: number;
   selectedRepId?: string;
   isManager: boolean;
+  /** When provided, draws are scoped to this project/lead and the dialog locks the job. */
+  pipelineEntryId?: string;
 }
 
-export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isManager }: DrawTallyProps) {
+export function DrawTally({
+  tenantId,
+  totalEarnedCommissions,
+  selectedRepId,
+  isManager,
+  pipelineEntryId,
+}: DrawTallyProps) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [drawDate, setDrawDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
+  const [paidToUserId, setPaidToUserId] = useState<string>(selectedRepId && selectedRepId !== 'all' ? selectedRepId : '');
+  const [appliedJobId, setAppliedJobId] = useState<string>(pipelineEntryId || '');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Reps that can receive draws (tenant-scoped).
+  const { data: reps = [] } = useQuery({
+    queryKey: ['draw-reps', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .eq('tenant_id', tenantId)
+        .order('first_name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && isManager,
+  });
+
+  // Open jobs the selected rep can have draws applied to.
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['draw-jobs', tenantId, paidToUserId],
+    queryFn: async () => {
+      if (!paidToUserId) return [];
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id, lead_name, status, contact_number, estimated_value,
+          contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street)
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('is_deleted', false)
+        .eq('assigned_to', paidToUserId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && !!paidToUserId && !pipelineEntryId,
+  });
+
   const { data: draws = [] } = useQuery({
-    queryKey: ['commission-draws', tenantId, selectedRepId],
+    queryKey: ['commission-draws', tenantId, selectedRepId, pipelineEntryId],
     queryFn: async () => {
       let query = supabase
         .from('commission_draws')
-        .select('*, profiles!commission_draws_user_id_fkey(first_name, last_name)')
+        .select(`
+          *,
+          profiles!commission_draws_user_id_fkey(first_name, last_name),
+          pipeline_entries!commission_draws_pipeline_entry_id_fkey(
+            id, lead_name, contact_number,
+            contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street)
+          )
+        `)
         .eq('tenant_id', tenantId)
         .order('draw_date', { ascending: false });
 
       if (selectedRepId && selectedRepId !== 'all') {
         query = query.eq('user_id', selectedRepId);
+      }
+      if (pipelineEntryId) {
+        query = query.eq('pipeline_entry_id', pipelineEntryId);
       }
 
       const { data, error } = await query;
@@ -57,7 +117,11 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const targetUserId = selectedRepId && selectedRepId !== 'all' ? selectedRepId : user.id;
+      const targetUserId =
+        paidToUserId ||
+        (selectedRepId && selectedRepId !== 'all' ? selectedRepId : user.id);
+
+      if (!targetUserId) throw new Error('Select a rep to pay');
 
       const { error } = await supabase.from('commission_draws').insert({
         tenant_id: tenantId,
@@ -65,15 +129,19 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
         amount: parseFloat(amount),
         draw_date: drawDate,
         notes: notes || null,
+        pipeline_entry_id: appliedJobId || null,
         created_by: user.id,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       setOpen(false);
       setAmount('');
       setNotes('');
+      if (!pipelineEntryId) setAppliedJobId('');
       toast({ title: 'Draw recorded', description: `$${amount} draw added successfully.` });
     },
     onError: (err: any) => {
@@ -88,12 +156,29 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       toast({ title: 'Draw removed' });
     },
   });
 
   const totalDraws = draws.reduce((sum, d) => sum + Number(d.amount), 0);
   const netOwed = totalEarnedCommissions - totalDraws;
+
+  const jobLabel = (entry: any) => {
+    if (!entry) return '—';
+    const c = entry.contacts;
+    const name =
+      entry.lead_name ||
+      (c ? `${c.first_name || ''} ${c.last_name || ''}`.trim() : `Lead #${entry.contact_number || ''}`);
+    const addr = c?.address_street ? ` · ${c.address_street}` : '';
+    return `${name}${addr}`;
+  };
+
+  const jobOptions = useMemo(
+    () => jobs.map((j: any) => ({ id: j.id, label: jobLabel(j) })),
+    [jobs],
+  );
 
   return (
     <Card>
@@ -115,6 +200,47 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
+                  <Label>Paid To (Rep)</Label>
+                  <Select value={paidToUserId} onValueChange={setPaidToUserId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select rep…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reps.map(r => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.first_name} {r.last_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Apply To Job {pipelineEntryId ? '' : '(optional)'}</Label>
+                  {pipelineEntryId ? (
+                    <Input value="This project" disabled />
+                  ) : (
+                    <Select
+                      value={appliedJobId || 'unassigned'}
+                      onValueChange={v => setAppliedJobId(v === 'unassigned' ? '' : v)}
+                      disabled={!paidToUserId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={paidToUserId ? 'Select job…' : 'Pick rep first'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Unassigned (general advance)</SelectItem>
+                        {jobOptions.map(j => (
+                          <SelectItem key={j.id} value={j.id}>
+                            {j.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                <div className="space-y-2">
                   <Label>Amount</Label>
                   <Input
                     type="number"
@@ -126,7 +252,7 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Date</Label>
+                  <Label>Date Paid</Label>
                   <Input
                     type="date"
                     value={drawDate}
@@ -144,7 +270,7 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
                 <Button
                   className="w-full"
                   onClick={() => addDraw.mutate()}
-                  disabled={!amount || parseFloat(amount) <= 0 || addDraw.isPending}
+                  disabled={!amount || parseFloat(amount) <= 0 || !paidToUserId || addDraw.isPending}
                 >
                   Record Draw
                 </Button>
@@ -183,21 +309,25 @@ export function DrawTally({ tenantId, totalEarnedCommissions, selectedRepId, isM
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Rep</TableHead>
+                  <TableHead>Applied To</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Notes</TableHead>
                   {isManager && <TableHead className="w-10"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {draws.map(draw => (
+                {draws.map((draw: any) => (
                   <TableRow key={draw.id}>
                     <TableCell className="text-sm">
                       {format(new Date(draw.draw_date), 'MM/dd/yyyy')}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {(draw as any).profiles
-                        ? `${(draw as any).profiles.first_name} ${(draw as any).profiles.last_name}`
+                      {draw.profiles
+                        ? `${draw.profiles.first_name} ${draw.profiles.last_name}`
                         : 'Unknown'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
+                      {draw.pipeline_entries ? jobLabel(draw.pipeline_entries) : 'Unassigned'}
                     </TableCell>
                     <TableCell className="text-right font-medium text-red-600">
                       -{formatCurrency(Number(draw.amount))}
