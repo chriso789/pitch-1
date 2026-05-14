@@ -35658,6 +35658,7 @@ export type Database = {
           analysis_image_size: Json | null
           analysis_zoom: number | null
           api_variance_percent: number | null
+          archetype_debug: Json | null
           block_customer_report_reason: string | null
           bounding_box: Json | null
           centroid_offset_px: number | null
@@ -35670,10 +35671,12 @@ export type Database = {
           detection_method: string | null
           detection_timestamp: string | null
           diagram_manifest: Json | null
+          diagram_render_intent: string | null
           dsm_available: boolean | null
           dsm_contract_debug: Json | null
           eave_edges: Json | null
           eave_lf: number | null
+          eave_rake_classification_debug: Json | null
           edge_breakdown: Json | null
           edge_continuity_score: number | null
           edge_count: number | null
@@ -35751,6 +35754,7 @@ export type Database = {
           perimeter_area_sqft: number | null
           perimeter_confidence: number | null
           perimeter_contract_version: string | null
+          perimeter_edge_pitch_relation: Json | null
           perimeter_gate_metrics: Json | null
           perimeter_gate_passed: boolean | null
           perimeter_hints: Json | null
@@ -35853,6 +35857,7 @@ export type Database = {
           analysis_image_size?: Json | null
           analysis_zoom?: number | null
           api_variance_percent?: number | null
+          archetype_debug?: Json | null
           block_customer_report_reason?: string | null
           bounding_box?: Json | null
           centroid_offset_px?: number | null
@@ -35865,10 +35870,12 @@ export type Database = {
           detection_method?: string | null
           detection_timestamp?: string | null
           diagram_manifest?: Json | null
+          diagram_render_intent?: string | null
           dsm_available?: boolean | null
           dsm_contract_debug?: Json | null
           eave_edges?: Json | null
           eave_lf?: number | null
+          eave_rake_classification_debug?: Json | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -35946,6 +35953,7 @@ export type Database = {
           perimeter_area_sqft?: number | null
           perimeter_confidence?: number | null
           perimeter_contract_version?: string | null
+          perimeter_edge_pitch_relation?: Json | null
           perimeter_gate_metrics?: Json | null
           perimeter_gate_passed?: boolean | null
           perimeter_hints?: Json | null
@@ -36048,6 +36056,7 @@ export type Database = {
           analysis_image_size?: Json | null
           analysis_zoom?: number | null
           api_variance_percent?: number | null
+          archetype_debug?: Json | null
           block_customer_report_reason?: string | null
           bounding_box?: Json | null
           centroid_offset_px?: number | null
@@ -36060,10 +36069,12 @@ export type Database = {
           detection_method?: string | null
           detection_timestamp?: string | null
           diagram_manifest?: Json | null
+          diagram_render_intent?: string | null
           dsm_available?: boolean | null
           dsm_contract_debug?: Json | null
           eave_edges?: Json | null
           eave_lf?: number | null
+          eave_rake_classification_debug?: Json | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -36141,6 +36152,7 @@ export type Database = {
           perimeter_area_sqft?: number | null
           perimeter_confidence?: number | null
           perimeter_contract_version?: string | null
+          perimeter_edge_pitch_relation?: Json | null
           perimeter_gate_metrics?: Json | null
           perimeter_gate_passed?: boolean | null
           perimeter_hints?: Json | null
