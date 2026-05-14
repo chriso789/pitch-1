@@ -429,6 +429,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [downloading, setDownloading] = useState(false);
   const [fullMeasurement, setFullMeasurement] = useState<any | null>(null);
   const [overrideEditorOpen, setOverrideEditorOpen] = useState(false);
+  const [debugViewerOpen, setDebugViewerOpen] = useState(false);
   const { user: currentUser } = useCurrentUser();
   const canOverride = (() => {
     const r = (currentUser?.role ?? '').toLowerCase();
