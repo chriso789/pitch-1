@@ -692,6 +692,16 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               )}
             </CardContent>
           </Card>
+
+          {salesRep && pipelineEntryId && tenantIdForDraws && (
+            <DrawTally
+              tenantId={tenantIdForDraws}
+              totalEarnedCommissions={repCommissionAmount}
+              selectedRepId={salesRep.id}
+              isManager={true}
+              pipelineEntryId={pipelineEntryId}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="costs">
