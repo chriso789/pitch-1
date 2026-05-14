@@ -82,6 +82,84 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [pendingEditId, setPendingEditId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  const handleDuplicateEstimate = async (estimateId: string) => {
+    try {
+      setDuplicatingId(estimateId);
+
+      // Fetch full source estimate
+      const { data: source, error: fetchErr } = await supabase
+        .from('enhanced_estimates')
+        .select('*')
+        .eq('id', estimateId)
+        .single();
+      if (fetchErr) throw fetchErr;
+      if (!source) throw new Error('Estimate not found');
+
+      // Strip identifiers and signature/approval state; this becomes a fresh draft copy
+      const {
+        id: _id,
+        created_at: _ca,
+        updated_at: _ua,
+        estimate_number: srcNumber,
+        share_token: _share,
+        signature_envelope_id: _sig,
+        signed_at: _signed,
+        sent_to_customer_at: _sent,
+        customer_viewed_at: _viewed,
+        approved_by: _appBy,
+        approved_at: _appAt,
+        view_count: _vc,
+        last_viewed_at: _lv,
+        accepted_tier: _at,
+        pdf_url: _pdf,
+        ...rest
+      } = source as any;
+
+      // Generate a unique estimate number per tenant
+      const newNumber = `${srcNumber}-COPY-${Date.now().toString().slice(-5)}`;
+
+      // Prepend "Copy of" to display name in property_details if present
+      const propDetails = (rest.property_details as Record<string, any>) || {};
+      const existingDisplay = propDetails.display_name || propDetails.short_description;
+      const newPropDetails = {
+        ...propDetails,
+        display_name: existingDisplay ? `Copy of ${existingDisplay}` : `Copy of ${srcNumber}`,
+      };
+
+      const insertPayload: Record<string, any> = {
+        ...rest,
+        estimate_number: newNumber,
+        status: 'draft',
+        property_details: newPropDetails,
+      };
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from('enhanced_estimates')
+        .insert(insertPayload)
+        .select('id, estimate_number')
+        .single();
+      if (insertErr) throw insertErr;
+
+      // Refresh list
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+
+      toast({
+        title: 'Estimate Duplicated',
+        description: `Created ${inserted.estimate_number} as a draft copy.`,
+      });
+    } catch (err: any) {
+      console.error('Error duplicating estimate:', err);
+      toast({
+        title: 'Duplicate Failed',
+        description: err?.message || 'Could not duplicate this estimate.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
   
   // Get current editing ID from URL if not provided as prop
   const effectiveEditingId = currentEditingId ?? searchParams.get('editEstimate');
