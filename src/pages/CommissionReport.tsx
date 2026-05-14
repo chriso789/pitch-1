@@ -184,9 +184,15 @@ export default function CommissionReport() {
         .lte('created_at', dateRange.end + 'T23:59:59')
         .order('created_at', { ascending: false });
 
-      // Filter by location: use location_id if set, otherwise filter by rep assignment
-      if (locationRepIds) {
-        query = query.in('assigned_to', locationRepIds);
+      // Filter by location: prefer entry.location_id when set; fall back to rep assignment
+      // for legacy entries where location_id is NULL. This prevents cross-location leakage
+      // when reps are assigned to multiple locations (e.g. East Coast vs West Coast).
+      if (currentLocationId) {
+        const repList = (locationRepIds || []).join(',');
+        const fallback = repList
+          ? `and(location_id.is.null,assigned_to.in.(${repList}))`
+          : `and(location_id.is.null,assigned_to.eq.__none__)`;
+        query = query.or(`location_id.eq.${currentLocationId},${fallback}`);
       }
 
       if (selectedRep !== 'all') {
