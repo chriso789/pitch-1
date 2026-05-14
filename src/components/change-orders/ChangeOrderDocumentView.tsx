@@ -199,9 +199,6 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
         <div className="text-right">
           <div className="text-2xl font-bold tracking-wide">CHANGE ORDER</div>
           <div className="text-sm text-gray-700 mt-1">{changeOrder.co_number}</div>
-          <div className="text-xs text-gray-500">
-            {format(new Date(changeOrder.created_at), 'MMM d, yyyy')}
-          </div>
           <Badge variant="outline" className="mt-2 capitalize">
             {changeOrder.status}
           </Badge>
