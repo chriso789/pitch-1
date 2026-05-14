@@ -266,15 +266,31 @@ function buildPhase3A5Block(debug: any): Record<string, any> {
   const r = debug?.phase3A_5 ?? debug?.perimeter_refinement ?? null;
   if (!r) {
     return {
+      enabled: true,
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'perimeter_refinement_callsite_not_reached',
+      refinement_iou: null,
+      perimeter_to_target_mask_ratio: null,
+      refined_perimeter_vertex_count: 0,
       phase3A_5_active: false,
       phase3A_5_perimeter_refinement_version: 'v1',
+      phase3_5_perimeter_refinement_enabled: true,
       perimeter_refinement_executed: false,
-      perimeter_refinement_reason: 'not_executed_in_current_pipeline',
+      perimeter_refinement_reason: 'perimeter_refinement_callsite_not_reached',
     };
   }
   return {
+    enabled: true,
+    version: r.version ?? r.phase3A_5_perimeter_refinement_version ?? 'v1',
+    executed: r.executed ?? true,
+    skipped_reason: r.skipped_reason ?? null,
+    refinement_iou: r.refinement_iou ?? r.perimeter_vs_mask_iou ?? null,
+    perimeter_to_target_mask_ratio: r.perimeter_to_target_mask_ratio ?? null,
+    refined_perimeter_vertex_count: r.refined_perimeter_vertex_count ?? 0,
     phase3A_5_active: true,
     perimeter_refinement_executed: true,
+    phase3_5_perimeter_refinement_enabled: true,
     ...r,
   };
 }
@@ -283,6 +299,9 @@ function buildPhase3CBlock(debug: any): Record<string, any> {
   const r = debug?.phase3C ?? debug?.deferred_edges ?? null;
   if (!r) {
     return {
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'connectivity_pruning_callsite_not_reached',
       phase3C_active: false,
       phase3C_deferred_edges_version: 'v1',
       deferred_structural_candidates_count: 0,
@@ -291,13 +310,16 @@ function buildPhase3CBlock(debug: any): Record<string, any> {
       phase3C_executed: false,
     };
   }
-  return { phase3C_active: true, phase3C_executed: true, ...r };
+  return { version: r.version ?? r.phase3C_deferred_edges_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3C_active: true, phase3C_executed: true, ...r };
 }
 
 function buildPhase3DBlock(debug: any): Record<string, any> {
   const r = debug?.phase3D ?? debug?.backbone_seed ?? null;
   if (!r) {
     return {
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'backbone_seed_not_inserted_before_face_extraction',
       phase3D_active: false,
       phase3D_backbone_seed_version: 'v1',
       seed_backbone_edges_count: 0,
@@ -309,13 +331,16 @@ function buildPhase3DBlock(debug: any): Record<string, any> {
       phase3D_executed: false,
     };
   }
-  return { phase3D_active: true, phase3D_executed: true, ...r };
+  return { version: r.version ?? r.phase3D_backbone_seed_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3D_active: true, phase3D_executed: true, ...r };
 }
 
 function buildPhase3EBlock(debug: any): Record<string, any> {
   const r = debug?.phase3E ?? debug?.constraint_repair ?? null;
   if (!r) {
     return {
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'constraint_solver_repair_not_called',
       phase3E_active: false,
       phase3E_constraint_repair_version: 'v1',
       candidate_repair_attempted: false,
@@ -324,7 +349,7 @@ function buildPhase3EBlock(debug: any): Record<string, any> {
       phase3E_executed: false,
     };
   }
-  return { phase3E_active: true, phase3E_executed: true, ...r };
+  return { version: r.version ?? r.phase3E_constraint_repair_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3E_active: true, phase3E_executed: true, ...r };
 }
 
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
