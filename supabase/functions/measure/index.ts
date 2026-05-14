@@ -22,6 +22,16 @@ import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts
 import { solveAutonomousGraph, detectComplexRoof, validateAutonomousResult, type AutonomousGraphResult, type AutonomousGraphInput } from "./autonomous-graph-solver.ts";
 import { evaluateDSMContract, analyzeGraphTopology, computeOverlayRegistration, type DSMContractInput, type DSMContractGateResult } from "./dsm-geometry-contract.ts";
 
+// Legacy route provenance — this function is NOT the canonical AI measurement route.
+// Canonical route is `start-ai-measurement`. Every DB write here is stamped non-canonical
+// so MeasurementReportDialog and audits can detect stale rows.
+export const LEGACY_MEASURE_PROVENANCE = {
+  created_by_function: "measure",
+  solver_entrypoint: "legacy.measure",
+  canonical_measurement_route: false,
+  route_audit_version: "measurement-route-audit-v1",
+} as const;
+
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
 const OSM_ENABLED = true;

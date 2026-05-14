@@ -1,6 +1,15 @@
 // NOTE: Avoid remote std/esm.sh imports where possible to prevent Supabase bundle timeouts.
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
 
+// Legacy route provenance — analyze-roof-aerial is NOT the canonical AI measurement route.
+// Canonical route is `start-ai-measurement`. All inserts/updates here are stamped non-canonical.
+const LEGACY_ANALYZE_PROVENANCE = {
+  created_by_function: "analyze-roof-aerial",
+  solver_entrypoint: "legacy.analyze-roof-aerial",
+  canonical_measurement_route: false,
+  route_audit_version: "measurement-route-audit-v1",
+} as const;
+
 // Import worksheet engine - single source of truth for calculations
 import {
   parsePitch,
