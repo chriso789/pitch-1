@@ -122,6 +122,12 @@ export function useMeasurementJob(pipelineEntryId: string) {
     pitchOverride?: string;
     tenantId: string;
     userId?: string;
+    // Patent Rule 1: roof-target confirmation audit trail.
+    originalGeocodeLat?: number | null;
+    originalGeocodeLng?: number | null;
+    userConfirmedRoofTarget?: boolean;
+    roofTargetAdminOverride?: boolean;
+    markerOffsetFt?: number | null;
   }) => {
     // Canonical AI Measurement entrypoint: async job flow that writes to
     // measurement_jobs (polled below) and publishes to roof_measurements +
@@ -142,6 +148,14 @@ export function useMeasurementJob(pipelineEntryId: string) {
         pitchOverride: params.pitchOverride,
         tenantId: params.tenantId,
         userId: params.userId,
+        // Patent Rule 1
+        original_geocode_lat: params.originalGeocodeLat ?? null,
+        original_geocode_lng: params.originalGeocodeLng ?? null,
+        confirmed_roof_center_lat: params.lat,
+        confirmed_roof_center_lng: params.lng,
+        marker_offset_ft: params.markerOffsetFt ?? null,
+        user_confirmed_roof_target: params.userConfirmedRoofTarget ?? true,
+        roof_target_admin_override: params.roofTargetAdminOverride ?? false,
       }
     });
 
