@@ -3373,6 +3373,27 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outRakes = outputEdges.filter(e => e.type === 'rake');
   const outUnclassified = outputEdges.filter(e => e.type === 'unclassified');
   const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
+  const phase3DDiagnostics = phase3DSeed
+    ? {
+        ...phase3DSeed.diagnostics,
+        version: 'v1',
+        executed: true,
+        skipped_reason: null,
+        seed_backbone_edges_inserted: phase3DSeed.diagnostics.seed_backbone_edges_inserted,
+      }
+    : {
+        phase3D_backbone_seed_version: 'v1',
+        version: 'v1',
+        executed: false,
+        skipped_reason: 'insufficient_raw_backbone_edges',
+        seed_backbone_edges_count: 0,
+        seed_backbone_edges_inserted: 0,
+        locked_backbone_edges_count: 0,
+        seed_ridge_lf: 0,
+        seed_valley_lf: 0,
+        seed_hip_lf: 0,
+        backbone_not_applied: false,
+      };
 
   // ===== UNDERSEGMENTATION GATE (v13 hardened) =====
   // If we had many raw DSM edges but the planar solver collapsed to very few faces,
