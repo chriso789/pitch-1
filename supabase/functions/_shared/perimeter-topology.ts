@@ -295,9 +295,12 @@ export function buildPerimeterTopology(input: PerimeterInput): PerimeterTopology
     customer_perimeter_ready: autoReady,
   };
 
-  // ── Phase 2A: surface classification debug ──
-  (result as any).eave_rake_classification_debug = (input as any)._classification_debug || null;
+  // ── Phase 2A/3A: surface classification debug ──
+  const _classDebug = (input as any)._classification_debug || null;
+  (result as any).eave_rake_classification_debug = _classDebug;
   (result as any).archetype_debug = (input as any)._archetype_debug || null;
+  (result as any).perimeter_edge_classification_table =
+    _classDebug?.perimeter_edge_classification_table ?? [];
   (result as any).eave_candidate_lf = Number(eaveCandidateLf.toFixed(2));
   (result as any).rake_candidate_lf = Number(rakeCandidateLf.toFixed(2));
   (result as any).unknown_perimeter_lf = Number(unknownLf.toFixed(2));
