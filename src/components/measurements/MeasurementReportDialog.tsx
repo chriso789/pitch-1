@@ -20,6 +20,8 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import PatentRoofReport from './PatentRoofReport';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
 import { MeasurementOverrideEditor } from '@/components/measurement/MeasurementOverrideEditor';
+import AIMeasurement3DDebugViewer from './AIMeasurement3DDebugViewer';
+import { Layers as LayersIcon } from 'lucide-react';
 
 interface MeasurementReportDialogProps {
   open: boolean;
@@ -427,6 +429,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [downloading, setDownloading] = useState(false);
   const [fullMeasurement, setFullMeasurement] = useState<any | null>(null);
   const [overrideEditorOpen, setOverrideEditorOpen] = useState(false);
+  const [debugViewerOpen, setDebugViewerOpen] = useState(false);
   const { user: currentUser } = useCurrentUser();
   const canOverride = (() => {
     const r = (currentUser?.role ?? '').toLowerCase();
@@ -896,16 +899,28 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             );
           })()}
           {canOverride && effectiveMeasurement?.id && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-2"
-              onClick={() => setOverrideEditorOpen(true)}
-              title="Open the patent override editor (master/admin only)"
-            >
-              <ShieldCheck className="h-4 w-4 mr-2" />
-              Edit measurement
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-2"
+                onClick={() => setOverrideEditorOpen(true)}
+                title="Open the patent override editor (master/admin only)"
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Edit measurement
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-2"
+                onClick={() => setDebugViewerOpen(true)}
+                title="Open the step-by-step AI Measurement diagnostic viewer"
+              >
+                <LayersIcon className="h-4 w-4 mr-2" />
+                AI Process Viewer
+              </Button>
+            </>
           )}
         </DialogHeader>
 
@@ -918,6 +933,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               // Refresh the dialog by clearing local cache; parent typically refetches.
               setFullMeasurement(null);
             }}
+          />
+        )}
+
+        {effectiveMeasurement?.id && (
+          <AIMeasurement3DDebugViewer
+            measurement={effectiveMeasurement}
+            open={debugViewerOpen}
+            onOpenChange={setDebugViewerOpen}
           />
         )}
 
