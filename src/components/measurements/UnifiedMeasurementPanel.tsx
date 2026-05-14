@@ -1883,11 +1883,8 @@ function MeasurementHistorySection({
         const deleteResult = await deleteAiMeasurementsViaEdge(aiIds);
         linkedApprovalIds = deleteResult.linkedApprovalIds;
 
-        if (deleteResult.deletedMeasurementIds.length !== aiIds.length) {
-          throw new Error('Some AI measurements could not be deleted');
-        }
-
-        removeAiMeasurementsFromCache(deleteResult.deletedMeasurementIds);
+        const idsToClear = [...new Set([...deleteResult.deletedMeasurementIds, ...aiIds])];
+        removeAiMeasurementsFromCache(idsToClear);
       }
 
       if (vendorIds.length > 0) {
@@ -2122,11 +2119,9 @@ function MeasurementHistorySection({
     setIsDeleting(true);
     try {
       const deleteResult = await deleteAiMeasurementsViaEdge([measurementId]);
-      if (!deleteResult.deletedMeasurementIds.length) {
-        throw new Error('Measurement could not be removed from history');
-      }
+      const idsToClear = [...new Set([...deleteResult.deletedMeasurementIds, measurementId])];
 
-      removeAiMeasurementsFromCache(deleteResult.deletedMeasurementIds);
+      removeAiMeasurementsFromCache(idsToClear);
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(measurementId);
