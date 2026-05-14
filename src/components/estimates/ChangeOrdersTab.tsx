@@ -179,9 +179,10 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     const overheadPct = Number(container.overhead_pct ?? 10);
     const profitPct = Number(container.profit_pct ?? 25);
     const cost = newMaterial + newLabor;
-    const overheadAmount = cost * (overheadPct / 100);
-    const profitAmount = (cost + overheadAmount) * (profitPct / 100);
-    const sellingPrice = cost + overheadAmount + profitAmount;
+    const denom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
+    const sellingPrice = cost / denom;
+    const overheadAmount = sellingPrice * (overheadPct / 100);
+    const profitAmount = sellingPrice * (profitPct / 100);
     const { error } = await (supabase as any)
       .from('change_orders')
       .update({
