@@ -75,6 +75,9 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('graph_fragment') ||
     s.includes('insufficient_structural_signal') ||
     s.includes('invalid_roof_graph') ||
+    s.includes('backbone') ||
+    s.includes('connectivity_collapse') ||
+    s.includes('seed_collapse') ||
     s.includes('patent')
   ) return 'ai_failed_topology';
 
