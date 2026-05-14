@@ -96,18 +96,43 @@ const getFunctionErrorMessage = async (error: any): Promise<string> => {
   return error?.message || 'AI could not parse it. Add line items manually below.';
 };
 
-export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: ChangeOrderFormProps) {
+export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingChangeOrder }: ChangeOrderFormProps) {
+  const isEdit = !!editingChangeOrder;
+  const initialContainer: any = (editingChangeOrder?.line_items as any) || {};
+  const initialItems: LineItem[] = Array.isArray(initialContainer.items)
+    ? initialContainer.items.map((it: any) => ({
+        id: it.id || crypto.randomUUID(),
+        kind: it.kind === 'labor' ? 'labor' : 'material',
+        description: it.description ?? it.name ?? '',
+        quantity: Number(it.quantity ?? it.qty ?? 1) || 0,
+        unit_price: Number(it.unit_price ?? it.price ?? it.rate ?? 0) || 0,
+        unit_of_measure: it.unit_of_measure ?? (it.kind === 'labor' ? 'HR' : 'EA'),
+      }))
+    : [];
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
-  const [items, setItems] = useState<LineItem[]>([]);
-  const [overheadPct, setOverheadPct] = useState<number>(10);
-  const [profitPct, setProfitPct] = useState<number>(20);
+  const [items, setItems] = useState<LineItem[]>(initialItems);
+  const [overheadPct, setOverheadPct] = useState<number>(
+    Number(initialContainer.overhead_pct ?? 10) || 0,
+  );
+  const [profitPct, setProfitPct] = useState<number>(
+    Number(initialContainer.profit_pct ?? 20) || 0,
+  );
   const [laborMode, setLaborMode] = useState<'per_square' | 'flat'>('per_square');
   const [laborSquares, setLaborSquares] = useState<number>(0);
   const [laborRatePerSquare, setLaborRatePerSquare] = useState<number>(0);
   const [laborFlatAmount, setLaborFlatAmount] = useState<number>(0);
   const [laborDescription, setLaborDescription] = useState<string>('');
-  const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
+  const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(
+    editingChangeOrder?.material_invoice_url
+      ? {
+          url: editingChangeOrder.material_invoice_url,
+          path: editingChangeOrder.material_invoice_storage_path || '',
+          name: 'Existing invoice',
+        }
+      : null,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
@@ -122,12 +147,20 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
       if (error) throw error;
       return data;
     },
-    enabled: !defaultProjectId,
+    enabled: !defaultProjectId && !isEdit,
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { time_impact_days: '0', project_id: defaultProjectId || '' },
+    defaultValues: {
+      time_impact_days: String(editingChangeOrder?.time_impact_days ?? 0),
+      project_id: editingChangeOrder?.project_id || defaultProjectId || '',
+      title: editingChangeOrder?.title || '',
+      description: editingChangeOrder?.description || '',
+      reason: editingChangeOrder?.reason || '',
+      original_scope: editingChangeOrder?.original_scope || '',
+      new_scope: editingChangeOrder?.new_scope || '',
+    },
   });
 
   const materialTotal = items
