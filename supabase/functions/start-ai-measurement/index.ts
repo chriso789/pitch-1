@@ -159,8 +159,80 @@ export type ResultState = _SharedResultState;
 export const normalizeResultState = _sharedNormalizeResultState;
 // ──────────────────────────────────────────────────────────────────────
 
+// ─── Phase 3 visibility helpers ───────────────────────────────────────
+export const PHASE3_VERSION_BLOCK = {
+  phase3_enabled: true,
+  phase3_engine_version: PHASE3_ENGINE_VERSION,
+  phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
+  phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
+  phase3C_connectivity_defer_version: PHASE3C_CONNECTIVITY_DEFER_VERSION,
+  phase3D_seed_backbone_version: PHASE3D_SEED_BACKBONE_VERSION,
+  phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
+  phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
+} as const;
 
-const corsHeaders = {
+export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
+  const eaveLf = Number(perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0);
+  const rakeLf = Number(perimeterPhase0?.rake_length_lf ?? perimeterPhase0?.rake_candidate_lf ?? 0);
+  const unknownLf = Number(perimeterPhase0?.unknown_perimeter_lf ?? 0);
+  const totalLf = Number(perimeterPhase0?.total_perimeter_lf ?? 0);
+  const classTable = perimeterPhase0?.perimeter_edge_classification_table ?? [];
+  const hipPriorApplied = Array.isArray(classTable)
+    ? classTable.filter((r: any) => r?.demoted_by_hip_prior).length
+    : 0;
+  const provisionalRakeDemoted = Number(
+    perimeterPhase0?.provisional_rake_demoted_count ?? hipPriorApplied,
+  );
+  let failureReason: string | null = null;
+  if (totalLf > 100 && eaveLf === 0) failureReason = 'eave_lf_zero_with_long_perimeter';
+  else if (totalLf > 0 && unknownLf / Math.max(totalLf, 1) >= 0.95) failureReason = 'all_unknown';
+  else if (rakeLf > 0 && eaveLf === 0 && totalLf > 50) failureReason = 'all_rake_no_eave';
+  return {
+    phase3A_active: true,
+    eave_length_lf: eaveLf,
+    rake_length_lf: rakeLf,
+    unknown_perimeter_lf: unknownLf,
+    total_perimeter_lf: totalLf,
+    eave_candidate_lf: Number(perimeterPhase0?.eave_candidate_lf ?? 0),
+    rake_candidate_lf: Number(perimeterPhase0?.rake_candidate_lf ?? 0),
+    eave_rake_confidence: perimeterPhase0?.eave_rake_confidence ?? null,
+    perimeter_edge_classification_table: classTable,
+    hip_prior_applied_count: hipPriorApplied,
+    provisional_rake_demoted_count: provisionalRakeDemoted,
+    perimeter_classification_invalid: failureReason !== null,
+    eave_rake_failure_reason: failureReason,
+  };
+}
+
+export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
+  const rows = Array.isArray(edgeRows) ? edgeRows : [];
+  const byAttr: Record<string, number> = {};
+  const lfByAttr: Record<string, number> = {};
+  for (const e of rows) {
+    const attr = String(e?.edge_type ?? e?.attribute ?? 'unknown').toLowerCase();
+    byAttr[attr] = (byAttr[attr] ?? 0) + 1;
+    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? 0);
+  }
+  const reportableAttrs = new Set([
+    'eave', 'rake', 'ridge', 'hip', 'valley',
+    'wall_flashing', 'step_flashing', 'flashing',
+  ]);
+  const reportable = rows.filter((e) =>
+    reportableAttrs.has(String(e?.edge_type ?? e?.attribute ?? '').toLowerCase()),
+  );
+  return {
+    phase3B_active: true,
+    roof_lines_count: rows.length,
+    roof_lines_by_attribute: byAttr,
+    roof_line_total_lf_by_attribute: Object.fromEntries(
+      Object.entries(lfByAttr).map(([k, v]) => [k, Number((v as number).toFixed(2))]),
+    ),
+    reportable_roof_lines_count: reportable.length,
+    persisted_to_roof_lines_table: false,
+    persistence_deferred_reason: 'phase3B_lite_counts_only_v1',
+  };
+}
+
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
