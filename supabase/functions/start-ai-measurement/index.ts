@@ -185,6 +185,33 @@ export const PHASE3_VERSION_BLOCK = {
   phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
 } as const;
 
+// ─── Canonical route provenance ───────────────────────────────────────
+// Every row this function writes (success or failure) carries this
+// provenance block so downstream code, debug endpoints, and reports can
+// prove the measurement came from the canonical AI Measurement path.
+export const MEASUREMENT_ROUTE_AUDIT_VERSION = "measurement-route-audit-v1";
+export const CANONICAL_CREATED_BY_FUNCTION = "start-ai-measurement";
+export const CANONICAL_CREATED_BY_COMPONENT = "PullMeasurementsButton/useMeasurementJob";
+export const CANONICAL_SOLVER_ENTRYPOINT = "_shared/autonomous-graph-solver.solveAutonomousGraph";
+
+export const CANONICAL_ROUTE_PROVENANCE = {
+  created_by_function: CANONICAL_CREATED_BY_FUNCTION,
+  created_by_component: CANONICAL_CREATED_BY_COMPONENT,
+  solver_entrypoint: CANONICAL_SOLVER_ENTRYPOINT,
+  canonical_measurement_route: true,
+  route_audit_version: MEASUREMENT_ROUTE_AUDIT_VERSION,
+} as const;
+
+export function getCanonicalRouteDbColumns(): Record<string, unknown> {
+  return {
+    created_by_function: CANONICAL_CREATED_BY_FUNCTION,
+    created_by_component: CANONICAL_CREATED_BY_COMPONENT,
+    solver_entrypoint: CANONICAL_SOLVER_ENTRYPOINT,
+    canonical_measurement_route: true,
+    route_audit_version: MEASUREMENT_ROUTE_AUDIT_VERSION,
+  };
+}
+
 export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
   const eaveLf = Number(perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0);
   const rakeLf = Number(perimeterPhase0?.rake_length_lf ?? perimeterPhase0?.rake_candidate_lf ?? 0);
@@ -410,6 +437,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
   return {
     ...payload,
     ...PHASE3_VERSION_BLOCK,
+    route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
     phase3A,
     phase3A_5: buildPhase3A5Block(payload),
     phase3B: buildPhase3BBlock(phase3EdgeRows),
@@ -450,6 +478,8 @@ function getPhase3DbColumns(): Record<string, unknown> {
     phase3E_constraint_repair_version: PHASE3_VERSION_BLOCK.phase3E_constraint_repair_version,
     phase3F_result_state_version: PHASE3_VERSION_BLOCK.phase3F_result_state_version,
     phase3G_diagram_render_intent_version: PHASE3_VERSION_BLOCK.phase3G_diagram_render_intent_version,
+    // Canonical route provenance (stable top-level columns).
+    ...getCanonicalRouteDbColumns(),
   };
 }
 
@@ -618,6 +648,7 @@ Deno.serve(async (req) => {
         lng: longitude,
         pitch_override,
         engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        ...getCanonicalRouteDbColumns(),
       })
       .select("id")
       .single();
@@ -651,6 +682,7 @@ Deno.serve(async (req) => {
         actual_image_height: actualH,
         raster_scale,
         engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        ...getCanonicalRouteDbColumns(),
         entrypoint: "start-ai-measurement",
         // Patent Rule 1: roof-target confirmation audit trail.
         original_geocode_lat,
@@ -6501,6 +6533,7 @@ async function processJob(input: any) {
       : deriveDiagramRenderIntent(preInsertResultState, autonomousDebug?.perimeter_gate_passed === true && !preInsertPhase3A.perimeter_classification_invalid);
     Object.assign(geometryReportJson, {
       ...PHASE3_VERSION_BLOCK,
+      route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
       phase3A: preInsertPhase3A,
       phase3B: buildPhase3BBlock(edgeRows),
       result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),

@@ -2394,12 +2394,15 @@ export type Database = {
           actual_image_height: number | null
           actual_image_width: number | null
           ai_measurement_engine_version: string | null
+          canonical_measurement_route: boolean
           company_id: string | null
           completed_at: string | null
           confidence_score: number | null
           confirmed_roof_center_lat: number | null
           confirmed_roof_center_lng: number | null
           created_at: string
+          created_by_component: string | null
+          created_by_function: string | null
           engine_version: string | null
           entrypoint: string
           failure_reason: string | null
@@ -2427,11 +2430,14 @@ export type Database = {
           report_blocked: boolean
           report_pdf_path: string | null
           report_pdf_url: string | null
+          report_renderer_version: string | null
           result_state: string | null
           roof_target_admin_override: boolean
           roof_target_confirmed_at: string | null
           roof_target_confirmed_by: string | null
+          route_audit_version: string | null
           runtime_deployed_at: string | null
+          solver_entrypoint: string | null
           source_button: string | null
           source_context: Json | null
           source_priority: Json | null
@@ -2450,12 +2456,15 @@ export type Database = {
           actual_image_height?: number | null
           actual_image_width?: number | null
           ai_measurement_engine_version?: string | null
+          canonical_measurement_route?: boolean
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
           confirmed_roof_center_lat?: number | null
           confirmed_roof_center_lng?: number | null
           created_at?: string
+          created_by_component?: string | null
+          created_by_function?: string | null
           engine_version?: string | null
           entrypoint?: string
           failure_reason?: string | null
@@ -2483,11 +2492,14 @@ export type Database = {
           report_blocked?: boolean
           report_pdf_path?: string | null
           report_pdf_url?: string | null
+          report_renderer_version?: string | null
           result_state?: string | null
           roof_target_admin_override?: boolean
           roof_target_confirmed_at?: string | null
           roof_target_confirmed_by?: string | null
+          route_audit_version?: string | null
           runtime_deployed_at?: string | null
+          solver_entrypoint?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -2506,12 +2518,15 @@ export type Database = {
           actual_image_height?: number | null
           actual_image_width?: number | null
           ai_measurement_engine_version?: string | null
+          canonical_measurement_route?: boolean
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
           confirmed_roof_center_lat?: number | null
           confirmed_roof_center_lng?: number | null
           created_at?: string
+          created_by_component?: string | null
+          created_by_function?: string | null
           engine_version?: string | null
           entrypoint?: string
           failure_reason?: string | null
@@ -2539,11 +2554,14 @@ export type Database = {
           report_blocked?: boolean
           report_pdf_path?: string | null
           report_pdf_url?: string | null
+          report_renderer_version?: string | null
           result_state?: string | null
           roof_target_admin_override?: boolean
           roof_target_confirmed_at?: string | null
           roof_target_confirmed_by?: string | null
+          route_audit_version?: string | null
           runtime_deployed_at?: string | null
+          solver_entrypoint?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -22916,8 +22934,11 @@ export type Database = {
           address: string | null
           ai_measurement_engine_version: string | null
           ai_measurement_job_id: string | null
+          canonical_measurement_route: boolean
           completed_at: string | null
           created_at: string
+          created_by_component: string | null
+          created_by_function: string | null
           engine_version: string | null
           error: string | null
           geocode_location_type: string | null
@@ -22933,8 +22954,11 @@ export type Database = {
           pitch_override: string | null
           progress_message: string | null
           project_id: string | null
+          report_renderer_version: string | null
           result_state: string | null
+          route_audit_version: string | null
           runtime_deployed_at: string | null
+          solver_entrypoint: string | null
           source_button: string | null
           source_record_id: string | null
           source_record_type: string | null
@@ -22948,8 +22972,11 @@ export type Database = {
           address?: string | null
           ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
+          canonical_measurement_route?: boolean
           completed_at?: string | null
           created_at?: string
+          created_by_component?: string | null
+          created_by_function?: string | null
           engine_version?: string | null
           error?: string | null
           geocode_location_type?: string | null
@@ -22965,8 +22992,11 @@ export type Database = {
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
+          report_renderer_version?: string | null
           result_state?: string | null
+          route_audit_version?: string | null
           runtime_deployed_at?: string | null
+          solver_entrypoint?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -22980,8 +23010,11 @@ export type Database = {
           address?: string | null
           ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
+          canonical_measurement_route?: boolean
           completed_at?: string | null
           created_at?: string
+          created_by_component?: string | null
+          created_by_function?: string | null
           engine_version?: string | null
           error?: string | null
           geocode_location_type?: string | null
@@ -22997,8 +23030,11 @@ export type Database = {
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
+          report_renderer_version?: string | null
           result_state?: string | null
+          route_audit_version?: string | null
           runtime_deployed_at?: string | null
+          solver_entrypoint?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -36485,10 +36521,13 @@ export type Database = {
           archetype_debug: Json | null
           block_customer_report_reason: string | null
           bounding_box: Json | null
+          canonical_measurement_route: boolean
           centroid_offset_px: number | null
           complexity_rating: string | null
           confidence: number | null
           created_at: string | null
+          created_by_component: string | null
+          created_by_function: string | null
           customer_id: string | null
           customer_report_ready: boolean
           detection_confidence: number | null
@@ -36620,12 +36659,14 @@ export type Database = {
           report_generated_at: string | null
           report_pdf_path: string | null
           report_pdf_url: string | null
+          report_renderer_version: string | null
           requires_manual_review: boolean | null
           result_state: string | null
           review_required: boolean | null
           roof_corners: Json | null
           roof_perimeter: Json | null
           roof_type: string | null
+          route_audit_version: string | null
           runtime_deployed_at: string | null
           satellite_overlay_url: string | null
           scale_confidence: string | null
@@ -36637,6 +36678,7 @@ export type Database = {
           solar_api_response: Json | null
           solar_building_footprint_sqft: number | null
           solar_panel_count: number | null
+          solver_entrypoint: string | null
           source_button: string | null
           source_record_id: string | null
           source_record_type: string | null
@@ -36693,10 +36735,13 @@ export type Database = {
           archetype_debug?: Json | null
           block_customer_report_reason?: string | null
           bounding_box?: Json | null
+          canonical_measurement_route?: boolean
           centroid_offset_px?: number | null
           complexity_rating?: string | null
           confidence?: number | null
           created_at?: string | null
+          created_by_component?: string | null
+          created_by_function?: string | null
           customer_id?: string | null
           customer_report_ready?: boolean
           detection_confidence?: number | null
@@ -36828,12 +36873,14 @@ export type Database = {
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
+          report_renderer_version?: string | null
           requires_manual_review?: boolean | null
           result_state?: string | null
           review_required?: boolean | null
           roof_corners?: Json | null
           roof_perimeter?: Json | null
           roof_type?: string | null
+          route_audit_version?: string | null
           runtime_deployed_at?: string | null
           satellite_overlay_url?: string | null
           scale_confidence?: string | null
@@ -36845,6 +36892,7 @@ export type Database = {
           solar_api_response?: Json | null
           solar_building_footprint_sqft?: number | null
           solar_panel_count?: number | null
+          solver_entrypoint?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -36901,10 +36949,13 @@ export type Database = {
           archetype_debug?: Json | null
           block_customer_report_reason?: string | null
           bounding_box?: Json | null
+          canonical_measurement_route?: boolean
           centroid_offset_px?: number | null
           complexity_rating?: string | null
           confidence?: number | null
           created_at?: string | null
+          created_by_component?: string | null
+          created_by_function?: string | null
           customer_id?: string | null
           customer_report_ready?: boolean
           detection_confidence?: number | null
@@ -37036,12 +37087,14 @@ export type Database = {
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
+          report_renderer_version?: string | null
           requires_manual_review?: boolean | null
           result_state?: string | null
           review_required?: boolean | null
           roof_corners?: Json | null
           roof_perimeter?: Json | null
           roof_type?: string | null
+          route_audit_version?: string | null
           runtime_deployed_at?: string | null
           satellite_overlay_url?: string | null
           scale_confidence?: string | null
@@ -37053,6 +37106,7 @@ export type Database = {
           solar_api_response?: Json | null
           solar_building_footprint_sqft?: number | null
           solar_panel_count?: number | null
+          solver_entrypoint?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null

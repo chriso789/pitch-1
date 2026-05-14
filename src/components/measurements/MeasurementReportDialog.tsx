@@ -228,12 +228,19 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Phase 3 Engine', value: String(grj.phase3_engine_version ?? phase3?.engine_version ?? sourceCtxDebug?.phase3_engine_version ?? '—') },
     { label: 'Phase 3A Version', value: String(grj.phase3A_eave_rake_classifier_version ?? phase3?.phase3A_eave_rake_classifier_version ?? '—') },
     { label: 'Phase 3B Version', value: String(grj.phase3B_roof_lines_persistence_version ?? phase3?.phase3B_roof_lines_persistence_version ?? '—') },
-    { label: 'Phase 3C', value: String(grj.phase3C_deferred_edges_version ?? phase3?.phase3C_deferred_edges_version ?? 'not implemented') },
-    { label: 'Phase 3D', value: String(grj.phase3D_backbone_seed_version ?? phase3?.phase3D_backbone_seed_version ?? 'not implemented') },
-    { label: 'Phase 3E', value: String(grj.phase3E_constraint_repair_version ?? phase3?.phase3E_constraint_repair_version ?? 'not implemented') },
+    { label: 'Phase 3C', value: String(grj.phase3C?.version ?? grj.phase3?.phase3C_deferred_edges_version ?? grj.phase3C_deferred_edges_version ?? phase3?.phase3C_deferred_edges_version ?? 'MISSING — stale or non-canonical route') + (grj.phase3C ? (grj.phase3C.executed ? ' / executed' : ` / skipped: ${grj.phase3C.skipped_reason || 'unknown'}`) : '') },
+    { label: 'Phase 3D', value: String(grj.phase3D?.version ?? grj.phase3?.phase3D_backbone_seed_version ?? grj.phase3D_backbone_seed_version ?? phase3?.phase3D_backbone_seed_version ?? 'MISSING — stale or non-canonical route') + (grj.phase3D ? (grj.phase3D.executed ? ' / executed' : ` / skipped: ${grj.phase3D.skipped_reason || 'unknown'}`) : '') },
+    { label: 'Phase 3E', value: String(grj.phase3E?.version ?? grj.phase3?.phase3E_constraint_repair_version ?? grj.phase3E_constraint_repair_version ?? phase3?.phase3E_constraint_repair_version ?? 'MISSING — stale or non-canonical route') + (grj.phase3E ? (grj.phase3E.executed ? ' / executed' : ` / skipped: ${grj.phase3E.skipped_reason || 'unknown'}`) : '') },
+    { label: 'Phase 3A.5', value: String(grj.phase3A_5?.version ?? grj.phase3_5?.version ?? 'MISSING — stale or non-canonical route') + (grj.phase3A_5 ? (grj.phase3A_5.executed ? ' / executed' : ` / skipped: ${grj.phase3A_5.skipped_reason || 'unknown'}`) : '') },
     { label: 'Phase 3A Failure', value: String(phase3A?.eave_rake_failure_reason ?? '—') },
     { label: 'Roof Lines Count', value: fmt(phase3B?.roof_lines_count) },
     { label: 'Diagram Intent', value: String(grj.diagram_render_intent ?? sourceCtxDebug?.diagram_render_intent ?? '—') },
+    { label: 'Created By Function', value: String((m as any).created_by_function ?? grj.route_provenance?.created_by_function ?? '—') },
+    { label: 'Created By Component', value: String((m as any).created_by_component ?? grj.route_provenance?.created_by_component ?? '—') },
+    { label: 'Solver Entrypoint', value: String((m as any).solver_entrypoint ?? grj.route_provenance?.solver_entrypoint ?? '—') },
+    { label: 'Canonical Route', value: String((m as any).canonical_measurement_route ?? grj.route_provenance?.canonical_measurement_route ?? '—') },
+    { label: 'Route Audit Version', value: String((m as any).route_audit_version ?? grj.route_provenance?.route_audit_version ?? '—') },
+    { label: 'Report Renderer Version', value: String((m as any).report_renderer_version ?? grj.report_renderer_version ?? '—') },
   ];
 
   const blockReason = grj.block_customer_report_reason;
