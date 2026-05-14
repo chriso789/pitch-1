@@ -22060,6 +22060,7 @@ export type Database = {
           pitch_override: string | null
           progress_message: string | null
           project_id: string | null
+          result_state: string | null
           source_button: string | null
           source_record_id: string | null
           source_record_type: string | null
@@ -22086,6 +22087,7 @@ export type Database = {
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
+          result_state?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -22112,6 +22114,7 @@ export type Database = {
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
+          result_state?: string | null
           source_button?: string | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -35486,6 +35489,7 @@ export type Database = {
           diagram_manifest: Json | null
           dsm_available: boolean | null
           dsm_contract_debug: Json | null
+          eave_edges: Json | null
           edge_breakdown: Json | null
           edge_continuity_score: number | null
           edge_count: number | null
@@ -35549,12 +35553,18 @@ export type Database = {
           measurement_quality_score: number | null
           metadata: Json | null
           meters_per_pixel: number | null
+          missed_roof_regions: Json | null
           model_version: string | null
           notes: string | null
           organization_id: string | null
           overlay_schema: Json | null
           passes_strict_3pct: boolean | null
           patent_model: Json | null
+          perimeter_confidence: number | null
+          perimeter_gate_metrics: Json | null
+          perimeter_hints: Json | null
+          perimeter_source: string | null
+          perimeter_status: string | null
           perimeter_vertex_count: number | null
           perimeter_wkt: string | null
           pitch_degrees: number | null
@@ -35571,11 +35581,13 @@ export type Database = {
           quality_assessment: Json | null
           quality_checks: Json | null
           quality_score: number | null
+          rake_edges: Json | null
           report_generated_at: string | null
           report_pdf_path: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
           review_required: boolean | null
+          roof_corners: Json | null
           roof_perimeter: Json | null
           roof_type: string | null
           satellite_overlay_url: string | null
@@ -35609,6 +35621,8 @@ export type Database = {
           total_unspecified_length: number | null
           total_valley_length: number | null
           total_wall_flashing_length: number | null
+          true_outer_roof_perimeter_geo: Json | null
+          true_outer_roof_perimeter_px: Json | null
           updated_at: string | null
           validation_notes: string | null
           validation_status: string | null
@@ -35647,6 +35661,7 @@ export type Database = {
           diagram_manifest?: Json | null
           dsm_available?: boolean | null
           dsm_contract_debug?: Json | null
+          eave_edges?: Json | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -35710,12 +35725,18 @@ export type Database = {
           measurement_quality_score?: number | null
           metadata?: Json | null
           meters_per_pixel?: number | null
+          missed_roof_regions?: Json | null
           model_version?: string | null
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
           passes_strict_3pct?: boolean | null
           patent_model?: Json | null
+          perimeter_confidence?: number | null
+          perimeter_gate_metrics?: Json | null
+          perimeter_hints?: Json | null
+          perimeter_source?: string | null
+          perimeter_status?: string | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
@@ -35732,11 +35753,13 @@ export type Database = {
           quality_assessment?: Json | null
           quality_checks?: Json | null
           quality_score?: number | null
+          rake_edges?: Json | null
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
           review_required?: boolean | null
+          roof_corners?: Json | null
           roof_perimeter?: Json | null
           roof_type?: string | null
           satellite_overlay_url?: string | null
@@ -35770,6 +35793,8 @@ export type Database = {
           total_unspecified_length?: number | null
           total_valley_length?: number | null
           total_wall_flashing_length?: number | null
+          true_outer_roof_perimeter_geo?: Json | null
+          true_outer_roof_perimeter_px?: Json | null
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
@@ -35808,6 +35833,7 @@ export type Database = {
           diagram_manifest?: Json | null
           dsm_available?: boolean | null
           dsm_contract_debug?: Json | null
+          eave_edges?: Json | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -35871,12 +35897,18 @@ export type Database = {
           measurement_quality_score?: number | null
           metadata?: Json | null
           meters_per_pixel?: number | null
+          missed_roof_regions?: Json | null
           model_version?: string | null
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
           passes_strict_3pct?: boolean | null
           patent_model?: Json | null
+          perimeter_confidence?: number | null
+          perimeter_gate_metrics?: Json | null
+          perimeter_hints?: Json | null
+          perimeter_source?: string | null
+          perimeter_status?: string | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
@@ -35893,11 +35925,13 @@ export type Database = {
           quality_assessment?: Json | null
           quality_checks?: Json | null
           quality_score?: number | null
+          rake_edges?: Json | null
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
           review_required?: boolean | null
+          roof_corners?: Json | null
           roof_perimeter?: Json | null
           roof_type?: string | null
           satellite_overlay_url?: string | null
@@ -35931,6 +35965,8 @@ export type Database = {
           total_unspecified_length?: number | null
           total_valley_length?: number | null
           total_wall_flashing_length?: number | null
+          true_outer_roof_perimeter_geo?: Json | null
+          true_outer_roof_perimeter_px?: Json | null
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
