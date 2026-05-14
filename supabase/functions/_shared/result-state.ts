@@ -91,6 +91,11 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('db insert')
   ) return 'ai_failed_schema';
 
+  // Runtime / unhandled exceptions: DB CHECK only allows 10 buckets, so we
+  // funnel runtime failures into ai_failed_unknown and let the specific
+  // reason live in hard_fail_reason. NEVER expand the constraint.
+  if (s.includes('runtime') || s.includes('exception')) return 'ai_failed_unknown';
+
   if (s === 'ready' || s.includes('customer_report_ready')) return 'customer_report_ready';
   if (s.includes('perimeter_only')) return 'perimeter_only';
   if (s.includes('diagnostic')) return 'diagnostic_only';
@@ -121,4 +126,34 @@ export function normalizeResultStateForWrite(
 
 export function isAllowedResultState(value: unknown): value is ResultState {
   return typeof value === 'string' && ALLOWED_SET.has(value);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Phase 3G: diagram_render_intent
+// ───────────────────────────────────────────────────────────────────────
+//
+// Failed geometry must NOT be presented to customers as the measured roof
+// diagram. The renderer reads `diagram_render_intent` from
+// geometry_report_json and decides which payload to draw:
+//   - full_topology   → final faces+edges as the official diagram
+//   - perimeter_only  → outer perimeter only; internal collapse hidden
+//   - rejected_only   → show failed geometry as red/orange "Rejected
+//                       topology candidate" overlay, never as measurement
+//
+// The intent is derived from the canonical result_state and a perimeter
+// pass flag. Callers must persist this value alongside result_state.
+
+export type DiagramRenderIntent = 'full_topology' | 'perimeter_only' | 'rejected_only';
+
+export function deriveDiagramRenderIntent(
+  resultState: ResultState | string | null | undefined,
+  perimeterPassed: boolean,
+): DiagramRenderIntent {
+  const s = String(resultState ?? '').toLowerCase();
+  if (s === 'customer_report_ready') return 'full_topology';
+  if (s === 'perimeter_only') return 'perimeter_only';
+  // Topology / pitch / unknown failures: if perimeter is valid we can still
+  // show the perimeter cleanly; otherwise mark all geometry as rejected.
+  if (perimeterPassed) return 'perimeter_only';
+  return 'rejected_only';
 }
