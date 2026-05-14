@@ -39,7 +39,8 @@ import {
   ClipboardCheck,
   Search,
   Truck,
-  Wallet
+  Wallet,
+  Gift
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -292,8 +293,16 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: ClipboardCheck,
       description: "Permit packet builder & tracker",
       featureKey: "permits"
+    },
+    {
+      name: "Referrals",
+      href: "referrals",
+      path: "/referrals",
+      icon: Gift,
+      description: "Referral links, payouts & credits"
     }
-  ].filter(item => hasFeature(item.featureKey));
+  ].filter(item => !item.featureKey || hasFeature(item.featureKey));
+
 
   const portalNavigation = [
     {
