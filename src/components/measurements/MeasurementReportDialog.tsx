@@ -127,8 +127,12 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
 const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   if (!m) return null;
   const grj = m.geometry_report_json || {};
-  const phase0 = grj.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
-  const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || grj.target_mask_isolation || {};
+  // For failed runs, the full debug payload is persisted to
+  // ai_measurement_jobs.source_context.debug. Fall back to it so
+  // perimeter_phase0 and target-mask metrics are always available in the UI.
+  const sourceCtxDebug = m.source_context?.debug || m.source_context?.source_context?.debug || null;
+  const phase0 = grj.perimeter_phase0 || sourceCtxDebug?.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
+  const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || sourceCtxDebug?.perimeter_inner_trace || grj.target_mask_isolation || {};
   const dp = grj.debug_pipeline || {};
   const acquisitionAudit = grj.acquisition_audit || grj.source_acquisition_debug?.acquisition_audit || m.source_context?.acquisition_audit || m.source_context?.debug?.acquisition_audit || null;
   const sourceAcquisitionDebug = grj.source_acquisition_debug || m.source_context?.source_acquisition_debug || m.source_context?.debug?.source_acquisition_debug || null;
