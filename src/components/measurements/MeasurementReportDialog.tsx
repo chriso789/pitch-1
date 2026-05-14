@@ -317,7 +317,18 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
           </details>
         )}
 
-        {acquisitionAudit && (
+        {innerTraceFired && sourceCtxDebug && (
+          <details className="group rounded-md border border-destructive/40 bg-destructive/5 p-3" open>
+            <summary className="cursor-pointer text-xs font-bold text-destructive">
+              Perimeter inner-trace debug payload (full gate context) ▸
+            </summary>
+            <pre className="mt-2 max-h-96 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+              {JSON.stringify(sourceCtxDebug, null, 2)}
+            </pre>
+          </details>
+        )}
+
+
           <details className="group rounded-md border bg-muted/20 p-3">
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
               Source acquisition audit ▸
