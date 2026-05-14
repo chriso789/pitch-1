@@ -285,6 +285,7 @@ const handler = async (req: Request): Promise<Response> => {
     override_validation_status: "verified",
   });
 
+  const customerReady = ready.ready;
   const overrideForensics: Record<string, any> = {};
   const newResultState = normalizeResultStateForWrite(
     customerReady
