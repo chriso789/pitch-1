@@ -35765,6 +35765,15 @@ export type Database = {
           perimeter_vs_mask_iou: number | null
           perimeter_wkt: string | null
           phase0_control_flow_version: string | null
+          phase3_enabled: boolean | null
+          phase3_engine_version: string | null
+          phase3A_eave_rake_classifier_version: string | null
+          phase3B_roof_lines_persistence_version: string | null
+          phase3C_deferred_edges_version: string | null
+          phase3D_backbone_seed_version: string | null
+          phase3E_constraint_repair_version: string | null
+          phase3F_result_state_version: string | null
+          phase3G_diagram_render_intent_version: string | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
           pitch_source: string | null
@@ -35964,6 +35973,15 @@ export type Database = {
           perimeter_vs_mask_iou?: number | null
           perimeter_wkt?: string | null
           phase0_control_flow_version?: string | null
+          phase3_enabled?: boolean | null
+          phase3_engine_version?: string | null
+          phase3A_eave_rake_classifier_version?: string | null
+          phase3B_roof_lines_persistence_version?: string | null
+          phase3C_deferred_edges_version?: string | null
+          phase3D_backbone_seed_version?: string | null
+          phase3E_constraint_repair_version?: string | null
+          phase3F_result_state_version?: string | null
+          phase3G_diagram_render_intent_version?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pitch_source?: string | null
@@ -36163,6 +36181,15 @@ export type Database = {
           perimeter_vs_mask_iou?: number | null
           perimeter_wkt?: string | null
           phase0_control_flow_version?: string | null
+          phase3_enabled?: boolean | null
+          phase3_engine_version?: string | null
+          phase3A_eave_rake_classifier_version?: string | null
+          phase3B_roof_lines_persistence_version?: string | null
+          phase3C_deferred_edges_version?: string | null
+          phase3D_backbone_seed_version?: string | null
+          phase3E_constraint_repair_version?: string | null
+          phase3F_result_state_version?: string | null
+          phase3G_diagram_render_intent_version?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pitch_source?: string | null
