@@ -36,6 +36,9 @@ import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
+import { classifyLayer1, ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
+import { buildRoofLine, aggregateLineTotalsByAttribute, totalsHaveTypedBacking, type RoofLine, type RoofLineAttribute } from "../_shared/roof-lines.ts";
+import { assertCustomerReportReady } from "../_shared/measurement-gates.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
