@@ -317,9 +317,9 @@ export function evaluatePerimeterGate(
     failures.push(`perimeter_self_intersections:${perimeter.perimeter_self_intersections}`);
   }
 
-  // Gate 3: Area conservation against roof mask within 5%
+  // Gate 3: Area conservation against roof mask
+  const areaRatio = roofMaskAreaSqft > 0 ? perimeter.perimeter_area_sqft / roofMaskAreaSqft : 1;
   if (roofMaskAreaSqft > 0) {
-    const areaRatio = perimeter.perimeter_area_sqft / roofMaskAreaSqft;
     if (areaRatio < 0.95 || areaRatio > 1.05) {
       // Relax to 10% for non-vendor sources since footprint != roof outline exactly
       if (perimeter.perimeter_source !== 'vendor_verified' && (areaRatio >= 0.90 && areaRatio <= 1.10)) {
@@ -330,7 +330,7 @@ export function evaluatePerimeterGate(
     }
   }
 
-  // Gate 4: Perimeter must overlap roof mask at >= 90%
+  // Gate 4: Perimeter must overlap roof mask at >= 85%
   if (perimeter.perimeter_registration_score < 0.85) {
     failures.push(`perimeter_mask_overlap_low:${perimeter.perimeter_registration_score.toFixed(3)}`);
   }
@@ -348,11 +348,41 @@ export function evaluatePerimeterGate(
     failures.push('perimeter_source_parcel_only');
   }
 
-  const passed = failures.length === 0;
-  const customerReady = passed && perimeter.customer_perimeter_ready;
-
   const eaveLf = perimeter.eave_edges.reduce((s, e) => s + e.length_ft, 0);
   const rakeLf = perimeter.rake_edges.reduce((s, e) => s + e.length_ft, 0);
+
+  // ── Fonsica acceptance gates (perimeter-first checkpoint v1) ──
+  // Use the mask-overlap (registration) score as a proxy for IoU when a
+  // dedicated mask polygon is not available. computeMaskOverlap already
+  // computes intersection_over_perimeter which is the dominant IoU signal.
+  const perimeterVsMaskIou = perimeter.perimeter_registration_score;
+  // missed_roof_area_pct = portion of mask area NOT enclosed by perimeter.
+  // If perimeter under-traces the roof, mask area > perimeter area.
+  const missedRoofAreaPct = roofMaskAreaSqft > 0
+    ? Math.max(0, (roofMaskAreaSqft - perimeter.perimeter_area_sqft) / roofMaskAreaSqft) * 100
+    : 0;
+  const eavesRakesLf = eaveLf + rakeLf;
+  const eavesRakesRatio = totalLen > 0 ? eavesRakesLf / totalLen : null;
+
+  const fonsica = {
+    area_within_5pct: roofMaskAreaSqft > 0
+      ? (areaRatio >= 0.95 && areaRatio <= 1.05)
+      : true,
+    // Expect eaves+rakes to cover >= 92% of total perimeter
+    eaves_rakes_within_8pct: eavesRakesRatio !== null ? eavesRakesRatio >= 0.92 : false,
+    missed_roof_lt_5pct: missedRoofAreaPct < 5,
+    confidence_gte_85: perimeter.perimeter_confidence >= 0.85,
+    area_ratio: Number(areaRatio.toFixed(4)),
+    eaves_rakes_ratio: eavesRakesRatio !== null ? Number(eavesRakesRatio.toFixed(4)) : null,
+  };
+
+  if (!fonsica.area_within_5pct) failures.push(`fonsica_area_off:${areaRatio.toFixed(3)}`);
+  if (!fonsica.eaves_rakes_within_8pct) failures.push(`fonsica_eaves_rakes_low:${(eavesRakesRatio ?? 0).toFixed(3)}`);
+  if (!fonsica.missed_roof_lt_5pct) failures.push(`fonsica_missed_roof_high:${missedRoofAreaPct.toFixed(1)}%`);
+  if (!fonsica.confidence_gte_85) failures.push(`fonsica_perimeter_confidence_low:${perimeter.perimeter_confidence.toFixed(3)}`);
+
+  const passed = failures.length === 0;
+  const customerReady = passed && perimeter.customer_perimeter_ready;
 
   // Compute centroid offset (already in perimeter, but recompute for diagnostics)
   const centroidOffset = computeCentroidOffsetFromRing(perimeter.perimeter_ring_px);
@@ -382,9 +412,13 @@ export function evaluatePerimeterGate(
     }],
     total_perimeter_lf: Number(totalLen.toFixed(2)),
     unknown_ratio: Number(unknownRatio.toFixed(4)),
+    perimeter_vs_mask_iou: Number(perimeterVsMaskIou.toFixed(4)),
+    missed_roof_area_pct: Number(missedRoofAreaPct.toFixed(2)),
+    perimeter_gate_passed: passed,
+    fonsica_gate: fonsica,
   };
 
-  console.log(`[PERIMETER_GATE] ${passed ? 'PASSED' : 'FAILED'}: ${failures.length > 0 ? failures.join(', ') : 'all gates clear'}. Eave=${eaveLf.toFixed(0)}ft, Rake=${rakeLf.toFixed(0)}ft, Unknown=${unknownLen.toFixed(0)}ft (${(unknownRatio * 100).toFixed(1)}%)`);
+  console.log(`[PERIMETER_GATE] ${passed ? 'PASSED' : 'FAILED'}: ${failures.length > 0 ? failures.join(', ') : 'all gates clear'}. Eave=${eaveLf.toFixed(0)}ft, Rake=${rakeLf.toFixed(0)}ft, Unknown=${unknownLen.toFixed(0)}ft (${(unknownRatio * 100).toFixed(1)}%), missed=${missedRoofAreaPct.toFixed(1)}%, IoU=${perimeterVsMaskIou.toFixed(3)}`);
 
   return {
     passed,
