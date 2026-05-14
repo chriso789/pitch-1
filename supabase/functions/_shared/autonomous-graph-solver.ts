@@ -2424,7 +2424,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       perimeter_px: footprintPxCCW.map(p => [p.x, p.y]),
       meters_per_pixel: metersPerPixelForSeed,
       min_seed_score: isFinite(metersPerPixelForSeed) ? 0.35 : 0.45,
-      min_chain_length_px: isComplexRoofModeCandidate(footprintAreaSqft, reflexCornerCount, maskedEdgeCount) ? 5 : 12,
+      min_chain_length_px: (footprintAreaSqft > 3000 || reflexCornerCount >= 5 || maskedEdgeCount >= 25) ? 5 : 12,
     });
     const existingSeedKeys = new Set(backboneFilteredEdgesPx.map(e => `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`));
     let seedInserted = 0;
