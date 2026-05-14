@@ -43,6 +43,7 @@ import {
   ALLOWED_RESULT_STATES as _SHARED_ALLOWED_RESULT_STATES,
   normalizeResultState as _sharedNormalizeResultState,
   normalizeResultStateForWrite,
+  deriveDiagramRenderIntent,
   type ResultState as _SharedResultState,
 } from "../_shared/result-state.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
