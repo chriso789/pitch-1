@@ -225,6 +225,16 @@ Deno.serve(async (req) => {
         raster_scale,
         engine_version: "geometry_first_v2",
         entrypoint: "start-ai-measurement",
+        // Patent Rule 1: roof-target confirmation audit trail.
+        original_geocode_lat,
+        original_geocode_lng,
+        confirmed_roof_center_lat,
+        confirmed_roof_center_lng,
+        marker_offset_ft,
+        user_confirmed_roof_target,
+        roof_target_admin_override,
+        roof_target_confirmed_by: user_confirmed_roof_target ? user_id : null,
+        roof_target_confirmed_at: user_confirmed_roof_target ? new Date().toISOString() : null,
       })
       .select("id")
       .single();
