@@ -295,6 +295,100 @@ const corsHeaders = {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
+  "archetype_debug",
+  "eave_rake_classification_debug",
+  "perimeter_edge_pitch_relation",
+]);
+
+function getPhase3DbColumns(): Record<string, unknown> {
+  return {
+    phase3_enabled: PHASE3_VERSION_BLOCK.phase3_enabled,
+    phase3_engine_version: PHASE3_VERSION_BLOCK.phase3_engine_version,
+    phase3A_eave_rake_classifier_version: PHASE3_VERSION_BLOCK.phase3A_eave_rake_classifier_version,
+    phase3B_roof_lines_persistence_version: PHASE3_VERSION_BLOCK.phase3B_roof_lines_persistence_version,
+    phase3C_deferred_edges_version: PHASE3_VERSION_BLOCK.phase3C_deferred_edges_version,
+    phase3D_backbone_seed_version: PHASE3_VERSION_BLOCK.phase3D_backbone_seed_version,
+    phase3E_constraint_repair_version: PHASE3_VERSION_BLOCK.phase3E_constraint_repair_version,
+    phase3F_result_state_version: PHASE3_VERSION_BLOCK.phase3F_result_state_version,
+    phase3G_diagram_render_intent_version: PHASE3_VERSION_BLOCK.phase3G_diagram_render_intent_version,
+  };
+}
+
+function getSchemaCacheMissingColumn(error: unknown): string | null {
+  const message = getErrorMessage(error);
+  if (!message.includes("schema cache") && !(error as any)?.code?.startsWith?.("PGRST")) return null;
+  return message.match(/Could not find the '([^']+)' column/)?.[1]
+    ?? message.match(/'([^']+)' column of 'roof_measurements'/)?.[1]
+    ?? null;
+}
+
+function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload };
+  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+    ? { ...(next.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: next.geometry_report_json ?? null };
+
+  for (const column of ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS) {
+    if (column in next) {
+      if (next[column] != null) geometry[column] = next[column];
+      delete next[column];
+    }
+  }
+
+  next.geometry_report_json = geometry;
+  return next;
+}
+
+function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column: string): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload };
+  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+    ? { ...(next.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: next.geometry_report_json ?? null };
+  const stripped = Array.isArray(geometry.schema_drift_stripped_columns)
+    ? [...geometry.schema_drift_stripped_columns]
+    : [];
+
+  if (column in next) {
+    if (next[column] != null && !(column in geometry)) geometry[column] = next[column];
+    delete next[column];
+  }
+  if (!stripped.includes(column)) stripped.push(column);
+  geometry.schema_drift_stripped_columns = stripped;
+  next.geometry_report_json = geometry;
+  return next;
+}
+
+async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
+  let safePayload = prepareRoofMeasurementPayload(payload);
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const result = await supabase.from("roof_measurements").insert(safePayload as any).select("id").single();
+    if (!result.error) return result;
+    lastError = result.error;
+    const missingColumn = getSchemaCacheMissingColumn(result.error);
+    if (!missingColumn || !(missingColumn in safePayload)) return result;
+    console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert without schema-cache-missing column", missingColumn);
+    safePayload = stripColumnIntoGeometryReport(safePayload, missingColumn);
+  }
+  return { data: null, error: lastError };
+}
+
+async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
+  let safePayload = prepareRoofMeasurementPayload(payload);
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const result = await supabase.from("roof_measurements").update(safePayload as any).eq("id", id);
+    if (!result.error) return result;
+    lastError = result.error;
+    const missingColumn = getSchemaCacheMissingColumn(result.error);
+    if (!missingColumn || !(missingColumn in safePayload)) return result;
+    console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update without schema-cache-missing column", missingColumn);
+    safePayload = stripColumnIntoGeometryReport(safePayload, missingColumn);
+  }
+  return { data: null, error: lastError };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
@@ -6111,9 +6205,7 @@ async function processJob(input: any) {
       } : {}),
     });
 
-    const { data: roofMeasurement, error: publishError } = await supabase
-      .from("roof_measurements")
-      .insert({
+    const roofMeasurementPayload = {
         tenant_id: input.tenant_id,
         customer_id: input.lead_id || null,
         lead_id: input.lead_id,
@@ -6157,6 +6249,8 @@ async function processJob(input: any) {
             ? `topology_mismatch:${topologyBlockReasons.join(",")}`
             : (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason,
         result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+        diagram_render_intent: preInsertDiagramIntent,
+        ...getPhase3DbColumns(),
         block_customer_report_reason: (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason ?? null,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
@@ -6298,9 +6392,9 @@ async function processJob(input: any) {
         archetype_debug: autonomousDebug?.perimeter_phase0?.archetype_debug ?? null,
         eave_rake_classification_debug: autonomousDebug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
         perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
-      })
-      .select("id")
-      .single();
+      };
+
+    const { data: roofMeasurement, error: publishError } = await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
     if (publishError) throw publishError;
 
@@ -6504,7 +6598,7 @@ async function processJob(input: any) {
           eaves_lf: number; rakes_lf: number;
           step_flashing_lf: number; wall_flashing_lf: number; unknown_lf: number;
         };
-        const { error: ttErr } = await supabase.from('roof_measurements').update({
+        const { error: ttErr } = await updateRoofMeasurementWithSchemaGuard(measurementId, {
           total_ridge_length: tt.ridges_lf,
           total_hip_length: tt.hips_lf,
           total_valley_length: tt.valleys_lf,
@@ -6513,7 +6607,7 @@ async function processJob(input: any) {
           total_wall_flashing_length: tt.wall_flashing_lf,
           total_step_flashing_length: tt.step_flashing_lf,
           total_unspecified_length: tt.unknown_lf,
-        }).eq('id', measurementId);
+        });
         if (ttErr) {
           console.warn('[PATENT_GATE] typed totals write-back failed', ttErr.message);
           patentLog.totals_writeback_error = ttErr.message;
@@ -6581,14 +6675,17 @@ async function processJob(input: any) {
       const mergedBlockReason = blockCustomerReportReason
         ? (patentBlockReason ? `${blockCustomerReportReason}|${patentBlockReason}` : blockCustomerReportReason)
         : patentBlockReason;
-      await supabase.from('roof_measurements').update({
+      await updateRoofMeasurementWithSchemaGuard(measurementId, {
         block_customer_report_reason: mergedBlockReason,
         override_validation_status: patentBlockReason ? 'pending' : null,
         report_blocked: !_customerReadyFinal,
         needs_review: !_customerReadyFinal,
         customer_report_ready: _customerReadyFinal,
         result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
-      }).eq('id', measurementId);
+        diagram_render_intent: _diagramRenderIntent,
+        geometry_report_json: geometryReportJson,
+        ...getPhase3DbColumns(),
+      });
     }
 
     // Update ai_measurement_jobs with promotion gate results
@@ -7736,7 +7833,7 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     },
   };
 
-  const { data, error } = await supabase.from("roof_measurements").insert({
+  const failurePayload = {
     tenant_id: input.tenant_id,
     customer_id: input.lead_id || null,
     lead_id: input.lead_id,
@@ -7780,6 +7877,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     gate_reason: persistedFailureReason,
     customer_report_ready: false,
     result_state: persistedResultState,
+    diagram_render_intent: phase3Debug.diagram_render_intent,
+    ...getPhase3DbColumns(),
     block_customer_report_reason: persistedFailureReason,
     internal_debug_report_ready: true,
     source_button: input.source_button,
@@ -7845,7 +7944,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       failure_category: debug?.failure_category || null,
       dominant_rejection: debug?.dominant_rejection || null,
     },
-  }).select("id").single();
+  };
+  const { data, error } = await insertRoofMeasurementWithSchemaGuard(failurePayload);
   if (error) throw error;
   return data.id as string;
 }
