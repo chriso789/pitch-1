@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Check, ArrowLeft, Zap, Building2, Rocket } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { SEO } from "@/components/seo/SEO";
 
 const plans = [
   {
@@ -92,6 +93,11 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Pricing — Pitch CRM Plans for Roofing & Construction Teams"
+        description="Simple per-user pricing for Pitch CRM, Live Canvass, and AI Measuring. Save $46,000+/year vs AccuLynx, JobNimbus, and EagleView."
+        path="/pricing"
+      />
       {/* Navigation */}
       <nav className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -113,6 +119,7 @@ export default function Pricing() {
         </div>
       </nav>
 
+      <main>
       {/* Header */}
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4 text-center">
@@ -256,6 +263,7 @@ export default function Pricing() {
           </div>
         </div>
       </section>
+      </main>
 
       {/* Footer */}
       <footer className="py-8 border-t">

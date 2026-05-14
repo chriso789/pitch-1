@@ -23,6 +23,7 @@ import DashboardMockup from '@/components/landing/DashboardMockup';
 import { PowerDialerMockup, EstimateMockup, PipelineMockup, AnalyticsMockup } from '@/components/landing/FeatureMockups';
 import { useAuth } from '@/contexts/AuthContext';
 import { DemoVideoModal } from '@/components/landing/DemoVideoModal';
+import { SEO } from '@/components/seo/SEO';
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -151,6 +152,20 @@ const LandingPage = () => {
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-50 to-white">
+      <SEO
+        title="Pitch — AI-Powered Construction & Roofing CRM"
+        description="AI-powered CRM for roofing and construction: power dialer, AI roof measurements, estimates, proposals, and pipeline in one platform."
+        path="/"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Pitch CRM",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          url: "https://pitch-crm.ai/",
+          offers: { "@type": "Offer", price: "60", priceCurrency: "USD" },
+        }}
+      />
       {/* Navigation - Mobile Safe Area */}
       <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 z-50 pt-[env(safe-area-inset-top)]">
         <div className="container mx-auto px-4 py-3 sm:py-4">
@@ -185,6 +200,7 @@ const LandingPage = () => {
         </div>
       </nav>
 
+      <main>
       {/* Hero Section - Account for nav height + safe area */}
       <section className="pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 mt-[env(safe-area-inset-top)]">
         <div className="container mx-auto max-w-6xl text-center">
@@ -458,6 +474,7 @@ const LandingPage = () => {
           </p>
         </div>
       </section>
+      </main>
 
       {/* Footer */}
       <footer className="bg-slate-900 text-white py-12 px-4">

@@ -39,6 +39,7 @@ import {
   AutomationMockup,
   CalendarMockup
 } from '@/components/landing/FeatureMockups';
+import { SEO } from '@/components/seo/SEO';
 
 const Features = () => {
   const navigate = useNavigate();
@@ -225,6 +226,11 @@ const Features = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <SEO
+        title="Features — Power Dialer, AI Measurements & Pipeline | Pitch CRM"
+        description="Explore Pitch CRM features: power dialer, AI roof measurements, estimates, proposals, territory canvassing, automation, and analytics."
+        path="/features"
+      />
       {/* Navigation */}
       <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -255,6 +261,7 @@ const Features = () => {
         </div>
       </nav>
 
+      <main>
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-4">
         <div className="container mx-auto max-w-6xl text-center">
@@ -475,6 +482,7 @@ const Features = () => {
           </p>
         </div>
       </section>
+      </main>
 
       {/* Footer */}
       <footer className="bg-slate-900 text-white py-12 px-4">
