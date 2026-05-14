@@ -14,6 +14,759 @@ export type Database = {
   }
   public: {
     Tables: {
+      abc_accounts: {
+        Row: {
+          account_kind: string
+          account_number: string
+          bill_to_number: string | null
+          created_at: string
+          home_branch_number: string | null
+          id: string
+          is_sellable: boolean | null
+          name: string | null
+          raw_payload: Json
+          sold_to_number: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_kind: string
+          account_number: string
+          bill_to_number?: string | null
+          created_at?: string
+          home_branch_number?: string | null
+          id?: string
+          is_sellable?: boolean | null
+          name?: string | null
+          raw_payload?: Json
+          sold_to_number?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_kind?: string
+          account_number?: string
+          bill_to_number?: string | null
+          created_at?: string
+          home_branch_number?: string | null
+          id?: string
+          is_sellable?: boolean | null
+          name?: string | null
+          raw_payload?: Json
+          sold_to_number?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_branches: {
+        Row: {
+          branch_number: string
+          city: string | null
+          country: string | null
+          created_at: string
+          id: string
+          latitude: number | null
+          longitude: number | null
+          name: string | null
+          postal: string | null
+          raw_payload: Json
+          state: string | null
+          status: string | null
+          storefront: string | null
+          tenant_id: string
+          time_zone_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_number: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name?: string | null
+          postal?: string | null
+          raw_payload?: Json
+          state?: string | null
+          status?: string | null
+          storefront?: string | null
+          tenant_id: string
+          time_zone_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_number?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name?: string | null
+          postal?: string | null
+          raw_payload?: Json
+          state?: string | null
+          status?: string | null
+          storefront?: string | null
+          tenant_id?: string
+          time_zone_code?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_integrations: {
+        Row: {
+          abc_mode: string
+          client_id: string
+          created_at: string
+          created_by: string | null
+          environment: string
+          id: string
+          last_error: string | null
+          redirect_uri: string
+          scopes: string
+          status: string
+          tenant_id: string
+          token_strategy: string
+          updated_at: string
+          webhook_id: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          abc_mode: string
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          environment: string
+          id?: string
+          last_error?: string | null
+          redirect_uri: string
+          scopes?: string
+          status?: string
+          tenant_id: string
+          token_strategy: string
+          updated_at?: string
+          webhook_id?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          abc_mode?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          id?: string
+          last_error?: string | null
+          redirect_uri?: string
+          scopes?: string
+          status?: string
+          tenant_id?: string
+          token_strategy?: string
+          updated_at?: string
+          webhook_id?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: []
+      }
+      abc_invoice_lines: {
+        Row: {
+          extended_price_amount: number | null
+          id: string
+          invoice_id: string
+          item_description: string | null
+          item_number: string | null
+          line_id: string | null
+          ordered_qty: number | null
+          price_per_unit_amount: number | null
+          raw_payload: Json
+          shipped_qty: number | null
+          tenant_id: string
+        }
+        Insert: {
+          extended_price_amount?: number | null
+          id?: string
+          invoice_id: string
+          item_description?: string | null
+          item_number?: string | null
+          line_id?: string | null
+          ordered_qty?: number | null
+          price_per_unit_amount?: number | null
+          raw_payload?: Json
+          shipped_qty?: number | null
+          tenant_id: string
+        }
+        Update: {
+          extended_price_amount?: number | null
+          id?: string
+          invoice_id?: string
+          item_description?: string | null
+          item_number?: string | null
+          line_id?: string | null
+          ordered_qty?: number | null
+          price_per_unit_amount?: number | null
+          raw_payload?: Json
+          shipped_qty?: number | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_invoice_lines_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "abc_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      abc_invoices: {
+        Row: {
+          bill_to_number: string | null
+          branch_number: string | null
+          created_at: string
+          id: string
+          invoice_date: string | null
+          invoice_number: string
+          is_credit_memo: boolean | null
+          is_rebill: boolean | null
+          order_date: string | null
+          order_number: string | null
+          original_invoice_reference: string | null
+          payment_status: string | null
+          pdf_storage_path: string | null
+          raw_payload: Json
+          sales_type: string | null
+          ship_to_number: string | null
+          sub_total: number | null
+          tax_amount: number | null
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          bill_to_number?: string | null
+          branch_number?: string | null
+          created_at?: string
+          id?: string
+          invoice_date?: string | null
+          invoice_number: string
+          is_credit_memo?: boolean | null
+          is_rebill?: boolean | null
+          order_date?: string | null
+          order_number?: string | null
+          original_invoice_reference?: string | null
+          payment_status?: string | null
+          pdf_storage_path?: string | null
+          raw_payload?: Json
+          sales_type?: string | null
+          ship_to_number?: string | null
+          sub_total?: number | null
+          tax_amount?: number | null
+          tenant_id: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bill_to_number?: string | null
+          branch_number?: string | null
+          created_at?: string
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string
+          is_credit_memo?: boolean | null
+          is_rebill?: boolean | null
+          order_date?: string | null
+          order_number?: string | null
+          original_invoice_reference?: string | null
+          payment_status?: string | null
+          pdf_storage_path?: string | null
+          raw_payload?: Json
+          sales_type?: string | null
+          ship_to_number?: string | null
+          sub_total?: number | null
+          tax_amount?: number | null
+          tenant_id?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_item_availability: {
+        Row: {
+          branch_number: string
+          id: string
+          is_california_display: boolean | null
+          is_dimensional: boolean | null
+          item_number: string
+          raw_payload: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          branch_number: string
+          id?: string
+          is_california_display?: boolean | null
+          is_dimensional?: boolean | null
+          item_number: string
+          raw_payload?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          branch_number?: string
+          id?: string
+          is_california_display?: boolean | null
+          is_dimensional?: boolean | null
+          item_number?: string
+          raw_payload?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_items: {
+        Row: {
+          created_at: string
+          family_id: string | null
+          family_name: string | null
+          id: string
+          is_dimensional: boolean | null
+          item_description: string | null
+          item_number: string
+          primary_asset_id: string | null
+          raw_payload: Json
+          status: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          family_id?: string | null
+          family_name?: string | null
+          id?: string
+          is_dimensional?: boolean | null
+          item_description?: string | null
+          item_number: string
+          primary_asset_id?: string | null
+          raw_payload?: Json
+          status?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          family_id?: string | null
+          family_name?: string | null
+          id?: string
+          is_dimensional?: boolean | null
+          item_description?: string | null
+          item_number?: string
+          primary_asset_id?: string | null
+          raw_payload?: Json
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_oauth_states: {
+        Row: {
+          code_verifier: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          integration_id: string | null
+          redirect_uri: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          code_verifier: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          integration_id?: string | null
+          redirect_uri: string
+          state: string
+          tenant_id: string
+        }
+        Update: {
+          code_verifier?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          integration_id?: string | null
+          redirect_uri?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_oauth_states_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "abc_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      abc_order_job_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          estimate_id: string | null
+          id: string
+          job_id: string | null
+          order_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          estimate_id?: string | null
+          id?: string
+          job_id?: string | null
+          order_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          estimate_id?: string | null
+          id?: string
+          job_id?: string | null
+          order_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_order_job_links_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "abc_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      abc_order_lines: {
+        Row: {
+          amount: number | null
+          id: string
+          item_description: string | null
+          item_number: string | null
+          line_id: string | null
+          order_id: string
+          ordered_qty: number | null
+          ordered_uom: string | null
+          raw_payload: Json
+          tenant_id: string
+          unit_price: number | null
+        }
+        Insert: {
+          amount?: number | null
+          id?: string
+          item_description?: string | null
+          item_number?: string | null
+          line_id?: string | null
+          order_id: string
+          ordered_qty?: number | null
+          ordered_uom?: string | null
+          raw_payload?: Json
+          tenant_id: string
+          unit_price?: number | null
+        }
+        Update: {
+          amount?: number | null
+          id?: string
+          item_description?: string | null
+          item_number?: string | null
+          line_id?: string | null
+          order_id?: string
+          ordered_qty?: number | null
+          ordered_uom?: string | null
+          raw_payload?: Json
+          tenant_id?: string
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_order_lines_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "abc_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      abc_orders: {
+        Row: {
+          bill_to_number: string | null
+          branch_number: string | null
+          confirmation_number: string | null
+          created_at: string
+          created_date: string | null
+          currency: string | null
+          delivery_requested_for: string | null
+          id: string
+          order_number: string | null
+          order_status: string | null
+          ordered_on: string | null
+          purchase_order: string | null
+          raw_payload: Json
+          request_id: string | null
+          ship_to_number: string | null
+          sold_to_number: string | null
+          source: string
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          bill_to_number?: string | null
+          branch_number?: string | null
+          confirmation_number?: string | null
+          created_at?: string
+          created_date?: string | null
+          currency?: string | null
+          delivery_requested_for?: string | null
+          id?: string
+          order_number?: string | null
+          order_status?: string | null
+          ordered_on?: string | null
+          purchase_order?: string | null
+          raw_payload?: Json
+          request_id?: string | null
+          ship_to_number?: string | null
+          sold_to_number?: string | null
+          source?: string
+          tenant_id: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bill_to_number?: string | null
+          branch_number?: string | null
+          confirmation_number?: string | null
+          created_at?: string
+          created_date?: string | null
+          currency?: string | null
+          delivery_requested_for?: string | null
+          id?: string
+          order_number?: string | null
+          order_status?: string | null
+          ordered_on?: string | null
+          purchase_order?: string | null
+          raw_payload?: Json
+          request_id?: string | null
+          ship_to_number?: string | null
+          sold_to_number?: string | null
+          source?: string
+          tenant_id?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_price_requests: {
+        Row: {
+          branch_number: string
+          created_at: string
+          created_by: string | null
+          http_status: number | null
+          id: string
+          purpose: string
+          request_id: string | null
+          request_payload: Json
+          response_payload: Json | null
+          ship_to_number: string
+          tenant_id: string
+        }
+        Insert: {
+          branch_number: string
+          created_at?: string
+          created_by?: string | null
+          http_status?: number | null
+          id?: string
+          purpose: string
+          request_id?: string | null
+          request_payload: Json
+          response_payload?: Json | null
+          ship_to_number: string
+          tenant_id: string
+        }
+        Update: {
+          branch_number?: string
+          created_at?: string
+          created_by?: string | null
+          http_status?: number | null
+          id?: string
+          purpose?: string
+          request_id?: string | null
+          request_payload?: Json
+          response_payload?: Json | null
+          ship_to_number?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      abc_tokens: {
+        Row: {
+          access_token_enc: string | null
+          access_token_expires_at: string | null
+          integration_id: string
+          raw_token_response: Json
+          refresh_token_enc: string | null
+          refresh_token_last_used_at: string | null
+          scope: string | null
+          tenant_id: string
+          token_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_enc?: string | null
+          access_token_expires_at?: string | null
+          integration_id: string
+          raw_token_response?: Json
+          refresh_token_enc?: string | null
+          refresh_token_last_used_at?: string | null
+          scope?: string | null
+          tenant_id: string
+          token_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_enc?: string | null
+          access_token_expires_at?: string | null
+          integration_id?: string
+          raw_token_response?: Json
+          refresh_token_enc?: string | null
+          refresh_token_last_used_at?: string | null
+          scope?: string | null
+          tenant_id?: string
+          token_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_tokens_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: true
+            referencedRelation: "abc_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      abc_webhook_events: {
+        Row: {
+          accepted: boolean
+          authorization_header_present: boolean | null
+          confirmation_number: string | null
+          event_type: string | null
+          id: string
+          invoice_number: string | null
+          order_number: string | null
+          payload: Json
+          processing_error: string | null
+          received_at: string
+          signature_match: boolean | null
+          tenant_id: string | null
+          webhook_id: string | null
+        }
+        Insert: {
+          accepted?: boolean
+          authorization_header_present?: boolean | null
+          confirmation_number?: string | null
+          event_type?: string | null
+          id?: string
+          invoice_number?: string | null
+          order_number?: string | null
+          payload: Json
+          processing_error?: string | null
+          received_at?: string
+          signature_match?: boolean | null
+          tenant_id?: string | null
+          webhook_id?: string | null
+        }
+        Update: {
+          accepted?: boolean
+          authorization_header_present?: boolean | null
+          confirmation_number?: string | null
+          event_type?: string | null
+          id?: string
+          invoice_number?: string | null
+          order_number?: string | null
+          payload?: Json
+          processing_error?: string | null
+          received_at?: string
+          signature_match?: boolean | null
+          tenant_id?: string | null
+          webhook_id?: string | null
+        }
+        Relationships: []
+      }
+      abc_webhooks: {
+        Row: {
+          active_since: string | null
+          created_at: string
+          events: string[]
+          id: string
+          integration_id: string | null
+          name: string
+          raw_payload: Json
+          secret: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string
+          url: string
+          webhook_id: string
+          webhook_type: string
+        }
+        Insert: {
+          active_since?: string | null
+          created_at?: string
+          events?: string[]
+          id?: string
+          integration_id?: string | null
+          name: string
+          raw_payload?: Json
+          secret?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string
+          url: string
+          webhook_id: string
+          webhook_type: string
+        }
+        Update: {
+          active_since?: string | null
+          created_at?: string
+          events?: string[]
+          id?: string
+          integration_id?: string | null
+          name?: string
+          raw_payload?: Json
+          secret?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string
+          url?: string
+          webhook_id?: string
+          webhook_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_webhooks_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "abc_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accuracy_regression_log: {
         Row: {
           baseline_value: number | null
@@ -48134,6 +48887,7 @@ export type Database = {
         Returns: unknown
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      abc_is_tenant_admin: { Args: { _tenant_id: string }; Returns: boolean }
       add_canvassiq_property: {
         Args: {
           p_address: Json
