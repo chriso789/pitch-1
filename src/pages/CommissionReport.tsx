@@ -376,10 +376,16 @@ export default function CommissionReport() {
     enabled: !!currentUser?.tenant_id && qualifyingStageKeys.length > 0,
   });
 
+  // Defensive: exclude lost/canceled jobs from totals and table even if they
+  // somehow slip past the qualifying-stage filter (e.g. tenant overrides).
+  const earnedCommissions = commissions.filter(
+    c => !EXCLUDED_STATUSES.includes((c.status || '').toLowerCase())
+  );
+
   // Summary stats
-  const totalJobs = commissions.length;
-  const totalRevenue = commissions.reduce((sum, c) => sum + c.contractValue, 0);
-  const totalCommissions = commissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  const totalJobs = earnedCommissions.length;
+  const totalRevenue = earnedCommissions.reduce((sum, c) => sum + c.contractValue, 0);
+  const totalCommissions = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
   const pendingCommissions = totalCommissions; // All are pending until paid via commission_earnings
   const paidCommissions = 0;
 
