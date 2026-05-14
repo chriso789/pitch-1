@@ -285,6 +285,79 @@ Deno.serve(async (req) => {
       }
     }
 
+    // If linked to a change order, also append parsed line items into the
+    // change order's line_items.items list and recalculate price-to-client
+    // (cost + overhead% + profit%) so the user sees real materials, not a one-liner.
+    if (change_order_id && Array.isArray(line_items) && line_items.length > 0) {
+      try {
+        const { data: co } = await supabase
+          .from('change_orders')
+          .select('id, line_items')
+          .eq('id', change_order_id)
+          .single();
+        if (co) {
+          const container: any = (co.line_items as any) || {};
+          const existing: any[] = Array.isArray(container.items) ? container.items : [];
+          const kind = invoice_type === 'labor' ? 'labor' : invoice_type === 'overhead' ? 'overhead' : 'material';
+          const appended = line_items.map((li: any) => {
+            const qty = li.quantity != null ? Number(li.quantity) : 1;
+            const unit = li.unit_price != null ? Number(li.unit_price) : 0;
+            const lt = li.line_total != null ? Number(li.line_total) : qty * unit;
+            return {
+              kind,
+              description: String(li.description || '').slice(0, 2000) || '(no description)',
+              quantity: qty,
+              unit_price: unit,
+              line_total: lt,
+              unit_of_measure: li.unit_of_measure || null,
+              sku: li.sku || null,
+              source_invoice_id: invoice.id,
+              vendor_name: vendor_name || null,
+            };
+          });
+          const items = [...existing, ...appended];
+          const lineAmt = (i: any) => {
+            const lt = Number(i.line_total);
+            if (Number.isFinite(lt) && lt > 0) return lt;
+            return (Number(i.quantity ?? 1) || 0) * (Number(i.unit_price ?? 0) || 0);
+          };
+          const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + lineAmt(i), 0);
+          const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + lineAmt(i), 0);
+          const overheadPct = Number(container.overhead_pct ?? 10);
+          const profitPct = Number(container.profit_pct ?? 25);
+          const cost = newMaterial + newLabor;
+          const denom = Math.max(0.01, 1 - overheadPct / 100 - profitPct / 100);
+          const sellingPrice = cost / denom;
+          const overheadAmount = sellingPrice * (overheadPct / 100);
+          const profitAmount = sellingPrice * (profitPct / 100);
+          const { error: coErr } = await supabase
+            .from('change_orders')
+            .update({
+              line_items: {
+                ...container,
+                items,
+                overhead_pct: overheadPct,
+                profit_pct: profitPct,
+                overhead_amount: overheadAmount,
+                profit_amount: profitAmount,
+                subtotal: cost,
+              },
+              material_total: newMaterial,
+              labor_total: newLabor,
+              cost_impact: sellingPrice,
+            })
+            .eq('id', change_order_id);
+          if (coErr) {
+            console.error('[submit-project-invoice] Failed to merge line items into CO:', coErr);
+          } else {
+            console.log(`[submit-project-invoice] Merged ${appended.length} line items into change order ${change_order_id}`);
+          }
+        }
+      } catch (e) {
+        console.error('[submit-project-invoice] CO merge error:', e);
+      }
+    }
+
     // Create document record if a file was attached (so it shows in Documents tab)
     if (document_url) {
       const docType = invoice_type === 'material' ? 'invoice_material' 
