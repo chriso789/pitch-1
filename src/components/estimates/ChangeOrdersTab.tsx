@@ -430,9 +430,23 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
 
   const totalsFor = (coId: string) => {
     const inv = (coInvoices || []).filter((i) => i.change_order_id === coId);
-    const material = inv.filter((i) => i.invoice_type === 'material').reduce((s, i) => s + Number(i.invoice_amount), 0);
-    const labor = inv.filter((i) => i.invoice_type === 'labor').reduce((s, i) => s + Number(i.invoice_amount), 0);
-    const overhead = inv.filter((i) => i.invoice_type === 'overhead').reduce((s, i) => s + Number(i.invoice_amount), 0);
+    let material = inv.filter((i) => i.invoice_type === 'material').reduce((s, i) => s + Number(i.invoice_amount), 0);
+    let labor = inv.filter((i) => i.invoice_type === 'labor').reduce((s, i) => s + Number(i.invoice_amount), 0);
+    let overhead = inv.filter((i) => i.invoice_type === 'overhead').reduce((s, i) => s + Number(i.invoice_amount), 0);
+
+    // Include built-in CO line items captured when the CO was created
+    const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
+    const items = ((co?.line_items as any)?.items || []) as any[];
+    for (const it of items) {
+      const qty = Number(it.quantity ?? it.qty ?? 1);
+      const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
+      const total = Number(it.line_total ?? it.total ?? qty * price) || 0;
+      const cat = String(it.category ?? it.type ?? it.kind ?? 'material').toLowerCase();
+      if (cat.startsWith('lab')) labor += total;
+      else if (cat.startsWith('over')) overhead += total;
+      else material += total;
+    }
+
     return { material, labor, overhead, total: material + labor + overhead };
   };
 
