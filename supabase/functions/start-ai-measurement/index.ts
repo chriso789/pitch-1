@@ -2014,6 +2014,13 @@ async function processJob(input: any) {
         perimeter_topology: perimeterTopologySnapshot,
       };
       console.error(`[PERIMETER_TARGET_MASK_GATE] FAIL: ${failReason}`, JSON.stringify(debugPayload));
+      console.log('[PHASE0_TRACE] phase0_persist:start', JSON.stringify({
+        fail_reason: failReason,
+        result_state: 'ai_failed_perimeter',
+        perimeter_phase0_present: !!debugPayload.perimeter_phase0,
+        perimeter_gate_passed: debugPayload.perimeter_gate_passed,
+        ai_measurement_job_id: input.ai_measurement_job_id,
+      }));
       const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
       await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter target-mask gate failed: ${failReason}`, failedId);
       await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter target-mask gate failed: ${failReason}`);
@@ -2023,6 +2030,11 @@ async function processJob(input: any) {
         result_state: 'ai_failed_perimeter',
         source_context: { gate_reason: failReason, debug: debugPayload },
       }).eq("id", input.ai_measurement_job_id);
+      console.log('[PHASE0_TRACE] phase0_persist:done', JSON.stringify({
+        fail_reason: failReason,
+        failed_measurement_id: failedId,
+        ai_measurement_job_id: input.ai_measurement_job_id,
+      }));
       return;
     }
 
