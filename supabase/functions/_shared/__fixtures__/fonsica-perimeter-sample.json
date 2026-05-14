@@ -1,0 +1,43 @@
+{
+  "_comment": "Captured Fonsica regression payload — used by perimeter-topology.test.ts to ensure perimeter_phase0 is built and persisted whenever the target-mask gate fires.",
+  "address": "Fonsica (regression sample)",
+  "footprint_source": "google_solar_mask_contour",
+  "footprint_area_sqft": 3255,
+  "perimeter_topology": {
+    "perimeter_source": "google_solar_mask_contour",
+    "perimeter_area_sqft": 3255,
+    "perimeter_closed": true,
+    "perimeter_self_intersections": 0,
+    "perimeter_registration_score": 0.91,
+    "perimeter_confidence": 0.86,
+    "customer_perimeter_ready": true,
+    "perimeter_edges": [
+      { "id": "e1", "type": "eave", "length_ft": 60 },
+      { "id": "e2", "type": "rake", "length_ft": 40 },
+      { "id": "e3", "type": "eave", "length_ft": 60 },
+      { "id": "e4", "type": "rake", "length_ft": 40 }
+    ],
+    "eave_edges": [
+      { "id": "e1", "type": "eave", "length_ft": 60 },
+      { "id": "e3", "type": "eave", "length_ft": 60 }
+    ],
+    "rake_edges": [
+      { "id": "e2", "type": "rake", "length_ft": 40 },
+      { "id": "e4", "type": "rake", "length_ft": 40 }
+    ],
+    "perimeter_ring_px": [
+      { "x": 100, "y": 100 },
+      { "x": 200, "y": 100 },
+      { "x": 200, "y": 180 },
+      { "x": 100, "y": 180 },
+      { "x": 100, "y": 100 }
+    ]
+  },
+  "gate_context": {
+    "global_mask_area_sqft": 11697,
+    "target_mask_area_sqft": 3300,
+    "global_mask_inflation_ratio": 3.54,
+    "benchmark_area_sqft": 3260,
+    "solar_expected_area_sqft": 3290
+  }
+}

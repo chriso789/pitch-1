@@ -127,8 +127,12 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
 const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   if (!m) return null;
   const grj = m.geometry_report_json || {};
-  const phase0 = grj.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
-  const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || grj.target_mask_isolation || {};
+  // For failed runs, the full debug payload is persisted to
+  // ai_measurement_jobs.source_context.debug. Fall back to it so
+  // perimeter_phase0 and target-mask metrics are always available in the UI.
+  const sourceCtxDebug = m.source_context?.debug || m.source_context?.source_context?.debug || null;
+  const phase0 = grj.perimeter_phase0 || sourceCtxDebug?.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
+  const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || sourceCtxDebug?.perimeter_inner_trace || grj.target_mask_isolation || {};
   const dp = grj.debug_pipeline || {};
   const acquisitionAudit = grj.acquisition_audit || grj.source_acquisition_debug?.acquisition_audit || m.source_context?.acquisition_audit || m.source_context?.debug?.acquisition_audit || null;
   const sourceAcquisitionDebug = grj.source_acquisition_debug || m.source_context?.source_acquisition_debug || m.source_context?.debug?.source_acquisition_debug || null;
@@ -218,8 +222,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
-  const failureReasonStr = String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
-  const phase0MissingBug = !phase0 && /perimeter_inner_trace_detected/i.test(failureReasonStr);
+  const failureReasonStr = String(grj.hard_fail_reason ?? sourceCtxDebug?.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
+  const innerTraceFired = /perimeter_inner_trace_detected/i.test(failureReasonStr)
+    || (Array.isArray(phase0?.perimeter_failure_reasons) && phase0.perimeter_failure_reasons.some((r: any) => /perimeter_inner_trace_detected/i.test(String(r))));
+  const phase0MissingBug = !phase0 && innerTraceFired;
 
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
@@ -308,6 +314,17 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
                 </tbody>
               </table>
             </div>
+          </details>
+        )}
+
+        {innerTraceFired && sourceCtxDebug && (
+          <details className="group rounded-md border border-destructive/40 bg-destructive/5 p-3" open>
+            <summary className="cursor-pointer text-xs font-bold text-destructive">
+              Perimeter inner-trace debug payload (full gate context) ▸
+            </summary>
+            <pre className="mt-2 max-h-96 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+              {JSON.stringify(sourceCtxDebug, null, 2)}
+            </pre>
           </details>
         )}
 
