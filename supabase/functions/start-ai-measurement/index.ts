@@ -185,6 +185,33 @@ export const PHASE3_VERSION_BLOCK = {
   phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
 } as const;
 
+// ─── Canonical route provenance ───────────────────────────────────────
+// Every row this function writes (success or failure) carries this
+// provenance block so downstream code, debug endpoints, and reports can
+// prove the measurement came from the canonical AI Measurement path.
+export const MEASUREMENT_ROUTE_AUDIT_VERSION = "measurement-route-audit-v1";
+export const CANONICAL_CREATED_BY_FUNCTION = "start-ai-measurement";
+export const CANONICAL_CREATED_BY_COMPONENT = "PullMeasurementsButton/useMeasurementJob";
+export const CANONICAL_SOLVER_ENTRYPOINT = "_shared/autonomous-graph-solver.solveAutonomousGraph";
+
+export const CANONICAL_ROUTE_PROVENANCE = {
+  created_by_function: CANONICAL_CREATED_BY_FUNCTION,
+  created_by_component: CANONICAL_CREATED_BY_COMPONENT,
+  solver_entrypoint: CANONICAL_SOLVER_ENTRYPOINT,
+  canonical_measurement_route: true,
+  route_audit_version: MEASUREMENT_ROUTE_AUDIT_VERSION,
+} as const;
+
+export function getCanonicalRouteDbColumns(): Record<string, unknown> {
+  return {
+    created_by_function: CANONICAL_CREATED_BY_FUNCTION,
+    created_by_component: CANONICAL_CREATED_BY_COMPONENT,
+    solver_entrypoint: CANONICAL_SOLVER_ENTRYPOINT,
+    canonical_measurement_route: true,
+    route_audit_version: MEASUREMENT_ROUTE_AUDIT_VERSION,
+  };
+}
+
 export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
   const eaveLf = Number(perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0);
   const rakeLf = Number(perimeterPhase0?.rake_length_lf ?? perimeterPhase0?.rake_candidate_lf ?? 0);
