@@ -6104,6 +6104,14 @@ async function processJob(input: any) {
           ?? autonomousDebug?.centroid_offset_px
           ?? null,
         perimeter_gate_passed: autonomousDebug?.perimeter_gate_passed ?? null,
+        // ── Phase 2A: classification debug ──
+        eave_candidate_lf: autonomousDebug?.perimeter_phase0?.eave_candidate_lf ?? null,
+        rake_candidate_lf: autonomousDebug?.perimeter_phase0?.rake_candidate_lf ?? null,
+        unknown_perimeter_lf: autonomousDebug?.perimeter_phase0?.unknown_perimeter_lf ?? null,
+        eave_rake_confidence: autonomousDebug?.perimeter_phase0?.eave_rake_confidence ?? null,
+        archetype_debug: autonomousDebug?.perimeter_phase0?.archetype_debug ?? null,
+        eave_rake_classification_debug: autonomousDebug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
+        perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
       })
       .select("id")
       .single();
