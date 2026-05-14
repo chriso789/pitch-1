@@ -118,17 +118,17 @@ export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
 // as the sub-feature is wired in real code (not just announced).
 //   3A — eave/rake classifier rebuild + hard sanity gate (active)
 //   3B — typed roof_lines persistence (lite: counts/diagnostics only)
-//   3C — deferred connectivity edge pool (NOT WIRED — null)
-//   3D — seed backbone insertion (NOT WIRED — null)
-//   3E — constraint-solver repair pass (already gated by autonomous-graph-solver)
+//   3C — deferred connectivity edge pool (active)
+//   3D — seed backbone insertion (active)
+//   3E — constraint-solver repair pass (active)
 //   3F — result_state normalizer hardening (active)
 //   3G — diagram_render_intent enforcement (active)
 export const PHASE3_ENGINE_VERSION = "phase3-visibility-v1";
 export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "v1";
 export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "v1-counts-only";
-export const PHASE3C_DEFERRED_EDGES_VERSION: string | null = null;
-export const PHASE3D_BACKBONE_SEED_VERSION: string | null = null;
-export const PHASE3E_CONSTRAINT_REPAIR_VERSION: string | null = null;
+export const PHASE3C_DEFERRED_EDGES_VERSION = "v1";
+export const PHASE3D_BACKBONE_SEED_VERSION = "v1";
+export const PHASE3E_CONSTRAINT_REPAIR_VERSION = "v1";
 export const PHASE3F_RESULT_STATE_VERSION = "v1";
 export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "v1";
 export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
@@ -266,15 +266,31 @@ function buildPhase3A5Block(debug: any): Record<string, any> {
   const r = debug?.phase3A_5 ?? debug?.perimeter_refinement ?? null;
   if (!r) {
     return {
+      enabled: true,
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'perimeter_refinement_callsite_not_reached',
+      refinement_iou: null,
+      perimeter_to_target_mask_ratio: null,
+      refined_perimeter_vertex_count: 0,
       phase3A_5_active: false,
       phase3A_5_perimeter_refinement_version: 'v1',
+      phase3_5_perimeter_refinement_enabled: true,
       perimeter_refinement_executed: false,
-      perimeter_refinement_reason: 'not_executed_in_current_pipeline',
+      perimeter_refinement_reason: 'perimeter_refinement_callsite_not_reached',
     };
   }
   return {
+    enabled: true,
+    version: r.version ?? r.phase3A_5_perimeter_refinement_version ?? 'v1',
+    executed: r.executed ?? true,
+    skipped_reason: r.skipped_reason ?? null,
+    refinement_iou: r.refinement_iou ?? r.perimeter_vs_mask_iou ?? null,
+    perimeter_to_target_mask_ratio: r.perimeter_to_target_mask_ratio ?? null,
+    refined_perimeter_vertex_count: r.refined_perimeter_vertex_count ?? 0,
     phase3A_5_active: true,
     perimeter_refinement_executed: true,
+    phase3_5_perimeter_refinement_enabled: true,
     ...r,
   };
 }
@@ -283,6 +299,9 @@ function buildPhase3CBlock(debug: any): Record<string, any> {
   const r = debug?.phase3C ?? debug?.deferred_edges ?? null;
   if (!r) {
     return {
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'connectivity_pruning_callsite_not_reached',
       phase3C_active: false,
       phase3C_deferred_edges_version: 'v1',
       deferred_structural_candidates_count: 0,
@@ -291,13 +310,16 @@ function buildPhase3CBlock(debug: any): Record<string, any> {
       phase3C_executed: false,
     };
   }
-  return { phase3C_active: true, phase3C_executed: true, ...r };
+  return { version: r.version ?? r.phase3C_deferred_edges_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3C_active: true, phase3C_executed: true, ...r };
 }
 
 function buildPhase3DBlock(debug: any): Record<string, any> {
   const r = debug?.phase3D ?? debug?.backbone_seed ?? null;
   if (!r) {
     return {
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'backbone_seed_not_inserted_before_face_extraction',
       phase3D_active: false,
       phase3D_backbone_seed_version: 'v1',
       seed_backbone_edges_count: 0,
@@ -309,13 +331,16 @@ function buildPhase3DBlock(debug: any): Record<string, any> {
       phase3D_executed: false,
     };
   }
-  return { phase3D_active: true, phase3D_executed: true, ...r };
+  return { version: r.version ?? r.phase3D_backbone_seed_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3D_active: true, phase3D_executed: true, ...r };
 }
 
 function buildPhase3EBlock(debug: any): Record<string, any> {
   const r = debug?.phase3E ?? debug?.constraint_repair ?? null;
   if (!r) {
     return {
+      version: 'v1',
+      executed: false,
+      skipped_reason: 'constraint_solver_repair_not_called',
       phase3E_active: false,
       phase3E_constraint_repair_version: 'v1',
       candidate_repair_attempted: false,
@@ -324,7 +349,7 @@ function buildPhase3EBlock(debug: any): Record<string, any> {
       phase3E_executed: false,
     };
   }
-  return { phase3E_active: true, phase3E_executed: true, ...r };
+  return { version: r.version ?? r.phase3E_constraint_repair_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3E_active: true, phase3E_executed: true, ...r };
 }
 
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
@@ -2775,21 +2800,44 @@ async function processJob(input: any) {
             roof_centroid_px: [cX, cY],
             benchmark_area_sqft: null,
           });
-          phase3A5Diagnostics = phase3A5Result.diagnostics;
+          phase3A5Diagnostics = {
+            ...phase3A5Result.diagnostics,
+            enabled: true,
+            version: phase3A5Result.diagnostics.phase3A_5_perimeter_refinement_version ?? 'v1',
+            executed: true,
+            skipped_reason: null,
+            phase3_5_perimeter_refinement_enabled: true,
+            refinement_iou: phase3A5Result.diagnostics.perimeter_vs_mask_iou ?? null,
+            refined_perimeter_px: phase3A5Result.refined_perimeter_px,
+          };
         } else {
           phase3A5Diagnostics = {
             phase3A_5_perimeter_refinement_version: 'v1',
+            enabled: true,
+            version: 'v1',
+            executed: false,
+            skipped_reason: 'no_dsm_grid_available_for_refinement',
             perimeter_refinement_passed: false,
             perimeter_refinement_reason: 'no_dsm_grid_available_for_refinement',
-            phase3_5_perimeter_refinement_enabled: false,
+            refinement_iou: null,
+            perimeter_to_target_mask_ratio: null,
+            refined_perimeter_vertex_count: 0,
+            phase3_5_perimeter_refinement_enabled: true,
           };
         }
       } catch (e) {
         console.error('[PHASE3A5] refineTrueOuterRoofPerimeter threw:', (e as Error).message);
         phase3A5Diagnostics = {
           phase3A_5_perimeter_refinement_version: 'v1',
+          enabled: true,
+          version: 'v1',
+          executed: false,
+          skipped_reason: `refinement_exception: ${(e as Error).message}`,
           perimeter_refinement_passed: false,
           perimeter_refinement_reason: `refinement_exception: ${(e as Error).message}`,
+          refinement_iou: null,
+          perimeter_to_target_mask_ratio: null,
+          refined_perimeter_vertex_count: 0,
           phase3_5_perimeter_refinement_enabled: true,
         };
       }
@@ -2874,6 +2922,9 @@ async function processJob(input: any) {
         boundaryEdges: { eaveEdges: perimeterEdges, rakeEdges: [] },
       };
       const graph = solveAutonomousGraph(graphInput);
+      const phase3CBlock = buildPhase3CBlock(graph.logs || {});
+      const phase3DBlock = buildPhase3DBlock(graph.logs || {});
+      const phase3EBlock = buildPhase3EBlock(graph.constraint_solver?.diagnostics || graph.logs || {});
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
       // Faces with valid plane fits should contribute to totals even if edge classification issues remain
       const graphValidated = graph.validation_status === "validated" || 
@@ -3013,6 +3064,14 @@ async function processJob(input: any) {
         unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? null,
         perimeter_area_sqft: perimeterTopologySnapshot?.perimeter_area_sqft ?? perimeterPhase0Snapshot?.perimeter_area_sqft ?? graph.perimeter_topology?.perimeter_area_sqft ?? null,
         perimeter_failure_reasons: perimeterGateSnapshot?.failure_reasons ?? graph.perimeter_gate?.failure_reasons ?? [],
+        phase3_5: phase3A5Diagnostics ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics }) : buildPhase3A5Block(null),
+        phase3A_5: phase3A5Diagnostics ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics }) : buildPhase3A5Block(null),
+        phase3C: phase3CBlock,
+        phase3D: phase3DBlock,
+        phase3E: phase3EBlock,
+        phase3C_deferred_edges_version: 'v1',
+        phase3D_backbone_seed_version: 'v1',
+        phase3E_constraint_repair_version: 'v1',
         target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
         // Full perimeter topology object (used for DB persistence: true_outer_roof_perimeter_*, eave_edges, rake_edges, corners)
         perimeter_topology: perimeterTopologySnapshot ?? graph.perimeter_topology ?? null,
@@ -3026,7 +3085,8 @@ async function processJob(input: any) {
       autonomousDebug.topology_fidelity = topologyFidelity;
       // Phase 3A.5 visibility — surface refinement diagnostics on the solver debug bag.
       if (phase3A5Diagnostics) {
-        autonomousDebug.phase3A_5 = phase3A5Diagnostics;
+        autonomousDebug.phase3_5 = buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics });
+        autonomousDebug.phase3A_5 = autonomousDebug.phase3_5;
         autonomousDebug.phase3_5_perimeter_refinement_enabled = true;
         autonomousDebug.refinement_passed = phase3A5Result?.passed ?? false;
         autonomousDebug.refinement_iou = phase3A5Diagnostics.perimeter_vs_mask_iou ?? null;
@@ -6069,7 +6129,12 @@ async function processJob(input: any) {
       // ── Phase 3 visibility (proves which Phase 3 sub-features are active) ──
       ...PHASE3_VERSION_BLOCK,
       phase3A: buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null),
+      phase3_5: buildPhase3A5Block(autonomousDebug),
+      phase3A_5: buildPhase3A5Block(autonomousDebug),
       phase3B: buildPhase3BBlock(edgeRows),
+      phase3C: buildPhase3CBlock(autonomousDebug),
+      phase3D: buildPhase3DBlock(autonomousDebug),
+      phase3E: buildPhase3EBlock(autonomousDebug),
       // ── ARCHITECTURAL CONTRACTS ──
       // 1. Authoritative footprint — one polygon used by ALL downstream stages.
       authoritative_footprint_px: footprint.map((p) => [p.x, p.y]),

@@ -58,6 +58,19 @@ import {
   type PerimeterGateResult,
   type PerimeterDiagnostics,
 } from "./perimeter-topology.ts";
+import {
+  categorizeForDeferral,
+  emptyDeferralDiagnostics,
+  finalizeDeferredEdges,
+  type DeferralCandidate,
+} from "./deferred-structural-edges.ts";
+import {
+  buildSeedBackbone,
+  detectBackboneNotApplied,
+  markBackboneInserted,
+  type SeedBackboneResult,
+  type RawEdgeEvidence,
+} from "./backbone-seed.ts";
 
 type XY = [number, number]; // [lng, lat]
 type PxPt = { x: number; y: number }; // DSM pixel space
@@ -316,6 +329,9 @@ export interface AutonomousGraphLog {
   facet_source: 'dsm_planar_graph_faces';
   hard_fail_reason?: string | null;
   customer_block_reason?: string | null;
+  phase3C?: Record<string, unknown>;
+  phase3D?: Record<string, unknown>;
+  phase3E?: Record<string, unknown>;
 }
 
 export interface SolarSegment {
@@ -2357,9 +2373,18 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }))
     : [];
 
+  // Compute footprint area in pixel space for oversized-plane prevention and Phase 3D scale.
+  const footprintAreaPx2 = footprintPx.length >= 3
+    ? Math.abs(footprintPx.reduce((sum, p, i) => {
+        const q = footprintPx[(i + 1) % footprintPx.length];
+        return sum + (p.x * q.y - q.x * p.y);
+      }, 0) / 2)
+    : 0;
+
   // Build backbone network: ridge/valley chains → assemblies → diagonal suppression → derived hips
   let backboneDiag: BackboneDiagnostics | null = null;
   let backboneFilteredEdgesPx = rawDsmInteriorEdgesPx;
+  let phase3DSeed: SeedBackboneResult | null = null;
   if (rawDsmInteriorEdgesPx.length >= 3 && footprintPxCCW.length >= 3) {
     const backbone = buildBackboneNetwork(rawDsmInteriorEdgesPx, footprintPxCCW);
     backboneDiag = backbone.diagnostics;
@@ -2384,18 +2409,44 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       console.log(`  [v18 BACKBONE] Added ${backbone.derivedHips.length} derived local hips from backbone endpoints`);
     }
 
+    const metersPerPixelForSeed = footprintAreaPx2 > 0 && footprintAreaSqft > 0
+      ? Math.sqrt((footprintAreaSqft / 10.7639) / footprintAreaPx2)
+      : 0.1;
+    const seedEvidence: RawEdgeEvidence[] = backboneFilteredEdgesPx.map((e, idx) => ({
+      id: `raw_${idx}`,
+      type: e.type,
+      p1: [e.a.x, e.a.y],
+      p2: [e.b.x, e.b.y],
+      dsm_support: Math.max(0, Math.min(1, e.score || 0)),
+      solar_alignment: 0.5,
+      inside_perimeter: pointInPolygonPx({ x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 }, footprintPxCCW),
+      pre_classification_confidence: Math.max(0, Math.min(1, e.score || 0)),
+    }));
+    phase3DSeed = buildSeedBackbone({
+      raw_edges: seedEvidence,
+      perimeter_px: footprintPxCCW.map(p => [p.x, p.y]),
+      meters_per_pixel: metersPerPixelForSeed,
+      min_seed_score: isFinite(metersPerPixelForSeed) ? 0.35 : 0.45,
+      min_chain_length_px: (footprintAreaSqft > 3000 || reflexCornerCount >= 5 || maskedEdgeCount >= 25) ? 5 : 12,
+    });
+    const existingSeedKeys = new Set(backboneFilteredEdgesPx.map(e => `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`));
+    let seedInserted = 0;
+    for (const seedEdge of phase3DSeed.seed_backbone_edges) {
+      const a = { x: seedEdge.p1[0], y: seedEdge.p1[1] };
+      const b = { x: seedEdge.p2[0], y: seedEdge.p2[1] };
+      const key = `${Math.round(a.x)}:${Math.round(a.y)}|${Math.round(b.x)}:${Math.round(b.y)}`;
+      const rev = `${Math.round(b.x)}:${Math.round(b.y)}|${Math.round(a.x)}:${Math.round(a.y)}`;
+      if (existingSeedKeys.has(key) || existingSeedKeys.has(rev)) continue;
+      backboneFilteredEdgesPx.push({ a, b, type: seedEdge.type, score: Math.max(seedEdge.evidence_score, 0.95) });
+      existingSeedKeys.add(key);
+      seedInserted++;
+    }
+    markBackboneInserted(phase3DSeed.diagnostics, phase3DSeed.seed_backbone_edges.length);
+
     console.log(`  [v18 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after backbone processing (${backbone.diagnostics.diagonal_suppression_events} diagonals suppressed, ${backbone.diagnostics.oversized_plane_suppressions || 0} oversized suppressions)`);
   }
 
   // ===== STEP 6: Topology-aware edge clustering =====
-  // Compute footprint area in pixel space for oversized-plane prevention
-  const footprintAreaPx2 = footprintPx.length >= 3
-    ? Math.abs(footprintPx.reduce((sum, p, i) => {
-        const q = footprintPx[(i + 1) % footprintPx.length];
-        return sum + (p.x * q.y - q.x * p.y);
-      }, 0) / 2)
-    : 0;
-
   const clusterResult = clusterEdges(backboneFilteredEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
   const clusteredEdgesPx = clusterResult.clustered;
   const clusterDiag = clusterResult.diagnostics;
@@ -2448,6 +2499,27 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const planar = effectiveDSM && footprintPxCCW.length >= 3
     ? planarSolveRoofPlanes(footprintPxCCW, planarInput, { complexRoofMode: isComplexRoofMode })
     : { faces: [], edges: [], deferredEdges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0, dangling_edges_removed: 0, deferred_structural_edges: 0, perimeter_reinjected: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+  const phase3CDiagnostics = emptyDeferralDiagnostics();
+  const phase3CDeferredCandidates: DeferralCandidate[] = [];
+  const pxToLfForDeferral = footprintAreaPx2 > 0 && footprintAreaSqft > 0 ? Math.sqrt(footprintAreaSqft / footprintAreaPx2) : 1;
+  for (const [idx, seg] of (planar.deferredEdges || []).entries()) {
+    const mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
+    const lengthPx = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y);
+    const candidate = categorizeForDeferral({
+      edge_id: `connectivity_${idx}`,
+      original_type: (seg.edgeType === 'ridge' || seg.edgeType === 'valley' || seg.edgeType === 'hip') ? seg.edgeType : 'unknown',
+      p1: [seg.a.x, seg.a.y],
+      p2: [seg.b.x, seg.b.y],
+      length_px: lengthPx,
+      length_lf: lengthPx * pxToLfForDeferral,
+      inside_perimeter: pointInPolygonPx(mid, footprintPxCCW),
+      dsm_support_score: seg.edgeScore || 0.3,
+      solar_alignment_score: 0.5,
+      pre_classification_confidence: seg.edgeScore || 0.3,
+      reason_deferred: 'connectivity_pruning_deferred_for_phase3C_refinement',
+    }, phase3CDiagnostics);
+    if (candidate) phase3CDeferredCandidates.push(candidate);
+  }
   console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}, deferred_structural=${planar.debug.deferred_structural_edges}`);
 
   let facesRejected = 0;
@@ -2967,6 +3039,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             'unknown'
           ),
         };
+        finalizeDeferredEdges(phase3CDiagnostics, new Set(reintroducedEdges.map((e) => {
+          const key = `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`;
+          const match = phase3CDeferredCandidates.find((c) => {
+            const ck = `${Math.round(c.p1[0])}:${Math.round(c.p1[1])}|${Math.round(c.p2[0])}:${Math.round(c.p2[1])}`;
+            const cr = `${Math.round(c.p2[0])}:${Math.round(c.p2[1])}|${Math.round(c.p1[0])}:${Math.round(c.p1[1])}`;
+            return ck === key || cr === key;
+          });
+          return match?.edge_id ?? key;
+        })));
         
         if (refinementAccepted) {
           // Replace faces with refined result
@@ -2993,6 +3074,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
           rejection_reason: 'insufficient_refinement_candidates',
         };
+        finalizeDeferredEdges(phase3CDiagnostics, new Set());
         console.log(`  [v16 REFINEMENT] Skipped: only ${refinementCandidates.length} qualifying candidates (need ≥2)`);
       }
     }
@@ -3291,6 +3373,33 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outRakes = outputEdges.filter(e => e.type === 'rake');
   const outUnclassified = outputEdges.filter(e => e.type === 'unclassified');
   const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
+  if (phase3DSeed) {
+    detectBackboneNotApplied(phase3DSeed, {
+      ridge_lf: outRidges.reduce((s, e) => s + e.length_ft, 0),
+      valley_lf: outValleys.reduce((s, e) => s + e.length_ft, 0),
+    });
+  }
+  const phase3DDiagnostics = phase3DSeed
+    ? {
+        ...phase3DSeed.diagnostics,
+        version: 'v1',
+        executed: true,
+        skipped_reason: null,
+        seed_backbone_edges_inserted: phase3DSeed.diagnostics.seed_backbone_edges_inserted,
+      }
+    : {
+        phase3D_backbone_seed_version: 'v1',
+        version: 'v1',
+        executed: false,
+        skipped_reason: 'insufficient_raw_backbone_edges',
+        seed_backbone_edges_count: 0,
+        seed_backbone_edges_inserted: 0,
+        locked_backbone_edges_count: 0,
+        seed_ridge_lf: 0,
+        seed_valley_lf: 0,
+        seed_hip_lf: 0,
+        backbone_not_applied: false,
+      };
 
   // ===== UNDERSEGMENTATION GATE (v13 hardened) =====
   // If we had many raw DSM edges but the planar solver collapsed to very few faces,
@@ -3600,6 +3709,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     collinear_merges: planar.debug.collinear_merges || 0,
     fragment_merges: planar.debug.fragment_merges || 0,
     dangling_edges_removed: planar.debug.dangling_edges_removed,
+    phase3C: { ...phase3CDiagnostics, version: 'v1', executed: true, skipped_reason: null },
+    phase3D: phase3DDiagnostics,
+    phase3E: { version: 'v1', executed: false, skipped_reason: 'constraint_solver_repair_not_called', phase3E_constraint_repair_version: 'v1', candidate_repair_attempted: false, repair_accepted: false },
     faces_extracted: planar.debug.faces_extracted,
     face_count_before_merge: faceCountBeforeMerge,
     face_count_after_merge: faceCountAfterMerge,
@@ -3848,6 +3960,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           dsmEvidence,
           pxToSqft,
           autoScore,
+          phase3DSeed,
         );
 
         console.log(`[CONSTRAINT_SOLVER] used=${constraintSolverResult.used} reason=${constraintSolverResult.reason} autoScore=${autoScore.toFixed(3)} constraintScore=${constraintSolverResult.constraint_score.toFixed(3)}`);
