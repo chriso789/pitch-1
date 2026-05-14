@@ -753,7 +753,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Create Change Order
+                {isEdit ? 'Save Changes' : 'Create Change Order'}
               </Button>
             </div>
           </form>
