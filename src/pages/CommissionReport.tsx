@@ -25,7 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle, Wallet } from 'lucide-react';
 import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
 import {
   Collapsible,
@@ -458,6 +458,9 @@ export default function CommissionReport() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/draw-report')}>
+              <Wallet className="h-4 w-4 mr-2" /> Draw Report
+            </Button>
             <Button variant="outline" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" /> Refresh
             </Button>

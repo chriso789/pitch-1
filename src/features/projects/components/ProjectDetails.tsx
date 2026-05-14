@@ -10,6 +10,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CostReconciliationPanel } from "@/components/production/CostReconciliationPanel";
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
+import { DrawTally } from "@/components/commission/DrawTally";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { 
   DollarSign, 
@@ -229,6 +232,28 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const grossProfit = estimate ? Number(estimate.selling_price) - totalCosts - totalActualCosts : 0;
   const netProfit = commission ? commission.net_profit || 0 : grossProfit;
   const companyProfit = commission ? commission.company_profit || 0 : grossProfit;
+
+  const pipelineEntryId = project.pipeline_entries?.id || project.pipeline_entry_id;
+  const tenantIdForDraws = project.tenant_id || project.pipeline_entries?.tenant_id;
+  const repCommissionAmount = Number(commission?.commission_amount || 0);
+
+  const { data: jobDraws = [] } = useQuery({
+    queryKey: ['project-draws', pipelineEntryId, salesRep?.id],
+    queryFn: async () => {
+      if (!pipelineEntryId || !salesRep?.id) return [];
+      const { data } = await supabase
+        .from('commission_draws')
+        .select('id, amount, draw_date, notes')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('user_id', salesRep.id)
+        .order('draw_date', { ascending: false });
+      return data || [];
+    },
+    enabled: !!pipelineEntryId && !!salesRep?.id,
+  });
+
+  const totalJobDraws = jobDraws.reduce((s: number, d: any) => s + Number(d.amount), 0);
+  const netCommissionOwed = repCommissionAmount - totalJobDraws;
 
   const contactId = contact?.id;
   const contactName = contact ? `${contact.first_name} ${contact.last_name}` : '';
@@ -631,10 +656,23 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
                             ${commission.company_profit?.toLocaleString() || 0}
                           </span>
                         </div>
+                        <hr />
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Draws Already Paid:</span>
+                          <span className="text-red-600">
+                            -${totalJobDraws.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between font-bold text-base">
+                          <span>Net Commission Owed:</span>
+                          <span className={netCommissionOwed >= 0 ? 'text-success' : 'text-destructive'}>
+                            ${netCommissionOwed.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="mt-6 p-4 bg-muted/30 rounded-lg">
                     <h4 className="font-medium mb-2">Commission Summary</h4>
                     <p className="text-sm text-muted-foreground mb-2">
@@ -654,6 +692,16 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               )}
             </CardContent>
           </Card>
+
+          {salesRep && pipelineEntryId && tenantIdForDraws && (
+            <DrawTally
+              tenantId={tenantIdForDraws}
+              totalEarnedCommissions={repCommissionAmount}
+              selectedRepId={salesRep.id}
+              isManager={true}
+              pipelineEntryId={pipelineEntryId}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="costs">
