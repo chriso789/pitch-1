@@ -648,6 +648,7 @@ Deno.serve(async (req) => {
         lng: longitude,
         pitch_override,
         engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        ...getCanonicalRouteDbColumns(),
       })
       .select("id")
       .single();
