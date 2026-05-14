@@ -91,6 +91,11 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('db insert')
   ) return 'ai_failed_schema';
 
+  // Runtime / unhandled exceptions: DB CHECK only allows 10 buckets, so we
+  // funnel runtime failures into ai_failed_unknown and let the specific
+  // reason live in hard_fail_reason. NEVER expand the constraint.
+  if (s.includes('runtime') || s.includes('exception')) return 'ai_failed_unknown';
+
   if (s === 'ready' || s.includes('customer_report_ready')) return 'customer_report_ready';
   if (s.includes('perimeter_only')) return 'perimeter_only';
   if (s.includes('diagnostic')) return 'diagnostic_only';
