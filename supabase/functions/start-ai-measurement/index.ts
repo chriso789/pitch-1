@@ -1985,6 +1985,48 @@ async function processJob(input: any) {
     }
 
     if (targetIsolationFailed || targetInnerTraceDetected) {
+      // ══════════ HARD INVARIANT: PHASE 0 MUST RUN BEFORE PERIMETER FAILURE ══════════
+      // If we have a real footprint (source != none, >=3 vertices) but
+      // perimeter_phase0 is somehow null, this is a control-flow bug — the old
+      // global-mask early-return path. Refuse to emit perimeter_inner_trace_detected;
+      // emit a developer_bug marker so the failure is unmistakable in the UI.
+      const phase0Bypassed =
+        footprintSource !== 'none' &&
+        footprintSource !== 'unknown' &&
+        Array.isArray(footprint) &&
+        footprint.length >= 3 &&
+        !perimeterPhase0Snapshot;
+      if (phase0Bypassed) {
+        const developerBug = 'phase0_bypassed_before_perimeter_gate';
+        console.error(`[PERIMETER_PHASE_0_INVARIANT] ${developerBug}`, JSON.stringify({
+          footprint_source: footprintSource,
+          footprint_point_count: footprint.length,
+          target_isolation_failed: targetIsolationFailed,
+          target_inner_trace_detected: targetInnerTraceDetected,
+        }));
+        const debugPayload: any = {
+          developer_bug: developerBug,
+          hard_fail_reason: developerBug,
+          failure_stage: 'perimeter',
+          result_state: 'ai_failed_developer_bug',
+          footprint_source: footprintSource,
+          footprint_point_count: footprint.length,
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          perimeter_phase0: null,
+          perimeter_inner_trace: perimeterInnerTraceDebug,
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, developerBug, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Developer bug: ${developerBug}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Developer bug: ${developerBug}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          result_state: 'ai_failed_developer_bug',
+          source_context: { gate_reason: developerBug, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+
       const failReason = targetIsolationFailed ? 'target_mask_isolation_failed' : 'perimeter_inner_trace_detected';
       perimeterInnerTraceDebug.inner_trace_detected = targetInnerTraceDetected;
       const debugPayload = {
