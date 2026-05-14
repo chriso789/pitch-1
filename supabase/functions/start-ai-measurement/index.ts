@@ -5140,6 +5140,7 @@ async function processJob(input: any) {
       totals,
       quality,
       dsm_planar_graph_debug: autonomousDebug,
+      perimeter_inner_trace: perimeterInnerTraceDebug,
       // ── DEBUG-ONLY overlay payload — bbox-fit visual normalization.
       // This is NOT a geospatial registration system. It makes geometry
       // appear approximately centered on the house for dev visualization.
