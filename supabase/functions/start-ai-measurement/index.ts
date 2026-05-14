@@ -2229,6 +2229,10 @@ async function processJob(input: any) {
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
           perimeter_phase0: null,
           perimeter_inner_trace: perimeterInnerTraceDebug,
+          diagram_render_intent: 'rejected_only',
+          ...PHASE3_VERSION_BLOCK,
+          phase3A: buildPhase3ABlock(null),
+          phase3B: buildPhase3BBlock([]),
         };
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, developerBug, debugPayload, imageUrl, actualMpp);
         await setMeasurementJobStatus(input.measurement_job_id, "failed", `Developer bug: ${developerBug}`, failedId);
