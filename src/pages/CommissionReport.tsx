@@ -458,6 +458,9 @@ export default function CommissionReport() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/draw-report')}>
+              <Wallet className="h-4 w-4 mr-2" /> Draw Report
+            </Button>
             <Button variant="outline" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" /> Refresh
             </Button>
