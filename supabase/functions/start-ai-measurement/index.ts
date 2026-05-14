@@ -121,6 +121,43 @@ function vlog(marker: string, payload: Record<string, unknown> = {}) {
     console.log(`[VTRACE] ${marker}`, payload);
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// result_state normalizer.
+// DB constraint (roof_measurements / ai_measurement_jobs / measurement_jobs)
+// only accepts the 10 stable values below. Any detailed reason MUST live in
+// hard_fail_reason / block_customer_report_reason / geometry_report_json,
+// never in result_state itself.
+// ──────────────────────────────────────────────────────────────────────
+export const ALLOWED_RESULT_STATES = [
+  'customer_report_ready',
+  'perimeter_only',
+  'diagnostic_only',
+  'ai_failed_target_unconfirmed',
+  'ai_failed_source_acquisition',
+  'ai_failed_perimeter',
+  'ai_failed_topology',
+  'ai_failed_pitch',
+  'ai_failed_schema',
+  'ai_failed_unknown',
+] as const;
+export type ResultState = (typeof ALLOWED_RESULT_STATES)[number];
+
+export function normalizeResultState(raw: unknown): ResultState {
+  if (raw == null) return 'ai_failed_unknown';
+  const s = String(raw).toLowerCase();
+  if ((ALLOWED_RESULT_STATES as readonly string[]).includes(s)) return s as ResultState;
+  if (s.includes('target') && s.includes('unconfirm')) return 'ai_failed_target_unconfirmed';
+  if (s.includes('source') || s.includes('acquisition')) return 'ai_failed_source_acquisition';
+  if (s.includes('perimeter') || s.includes('target_mask') || s.includes('inner_trace')) return 'ai_failed_perimeter';
+  if (s.includes('topology') || s.includes('patent') || s.includes('layer1') || s.includes('undersegment')) return 'ai_failed_topology';
+  if (s.includes('pitch')) return 'ai_failed_pitch';
+  if (s.includes('schema') || s.includes('constraint')) return 'ai_failed_schema';
+  if (s.includes('ready')) return 'customer_report_ready';
+  if (s.includes('perimeter_only')) return 'perimeter_only';
+  if (s.includes('diagnostic')) return 'diagnostic_only';
+  return 'ai_failed_unknown';
+}
 // ──────────────────────────────────────────────────────────────────────
 
 
