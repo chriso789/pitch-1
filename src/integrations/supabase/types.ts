@@ -119,6 +119,117 @@ export type Database = {
         }
         Relationships: []
       }
+      abc_connections: {
+        Row: {
+          access_token: string | null
+          account_id: string | null
+          account_name: string | null
+          connected_by: string | null
+          connection_status: string
+          created_at: string
+          environment: string
+          expires_at: string | null
+          id: string
+          last_error: string | null
+          last_refreshed_at: string | null
+          last_validated_at: string | null
+          oauth_state: string | null
+          oauth_state_expires_at: string | null
+          refresh_expires_at: string | null
+          refresh_token: string | null
+          scope: string | null
+          tenant_id: string
+          token_type: string | null
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          account_id?: string | null
+          account_name?: string | null
+          connected_by?: string | null
+          connection_status?: string
+          created_at?: string
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          last_validated_at?: string | null
+          oauth_state?: string | null
+          oauth_state_expires_at?: string | null
+          refresh_expires_at?: string | null
+          refresh_token?: string | null
+          scope?: string | null
+          tenant_id: string
+          token_type?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string | null
+          account_name?: string | null
+          connected_by?: string | null
+          connection_status?: string
+          created_at?: string
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          last_validated_at?: string | null
+          oauth_state?: string | null
+          oauth_state_expires_at?: string | null
+          refresh_expires_at?: string | null
+          refresh_token?: string | null
+          scope?: string | null
+          tenant_id?: string
+          token_type?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: []
+      }
+      abc_credential_audit: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          success: boolean
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          success: boolean
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          success?: boolean
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       abc_integrations: {
         Row: {
           abc_mode: string
