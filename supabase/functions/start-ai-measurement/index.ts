@@ -7593,6 +7593,7 @@ async function setMeasurementJobStatus(id: string, status: string, msg: string, 
 }
 async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
   const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement", "topology_mismatch"].includes(status);
+  const failedResultState = status === "failed" ? normalizeResultStateForWrite(msg, null) : null;
   await supabase.from("ai_measurement_jobs").update({
     status, status_message: msg,
     updated_at: new Date().toISOString(),
@@ -7602,7 +7603,7 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
       geometry_quality_score: quality.geometry_score,
       measurement_quality_score: quality.measurement_score,
     } : {}),
-    ...(status === "failed" ? { failure_reason: msg } : {}),
+    ...(status === "failed" ? { failure_reason: msg, result_state: failedResultState, report_blocked: true, needs_review: true } : {}),
   }).eq("id", id);
 }
 
