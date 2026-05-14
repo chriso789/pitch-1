@@ -2223,7 +2223,7 @@ async function processJob(input: any) {
           developer_bug: developerBug,
           hard_fail_reason: developerBug,
           failure_stage: 'perimeter',
-          result_state: normalizeResultState('ai_failed_perimeter'),
+          result_state: normalizeResultStateForWrite('ai_failed_perimeter', null),
           footprint_source: footprintSource,
           footprint_point_count: footprint.length,
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
