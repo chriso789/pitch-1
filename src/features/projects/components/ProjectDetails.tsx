@@ -10,6 +10,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CostReconciliationPanel } from "@/components/production/CostReconciliationPanel";
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
+import { DrawTally } from "@/components/commission/DrawTally";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { 
   DollarSign, 
