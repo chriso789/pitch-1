@@ -1776,7 +1776,12 @@ async function processJob(input: any) {
           })),
           boundary_rakes: [],
         });
-        const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft);
+        const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft, {
+          target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
+          benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
+          solar_expected_area_sqft: isolation?.solar_segment_area_sqft ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+        });
         let failureReasons = [...(gate.failure_reasons || []), ...forcedFailureReasons];
 
         // Benchmark/Solar sanity exception: a selected perimeter within 10% of
@@ -1918,6 +1923,29 @@ async function processJob(input: any) {
       missed_target_roof_pct: perimeterPhase0Snapshot?.missed_target_roof_pct,
       failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons,
     }));
+
+    // Hard guarantee: when target-mask gate fires, Phase 0 must be persisted.
+    // perimeter_phase0 = null is now treated as a control-flow bug.
+    if (!perimeterPhase0Snapshot) {
+      perimeterPhase0Snapshot = {
+        perimeter_ready: false,
+        perimeter_gate_passed: false,
+        perimeter_source: footprintSource,
+        perimeter_area_sqft: Math.round(footprintAreaSqftVal),
+        perimeter_failure_reasons: forcedPhase0Failures.length ? forcedPhase0Failures : ['perimeter_phase0_snapshot_missing'],
+        target_mask_area_sqft: targetMaskIsolation?.target_mask_area_sqft ?? null,
+        target_mask_component_id: targetMaskIsolation?.target_mask_component_id ?? null,
+        target_mask_overlap_with_perimeter: targetMaskIsolation?.target_mask_overlap_with_perimeter ?? null,
+        global_mask_area_sqft: targetMaskIsolation?.global_mask_area_sqft ?? null,
+        global_mask_inflation_ratio: targetMaskIsolation?.global_mask_inflation_ratio ?? null,
+        missed_target_roof_pct: targetMaskIsolation?.missed_target_roof_pct ?? null,
+        solar_sanity_ok: targetMaskIsolation?.solar_sanity_ok ?? false,
+        benchmark_sanity_ok: targetMaskIsolation?.benchmark_sanity_ok ?? false,
+        area_sanity_ok: targetMaskIsolation?.area_sanity_ok ?? false,
+        mask_components_table: targetMaskIsolation?.mask_components_table ?? [],
+        target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
+      };
+    }
 
     if (targetIsolationFailed || targetInnerTraceDetected) {
       const failReason = targetIsolationFailed ? 'target_mask_isolation_failed' : 'perimeter_inner_trace_detected';

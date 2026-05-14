@@ -200,6 +200,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Target Overlap w/ Perimeter', value: fmt(phase0?.target_mask_overlap_with_perimeter ?? targetMask?.target_mask_overlap_with_perimeter ?? targetMask?.target_component_overlap_with_perimeter) },
     { label: 'Missed Target Roof', value: fmt(phase0?.missed_target_roof_pct ?? targetMask?.missed_target_roof_pct, '%') },
     { label: 'Solar Sanity OK', value: String(phase0?.solar_sanity_ok ?? targetMask?.solar_sanity_ok ?? '—') },
+    { label: 'Benchmark Sanity OK', value: String(phase0?.benchmark_sanity_ok ?? targetMask?.benchmark_sanity_ok ?? '—') },
     { label: 'Customer Ready', value: String(m.customer_report_ready ?? '—') },
     { label: 'Result State', value: String(m.result_state ?? grj.result_state ?? '—') },
     { label: 'Perimeter Gate', value: String(phase0?.perimeter_gate_passed ?? grj.perimeter_gate_passed ?? m.perimeter_gate_passed ?? '—') },
@@ -217,6 +218,9 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
+  const failureReasonStr = String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
+  const phase0MissingBug = !phase0 && /perimeter_inner_trace_detected/i.test(failureReasonStr);
+
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
   if (m.validation_status === 'needs_manual_measurement') errorList.push('Validation: needs_manual_measurement');
@@ -235,6 +239,15 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
         <Badge variant="secondary">data</Badge>
       </div>
       <div className="p-4 space-y-4">
+        {phase0MissingBug && (
+          <div className="rounded-md bg-destructive text-destructive-foreground border-2 border-destructive px-3 py-2">
+            <div className="text-xs font-bold uppercase tracking-wide">Internal Bug</div>
+            <div className="text-sm font-semibold mt-1">
+              perimeter_inner_trace_detected fired before Perimeter Phase 0 executed.
+              Old global-mask gate is still active.
+            </div>
+          </div>
+        )}
         {errorList.length > 0 && (
           <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1">
             <div className="text-xs font-bold text-destructive">Errors &amp; Diagnostics</div>
