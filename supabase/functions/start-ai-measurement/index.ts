@@ -7514,6 +7514,10 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     debug,
   };
   const geometryReportJson = {
+    // ── Phase 3 visibility (failure path) ──
+    ...PHASE3_VERSION_BLOCK,
+    phase3A: buildPhase3ABlock(debug?.perimeter_phase0 ?? null),
+    phase3B: buildPhase3BBlock([]),
     topology_source: aiDetectionData.topology_source,
     facet_source: debug?.facet_source || "dsm_planar_graph_faces",
     fallback_used: aiDetectionData.fallback_used,
