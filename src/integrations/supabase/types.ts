@@ -35481,6 +35481,7 @@ export type Database = {
           analysis_zoom: number | null
           api_variance_percent: number | null
           bounding_box: Json | null
+          centroid_offset_px: number | null
           complexity_rating: string | null
           confidence: number | null
           created_at: string | null
@@ -35493,6 +35494,7 @@ export type Database = {
           dsm_available: boolean | null
           dsm_contract_debug: Json | null
           eave_edges: Json | null
+          eave_lf: number | null
           edge_breakdown: Json | null
           edge_continuity_score: number | null
           edge_count: number | null
@@ -35556,6 +35558,7 @@ export type Database = {
           measurement_quality_score: number | null
           metadata: Json | null
           meters_per_pixel: number | null
+          missed_roof_area_pct: number | null
           missed_roof_regions: Json | null
           model_version: string | null
           notes: string | null
@@ -35563,12 +35566,16 @@ export type Database = {
           overlay_schema: Json | null
           passes_strict_3pct: boolean | null
           patent_model: Json | null
+          perimeter_area_sqft: number | null
           perimeter_confidence: number | null
           perimeter_gate_metrics: Json | null
+          perimeter_gate_passed: boolean | null
           perimeter_hints: Json | null
           perimeter_source: string | null
           perimeter_status: string | null
+          perimeter_total_lf: number | null
           perimeter_vertex_count: number | null
+          perimeter_vs_mask_iou: number | null
           perimeter_wkt: string | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
@@ -35585,6 +35592,7 @@ export type Database = {
           quality_checks: Json | null
           quality_score: number | null
           rake_edges: Json | null
+          rake_lf: number | null
           report_generated_at: string | null
           report_pdf_path: string | null
           report_pdf_url: string | null
@@ -35653,6 +35661,7 @@ export type Database = {
           analysis_zoom?: number | null
           api_variance_percent?: number | null
           bounding_box?: Json | null
+          centroid_offset_px?: number | null
           complexity_rating?: string | null
           confidence?: number | null
           created_at?: string | null
@@ -35665,6 +35674,7 @@ export type Database = {
           dsm_available?: boolean | null
           dsm_contract_debug?: Json | null
           eave_edges?: Json | null
+          eave_lf?: number | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -35728,6 +35738,7 @@ export type Database = {
           measurement_quality_score?: number | null
           metadata?: Json | null
           meters_per_pixel?: number | null
+          missed_roof_area_pct?: number | null
           missed_roof_regions?: Json | null
           model_version?: string | null
           notes?: string | null
@@ -35735,12 +35746,16 @@ export type Database = {
           overlay_schema?: Json | null
           passes_strict_3pct?: boolean | null
           patent_model?: Json | null
+          perimeter_area_sqft?: number | null
           perimeter_confidence?: number | null
           perimeter_gate_metrics?: Json | null
+          perimeter_gate_passed?: boolean | null
           perimeter_hints?: Json | null
           perimeter_source?: string | null
           perimeter_status?: string | null
+          perimeter_total_lf?: number | null
           perimeter_vertex_count?: number | null
+          perimeter_vs_mask_iou?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
@@ -35757,6 +35772,7 @@ export type Database = {
           quality_checks?: Json | null
           quality_score?: number | null
           rake_edges?: Json | null
+          rake_lf?: number | null
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
@@ -35825,6 +35841,7 @@ export type Database = {
           analysis_zoom?: number | null
           api_variance_percent?: number | null
           bounding_box?: Json | null
+          centroid_offset_px?: number | null
           complexity_rating?: string | null
           confidence?: number | null
           created_at?: string | null
@@ -35837,6 +35854,7 @@ export type Database = {
           dsm_available?: boolean | null
           dsm_contract_debug?: Json | null
           eave_edges?: Json | null
+          eave_lf?: number | null
           edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
@@ -35900,6 +35918,7 @@ export type Database = {
           measurement_quality_score?: number | null
           metadata?: Json | null
           meters_per_pixel?: number | null
+          missed_roof_area_pct?: number | null
           missed_roof_regions?: Json | null
           model_version?: string | null
           notes?: string | null
@@ -35907,12 +35926,16 @@ export type Database = {
           overlay_schema?: Json | null
           passes_strict_3pct?: boolean | null
           patent_model?: Json | null
+          perimeter_area_sqft?: number | null
           perimeter_confidence?: number | null
           perimeter_gate_metrics?: Json | null
+          perimeter_gate_passed?: boolean | null
           perimeter_hints?: Json | null
           perimeter_source?: string | null
           perimeter_status?: string | null
+          perimeter_total_lf?: number | null
           perimeter_vertex_count?: number | null
+          perimeter_vs_mask_iou?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
@@ -35929,6 +35952,7 @@ export type Database = {
           quality_checks?: Json | null
           quality_score?: number | null
           rake_edges?: Json | null
+          rake_lf?: number | null
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
