@@ -305,11 +305,13 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not found');
 
-      const coNumber = `CO-${Date.now()}`;
+      const itemsWithTotals = items.map((it) => ({
+        ...it,
+        line_total: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
+      }));
 
-      const { error } = await (supabase as any).from('change_orders').insert({
+      const payload = {
         project_id: values.project_id,
-        co_number: coNumber,
         title: values.title,
         description: values.description,
         reason: values.reason,
@@ -318,17 +320,31 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
         cost_impact: grandTotal,
         material_total: materialTotal,
         labor_total: laborTotal,
-        line_items: { items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
+        line_items: { items: itemsWithTotals, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
         material_invoice_url: invoiceFile?.url || null,
         material_invoice_storage_path: invoiceFile?.path || null,
         time_impact_days: parseInt(values.time_impact_days || '0'),
-        requested_by: user.id,
-        status: 'draft',
-      });
+      };
 
-      if (error) throw error;
+      if (isEdit && editingChangeOrder) {
+        const { error } = await (supabase as any)
+          .from('change_orders')
+          .update(payload)
+          .eq('id', editingChangeOrder.id);
+        if (error) throw error;
+        toast({ title: 'Success', description: 'Change order updated' });
+      } else {
+        const coNumber = `CO-${Date.now()}`;
+        const { error } = await (supabase as any).from('change_orders').insert({
+          ...payload,
+          co_number: coNumber,
+          requested_by: user.id,
+          status: 'draft',
+        });
+        if (error) throw error;
+        toast({ title: 'Success', description: 'Change order created successfully' });
+      }
 
-      toast({ title: 'Success', description: 'Change order created successfully' });
       onSuccess();
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
