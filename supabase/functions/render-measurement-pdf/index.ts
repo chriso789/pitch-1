@@ -190,15 +190,21 @@ Deno.serve(async (req) => {
 
     const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path)
     const pdfUrl = pub?.publicUrl || null
-    const updatedGrj = { ...(grj || {}), last_rendered_pdf_signature: incomingSig }
+    const REPORT_RENDERER_VERSION = 'render-measurement-pdf-v1'
+    const updatedGrj = {
+      ...(grj || {}),
+      last_rendered_pdf_signature: incomingSig,
+      report_renderer_version: REPORT_RENDERER_VERSION,
+      rendered_by_function: 'render-measurement-pdf',
+    }
 
     await supa
       .from('roof_measurements')
-      .update({ report_pdf_url: pdfUrl, report_pdf_path: path, report_generated_at: new Date().toISOString(), geometry_report_json: updatedGrj })
+      .update({ report_pdf_url: pdfUrl, report_pdf_path: path, report_generated_at: new Date().toISOString(), geometry_report_json: updatedGrj, report_renderer_version: REPORT_RENDERER_VERSION })
       .eq('ai_measurement_job_id', jobId)
     await supa
       .from('ai_measurement_jobs')
-      .update({ report_pdf_url: pdfUrl, report_pdf_path: path })
+      .update({ report_pdf_url: pdfUrl, report_pdf_path: path, report_renderer_version: REPORT_RENDERER_VERSION })
       .eq('id', jobId)
 
     return jsonResponse({
