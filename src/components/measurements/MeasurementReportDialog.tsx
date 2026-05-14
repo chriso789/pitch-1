@@ -238,6 +238,15 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
         <Badge variant="secondary">data</Badge>
       </div>
       <div className="p-4 space-y-4">
+        {phase0MissingBug && (
+          <div className="rounded-md bg-destructive text-destructive-foreground border-2 border-destructive px-3 py-2">
+            <div className="text-xs font-bold uppercase tracking-wide">Internal Bug</div>
+            <div className="text-sm font-semibold mt-1">
+              perimeter_inner_trace_detected fired before Perimeter Phase 0 executed.
+              Old global-mask gate is still active.
+            </div>
+          </div>
+        )}
         {errorList.length > 0 && (
           <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1">
             <div className="text-xs font-bold text-destructive">Errors &amp; Diagnostics</div>
