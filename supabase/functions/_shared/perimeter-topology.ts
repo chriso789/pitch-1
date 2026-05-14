@@ -301,11 +301,52 @@ export function buildPerimeterTopology(input: PerimeterInput): PerimeterTopology
  * If this fails, block customer_report_ready, PDF export, material calcs, final diagrams.
  * Diagnostic preview is still allowed.
  */
+export interface PerimeterGateContext {
+  /**
+   * Area of the SELECTED target roof mask component (NOT the global visible
+   * mask). Used as the area-conservation reference. Pass 0/null to skip.
+   */
+  target_mask_area_sqft?: number | null;
+  /**
+   * Optional benchmark/expected area in sqft (e.g. vendor truth or solar
+   * segment total). When the perimeter is within ±10% of this, the global-mask
+   * area-mismatch and missed-roof failures are suppressed.
+   */
+  benchmark_area_sqft?: number | null;
+  /**
+   * Optional solar-segment expected area. Same ±10% sanity rule as benchmark.
+   */
+  solar_expected_area_sqft?: number | null;
+  /**
+   * If global mask area / target mask area > 2, the gate emits a
+   * `global_mask_inflated` warning instead of a hard fail.
+   */
+  global_mask_inflation_ratio?: number | null;
+}
+
 export function evaluatePerimeterGate(
   perimeter: PerimeterTopology,
   roofMaskAreaSqft: number,
+  context: PerimeterGateContext = {},
 ): PerimeterGateResult {
   const failures: string[] = [];
+
+  // Prefer target-mask area when provided. Global mask area is treated as
+  // diagnostic-only — it must NEVER be the gate reference because a single
+  // tree or neighboring roof component can inflate it 3-4×.
+  const referenceAreaSqft = (context.target_mask_area_sqft && context.target_mask_area_sqft > 0)
+    ? context.target_mask_area_sqft
+    : roofMaskAreaSqft;
+
+  const benchmarkArea = context.benchmark_area_sqft ?? null;
+  const solarArea = context.solar_expected_area_sqft ?? null;
+  const benchmarkSanityOk = benchmarkArea && benchmarkArea > 0
+    ? Math.abs(perimeter.perimeter_area_sqft - benchmarkArea) / benchmarkArea <= 0.10
+    : false;
+  const solarSanityOk = solarArea && solarArea > 0
+    ? Math.abs(perimeter.perimeter_area_sqft - solarArea) / solarArea <= 0.10
+    : false;
+  const areaSanityOk = benchmarkSanityOk || solarSanityOk;
 
   // Gate 1: Ring must be closed
   if (!perimeter.perimeter_closed) {
