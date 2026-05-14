@@ -154,12 +154,20 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     }
   };
 
+  const lineAmount = (i: any) => {
+    const lt = Number(i.line_total);
+    if (Number.isFinite(lt) && lt > 0) return lt;
+    const qty = Number(i.quantity ?? i.qty ?? 1) || 0;
+    const price = Number(i.unit_price ?? i.price ?? i.rate ?? 0) || 0;
+    return qty * price;
+  };
+
   const deleteLine = async (co: ChangeOrder, idx: number) => {
     const container: any = (co.line_items as any) || {};
     const items: any[] = Array.isArray(container.items) ? [...container.items] : [];
     items.splice(idx, 1);
-    const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + Number(i.line_total ?? 0), 0);
-    const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + Number(i.line_total ?? 0), 0);
+    const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + lineAmount(i), 0);
+    const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + lineAmount(i), 0);
     const { error } = await (supabase as any)
       .from('change_orders')
       .update({
