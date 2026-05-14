@@ -2438,7 +2438,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       existingSeedKeys.add(key);
       seedInserted++;
     }
-    markBackboneInserted(phase3DSeed.diagnostics, seedInserted);
+    markBackboneInserted(phase3DSeed.diagnostics, phase3DSeed.seed_backbone_edges.length);
 
     console.log(`  [v18 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after backbone processing (${backbone.diagnostics.diagonal_suppression_events} diagonals suppressed, ${backbone.diagnostics.oversized_plane_suppressions || 0} oversized suppressions)`);
   }
