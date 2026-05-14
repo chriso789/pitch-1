@@ -122,13 +122,14 @@ export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
 //   3E — constraint-solver repair pass (already gated by autonomous-graph-solver)
 //   3F — result_state normalizer hardening (active)
 //   3G — diagram_render_intent enforcement (active)
-export const PHASE3_ENGINE_VERSION = "phase3-visibility-and-hard-gates-v1";
-export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "phase3A-eave-default-hip-prior-confidence-floor-v1";
-export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "phase3B-counts-only-lite-v1";
-export const PHASE3C_CONNECTIVITY_DEFER_VERSION: string | null = null;
-export const PHASE3D_SEED_BACKBONE_VERSION: string | null = null;
-export const PHASE3F_RESULT_STATE_VERSION = "phase3F-normalize-all-writes-v1";
-export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "phase3G-rejected-only-on-ai-failed-v1";
+export const PHASE3_ENGINE_VERSION = "phase3-visibility-v1";
+export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "v1";
+export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "v1-counts-only";
+export const PHASE3C_DEFERRED_EDGES_VERSION: string | null = null;
+export const PHASE3D_BACKBONE_SEED_VERSION: string | null = null;
+export const PHASE3E_CONSTRAINT_REPAIR_VERSION: string | null = null;
+export const PHASE3F_RESULT_STATE_VERSION = "v1";
+export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "v1";
 export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
 export const DEPLOYED_AT = new Date().toISOString();
 export const RUNTIME_VERSION_STAMP = {
@@ -161,12 +162,24 @@ export const normalizeResultState = _sharedNormalizeResultState;
 
 // ─── Phase 3 visibility helpers ───────────────────────────────────────
 export const PHASE3_VERSION_BLOCK = {
+  phase3: {
+    enabled: true,
+    engine_version: PHASE3_ENGINE_VERSION,
+    phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
+    phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
+    phase3C_deferred_edges_version: PHASE3C_DEFERRED_EDGES_VERSION,
+    phase3D_backbone_seed_version: PHASE3D_BACKBONE_SEED_VERSION,
+    phase3E_constraint_repair_version: PHASE3E_CONSTRAINT_REPAIR_VERSION,
+    phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
+    phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
+  },
   phase3_enabled: true,
   phase3_engine_version: PHASE3_ENGINE_VERSION,
   phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
   phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
-  phase3C_connectivity_defer_version: PHASE3C_CONNECTIVITY_DEFER_VERSION,
-  phase3D_seed_backbone_version: PHASE3D_SEED_BACKBONE_VERSION,
+  phase3C_deferred_edges_version: PHASE3C_DEFERRED_EDGES_VERSION,
+  phase3D_backbone_seed_version: PHASE3D_BACKBONE_SEED_VERSION,
+  phase3E_constraint_repair_version: PHASE3E_CONSTRAINT_REPAIR_VERSION,
   phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
   phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
 } as const;
@@ -209,9 +222,9 @@ export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
   const byAttr: Record<string, number> = {};
   const lfByAttr: Record<string, number> = {};
   for (const e of rows) {
-    const attr = String(e?.edge_type ?? e?.attribute ?? 'unknown').toLowerCase();
+    const attr = String(e?.edge_type ?? e?.attribute ?? e?.type ?? 'unknown').toLowerCase();
     byAttr[attr] = (byAttr[attr] ?? 0) + 1;
-    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? 0);
+    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? e?.length_lf ?? 0);
   }
   const reportableAttrs = new Set([
     'eave', 'rake', 'ridge', 'hip', 'valley',
@@ -230,6 +243,47 @@ export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
     reportable_roof_lines_count: reportable.length,
     persisted_to_roof_lines_table: false,
     persistence_deferred_reason: 'phase3B_lite_counts_only_v1',
+  };
+}
+
+function derivePhase3EdgeRows(debug: any): any[] {
+  if (Array.isArray(debug?.edgeRows)) return debug.edgeRows;
+  if (Array.isArray(debug?.accepted_edges_geo) && debug.accepted_edges_geo.length) return debug.accepted_edges_geo;
+  const perimeterRows = [
+    ...(debug?.perimeter_topology?.eave_edges ?? []).map((e: any) => ({ ...e, edge_type: 'eave' })),
+    ...(debug?.perimeter_topology?.rake_edges ?? []).map((e: any) => ({ ...e, edge_type: 'rake' })),
+  ];
+  return perimeterRows;
+}
+
+function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
+  const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
+  if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
+  const reason = String(raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? '').toLowerCase();
+  if (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint')) return 'ai_failed_perimeter';
+  if (reason.includes('topology') || reason.includes('facet') || reason.includes('ridge') || reason.includes('edge')) return 'ai_failed_topology';
+  return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
+}
+
+function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?: unknown): Record<string, any> {
+  const payload: Record<string, any> = { ...(debug || {}) };
+  const phase3EdgeRows = edgeRows.length ? edgeRows : derivePhase3EdgeRows(payload);
+  const phase3A = buildPhase3ABlock(payload.perimeter_phase0 ?? payload.perimeter_gate_metrics ?? null);
+  const resultState = derivePhase3ResultState(rawResultState ?? payload.result_state ?? payload.hard_fail_reason, payload);
+  const hardFailReason = phase3A.perimeter_classification_invalid
+    ? 'perimeter_classification_invalid'
+    : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null);
+  return {
+    ...payload,
+    ...PHASE3_VERSION_BLOCK,
+    phase3A,
+    phase3B: buildPhase3BBlock(phase3EdgeRows),
+    result_state: normalizeResultStateForWrite(resultState, payload),
+    hard_fail_reason: hardFailReason,
+    block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
+    failure_stage: payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'),
+    diagram_render_intent: String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true),
+    customer_report_ready: resultState === 'customer_report_ready',
   };
 }
 
@@ -6032,6 +6086,31 @@ async function processJob(input: any) {
       aiDetectionData.topology_fidelity = topologyFidelity;
     }
 
+    const preInsertPhase3A = buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null);
+    const preInsertResultState: ResultState = preInsertPhase3A.perimeter_classification_invalid
+      ? 'ai_failed_perimeter'
+      : promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review && !topologyMismatch
+        ? 'customer_report_ready'
+        : autonomousDebug?.perimeter_gate_passed === true
+          ? (topologyMismatch ? 'ai_failed_topology' : 'perimeter_only')
+          : normalizeResultStateForWrite(blockCustomerReportReason ?? geometryReportJson.block_customer_report_reason ?? 'ai_failed_unknown', geometryReportJson as any);
+    const preInsertDiagramIntent = String(preInsertResultState).startsWith('ai_failed_')
+      ? 'rejected_only'
+      : deriveDiagramRenderIntent(preInsertResultState, autonomousDebug?.perimeter_gate_passed === true && !preInsertPhase3A.perimeter_classification_invalid);
+    Object.assign(geometryReportJson, {
+      ...PHASE3_VERSION_BLOCK,
+      phase3A: preInsertPhase3A,
+      phase3B: buildPhase3BBlock(edgeRows),
+      result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+      diagram_render_intent: preInsertDiagramIntent,
+      customer_report_ready: preInsertResultState === 'customer_report_ready',
+      ...(preInsertPhase3A.perimeter_classification_invalid ? {
+        hard_fail_reason: 'perimeter_classification_invalid',
+        block_customer_report_reason: 'perimeter_classification_invalid',
+        failure_stage: 'perimeter',
+      } : {}),
+    });
+
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
       .insert({
@@ -6069,14 +6148,16 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
-        validation_status: topologyMismatch ? "needs_internal_review" : vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
-        customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
-        internal_debug_report_ready: topologyMismatch || reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
+        validation_status: preInsertResultState === 'customer_report_ready' ? "validated" : topologyMismatch ? "needs_internal_review" : vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "failed",
+        customer_report_ready: preInsertResultState === 'customer_report_ready',
+        internal_debug_report_ready: preInsertResultState !== 'customer_report_ready' || topologyMismatch || reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
           : topologyMismatch
             ? `topology_mismatch:${topologyBlockReasons.join(",")}`
-            : blockCustomerReportReason,
+            : (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason,
+        result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+        block_customer_report_reason: (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason ?? null,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
@@ -7512,6 +7593,7 @@ async function setMeasurementJobStatus(id: string, status: string, msg: string, 
 }
 async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
   const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement", "topology_mismatch"].includes(status);
+  const failedResultState = status === "failed" ? normalizeResultStateForWrite(msg, null) : null;
   await supabase.from("ai_measurement_jobs").update({
     status, status_message: msg,
     updated_at: new Date().toISOString(),
@@ -7521,41 +7603,42 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
       geometry_quality_score: quality.geometry_score,
       measurement_quality_score: quality.measurement_score,
     } : {}),
-    ...(status === "failed" ? { failure_reason: msg } : {}),
+    ...(status === "failed" ? { failure_reason: msg, result_state: failedResultState, report_blocked: true, needs_review: true } : {}),
   }).eq("id", id);
 }
 
 async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
+  const phase3Debug = withPhase3Visibility(debug, [], failureReason);
+  const persistedFailureReason = phase3Debug.hard_fail_reason || failureReason || 'ai_failed_unknown';
+  const persistedResultState = normalizeResultStateForWrite(phase3Debug.result_state, phase3Debug);
   const aiDetectionData = {
-    topology_source: debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
-    solver_version: debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
-    fallback_used: Boolean(debug?.fallback_used),
-    hard_fail_reason: failureReason,
-    failure_reason: failureReason,
+    topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
+    solver_version: phase3Debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
+    fallback_used: Boolean(phase3Debug?.fallback_used),
+    hard_fail_reason: persistedFailureReason,
+    failure_reason: persistedFailureReason,
     validation_status: "failed",
     measurement_confidence: 0,
     planes: [],
     edges: [],
     totals: { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
-    dsm_loaded: Boolean(debug?.dsm_loaded),
-    mask_loaded: Boolean(debug?.mask_loaded),
-    edge_filter_count_before: Number(debug?.edge_filter_count_before || 0),
-    edge_filter_count_after: Number(debug?.edge_filter_count_after || 0),
-    snapped_vertex_count: Number(debug?.snapped_vertex_count || 0),
-    rejected_fake_intersections: Number(debug?.rejected_fake_intersections || 0),
-    facet_validation_errors: Number(debug?.facet_validation_errors || 0),
-    debug,
+    dsm_loaded: Boolean(phase3Debug?.dsm_loaded),
+    mask_loaded: Boolean(phase3Debug?.mask_loaded),
+    edge_filter_count_before: Number(phase3Debug?.edge_filter_count_before || 0),
+    edge_filter_count_after: Number(phase3Debug?.edge_filter_count_after || 0),
+    snapped_vertex_count: Number(phase3Debug?.snapped_vertex_count || 0),
+    rejected_fake_intersections: Number(phase3Debug?.rejected_fake_intersections || 0),
+    facet_validation_errors: Number(phase3Debug?.facet_validation_errors || 0),
+    debug: phase3Debug,
   };
   const geometryReportJson = {
     // ── Phase 3 visibility (failure path) ──
-    ...PHASE3_VERSION_BLOCK,
-    phase3A: buildPhase3ABlock(debug?.perimeter_phase0 ?? null),
-    phase3B: buildPhase3BBlock([]),
+    ...phase3Debug,
     topology_source: aiDetectionData.topology_source,
     facet_source: debug?.facet_source || "dsm_planar_graph_faces",
     fallback_used: aiDetectionData.fallback_used,
-    block_customer_report_reason: failureReason,
-    hard_fail_reason: failureReason,
+    block_customer_report_reason: persistedFailureReason,
+    hard_fail_reason: persistedFailureReason,
     coordinate_space_input: debug?.coordinate_space_input || "unknown",
     coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
     coordinate_space_renderer: debug?.coordinate_space_renderer || "satellite_px",
@@ -7624,7 +7707,7 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       faces_extracted: Number(debug?.faces_extracted || 0),
       valid_faces: Number(debug?.valid_faces || 0),
       face_coverage_ratio: debug?.face_coverage_ratio ?? 0,
-      hard_fail_reason: failureReason,
+      hard_fail_reason: persistedFailureReason,
     },
     overlay_debug: {
       coordinate_space: "satellite_px",
@@ -7683,7 +7766,7 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     requires_manual_review: true,
     manual_review_recommended: true,
     validation_status: "failed",
-    validation_notes: failureReason,
+    validation_notes: persistedFailureReason,
     facet_count: 0,
     edge_count: 0,
     total_ridge_length: 0,
@@ -7694,10 +7777,10 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     linear_features_wkt: [],
     metadata: aiDetectionData,
     gate_decision: "failed",
-    gate_reason: failureReason,
+    gate_reason: persistedFailureReason,
     customer_report_ready: false,
-    result_state: normalizeResultState(debug?.result_state ?? (failureReason.includes('perimeter') || failureReason.includes('target_mask') ? 'ai_failed_perimeter' : `ai_failed_${debug?.failure_stage || 'solver'}`)),
-    block_customer_report_reason: debug?.hard_fail_reason || failureReason,
+    result_state: persistedResultState,
+    block_customer_report_reason: persistedFailureReason,
     internal_debug_report_ready: true,
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
