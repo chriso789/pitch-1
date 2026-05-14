@@ -2800,21 +2800,44 @@ async function processJob(input: any) {
             roof_centroid_px: [cX, cY],
             benchmark_area_sqft: null,
           });
-          phase3A5Diagnostics = phase3A5Result.diagnostics;
+          phase3A5Diagnostics = {
+            ...phase3A5Result.diagnostics,
+            enabled: true,
+            version: phase3A5Result.diagnostics.phase3A_5_perimeter_refinement_version ?? 'v1',
+            executed: true,
+            skipped_reason: null,
+            phase3_5_perimeter_refinement_enabled: true,
+            refinement_iou: phase3A5Result.diagnostics.perimeter_vs_mask_iou ?? null,
+            refined_perimeter_px: phase3A5Result.refined_perimeter_px,
+          };
         } else {
           phase3A5Diagnostics = {
             phase3A_5_perimeter_refinement_version: 'v1',
+            enabled: true,
+            version: 'v1',
+            executed: false,
+            skipped_reason: 'no_dsm_grid_available_for_refinement',
             perimeter_refinement_passed: false,
             perimeter_refinement_reason: 'no_dsm_grid_available_for_refinement',
-            phase3_5_perimeter_refinement_enabled: false,
+            refinement_iou: null,
+            perimeter_to_target_mask_ratio: null,
+            refined_perimeter_vertex_count: 0,
+            phase3_5_perimeter_refinement_enabled: true,
           };
         }
       } catch (e) {
         console.error('[PHASE3A5] refineTrueOuterRoofPerimeter threw:', (e as Error).message);
         phase3A5Diagnostics = {
           phase3A_5_perimeter_refinement_version: 'v1',
+          enabled: true,
+          version: 'v1',
+          executed: false,
+          skipped_reason: `refinement_exception: ${(e as Error).message}`,
           perimeter_refinement_passed: false,
           perimeter_refinement_reason: `refinement_exception: ${(e as Error).message}`,
+          refinement_iou: null,
+          perimeter_to_target_mask_ratio: null,
+          refined_perimeter_vertex_count: 0,
           phase3_5_perimeter_refinement_enabled: true,
         };
       }
