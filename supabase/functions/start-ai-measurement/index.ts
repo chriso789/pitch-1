@@ -6598,7 +6598,7 @@ async function processJob(input: any) {
           eaves_lf: number; rakes_lf: number;
           step_flashing_lf: number; wall_flashing_lf: number; unknown_lf: number;
         };
-        const { error: ttErr } = await supabase.from('roof_measurements').update({
+        const { error: ttErr } = await updateRoofMeasurementWithSchemaGuard(measurementId, {
           total_ridge_length: tt.ridges_lf,
           total_hip_length: tt.hips_lf,
           total_valley_length: tt.valleys_lf,
@@ -6607,7 +6607,7 @@ async function processJob(input: any) {
           total_wall_flashing_length: tt.wall_flashing_lf,
           total_step_flashing_length: tt.step_flashing_lf,
           total_unspecified_length: tt.unknown_lf,
-        }).eq('id', measurementId);
+        });
         if (ttErr) {
           console.warn('[PATENT_GATE] typed totals write-back failed', ttErr.message);
           patentLog.totals_writeback_error = ttErr.message;
@@ -6675,14 +6675,17 @@ async function processJob(input: any) {
       const mergedBlockReason = blockCustomerReportReason
         ? (patentBlockReason ? `${blockCustomerReportReason}|${patentBlockReason}` : blockCustomerReportReason)
         : patentBlockReason;
-      await supabase.from('roof_measurements').update({
+      await updateRoofMeasurementWithSchemaGuard(measurementId, {
         block_customer_report_reason: mergedBlockReason,
         override_validation_status: patentBlockReason ? 'pending' : null,
         report_blocked: !_customerReadyFinal,
         needs_review: !_customerReadyFinal,
         customer_report_ready: _customerReadyFinal,
         result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
-      }).eq('id', measurementId);
+        diagram_render_intent: _diagramRenderIntent,
+        geometry_report_json: geometryReportJson,
+        ...getPhase3DbColumns(),
+      });
     }
 
     // Update ai_measurement_jobs with promotion gate results
