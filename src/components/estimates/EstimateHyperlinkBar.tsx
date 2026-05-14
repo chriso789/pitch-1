@@ -87,11 +87,13 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const { data: actualInvoices } = useQuery({
     queryKey: ['pipeline-invoices-totals', pipelineEntryId],
     queryFn: async () => {
-      // Try by pipeline_entry_id first
+      // Exclude invoices linked to change orders — those don't affect main estimate profit
+      // until the change order is pushed into the main estimate.
       const { data, error } = await supabase
         .from('project_cost_invoices')
-        .select('invoice_type, invoice_amount, status')
+        .select('invoice_type, invoice_amount, status, change_order_id')
         .eq('pipeline_entry_id', pipelineEntryId!)
+        .is('change_order_id', null)
         .in('status', ['pending', 'approved', 'verified']);
       if (error) throw error;
       return data || [];
