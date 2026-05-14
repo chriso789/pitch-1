@@ -732,8 +732,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 flex flex-row items-center justify-between">
+      <DialogContent className="max-w-6xl w-[95vw] h-[90vh] max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-4 flex flex-row items-center justify-between flex-shrink-0">
           <div>
             <DialogTitle>Measurement Report</DialogTitle>
             {(effectiveMeasurement as any)?.geometry_report_json?.block_customer_report_reason && (
