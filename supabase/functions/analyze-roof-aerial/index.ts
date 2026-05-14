@@ -4136,6 +4136,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
   }
 
   const { data, error } = await supabase.from('roof_measurements').insert({
+    ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
     property_address: address,
@@ -4298,6 +4299,7 @@ async function saveVerticesToDatabase(
   
   if (interiorJunctions.length > 0) {
     await supabase.from('roof_measurements').update({ 
+      ...LEGACY_ANALYZE_PROVENANCE,
       interior_vertex_count: interiorJunctions.length,
       vertex_count: perimeterVertices.length + interiorJunctions.length,
       edge_count: 0
@@ -4369,7 +4371,7 @@ async function saveEdgesToDatabase(
       console.error('⚠️ Failed to save edges:', error.message)
     } else {
       console.log(`💾 Saved ${edgeRecords.length} edges`)
-      await supabase.from('roof_measurements').update({ edge_count: edgeRecords.length }).eq('id', measurementId)
+      await supabase.from('roof_measurements').update({ ...LEGACY_ANALYZE_PROVENANCE, edge_count: edgeRecords.length }).eq('id', measurementId)
     }
   }
 }
@@ -5422,6 +5424,7 @@ async function processSolarFastPath(
 
   // Save to database
   const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
+    ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
     property_address: address || 'Unknown Address',

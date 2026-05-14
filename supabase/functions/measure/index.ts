@@ -2600,6 +2600,7 @@ Deno.serve(async (req) => {
             if (propertyId && unifiedResult.fused) {
               const fused = unifiedResult.fused;
               await supabase.from('roof_measurements').insert({
+                ...LEGACY_MEASURE_PROVENANCE,
                 property_id: propertyId,
                 source: 'unified_pipeline',
                 measurement_data: {
@@ -3685,7 +3686,7 @@ Deno.serve(async (req) => {
 
             const { error: rmErr } = await adminSupabase
               .from('roof_measurements')
-              .insert(rmRow);
+              .insert({ ...LEGACY_MEASURE_PROVENANCE, ...rmRow });
             if (rmErr) {
               console.error('[pull] roof_measurements geo-mirror insert failed:', rmErr.message);
             } else {
@@ -4042,6 +4043,7 @@ Deno.serve(async (req) => {
 
           // Update measurement with QA results
           await supabase.from('roof_measurements').update({
+            ...LEGACY_MEASURE_PROVENANCE,
             manual_review_recommended: validationResult.manualReviewRecommended,
             quality_checks: validationResult,
             dsm_available: dsmAvailable,
@@ -5300,7 +5302,7 @@ Deno.serve(async (req) => {
 
                     const { data: insertedRow, error: insertErr } = await adminSupabase
                       .from('roof_measurements')
-                      .insert(insertRow)
+                      .insert({ ...LEGACY_MEASURE_PROVENANCE, ...insertRow })
                       .select('id')
                       .single();
 
@@ -5378,7 +5380,7 @@ Deno.serve(async (req) => {
                   };
                   const { data: seeded, error: seedErr } = await adminSupabase
                     .from('roof_measurements')
-                    .insert(seedRow)
+                    .insert({ ...LEGACY_MEASURE_PROVENANCE, ...seedRow })
                     .select('id')
                     .single();
                   if (!seedErr && seeded?.id) {
