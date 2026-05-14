@@ -124,8 +124,25 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
     Number(changeOrder.labor_total ?? 0) ||
     itemArray.filter((i: any) => i.kind === 'labor').reduce((s, i) => s + lineTotal(i), 0);
   const subtotal = materialTotal + laborTotal;
-  // Customer-facing price to client: cost_impact already includes overhead + profit.
-  const priceToClient = Number(changeOrder.cost_impact ?? subtotal);
+  // Price to client = cost + overhead + profit (price-based markup), matching estimates.
+  // Prefer recomputing from container pcts so legacy rows where cost_impact == subtotal
+  // still show the correct marked-up price.
+  const overheadPct = Number(rawContainer?.overhead_pct);
+  const profitPct = Number(rawContainer?.profit_pct);
+  const hasMarkup =
+    Number.isFinite(overheadPct) &&
+    Number.isFinite(profitPct) &&
+    overheadPct + profitPct > 0 &&
+    overheadPct + profitPct < 100;
+  const opDenom = hasMarkup
+    ? Math.max(0.01, 1 - overheadPct / 100 - profitPct / 100)
+    : 1;
+  const computedPrice = subtotal / opDenom;
+  const storedPrice = Number(changeOrder.cost_impact ?? 0);
+  // If a stored cost_impact is meaningfully larger than subtotal, trust it
+  // (it was saved as the marked-up grand total). Otherwise, use the computed price.
+  const priceToClient =
+    storedPrice > subtotal + 0.5 ? storedPrice : computedPrice || storedPrice || subtotal;
 
   const companyAddress = [
     company?.address_street,
