@@ -36,6 +36,9 @@ import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics } from "../_shared/dsm-analyzer.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
+import { classifyLayer1, ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
+import { buildRoofLine, aggregateLineTotalsByAttribute, totalsHaveTypedBacking, type RoofLine, type RoofLineAttribute } from "../_shared/roof-lines.ts";
+import { assertCustomerReportReady } from "../_shared/measurement-gates.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -6029,20 +6032,219 @@ async function processJob(input: any) {
 
     if (publishError) throw publishError;
 
+    // ═══════════════════════════════════════════════════════════════
+    // PATENT WORKFLOW GATE — Rules 2/3/4/5
+    // Build typed roof_lines, validate Layer 1, run customer-ready gate.
+    // Rule 1 (target confirmation) is enforced upstream at function entry.
+    // ═══════════════════════════════════════════════════════════════
+    const measurementId: string | null = roofMeasurement?.id ?? null;
+    const patentLog: Record<string, unknown> = { measurement_id: measurementId };
+    let patentBlockReason: string | null = null;
+    let typedRoofLines: RoofLine[] = [];
+
+    try {
+      // ── Rule 2: Layer 1 perimeter ──
+      const perimRingPx: Array<{ x: number; y: number }> | null =
+        autonomousDebug?.perimeter_topology?.perimeter_ring_px ?? null;
+      const perimRingGeo: Array<{ lat: number; lng: number }> | null =
+        autonomousDebug?.perimeter_topology?.perimeter_ring_geo ?? null;
+      const rawPerimSource: string =
+        autonomousDebug?.perimeter_source
+          ?? autonomousDebug?.perimeter_topology?.perimeter_source
+          ?? 'unknown';
+      const layer1 = perimRingPx && perimRingPx.length >= 3
+        ? classifyLayer1(rawPerimSource, perimRingPx, {
+            geometry_geo: perimRingGeo,
+            confidence: Number(autonomousDebug?.perimeter_topology?.perimeter_confidence ?? 0),
+          })
+        : null;
+      patentLog.layer1 = layer1
+        ? {
+            source: layer1.source,
+            is_valid: layer1.is_valid,
+            closed: layer1.closed,
+            self_intersections: layer1.self_intersections,
+            forbidden_source_rejected_reasons: layer1.forbidden_source_rejected_reasons,
+          }
+        : { absent: true };
+
+      // ── Rule 3: typed roof_lines ──
+      // Layer 2 (structural) — derived from cleanEdges.
+      const eaveSet = new Set(['eave']);
+      const rakeSet = new Set(['rake']);
+      const ridgeHipValleySet = new Set(['ridge', 'hip', 'valley']);
+      const wallFlashSet = new Set(['wall_flashing', 'wall']);
+      const stepFlashSet = new Set(['step_flashing']);
+      const mapEdgeAttr = (raw: string): RoofLineAttribute => {
+        if (eaveSet.has(raw)) return 'eave';
+        if (rakeSet.has(raw)) return 'rake';
+        if (ridgeHipValleySet.has(raw)) return raw as RoofLineAttribute;
+        if (wallFlashSet.has(raw)) return 'wall_flashing';
+        if (stepFlashSet.has(raw)) return 'step_flashing';
+        return 'unknown';
+      };
+
+      // Layer 1 line (single closed perimeter polyline) — only when valid.
+      if (layer1 && layer1.is_valid && measurementId) {
+        const lenLf = polylineLengthPx(layer1.geometry_px as any) * actualFpp;
+        typedRoofLines.push(buildRoofLine({
+          id: crypto.randomUUID(),
+          measurement_id: measurementId,
+          layer_id: 'layer1_perimeter',
+          geometry_px: (layer1.geometry_px as any).map((p: any) => [p.x, p.y]),
+          geometry_geo: (layer1.geometry_geo as any)?.map((p: any) => [p.lng ?? p[0], p.lat ?? p[1]]) ?? null,
+          length_lf: round(lenLf, 2),
+          non_dimensional_attribute: 'perimeter',
+          source: rawPerimSource.includes('dsm') ? 'dsm'
+                : rawPerimSource.includes('mask') ? 'mask_contour'
+                : rawPerimSource.includes('vendor') ? 'vendor'
+                : rawPerimSource.includes('user') ? 'user_override'
+                : 'inferred',
+          confidence: Number(autonomousDebug?.perimeter_topology?.perimeter_confidence ?? 0.7),
+          adjacent_plane_ids: [],
+        }));
+      }
+
+      // Layer 2 lines from cleanEdges
+      if (measurementId) {
+        for (const e of (cleanEdges as any[])) {
+          const pts: Array<{ x: number; y: number }> = e.line_px || [];
+          if (!pts.length) continue;
+          const lenLf = polylineLengthPx(pts) * actualFpp;
+          if (lenLf <= 0) continue;
+          const attr = mapEdgeAttr(String(e.edge_type || 'unknown'));
+          const srcRaw = String(e.source || '');
+          const src = srcRaw.includes('dsm') ? 'dsm'
+                    : srcRaw.includes('solar') ? 'solar'
+                    : srcRaw.includes('mask') ? 'mask_contour'
+                    : srcRaw.includes('vendor') ? 'vendor'
+                    : srcRaw.includes('override') || srcRaw.includes('user') ? 'user_override'
+                    : 'inferred';
+          typedRoofLines.push(buildRoofLine({
+            id: crypto.randomUUID(),
+            measurement_id: measurementId,
+            layer_id: 'layer2_structural',
+            geometry_px: pts.map((p) => [p.x, p.y]),
+            geometry_geo: null,
+            length_lf: round(lenLf, 2),
+            non_dimensional_attribute: attr,
+            source: src as any,
+            confidence: Number(e.confidence ?? 0.5),
+            adjacent_plane_ids: e.adjacent_plane_ids ?? [],
+          }));
+        }
+      }
+
+      const typedTotals = aggregateLineTotalsByAttribute(typedRoofLines);
+      const reportedTotals = {
+        ridges_lf: Number(totals.ridge_length_ft) || 0,
+        hips_lf: Number(totals.hip_length_ft) || 0,
+        valleys_lf: Number(totals.valley_length_ft) || 0,
+        eaves_lf: Number(totals.eave_length_ft) || 0,
+        rakes_lf: Number(totals.rake_length_ft) || 0,
+        perimeter_lf: Number(totals.perimeter_length_ft) || 0,
+      };
+      const backing = totalsHaveTypedBacking(reportedTotals, typedTotals);
+      patentLog.typed_totals = typedTotals;
+      patentLog.reported_totals = reportedTotals;
+      patentLog.typed_backing = backing;
+
+      // ── Rule 4: per-plane pitch sources ──
+      // The current pipeline derives a single dominant pitch — propagate
+      // pitchSource per plane unless we have a better per-plane signal.
+      const perPlanePitchSources: string[] = (planeRows as any[]).map((p: any) => {
+        if (p.pitch == null) return 'unavailable';
+        return pitchSource;
+      });
+      patentLog.per_plane_pitch_sources_summary = perPlanePitchSources.reduce<Record<string, number>>((acc, s) => {
+        acc[s] = (acc[s] || 0) + 1;
+        return acc;
+      }, {});
+
+      // ── Rule 5: cross-cutting customer-ready gate ──
+      const aiGatesPassed = promotionGatePassed
+        && !blockCustomerReportReason
+        && !topologyMismatch
+        && !vendorTruthComparison?.needs_internal_review;
+      const ready = assertCustomerReportReady({
+        user_confirmed_roof_target: true, // enforced upstream (HTTP 412)
+        roof_target_admin_override: false,
+        layer1_present: !!(layer1 && layer1.is_valid),
+        layer1_source_allowed: !!(layer1 && (ALLOWED_LAYER1_SOURCES as readonly string[]).includes(layer1.source)),
+        roof_lines_count: typedRoofLines.length,
+        reportable_totals_have_typed_backing: backing.ok,
+        per_plane_pitch_sources: perPlanePitchSources,
+        ai_gates_passed: aiGatesPassed,
+        override_validation_status: null,
+      });
+      patentLog.customer_ready = ready;
+      if (!ready.ready) patentBlockReason = `patent_gate:${ready.failures.join('|')}`;
+
+      // ── Persist typed lines ──
+      if (typedRoofLines.length && measurementId) {
+        const rows = typedRoofLines.map((l) => ({
+          id: l.id,
+          measurement_id: measurementId,
+          tenant_id: input.tenant_id,
+          layer_id: l.layer_id,
+          geometry_px: l.geometry_px,
+          geometry_geo: l.geometry_geo,
+          length_lf: l.length_lf,
+          non_dimensional_attribute: l.non_dimensional_attribute,
+          source: l.source,
+          confidence: l.confidence,
+          adjacent_plane_ids: l.adjacent_plane_ids,
+          can_be_customer_reported: l.can_be_customer_reported,
+        }));
+        const { error: rlErr } = await supabase.from('roof_lines').insert(rows);
+        if (rlErr) {
+          console.warn('[PATENT_GATE] roof_lines insert failed', rlErr.message);
+          patentLog.roof_lines_insert_error = rlErr.message;
+        } else {
+          patentLog.roof_lines_inserted = rows.length;
+        }
+      } else {
+        patentLog.roof_lines_inserted = 0;
+      }
+    } catch (patentErr) {
+      console.error('[PATENT_GATE] threw', (patentErr as Error).message);
+      patentBlockReason = `patent_gate_exception:${(patentErr as Error).message}`;
+      patentLog.exception = (patentErr as Error).message;
+    }
+    console.log('[PATENT_GATE]', JSON.stringify(patentLog));
+
     // ── Perimeter-First Contract: derive the 3-state result_state ──
-    // customer_report_ready  → all gates pass
-    // perimeter_only         → perimeter passed but topology/promotion failed
+    // customer_report_ready  → all gates pass (including patent gate)
+    // perimeter_only         → perimeter passed but topology/promotion/patent failed
     // ai_failed_<stage>      → perimeter failed or upstream failure
     const _perimeterPassed = autonomousDebug?.perimeter_gate_passed === true;
-    const _customerReady = promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review;
+    const _customerReady = promotedCustomerReportReady
+      && !reviewRequired
+      && !vendorTruthComparison?.needs_internal_review
+      && !patentBlockReason;
     let _resultState: string;
     if (_customerReady) {
       _resultState = 'customer_report_ready';
     } else if (_perimeterPassed) {
       _resultState = 'perimeter_only';
     } else {
-      const _stage = topologyMismatch ? 'topology' : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
+      const _stage = patentBlockReason ? 'patent'
+        : topologyMismatch ? 'topology'
+        : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
       _resultState = `ai_failed_${_stage}`;
+    }
+
+    // Persist patent gate outcome onto the measurement row.
+    if (measurementId && (patentBlockReason || typedRoofLines.length)) {
+      const mergedBlockReason = blockCustomerReportReason
+        ? (patentBlockReason ? `${blockCustomerReportReason}|${patentBlockReason}` : blockCustomerReportReason)
+        : patentBlockReason;
+      await supabase.from('roof_measurements').update({
+        block_customer_report_reason: mergedBlockReason,
+        override_validation_status: patentBlockReason ? 'pending' : null,
+        report_blocked: !_customerReady,
+        needs_review: !_customerReady,
+      }).eq('id', measurementId);
     }
 
     // Update ai_measurement_jobs with promotion gate results
@@ -6053,10 +6255,12 @@ async function processJob(input: any) {
         promotion_gate_passed: promotionGatePassed,
         promotion_gate_failed_reasons: promotionGateFailedReasons,
         perimeter_gate_passed: _perimeterPassed,
+        patent_gate_block_reason: patentBlockReason,
+        patent_gate: patentLog,
         result_state: _resultState,
       },
-      report_blocked: !promotedCustomerReportReady || reviewRequired,
-      needs_review: !promotedCustomerReportReady || reviewRequired,
+      report_blocked: !_customerReady,
+      needs_review: !_customerReady,
       result_state: _resultState,
     }).eq("id", input.ai_measurement_job_id);
 
