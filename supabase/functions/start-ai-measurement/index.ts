@@ -256,6 +256,76 @@ function derivePhase3EdgeRows(debug: any): any[] {
   return perimeterRows;
 }
 
+// Phase 3A.5 / 3C / 3D / 3E visibility blocks. When the deeper solver
+// integration runs the modules for real, it writes its own diagnostics into
+// debug.phase3A_5 / debug.phase3C / debug.phase3D / debug.phase3E. When it
+// hasn't run yet, we emit "not_executed" stubs so the visibility report
+// makes the gap obvious instead of silently rendering empty.
+function buildPhase3A5Block(debug: any): Record<string, any> {
+  const r = debug?.phase3A_5 ?? debug?.perimeter_refinement ?? null;
+  if (!r) {
+    return {
+      phase3A_5_active: false,
+      phase3A_5_perimeter_refinement_version: 'v1',
+      perimeter_refinement_executed: false,
+      perimeter_refinement_reason: 'not_executed_in_current_pipeline',
+    };
+  }
+  return {
+    phase3A_5_active: true,
+    perimeter_refinement_executed: true,
+    ...r,
+  };
+}
+
+function buildPhase3CBlock(debug: any): Record<string, any> {
+  const r = debug?.phase3C ?? debug?.deferred_edges ?? null;
+  if (!r) {
+    return {
+      phase3C_active: false,
+      phase3C_deferred_edges_version: 'v1',
+      deferred_structural_candidates_count: 0,
+      connectivity_edges_deferred: 0,
+      deferred_edges_used_for_refinement: 0,
+      phase3C_executed: false,
+    };
+  }
+  return { phase3C_active: true, phase3C_executed: true, ...r };
+}
+
+function buildPhase3DBlock(debug: any): Record<string, any> {
+  const r = debug?.phase3D ?? debug?.backbone_seed ?? null;
+  if (!r) {
+    return {
+      phase3D_active: false,
+      phase3D_backbone_seed_version: 'v1',
+      seed_backbone_edges_count: 0,
+      locked_backbone_edges_count: 0,
+      seed_ridge_lf: 0,
+      seed_valley_lf: 0,
+      seed_hip_lf: 0,
+      backbone_not_applied: false,
+      phase3D_executed: false,
+    };
+  }
+  return { phase3D_active: true, phase3D_executed: true, ...r };
+}
+
+function buildPhase3EBlock(debug: any): Record<string, any> {
+  const r = debug?.phase3E ?? debug?.constraint_repair ?? null;
+  if (!r) {
+    return {
+      phase3E_active: false,
+      phase3E_constraint_repair_version: 'v1',
+      candidate_repair_attempted: false,
+      repair_iterations: 0,
+      final_selected_candidate: null,
+      phase3E_executed: false,
+    };
+  }
+  return { phase3E_active: true, phase3E_executed: true, ...r };
+}
+
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
   if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
@@ -315,7 +385,11 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     ...payload,
     ...PHASE3_VERSION_BLOCK,
     phase3A,
+    phase3A_5: buildPhase3A5Block(payload),
     phase3B: buildPhase3BBlock(phase3EdgeRows),
+    phase3C: buildPhase3CBlock(payload),
+    phase3D: buildPhase3DBlock(payload),
+    phase3E: buildPhase3EBlock(payload),
     result_state: normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
