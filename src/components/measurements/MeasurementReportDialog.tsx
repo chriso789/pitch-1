@@ -200,6 +200,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Target Overlap w/ Perimeter', value: fmt(phase0?.target_mask_overlap_with_perimeter ?? targetMask?.target_mask_overlap_with_perimeter ?? targetMask?.target_component_overlap_with_perimeter) },
     { label: 'Missed Target Roof', value: fmt(phase0?.missed_target_roof_pct ?? targetMask?.missed_target_roof_pct, '%') },
     { label: 'Solar Sanity OK', value: String(phase0?.solar_sanity_ok ?? targetMask?.solar_sanity_ok ?? '—') },
+    { label: 'Benchmark Sanity OK', value: String(phase0?.benchmark_sanity_ok ?? targetMask?.benchmark_sanity_ok ?? '—') },
     { label: 'Customer Ready', value: String(m.customer_report_ready ?? '—') },
     { label: 'Result State', value: String(m.result_state ?? grj.result_state ?? '—') },
     { label: 'Perimeter Gate', value: String(phase0?.perimeter_gate_passed ?? grj.perimeter_gate_passed ?? m.perimeter_gate_passed ?? '—') },
