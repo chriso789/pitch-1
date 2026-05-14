@@ -295,6 +295,100 @@ const corsHeaders = {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
+  "archetype_debug",
+  "eave_rake_classification_debug",
+  "perimeter_edge_pitch_relation",
+]);
+
+function getPhase3DbColumns(): Record<string, unknown> {
+  return {
+    phase3_enabled: PHASE3_VERSION_BLOCK.phase3_enabled,
+    phase3_engine_version: PHASE3_VERSION_BLOCK.phase3_engine_version,
+    phase3A_eave_rake_classifier_version: PHASE3_VERSION_BLOCK.phase3A_eave_rake_classifier_version,
+    phase3B_roof_lines_persistence_version: PHASE3_VERSION_BLOCK.phase3B_roof_lines_persistence_version,
+    phase3C_deferred_edges_version: PHASE3_VERSION_BLOCK.phase3C_deferred_edges_version,
+    phase3D_backbone_seed_version: PHASE3_VERSION_BLOCK.phase3D_backbone_seed_version,
+    phase3E_constraint_repair_version: PHASE3_VERSION_BLOCK.phase3E_constraint_repair_version,
+    phase3F_result_state_version: PHASE3_VERSION_BLOCK.phase3F_result_state_version,
+    phase3G_diagram_render_intent_version: PHASE3_VERSION_BLOCK.phase3G_diagram_render_intent_version,
+  };
+}
+
+function getSchemaCacheMissingColumn(error: unknown): string | null {
+  const message = getErrorMessage(error);
+  if (!message.includes("schema cache") && !(error as any)?.code?.startsWith?.("PGRST")) return null;
+  return message.match(/Could not find the '([^']+)' column/)?.[1]
+    ?? message.match(/'([^']+)' column of 'roof_measurements'/)?.[1]
+    ?? null;
+}
+
+function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload };
+  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+    ? { ...(next.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: next.geometry_report_json ?? null };
+
+  for (const column of ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS) {
+    if (column in next) {
+      if (next[column] != null) geometry[column] = next[column];
+      delete next[column];
+    }
+  }
+
+  next.geometry_report_json = geometry;
+  return next;
+}
+
+function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column: string): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload };
+  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+    ? { ...(next.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: next.geometry_report_json ?? null };
+  const stripped = Array.isArray(geometry.schema_drift_stripped_columns)
+    ? [...geometry.schema_drift_stripped_columns]
+    : [];
+
+  if (column in next) {
+    if (next[column] != null && !(column in geometry)) geometry[column] = next[column];
+    delete next[column];
+  }
+  if (!stripped.includes(column)) stripped.push(column);
+  geometry.schema_drift_stripped_columns = stripped;
+  next.geometry_report_json = geometry;
+  return next;
+}
+
+async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
+  let safePayload = prepareRoofMeasurementPayload(payload);
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const result = await supabase.from("roof_measurements").insert(safePayload as any).select("id").single();
+    if (!result.error) return result;
+    lastError = result.error;
+    const missingColumn = getSchemaCacheMissingColumn(result.error);
+    if (!missingColumn || !(missingColumn in safePayload)) return result;
+    console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert without schema-cache-missing column", missingColumn);
+    safePayload = stripColumnIntoGeometryReport(safePayload, missingColumn);
+  }
+  return { data: null, error: lastError };
+}
+
+async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
+  let safePayload = prepareRoofMeasurementPayload(payload);
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const result = await supabase.from("roof_measurements").update(safePayload as any).eq("id", id);
+    if (!result.error) return result;
+    lastError = result.error;
+    const missingColumn = getSchemaCacheMissingColumn(result.error);
+    if (!missingColumn || !(missingColumn in safePayload)) return result;
+    console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update without schema-cache-missing column", missingColumn);
+    safePayload = stripColumnIntoGeometryReport(safePayload, missingColumn);
+  }
+  return { data: null, error: lastError };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
