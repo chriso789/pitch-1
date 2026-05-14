@@ -937,7 +937,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     let left = h, pos = 0;
                     pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph;
                     while (left > 0) { pos = left - h; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph; }
-                    pdf.save(`${viewCO.co_number}.pdf`);
+                    pdf.save(`${(viewCO.title || viewCO.co_number).replace(/[\\/:*?"<>|]/g, '-')}.pdf`);
                   }}
                 >
                   <Download className="h-4 w-4 mr-1" /> Download PDF

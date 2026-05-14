@@ -84,7 +84,8 @@ export async function saveChangeOrderPdfToDocuments({
     return null;
   }
 
-  const filename = `${coNumber} — ${title}.pdf`;
+  const safeTitle = (title || coNumber).trim().replace(/[\\/:*?"<>|]/g, '-');
+  const filename = `${safeTitle}.pdf`;
   const {
     data: { user },
   } = await supabase.auth.getUser();
