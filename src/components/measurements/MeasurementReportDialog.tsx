@@ -138,6 +138,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const phase0 = grj.perimeter_phase0 || sourceCtxDebug?.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
   const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || sourceCtxDebug?.perimeter_inner_trace || grj.target_mask_isolation || {};
   const dp = grj.debug_pipeline || {};
+  const phase3 = grj.phase3 || sourceCtxDebug?.phase3 || null;
+  const phase3A = grj.phase3A || sourceCtxDebug?.phase3A || null;
+  const phase3B = grj.phase3B || sourceCtxDebug?.phase3B || null;
+  const phase3Enabled = grj.phase3_enabled ?? phase3?.enabled ?? sourceCtxDebug?.phase3_enabled ?? null;
   const acquisitionAudit = grj.acquisition_audit || grj.source_acquisition_debug?.acquisition_audit || m.source_context?.acquisition_audit || m.source_context?.debug?.acquisition_audit || null;
   const sourceAcquisitionDebug = grj.source_acquisition_debug || m.source_context?.source_acquisition_debug || m.source_context?.debug?.source_acquisition_debug || null;
 
@@ -220,6 +224,16 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'OSM Candidates', value: fmt(sourceAcquisitionDebug?.no_osm_candidates === false ? (grj.candidates_tried ?? grj.candidates?.length) : grj.candidates_tried) },
     { label: 'Solar Insights', value: String(sourceAcquisitionDebug?.solar_insights?.status ?? '—') },
     { label: 'Solar Segments', value: fmt(sourceAcquisitionDebug?.solar_segments_count) },
+    { label: 'Phase 3 Enabled', value: String(phase3Enabled ?? '—') },
+    { label: 'Phase 3 Engine', value: String(grj.phase3_engine_version ?? phase3?.engine_version ?? sourceCtxDebug?.phase3_engine_version ?? '—') },
+    { label: 'Phase 3A Version', value: String(grj.phase3A_eave_rake_classifier_version ?? phase3?.phase3A_eave_rake_classifier_version ?? '—') },
+    { label: 'Phase 3B Version', value: String(grj.phase3B_roof_lines_persistence_version ?? phase3?.phase3B_roof_lines_persistence_version ?? '—') },
+    { label: 'Phase 3C', value: String(grj.phase3C_deferred_edges_version ?? phase3?.phase3C_deferred_edges_version ?? 'not implemented') },
+    { label: 'Phase 3D', value: String(grj.phase3D_backbone_seed_version ?? phase3?.phase3D_backbone_seed_version ?? 'not implemented') },
+    { label: 'Phase 3E', value: String(grj.phase3E_constraint_repair_version ?? phase3?.phase3E_constraint_repair_version ?? 'not implemented') },
+    { label: 'Phase 3A Failure', value: String(phase3A?.eave_rake_failure_reason ?? '—') },
+    { label: 'Roof Lines Count', value: fmt(phase3B?.roof_lines_count) },
+    { label: 'Diagram Intent', value: String(grj.diagram_render_intent ?? sourceCtxDebug?.diagram_render_intent ?? '—') },
   ];
 
   const blockReason = grj.block_customer_report_reason;
@@ -234,6 +248,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const phase0BypassBug = developerBug === 'phase0_bypassed_before_perimeter_gate' || /phase0_bypassed/i.test(failureReasonStr);
 
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
+  if (phase3Enabled !== true) errorList.push('Phase 3 visibility fields missing — stale function or unwired payload.');
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
   if (m.validation_status === 'needs_manual_measurement') errorList.push('Validation: needs_manual_measurement');
   if (dp.final_edge_count_saved === 0 && (dp.final_plane_count_saved ?? 0) > 0) errorList.push('ERROR: Planes exist but Edges = 0 (plane graph has no classified edges)');
