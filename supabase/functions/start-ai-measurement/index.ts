@@ -126,11 +126,43 @@ Deno.serve(async (req) => {
     const user_id: string | null = body.user_id ?? body.userId ?? null;
     const tenant_id_hint: string | null = body.tenantId ?? body.tenant_id ?? null;
 
+    // Patent Rule 1: confirmed roof target. The user must have placed/accepted
+    // a marker on the actual roof structure before AI measurement may run.
+    const original_geocode_lat: number | null =
+      body.original_geocode_lat ?? body.originalGeocodeLat ?? null;
+    const original_geocode_lng: number | null =
+      body.original_geocode_lng ?? body.originalGeocodeLng ?? null;
+    const confirmed_roof_center_lat: number | null =
+      body.confirmed_roof_center_lat ?? body.confirmedRoofCenterLat ?? latitude;
+    const confirmed_roof_center_lng: number | null =
+      body.confirmed_roof_center_lng ?? body.confirmedRoofCenterLng ?? longitude;
+    const user_confirmed_roof_target: boolean = Boolean(
+      body.user_confirmed_roof_target ?? body.userConfirmedRoofTarget ?? false,
+    );
+    const roof_target_admin_override: boolean = Boolean(
+      body.roof_target_admin_override ?? body.roofTargetAdminOverride ?? false,
+    );
+    const marker_offset_ft: number | null =
+      body.marker_offset_ft ?? body.markerOffsetFt ?? null;
+
     if (!lead_id && !project_id) {
       return json({ error: "lead_id (or pipelineEntryId) or project_id is required." }, 400);
     }
     if (!property_address && (latitude == null || longitude == null)) {
       return json({ error: "Property address or latitude/longitude is required." }, 400);
+    }
+
+    // Patent Rule 1 hard gate: refuse to start AI measurement without a
+    // confirmed roof target (admin override allowed for master/COB callers).
+    if (!user_confirmed_roof_target && !roof_target_admin_override) {
+      console.log("[PATENT_RULE_1] rejected: missing user_confirmed_roof_target", {
+        lead_id, project_id, latitude, longitude,
+      });
+      return json({
+        error: "user_confirmed_roof_target_required",
+        result_state: "ai_failed_target_unconfirmed",
+        message: "AI Measurement requires a confirmed roof target before it can run. Open the structure-selection step and place the marker on the actual roof.",
+      }, 412);
     }
 
     const sourceRecord = await resolveSourceRecord({ lead_id, project_id });
