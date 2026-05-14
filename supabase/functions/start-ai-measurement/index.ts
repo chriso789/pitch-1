@@ -6129,7 +6129,12 @@ async function processJob(input: any) {
       // ── Phase 3 visibility (proves which Phase 3 sub-features are active) ──
       ...PHASE3_VERSION_BLOCK,
       phase3A: buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null),
+      phase3_5: buildPhase3A5Block(autonomousDebug),
+      phase3A_5: buildPhase3A5Block(autonomousDebug),
       phase3B: buildPhase3BBlock(edgeRows),
+      phase3C: buildPhase3CBlock(autonomousDebug),
+      phase3D: buildPhase3DBlock(autonomousDebug),
+      phase3E: buildPhase3EBlock(autonomousDebug),
       // ── ARCHITECTURAL CONTRACTS ──
       // 1. Authoritative footprint — one polygon used by ALL downstream stages.
       authoritative_footprint_px: footprint.map((p) => [p.x, p.y]),
