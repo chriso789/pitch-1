@@ -289,6 +289,8 @@ export function PullMeasurementsButton({
       const tenantId = effectiveTenantId || 'unknown';
 
       // Start async job — returns immediately
+      // Patent Rule 1: the user just confirmed the marker location in the
+      // StructureSelectionMap; the prop `lat`/`lng` are the original geocode.
       const jobId = await startJob({
         lat: pullLat,
         lng: pullLng,
@@ -296,6 +298,9 @@ export function PullMeasurementsButton({
         pitchOverride: pitchOverride || undefined,
         tenantId,
         userId: user?.id,
+        originalGeocodeLat: lat ?? null,
+        originalGeocodeLng: lng ?? null,
+        userConfirmedRoofTarget: true,
       });
 
       setTrackedJobId(jobId);
