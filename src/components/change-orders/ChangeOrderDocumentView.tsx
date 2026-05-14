@@ -306,7 +306,7 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
       <section className="mt-6 flex justify-end">
         <div className="w-72 border-t-2 border-gray-900 pt-2 text-sm">
           <Row
-            label="Price to Client"
+            label="Additional Cost"
             value={fmt(priceToClient)}
             bold
           />

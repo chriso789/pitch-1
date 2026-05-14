@@ -105,7 +105,19 @@ export default function PublicChangeOrderView() {
   const co = data.change_order;
   const company = data.company || {};
   const customer = data.customer || {};
-  const items: any[] = Array.isArray(co.line_items) ? co.line_items : (co.line_items?.items || []);
+  const container: any = co.line_items || {};
+  const items: any[] = Array.isArray(co.line_items) ? co.line_items : (container.items || []);
+  const lineTotal = (i: any) => (Number(i.quantity ?? i.qty ?? 1) || 0) * (Number(i.unit_price ?? i.price ?? i.rate ?? 0) || 0);
+  const matSum = items.filter((i) => (i.kind || 'material') !== 'labor').reduce((s, i) => s + (Number(i.line_total) || lineTotal(i)), 0);
+  const labSum = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + (Number(i.line_total) || lineTotal(i)), 0);
+  const subtotal = (Number(co.material_total) || matSum) + (Number(co.labor_total) || labSum);
+  const ohPct = Number(container.overhead_pct);
+  const prPct = Number(container.profit_pct);
+  const hasMarkup = Number.isFinite(ohPct) && Number.isFinite(prPct) && (ohPct + prPct) > 0 && (ohPct + prPct) < 100;
+  const denom = hasMarkup ? Math.max(0.01, 1 - ohPct / 100 - prPct / 100) : 1;
+  const computedPrice = subtotal / denom;
+  const storedPrice = Number(co.cost_impact || 0);
+  const priceToClient = storedPrice > subtotal + 0.5 ? storedPrice : (computedPrice || storedPrice || subtotal);
   const alreadySigned = data.already_signed || signedConfirmed;
 
   return (
@@ -168,7 +180,7 @@ export default function PublicChangeOrderView() {
 
           <div className="border-t pt-4 flex justify-end">
             <div className="w-64 space-y-1 text-sm">
-              <div className="flex justify-between font-bold text-base"><span>Price to Client</span><span>{fmt(Number(co.cost_impact || 0))}</span></div>
+              <div className="flex justify-between font-bold text-base"><span>Additional Cost</span><span>{fmt(priceToClient)}</span></div>
             </div>
           </div>
         </Card>

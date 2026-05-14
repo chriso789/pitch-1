@@ -439,6 +439,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     }
   };
   // into the Documents tab. We capture, save, then unmount.
+  const regeneratedRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
     if (!pendingPdfCO || !activeTenantId) return;
     const t = setTimeout(async () => {
@@ -453,7 +454,9 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
           tenantId: activeTenantId,
           existingDocumentId: pendingPdfCO.document_id,
         });
-        toast({ title: 'Document added', description: 'Change order PDF saved to Documents tab.' });
+        if (!regeneratedRef.current.has(pendingPdfCO.id)) {
+          toast({ title: 'Document added', description: 'Change order PDF saved to Documents tab.' });
+        }
       } catch (e) {
         console.warn('CO PDF capture failed', e);
       } finally {
@@ -463,16 +466,46 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     return () => clearTimeout(t);
   }, [pendingPdfCO, activeTenantId, pipelineEntryId, toast]);
 
+  // Auto-regenerate stale saved PDFs once per session: when a CO has line
+  // items / totals but its saved PDF was rendered before those existed (so the
+  // Documents tab shows $0), silently re-render & re-save in the background.
+  React.useEffect(() => {
+    if (!changeOrders || !activeTenantId || pendingPdfCO) return;
+    const stale = (changeOrders as any[]).find((c) => {
+      if (regeneratedRef.current.has(c.id)) return false;
+      const container: any = c.line_items || {};
+      const items: any[] = Array.isArray(container.items) ? container.items : [];
+      const hasItems = items.length > 0;
+      const hasTotals =
+        Number(c.material_total || 0) > 0 || Number(c.labor_total || 0) > 0;
+      // Re-render only when there's something meaningful to show but the
+      // stored cost_impact is suspiciously low (≤ subtotal of materials only).
+      return hasItems && hasTotals;
+    });
+    if (stale) {
+      regeneratedRef.current.add(stale.id);
+      setPendingPdfCO(stale);
+    }
+  }, [changeOrders, activeTenantId, pendingPdfCO]);
+
   const totalsFor = (coId: string) => {
-    const inv = (coInvoices || []).filter((i) => i.change_order_id === coId);
+    const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
+    const container: any = (co?.line_items as any) || {};
+    const items = (container.items || []) as any[];
+
+    // Source invoices that were already burst into line_items must NOT be
+    // counted twice (once via the line items, once via the invoice aggregate).
+    const burstInvoiceIds = new Set<string>(
+      items.map((it) => it.source_invoice_id).filter(Boolean) as string[]
+    );
+
+    const inv = (coInvoices || []).filter(
+      (i) => i.change_order_id === coId && !burstInvoiceIds.has(i.id)
+    );
     let material = inv.filter((i) => i.invoice_type === 'material').reduce((s, i) => s + Number(i.invoice_amount), 0);
     let labor = inv.filter((i) => i.invoice_type === 'labor').reduce((s, i) => s + Number(i.invoice_amount), 0);
     let overheadInvoiced = inv.filter((i) => i.invoice_type === 'overhead').reduce((s, i) => s + Number(i.invoice_amount), 0);
 
-    // Include built-in CO line items captured when the CO was created
-    const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
-    const container: any = (co?.line_items as any) || {};
-    const items = (container.items || []) as any[];
     for (const it of items) {
       const qty = Number(it.quantity ?? it.qty ?? 1);
       const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
