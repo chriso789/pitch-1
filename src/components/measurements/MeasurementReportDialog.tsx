@@ -20,6 +20,8 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import PatentRoofReport from './PatentRoofReport';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
 import { MeasurementOverrideEditor } from '@/components/measurement/MeasurementOverrideEditor';
+import AIMeasurement3DDebugViewer from './AIMeasurement3DDebugViewer';
+import { Layers as LayersIcon } from 'lucide-react';
 
 interface MeasurementReportDialogProps {
   open: boolean;
