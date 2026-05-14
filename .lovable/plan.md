@@ -1,177 +1,113 @@
-# Wire Phase 3A.5 → 3E with Phase 3A.5 as a hard gatekeeper
 
-The four Phase 3 modules are present in `supabase/functions/_shared/` but unwired. This corrected plan makes Phase 3A.5 a **hard perimeter gate** — if the refined perimeter does not match the actual roof, the run stops as `ai_failed_perimeter` and topology never executes.
+# ABC Supply API Integration — Full Plan (Per-Tenant)
 
-## Verified module + export inventory
+Modeled after the existing `SRS Distribution Integration` (per-tenant credentials, edge functions, webhook ingestion). Adapts the research doc to Pitch CRM conventions: `tenant_id` (not `organization_id`), `useEffectiveTenantId()`, `npm:` specifiers + `Deno.serve(handler)`, and `pitch-crm.ai` for callback/webhook URLs.
 
-I read each file. The actual exports differ from the previous plan's names — the wiring will use the real names, not silently skip.
+---
 
-| File | Real exports |
-|---|---|
-| `supabase/functions/_shared/perimeter-refinement.ts` | `refineTrueOuterRoofPerimeter(input)`, types `PerimeterRefinementInput`/`Result`/`Diagnostics` |
-| `supabase/functions/_shared/backbone-seed.ts` | `buildSeedBackbone(input)`, `markBackboneInserted`, `demoteLockedEdge`, `detectBackboneNotApplied` (no `buildLockedBackboneSeed`) |
-| `supabase/functions/_shared/deferred-structural-edges.ts` | `categorizeForDeferral(candidate, diag)`, `finalizeDeferredEdges`, `emptyDeferralDiagnostics` (no `deferStructuralEdge`) |
-| `supabase/functions/_shared/constraint-solver-repair.ts` | `attemptRepairPass(input)`, `shouldAttemptRepair(candidates, seed)` |
-| `supabase/functions/_shared/backbone-network.ts` | `buildBackboneNetwork(...)` — this is the active backbone module Phase 3D will hook into |
+## Phase 1 — Database schema & RLS
 
-Verified integration sites:
-- `start-ai-measurement/index.ts` line ~2525: `perimeterPhase0Snapshot` is built; line ~2754: `solveAutonomousGraph` is called. Phase 3A.5 inserts between these two points.
-- `autonomous-graph-solver.ts` line ~2940 already references `deferred_connectivity_edges`; the connectivity-pruning step around there is the Phase 3C wire-in.
-- `constraint-roof-solver.ts` candidates carry `score`, `rejected`, `rejection_reason` fields (line ~125); after candidate scoring is the Phase 3E wire-in.
+New tables (all with `tenant_id uuid not null`, RLS scoped via existing tenant helpers — same pattern as `srs_*` tables):
 
-## Phase 3A.5 — True outer roof perimeter refinement (HARD GATE)
+- `abc_integrations` — one row per tenant per environment (sandbox/production). Fields: `abc_mode` (individual_business | third_party_aggregator), `environment`, `token_strategy` (auth_code_pkce | client_credentials), `client_id`, `redirect_uri`, `status`, `webhook_id`, `webhook_secret`, audit cols. Unique `(tenant_id, environment)`.
+- `abc_tokens` — encrypted via pgcrypto (`access_token_enc`, `refresh_token_enc` bytea), `token_type`, `scope`, `access_token_expires_at`, `refresh_token_last_used_at`, `raw_token_response jsonb`. PK = `integration_id`.
+- `abc_accounts` — sold_to / bill_to / ship_to with `account_kind`, `account_number`, parent links, `raw_payload`.
+- `abc_branches` — branch number, geo, hours, `raw_payload`.
+- `abc_items`, `abc_item_availability` — product catalog snapshot per branch.
+- `abc_price_requests` — request/response JSONB log (pricing requires user token).
+- `abc_orders` + `abc_order_lines` — order header/lines with `raw_payload` for full ABC body.
+- `abc_invoices` + `abc_invoice_lines` — invoice mirror; `pdf_storage_path` reference.
+- `abc_webhooks` — registered webhook config (id, type, events, secret).
+- `abc_webhook_events` — every received event payload, with `accepted`, `authorization_header`, indexed by `order_number`/`invoice_number`.
+- Optional link table `abc_order_job_links (order_id, job_id, tenant_id)` so an ABC order is bound to a Pitch job/estimate.
 
-**File:** `supabase/functions/start-ai-measurement/index.ts`, between perimeterPhase0 build (~L2525) and `solveAutonomousGraph` call (~L2754).
+RLS: read for tenant members, mutate for tenant admins/owners only. Token row never readable client-side; all access goes through edge functions using service role.
 
-Call `refineTrueOuterRoofPerimeter({...})` with the inputs already in scope at that point:
-- `raw_perimeter_px` ← Layer-1 perimeter from `perimeterPhase0Snapshot.true_outer_roof_perimeter_px`
-- `raw_perimeter_source` ← existing `perimeter_source` label
-- `dsm_grid`, `width`, `height`, `meters_per_pixel` ← from the loaded DSM tile
-- `target_mask_grid` ← target roof mask component already used by perimeter-topology
-- `rgba` ← RGB/aerial raster
-- `solar_segment_masks_px` ← rasterized roofSegmentStats
-- `roof_centroid_px` ← confirmed roof PIN reprojected to DSM pixels
-- `benchmark_area_sqft` ← from `roof_measurement_benchmarks` lookup if present
-- `thresholds` ← defaults (`min_iou=0.88`, `max_ratio=1.10`, `min_confidence=0.85`, `max_snap=6px`)
+Storage buckets (private, RLS keyed on `tenant_id` as first folder per project standard):
+- `abc-invoices/{tenant_id}/{invoice_number}.pdf`
+- `abc-item-images/{tenant_id}/{item_number}/{asset_id}.jpg`
 
-Persist verbatim into `geometry_report_json`:
-- `phase3_5_perimeter_refinement_enabled = true`
-- `raw_perimeter_px`, `refined_perimeter_px`, `refined_perimeter_geo`
-- `raw_perimeter_area_sqft`, `refined_perimeter_area_sqft`, `target_mask_area_sqft`
-- `refinement_iou` (== `perimeter_vs_mask_iou`), `perimeter_to_target_mask_ratio`
-- `vertices_snapped_count`, `vertices_added_count`, `vertices_removed_count`
-- `tree_shadow_exclusion_regions`, `patio_screen_exclusion_regions`
-- `refinement_diagnostics` (the full `PerimeterRefinementDiagnostics` blob, including `debug_perimeter_overlay_svg`)
-- `refinement_passed`
+---
 
-**Hard gate.** If `result.passed === false` OR `iou < 0.88` OR `ratio > 1.10` OR `confidence < 0.85`:
+## Phase 2 — Secrets & app registration
 
-```
-result_state               = ai_failed_perimeter   (stable bucket — no DB change)
-hard_fail_reason           = perimeter_refinement_failed
-block_customer_report_reason = perimeter_shape_not_accurate
-customer_report_ready      = false
-diagram_render_intent      = rejected_only
-```
+User must register a Pitch CRM app with ABC Supply (sandbox + production) and provide:
+- `ABC_SUPPLY_CLIENT_ID_SANDBOX`, `ABC_SUPPLY_CLIENT_SECRET_SANDBOX`
+- `ABC_SUPPLY_CLIENT_ID_PROD`, `ABC_SUPPLY_CLIENT_SECRET_PROD`
+- `ABC_SUPPLY_TOKEN_ENCRYPTION_KEY` (for pgcrypto symmetric encryption of stored refresh tokens)
 
-Then **return early**. `solveAutonomousGraph` is not called. Topology, backbone seeding, and constraint solver do not run.
+Auth servers (per docs):
+- Sandbox: `https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8`
+- Prod: `https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357`
 
-If the gate passes:
-- Replace the perimeter handed to `solveAutonomousGraph` with `refined_perimeter_px` / `refined_perimeter_geo`.
-- Set `selected_perimeter_source = "refined_true_outer_roof_perimeter"`.
-- Continue to Phases 3C/3D/3E.
+API bases: `partners-sb.abcsupply.com` / `partners.abcsupply.com` (per page-level Resource URLs — treated as authoritative over example Host headers, per research doc).
 
-## Phase 3C — Defer structural edges (only reached when 3A.5 passed)
+OAuth callback URL: `https://pitch-crm.ai/integrations/abc-supply/oauth-callback`
+Webhook receiver URL: `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-webhook-receiver`
 
-**File:** `supabase/functions/_shared/autonomous-graph-solver.ts`, around the connectivity pruning step near line ~2940.
+---
 
-Replace the current "delete dangling ridge/valley/hip" body with:
+## Phase 3 — Edge functions
 
-1. Initialize `const deferralDiag = emptyDeferralDiagnostics()` once per solve.
-2. For each connectivity-isolated candidate edge, build a `DeferralCandidate` (id, original_type, p1/p2, length, inside_perimeter using refined perimeter, dsm/solar/pre-class scores) and call `categorizeForDeferral(c, deferralDiag)`. Push survivors into `deferred_structural_candidates`.
-3. After refinement / face splitting attempts, call `finalizeDeferredEdges(deferralDiag, usedForSplitIds)`.
+All use `npm:` specifiers and `Deno.serve(handler)`. Tenant identity from JWT via `getClaims()` then resolved to `tenant_id`. Service-role client used for token/secret reads.
 
-Persist on solver result (surfaces in `autonomousDebug.phase3C`):
-- `phase3C_deferred_edges_version = "v1"`
-- `connectivity_edges_deferred`, `connectivity_edges_deleted_pre_refinement`, `connectivity_edges_deleted_post_refinement`
-- `deferred_structural_candidates_count`, `deferred_edges_used_for_refinement`, `deferred_edges_rejected_after_refinement`
-- `deferred_edge_table` (full `DeferredEdgeDecision[]`)
+1. **`abc-oauth-start`** — generates PKCE pair, stores `code_verifier` + `state` in short-lived `abc_oauth_states` table, returns ABC `/v1/authorize` URL with scopes (`location.read product.read account.read pricing.read order.read order.write notification.read notification.write offline_access`).
+2. **`abc-oauth-callback`** — exchanges code for token via `/v1/token` (HTTP Basic auth header per docs), encrypts refresh token, writes `abc_integrations` + `abc_tokens`, marks status `connected`.
+3. **`abc-token-refresh`** — refreshes access token (30-min lifetime) using stored refresh token; if 30+ days idle → mark `status='error'`, surface re-auth prompt. Called by every other function via shared `getValidAbcToken(integrationId)` helper.
+4. **`abc-client-credentials-token`** — for app-only flows (location/product/notification when ABC permits).
+5. **`abc-account-sync`** — pulls Sold-To / Bill-To / Ship-To and contacts; upserts `abc_accounts`.
+6. **`abc-branch-sync`** — `/api/location/v1/branches` (lat/long/distance or zip queries); upserts `abc_branches`.
+7. **`abc-item-search`** — search/favorite items, fetch images to storage; upserts `abc_items` + `abc_item_availability`.
+8. **`abc-pricing`** — already exists; rewire to ABC-pricing v1 endpoint with `purpose=estimating|quoting|ordering`, ship_to + branch params; persist request/response in `abc_price_requests`. Pricing must use user token (third-party client_credentials cannot get pricing — surface clear error if integration is in that mode).
+9. **`abc-order-create`** — `POST /api/order/v2/orders`. Validates payload, links to `job_id`/`estimate_id` from caller, persists raw response, writes order + lines.
+10. **`abc-order-history`** + **`abc-order-detail`** — read-side syncing with date-range pagination; idempotent upsert by `confirmation_number`.
+11. **`abc-webhook-register`** — `POST /api/notification/v2/webhooks`. Registers ONE webhook per tenant per docs guidance (5-app cap, 1 recommended) targeting the receiver URL with a per-tenant secret; persists `webhook_id` + `secret`.
+12. **`abc-webhook-receiver`** (PUBLIC, no JWT, like `srs-webhook`) — verifies `Authorization` header equals stored `webhook_secret` for the matched webhook; logs every event raw to `abc_webhook_events`; routes by `eventType`:
+    - `ORDER_UPDATE` → upsert `abc_orders` + `abc_order_lines`, broadcast tenant channel.
+    - `ORDER_INVOICED` → upsert `abc_invoices` + lines, kick off `abc-invoice-pdf-fetch`.
+    - Treat `ORDER_STATUS` as alias of `ORDER_UPDATE`. Unknown event types stored, not dropped.
+    - Always returns 200 once persisted (ABC retry behavior is unspecified — never throw).
+13. **`abc-invoice-pdf-fetch`** — downloads invoice PDF (when third-party aggregator can; otherwise mark unavailable per docs gap), stores to `abc-invoices` bucket, persists `pdf_storage_path`.
+14. **`abc-token-refresh-scheduler`** — pg_cron-invoked every 15 min; refreshes any token expiring in <10 min.
 
-## Phase 3D — Seed backbone insertion + locking
+Every function: input validated with Zod, returns clear 4xx with actionable messages, includes CORS headers from `npm:@supabase/supabase-js@2/cors`.
 
-**File:** `supabase/functions/_shared/backbone-network.ts`, inside `buildBackboneNetwork(...)` BEFORE face extraction / chain pruning.
+---
 
-1. Assemble `RawEdgeEvidence[]` from raw DSM ridge/valley/hip detections + `deferred_structural_candidates` from Phase 3C, scoring each with `dsm_support`, `solar_alignment`, `inside_perimeter` (against refined perimeter), `pre_classification_confidence`.
-2. Call `buildSeedBackbone({ raw_edges, perimeter_px: refined_perimeter_px, reflex_corners_px, meters_per_pixel })`.
-3. Insert returned `seed_backbone_edges` into the planar graph with `locked: true`. Call `markBackboneInserted(diag, insertedCount)`.
-4. In every downstream pruning / merging path, when removing a locked edge, call `demoteLockedEdge(edge, diag, reason)` instead of `splice` — never delete locked edges silently.
-5. After face extraction, call `detectBackboneNotApplied(seedResult, { ridge_lf, valley_lf })`. If true, propagate `hard_fail_reason = 'backbone_not_applied'`.
+## Phase 4 — Frontend (React + Tanstack Query)
 
-Persist on solver result (`autonomousDebug.phase3D`):
-- `phase3D_backbone_seed_version = "v1"`
-- `seed_backbone_edges`, `seed_backbone_edges_inserted`, `seed_backbone_edges_survived`, `seed_backbone_edges_pruned`
-- `locked_backbone_edges_count`, `backbone_prune_reasons`
-- `seed_ridge_lf`, `seed_valley_lf`, `seed_hip_lf`
-- `backbone_not_applied`
+New feature module `src/features/abc-supply/`:
 
-`backbone_not_applied = true` → `hard_fail_reason = backbone_not_applied`, `result_state = ai_failed_topology` (already mapped in `result-state.ts`).
+- `pages/AbcSupplyIntegrationPage.tsx` (route `/settings/integrations/abc-supply`):
+  - Connection card: env toggle (Sandbox/Production), mode toggle (Individual-Business / Third-party Aggregator), "Connect with ABC Supply" button (kicks off `abc-oauth-start`), status pill, token expiry, "Disconnect" action.
+  - Sub-tabs: **Accounts**, **Branches**, **Catalog**, **Pricing log**, **Orders**, **Invoices**, **Webhooks/Events**.
+- `components/AbcAccountsList.tsx`, `AbcBranchesList.tsx`, `AbcItemSearch.tsx`, `AbcPricingDrawer.tsx`, `AbcOrderBuilder.tsx`, `AbcOrderDetail.tsx`, `AbcInvoiceList.tsx`, `AbcWebhookEventsTable.tsx`.
+- Estimate integration: in the existing Estimate builder, add an "Order from ABC Supply" action that maps line items → ABC items (using saved item mappings) and calls `abc-order-create`, persisting the link in `abc_order_job_links`.
+- All queries strictly filter `.eq('tenant_id', effectiveTenantId)` per project memory.
+- Realtime: subscribe to `abc_orders`, `abc_invoices`, `abc_webhook_events` filtered by tenant_id.
 
-## Phase 3E — Constraint solver repair pass
+OAuth callback handler at `/integrations/abc-supply/oauth-callback` simply forwards `code` + `state` to `abc-oauth-callback` then redirects to settings page.
 
-**File:** `supabase/functions/_shared/constraint-roof-solver.ts`, after candidate scoring and before returning the best candidate.
+---
 
-1. Build `RepairCandidate[]` from the existing `ConstraintCandidate[]`, copying `id, topology_type, faces, ridge_lf, valley_lf, hip_lf, area_ratio, has_cross_roof_diagonal, rejected_reason, score`.
-2. Check `shouldAttemptRepair(repairCandidates, seedBackboneResult)`. If true:
-3. Call `attemptRepairPass({ candidates, seed: seedBackboneResult, rescore })` where `rescore(cand, ridgeChains, valleyChains)` is a closure that re-runs the existing scoring with the seed chains force-merged into the candidate's edge set.
-4. If `result.selected != null`, replace the chosen candidate with it. Otherwise keep the original best.
+## Phase 5 — Documentation, tests, observability
 
-Persist on constraint result (`autonomousDebug.phase3E`):
-- `phase3E_constraint_repair_version = "v1"`
-- `candidate_repair_attempted`, `repaired_ridge_chains_inserted`, `repaired_valley_chains_inserted`
-- `repaired_candidate_scores`, `repair_iterations`
-- `repair_accepted` (= `selected != null`), `final_selected_candidate`, `final_rejection_reason`
+- `docs/abc-supply-integration.md` — environments, scopes, mode matrix, doc-inconsistency notes (resource URL vs Host header, `account/v1` vs `accounts/v1`, `order.read` vs `allOrder.read`, ORDER_UPDATE vs ORDER_INVOICED vs ORDER_STATUS), retry behavior caveats.
+- Deno tests for: OAuth callback (PKCE happy path + replay rejection), token refresh (expiry math, 30-day idle handling), webhook receiver (secret mismatch returns 200 + `accepted=false`, ORDER_INVOICED upserts invoice), order create (validation errors).
+- Memory entry once shipped: `mem://features/abc-supply-integration` — per-tenant pattern, scope matrix, webhook secret verification, Resource-URL-as-canonical rule.
 
-If repair was attempted but no acceptable candidate emerged:
-```
-hard_fail_reason     = topology_undersegmented_after_backbone_repair
-result_state         = ai_failed_topology
-customer_report_ready = false
-```
+---
 
-## Result-state mapping
+## Technical notes & guardrails
 
-`supabase/functions/_shared/result-state.ts` already routes the relevant tokens (verified). Keep the existing 10 stable buckets — **no DB constraint change**. Confirm the following all map correctly:
+- **Inconsistencies handled by treating page-level "Resource" URL as canonical** (`partners-sb`/`partners`); never trust example Host headers.
+- **Pricing requires user token**: if a tenant connects via third-party client_credentials, pricing UI is disabled with explanatory tooltip.
+- **Invoice endpoints** flagged "not yet available" for third-party aggregators per docs — surface as gated feature.
+- **Webhook retries unspecified** → receiver is idempotent (upsert by `confirmation_number`/`invoice_number`) and always responds 200 after persist.
+- **Rate limits**: sandbox 10 tps; production varies by API family. Add a lightweight token-bucket per tenant in `abc-` shared helper before large bulk syncs.
+- **Token storage**: refresh tokens encrypted with pgcrypto using `ABC_SUPPLY_TOKEN_ENCRYPTION_KEY`; never returned to client.
+- **Result-state parity with existing SRS module** so admin tooling looks consistent.
 
-| hard_fail_reason | → result_state |
-|---|---|
-| `perimeter_refinement_failed` | `ai_failed_perimeter` |
-| `perimeter_shape_not_accurate` | `ai_failed_perimeter` |
-| `iou_below_gate` / `ratio_above_gate` | `ai_failed_perimeter` |
-| `backbone_not_applied` | `ai_failed_topology` |
-| `seed_chain_unlocked` | `ai_failed_topology` |
-| `repair_required_but_unavailable` | `ai_failed_topology` |
-| `topology_undersegmented_after_backbone_repair` | `ai_failed_topology` |
+## Open question (will confirm before coding)
 
-The current normalizer covers `perimeter`, `eave_rake`, `classification_invalid`, `backbone`, `seed_collapse`, `connectivity_collapse`, `topology`, `undersegment`. I'll extend it with explicit string matches for `perimeter_refinement_failed`, `iou_below_gate`, `ratio_above_gate`, `repair_required_but_unavailable`, `topology_undersegmented_after_backbone_repair` to make routing deterministic regardless of upstream wording.
-
-## Verification on Fonsica (`/lead/0a38230e-…`)
-
-Three valid outcomes — Lovable will not pre-declare which one is "expected":
-
-**A. Perimeter refinement fails (most likely if the visible bulge is a tree/patio):**
-- `result_state = ai_failed_perimeter`
-- `hard_fail_reason = perimeter_refinement_failed`
-- `phase3_5_perimeter_refinement_enabled = true`
-- `refinement_iou`, `perimeter_to_target_mask_ratio` populated; `refinement_passed = false`
-- `tree_shadow_exclusion_regions` / `patio_screen_exclusion_regions` populated
-- `debug_perimeter_overlay_svg` rendered
-- **`solveAutonomousGraph` is NOT called.** No phase3D/3E execution.
-
-**B. Perimeter refinement passes, topology fails:**
-- `result_state = ai_failed_topology`
-- `phase3C_deferred_edges_version = v1`, `connectivity_edges_deferred > 0`
-- `phase3D_backbone_seed_version = v1`, `locked_backbone_edges_count > 0`
-- `phase3E_constraint_repair_version = v1`, `candidate_repair_attempted = true` if ridge_lf stayed 0
-- `hard_fail_reason ∈ { backbone_not_applied, topology_undersegmented_after_backbone_repair }`
-
-**C. Customer-ready** — only if refined perimeter passes AND non-zero ridge/valley AND faces > undersegmentation min AND pitch valid AND vendor-benchmark gate passes. Not pre-declared expected.
-
-## Tests
-
-- `perimeter-refinement-fonsica_test.ts` — feeds a synthesized DSM/mask/RGB tile with a tree bulge; asserts `passed=false`, `iou < 0.88`, exclusion regions populated.
-- `phase3a5-gate-blocks-topology_test.ts` — asserts that when `result.passed=false`, `solveAutonomousGraph` is not invoked and the persisted row has `result_state='ai_failed_perimeter'`, `customer_report_ready=false`.
-- `backbone-seed-locking_test.ts` — asserts locked edges survive a synthetic prune cycle and `detectBackboneNotApplied` flips when ridge_lf collapses.
-- `constraint-repair-pass_test.ts` — asserts `attemptRepairPass` selects a non-zero-ridge candidate when seed chains exist and original candidates all had `ridge_lf=0`.
-
-## Scope / non-goals
-
-- No DB constraint changes. All new failure tokens normalize into existing `ai_failed_perimeter` / `ai_failed_topology` buckets.
-- Diagnostics piggyback on `geometry_report_json` JSONB — no new columns.
-- No UI changes; the existing Phase 3 visibility report already renders nested phase blocks generically.
-- No edits to vendor-benchmark gate, pitch-source contract, or Patent Workflow Rules 1–5.
-
-## Risks
-
-- **Phase 3A.5 inputs depend on raster shapes already loaded at L2525.** If the DSM `Float32Array` and target-mask `Uint8Array` aren't currently in scope at that point, the wiring needs a small refactor to pass them through (not load them again). I'll do that as part of the same edit, not as a follow-up.
-- **`buildBackboneNetwork` signature.** I haven't yet read its full param list. I'll thread the seed-backbone result through its existing inputs rather than changing the signature for callers.
-- **`rescore` closure inside constraint solver.** The repair pass's `rescore(cand, ridgeChains, valleyChains)` callback needs access to the solver's internal scoring fn. If that fn is module-private, I'll extract it into a named helper inside the same file rather than exporting it.
+Default environment for first connection: launch in **Sandbox-only** for the first tenant, then enable Production gating behind an admin feature toggle? (Recommended.) If you want both available immediately, say so and I'll skip the toggle.
