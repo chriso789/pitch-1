@@ -1912,6 +1912,8 @@ async function processJob(input: any) {
         unknown_perimeter_lf: graph.perimeter_gate?.diagnostics?.unknown_length_lf ?? null,
         perimeter_area_sqft: graph.perimeter_topology?.perimeter_area_sqft ?? null,
         perimeter_failure_reasons: graph.perimeter_gate?.failure_reasons ?? [],
+        // Full perimeter topology object (used for DB persistence: true_outer_roof_perimeter_*, eave_edges, rake_edges, corners)
+        perimeter_topology: graph.perimeter_topology ?? null,
       };
 
       // ═══════════════════════════════════════════════════════════════
