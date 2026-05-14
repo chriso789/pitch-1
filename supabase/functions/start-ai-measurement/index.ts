@@ -437,6 +437,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
   return {
     ...payload,
     ...PHASE3_VERSION_BLOCK,
+    route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
     phase3A,
     phase3A_5: buildPhase3A5Block(payload),
     phase3B: buildPhase3BBlock(phase3EdgeRows),
