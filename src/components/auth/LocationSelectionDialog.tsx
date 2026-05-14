@@ -101,12 +101,25 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
         .maybeSingle();
 
       const savedId = existingSetting?.setting_value as string | undefined;
-      if (savedId && locations.some(l => l.id === savedId)) {
-        localStorage.setItem('pitch_current_location', savedId);
-        onLocationSelected(savedId);
-      } else {
-        // No saved location, show dialog for selection
-        setOpen(true);
+      const chosen = (savedId && locations.some(l => l.id === savedId))
+        ? savedId
+        : locations[0].id;
+
+      // Auto-select without prompting — users cannot switch locations after login
+      localStorage.setItem('pitch_current_location', chosen);
+      onLocationSelected(chosen);
+
+      // Persist if not already saved
+      if (chosen !== savedId) {
+        await supabase
+          .from('app_settings')
+          .upsert({
+            user_id: userId,
+            tenant_id: activeTenantId,
+            setting_key: 'current_location_id',
+            setting_value: chosen,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id,tenant_id,setting_key' });
       }
     };
 
