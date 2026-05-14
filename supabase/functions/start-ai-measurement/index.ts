@@ -118,17 +118,17 @@ export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
 // as the sub-feature is wired in real code (not just announced).
 //   3A — eave/rake classifier rebuild + hard sanity gate (active)
 //   3B — typed roof_lines persistence (lite: counts/diagnostics only)
-//   3C — deferred connectivity edge pool (NOT WIRED — null)
-//   3D — seed backbone insertion (NOT WIRED — null)
-//   3E — constraint-solver repair pass (already gated by autonomous-graph-solver)
+//   3C — deferred connectivity edge pool (active)
+//   3D — seed backbone insertion (active)
+//   3E — constraint-solver repair pass (active)
 //   3F — result_state normalizer hardening (active)
 //   3G — diagram_render_intent enforcement (active)
 export const PHASE3_ENGINE_VERSION = "phase3-visibility-v1";
 export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "v1";
 export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "v1-counts-only";
-export const PHASE3C_DEFERRED_EDGES_VERSION: string | null = null;
-export const PHASE3D_BACKBONE_SEED_VERSION: string | null = null;
-export const PHASE3E_CONSTRAINT_REPAIR_VERSION: string | null = null;
+export const PHASE3C_DEFERRED_EDGES_VERSION = "v1";
+export const PHASE3D_BACKBONE_SEED_VERSION = "v1";
+export const PHASE3E_CONSTRAINT_REPAIR_VERSION = "v1";
 export const PHASE3F_RESULT_STATE_VERSION = "v1";
 export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "v1";
 export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
