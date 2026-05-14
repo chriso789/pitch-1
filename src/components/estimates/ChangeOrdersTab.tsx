@@ -102,6 +102,12 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   const [viewCO, setViewCO] = useState<ChangeOrder | null>(null);
   const [editCO, setEditCO] = useState<ChangeOrder | null>(null);
   const [pendingPdfCO, setPendingPdfCO] = useState<ChangeOrder | null>(null);
+  const [shareCO, setShareCO] = useState<ChangeOrder | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareName, setShareName] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [shareSending, setShareSending] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<{ coId: string; idx: number } | null>(null);
   const [lineDraft, setLineDraft] = useState<{ description: string; quantity: string; unit_price: string }>({ description: '', quantity: '1', unit_price: '0' });
   const [savingLine, setSavingLine] = useState(false);
@@ -881,7 +887,34 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                 pipelineEntryId={pipelineEntryId}
                 domId={`co-doc-view-${viewCO.id}`}
               />
-              <DialogFooter className="gap-2">
+              <DialogFooter className="gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!viewCO) return;
+                    const html2canvas = (await import('html2canvas')).default;
+                    const jsPDF = (await import('jspdf')).default;
+                    const el = document.getElementById(`co-doc-view-${viewCO.id}`);
+                    if (!el) return;
+                    const canvas = await html2canvas(el, { scale: 1.5, useCORS: true, backgroundColor: '#fff' });
+                    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+                    const w = 215.9, ph = 279.4;
+                    const h = (canvas.height * w) / canvas.width;
+                    const img = canvas.toDataURL('image/jpeg', 0.7);
+                    let left = h, pos = 0;
+                    pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph;
+                    while (left > 0) { pos = left - h; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph; }
+                    pdf.save(`${viewCO.co_number}.pdf`);
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-1" /> Download PDF
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => setShareCO(viewCO)}
+                >
+                  <Send className="h-4 w-4 mr-1" /> Share for approval
+                </Button>
                 <Button
                   variant="outline"
                   onClick={async () => {
@@ -899,13 +932,69 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     toast({ title: 'Saved to Documents tab' });
                   }}
                 >
-                  <Download className="h-4 w-4 mr-1" /> Re-save PDF
+                  <FileText className="h-4 w-4 mr-1" /> Save to Documents
                 </Button>
                 <Button variant="outline" onClick={() => window.print()}>
                   Print
                 </Button>
               </DialogFooter>
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Share for approval */}
+      <Dialog open={!!shareCO} onOpenChange={(o) => { if (!o) { setShareCO(null); setShareUrl(null); setShareEmail(''); setShareName(''); setShareMessage(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share {shareCO?.co_number} for approval</DialogTitle>
+            <DialogDescription>Send this change order to your customer to review and digitally approve.</DialogDescription>
+          </DialogHeader>
+          {shareUrl ? (
+            <div className="space-y-3">
+              <p className="text-sm">Email sent. You can also copy the link below:</p>
+              <Input readOnly value={shareUrl} onClick={(e) => (e.target as HTMLInputElement).select()} />
+              <Button variant="outline" onClick={() => { navigator.clipboard.writeText(shareUrl); toast({ title: 'Link copied' }); }}>Copy link</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div><Label>Recipient name</Label><Input value={shareName} onChange={(e) => setShareName(e.target.value)} placeholder="Customer name" /></div>
+              <div><Label>Recipient email</Label><Input type="email" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} placeholder="customer@email.com" /></div>
+              <div><Label>Message (optional)</Label><Textarea value={shareMessage} onChange={(e) => setShareMessage(e.target.value)} placeholder="Add a personal note..." /></div>
+            </div>
+          )}
+          {!shareUrl && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShareCO(null)}>Cancel</Button>
+              <Button
+                disabled={!shareEmail || shareSending}
+                onClick={async () => {
+                  if (!shareCO) return;
+                  setShareSending(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke('share-change-order', {
+                      body: {
+                        change_order_id: shareCO.id,
+                        recipient_email: shareEmail,
+                        recipient_name: shareName,
+                        message: shareMessage,
+                        app_origin: window.location.origin,
+                      },
+                    });
+                    if (error) throw error;
+                    if ((data as any)?.error) throw new Error((data as any).error);
+                    setShareUrl((data as any).url);
+                    toast({ title: 'Change order sent' });
+                  } catch (e: any) {
+                    toast({ title: 'Send failed', description: e.message, variant: 'destructive' });
+                  } finally {
+                    setShareSending(false);
+                  }
+                }}
+              >
+                {shareSending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />} Send
+              </Button>
+            </DialogFooter>
           )}
         </DialogContent>
       </Dialog>

@@ -5709,6 +5709,77 @@ export type Database = {
           },
         ]
       }
+      change_order_share_links: {
+        Row: {
+          change_order_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          opened_at: string | null
+          recipient_email: string
+          recipient_name: string | null
+          sent_at: string
+          sent_by: string | null
+          signature_data_url: string | null
+          signature_ip: string | null
+          signature_user_agent: string | null
+          signed_at: string | null
+          signed_by_email: string | null
+          signed_by_name: string | null
+          tenant_id: string
+          token: string
+        }
+        Insert: {
+          change_order_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          opened_at?: string | null
+          recipient_email: string
+          recipient_name?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          signature_data_url?: string | null
+          signature_ip?: string | null
+          signature_user_agent?: string | null
+          signed_at?: string | null
+          signed_by_email?: string | null
+          signed_by_name?: string | null
+          tenant_id: string
+          token: string
+        }
+        Update: {
+          change_order_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          opened_at?: string | null
+          recipient_email?: string
+          recipient_name?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          signature_data_url?: string | null
+          signature_ip?: string | null
+          signature_user_agent?: string | null
+          signed_at?: string | null
+          signed_by_email?: string | null
+          signed_by_name?: string | null
+          tenant_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_order_share_links_change_order_id_fkey"
+            columns: ["change_order_id"]
+            isOneToOne: false
+            referencedRelation: "change_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       change_orders: {
         Row: {
           approved_by: string | null
