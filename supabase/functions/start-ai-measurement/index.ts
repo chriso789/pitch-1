@@ -7833,7 +7833,7 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     },
   };
 
-  const { data, error } = await supabase.from("roof_measurements").insert({
+  const failurePayload = {
     tenant_id: input.tenant_id,
     customer_id: input.lead_id || null,
     lead_id: input.lead_id,
@@ -7877,6 +7877,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     gate_reason: persistedFailureReason,
     customer_report_ready: false,
     result_state: persistedResultState,
+    diagram_render_intent: phase3Debug.diagram_render_intent,
+    ...getPhase3DbColumns(),
     block_customer_report_reason: persistedFailureReason,
     internal_debug_report_ready: true,
     source_button: input.source_button,
@@ -7942,7 +7944,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       failure_category: debug?.failure_category || null,
       dominant_rejection: debug?.dominant_rejection || null,
     },
-  }).select("id").single();
+  };
+  const { data, error } = await insertRoofMeasurementWithSchemaGuard(failurePayload);
   if (error) throw error;
   return data.id as string;
 }
