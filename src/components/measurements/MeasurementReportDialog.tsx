@@ -13,11 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { AlertTriangle, Download, Loader2, Ruler, TriangleIcon, Square, Activity } from 'lucide-react';
+import { AlertTriangle, Download, Loader2, Ruler, TriangleIcon, Square, Activity, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import PatentRoofReport from './PatentRoofReport';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
+import { MeasurementOverrideEditor } from '@/components/measurement/MeasurementOverrideEditor';
 
 interface MeasurementReportDialogProps {
   open: boolean;
@@ -424,6 +426,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [fullMeasurement, setFullMeasurement] = useState<any | null>(null);
+  const [overrideEditorOpen, setOverrideEditorOpen] = useState(false);
+  const { user: currentUser } = useCurrentUser();
+  const canOverride = (() => {
+    const r = (currentUser?.role ?? '').toLowerCase();
+    return r === 'master' || r === 'admin' || r === 'cob';
+  })();
 
   const effectiveMeasurement = fullMeasurement || measurement;
   const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
@@ -887,7 +895,31 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               </Button>
             );
           })()}
+          {canOverride && effectiveMeasurement?.id && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-2"
+              onClick={() => setOverrideEditorOpen(true)}
+              title="Open the patent override editor (master/admin only)"
+            >
+              <ShieldCheck className="h-4 w-4 mr-2" />
+              Edit measurement
+            </Button>
+          )}
         </DialogHeader>
+
+        {effectiveMeasurement?.id && (
+          <MeasurementOverrideEditor
+            measurementId={effectiveMeasurement.id}
+            open={overrideEditorOpen}
+            onOpenChange={setOverrideEditorOpen}
+            onRecalculated={() => {
+              // Refresh the dialog by clearing local cache; parent typically refetches.
+              setFullMeasurement(null);
+            }}
+          />
+        )}
 
         <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
           <div ref={reportContentRef}>

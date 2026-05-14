@@ -6270,6 +6270,40 @@ async function processJob(input: any) {
       } else {
         patentLog.roof_lines_inserted = 0;
       }
+
+      // ── Rule 3 enforcement: report totals MUST come from typed roof_lines.
+      // When the patent gate passed (typed backing ok + customer-ready ready),
+      // overwrite the generic solver totals on roof_measurements with the
+      // typed-line aggregates. Otherwise leave generic totals in place — the
+      // gate will mark the row as not customer-ready anyway.
+      const _typedBackingOk = (patentLog as any).typed_backing?.ok === true;
+      const _gateReady = (patentLog as any).customer_ready?.ready === true;
+      patentLog.totals_source = (_typedBackingOk && _gateReady && typedRoofLines.length > 0)
+        ? 'typed_roof_lines'
+        : 'solver_generic';
+      if (patentLog.totals_source === 'typed_roof_lines' && measurementId) {
+        const tt = (patentLog as any).typed_totals as {
+          ridges_lf: number; hips_lf: number; valleys_lf: number;
+          eaves_lf: number; rakes_lf: number;
+          step_flashing_lf: number; wall_flashing_lf: number; unknown_lf: number;
+        };
+        const { error: ttErr } = await supabase.from('roof_measurements').update({
+          total_ridge_length: tt.ridges_lf,
+          total_hip_length: tt.hips_lf,
+          total_valley_length: tt.valleys_lf,
+          total_eave_length: tt.eaves_lf,
+          total_rake_length: tt.rakes_lf,
+          total_wall_flashing_length: tt.wall_flashing_lf,
+          total_step_flashing_length: tt.step_flashing_lf,
+          total_unspecified_length: tt.unknown_lf,
+        }).eq('id', measurementId);
+        if (ttErr) {
+          console.warn('[PATENT_GATE] typed totals write-back failed', ttErr.message);
+          patentLog.totals_writeback_error = ttErr.message;
+        } else {
+          patentLog.totals_writeback_ok = true;
+        }
+      }
     } catch (patentErr) {
       console.error('[PATENT_GATE] threw', (patentErr as Error).message);
       patentBlockReason = `patent_gate_exception:${(patentErr as Error).message}`;

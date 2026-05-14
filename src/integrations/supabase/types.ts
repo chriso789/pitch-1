@@ -35741,6 +35741,7 @@ export type Database = {
           missed_roof_area_pct: number | null
           missed_roof_regions: Json | null
           model_version: string | null
+          needs_review: boolean
           notes: string | null
           organization_id: string | null
           overlay_schema: Json | null
@@ -35778,6 +35779,7 @@ export type Database = {
           rake_edges: Json | null
           rake_lf: number | null
           recalculated_from_overrides: boolean
+          report_blocked: boolean
           report_generated_at: string | null
           report_pdf_path: string | null
           report_pdf_url: string | null
@@ -35830,6 +35832,9 @@ export type Database = {
           verification_data: Json | null
           verification_level: string | null
           verification_status: string | null
+          verified_at: string | null
+          verified_by: string | null
+          verified_by_override: boolean
           vertex_count: number | null
           vision_edges: Json | null
           waste_factor_percent: number | null
@@ -35931,6 +35936,7 @@ export type Database = {
           missed_roof_area_pct?: number | null
           missed_roof_regions?: Json | null
           model_version?: string | null
+          needs_review?: boolean
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
@@ -35968,6 +35974,7 @@ export type Database = {
           rake_edges?: Json | null
           rake_lf?: number | null
           recalculated_from_overrides?: boolean
+          report_blocked?: boolean
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
@@ -36020,6 +36027,9 @@ export type Database = {
           verification_data?: Json | null
           verification_level?: string | null
           verification_status?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_by_override?: boolean
           vertex_count?: number | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
@@ -36121,6 +36131,7 @@ export type Database = {
           missed_roof_area_pct?: number | null
           missed_roof_regions?: Json | null
           model_version?: string | null
+          needs_review?: boolean
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
@@ -36158,6 +36169,7 @@ export type Database = {
           rake_edges?: Json | null
           rake_lf?: number | null
           recalculated_from_overrides?: boolean
+          report_blocked?: boolean
           report_generated_at?: string | null
           report_pdf_path?: string | null
           report_pdf_url?: string | null
@@ -36210,6 +36222,9 @@ export type Database = {
           verification_data?: Json | null
           verification_level?: string | null
           verification_status?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_by_override?: boolean
           vertex_count?: number | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
