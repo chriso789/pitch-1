@@ -357,9 +357,11 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Change Order</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${editingChangeOrder?.co_number || 'Change Order'}` : 'Create Change Order'}</DialogTitle>
           <DialogDescription>
-            Upload a material invoice and add labor — totals build the change order automatically.
+            {isEdit
+              ? 'Update materials, labor, overhead and profit — totals recalculate automatically.'
+              : 'Upload a material invoice and add labor — totals build the change order automatically.'}
           </DialogDescription>
         </DialogHeader>
 
