@@ -694,8 +694,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           .maybeSingle();
 
         const mergedMeasurement = roofMeasurement
-          ? { ...(measurement as any), ...roofMeasurement, source_context: aiJobContext?.source_context, result_state: roofMeasurement.result_state ?? aiJobContext?.result_state ?? (measurement as any)?.result_state }
-          : { ...(measurement as any), source_context: aiJobContext?.source_context, result_state: aiJobContext?.result_state ?? (measurement as any)?.result_state };
+          ? { ...(measurement as any), ...roofMeasurement, source_context: aiJobContext?.source_context ?? (measurement as any)?.source_context, result_state: roofMeasurement.result_state ?? aiJobContext?.result_state ?? (measurement as any)?.result_state }
+          : { ...(measurement as any), source_context: aiJobContext?.source_context ?? (measurement as any)?.source_context, result_state: aiJobContext?.result_state ?? (measurement as any)?.result_state };
         if (!cancelled) setFullMeasurement(mergedMeasurement);
 
         if (evaluatePreviewGate(mergedMeasurement).ok) {
