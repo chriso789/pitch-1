@@ -6137,14 +6137,16 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
-        validation_status: topologyMismatch ? "needs_internal_review" : vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "validated",
-        customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
-        internal_debug_report_ready: topologyMismatch || reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
+        validation_status: preInsertResultState === 'customer_report_ready' ? "validated" : topologyMismatch ? "needs_internal_review" : vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "failed",
+        customer_report_ready: preInsertResultState === 'customer_report_ready',
+        internal_debug_report_ready: preInsertResultState !== 'customer_report_ready' || topologyMismatch || reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
         validation_notes: vendorTruthComparison?.blocked_reasons?.length
           ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
           : topologyMismatch
             ? `topology_mismatch:${topologyBlockReasons.join(",")}`
-            : blockCustomerReportReason,
+            : (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason,
+        result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+        block_customer_report_reason: (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason ?? null,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
