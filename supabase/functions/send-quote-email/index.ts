@@ -148,8 +148,8 @@ Deno.serve(async (req: Request) => {
     if (!estimate) {
       console.error("[send-quote-email] Estimate not found with any lookup method");
       return new Response(
-        JSON.stringify({ success: false, error: "Estimate not found. Please save the estimate first." }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: false, error: "No saved estimate found for this lead. Open the estimate, click Save, then try Send Quote again." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
