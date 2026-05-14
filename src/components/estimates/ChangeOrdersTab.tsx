@@ -465,15 +465,16 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
 
     // Build sellable price (Budget) the same way estimates do:
     //   cost = material + labor
-    //   overhead = cost * overhead_pct  (defaults to 10%)
-    //   profit  = (cost + overhead) * profit_pct  (defaults to 25%)
-    //   selling price = cost + overhead + profit
+    //   overhead & profit are % of selling price (price-based markup)
+    //   selling price = cost / (1 - overhead% - profit%)
     const overheadPct = Number(container.overhead_pct ?? 10);
     const profitPct = Number(container.profit_pct ?? 25);
     const cost = material + labor;
-    const overheadCalc = cost * (overheadPct / 100);
+    const denom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
+    const sellingCalc = cost / denom;
+    const overheadCalc = sellingCalc * (overheadPct / 100);
     const overhead = Math.max(overheadInvoiced, overheadCalc);
-    const profit = (cost + overhead) * (profitPct / 100);
+    const profit = sellingCalc * (profitPct / 100);
     const sellingPrice = cost + overhead + profit;
 
     // Honor an explicitly-set cost_impact if it's higher than computed (e.g. fixed quote)
