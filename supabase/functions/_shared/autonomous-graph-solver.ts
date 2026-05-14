@@ -3373,6 +3373,12 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const outRakes = outputEdges.filter(e => e.type === 'rake');
   const outUnclassified = outputEdges.filter(e => e.type === 'unclassified');
   const structuralEdgeCount = outRidges.length + outHips.length + outValleys.length;
+  if (phase3DSeed) {
+    detectBackboneNotApplied(phase3DSeed, {
+      ridge_lf: outRidges.reduce((s, e) => s + e.length_ft, 0),
+      valley_lf: outValleys.reduce((s, e) => s + e.length_ft, 0),
+    });
+  }
   const phase3DDiagnostics = phase3DSeed
     ? {
         ...phase3DSeed.diagnostics,
@@ -3703,6 +3709,9 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
     collinear_merges: planar.debug.collinear_merges || 0,
     fragment_merges: planar.debug.fragment_merges || 0,
     dangling_edges_removed: planar.debug.dangling_edges_removed,
+    phase3C: { ...phase3CDiagnostics, version: 'v1', executed: true, skipped_reason: null },
+    phase3D: phase3DDiagnostics,
+    phase3E: { version: 'v1', executed: false, skipped_reason: 'constraint_solver_repair_not_called', phase3E_constraint_repair_version: 'v1', candidate_repair_attempted: false, repair_accepted: false },
     faces_extracted: planar.debug.faces_extracted,
     face_count_before_merge: faceCountBeforeMerge,
     face_count_after_merge: faceCountAfterMerge,
