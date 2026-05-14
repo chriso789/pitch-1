@@ -3930,6 +3930,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           dsmEvidence,
           pxToSqft,
           autoScore,
+          phase3DSeed,
         );
 
         console.log(`[CONSTRAINT_SOLVER] used=${constraintSolverResult.used} reason=${constraintSolverResult.reason} autoScore=${autoScore.toFixed(3)} constraintScore=${constraintSolverResult.constraint_score.toFixed(3)}`);
