@@ -58,6 +58,19 @@ import {
   type PerimeterGateResult,
   type PerimeterDiagnostics,
 } from "./perimeter-topology.ts";
+import {
+  categorizeForDeferral,
+  emptyDeferralDiagnostics,
+  finalizeDeferredEdges,
+  type DeferralCandidate,
+} from "./deferred-structural-edges.ts";
+import {
+  buildSeedBackbone,
+  detectBackboneNotApplied,
+  markBackboneInserted,
+  type SeedBackboneResult,
+  type RawEdgeEvidence,
+} from "./backbone-seed.ts";
 
 type XY = [number, number]; // [lng, lat]
 type PxPt = { x: number; y: number }; // DSM pixel space
