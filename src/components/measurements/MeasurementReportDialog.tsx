@@ -13,11 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { AlertTriangle, Download, Loader2, Ruler, TriangleIcon, Square, Activity } from 'lucide-react';
+import { AlertTriangle, Download, Loader2, Ruler, TriangleIcon, Square, Activity, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import PatentRoofReport from './PatentRoofReport';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
+import { MeasurementOverrideEditor } from '@/components/measurement/MeasurementOverrideEditor';
 
 interface MeasurementReportDialogProps {
   open: boolean;
