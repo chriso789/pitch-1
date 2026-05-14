@@ -1516,52 +1516,199 @@ async function processJob(input: any) {
     // ══════════ PERIMETER INNER-TRACE DETECTION GATE ══════════
     // Detect when the selected footprint traces INNER solar/plane geometry
     // instead of the true eave/rake roof perimeter.
+    //
+    // v2 (target-mask isolation): The previous version compared the selected
+    // perimeter against the GLOBAL visible roof mask, which often includes
+    // neighboring roofs, trees, shadows, driveways, and other connected
+    // bright regions. That produced false `perimeter_inner_trace_detected`
+    // failures when the selected perimeter was actually correct. We now:
+    //   1) extract connected components of the visible roof mask,
+    //   2) pick the component aligned with the footprint (centroid + overlap),
+    //   3) compare ratios against THAT component, not the global mask,
+    //   4) apply a sanity guard against Solar segment area / vendor priors.
     let perimeterInnerTraceDebug: any = { checked: false };
     if (visibleRoofMaskPxGrid && visibleRoofBboxPx && footprint.length >= 3) {
-      let roofMaskTotalPx = 0;
-      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
-        if (visibleRoofMaskPxGrid[i] > 0) roofMaskTotalPx++;
-      }
-      const roofMaskAreaSqft = roofMaskTotalPx * sqftPerPx2;
-      const perimeterToMaskRatio = roofMaskAreaSqft > 0 ? footprintAreaSqftVal / roofMaskAreaSqft : 1;
+      const W = raster.width;
+      const H = raster.height;
 
-      // Count missed roof mask pixels outside footprint
-      let missedRoofPx = 0;
+      // ── Compute footprint centroid + bbox ──
+      let cxSum = 0, cySum = 0;
+      for (const p of footprint) { cxSum += p.x; cySum += p.y; }
+      const fpCentroid = { x: cxSum / footprint.length, y: cySum / footprint.length };
       const fpBboxIT = bboxOf(footprint);
-      if (fpBboxIT && visibleRoofBboxPx) {
-        const yMin = Math.max(0, Math.floor(Math.min(fpBboxIT.minY, visibleRoofBboxPx.minY)));
-        const yMax = Math.min(raster.height - 1, Math.ceil(Math.max(fpBboxIT.maxY, visibleRoofBboxPx.maxY)));
-        for (let y = yMin; y <= yMax; y++) {
-          const xMin = Math.max(0, Math.floor(Math.min(fpBboxIT.minX, visibleRoofBboxPx.minX)));
-          const xMax = Math.min(raster.width - 1, Math.ceil(Math.max(fpBboxIT.maxX, visibleRoofBboxPx.maxX)));
-          for (let x = xMin; x <= xMax; x++) {
-            if (visibleRoofMaskPxGrid[y * raster.width + x] > 0 && !pointInPolygon({ x, y }, footprint)) {
-              missedRoofPx++;
+
+      // ── Global mask total ──
+      let globalMaskPx = 0;
+      for (let i = 0; i < visibleRoofMaskPxGrid.length; i++) {
+        if (visibleRoofMaskPxGrid[i] > 0) globalMaskPx++;
+      }
+      const globalMaskAreaSqft = globalMaskPx * sqftPerPx2;
+
+      // ── Connected-component labeling (4-connectivity, BFS) ──
+      // Restricted to a bbox around the footprint expanded by 80px to keep cost bounded.
+      const pad = 80;
+      const yLo = Math.max(0, Math.floor((fpBboxIT?.minY ?? 0) - pad));
+      const yHi = Math.min(H - 1, Math.ceil((fpBboxIT?.maxY ?? H - 1) + pad));
+      const xLo = Math.max(0, Math.floor((fpBboxIT?.minX ?? 0) - pad));
+      const xHi = Math.min(W - 1, Math.ceil((fpBboxIT?.maxX ?? W - 1) + pad));
+
+      const labels = new Int32Array((yHi - yLo + 1) * (xHi - xLo + 1));
+      const lw = xHi - xLo + 1;
+      type Comp = { id: number; pixels: number; cx: number; cy: number; minX: number; maxX: number; minY: number; maxY: number; insideFpPixels: number };
+      const components: Comp[] = [];
+      let nextLabel = 0;
+      const queue: number[] = [];
+      for (let y = yLo; y <= yHi; y++) {
+        for (let x = xLo; x <= xHi; x++) {
+          const li = (y - yLo) * lw + (x - xLo);
+          if (labels[li] !== 0) continue;
+          if (visibleRoofMaskPxGrid[y * W + x] <= 0) continue;
+          nextLabel++;
+          labels[li] = nextLabel;
+          let pixels = 0, sx = 0, sy = 0, mnX = x, mxX = x, mnY = y, mxY = y, inFp = 0;
+          queue.length = 0;
+          queue.push(x, y);
+          while (queue.length) {
+            const cy0 = queue.pop()!; const cx0 = queue.pop()!;
+            pixels++; sx += cx0; sy += cy0;
+            if (cx0 < mnX) mnX = cx0; if (cx0 > mxX) mxX = cx0;
+            if (cy0 < mnY) mnY = cy0; if (cy0 > mxY) mxY = cy0;
+            if (pointInPolygon({ x: cx0, y: cy0 }, footprint)) inFp++;
+            // 4-neighbors
+            const neigh = [[cx0 + 1, cy0], [cx0 - 1, cy0], [cx0, cy0 + 1], [cx0, cy0 - 1]];
+            for (const [nx, ny] of neigh) {
+              if (nx < xLo || nx > xHi || ny < yLo || ny > yHi) continue;
+              const nli = (ny - yLo) * lw + (nx - xLo);
+              if (labels[nli] !== 0) continue;
+              if (visibleRoofMaskPxGrid[ny * W + nx] <= 0) continue;
+              labels[nli] = nextLabel;
+              queue.push(nx, ny);
             }
+          }
+          // Skip tiny noise components (<150 px ≈ <30 sqft typical)
+          if (pixels < 150) continue;
+          components.push({
+            id: nextLabel,
+            pixels,
+            cx: sx / pixels,
+            cy: sy / pixels,
+            minX: mnX, maxX: mxX, minY: mnY, maxY: mxY,
+            insideFpPixels: inFp,
+          });
+        }
+      }
+
+      // ── Pick the TARGET component: max overlap with footprint, then proximity to centroid ──
+      const fpAreaPxApprox = Math.max(1, components.reduce((a, c) => a + c.insideFpPixels, 0));
+      let target: Comp | null = null;
+      let bestScore = -Infinity;
+      for (const c of components) {
+        const overlapRatio = c.insideFpPixels / Math.max(1, c.pixels);
+        const dx = c.cx - fpCentroid.x, dy = c.cy - fpCentroid.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const distScore = 1 / (1 + dist / 100);
+        // Prefer components that meaningfully overlap the footprint
+        const score = overlapRatio * 2 + distScore + (c.insideFpPixels / fpAreaPxApprox) * 1.5;
+        if (score > bestScore) { bestScore = score; target = c; }
+      }
+
+      const targetMaskAreaSqft = target ? target.pixels * sqftPerPx2 : 0;
+      const targetMaskBbox = target ? { minX: target.minX, minY: target.minY, maxX: target.maxX, maxY: target.maxY } : null;
+      const targetOverlapRatio = target ? target.insideFpPixels / Math.max(1, target.pixels) : 0;
+      const globalInflationRatio = targetMaskAreaSqft > 0 ? globalMaskAreaSqft / targetMaskAreaSqft : null;
+
+      // ── Ratios computed against TARGET component, not global mask ──
+      const perimeterToTargetMaskRatio = targetMaskAreaSqft > 0
+        ? footprintAreaSqftVal / targetMaskAreaSqft
+        : 1;
+      // Missed target roof = target component pixels OUTSIDE the footprint
+      let missedTargetPx = 0;
+      if (target) {
+        for (let y = target.minY; y <= target.maxY; y++) {
+          for (let x = target.minX; x <= target.maxX; x++) {
+            const li = (y - yLo) * lw + (x - xLo);
+            if (labels[li] !== target.id) continue;
+            if (!pointInPolygon({ x, y }, footprint)) missedTargetPx++;
           }
         }
       }
-      const missedRoofRatio = roofMaskTotalPx > 0 ? missedRoofPx / roofMaskTotalPx : 0;
-      const missedRoofAreaSqft = missedRoofPx * sqftPerPx2;
+      const missedTargetRatio = target && target.pixels > 0 ? missedTargetPx / target.pixels : 0;
+      const missedTargetAreaSqft = missedTargetPx * sqftPerPx2;
+
+      // ── Sanity guard: if perimeter is within 10% of Solar segment total,
+      //    do NOT fail solely because the global mask is inflated. ──
+      const solarSanityOk = solarSegmentTotalAreaSqft > 0
+        && Math.abs(footprintAreaSqftVal - solarSegmentTotalAreaSqft) / solarSegmentTotalAreaSqft <= 0.10;
 
       perimeterInnerTraceDebug = {
         checked: true,
-        roof_mask_area_sqft: Math.round(roofMaskAreaSqft),
+        // Target-mask metrics (authoritative for the gate)
+        target_roof_mask_area_sqft: Math.round(targetMaskAreaSqft),
+        target_mask_component_id: target?.id ?? null,
+        target_mask_component_count: components.length,
+        selected_component_area_sqft: Math.round(targetMaskAreaSqft),
+        target_component_overlap_with_perimeter: Number(targetOverlapRatio.toFixed(3)),
+        target_visible_roof_bbox_px: targetMaskBbox,
+        perimeter_to_target_mask_ratio: Number(perimeterToTargetMaskRatio.toFixed(3)),
+        missed_target_roof_area_sqft: Math.round(missedTargetAreaSqft),
+        missed_target_roof_ratio: Number(missedTargetRatio.toFixed(3)),
+        // Global-mask metrics (diagnostic only)
+        global_roof_mask_area_sqft: Math.round(globalMaskAreaSqft),
+        global_visible_roof_bbox_px: visibleRoofBboxPx,
+        global_mask_inflation_ratio: globalInflationRatio != null ? Number(globalInflationRatio.toFixed(2)) : null,
+        mask_components_table: components
+          .sort((a, b) => b.pixels - a.pixels)
+          .slice(0, 6)
+          .map(c => ({
+            id: c.id,
+            area_sqft: Math.round(c.pixels * sqftPerPx2),
+            inside_fp_ratio: Number((c.insideFpPixels / Math.max(1, c.pixels)).toFixed(3)),
+            centroid: [Math.round(c.cx), Math.round(c.cy)],
+          })),
+        // Sanity references
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
-        perimeter_to_mask_ratio: Number(perimeterToMaskRatio.toFixed(3)),
-        missed_roof_area_sqft: Math.round(missedRoofAreaSqft),
-        missed_roof_ratio: Number(missedRoofRatio.toFixed(3)),
+        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+        solar_sanity_ok: solarSanityOk,
+        // Legacy fields (kept for backward compatibility, now reflect TARGET)
+        roof_mask_area_sqft: Math.round(targetMaskAreaSqft),
+        perimeter_to_mask_ratio: Number(perimeterToTargetMaskRatio.toFixed(3)),
+        missed_roof_area_sqft: Math.round(missedTargetAreaSqft),
+        missed_roof_ratio: Number(missedTargetRatio.toFixed(3)),
         footprint_source: footprintSource,
         inner_trace_detected: false,
         mask_contour_diagnostics: maskContourDiagnostics || null,
       };
 
-      // HARD GATE: perimeter under-traces the roof
-      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
-      const severeUnderTrace = perimeterToMaskRatio < 0.85 && missedRoofRatio > 0.10;
-      const moderateUnderTrace = perimeterToMaskRatio < 0.90 && isSolarDerived && missedRoofRatio > 0.08;
+      // ── Decide failure mode ──
+      // Case A: target isolation failed (no plausible component) → distinct failure
+      if (!target || targetMaskAreaSqft < 200) {
+        perimeterInnerTraceDebug.inner_trace_detected = false;
+        perimeterInnerTraceDebug.target_mask_isolation_failed = true;
+        const failReason = "target_mask_isolation_failed";
+        console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL`, JSON.stringify(perimeterInnerTraceDebug));
+        const debugPayload = {
+          ...perimeterInnerTraceDebug,
+          hard_fail_reason: failReason,
+          footprint_px: footprint.map((p: any) => [p.x, p.y]),
+          raster_url: imageUrl,
+          raster_size: { width: W, height: H },
+        };
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Target mask isolation failed`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Target mask isolation failed`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true, report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
 
-      if (severeUnderTrace || moderateUnderTrace) {
+      // Case B: under-trace test against TARGET mask only
+      const isSolarDerived = footprintSource.includes('solar') || footprintSource.includes('segment');
+      const severeUnderTrace = perimeterToTargetMaskRatio < 0.85 && missedTargetRatio > 0.10;
+      const moderateUnderTrace = perimeterToTargetMaskRatio < 0.90 && isSolarDerived && missedTargetRatio > 0.08;
+
+      if ((severeUnderTrace || moderateUnderTrace) && !solarSanityOk) {
         perimeterInnerTraceDebug.inner_trace_detected = true;
         const failReason = "perimeter_inner_trace_detected";
         console.error(`[PERIMETER_INNER_TRACE_GATE] FAIL`, JSON.stringify(perimeterInnerTraceDebug));
@@ -1570,8 +1717,7 @@ async function processJob(input: any) {
           hard_fail_reason: failReason,
           footprint_px: footprint.map((p: any) => [p.x, p.y]),
           raster_url: imageUrl,
-          raster_size: { width: raster.width, height: raster.height },
-          visible_roof_bbox_px: visibleRoofBboxPx,
+          raster_size: { width: W, height: H },
         };
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
         await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter inner trace: ${failReason}`, failedId);
@@ -1582,8 +1728,16 @@ async function processJob(input: any) {
         }).eq("id", input.ai_measurement_job_id);
         return;
       }
-      console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
+
+      // Case C: under-trace ratios fired but Solar sanity protects — log warning, continue.
+      if (severeUnderTrace || moderateUnderTrace) {
+        perimeterInnerTraceDebug.warning = "global_mask_inflated_solar_sanity_override";
+        console.warn(`[PERIMETER_INNER_TRACE_GATE] WARN override (solar sanity)`, JSON.stringify(perimeterInnerTraceDebug));
+      } else {
+        console.log("[PERIMETER_INNER_TRACE_GATE] PASS", JSON.stringify(perimeterInnerTraceDebug));
+      }
     }
+
 
     // 5. Run deterministic topology on the selected footprint.
     let cleanPlanes: RoofPlane[] = [];
