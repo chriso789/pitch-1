@@ -948,14 +948,16 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
       finalReason = 'low_evidence';
     }
 
-    // Hip-prior demotion: any provisional rake on hip-like-without-gable
-    // is forced to eave. Also demote unknowns.
+    // Hip-prior demotion: any provisional rake or unknown on
+    // hip-like-without-gable is forced to eave. The forced eave bypasses
+    // the confidence floor — it is an archetype-based assertion, not a
+    // scoring-based one.
     let demotedByHipPrior = false;
     let hipPriorForcedEave = false;
     if (isHipLike && !isGableLike && !localGableEvidence) {
       if (provisional === 'rake') {
         provisional = 'eave';
-        provisionalConf = Math.max(0.5, eaveScore || 0.5);
+        provisionalConf = Math.max(0.6, eaveScore || 0.6);
         demotedByHipPrior = true;
         hipPriorForcedEave = true;
         (edge as any).reclassified_from = 'rake';
@@ -963,16 +965,17 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
         finalReason = 'hip_prior_no_local_gable';
       } else if (provisional === 'unknown') {
         provisional = 'eave';
-        provisionalConf = Math.max(0.4, eaveScore || 0.4);
+        provisionalConf = Math.max(0.6, eaveScore || 0.6);
+        demotedByHipPrior = true;
+        hipPriorForcedEave = true;
         (edge as any).reclassified_from = 'unknown';
         (edge as any).reclassified_reason = 'hip_roof_default';
-        hipPriorForcedEave = true;
         finalReason = 'hip_roof_default';
       }
     }
 
-    // Confidence floor.
-    if (provisionalConf < 0.6 && provisional !== 'unknown') {
+    // Confidence floor (skipped for hip-prior forced eaves).
+    if (!hipPriorForcedEave && provisionalConf < 0.6 && provisional !== 'unknown') {
       (edge as any).reclassified_from = provisional;
       (edge as any).reclassified_reason = 'confidence_below_floor';
       provisional = 'unknown';
