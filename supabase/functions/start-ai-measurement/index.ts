@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
         lat: latitude,
         lng: longitude,
         pitch_override,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, deployed_at: DEPLOYED_AT,
       })
       .select("id")
       .single();
@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
         actual_image_width: actualW,
         actual_image_height: actualH,
         raster_scale,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, deployed_at: DEPLOYED_AT,
         entrypoint: "start-ai-measurement",
         // Patent Rule 1: roof-target confirmation audit trail.
         original_geocode_lat,
@@ -5443,7 +5443,7 @@ async function processJob(input: any) {
       edge_source: edgeRows.length ? (cleanEdges[0]?.source || resolvedGeometrySource) : "none",
       report_json: {
         source_button: input.source_button,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, deployed_at: DEPLOYED_AT,
         footprint_source: footprintSource,
         topology_source: topologySource,
         simple_roof_type: simpleRoofTypeDebug,
@@ -5717,7 +5717,7 @@ async function processJob(input: any) {
     const dbFootprintSource = normalizeRoofMeasurementFootprintSource(footprintSource);
     const aiDetectionData = {
       source_button: input.source_button,
-      engine_version: "geometry_first_v2",
+      engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, deployed_at: DEPLOYED_AT,
       geometry_source: resolvedGeometrySource,
       final_edge_source: finalEdgeSource,
       footprint_source: footprintSource,
@@ -5947,7 +5947,7 @@ async function processJob(input: any) {
         gate_decision: reviewRequired ? "needs_review" : "approved",
         gate_reason: blockCustomerReportReason,
         source_button: input.source_button,
-        engine_version: "geometry_first_v2",
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, deployed_at: DEPLOYED_AT,
         engine_used: "geometry_first_v2",
         inference_source: resolvedGeometrySource,
         geometry_source: promotedGeometrySource,
