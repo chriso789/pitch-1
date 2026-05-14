@@ -329,6 +329,9 @@ export interface AutonomousGraphLog {
   facet_source: 'dsm_planar_graph_faces';
   hard_fail_reason?: string | null;
   customer_block_reason?: string | null;
+  phase3C?: Record<string, unknown>;
+  phase3D?: Record<string, unknown>;
+  phase3E?: Record<string, unknown>;
 }
 
 export interface SolarSegment {
