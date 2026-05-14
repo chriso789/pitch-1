@@ -111,6 +111,24 @@ const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
 export const AI_MEASUREMENT_ENGINE_VERSION = "perimeter-phase0-v2-target-mask";
 export const PERIMETER_CONTRACT_VERSION = "perimeter-contract-v2";
 export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
+// ─── Phase 3 version stamps ───────────────────────────────────────────
+// Each Phase 3 sub-feature carries its own version so reports can prove
+// which subsystems are actually active in a given run. Bump the string
+// as the sub-feature is wired in real code (not just announced).
+//   3A — eave/rake classifier rebuild + hard sanity gate (active)
+//   3B — typed roof_lines persistence (lite: counts/diagnostics only)
+//   3C — deferred connectivity edge pool (NOT WIRED — null)
+//   3D — seed backbone insertion (NOT WIRED — null)
+//   3E — constraint-solver repair pass (already gated by autonomous-graph-solver)
+//   3F — result_state normalizer hardening (active)
+//   3G — diagram_render_intent enforcement (active)
+export const PHASE3_ENGINE_VERSION = "phase3-visibility-and-hard-gates-v1";
+export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "phase3A-eave-default-hip-prior-confidence-floor-v1";
+export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "phase3B-counts-only-lite-v1";
+export const PHASE3C_CONNECTIVITY_DEFER_VERSION: string | null = null;
+export const PHASE3D_SEED_BACKBONE_VERSION: string | null = null;
+export const PHASE3F_RESULT_STATE_VERSION = "phase3F-normalize-all-writes-v1";
+export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "phase3G-rejected-only-on-ai-failed-v1";
 export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
 export const DEPLOYED_AT = new Date().toISOString();
 export const RUNTIME_VERSION_STAMP = {
@@ -141,6 +159,79 @@ export type ResultState = _SharedResultState;
 export const normalizeResultState = _sharedNormalizeResultState;
 // ──────────────────────────────────────────────────────────────────────
 
+// ─── Phase 3 visibility helpers ───────────────────────────────────────
+export const PHASE3_VERSION_BLOCK = {
+  phase3_enabled: true,
+  phase3_engine_version: PHASE3_ENGINE_VERSION,
+  phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
+  phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
+  phase3C_connectivity_defer_version: PHASE3C_CONNECTIVITY_DEFER_VERSION,
+  phase3D_seed_backbone_version: PHASE3D_SEED_BACKBONE_VERSION,
+  phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
+  phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
+} as const;
+
+export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
+  const eaveLf = Number(perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0);
+  const rakeLf = Number(perimeterPhase0?.rake_length_lf ?? perimeterPhase0?.rake_candidate_lf ?? 0);
+  const unknownLf = Number(perimeterPhase0?.unknown_perimeter_lf ?? 0);
+  const totalLf = Number(perimeterPhase0?.total_perimeter_lf ?? 0);
+  const classTable = perimeterPhase0?.perimeter_edge_classification_table ?? [];
+  const hipPriorApplied = Array.isArray(classTable)
+    ? classTable.filter((r: any) => r?.demoted_by_hip_prior).length
+    : 0;
+  const provisionalRakeDemoted = Number(
+    perimeterPhase0?.provisional_rake_demoted_count ?? hipPriorApplied,
+  );
+  let failureReason: string | null = null;
+  if (totalLf > 100 && eaveLf === 0) failureReason = 'eave_lf_zero_with_long_perimeter';
+  else if (totalLf > 0 && unknownLf / Math.max(totalLf, 1) >= 0.95) failureReason = 'all_unknown';
+  else if (rakeLf > 0 && eaveLf === 0 && totalLf > 50) failureReason = 'all_rake_no_eave';
+  return {
+    phase3A_active: true,
+    eave_length_lf: eaveLf,
+    rake_length_lf: rakeLf,
+    unknown_perimeter_lf: unknownLf,
+    total_perimeter_lf: totalLf,
+    eave_candidate_lf: Number(perimeterPhase0?.eave_candidate_lf ?? 0),
+    rake_candidate_lf: Number(perimeterPhase0?.rake_candidate_lf ?? 0),
+    eave_rake_confidence: perimeterPhase0?.eave_rake_confidence ?? null,
+    perimeter_edge_classification_table: classTable,
+    hip_prior_applied_count: hipPriorApplied,
+    provisional_rake_demoted_count: provisionalRakeDemoted,
+    perimeter_classification_invalid: failureReason !== null,
+    eave_rake_failure_reason: failureReason,
+  };
+}
+
+export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
+  const rows = Array.isArray(edgeRows) ? edgeRows : [];
+  const byAttr: Record<string, number> = {};
+  const lfByAttr: Record<string, number> = {};
+  for (const e of rows) {
+    const attr = String(e?.edge_type ?? e?.attribute ?? 'unknown').toLowerCase();
+    byAttr[attr] = (byAttr[attr] ?? 0) + 1;
+    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? 0);
+  }
+  const reportableAttrs = new Set([
+    'eave', 'rake', 'ridge', 'hip', 'valley',
+    'wall_flashing', 'step_flashing', 'flashing',
+  ]);
+  const reportable = rows.filter((e) =>
+    reportableAttrs.has(String(e?.edge_type ?? e?.attribute ?? '').toLowerCase()),
+  );
+  return {
+    phase3B_active: true,
+    roof_lines_count: rows.length,
+    roof_lines_by_attribute: byAttr,
+    roof_line_total_lf_by_attribute: Object.fromEntries(
+      Object.entries(lfByAttr).map(([k, v]) => [k, Number((v as number).toFixed(2))]),
+    ),
+    reportable_roof_lines_count: reportable.length,
+    persisted_to_roof_lines_table: false,
+    persistence_deferred_reason: 'phase3B_lite_counts_only_v1',
+  };
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2132,12 +2223,16 @@ async function processJob(input: any) {
           developer_bug: developerBug,
           hard_fail_reason: developerBug,
           failure_stage: 'perimeter',
-          result_state: normalizeResultState('ai_failed_perimeter'),
+          result_state: normalizeResultStateForWrite('ai_failed_perimeter', null),
           footprint_source: footprintSource,
           footprint_point_count: footprint.length,
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
           perimeter_phase0: null,
           perimeter_inner_trace: perimeterInnerTraceDebug,
+          diagram_render_intent: 'rejected_only',
+          ...PHASE3_VERSION_BLOCK,
+          phase3A: buildPhase3ABlock(null),
+          phase3B: buildPhase3BBlock([]),
         };
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, developerBug, debugPayload, imageUrl, actualMpp);
         await setMeasurementJobStatus(input.measurement_job_id, "failed", `Developer bug: ${developerBug}`, failedId);
@@ -2145,7 +2240,7 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          result_state: normalizeResultState('ai_failed_perimeter'),
+          result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
           source_context: { gate_reason: developerBug, hard_fail_reason: developerBug, debug: debugPayload },
         }).eq("id", input.ai_measurement_job_id);
         return;
@@ -2178,6 +2273,11 @@ async function processJob(input: any) {
         perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft ?? Math.round(footprintAreaSqftVal),
         perimeter_failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons ?? [failReason],
         perimeter_topology: perimeterTopologySnapshot,
+        // Phase 3F/3G: failed perimeter forces rejected_only diagram intent.
+        diagram_render_intent: 'rejected_only',
+        ...PHASE3_VERSION_BLOCK,
+        phase3A: buildPhase3ABlock(perimeterPhase0Snapshot ?? null),
+        phase3B: buildPhase3BBlock([]),
       };
       console.error(`[PERIMETER_TARGET_MASK_GATE] FAIL: ${failReason}`, JSON.stringify(debugPayload));
       console.log('[PHASE0_TRACE] phase0_persist:start', JSON.stringify({
@@ -5575,6 +5675,10 @@ async function processJob(input: any) {
     });
 
     const geometryReportJson = {
+      // ── Phase 3 visibility (proves which Phase 3 sub-features are active) ──
+      ...PHASE3_VERSION_BLOCK,
+      phase3A: buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null),
+      phase3B: buildPhase3BBlock(edgeRows),
       // ── ARCHITECTURAL CONTRACTS ──
       // 1. Authoritative footprint — one polygon used by ALL downstream stages.
       authoritative_footprint_px: footprint.map((p) => [p.x, p.y]),
@@ -6364,12 +6468,31 @@ async function processJob(input: any) {
       _resultState = normalizeResultState(`ai_failed_${_stage}`);
     }
 
+    // ── Phase 3A hard sanity gate ──
+    // If the eave/rake classifier collapsed (eave=0 on long perimeter, etc.)
+    // force ai_failed_perimeter — never let downstream "perimeter_only"
+    // mask a classification collapse.
+    const _phase3A = buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null);
+    if (_phase3A.perimeter_classification_invalid) {
+      _resultState = 'ai_failed_perimeter';
+    }
+
     // ── Phase 3G: derive diagram_render_intent ──
     // Failed geometry must NOT be rendered as the official measured diagram.
-    const _diagramRenderIntent = deriveDiagramRenderIntent(_resultState, _perimeterPassed);
+    const _perimeterPassedFinal = _perimeterPassed && !_phase3A.perimeter_classification_invalid;
+    const _diagramRenderIntent = String(_resultState).startsWith('ai_failed_')
+      ? 'rejected_only'
+      : deriveDiagramRenderIntent(_resultState, _perimeterPassedFinal);
+    const _customerReadyFinal = _resultState === 'customer_report_ready';
     try {
       (geometryReportJson as any).diagram_render_intent = _diagramRenderIntent;
       (geometryReportJson as any).result_state = _resultState;
+      (geometryReportJson as any).phase3A = _phase3A;
+      if (_phase3A.perimeter_classification_invalid) {
+        (geometryReportJson as any).hard_fail_reason =
+          (geometryReportJson as any).hard_fail_reason
+          || `perimeter_classification_invalid:${_phase3A.eave_rake_failure_reason}`;
+      }
     } catch { /* best-effort */ }
 
     // Persist patent gate outcome onto the measurement row.
@@ -6380,8 +6503,10 @@ async function processJob(input: any) {
       await supabase.from('roof_measurements').update({
         block_customer_report_reason: mergedBlockReason,
         override_validation_status: patentBlockReason ? 'pending' : null,
-        report_blocked: !_customerReady,
-        needs_review: !_customerReady,
+        report_blocked: !_customerReadyFinal,
+        needs_review: !_customerReadyFinal,
+        customer_report_ready: _customerReadyFinal,
+        result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
       }).eq('id', measurementId);
     }
 
@@ -6389,17 +6514,20 @@ async function processJob(input: any) {
     await supabase.from("ai_measurement_jobs").update({
       source_context: {
         geometry_source: promotedGeometrySource,
-        customer_report_ready: _customerReady,
+        customer_report_ready: _customerReadyFinal,
         promotion_gate_passed: promotionGatePassed,
         promotion_gate_failed_reasons: promotionGateFailedReasons,
         perimeter_gate_passed: _perimeterPassed,
         patent_gate_block_reason: patentBlockReason,
         patent_gate: patentLog,
         result_state: _resultState,
+        diagram_render_intent: _diagramRenderIntent,
+        phase3: PHASE3_VERSION_BLOCK,
+        phase3A_failure_reason: _phase3A.eave_rake_failure_reason,
       },
-      report_blocked: !_customerReady,
-      needs_review: !_customerReady,
-      result_state: _resultState,
+      report_blocked: !_customerReadyFinal,
+      needs_review: !_customerReadyFinal,
+      result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
     }).eq("id", input.ai_measurement_job_id);
 
     // Generate the customer-visible SVG report pages from the measured geometry.
@@ -7419,6 +7547,10 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     debug,
   };
   const geometryReportJson = {
+    // ── Phase 3 visibility (failure path) ──
+    ...PHASE3_VERSION_BLOCK,
+    phase3A: buildPhase3ABlock(debug?.perimeter_phase0 ?? null),
+    phase3B: buildPhase3BBlock([]),
     topology_source: aiDetectionData.topology_source,
     facet_source: debug?.facet_source || "dsm_planar_graph_faces",
     fallback_used: aiDetectionData.fallback_used,
