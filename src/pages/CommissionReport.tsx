@@ -180,6 +180,9 @@ export default function CommissionReport() {
         .eq('tenant_id', currentUser.tenant_id)
         .eq('is_deleted', false)
         .in('status', qualifyingStageKeys)
+        // Defense in depth: never include lost/canceled at the API layer, even if a
+        // tenant-custom stage with one of those keys ever sneaks into qualifyingStageKeys.
+        .not('status', 'in', `(${EXCLUDED_STATUSES.join(',')})`)
         .gte('created_at', dateRange.start)
         .lte('created_at', dateRange.end + 'T23:59:59')
         .order('created_at', { ascending: false });
