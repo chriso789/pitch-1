@@ -173,13 +173,19 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     items.splice(idx, 1);
     const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + lineAmount(i), 0);
     const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + lineAmount(i), 0);
+    const overheadPct = Number(container.overhead_pct ?? 10);
+    const profitPct = Number(container.profit_pct ?? 25);
+    const cost = newMaterial + newLabor;
+    const overheadAmount = cost * (overheadPct / 100);
+    const profitAmount = (cost + overheadAmount) * (profitPct / 100);
+    const sellingPrice = cost + overheadAmount + profitAmount;
     const { error } = await (supabase as any)
       .from('change_orders')
       .update({
-        line_items: { ...container, items },
+        line_items: { ...container, items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal: cost },
         material_total: newMaterial,
         labor_total: newLabor,
-        cost_impact: newMaterial + newLabor,
+        cost_impact: sellingPrice,
       })
       .eq('id', co.id);
     if (error) {
