@@ -6533,6 +6533,7 @@ async function processJob(input: any) {
       : deriveDiagramRenderIntent(preInsertResultState, autonomousDebug?.perimeter_gate_passed === true && !preInsertPhase3A.perimeter_classification_invalid);
     Object.assign(geometryReportJson, {
       ...PHASE3_VERSION_BLOCK,
+      route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
       phase3A: preInsertPhase3A,
       phase3B: buildPhase3BBlock(edgeRows),
       result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
