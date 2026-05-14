@@ -791,6 +791,11 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     mean_edge_length_ft: Number(meanEdgeLenFt.toFixed(2)),
   };
 
+  // Ridge endpoints in pixel space (optional). Empty array if not provided.
+  const ridgeEndpointsPx: PxPt[] = Array.isArray((input as any).ridge_endpoints_px)
+    ? ((input as any).ridge_endpoints_px as PxPt[])
+    : [];
+
   // Per-edge classification table emitted to diagnostics for debugging.
   const classificationTable: any[] = [];
 
@@ -805,7 +810,7 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     const enx = edx / edgeLen;
     const eny = edy / edgeLen;
 
-    // Orientation: angle from horizontal (0° = horizontal, 90° = vertical)
+    // Orientation: angle from horizontal
     evidence.orientation_deg = Number((Math.abs(Math.atan2(eny, enx)) * 180 / Math.PI).toFixed(1));
 
     // DSM elevation along edge midpoint
@@ -823,7 +828,7 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     }
 
     // Compare edge direction with solar downslope vectors
-    let bestDownslopeAngle = 90; // default: perpendicular
+    let bestDownslopeAngle = 90;
     let bestDownslopeVec: [number, number] | null = null;
     for (const ds of solarDownslopes) {
       const dot = Math.abs(enx * ds.dx + eny * ds.dy);
@@ -836,89 +841,159 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     evidence.solar_downslope_vector = bestDownslopeVec;
     evidence.edge_downslope_angle_deg = Number(bestDownslopeAngle.toFixed(1));
 
-    // Eave heuristic: edge is PERPENDICULAR to downslope (angle ~90°)
-    // Eaves are the lower drainage edges where water runs off
-    // Rake heuristic: edge is PARALLEL to downslope (angle ~0°)
-    const isPerpendicularToSlope = bestDownslopeAngle > 55; // more perpendicular = eave
-    const isParallelToSlope = bestDownslopeAngle < 35; // more parallel = rake
+    const isPerpendicularToSlope = bestDownslopeAngle > 55;
+    const isParallelToSlope = bestDownslopeAngle < 35;
 
-    // Horizontal drainage: long, mostly horizontal edges at low elevation
     evidence.is_horizontal_drainage = evidence.is_low_elevation && edge.length_ft > 8;
-    // Sloped side: shorter edges parallel to slope direction
     evidence.is_sloped_side_boundary = isParallelToSlope;
 
-    // ── Phase 3A: invert the default ──
-    // Provisional type starts as `eave_candidate`, NOT rake. Rake is only
-    // assigned when POSITIVE gable evidence exists. Without that evidence,
-    // the edge stays eave (most common case for residential roofs).
+    // ── Phase 3A v2: LOCAL gable evidence required ──
+    // A gable apex is only valid when a ridge endpoint actually terminates
+    // at/near one of this edge's endpoints. Without ridge evidence, the
+    // global opposing-azimuth pair is NOT enough — that signal is satisfied
+    // by every hip roof and was the source of the false-rake bug.
+    const proxThreshPx = Math.max(8, edgeLen * 0.15);
+    let nearestRidgeDistPx: number | null = null;
+    for (const rp of ridgeEndpointsPx) {
+      const d1 = Math.hypot(rp.x - edge.start_px.x, rp.y - edge.start_px.y);
+      const d2 = Math.hypot(rp.x - edge.end_px.x, rp.y - edge.end_px.y);
+      const d = Math.min(d1, d2);
+      if (nearestRidgeDistPx === null || d < nearestRidgeDistPx) nearestRidgeDistPx = d;
+    }
+    const localRidgeEndpointNearEdge =
+      nearestRidgeDistPx !== null && nearestRidgeDistPx <= proxThreshPx;
+
+    // Adjacent solar segments: the 2 closest by center distance to edge midpoint.
+    const midX = (edge.start_px.x + edge.end_px.x) / 2;
+    const midY = (edge.start_px.y + edge.end_px.y) / 2;
+    const adjAzimuths: number[] = [];
+    if (solarDownslopes.length > 0) {
+      // We don't have segment center pixels here; approximate "adjacent"
+      // by taking all unique azimuth buckets — already a global view, so
+      // this is intentionally loose. Local opposition is only used as a
+      // SECONDARY signal alongside ridge proximity.
+      for (const ds of solarDownslopes) adjAzimuths.push(ds.azimuth);
+    }
+    let localOpposingAzimuthPair = false;
+    for (let i = 0; i < adjAzimuths.length && !localOpposingAzimuthPair; i++) {
+      for (let j = i + 1; j < adjAzimuths.length; j++) {
+        let delta = Math.abs(((adjAzimuths[i] - adjAzimuths[j]) % 360) + 360) % 360;
+        if (delta > 180) delta = 360 - delta;
+        if (delta >= 120) { localOpposingAzimuthPair = true; break; }
+      }
+    }
+
+    // True local gable evidence: ridge terminates here AND local opposing
+    // pair AND short edge AND parallel to slope.
+    const isShortEdge = meanEdgeLenFt > 0 && edge.length_ft < meanEdgeLenFt * 0.9;
+    const localGableEvidence =
+      localRidgeEndpointNearEdge &&
+      localOpposingAzimuthPair &&
+      isShortEdge &&
+      isParallelToSlope;
+
+    // Fallback: pure gable-archetype roofs (NOT hip-like) keep the legacy
+    // azimuth-based path. This preserves classification on true gable roofs
+    // while killing the false-positive on hip roofs.
+    const archetypeGableFallback =
+      !isHipLike && isGableLike && hasOpposingAzimuthPair && isParallelToSlope;
+
+    let gableApexDetected = localGableEvidence || archetypeGableFallback;
+
+    // Hip-archetype hard override: if hip-like and not gable-like, NO edge
+    // may be a gable apex without local ridge proof.
+    if (isHipLike && !isGableLike && !localRidgeEndpointNearEdge) {
+      gableApexDetected = false;
+    }
+
+    // ── Scoring ──
     let eaveScore = 0;
     let rakeScore = 0;
 
-    // Eave evidence (drainage crosses or runs along the lower edge).
     if (isPerpendicularToSlope) eaveScore += 0.45;
     if (evidence.is_low_elevation) eaveScore += 0.20;
     if (evidence.is_horizontal_drainage) eaveScore += 0.15;
     if (edge.length_ft > 15) eaveScore += 0.10;
-    // Baseline eave bias — positive eave evidence is the default.
-    eaveScore += 0.10;
+    eaveScore += isHipLike ? 0.15 : 0.10;
 
-    // Rake evidence — REQUIRES gable structure. Without an opposing-azimuth
-    // pair (true gable end), rake gets no score regardless of edge geometry.
-    let gableApexDetected = false;
-    if (hasOpposingAzimuthPair && isParallelToSlope) {
-      // Strong rake signal: parallel to downslope on a gable-shaped roof.
+    if (gableApexDetected) {
       rakeScore += 0.45;
-      gableApexDetected = true;
-      // Short edges (relative to perimeter mean) are typical rake geometry.
-      if (meanEdgeLenFt > 0 && edge.length_ft < meanEdgeLenFt * 0.7) {
-        rakeScore += 0.20;
-      }
-      // Very tight slope-parallel alignment (<15°) lifts confidence further.
+      if (isShortEdge) rakeScore += 0.20;
       if (bestDownslopeAngle < 15) rakeScore += 0.15;
     }
+
+    // Hip-archetype rake cap: without local gable evidence on a hip roof,
+    // rake_score can never exceed 0.3 — so eave wins by construction.
+    let rakeScoreCap = 1.0;
+    if (isHipLike && !isGableLike && !localGableEvidence) {
+      rakeScoreCap = 0.3;
+    }
+    rakeScore = Math.min(rakeScore, rakeScoreCap);
 
     // Provisional classification.
     let provisional: 'eave' | 'rake' | 'unknown';
     let provisionalConf: number;
+    let finalReason = 'unknown';
     if (rakeScore > eaveScore && rakeScore >= 0.5) {
       provisional = 'rake';
       provisionalConf = Math.min(1, rakeScore);
+      finalReason = localGableEvidence ? 'local_gable' : 'archetype_gable_fallback';
     } else if (eaveScore >= 0.3) {
       provisional = 'eave';
       provisionalConf = Math.min(1, eaveScore);
+      finalReason = isPerpendicularToSlope ? 'drainage_perpendicular' : 'eave_default';
     } else {
       provisional = 'unknown';
       provisionalConf = Math.max(eaveScore, rakeScore);
+      finalReason = 'low_evidence';
     }
 
-    // ── Phase 3A: hip-roof prior as TIEBREAKER (not post-hoc demotion) ──
-    // On hip-like roofs without a gable apex, force eave on any provisional
-    // rake regardless of confidence.
+    // Hip-prior demotion: any provisional rake on hip-like-without-gable
+    // is forced to eave. Also demote unknowns.
     let demotedByHipPrior = false;
-    if (isHipLike && !gableApexDetected && provisional === 'rake') {
-      provisional = 'eave';
-      provisionalConf = Math.max(0.5, eaveScore || 0.5);
-      demotedByHipPrior = true;
-      (edge as any).reclassified_from = 'rake';
-      (edge as any).reclassified_reason = 'hip_prior_no_gable_apex';
-    } else if (isHipLike && provisional === 'unknown') {
-      provisional = 'eave';
-      provisionalConf = Math.max(0.4, eaveScore || 0.4);
-      (edge as any).reclassified_from = 'unknown';
-      (edge as any).reclassified_reason = 'hip_roof_default';
+    let hipPriorForcedEave = false;
+    if (isHipLike && !isGableLike && !localGableEvidence) {
+      if (provisional === 'rake') {
+        provisional = 'eave';
+        provisionalConf = Math.max(0.5, eaveScore || 0.5);
+        demotedByHipPrior = true;
+        hipPriorForcedEave = true;
+        (edge as any).reclassified_from = 'rake';
+        (edge as any).reclassified_reason = 'hip_prior_no_local_gable';
+        finalReason = 'hip_prior_no_local_gable';
+      } else if (provisional === 'unknown') {
+        provisional = 'eave';
+        provisionalConf = Math.max(0.4, eaveScore || 0.4);
+        (edge as any).reclassified_from = 'unknown';
+        (edge as any).reclassified_reason = 'hip_roof_default';
+        hipPriorForcedEave = true;
+        finalReason = 'hip_roof_default';
+      }
     }
 
-    // ── Phase 3A: confidence floor ──
-    // Below 0.6 → unknown_perimeter, NOT customer-reportable.
+    // Confidence floor.
     if (provisionalConf < 0.6 && provisional !== 'unknown') {
       (edge as any).reclassified_from = provisional;
       (edge as any).reclassified_reason = 'confidence_below_floor';
       provisional = 'unknown';
+      finalReason = 'confidence_below_floor';
     }
 
     edge.type = provisional;
     edge.classification_confidence = provisionalConf;
     (edge as any).is_candidate = provisionalConf < 0.6;
+
+    // Persist per-edge debug fields on the edge itself.
+    (edge as any).local_ridge_endpoint_near_edge = localRidgeEndpointNearEdge;
+    (edge as any).local_ridge_endpoint_distance_px =
+      nearestRidgeDistPx !== null ? Number(nearestRidgeDistPx.toFixed(2)) : null;
+    (edge as any).adjacent_plane_count = adjAzimuths.length;
+    (edge as any).adjacent_plane_azimuths = adjAzimuths.map(a => Number(a.toFixed(1)));
+    (edge as any).local_gable_evidence = localGableEvidence;
+    (edge as any).global_opposing_azimuth_only =
+      hasOpposingAzimuthPair && !localGableEvidence;
+    (edge as any).hip_prior_forced_eave = hipPriorForcedEave;
+    (edge as any).final_classification_reason = finalReason;
 
     classificationTable.push({
       edge_id: edge.id,
@@ -926,12 +1001,21 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
       final: provisional,
       eave_score: Number(eaveScore.toFixed(3)),
       rake_score: Number(rakeScore.toFixed(3)),
+      rake_score_cap: rakeScoreCap,
       gable_apex_detected: gableApexDetected,
+      local_gable_evidence: localGableEvidence,
+      local_ridge_endpoint_near_edge: localRidgeEndpointNearEdge,
+      local_ridge_endpoint_distance_px:
+        nearestRidgeDistPx !== null ? Number(nearestRidgeDistPx.toFixed(2)) : null,
+      adjacent_plane_count: adjAzimuths.length,
+      global_opposing_azimuth_only: hasOpposingAzimuthPair && !localGableEvidence,
+      hip_prior_forced_eave: hipPriorForcedEave,
       drainage_dot: Number((Math.cos((bestDownslopeAngle * Math.PI) / 180)).toFixed(3)),
       downslope_angle_deg: Number(bestDownslopeAngle.toFixed(1)),
       length_ft: Number(edge.length_ft.toFixed(2)),
       confidence: Number(provisionalConf.toFixed(3)),
       demoted_by_hip_prior: demotedByHipPrior,
+      final_classification_reason: finalReason,
     });
   }
   // Stash classification debug on input for downstream pickup
@@ -940,6 +1024,7 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     is_gable_like: isGableLike,
     has_opposing_azimuth_pair: hasOpposingAzimuthPair,
     azimuth_bucket_count: azimuthBuckets.size,
+    ridge_endpoints_provided: ridgeEndpointsPx.length,
     edges_total: edges.length,
     edges_eave: edges.filter(e => e.type === 'eave').length,
     edges_rake: edges.filter(e => e.type === 'rake').length,
@@ -947,6 +1032,8 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
     edges_low_confidence: edges.filter(e => e.classification_confidence < 0.6).length,
     edges_reclassified: edges.filter(e => (e as any).reclassified_from).length,
     edges_demoted_by_hip_prior: classificationTable.filter(r => r.demoted_by_hip_prior).length,
+    edges_with_local_gable_evidence: classificationTable.filter(r => r.local_gable_evidence).length,
+    edges_global_opposing_only: classificationTable.filter(r => r.global_opposing_azimuth_only).length,
     perimeter_edge_classification_table: classificationTable,
   };
 }
