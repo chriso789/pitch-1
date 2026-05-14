@@ -80,7 +80,7 @@ export function SendReferralLinkDialog({ open, onOpenChange, link, companyName =
       referrer_contact_id: link.customer_id ?? null,
       channel,
       recipient,
-      sent_by: profile?.user_id || "",
+      sent_by: profile?.id || "",
       message_subject: channel === "email" ? subject : undefined,
       message_body: body,
       status: channel === "copy" ? "copied" : "manual_pending",
