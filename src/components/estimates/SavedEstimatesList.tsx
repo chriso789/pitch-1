@@ -583,6 +583,23 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleDuplicateEstimate(estimate.id);
+                    }}
+                    disabled={duplicatingId === estimate.id}
+                    className="h-6 w-6 p-0"
+                    title="Duplicate"
+                  >
+                    {duplicatingId === estimate.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setEstimateToDelete(estimate);
                       if (estimates && estimates.length === 1) {
                         setShowCannotDeleteDialog(true);
