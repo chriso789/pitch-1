@@ -222,9 +222,9 @@ export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
   const byAttr: Record<string, number> = {};
   const lfByAttr: Record<string, number> = {};
   for (const e of rows) {
-    const attr = String(e?.edge_type ?? e?.attribute ?? 'unknown').toLowerCase();
+    const attr = String(e?.edge_type ?? e?.attribute ?? e?.type ?? 'unknown').toLowerCase();
     byAttr[attr] = (byAttr[attr] ?? 0) + 1;
-    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? 0);
+    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? e?.length_lf ?? 0);
   }
   const reportableAttrs = new Set([
     'eave', 'rake', 'ridge', 'hip', 'valley',
@@ -246,6 +246,16 @@ export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
   };
 }
 
+function derivePhase3EdgeRows(debug: any): any[] {
+  if (Array.isArray(debug?.edgeRows)) return debug.edgeRows;
+  if (Array.isArray(debug?.accepted_edges_geo) && debug.accepted_edges_geo.length) return debug.accepted_edges_geo;
+  const perimeterRows = [
+    ...(debug?.perimeter_topology?.eave_edges ?? []).map((e: any) => ({ ...e, edge_type: 'eave' })),
+    ...(debug?.perimeter_topology?.rake_edges ?? []).map((e: any) => ({ ...e, edge_type: 'rake' })),
+  ];
+  return perimeterRows;
+}
+
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
   if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
@@ -257,6 +267,7 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
 
 function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?: unknown): Record<string, any> {
   const payload: Record<string, any> = { ...(debug || {}) };
+  const phase3EdgeRows = edgeRows.length ? edgeRows : derivePhase3EdgeRows(payload);
   const phase3A = buildPhase3ABlock(payload.perimeter_phase0 ?? payload.perimeter_gate_metrics ?? null);
   const resultState = derivePhase3ResultState(rawResultState ?? payload.result_state ?? payload.hard_fail_reason, payload);
   const hardFailReason = phase3A.perimeter_classification_invalid
@@ -266,7 +277,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     ...payload,
     ...PHASE3_VERSION_BLOCK,
     phase3A,
-    phase3B: buildPhase3BBlock(edgeRows),
+    phase3B: buildPhase3BBlock(phase3EdgeRows),
     result_state: normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
