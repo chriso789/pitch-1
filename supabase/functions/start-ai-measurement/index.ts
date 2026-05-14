@@ -97,6 +97,33 @@ const UNET_ENDPOINT = Deno.env.get("PITCH_UNET_ENDPOINT") || Deno.env.get("INTER
 const UNET_API_KEY = Deno.env.get("PITCH_UNET_API_KEY") || Deno.env.get("INTERNAL_UNET_KEY") || "";
 const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
 
+// ─── RUNTIME BUILD / VERSION STAMP ────────────────────────────────────
+// Bump these when you change perimeter/phase0 control flow so deployed
+// runs can be audited. They are persisted into measurement records and
+// returned by the debug-measurement-runtime endpoint.
+export const AI_MEASUREMENT_ENGINE_VERSION = "perimeter-phase0-v2-target-mask";
+export const PERIMETER_CONTRACT_VERSION = "perimeter-contract-v2";
+export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
+export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
+export const DEPLOYED_AT = new Date().toISOString();
+export const RUNTIME_VERSION_STAMP = {
+  ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+  perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+  phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+  git_commit_sha: GIT_COMMIT_SHA,
+  deployed_at: DEPLOYED_AT,
+} as const;
+
+function vlog(marker: string, payload: Record<string, unknown> = {}) {
+  try {
+    console.log(`[VTRACE] ${marker}`, JSON.stringify({ ...RUNTIME_VERSION_STAMP, ...payload }));
+  } catch {
+    console.log(`[VTRACE] ${marker}`, payload);
+  }
+}
+// ──────────────────────────────────────────────────────────────────────
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
