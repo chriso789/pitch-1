@@ -426,6 +426,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [fullMeasurement, setFullMeasurement] = useState<any | null>(null);
+  const [overrideEditorOpen, setOverrideEditorOpen] = useState(false);
+  const { user: currentUser } = useCurrentUser();
+  const canOverride = (() => {
+    const r = (currentUser?.role ?? '').toLowerCase();
+    return r === 'master' || r === 'admin' || r === 'cob';
+  })();
 
   const effectiveMeasurement = fullMeasurement || measurement;
   const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
