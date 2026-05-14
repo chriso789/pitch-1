@@ -91,6 +91,7 @@ const ReportImportDashboard = React.lazy(() => import("@/pages/ReportImportDashb
 const NotificationsPage = React.lazy(() => import("@/pages/NotificationsPage"));
 const CommissionReport = React.lazy(() => import("@/pages/CommissionReport"));
 const MyMoney = React.lazy(() => import("@/pages/MyMoney"));
+const DrawReport = React.lazy(() => import("@/pages/DrawReport"));
 const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPage"));
 const PdfWorkspaceList = React.lazy(() => import("@/pages/PdfWorkspaceList"));
 const PdfWorkspaceEditor = React.lazy(() => import("@/pages/PdfWorkspaceEditor"));
