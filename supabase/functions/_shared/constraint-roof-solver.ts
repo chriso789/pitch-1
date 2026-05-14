@@ -1633,6 +1633,20 @@ export function solveConstraintRoof(
   // 1. Generate candidates
   const candidates = generateCandidates(footprintPx, priors, dsmEdges);
   console.log(`[CONSTRAINT_SOLVER_v2] Generated ${candidates.length} candidates from ${priors.segments.length} solar segments`);
+  let phase3E: ConstraintSolverDiagnostics['phase3E'] = {
+    phase3E_constraint_repair_version: 'v1',
+    version: 'v1',
+    executed: false,
+    skipped_reason: seedBackbone ? 'repair_conditions_not_met' : 'seed_backbone_not_available',
+    candidate_repair_attempted: false,
+    repaired_ridge_chains_inserted: 0,
+    repaired_valley_chains_inserted: 0,
+    repaired_candidate_scores: [],
+    repair_iterations: 0,
+    final_selected_candidate: null,
+    final_rejection_reason: null,
+    repair_accepted: false,
+  };
 
   // 2. Score each candidate
   const rejectedTopologies: Array<{ id: string; type: string; reason: string }> = [];
@@ -1661,6 +1675,31 @@ export function solveConstraintRoof(
   validCandidates.sort((a, b) => b.score.total - a.score.total);
 
   if (validCandidates.length === 0) {
+    if (seedBackbone) {
+      const repairCandidates: RepairCandidate[] = candidates.map(c => ({
+        id: c.id,
+        topology_type: c.type,
+        faces: c.faces.length,
+        ridge_lf: c.edges.filter(e => e.type === 'ridge').reduce((s, e) => s + e.length_px * Math.sqrt(pxToSqft), 0),
+        valley_lf: c.edges.filter(e => e.type === 'valley').reduce((s, e) => s + e.length_px * Math.sqrt(pxToSqft), 0),
+        hip_lf: c.edges.filter(e => e.type === 'hip').reduce((s, e) => s + e.length_px * Math.sqrt(pxToSqft), 0),
+        area_ratio: priors.whole_roof_area_sqft > 0 ? (c.faces.reduce((s, f) => s + f.area_px, 0) * pxToSqft * pitchFactor(priors.dominant_pitch_deg)) / priors.whole_roof_area_sqft : 0,
+        has_cross_roof_diagonal: false,
+        rejected_reason: c.rejection_reason ?? null,
+        score: c.score.total,
+      }));
+      const repaired = attemptRepairPass({
+        candidates: repairCandidates,
+        seed: seedBackbone,
+        rescore: (cand, ridges, valleys) => ({
+          ...cand,
+          ridge_lf: Math.max(cand.ridge_lf, ridges.reduce((s, e) => s + e.length_lf, 0)),
+          valley_lf: Math.max(cand.valley_lf, valleys.reduce((s, e) => s + e.length_lf, 0)),
+          score: cand.score + 0.05,
+        }),
+      });
+      phase3E = { ...repaired.diagnostics, version: 'v1', executed: repaired.diagnostics.candidate_repair_attempted, skipped_reason: repaired.diagnostics.candidate_repair_attempted ? null : 'repair_conditions_not_met', repair_accepted: !!repaired.selected };
+    }
     return {
       used: false, best_candidate: null, candidates_evaluated: candidates.length,
       autonomous_score: autonomousScore, constraint_score: 0,
@@ -1679,6 +1718,7 @@ export function solveConstraintRoof(
         rejected_topologies: rejectedTopologies,
         optimization_moves: [],
         constraint_error_breakdown: {},
+        phase3E,
       },
     };
   }
