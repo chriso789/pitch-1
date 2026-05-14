@@ -844,7 +844,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           })()}
         </DialogHeader>
 
-        <ScrollArea className="h-[calc(90vh-100px)] px-6 pb-6">
+        <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
           <div ref={reportContentRef}>
           {!previewGate.ok ? (
             (() => {
