@@ -122,13 +122,14 @@ export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
 //   3E — constraint-solver repair pass (already gated by autonomous-graph-solver)
 //   3F — result_state normalizer hardening (active)
 //   3G — diagram_render_intent enforcement (active)
-export const PHASE3_ENGINE_VERSION = "phase3-visibility-and-hard-gates-v1";
-export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "phase3A-eave-default-hip-prior-confidence-floor-v1";
-export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "phase3B-counts-only-lite-v1";
-export const PHASE3C_CONNECTIVITY_DEFER_VERSION: string | null = null;
-export const PHASE3D_SEED_BACKBONE_VERSION: string | null = null;
-export const PHASE3F_RESULT_STATE_VERSION = "phase3F-normalize-all-writes-v1";
-export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "phase3G-rejected-only-on-ai-failed-v1";
+export const PHASE3_ENGINE_VERSION = "phase3-visibility-v1";
+export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "v1";
+export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "v1-counts-only";
+export const PHASE3C_DEFERRED_EDGES_VERSION: string | null = null;
+export const PHASE3D_BACKBONE_SEED_VERSION: string | null = null;
+export const PHASE3E_CONSTRAINT_REPAIR_VERSION: string | null = null;
+export const PHASE3F_RESULT_STATE_VERSION = "v1";
+export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "v1";
 export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
 export const DEPLOYED_AT = new Date().toISOString();
 export const RUNTIME_VERSION_STAMP = {
@@ -161,12 +162,24 @@ export const normalizeResultState = _sharedNormalizeResultState;
 
 // ─── Phase 3 visibility helpers ───────────────────────────────────────
 export const PHASE3_VERSION_BLOCK = {
+  phase3: {
+    enabled: true,
+    engine_version: PHASE3_ENGINE_VERSION,
+    phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
+    phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
+    phase3C_deferred_edges_version: PHASE3C_DEFERRED_EDGES_VERSION,
+    phase3D_backbone_seed_version: PHASE3D_BACKBONE_SEED_VERSION,
+    phase3E_constraint_repair_version: PHASE3E_CONSTRAINT_REPAIR_VERSION,
+    phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
+    phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
+  },
   phase3_enabled: true,
   phase3_engine_version: PHASE3_ENGINE_VERSION,
   phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
   phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
-  phase3C_connectivity_defer_version: PHASE3C_CONNECTIVITY_DEFER_VERSION,
-  phase3D_seed_backbone_version: PHASE3D_SEED_BACKBONE_VERSION,
+  phase3C_deferred_edges_version: PHASE3C_DEFERRED_EDGES_VERSION,
+  phase3D_backbone_seed_version: PHASE3D_BACKBONE_SEED_VERSION,
+  phase3E_constraint_repair_version: PHASE3E_CONSTRAINT_REPAIR_VERSION,
   phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
   phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
 } as const;
