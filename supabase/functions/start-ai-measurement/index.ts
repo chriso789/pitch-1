@@ -2067,6 +2067,12 @@ async function processJob(input: any) {
       perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
       eave_lf: perimeterPhase0Snapshot?.eave_length_lf,
       rake_lf: perimeterPhase0Snapshot?.rake_length_lf,
+      eave_candidate_lf: perimeterPhase0Snapshot?.eave_candidate_lf,
+      rake_candidate_lf: perimeterPhase0Snapshot?.rake_candidate_lf,
+      unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf,
+      eave_rake_confidence: perimeterPhase0Snapshot?.eave_rake_confidence,
+      archetype: perimeterPhase0Snapshot?.archetype_debug,
+      perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
     }));
     console.log('[TARGET_MASK_ISOLATION]', JSON.stringify(perimeterInnerTraceDebug));
     console.log('[PERIMETER_PHASE_0_SNAPSHOT]', JSON.stringify({
