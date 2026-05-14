@@ -223,9 +223,11 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
   const failureReasonStr = String(grj.hard_fail_reason ?? sourceCtxDebug?.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
+  const developerBug = String(grj.developer_bug ?? sourceCtxDebug?.developer_bug ?? '');
   const innerTraceFired = /perimeter_inner_trace_detected/i.test(failureReasonStr)
     || (Array.isArray(phase0?.perimeter_failure_reasons) && phase0.perimeter_failure_reasons.some((r: any) => /perimeter_inner_trace_detected/i.test(String(r))));
   const phase0MissingBug = !phase0 && innerTraceFired;
+  const phase0BypassBug = developerBug === 'phase0_bypassed_before_perimeter_gate' || /phase0_bypassed/i.test(failureReasonStr);
 
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
@@ -245,7 +247,17 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
         <Badge variant="secondary">data</Badge>
       </div>
       <div className="p-4 space-y-4">
-        {phase0MissingBug && (
+        {phase0BypassBug && (
+          <div className="rounded-md bg-destructive text-destructive-foreground border-2 border-destructive px-3 py-2">
+            <div className="text-xs font-bold uppercase tracking-wide">Developer Bug</div>
+            <div className="text-sm font-semibold mt-1">
+              phase0_bypassed_before_perimeter_gate — invariant tripped: a valid footprint reached
+              the perimeter failure path without Phase 0 being built. Old global-mask early-return
+              still active somewhere upstream.
+            </div>
+          </div>
+        )}
+        {phase0MissingBug && !phase0BypassBug && (
           <div className="rounded-md bg-destructive text-destructive-foreground border-2 border-destructive px-3 py-2">
             <div className="text-xs font-bold uppercase tracking-wide">Internal Bug</div>
             <div className="text-sm font-semibold mt-1">
