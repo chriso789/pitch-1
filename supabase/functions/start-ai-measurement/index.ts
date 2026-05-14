@@ -1856,11 +1856,19 @@ async function processJob(input: any) {
           })),
           boundary_rakes: [],
         });
+        vlog("ENTER_evaluate_perimeter_gate", {
+          target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
+          benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
+        });
         const gate = evaluatePerimeterGate(topology, targetMaskAreaSqft, {
           target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
           benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
           solar_expected_area_sqft: isolation?.solar_segment_area_sqft ?? null,
           global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+        });
+        vlog("EXIT_evaluate_perimeter_gate", {
+          passed: (gate.failure_reasons || []).length === 0,
+          failure_reasons: gate.failure_reasons || [],
         });
         let failureReasons = [...(gate.failure_reasons || []), ...forcedFailureReasons];
 
@@ -1996,6 +2004,12 @@ async function processJob(input: any) {
       area_sanity_ok: targetMaskIsolation.area_sanity_ok,
       mask_components: targetMaskIsolation.mask_components_table?.length ?? 0,
     }));
+
+    vlog("EXIT_target_mask_isolation", {
+      checked: targetMaskIsolation.checked,
+      target_mask_area_sqft: targetMaskIsolation.target_mask_area_sqft,
+      missed_target_roof_pct: targetMaskIsolation.missed_target_roof_pct,
+    });
 
     perimeterInnerTraceDebug = {
       ...targetMaskIsolation,
