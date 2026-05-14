@@ -149,6 +149,18 @@ export interface PerimeterDiagnostics {
   perimeter_candidate_table: PerimeterCandidate[];
   total_perimeter_lf: number;
   unknown_ratio: number;
+  // ── Fonsica acceptance gate metrics (perimeter-first checkpoint v1) ──
+  perimeter_vs_mask_iou: number;
+  missed_roof_area_pct: number;
+  perimeter_gate_passed: boolean;
+  fonsica_gate: {
+    area_within_5pct: boolean;
+    eaves_rakes_within_8pct: boolean;
+    missed_roof_lt_5pct: boolean;
+    confidence_gte_85: boolean;
+    area_ratio: number;
+    eaves_rakes_ratio: number | null;
+  };
 }
 
 export interface PerimeterCandidate {
