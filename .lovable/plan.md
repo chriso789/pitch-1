@@ -1,113 +1,366 @@
+# AI Measurement Route Audit + Canonicalization Plan
 
-# ABC Supply API Integration — Full Plan (Per-Tenant)
+## Audit findings
 
-Modeled after the existing `SRS Distribution Integration` (per-tenant credentials, edge functions, webhook ingestion). Adapts the research doc to Pitch CRM conventions: `tenant_id` (not `organization_id`), `useEffectiveTenantId()`, `npm:` specifiers + `Deno.serve(handler)`, and `pitch-crm.ai` for callback/webhook URLs.
+The current Lovable workspace does contain the Phase 3 module files and some wiring, but the app still has multiple measurement/report paths. That matches the report symptom: one path can be patched while another path creates or renders the row that the user sees.
 
----
+### Active frontend entry points
 
-## Phase 1 — Database schema & RLS
 
-New tables (all with `tenant_id uuid not null`, RLS scoped via existing tenant helpers — same pattern as `srs_*` tables):
+| Route/Component              | File                                                                                    | Purpose                                                                                           | Writes Measurement?                                       | Reads Measurement?                                       | Builds Diagram?                      | Uses Phase 3?                                                                  | Active?                                   |
+| ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------------------- |
+| AI Measurements button       | `src/components/measurements/PullMeasurementsButton.tsx`                                | Main lead/estimate button; opens StructureSelectionMap, then calls `useMeasurementJob.startJob()` | Indirectly via `start-ai-measurement`                     | Reads latest `roof_measurements` after job completion    | Seeds debug/verification wizard only | Yes, through `start-ai-measurement`                                            | Active                                    |
+| Measurement job hook         | `src/hooks/useMeasurementJob.ts`                                                        | Canonical async start/poll hook                                                                   | Indirectly via `start-ai-measurement`                     | Reads `measurement_jobs`                                 | No                                   | Yes                                                                            | Active                                    |
+| Unified measurement panel    | `src/components/measurements/UnifiedMeasurementPanel.tsx`                               | Lead-page history/results/report launcher                                                         | No                                                        | Reads `roof_measurements`, `measurement_jobs`, approvals | Inline schematic and report dialog   | Reads Phase 3 fields                                                           | Active                                    |
+| Report dialog                | `src/components/measurements/MeasurementReportDialog.tsx`                               | Internal/customer report viewer and PDF launcher                                                  | Updates only through override/PDF actions                 | Reads provided row + diagrams                            | Yes                                  | Reads Phase 3 fields, but currently falls back to “not implemented” if missing | Active                                    |
+| Legacy report preview        | `src/components/measurements/RoofrStyleReportPreview.tsx`                               | Older interactive Roofr-style report preview                                                      | Can call legacy `analyze-roof-aerial` for remeasure       | Reads `roof_measurements` by id/customer/address         | Yes, client-side                     | No canonical Phase 3                                                           | Legacy but still mounted behind old state |
+| Material calculations page   | `src/pages/MaterialCalculations.tsx`                                                    | Materials from latest measurement                                                                 | No                                                        | Calls deprecated `measure` via `useLatestMeasurement()`  | Opens report dialog                  | No                                                                             | Active legacy read path                   |
+| Legacy roof measurement tool | `src/components/roof-measurement/RoofMeasurementTool.tsx` + `src/pages/RoofMeasure.tsx` | Professional/legacy manual measurement page                                                       | Calls deprecated `measure` and `generate-roof-report`     | Local state + legacy rows                                | Yes                                  | No                                                                             | Active legacy route                       |
+| `useMeasurement.ts` hooks    | `src/hooks/useMeasurement.ts`                                                           | Legacy measurement API wrapper                                                                    | Calls deprecated `measure` for pull/overlay/manual verify | Reads legacy `measurements` and `roof_measurements`      | No                                   | No                                                                             | Active import surface                     |
+| `useRoofOverlay`             | `src/hooks/useRoofOverlay.ts`                                                           | Standalone overlay generator                                                                      | Calls `generate-roof-overlay`                             | No persisted canonical row                               | Overlay only                         | No                                                                             | Active in legacy tool                     |
+| `useRoofLineOverlay`         | `src/hooks/useRoofLineOverlay.ts`                                                       | AI overlay/training helper                                                                        | Calls `generate-roof-line-overlay`                        | Reads/writes `roof_line_overlays`                        | Overlay only                         | No                                                                             | Active utility                            |
 
-- `abc_integrations` — one row per tenant per environment (sandbox/production). Fields: `abc_mode` (individual_business | third_party_aggregator), `environment`, `token_strategy` (auth_code_pkce | client_credentials), `client_id`, `redirect_uri`, `status`, `webhook_id`, `webhook_secret`, audit cols. Unique `(tenant_id, environment)`.
-- `abc_tokens` — encrypted via pgcrypto (`access_token_enc`, `refresh_token_enc` bytea), `token_type`, `scope`, `access_token_expires_at`, `refresh_token_last_used_at`, `raw_token_response jsonb`. PK = `integration_id`.
-- `abc_accounts` — sold_to / bill_to / ship_to with `account_kind`, `account_number`, parent links, `raw_payload`.
-- `abc_branches` — branch number, geo, hours, `raw_payload`.
-- `abc_items`, `abc_item_availability` — product catalog snapshot per branch.
-- `abc_price_requests` — request/response JSONB log (pricing requires user token).
-- `abc_orders` + `abc_order_lines` — order header/lines with `raw_payload` for full ABC body.
-- `abc_invoices` + `abc_invoice_lines` — invoice mirror; `pdf_storage_path` reference.
-- `abc_webhooks` — registered webhook config (id, type, events, secret).
-- `abc_webhook_events` — every received event payload, with `accepted`, `authorization_header`, indexed by `order_number`/`invoice_number`.
-- Optional link table `abc_order_job_links (order_id, job_id, tenant_id)` so an ABC order is bound to a Pitch job/estimate.
 
-RLS: read for tenant members, mutate for tenant admins/owners only. Token row never readable client-side; all access goes through edge functions using service role.
+### Supabase edge functions that can affect measurement geometry/reporting
 
-Storage buckets (private, RLS keyed on `tenant_id` as first folder per project standard):
-- `abc-invoices/{tenant_id}/{invoice_number}.pdf`
-- `abc-item-images/{tenant_id}/{item_number}/{asset_id}.jpg`
 
----
+| Function                                 | File                                                                 | Purpose                                               | Creates `roof_measurements`                         | Updates `roof_measurements`       | Reads `geometry_report_json` | Renders diagrams                                                    | Calls autonomous solver                                                      | Phase 3 status                                                |
+| ---------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------- | --------------------------------- | ---------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `start-ai-measurement`                   | `supabase/functions/start-ai-measurement/index.ts`                   | Canonical geometry-first pipeline                     | Yes                                                 | Yes                               | Yes                          | Inserts `ai_measurement_diagrams`, invokes `render-measurement-pdf` | Yes, `_shared/autonomous-graph-solver.ts`                                    | Partially wired; needs hard route stamps and DB column parity |
+| `debug-measurement-runtime`              | `supabase/functions/debug-measurement-runtime/index.ts`              | Runtime stamp endpoint                                | No                                                  | No                                | No                           | No                                                                  | No                                                                           | Missing Phase 3 stamps                                        |
+| `measure`                                | `supabase/functions/measure/index.ts`                                | Deprecated orchestrator but still invoked by frontend | Yes, multiple insert/update paths                   | Yes                               | Some                         | Calls visualization/overlay helpers                                 | Uses local `measure/autonomous-graph-solver.ts`, not shared canonical solver | Legacy/unwired                                                |
+| `measure-roof`                           | `supabase/functions/measure-roof/index.ts`                           | Deprecated function                                   | Yes                                                 | No                                | No                           | No                                                                  | No                                                                           | Legacy/deprecated                                             |
+| `analyze-roof-aerial`                    | `supabase/functions/analyze-roof-aerial/index.ts`                    | Vision/aerial analyzer                                | Yes                                                 | Yes                               | Limited                      | No                                                                  | No shared canonical solver                                                   | Legacy/unwired                                                |
+| `generate-roof-overlay`                  | `supabase/functions/generate-roof-overlay/index.ts`                  | Two-pass overlay generator                            | No canonical measurement                            | No                                | No                           | Overlay JSON                                                        | Calls `analyze-roof-aerial`                                                  | Legacy/unwired                                                |
+| `generate-roof-line-overlay`             | `supabase/functions/generate-roof-line-overlay/index.ts`             | Training/overlay line detector                        | No `roof_measurements`; writes `roof_line_overlays` | No                                | No                           | Overlay PNG/JSON                                                    | No                                                                           | Legacy helper, also uses `esm.sh` import                      |
+| `generate-roof-report`                   | `supabase/functions/generate-roof-report/index.ts`                   | Old jsPDF PDF generator                               | No                                                  | Yes: report URL fields            | Reads measurement row        | Yes                                                                 | No                                                                           | Legacy/unwired                                                |
+| `generate-roofr-style-report`            | `supabase/functions/generate-roofr-style-report/index.ts`            | Old Roofr-style report generator                      | No                                                  | Documents insert only             | Reads payload/legacy tags    | Yes                                                                 | No                                                                           | Legacy/unwired                                                |
+| `render-measurement-pdf`                 | `supabase/functions/render-measurement-pdf/index.ts`                 | Current customer-ready PDF renderer                   | No                                                  | Yes: PDF URL/path + GRJ signature | Yes                          | Yes                                                                 | No                                                                           | Canonical renderer, but missing renderer version stamp        |
+| `backfill-measurement-diagrams`          | `supabase/functions/backfill-measurement-diagrams/index.ts`          | Backfills diagrams from old rows                      | No                                                  | No                                | Yes                          | Inserts diagrams                                                    | No                                                                           | Must remain debug/backfill only                               |
+| `recalculate-measurement-from-overrides` | `supabase/functions/recalculate-measurement-from-overrides/index.ts` | Rebuilds totals from `roof_lines` overrides           | No                                                  | Yes                               | Yes                          | No                                                                  | No                                                                           | Canonical override path                                       |
 
-## Phase 2 — Secrets & app registration
 
-User must register a Pitch CRM app with ABC Supply (sandbox + production) and provide:
-- `ABC_SUPPLY_CLIENT_ID_SANDBOX`, `ABC_SUPPLY_CLIENT_SECRET_SANDBOX`
-- `ABC_SUPPLY_CLIENT_ID_PROD`, `ABC_SUPPLY_CLIENT_SECRET_PROD`
-- `ABC_SUPPLY_TOKEN_ENCRYPTION_KEY` (for pgcrypto symmetric encryption of stored refresh tokens)
+### Solver module status
 
-Auth servers (per docs):
-- Sandbox: `https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8`
-- Prod: `https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357`
 
-API bases: `partners-sb.abcsupply.com` / `partners.abcsupply.com` (per page-level Resource URLs — treated as authoritative over example Host headers, per research doc).
+| Module                      | File                                                      | Exported runtime role                                 | Imported by                          | Active?                                                          |
+| --------------------------- | --------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| Canonical autonomous solver | `supabase/functions/_shared/autonomous-graph-solver.ts`   | `solveAutonomousGraph`, topology/fidelity diagnostics | `start-ai-measurement`               | Active only through canonical route                              |
+| Deferred edges              | `supabase/functions/_shared/deferred-structural-edges.ts` | Phase 3C diagnostics and edge deferral                | `_shared/autonomous-graph-solver.ts` | Active in shared solver, but not guaranteed if legacy route used |
+| Backbone seed               | `supabase/functions/_shared/backbone-seed.ts`             | Phase 3D seed backbone diagnostics                    | `_shared/autonomous-graph-solver.ts` | Active in shared solver, but only if callsite reached            |
+| Constraint solver           | `supabase/functions/_shared/constraint-roof-solver.ts`    | Constraint candidate solver                           | `_shared/autonomous-graph-solver.ts` | Active when solver triggers it                                   |
+| Repair pass                 | `supabase/functions/_shared/constraint-solver-repair.ts`  | Phase 3E repair diagnostics                           | `_shared/constraint-roof-solver.ts`  | Active only when repair conditions trigger                       |
+| Perimeter refinement        | `supabase/functions/_shared/perimeter-refinement.ts`      | Phase 3A.5 true outer perimeter refinement            | `start-ai-measurement`               | Active in canonical route before topology                        |
+| Perimeter topology          | `supabase/functions/_shared/perimeter-topology.ts`        | Phase 0 / 3A eave-rake and perimeter gate             | `start-ai-measurement`, solver       | Active in canonical route                                        |
+| Roof lines                  | `supabase/functions/_shared/roof-lines.ts`                | Typed line persistence/aggregation                    | `start-ai-measurement`, overrides    | Active but Phase 3B says counts-only in one debug block          |
+| Result state                | `supabase/functions/_shared/result-state.ts`              | Canonical DB-safe result states + diagram intent      | `start-ai-measurement`, overrides    | Active                                                           |
+| Legacy solver copy          | `supabase/functions/measure/autonomous-graph-solver.ts`   | Old measure pipeline solver                           | `measure/index.ts`                   | Active only if deprecated `measure` is called; not canonical     |
 
-OAuth callback URL: `https://pitch-crm.ai/integrations/abc-supply/oauth-callback`
-Webhook receiver URL: `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-webhook-receiver`
 
----
+### Why the latest report can still show Phase 3 as missing
 
-## Phase 3 — Edge functions
+1. `MeasurementReportDialog` shows `not implemented` when the visible row has null/missing Phase 3 values in `geometry_report_json`.
+2. Runtime route stamps like `created_by_function`, `created_by_component`, `solver_entrypoint`, `report_renderer_version`, and `phase3_5_perimeter_refinement_version` do not exist in the current schema/types.
+3. `start-ai-measurement` writes Phase 3C/D/E DB columns, but there is no DB column for `phase3_5_perimeter_refinement_version` and no provenance columns, so the report cannot prove which path created the row.
+4. Legacy active paths (`measure`, `RoofMeasurementTool`, `generate-roof-report`, `generate-roofr-style-report`, `analyze-roof-aerial`) can still create/update/render measurement artifacts without Phase 3.
+5. `debug-measurement-runtime` does not expose Phase 3 stamps, so it cannot prove the deployed edge bundle contains the Phase 3 wiring.
 
-All use `npm:` specifiers and `Deno.serve(handler)`. Tenant identity from JWT via `getClaims()` then resolved to `tenant_id`. Service-role client used for token/secret reads.
+## Canonical route decision
 
-1. **`abc-oauth-start`** — generates PKCE pair, stores `code_verifier` + `state` in short-lived `abc_oauth_states` table, returns ABC `/v1/authorize` URL with scopes (`location.read product.read account.read pricing.read order.read order.write notification.read notification.write offline_access`).
-2. **`abc-oauth-callback`** — exchanges code for token via `/v1/token` (HTTP Basic auth header per docs), encrypts refresh token, writes `abc_integrations` + `abc_tokens`, marks status `connected`.
-3. **`abc-token-refresh`** — refreshes access token (30-min lifetime) using stored refresh token; if 30+ days idle → mark `status='error'`, surface re-auth prompt. Called by every other function via shared `getValidAbcToken(integrationId)` helper.
-4. **`abc-client-credentials-token`** — for app-only flows (location/product/notification when ABC permits).
-5. **`abc-account-sync`** — pulls Sold-To / Bill-To / Ship-To and contacts; upserts `abc_accounts`.
-6. **`abc-branch-sync`** — `/api/location/v1/branches` (lat/long/distance or zip queries); upserts `abc_branches`.
-7. **`abc-item-search`** — search/favorite items, fetch images to storage; upserts `abc_items` + `abc_item_availability`.
-8. **`abc-pricing`** — already exists; rewire to ABC-pricing v1 endpoint with `purpose=estimating|quoting|ordering`, ship_to + branch params; persist request/response in `abc_price_requests`. Pricing must use user token (third-party client_credentials cannot get pricing — surface clear error if integration is in that mode).
-9. **`abc-order-create`** — `POST /api/order/v2/orders`. Validates payload, links to `job_id`/`estimate_id` from caller, persists raw response, writes order + lines.
-10. **`abc-order-history`** + **`abc-order-detail`** — read-side syncing with date-range pagination; idempotent upsert by `confirmation_number`.
-11. **`abc-webhook-register`** — `POST /api/notification/v2/webhooks`. Registers ONE webhook per tenant per docs guidance (5-app cap, 1 recommended) targeting the receiver URL with a per-tenant secret; persists `webhook_id` + `secret`.
-12. **`abc-webhook-receiver`** (PUBLIC, no JWT, like `srs-webhook`) — verifies `Authorization` header equals stored `webhook_secret` for the matched webhook; logs every event raw to `abc_webhook_events`; routes by `eventType`:
-    - `ORDER_UPDATE` → upsert `abc_orders` + `abc_order_lines`, broadcast tenant channel.
-    - `ORDER_INVOICED` → upsert `abc_invoices` + lines, kick off `abc-invoice-pdf-fetch`.
-    - Treat `ORDER_STATUS` as alias of `ORDER_UPDATE`. Unknown event types stored, not dropped.
-    - Always returns 200 once persisted (ABC retry behavior is unspecified — never throw).
-13. **`abc-invoice-pdf-fetch`** — downloads invoice PDF (when third-party aggregator can; otherwise mark unavailable per docs gap), stores to `abc-invoices` bucket, persists `pdf_storage_path`.
-14. **`abc-token-refresh-scheduler`** — pg_cron-invoked every 15 min; refreshes any token expiring in <10 min.
+Canonical path should be exactly:
 
-Every function: input validated with Zod, returns clear 4xx with actionable messages, includes CORS headers from `npm:@supabase/supabase-js@2/cors`.
+```text
+AI Measurement button
+→ PullMeasurementsButton
+→ useMeasurementJob.startJob
+→ start-ai-measurement
+→ source acquisition
+→ confirmed roof target
+→ Phase 0 perimeter
+→ Phase 3A eave/rake
+→ Phase 3A.5 perimeter refinement hard gate
+→ Phase 3C deferred edges
+→ Phase 3D locked backbone
+→ Phase 3E repair when applicable
+→ roof_lines persistence
+→ geometry_report_json + DB runtime stamps
+→ MeasurementReportDialog / render-measurement-pdf
+```
 
----
+All other paths become one of:
 
-## Phase 4 — Frontend (React + Tanstack Query)
+- Read-only renderer.
+- Manual/debug tool clearly labeled legacy.
+- Deprecated wrapper that returns a 410/redirect-style response for AI pull/generate-overlay actions.
 
-New feature module `src/features/abc-supply/`:
+## Implementation plan
 
-- `pages/AbcSupplyIntegrationPage.tsx` (route `/settings/integrations/abc-supply`):
-  - Connection card: env toggle (Sandbox/Production), mode toggle (Individual-Business / Third-party Aggregator), "Connect with ABC Supply" button (kicks off `abc-oauth-start`), status pill, token expiry, "Disconnect" action.
-  - Sub-tabs: **Accounts**, **Branches**, **Catalog**, **Pricing log**, **Orders**, **Invoices**, **Webhooks/Events**.
-- `components/AbcAccountsList.tsx`, `AbcBranchesList.tsx`, `AbcItemSearch.tsx`, `AbcPricingDrawer.tsx`, `AbcOrderBuilder.tsx`, `AbcOrderDetail.tsx`, `AbcInvoiceList.tsx`, `AbcWebhookEventsTable.tsx`.
-- Estimate integration: in the existing Estimate builder, add an "Order from ABC Supply" action that maps line items → ABC items (using saved item mappings) and calls `abc-order-create`, persisting the link in `abc_order_job_links`.
-- All queries strictly filter `.eq('tenant_id', effectiveTenantId)` per project memory.
-- Realtime: subscribe to `abc_orders`, `abc_invoices`, `abc_webhook_events` filtered by tenant_id.
+### 1. Add runtime provenance DB columns
 
-OAuth callback handler at `/integrations/abc-supply/oauth-callback` simply forwards `code` + `state` to `abc-oauth-callback` then redirects to settings page.
+Create a migration for `roof_measurements`, `ai_measurement_jobs`, and `measurement_jobs`:
 
----
+- `created_by_function text`
+- `created_by_component text`
+- `solver_entrypoint text`
+- `report_renderer_version text`
+- `phase3_5_perimeter_refinement_version text`
+- `route_audit_version text`
+- `canonical_measurement_route boolean default false`
 
-## Phase 5 — Documentation, tests, observability
+Also add indexes for route audit queries:
 
-- `docs/abc-supply-integration.md` — environments, scopes, mode matrix, doc-inconsistency notes (resource URL vs Host header, `account/v1` vs `accounts/v1`, `order.read` vs `allOrder.read`, ORDER_UPDATE vs ORDER_INVOICED vs ORDER_STATUS), retry behavior caveats.
-- Deno tests for: OAuth callback (PKCE happy path + replay rejection), token refresh (expiry math, 30-day idle handling), webhook receiver (secret mismatch returns 200 + `accepted=false`, ORDER_INVOICED upserts invoice), order create (validation errors).
-- Memory entry once shipped: `mem://features/abc-supply-integration` — per-tenant pattern, scope matrix, webhook secret verification, Resource-URL-as-canonical rule.
+- `roof_measurements(created_by_function, created_at desc)`
+- `roof_measurements(canonical_measurement_route, created_at desc)`
 
----
+### 2. Stamp the canonical start route everywhere
 
-## Technical notes & guardrails
+Update `supabase/functions/start-ai-measurement/index.ts` so every job row, success row, failure row, and `geometry_report_json` includes:
 
-- **Inconsistencies handled by treating page-level "Resource" URL as canonical** (`partners-sb`/`partners`); never trust example Host headers.
-- **Pricing requires user token**: if a tenant connects via third-party client_credentials, pricing UI is disabled with explanatory tooltip.
-- **Invoice endpoints** flagged "not yet available" for third-party aggregators per docs — surface as gated feature.
-- **Webhook retries unspecified** → receiver is idempotent (upsert by `confirmation_number`/`invoice_number`) and always responds 200 after persist.
-- **Rate limits**: sandbox 10 tps; production varies by API family. Add a lightweight token-bucket per tenant in `abc-` shared helper before large bulk syncs.
-- **Token storage**: refresh tokens encrypted with pgcrypto using `ABC_SUPPLY_TOKEN_ENCRYPTION_KEY`; never returned to client.
-- **Result-state parity with existing SRS module** so admin tooling looks consistent.
+```json
+{
+  "created_by_function": "start-ai-measurement",
+  "created_by_component": "PullMeasurementsButton/useMeasurementJob",
+  "solver_entrypoint": "_shared/autonomous-graph-solver.solveAutonomousGraph",
+  "canonical_measurement_route": true,
+  "route_audit_version": "measurement-route-audit-v1",
+  "phase3_5_perimeter_refinement_version": "v1",
+  "phase3C_deferred_edges_version": "v1",
+  "phase3D_backbone_seed_version": "v1",
+  "phase3E_constraint_repair_version": "v1"
+}
+```
 
-## Open question (will confirm before coding)
+For skipped phases, persist the existing block shape:
 
-Default environment for first connection: launch in **Sandbox-only** for the first tenant, then enable Production gating behind an admin feature toggle? (Recommended.) If you want both available immediately, say so and I'll skip the toggle.
+```json
+{ "version": "v1", "executed": false, "skipped_reason": "..." }
+```
+
+No Phase 3 version field should be null on new canonical rows.
+
+### 3. Stamp the PDF/report renderer
+
+Update `render-measurement-pdf` to write:
+
+- `report_renderer_version = "render-measurement-pdf-v1"`
+- `geometry_report_json.report_renderer_version = "render-measurement-pdf-v1"`
+- `geometry_report_json.rendered_by_function = "render-measurement-pdf"`
+
+Keep customer PDF gating unchanged.
+
+### 4. Fix report dialog Phase 3 visibility
+
+Update `MeasurementReportDialog` to read Phase 3 values from all canonical locations:
+
+- top-level `measurement.phase3C_deferred_edges_version`
+- `geometry_report_json.phase3C_deferred_edges_version`
+- `geometry_report_json.phase3.phase3C_deferred_edges_version`
+- `geometry_report_json.phase3C.version`
+
+Same for 3A.5, 3D, 3E.
+
+Display:
+
+- `v1 / executed`
+- `v1 / skipped: <reason>`
+- `MISSING — stale or non-canonical route`
+
+Do not use the phrase “not implemented” for rows that simply predate route stamping.
+
+### 5. Fence legacy measurement creation routes
+
+Update active legacy frontends:
+
+- `RoofMeasurementTool.tsx`: for AI analysis, replace `measure?action=pull` with the canonical `start-ai-measurement` flow or show a warning that this is a legacy/manual-only tool.
+- `useMeasurement.ts`: keep `latest` read for legacy materials only, but prevent `pull`, `repull`, and `generate-overlay` from silently creating canonical-looking `roof_measurements` through `measure`.
+- `MaterialCalculations.tsx`: stop using `measure?action=latest` as source of truth; read latest `roof_measurements` directly by lead/customer id.
+
+Do not delete legacy edge functions in this pass; add runtime stamps where they still create rows:
+
+- `created_by_function = "measure"` or `"analyze-roof-aerial"`
+- `canonical_measurement_route = false`
+- `geometry_report_json.route_warning = "legacy_noncanonical_measurement_path"`
+
+### 6. Add a route audit diagnostic endpoint
+
+Extend `debug-measurement-runtime` or add `debug-measurement-route-audit` to return:
+
+- deployed canonical versions
+- latest measurement rows for a lead/address
+- each row’s `created_by_function`, `solver_entrypoint`, phase versions, `result_state`, `hard_fail_reason`, and renderer version
+- whether any active legacy row exists after the latest canonical row
+
+This gives an objective answer before rerunning Fonsica.
+
+### 7. Generate a static audit doc in the repo
+
+Add `docs/measurement-route-audit.md` with:
+
+- the audit table above
+- canonical path diagram
+- deprecated paths
+- Phase 3 stamp contract
+- expected Fonsica rerun checklist
+
+### 8. Deploy and validate without rerunning Fonsica yet
+
+Deploy changed functions:
+
+- `start-ai-measurement`
+- `render-measurement-pdf`
+- `debug-measurement-runtime` or new route audit function
+
+Then validate:
+
+- schema columns exist
+- runtime endpoint returns Phase 3 stamps
+- frontend report dialog can display the new stamp locations
+- legacy paths are visibly non-canonical
+
+## Expected result before rerun
+
+Before rerunning Fonsica, we should be able to inspect the system and prove:
+
+- which route created each visible measurement row
+- whether the row is canonical or legacy
+- whether Phase 3A.5/3C/3D/3E executed or were skipped with specific reasons
+- which renderer generated any report/PDF
+- no hidden old path can create a stale customer-looking report without route warnings
+
+Only after that should Fonsica be rerun. A new canonical Fonsica row must show non-null:
+
+- `phase3_5_perimeter_refinement_version`
+- `phase3C_deferred_edges_version`
+- `phase3D_backbone_seed_version`
+- `phase3E_constraint_repair_version`
+- `created_by_function`
+- `solver_entrypoint`
+- `report_renderer_version` once rendered
+
+If it still fails, the failure must be specific and stage-correct:
+
+- `perimeter_refinement_failed`
+- `backbone_not_applied`
+- `topology_undersegmented_after_backbone_repair`
+- or another normalized hard-fail reason mapped through `normalizeResultStateForWrite()`.  
+  
+Yes — this is a **good plan**, and it finally targets the real meta-problem: **multiple measurement/report paths are active**, so fixing one path does not guarantee the row/report you see came from that path.
+  The audit says exactly what we suspected: there is a canonical path, but there are still legacy paths that can create, update, or render measurement data without Phase 3. The uploaded audit identifies active legacy routes including `measure`, `measure-roof`, `analyze-roof-aerial`, `generate-roof-overlay`, `generate-roof-report`, and `generate-roofr-style-report`, while the intended canonical path is `PullMeasurementsButton → useMeasurementJob.startJob → start-ai-measurement → _shared/autonomous-graph-solver → render-measurement-pdf`.
+  I also searched GitHub for the new route-stamp fields like `created_by_function`, `canonical_measurement_route`, `route_audit_version`, and `phase3_5_perimeter_refinement_version`, and nothing came back. That means this plan is not committed/indexed yet, or Lovable has not shipped it into GitHub. Do not rerun Fonsica until these stamps exist.
+  ## The only correction I would make
+  Do **not** let Lovable add a bunch of new DB columns unless they are truly stable. You already got burned by schema drift with `result_state` and `archetype_debug`.
+  I would approve only these as top-level DB columns:
+  ```
+
+  ```
+  ```
+  created_by_function
+  created_by_component
+  solver_entrypoint
+  report_renderer_version
+  canonical_measurement_route
+  route_audit_version
+  ```
+  Put all Phase 3 versions and phase execution details inside `geometry_report_json`, not as separate columns:
+  ```
+
+  ```
+  ```
+  geometry_report_json.phase3_5.version
+  geometry_report_json.phase3C.version
+  geometry_report_json.phase3D.version
+  geometry_report_json.phase3E.version
+  ```
+  That avoids another schema-cache failure every time you add a debug field.
+  ## Send this approval with edits
+  ```
+
+  ```
+  ```
+  Approve the AI Measurement Route Audit + Canonicalization Plan with one schema-safety change.
+
+  The plan is correct: the system has multiple active measurement/report paths, and we need canonical route stamps before rerunning Fonsica.
+
+  Proceed, but keep DB columns stable.
+
+  Add only these stable top-level DB columns to roof_measurements, ai_measurement_jobs, and measurement_jobs:
+  - created_by_function text
+  - created_by_component text
+  - solver_entrypoint text
+  - report_renderer_version text
+  - canonical_measurement_route boolean default false
+  - route_audit_version text
+
+  Do NOT add phase3_5_perimeter_refinement_version, phase3C/D/E version fields as top-level DB columns.
+
+  Instead, persist Phase 3 versions and execution states inside geometry_report_json:
+
+  geometry_report_json.phase3_5 = {
+    version: "v1",
+    executed: true/false,
+    skipped_reason: null|string,
+    refinement_iou,
+    perimeter_to_target_mask_ratio,
+    refined_perimeter_vertex_count
+  }
+
+  geometry_report_json.phase3C = {
+    version: "v1",
+    executed: true/false,
+    skipped_reason: null|string,
+    connectivity_edges_deferred,
+    deferred_structural_candidates_count
+  }
+
+  geometry_report_json.phase3D = {
+    version: "v1",
+    executed: true/false,
+    skipped_reason: null|string,
+    locked_backbone_edges_count,
+    seed_backbone_edges_inserted
+  }
+
+  geometry_report_json.phase3E = {
+    version: "v1",
+    executed: true/false,
+    skipped_reason: null|string,
+    candidate_repair_attempted,
+    repair_accepted
+  }
+
+  Every new canonical measurement row must also include:
+
+  geometry_report_json.route_provenance = {
+    created_by_function: "start-ai-measurement",
+    created_by_component: "PullMeasurementsButton/useMeasurementJob",
+    solver_entrypoint: "_shared/autonomous-graph-solver.solveAutonomousGraph",
+    canonical_measurement_route: true,
+    route_audit_version: "measurement-route-audit-v1"
+  }
+
+  Legacy routes must stamp:
+  canonical_measurement_route = false
+  created_by_function = "measure" or "analyze-roof-aerial" etc.
+  geometry_report_json.route_warning = "legacy_noncanonical_measurement_path"
+
+  Required before rerunning Fonsica:
+  1. Migration applied.
+  2. PostgREST schema cache refreshed.
+  3. start-ai-measurement deployed.
+  4. render-measurement-pdf deployed.
+  5. debug-measurement-runtime or debug-measurement-route-audit deployed.
+  6. MeasurementReportDialog shows:
+     - canonical vs legacy
+     - created_by_function
+     - solver_entrypoint
+     - report_renderer_version
+     - phase3_5 / 3C / 3D / 3E: executed, skipped, or missing
+  7. Legacy paths are fenced so they cannot silently create canonical-looking measurements.
+
+  Do not rerun Fonsica until the route audit endpoint proves the deployed system can identify:
+  - which route created each visible measurement row
+  - whether it was canonical
+  - whether Phase 3A.5/3C/3D/3E executed or were skipped
+  - which renderer generated the PDF/report
+  ```
+  This is the right checkpoint. You need route provenance before more roof geometry work, otherwise you’ll keep debugging stale or non-canonical reports.
