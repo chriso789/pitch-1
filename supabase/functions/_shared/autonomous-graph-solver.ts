@@ -2370,9 +2370,18 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
         }))
     : [];
 
+  // Compute footprint area in pixel space for oversized-plane prevention and Phase 3D scale.
+  const footprintAreaPx2 = footprintPx.length >= 3
+    ? Math.abs(footprintPx.reduce((sum, p, i) => {
+        const q = footprintPx[(i + 1) % footprintPx.length];
+        return sum + (p.x * q.y - q.x * p.y);
+      }, 0) / 2)
+    : 0;
+
   // Build backbone network: ridge/valley chains → assemblies → diagonal suppression → derived hips
   let backboneDiag: BackboneDiagnostics | null = null;
   let backboneFilteredEdgesPx = rawDsmInteriorEdgesPx;
+  let phase3DSeed: SeedBackboneResult | null = null;
   if (rawDsmInteriorEdgesPx.length >= 3 && footprintPxCCW.length >= 3) {
     const backbone = buildBackboneNetwork(rawDsmInteriorEdgesPx, footprintPxCCW);
     backboneDiag = backbone.diagnostics;
@@ -2397,18 +2406,44 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
       console.log(`  [v18 BACKBONE] Added ${backbone.derivedHips.length} derived local hips from backbone endpoints`);
     }
 
+    const metersPerPixelForSeed = footprintAreaPx2 > 0 && footprintAreaSqft > 0
+      ? Math.sqrt((footprintAreaSqft / 10.7639) / footprintAreaPx2)
+      : 0.1;
+    const seedEvidence: RawEdgeEvidence[] = backboneFilteredEdgesPx.map((e, idx) => ({
+      id: `raw_${idx}`,
+      type: e.type,
+      p1: [e.a.x, e.a.y],
+      p2: [e.b.x, e.b.y],
+      dsm_support: Math.max(0, Math.min(1, e.score || 0)),
+      solar_alignment: 0.5,
+      inside_perimeter: pointInPolygonPx({ x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 }, footprintPxCCW),
+      pre_classification_confidence: Math.max(0, Math.min(1, e.score || 0)),
+    }));
+    phase3DSeed = buildSeedBackbone({
+      raw_edges: seedEvidence,
+      perimeter_px: footprintPxCCW.map(p => [p.x, p.y]),
+      meters_per_pixel: metersPerPixelForSeed,
+      min_seed_score: isFinite(metersPerPixelForSeed) ? 0.35 : 0.45,
+      min_chain_length_px: isComplexRoofModeCandidate(footprintAreaSqft, reflexCornerCount, maskedEdgeCount) ? 5 : 12,
+    });
+    const existingSeedKeys = new Set(backboneFilteredEdgesPx.map(e => `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`));
+    let seedInserted = 0;
+    for (const seedEdge of phase3DSeed.seed_backbone_edges) {
+      const a = { x: seedEdge.p1[0], y: seedEdge.p1[1] };
+      const b = { x: seedEdge.p2[0], y: seedEdge.p2[1] };
+      const key = `${Math.round(a.x)}:${Math.round(a.y)}|${Math.round(b.x)}:${Math.round(b.y)}`;
+      const rev = `${Math.round(b.x)}:${Math.round(b.y)}|${Math.round(a.x)}:${Math.round(a.y)}`;
+      if (existingSeedKeys.has(key) || existingSeedKeys.has(rev)) continue;
+      backboneFilteredEdgesPx.push({ a, b, type: seedEdge.type, score: Math.max(seedEdge.evidence_score, 0.95) });
+      existingSeedKeys.add(key);
+      seedInserted++;
+    }
+    markBackboneInserted(phase3DSeed.diagnostics, seedInserted);
+
     console.log(`  [v18 BACKBONE] ${rawDsmInteriorEdgesPx.length} → ${backboneFilteredEdgesPx.length} edges after backbone processing (${backbone.diagnostics.diagonal_suppression_events} diagonals suppressed, ${backbone.diagnostics.oversized_plane_suppressions || 0} oversized suppressions)`);
   }
 
   // ===== STEP 6: Topology-aware edge clustering =====
-  // Compute footprint area in pixel space for oversized-plane prevention
-  const footprintAreaPx2 = footprintPx.length >= 3
-    ? Math.abs(footprintPx.reduce((sum, p, i) => {
-        const q = footprintPx[(i + 1) % footprintPx.length];
-        return sum + (p.x * q.y - q.x * p.y);
-      }, 0) / 2)
-    : 0;
-
   const clusterResult = clusterEdges(backboneFilteredEdgesPx, effectiveDSM, footprintPx, footprintAreaPx2);
   const clusteredEdgesPx = clusterResult.clustered;
   const clusterDiag = clusterResult.diagnostics;
