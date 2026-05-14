@@ -1665,6 +1665,7 @@ export type Database = {
           report_blocked: boolean
           report_pdf_path: string | null
           report_pdf_url: string | null
+          result_state: string | null
           source_button: string | null
           source_context: Json | null
           source_priority: Json | null
@@ -1706,6 +1707,7 @@ export type Database = {
           report_blocked?: boolean
           report_pdf_path?: string | null
           report_pdf_url?: string | null
+          result_state?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -1747,6 +1749,7 @@ export type Database = {
           report_blocked?: boolean
           report_pdf_path?: string | null
           report_pdf_url?: string | null
+          result_state?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
