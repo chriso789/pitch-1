@@ -517,7 +517,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         <Accordion type="single" collapsible className="space-y-2">
           {(changeOrders || []).map((co) => {
             const t = totalsFor(co.id);
-            const budget = Number(co.cost_impact || 0);
+            const budget = t.budget;
             const variance = budget - t.total;
             return (
               <AccordionItem
