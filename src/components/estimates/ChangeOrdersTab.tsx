@@ -259,6 +259,20 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     queryClient.invalidateQueries({ queryKey: ['co-invoices'] });
   };
 
+  const handleDeleteCoInvoice = async (invoiceId: string) => {
+    if (!confirm('Delete this actual-cost invoice? This cannot be undone.')) return;
+    const { error } = await (supabase as any)
+      .from('project_cost_invoices')
+      .delete()
+      .eq('id', invoiceId);
+    if (error) {
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Invoice deleted' });
+    queryClient.invalidateQueries({ queryKey: ['co-invoices'] });
+  };
+
   const handleCreate = async () => {
     if (!form.title.trim()) {
       toast({ title: 'Title required', variant: 'destructive' });
@@ -754,18 +768,29 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                           .map((i) => (
                             <div
                               key={i.id}
-                              className="flex items-center justify-between px-3 py-2 text-xs"
+                              className="flex items-center justify-between px-3 py-2 text-xs gap-2 group"
                             >
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <Badge variant="secondary" className="capitalize">
                                   {i.invoice_type}
                                 </Badge>
-                                <span>
+                                <span className="truncate">
                                   {i.vendor_name || i.crew_name || '—'}{' '}
                                   {i.invoice_number ? `· #${i.invoice_number}` : ''}
                                 </span>
                               </div>
-                              <span className="font-medium">{fmt(Number(i.invoice_amount))}</span>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="font-medium">{fmt(Number(i.invoice_amount))}</span>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleDeleteCoInvoice(i.id)}
+                                  title="Delete invoice"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </div>
                           ))}
                       </div>
