@@ -6149,13 +6149,22 @@ async function processJob(input: any) {
       patentLog.reported_totals = reportedTotals;
       patentLog.typed_backing = backing;
 
-      // ── Rule 4: per-plane pitch sources ──
-      // The current pipeline derives a single dominant pitch — propagate
-      // pitchSource per plane unless we have a better per-plane signal.
+      // ── Rule 4: per-plane pitch sources (patent gate) ──
+      // Honor the upstream pitch correction: if pitchValid===false the
+      // dominant pitch was unavailable; if isBadTopology was true the DSM
+      // plane fit was rejected and replaced with Solar — mark per-plane
+      // sources accordingly so the customer-ready gate sees the truth.
       const perPlanePitchSources: string[] = (planeRows as any[]).map((p: any) => {
+        if (!pitchValid) return 'unavailable';
         if (p.pitch == null) return 'unavailable';
+        if (isBadTopology) {
+          // Geometry was collapsed; only Solar fallback is acceptable.
+          return pitchSource === 'google_solar_roofSegmentStats' ? 'solar_fallback' : 'collapsed_plane_fit';
+        }
         return pitchSource;
       });
+      patentLog.pitch_source = pitchSource;
+      patentLog.pitch_valid = pitchValid;
       patentLog.per_plane_pitch_sources_summary = perPlanePitchSources.reduce<Record<string, number>>((acc, s) => {
         acc[s] = (acc[s] || 0) + 1;
         return acc;
