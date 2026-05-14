@@ -96,7 +96,7 @@ export default function PublicChangeOrderView() {
     let left = h, pos = 0;
     pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph;
     while (left > 0) { pos = left - h; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph; }
-    pdf.save(`${data?.change_order?.co_number || 'change-order'}.pdf`);
+    pdf.save(`${(data?.change_order?.title || data?.change_order?.co_number || 'change-order').replace(/[\\/:*?"<>|]/g, '-')}.pdf`);
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
