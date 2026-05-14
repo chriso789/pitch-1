@@ -584,9 +584,8 @@ export default function CommissionReport() {
                         <div className="flex items-center justify-end">Contract <SortIcon column="contractValue" /></div>
                       </TableHead>
                       <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('grossProfit')}>
-                        <div className="flex items-center justify-end">Gross Profit <SortIcon column="grossProfit" /></div>
+                        <div className="flex items-center justify-end">GP % <SortIcon column="grossProfit" /></div>
                       </TableHead>
-                      <TableHead>Plan</TableHead>
                       <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('commissionAmount')}>
                         <div className="flex items-center justify-end">Commission <SortIcon column="commissionAmount" /></div>
                       </TableHead>
@@ -626,12 +625,7 @@ export default function CommissionReport() {
                                 {formatCurrency(c.contractValue)}
                               </TableCell>
                               <TableCell className="text-right">
-                                {formatCurrency(c.grossProfit)}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">
-                                  {c.commissionType === 'profit_split' ? 'Profit Split' : 'Selling Price'}
-                                </Badge>
+                                {c.contractValue > 0 ? `${((c.grossProfit / c.contractValue) * 100).toFixed(1)}%` : '—'}
                               </TableCell>
                               <TableCell className="text-right font-bold text-green-600">
                                 {formatCurrency(c.commissionAmount)}
@@ -674,7 +668,7 @@ export default function CommissionReport() {
 
                             <CollapsibleContent asChild>
                               <TableRow className="bg-muted/30">
-                                <TableCell colSpan={isManager ? 8 : 7} className="p-4">
+                                <TableCell colSpan={isManager ? 7 : 6} className="p-4">
                                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
                                     <div>
                                       <span className="text-muted-foreground">Materials:</span>
