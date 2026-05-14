@@ -464,15 +464,23 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   }, [pendingPdfCO, activeTenantId, pipelineEntryId, toast]);
 
   const totalsFor = (coId: string) => {
-    const inv = (coInvoices || []).filter((i) => i.change_order_id === coId);
+    const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
+    const container: any = (co?.line_items as any) || {};
+    const items = (container.items || []) as any[];
+
+    // Source invoices that were already burst into line_items must NOT be
+    // counted twice (once via the line items, once via the invoice aggregate).
+    const burstInvoiceIds = new Set<string>(
+      items.map((it) => it.source_invoice_id).filter(Boolean) as string[]
+    );
+
+    const inv = (coInvoices || []).filter(
+      (i) => i.change_order_id === coId && !burstInvoiceIds.has(i.id)
+    );
     let material = inv.filter((i) => i.invoice_type === 'material').reduce((s, i) => s + Number(i.invoice_amount), 0);
     let labor = inv.filter((i) => i.invoice_type === 'labor').reduce((s, i) => s + Number(i.invoice_amount), 0);
     let overheadInvoiced = inv.filter((i) => i.invoice_type === 'overhead').reduce((s, i) => s + Number(i.invoice_amount), 0);
 
-    // Include built-in CO line items captured when the CO was created
-    const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
-    const container: any = (co?.line_items as any) || {};
-    const items = (container.items || []) as any[];
     for (const it of items) {
       const qty = Number(it.quantity ?? it.qty ?? 1);
       const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0);
