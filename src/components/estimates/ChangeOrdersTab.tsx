@@ -881,7 +881,34 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                 pipelineEntryId={pipelineEntryId}
                 domId={`co-doc-view-${viewCO.id}`}
               />
-              <DialogFooter className="gap-2">
+              <DialogFooter className="gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!viewCO) return;
+                    const html2canvas = (await import('html2canvas')).default;
+                    const jsPDF = (await import('jspdf')).default;
+                    const el = document.getElementById(`co-doc-view-${viewCO.id}`);
+                    if (!el) return;
+                    const canvas = await html2canvas(el, { scale: 1.5, useCORS: true, backgroundColor: '#fff' });
+                    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+                    const w = 215.9, ph = 279.4;
+                    const h = (canvas.height * w) / canvas.width;
+                    const img = canvas.toDataURL('image/jpeg', 0.7);
+                    let left = h, pos = 0;
+                    pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph;
+                    while (left > 0) { pos = left - h; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, w, h); left -= ph; }
+                    pdf.save(`${viewCO.co_number}.pdf`);
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-1" /> Download PDF
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => setShareCO(viewCO)}
+                >
+                  <Send className="h-4 w-4 mr-1" /> Share for approval
+                </Button>
                 <Button
                   variant="outline"
                   onClick={async () => {
@@ -899,7 +926,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                     toast({ title: 'Saved to Documents tab' });
                   }}
                 >
-                  <Download className="h-4 w-4 mr-1" /> Re-save PDF
+                  <FileText className="h-4 w-4 mr-1" /> Save to Documents
                 </Button>
                 <Button variant="outline" onClick={() => window.print()}>
                   Print
