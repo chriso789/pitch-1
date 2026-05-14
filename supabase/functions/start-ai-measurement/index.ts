@@ -682,6 +682,7 @@ Deno.serve(async (req) => {
         actual_image_height: actualH,
         raster_scale,
         engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        ...getCanonicalRouteDbColumns(),
         entrypoint: "start-ai-measurement",
         // Patent Rule 1: roof-target confirmation audit trail.
         original_geocode_lat,
