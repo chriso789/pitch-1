@@ -260,8 +260,46 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
   if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
   const reason = String(raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? '').toLowerCase();
-  if (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint')) return 'ai_failed_perimeter';
-  if (reason.includes('topology') || reason.includes('facet') || reason.includes('ridge') || reason.includes('edge')) return 'ai_failed_topology';
+
+  // Phase 3A.5+ rule: once eave/rake classification has passed, downstream
+  // failures that mention "footprint" or "facet" are TOPOLOGY failures, not
+  // perimeter failures. Only mark perimeter when the perimeter gate itself
+  // failed (perimeter_classification_invalid above) or when the reason is
+  // explicitly about perimeter shape / classification.
+  const perimeterPassed =
+    debug?.perimeter_phase0?.perimeter_gate_passed === true ||
+    debug?.perimeter_topology?.perimeter_passed === true ||
+    Number(debug?.perimeter_phase0?.eave_lf || debug?.perimeter_topology?.eave_lf || 0) > 0;
+
+  // Explicit topology / backbone / repair failure reasons (Phase 3C/3D/3E)
+  if (
+    reason.includes('topology') ||
+    reason.includes('undersegment') ||
+    reason.includes('backbone_not_applied') ||
+    reason.includes('backbone_repair') ||
+    reason.includes('ridge_network_missing') ||
+    reason.includes('seed_collapse') ||
+    reason.includes('connectivity_collapse') ||
+    reason.includes('invalid_roof_footprint:') || // "2_facets_for_3250sqft" style — facet count, not perimeter shape
+    reason.includes('facet') ||
+    reason.includes('ridge') ||
+    reason.includes('edge')
+  ) return 'ai_failed_topology';
+
+  // Explicit perimeter-shape reasons (Phase 3A and 3A.5)
+  if (
+    reason.includes('perimeter_shape_not_accurate') ||
+    reason.includes('eave_lf_zero') ||
+    reason.includes('all_rake_no_eave') ||
+    reason.includes('perimeter_classification_invalid') ||
+    (!perimeterPassed && (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint')))
+  ) return 'ai_failed_perimeter';
+
+  // Generic perimeter/footprint reasons AFTER perimeter passed → topology
+  if (perimeterPassed && (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint'))) {
+    return 'ai_failed_topology';
+  }
+
   return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
 }
 

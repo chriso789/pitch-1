@@ -1,60 +1,142 @@
-## Problem
+# Fonsica Measurement Pipeline — Phase 3A.5 + 3C/3D/3E
 
-In `supabase/functions/_shared/perimeter-topology.ts` (lines ~747–944), `gableApexDetected` is set to `true` whenever **any** opposing-azimuth pair exists in the *global* solar segment set AND the edge happens to be parallel to a downslope vector. On a hip roof (4 azimuths) every opposing pair already exists globally, so every slope-parallel perimeter edge is falsely flagged as a gable apex.
+The Phase 3A eave/rake classifier is now passing (eave_lf=225.9, rake_lf=0). Two remaining problems block customer-ready output:
 
-Because the hip-prior demotion only runs when `!gableApexDetected`, no edges get demoted on Fonsica. Result: 6 rakes, 0 eaves, `eave_lf_zero_with_long_perimeter` hard fail.
+1. **Perimeter shape is still inflated** — `google_solar_mask_contour` 6-point polygon includes tree canopy / screened patio. `perimeter_to_target_mask_ratio = 1.151`, `iou = 0.845`.
+2. **Topology collapses** — DSM detects 30 raw edges with 2 ridges + 3 valleys pre-classified, but pruning/connectivity removes them all → 2 facets, 0 ridges, 0 valleys.
 
-## Fix
+We must fix the perimeter FIRST (Phase 3A.5), then preserve structural evidence into the planar graph (3C/3D/3E).
 
-### 1. Redefine `gableApexDetected` as local-evidence only
-Replace the current global-azimuth + parallel-slope rule with a per-edge local check that requires **all** of:
-- A ridge endpoint (from `input.ridge_chains` / ridge graph) within `~max(8 px, 0.15 × edgeLen)` of either edge endpoint.
-- ≥2 adjacent roof planes whose azimuths differ by ≥120° (true opposing pair locally, not globally).
-- Edge is short relative to perimeter mean (`< 0.7 × meanEdgeLenFt`) — gable ends are typically the short sides.
-- Edge is parallel to local downslope (`bestDownslopeAngle < 25°`).
+---
 
-If no ridge endpoint is near the edge → `gableApexDetected = false`, regardless of azimuth math.
+## Phase 3A.5 — True Outer Roof Perimeter Snap
 
-### 2. Hip-archetype hard override
-Add at the top of the per-edge loop, before scoring:
+**File:** `supabase/functions/_shared/perimeter-refinement.ts` (new)
+
+Pipeline (runs after `google_solar_mask_contour` is selected, before perimeter acceptance gate):
+
+1. **Tree/patio/shadow exclusion** on raw mask:
+   - DSM height-break filter (regions <1.5m above ground = excluded)
+   - RGB low-contrast / high-green-saturation regions = vegetation
+   - Rectangular grid pattern detection = screen cage
+   - Solar-segment support map (regions with no roofSegmentStats coverage = suspect)
+   - Distance from confirmed roof centroid > 1.5× median radius = reject
+2. **Aerial edge snap**:
+   - Run Canny on RGB tile inside expanded perimeter buffer
+   - For each polygon vertex, snap to nearest strong edge within 6 px
+   - Insert new vertices where polygon segment crosses strong perpendicular edges (catches missing corners)
+   - Min 8 candidate vertices for complex roofs before simplifying
+3. **Re-simplify** with Douglas-Peucker ε=2px after snap
+4. **Acceptance gate** (hard block):
+   - `iou ≥ 0.88`, `ratio ≤ 1.10`, `confidence ≥ 0.85`
+   - Otherwise `hard_fail_reason = perimeter_shape_not_accurate`
+
+**Persisted diagnostics:** `raw_mask_contour_area_sqft`, `refined_perimeter_area_sqft`, `perimeter_area_delta_pct_vs_target_mask`, `tree_shadow_exclusion_regions`, `patio_screen_exclusion_regions`, `aerial_snap_vertices_added/removed`, `refined_perimeter_vertex_count`, `raw_perimeter_vertex_count`, `perimeter_refinement_reason`, `perimeter_refinement_passed`.
+
+**Debug overlay:** four-layer SVG persisted to `geometry_report_json.debug_perimeter_overlay`:
+- raw mask contour (gray)
+- target mask component (blue)
+- refined true_outer_roof_perimeter (green)
+- rejected regions (red/orange)
+
+---
+
+## Phase 3C — Defer Connectivity Edges
+
+**File:** `supabase/functions/_shared/autonomous-graph-solver.ts`
+
+Currently `dangling_edges_removed = 13` deletes ridge/valley evidence pre-refinement. Replace with deferral:
+
+```text
+edge passes pre-classification (ridge/valley/hip)
+  → if connectivity-isolated:
+       move to deferred_structural_candidates (don't delete)
+  → keep if: inside perimeter, DSM-supported, solar-aligned, OR splits oversized face
+  → only delete after refinement proves noise
 ```
-if (isHipLike && !isGableLike && !localGableEvidence) {
-  gableApexDetected = false;
-  rakeScoreCap = 0.3;
-}
-```
-Then in scoring, clamp `rakeScore = Math.min(rakeScore, rakeScoreCap)`.
 
-Hip-prior demotion fires whenever `isHipLike && !isGableLike && !localGableEvidence` — even if the edge currently scores rake. Increment `demotedByHipPrior` accordingly.
+**Persisted:** `phase3C_deferred_edges_version="v1"`, `connectivity_edges_deferred`, `connectivity_edges_deleted_pre_refinement` (target 0), `connectivity_edges_deleted_post_refinement`, `deferred_structural_candidates_count`, `deferred_edges_used_for_refinement`, `deferred_edges_rejected_after_refinement`, `deferred_edge_table[]`.
 
-### 3. Tune scoring
-- Eave: keep current weights, but raise baseline bias from `0.10` → `0.15` on hip-like roofs.
-- Rake: zero out the +0.45 / +0.20 / +0.15 boosts when `gableApexDetected=false`. Final `rakeScore` capped at `0.3` on hip-like roofs without local gable evidence.
-- Decision rule unchanged, but with the cap it can no longer beat eave.
+---
 
-### 4. Per-edge debug fields
-Extend each entry in `classificationTable` and persist on the edge:
-- `local_ridge_endpoint_near_edge` (bool)
-- `local_ridge_endpoint_distance_px` (number | null)
-- `adjacent_plane_count` (number)
-- `adjacent_plane_azimuths` (number[])
-- `local_gable_evidence` (bool)
-- `global_opposing_azimuth_only` (bool) — true when global pair exists but local doesn't
-- `hip_prior_forced_eave` (bool)
-- `final_classification_reason` (string: `local_gable`, `hip_prior_no_local_gable`, `drainage_perpendicular`, `confidence_below_floor`, …)
+## Phase 3D — Seed Backbone Locked into Planar Graph
 
-### 5. Regression test
-Create `supabase/functions/_shared/__tests__/perimeter-topology-fonsica.test.ts` with a synthetic Fonsica-shaped input:
-- 6 perimeter edges, 4 solar azimuth buckets (hip-like), no ridge endpoints near perimeter.
-- Assert: `eave_lf > 200`, `rake_lf < 30`, `edges_demoted_by_hip_prior > 0`, no edge has `gable_apex_detected=true`.
+**File:** `supabase/functions/_shared/backbone-topology.ts` (extend) + autonomous solver wiring
 
-### 6. Downstream effects (no behavior change required, just verify)
-- `start-ai-measurement` Phase 3A gate (`eave_lf_zero_with_long_perimeter`) should now pass for Fonsica.
-- If subsequent topology gate still fails, `result_state` will fall through to `perimeter_only` or `ai_failed_topology` per the existing normalizer — no migration needed.
+`buildSeedBackbone()` from raw DSM ridge/valley/hip evidence + Solar azimuth groups + perimeter reflex corners. Insert into planar graph BEFORE face extraction with `locked=true`. Canonical-edge pruning must skip locked edges. If a locked edge fails downstream, mark `provisional/requires_review` but keep it.
 
-## Files to change
+If seed ridges/valleys exist but final = 0 → `hard_fail_reason = backbone_not_applied`, `result_state = ai_failed_topology`.
 
-- `supabase/functions/_shared/perimeter-topology.ts` — classifier rewrite (sections at lines 747–944).
-- `supabase/functions/_shared/__tests__/perimeter-topology-fonsica.test.ts` — new regression test.
+**Persisted:** `phase3D_backbone_seed_version="v1"`, `seed_backbone_edges`, `seed_backbone_edges_inserted`, `seed_backbone_edges_survived`, `seed_backbone_edges_pruned`, `backbone_prune_reasons`, `locked_backbone_edges_count`, `seed_ridge_lf`, `seed_valley_lf`, `seed_hip_lf`, `backbone_not_applied`.
 
-No DB migration. No edge-function contract change. No frontend change.
+---
+
+## Phase 3E — Constraint Solver Repair Pass
+
+**File:** `supabase/functions/_shared/constraint-roof-solver.ts`
+
+When all candidates rejected for `ridge_lf=0` (currently 8/8 rejected, 0 optimization iterations):
+1. Force-insert highest-confidence seed ridge/valley chain as locked provisional
+2. Re-score candidates
+3. Accept if faces↑, ridge_lf>0, valley_lf>0 (when expected), area conservation 0.95–1.05, no cross-roof diagonal dominates
+4. Else `hard_fail_reason = topology_undersegmented_after_backbone_repair`
+
+**Persisted:** `phase3E_constraint_repair_version="v1"`, `candidate_repair_attempted`, `repaired_ridge_chains_inserted`, `repaired_valley_chains_inserted`, `repaired_candidate_scores`, `repair_iterations`, `final_selected_candidate`, `final_rejection_reason`.
+
+---
+
+## Result-State Normalization
+
+Update `supabase/functions/_shared/result-state.ts` mappings:
+- `perimeter_shape_not_accurate` → `ai_failed_perimeter`
+- `topology_undersegmented_after_refinement` → `ai_failed_topology`
+- `backbone_not_applied` → `ai_failed_topology`
+- `topology_undersegmented_after_backbone_repair` → `ai_failed_topology`
+
+Once Phase 3A passes (eave_lf>0, rake_lf classified), `result_state` MUST NOT remain `ai_failed_perimeter` due to topology issues.
+
+`customer_report_ready=false`, `diagram_render_intent=rejected_only`, failed geometry watermarked — unchanged.
+
+---
+
+## Acceptance (next Fonsica run)
+
+- `phase3A.5_perimeter_refinement_version = "v1"`
+- `refined_perimeter_area_sqft` within ±8% of Roofr benchmark 3,077 sqft
+- `perimeter_to_target_mask_ratio ≤ 1.10`, `iou ≥ 0.88`
+- OR `hard_fail_reason = perimeter_shape_not_accurate` (do NOT advance to topology)
+- If perimeter passes:
+  - `connectivity_edges_deferred > 0`, `connectivity_edges_deleted_pre_refinement ≈ 0`
+  - `seed_backbone_edges_inserted > 0`, `locked_backbone_edges_count > 0`
+  - `candidate_repair_attempted = true` if ridge_lf=0 after first pass
+  - Final `ridge_lf > 0` OR `hard_fail_reason ∈ {backbone_not_applied, topology_undersegmented_after_backbone_repair}`
+  - `result_state = ai_failed_topology` (not `ai_failed_perimeter`)
+
+---
+
+## Files to change / create
+
+- `supabase/functions/_shared/perimeter-refinement.ts` — NEW (Phase 3A.5 module)
+- `supabase/functions/_shared/perimeter-topology.ts` — call refinement before acceptance gate; persist new diagnostics
+- `supabase/functions/_shared/autonomous-graph-solver.ts` — deferral instead of delete; lock backbone edges through pruning
+- `supabase/functions/_shared/backbone-topology.ts` — `buildSeedBackbone()` + insertion API
+- `supabase/functions/_shared/constraint-roof-solver.ts` — repair pass when all candidates fail on ridge_lf=0
+- `supabase/functions/_shared/result-state.ts` — new failure-reason mappings
+- `supabase/functions/start-ai-measurement/index.ts` — wire 3A.5 → 3C → 3D → 3E sequence; update gate ordering
+- `supabase/functions/_shared/__tests__/perimeter-refinement-fonsica_test.ts` — NEW
+- `supabase/functions/_shared/__tests__/backbone-seed-locking_test.ts` — NEW
+- `mem://architecture/measurement-system/perimeter-refinement-and-backbone-locking` — NEW memory
+- `mem://index.md` — add reference
+
+No DB migration. No frontend change. No edge-function HTTP contract change (only response payload diagnostics expand).
+
+---
+
+## Implementation order
+
+1. Phase 3A.5 perimeter refinement (gates everything downstream — biggest visual win)
+2. Result-state normalizer mappings (so failures route correctly during 3C/3D/3E development)
+3. Phase 3D seed backbone (the lock mechanism is prerequisite for 3C and 3E)
+4. Phase 3C deferral (now safe because backbone is locked)
+5. Phase 3E repair pass (final fallback)
+6. Tests + memory update
