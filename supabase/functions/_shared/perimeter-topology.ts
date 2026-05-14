@@ -682,16 +682,32 @@ function classifyPerimeterEdges(edges: PerimeterEdge[], input: PerimeterInput): 
   const elevRange = globalMaxElevation - globalMinElevation;
 
   // Compute dominant downslope vectors from solar segments
-  const solarDownslopes: Array<{ dx: number; dy: number; area: number }> = [];
+  const solarDownslopes: Array<{ dx: number; dy: number; area: number; azimuth: number }> = [];
   for (const seg of input.solar_segments) {
     if (seg.azimuth_degrees !== undefined && seg.pitch_degrees > 0) {
       const azRad = (seg.azimuth_degrees * Math.PI) / 180;
       // Downslope direction in pixel space (azimuth: 0=N, 90=E, etc.)
       const dx = Math.sin(azRad);
       const dy = -Math.cos(azRad); // pixel Y inverted
-      solarDownslopes.push({ dx, dy, area: seg.area_sqft });
+      solarDownslopes.push({ dx, dy, area: seg.area_sqft, azimuth: seg.azimuth_degrees });
     }
   }
+
+  // ── Phase 2A: detect roof archetype (hip-like vs gable-like) ──
+  // Bucket azimuths to 45° bins. ≥4 distinct buckets → hip-like, perimeter
+  // should be ~all eaves with little/no rake.
+  const azimuthBuckets = new Set<number>();
+  for (const ds of solarDownslopes) {
+    azimuthBuckets.add(Math.round(((ds.azimuth % 360) + 360) % 360 / 45));
+  }
+  const isHipLike = azimuthBuckets.size >= 4;
+  const isGableLike = azimuthBuckets.size <= 2 && solarDownslopes.length >= 2;
+  (input as any)._archetype_debug = {
+    azimuth_bucket_count: azimuthBuckets.size,
+    is_hip_like: isHipLike,
+    is_gable_like: isGableLike,
+    solar_segment_count: solarDownslopes.length,
+  };
 
   for (const edge of edges) {
     const evidence = edge.classification_evidence;
