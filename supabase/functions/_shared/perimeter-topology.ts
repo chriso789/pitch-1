@@ -211,6 +211,13 @@ export interface PerimeterInput {
   /** Pre-computed boundary edges if available */
   boundary_eaves: Array<{ start_geo: XY; end_geo: XY; start_px: PxPt; end_px: PxPt }>;
   boundary_rakes: Array<{ start_geo: XY; end_geo: XY; start_px: PxPt; end_px: PxPt }>;
+  /**
+   * Optional ridge endpoint pixel coordinates. Used by Phase 3A to detect
+   * a TRUE local gable apex (a ridge terminating into the perimeter edge).
+   * When omitted/empty, no edge can satisfy local gable evidence via ridge
+   * proximity, and the classifier falls back to archetype-only logic.
+   */
+  ridge_endpoints_px?: PxPt[];
 }
 
 /**
