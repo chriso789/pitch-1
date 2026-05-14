@@ -773,15 +773,19 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         />
       )}
 
-      <EditChangeOrderDialog
-        co={editCO}
-        onClose={() => setEditCO(null)}
-        onSaved={(updated) => {
-          setEditCO(null);
-          refresh();
-          setPendingPdfCO(updated);
-        }}
-      />
+      {editCO && (
+        <ChangeOrderForm
+          defaultProjectId={effectiveProjectId || undefined}
+          editingChangeOrder={editCO as any}
+          onClose={() => setEditCO(null)}
+          onSuccess={() => {
+            const updated = editCO;
+            setEditCO(null);
+            refresh();
+            if (updated) setPendingPdfCO(updated);
+          }}
+        />
+      )}
 
       {/* Branded document viewer */}
       <Dialog open={!!viewCO} onOpenChange={(o) => !o && setViewCO(null)}>
