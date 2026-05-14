@@ -328,7 +328,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
           </details>
         )}
 
-
+        {acquisitionAudit && (
           <details className="group rounded-md border bg-muted/20 p-3">
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
               Source acquisition audit ▸
