@@ -6364,6 +6364,14 @@ async function processJob(input: any) {
       _resultState = normalizeResultState(`ai_failed_${_stage}`);
     }
 
+    // ── Phase 3G: derive diagram_render_intent ──
+    // Failed geometry must NOT be rendered as the official measured diagram.
+    const _diagramRenderIntent = deriveDiagramRenderIntent(_resultState, _perimeterPassed);
+    try {
+      (geometryReportJson as any).diagram_render_intent = _diagramRenderIntent;
+      (geometryReportJson as any).result_state = _resultState;
+    } catch { /* best-effort */ }
+
     // Persist patent gate outcome onto the measurement row.
     if (measurementId && (patentBlockReason || typedRoofLines.length)) {
       const mergedBlockReason = blockCustomerReportReason
