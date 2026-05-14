@@ -3024,6 +3024,15 @@ async function processJob(input: any) {
       // ═══════════════════════════════════════════════════════════════
       topologyFidelity = analyzeTopologyFidelity(graph, footprintAreaSqftVal);
       autonomousDebug.topology_fidelity = topologyFidelity;
+      // Phase 3A.5 visibility — surface refinement diagnostics on the solver debug bag.
+      if (phase3A5Diagnostics) {
+        autonomousDebug.phase3A_5 = phase3A5Diagnostics;
+        autonomousDebug.phase3_5_perimeter_refinement_enabled = true;
+        autonomousDebug.refinement_passed = phase3A5Result?.passed ?? false;
+        autonomousDebug.refinement_iou = phase3A5Diagnostics.perimeter_vs_mask_iou ?? null;
+        autonomousDebug.perimeter_to_target_mask_ratio = phase3A5Diagnostics.perimeter_to_target_mask_ratio ?? null;
+        autonomousDebug.selected_perimeter_source = phase3A5SelectedSource;
+      }
       // v19: Constraint solver diagnostics
       if (graph.constraint_solver) {
         autonomousDebug.constraint_solver = {
