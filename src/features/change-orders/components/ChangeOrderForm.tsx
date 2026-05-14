@@ -57,6 +57,21 @@ interface ChangeOrderFormProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultProjectId?: string;
+  /** When provided, the form runs in edit mode and updates this change order instead of inserting a new one. */
+  editingChangeOrder?: {
+    id: string;
+    co_number?: string | null;
+    project_id?: string | null;
+    title?: string | null;
+    description?: string | null;
+    reason?: string | null;
+    original_scope?: string | null;
+    new_scope?: string | null;
+    time_impact_days?: number | null;
+    line_items?: any;
+    material_invoice_url?: string | null;
+    material_invoice_storage_path?: string | null;
+  } | null;
 }
 
 const newRow = (kind: 'material' | 'labor'): LineItem => ({
@@ -81,18 +96,43 @@ const getFunctionErrorMessage = async (error: any): Promise<string> => {
   return error?.message || 'AI could not parse it. Add line items manually below.';
 };
 
-export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: ChangeOrderFormProps) {
+export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingChangeOrder }: ChangeOrderFormProps) {
+  const isEdit = !!editingChangeOrder;
+  const initialContainer: any = (editingChangeOrder?.line_items as any) || {};
+  const initialItems: LineItem[] = Array.isArray(initialContainer.items)
+    ? initialContainer.items.map((it: any) => ({
+        id: it.id || crypto.randomUUID(),
+        kind: it.kind === 'labor' ? 'labor' : 'material',
+        description: it.description ?? it.name ?? '',
+        quantity: Number(it.quantity ?? it.qty ?? 1) || 0,
+        unit_price: Number(it.unit_price ?? it.price ?? it.rate ?? 0) || 0,
+        unit_of_measure: it.unit_of_measure ?? (it.kind === 'labor' ? 'HR' : 'EA'),
+      }))
+    : [];
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
-  const [items, setItems] = useState<LineItem[]>([]);
-  const [overheadPct, setOverheadPct] = useState<number>(10);
-  const [profitPct, setProfitPct] = useState<number>(20);
+  const [items, setItems] = useState<LineItem[]>(initialItems);
+  const [overheadPct, setOverheadPct] = useState<number>(
+    Number(initialContainer.overhead_pct ?? 10) || 0,
+  );
+  const [profitPct, setProfitPct] = useState<number>(
+    Number(initialContainer.profit_pct ?? 20) || 0,
+  );
   const [laborMode, setLaborMode] = useState<'per_square' | 'flat'>('per_square');
   const [laborSquares, setLaborSquares] = useState<number>(0);
   const [laborRatePerSquare, setLaborRatePerSquare] = useState<number>(0);
   const [laborFlatAmount, setLaborFlatAmount] = useState<number>(0);
   const [laborDescription, setLaborDescription] = useState<string>('');
-  const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(null);
+  const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(
+    editingChangeOrder?.material_invoice_url
+      ? {
+          url: editingChangeOrder.material_invoice_url,
+          path: editingChangeOrder.material_invoice_storage_path || '',
+          name: 'Existing invoice',
+        }
+      : null,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
@@ -107,12 +147,20 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
       if (error) throw error;
       return data;
     },
-    enabled: !defaultProjectId,
+    enabled: !defaultProjectId && !isEdit,
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { time_impact_days: '0', project_id: defaultProjectId || '' },
+    defaultValues: {
+      time_impact_days: String(editingChangeOrder?.time_impact_days ?? 0),
+      project_id: editingChangeOrder?.project_id || defaultProjectId || '',
+      title: editingChangeOrder?.title || '',
+      description: editingChangeOrder?.description || '',
+      reason: editingChangeOrder?.reason || '',
+      original_scope: editingChangeOrder?.original_scope || '',
+      new_scope: editingChangeOrder?.new_scope || '',
+    },
   });
 
   const materialTotal = items
@@ -257,11 +305,13 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not found');
 
-      const coNumber = `CO-${Date.now()}`;
+      const itemsWithTotals = items.map((it) => ({
+        ...it,
+        line_total: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
+      }));
 
-      const { error } = await (supabase as any).from('change_orders').insert({
+      const payload = {
         project_id: values.project_id,
-        co_number: coNumber,
         title: values.title,
         description: values.description,
         reason: values.reason,
@@ -270,17 +320,31 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
         cost_impact: grandTotal,
         material_total: materialTotal,
         labor_total: laborTotal,
-        line_items: { items, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
+        line_items: { items: itemsWithTotals, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
         material_invoice_url: invoiceFile?.url || null,
         material_invoice_storage_path: invoiceFile?.path || null,
         time_impact_days: parseInt(values.time_impact_days || '0'),
-        requested_by: user.id,
-        status: 'draft',
-      });
+      };
 
-      if (error) throw error;
+      if (isEdit && editingChangeOrder) {
+        const { error } = await (supabase as any)
+          .from('change_orders')
+          .update(payload)
+          .eq('id', editingChangeOrder.id);
+        if (error) throw error;
+        toast({ title: 'Success', description: 'Change order updated' });
+      } else {
+        const coNumber = `CO-${Date.now()}`;
+        const { error } = await (supabase as any).from('change_orders').insert({
+          ...payload,
+          co_number: coNumber,
+          requested_by: user.id,
+          status: 'draft',
+        });
+        if (error) throw error;
+        toast({ title: 'Success', description: 'Change order created successfully' });
+      }
 
-      toast({ title: 'Success', description: 'Change order created successfully' });
       onSuccess();
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -293,9 +357,11 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Change Order</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${editingChangeOrder?.co_number || 'Change Order'}` : 'Create Change Order'}</DialogTitle>
           <DialogDescription>
-            Upload a material invoice and add labor — totals build the change order automatically.
+            {isEdit
+              ? 'Update materials, labor, overhead and profit — totals recalculate automatically.'
+              : 'Upload a material invoice and add labor — totals build the change order automatically.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -687,7 +753,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId }: Change
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Create Change Order
+                {isEdit ? 'Save Changes' : 'Create Change Order'}
               </Button>
             </div>
           </form>
