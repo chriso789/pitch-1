@@ -7596,31 +7596,32 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
 }
 
 async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
+  const phase3Debug = withPhase3Visibility(debug, [], failureReason);
+  const persistedFailureReason = phase3Debug.hard_fail_reason || failureReason || 'ai_failed_unknown';
+  const persistedResultState = normalizeResultStateForWrite(phase3Debug.result_state, phase3Debug);
   const aiDetectionData = {
-    topology_source: debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
-    solver_version: debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
-    fallback_used: Boolean(debug?.fallback_used),
-    hard_fail_reason: failureReason,
-    failure_reason: failureReason,
+    topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
+    solver_version: phase3Debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
+    fallback_used: Boolean(phase3Debug?.fallback_used),
+    hard_fail_reason: persistedFailureReason,
+    failure_reason: persistedFailureReason,
     validation_status: "failed",
     measurement_confidence: 0,
     planes: [],
     edges: [],
     totals: { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
-    dsm_loaded: Boolean(debug?.dsm_loaded),
-    mask_loaded: Boolean(debug?.mask_loaded),
-    edge_filter_count_before: Number(debug?.edge_filter_count_before || 0),
-    edge_filter_count_after: Number(debug?.edge_filter_count_after || 0),
-    snapped_vertex_count: Number(debug?.snapped_vertex_count || 0),
-    rejected_fake_intersections: Number(debug?.rejected_fake_intersections || 0),
-    facet_validation_errors: Number(debug?.facet_validation_errors || 0),
-    debug,
+    dsm_loaded: Boolean(phase3Debug?.dsm_loaded),
+    mask_loaded: Boolean(phase3Debug?.mask_loaded),
+    edge_filter_count_before: Number(phase3Debug?.edge_filter_count_before || 0),
+    edge_filter_count_after: Number(phase3Debug?.edge_filter_count_after || 0),
+    snapped_vertex_count: Number(phase3Debug?.snapped_vertex_count || 0),
+    rejected_fake_intersections: Number(phase3Debug?.rejected_fake_intersections || 0),
+    facet_validation_errors: Number(phase3Debug?.facet_validation_errors || 0),
+    debug: phase3Debug,
   };
   const geometryReportJson = {
     // ── Phase 3 visibility (failure path) ──
-    ...PHASE3_VERSION_BLOCK,
-    phase3A: buildPhase3ABlock(debug?.perimeter_phase0 ?? null),
-    phase3B: buildPhase3BBlock([]),
+    ...phase3Debug,
     topology_source: aiDetectionData.topology_source,
     facet_source: debug?.facet_source || "dsm_planar_graph_faces",
     fallback_used: aiDetectionData.fallback_used,
