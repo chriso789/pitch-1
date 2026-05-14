@@ -266,6 +266,14 @@ export function buildPerimeterTopology(input: PerimeterInput): PerimeterTopology
   if (selfIntersections > 0) confidence *= 0.7;
   if (!closed) confidence *= 0.5;
 
+  const eaveCandidateLf = eaveEdges.filter(e => (e as any).is_candidate).reduce((s, e) => s + e.length_ft, 0);
+  const rakeCandidateLf = rakeEdges.filter(e => (e as any).is_candidate).reduce((s, e) => s + e.length_ft, 0);
+  const unknownLf = edges.filter(e => e.type === 'unknown').reduce((s, e) => s + e.length_ft, 0);
+  const totalEdgeLf = edges.reduce((s, e) => s + e.length_ft, 0);
+  const meanEaveRakeConf = edges.length > 0
+    ? edges.reduce((s, e) => s + e.classification_confidence, 0) / edges.length
+    : 0;
+
   const result: PerimeterTopology = {
     perimeter_ring_px: perimeterPx,
     perimeter_ring_geo: perimeterGeo,
@@ -286,6 +294,23 @@ export function buildPerimeterTopology(input: PerimeterInput): PerimeterTopology
     perimeter_confidence: confidence,
     customer_perimeter_ready: autoReady,
   };
+
+  // ── Phase 2A: surface classification debug ──
+  (result as any).eave_rake_classification_debug = (input as any)._classification_debug || null;
+  (result as any).archetype_debug = (input as any)._archetype_debug || null;
+  (result as any).eave_candidate_lf = Number(eaveCandidateLf.toFixed(2));
+  (result as any).rake_candidate_lf = Number(rakeCandidateLf.toFixed(2));
+  (result as any).unknown_perimeter_lf = Number(unknownLf.toFixed(2));
+  (result as any).eave_rake_confidence = Number(meanEaveRakeConf.toFixed(3));
+  (result as any).perimeter_edge_pitch_relation = edges.map((e, i) => ({
+    edge_index: i,
+    type: e.type,
+    confidence: Number(e.classification_confidence.toFixed(3)),
+    length_ft: Number(e.length_ft.toFixed(2)),
+    edge_downslope_angle_deg: e.classification_evidence?.edge_downslope_angle_deg ?? null,
+    reclassified_from: (e as any).reclassified_from ?? null,
+    reclassified_reason: (e as any).reclassified_reason ?? null,
+  }));
 
   console.log(`[PERIMETER_PHASE_0] Built: ${edges.length} edges (${eaveEdges.length} eave, ${rakeEdges.length} rake), ${nodes.length} nodes (${reflexCorners.length} reflex), source=${perimeterSource}, overlap=${overlapScore.toFixed(3)}, closed=${closed}, confidence=${confidence.toFixed(3)}`);
 
