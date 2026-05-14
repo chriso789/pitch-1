@@ -5666,6 +5666,10 @@ async function processJob(input: any) {
     });
 
     const geometryReportJson = {
+      // ── Phase 3 visibility (proves which Phase 3 sub-features are active) ──
+      ...PHASE3_VERSION_BLOCK,
+      phase3A: buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null),
+      phase3B: buildPhase3BBlock(edgeRows),
       // ── ARCHITECTURAL CONTRACTS ──
       // 1. Authoritative footprint — one polygon used by ALL downstream stages.
       authoritative_footprint_px: footprint.map((p) => [p.x, p.y]),
