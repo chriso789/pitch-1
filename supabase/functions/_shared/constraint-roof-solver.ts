@@ -24,6 +24,8 @@
  */
 
 type PxPt = { x: number; y: number };
+import { attemptRepairPass, type RepairDiagnostics, type RepairCandidate } from './constraint-solver-repair.ts';
+import type { SeedBackboneResult } from './backbone-seed.ts';
 
 // ═══════════════════════════════════════════════════
 // TYPES
@@ -126,6 +128,7 @@ export interface ConstraintSolverDiagnostics {
   rejected_topologies: Array<{ id: string; type: string; reason: string }>;
   optimization_moves: string[];
   constraint_error_breakdown: Record<string, number>;
+  phase3E?: RepairDiagnostics & { version: 'v1'; executed: boolean; skipped_reason: string | null; repair_accepted: boolean };
 }
 
 export interface DSMEdgeEvidence {
@@ -1608,6 +1611,7 @@ export function solveConstraintRoof(
   dsmEdges: DSMEdgeEvidence[],
   pxToSqft: number,
   autonomousScore: number,
+  seedBackbone?: SeedBackboneResult | null,
 ): ConstraintSolverResult {
   const t0 = Date.now();
 
