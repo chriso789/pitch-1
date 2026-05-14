@@ -2496,6 +2496,27 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
   const planar = effectiveDSM && footprintPxCCW.length >= 3
     ? planarSolveRoofPlanes(footprintPxCCW, planarInput, { complexRoofMode: isComplexRoofMode })
     : { faces: [], edges: [], deferredEdges: [], debug: { input_footprint_vertices: 0, input_interior_lines: 0, snapped_interior_lines: 0, collinear_merges: 0, filtered_by_priority: 0, intersections_split: 0, dangling_edges_removed: 0, deferred_structural_edges: 0, perimeter_reinjected: 0, total_graph_segments: 0, total_graph_nodes: 0, faces_extracted: 0, faces_with_area: 0, face_coverage_ratio: 0 } };
+  const phase3CDiagnostics = emptyDeferralDiagnostics();
+  const phase3CDeferredCandidates: DeferralCandidate[] = [];
+  const pxToLfForDeferral = footprintAreaPx2 > 0 && footprintAreaSqft > 0 ? Math.sqrt(footprintAreaSqft / footprintAreaPx2) : 1;
+  for (const [idx, seg] of (planar.deferredEdges || []).entries()) {
+    const mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
+    const lengthPx = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y);
+    const candidate = categorizeForDeferral({
+      edge_id: `connectivity_${idx}`,
+      original_type: (seg.edgeType === 'ridge' || seg.edgeType === 'valley' || seg.edgeType === 'hip') ? seg.edgeType : 'unknown',
+      p1: [seg.a.x, seg.a.y],
+      p2: [seg.b.x, seg.b.y],
+      length_px: lengthPx,
+      length_lf: lengthPx * pxToLfForDeferral,
+      inside_perimeter: pointInPolygonPx(mid, footprintPxCCW),
+      dsm_support_score: seg.edgeScore || 0.3,
+      solar_alignment_score: 0.5,
+      pre_classification_confidence: seg.edgeScore || 0.3,
+      reason_deferred: 'connectivity_pruning_deferred_for_phase3C_refinement',
+    }, phase3CDiagnostics);
+    if (candidate) phase3CDeferredCandidates.push(candidate);
+  }
   console.log(`  DSM planar graph: ${planar.debug.total_graph_nodes} nodes, ${planar.debug.total_graph_segments} segments, ${planar.faces.length} valid faces, coverage=${planar.debug.face_coverage_ratio}, deferred_structural=${planar.debug.deferred_structural_edges}`);
 
   let facesRejected = 0;
