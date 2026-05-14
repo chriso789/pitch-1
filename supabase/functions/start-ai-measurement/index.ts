@@ -3085,7 +3085,8 @@ async function processJob(input: any) {
       autonomousDebug.topology_fidelity = topologyFidelity;
       // Phase 3A.5 visibility — surface refinement diagnostics on the solver debug bag.
       if (phase3A5Diagnostics) {
-        autonomousDebug.phase3A_5 = phase3A5Diagnostics;
+        autonomousDebug.phase3_5 = buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics });
+        autonomousDebug.phase3A_5 = autonomousDebug.phase3_5;
         autonomousDebug.phase3_5_perimeter_refinement_enabled = true;
         autonomousDebug.refinement_passed = phase3A5Result?.passed ?? false;
         autonomousDebug.refinement_iou = phase3A5Diagnostics.perimeter_vs_mask_iou ?? null;
