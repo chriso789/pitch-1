@@ -6205,9 +6205,7 @@ async function processJob(input: any) {
       } : {}),
     });
 
-    const { data: roofMeasurement, error: publishError } = await supabase
-      .from("roof_measurements")
-      .insert({
+    const roofMeasurementPayload = {
         tenant_id: input.tenant_id,
         customer_id: input.lead_id || null,
         lead_id: input.lead_id,
@@ -6251,6 +6249,8 @@ async function processJob(input: any) {
             ? `topology_mismatch:${topologyBlockReasons.join(",")}`
             : (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason,
         result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+        diagram_render_intent: preInsertDiagramIntent,
+        ...getPhase3DbColumns(),
         block_customer_report_reason: (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason ?? null,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
@@ -6392,9 +6392,9 @@ async function processJob(input: any) {
         archetype_debug: autonomousDebug?.perimeter_phase0?.archetype_debug ?? null,
         eave_rake_classification_debug: autonomousDebug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
         perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
-      })
-      .select("id")
-      .single();
+      };
+
+    const { data: roofMeasurement, error: publishError } = await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
     if (publishError) throw publishError;
 
