@@ -943,6 +943,62 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         </DialogContent>
       </Dialog>
 
+      {/* Share for approval */}
+      <Dialog open={!!shareCO} onOpenChange={(o) => { if (!o) { setShareCO(null); setShareUrl(null); setShareEmail(''); setShareName(''); setShareMessage(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share {shareCO?.co_number} for approval</DialogTitle>
+            <DialogDescription>Send this change order to your customer to review and digitally approve.</DialogDescription>
+          </DialogHeader>
+          {shareUrl ? (
+            <div className="space-y-3">
+              <p className="text-sm">Email sent. You can also copy the link below:</p>
+              <Input readOnly value={shareUrl} onClick={(e) => (e.target as HTMLInputElement).select()} />
+              <Button variant="outline" onClick={() => { navigator.clipboard.writeText(shareUrl); toast({ title: 'Link copied' }); }}>Copy link</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div><Label>Recipient name</Label><Input value={shareName} onChange={(e) => setShareName(e.target.value)} placeholder="Customer name" /></div>
+              <div><Label>Recipient email</Label><Input type="email" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} placeholder="customer@email.com" /></div>
+              <div><Label>Message (optional)</Label><Textarea value={shareMessage} onChange={(e) => setShareMessage(e.target.value)} placeholder="Add a personal note..." /></div>
+            </div>
+          )}
+          {!shareUrl && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShareCO(null)}>Cancel</Button>
+              <Button
+                disabled={!shareEmail || shareSending}
+                onClick={async () => {
+                  if (!shareCO) return;
+                  setShareSending(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke('share-change-order', {
+                      body: {
+                        change_order_id: shareCO.id,
+                        recipient_email: shareEmail,
+                        recipient_name: shareName,
+                        message: shareMessage,
+                        app_origin: window.location.origin,
+                      },
+                    });
+                    if (error) throw error;
+                    if ((data as any)?.error) throw new Error((data as any).error);
+                    setShareUrl((data as any).url);
+                    toast({ title: 'Change order sent' });
+                  } catch (e: any) {
+                    toast({ title: 'Send failed', description: e.message, variant: 'destructive' });
+                  } finally {
+                    setShareSending(false);
+                  }
+                }}
+              >
+                {shareSending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />} Send
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Off-screen capture surface for the auto-PDF after create/edit */}
       {pendingPdfCO && (
         <div
