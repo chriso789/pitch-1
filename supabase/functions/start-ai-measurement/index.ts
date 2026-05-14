@@ -5445,22 +5445,57 @@ async function processJob(input: any) {
             pitch_range: topologyFidelity.pitch_range,
           } : null,
         },
+        // ── Perimeter-First Contract: persisted true outer perimeter ──
+        true_outer_roof_perimeter_px: autonomousDebug?.perimeter_topology?.perimeter_ring_px ?? null,
+        true_outer_roof_perimeter_geo: autonomousDebug?.perimeter_topology?.perimeter_ring_geo ?? footprintVerticesGeo ?? null,
+        eave_edges: autonomousDebug?.perimeter_topology?.eave_edges ?? null,
+        rake_edges: autonomousDebug?.perimeter_topology?.rake_edges ?? null,
+        roof_corners: autonomousDebug?.perimeter_topology?.corner_nodes ?? null,
+        missed_roof_regions: autonomousDebug?.perimeter_phase0?.missed_roof_regions ?? null,
+        perimeter_confidence: autonomousDebug?.perimeter_topology?.perimeter_confidence ?? null,
+        perimeter_source: autonomousDebug?.perimeter_source ?? autonomousDebug?.perimeter_topology?.perimeter_source ?? null,
+        perimeter_hints: autonomousDebug?.perimeter_phase0?.perimeter_candidate_table ?? null,
+        perimeter_gate_metrics: autonomousDebug?.perimeter_phase0 ?? null,
+        perimeter_status: autonomousDebug?.perimeter_gate_passed === true
+          ? 'pass'
+          : autonomousDebug?.perimeter_gate_passed === false
+            ? 'fail'
+            : 'not_run',
       })
       .select("id")
       .single();
 
     if (publishError) throw publishError;
 
+    // ── Perimeter-First Contract: derive the 3-state result_state ──
+    // customer_report_ready  → all gates pass
+    // perimeter_only         → perimeter passed but topology/promotion failed
+    // ai_failed_<stage>      → perimeter failed or upstream failure
+    const _perimeterPassed = autonomousDebug?.perimeter_gate_passed === true;
+    const _customerReady = promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review;
+    let _resultState: string;
+    if (_customerReady) {
+      _resultState = 'customer_report_ready';
+    } else if (_perimeterPassed) {
+      _resultState = 'perimeter_only';
+    } else {
+      const _stage = topologyMismatch ? 'topology' : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
+      _resultState = `ai_failed_${_stage}`;
+    }
+
     // Update ai_measurement_jobs with promotion gate results
     await supabase.from("ai_measurement_jobs").update({
       source_context: {
         geometry_source: promotedGeometrySource,
-        customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        customer_report_ready: _customerReady,
         promotion_gate_passed: promotionGatePassed,
         promotion_gate_failed_reasons: promotionGateFailedReasons,
+        perimeter_gate_passed: _perimeterPassed,
+        result_state: _resultState,
       },
       report_blocked: !promotedCustomerReportReady || reviewRequired,
       needs_review: !promotedCustomerReportReady || reviewRequired,
+      result_state: _resultState,
     }).eq("id", input.ai_measurement_job_id);
 
     // Generate the customer-visible SVG report pages from the measured geometry.
