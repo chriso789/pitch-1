@@ -180,7 +180,7 @@ export default function PublicChangeOrderView() {
 
           <div className="border-t pt-4 flex justify-end">
             <div className="w-64 space-y-1 text-sm">
-              <div className="flex justify-between font-bold text-base"><span>Price to Client</span><span>{fmt(Number(co.cost_impact || 0))}</span></div>
+              <div className="flex justify-between font-bold text-base"><span>Additional Cost</span><span>{fmt(priceToClient)}</span></div>
             </div>
           </div>
         </Card>
