@@ -2278,19 +2278,19 @@ async function processJob(input: any) {
           source: e.source,
         })) : [],
         // ── PERIMETER PHASE 0 ──
-        perimeter_phase0: graph.perimeter_diagnostics || perimeterPhase0Snapshot || null,
-        perimeter_gate_passed: graph.perimeter_gate?.passed ?? perimeterGateSnapshot?.passed ?? null,
-        perimeter_ready: (graph.perimeter_gate?.passed ?? perimeterGateSnapshot?.passed) ? true : false,
-        perimeter_source: graph.perimeter_topology?.perimeter_source ?? perimeterTopologySnapshot?.perimeter_source ?? null,
-        perimeter_eave_ft: graph.perimeter_gate?.diagnostics?.eave_length_lf ?? perimeterPhase0Snapshot?.eave_length_lf ?? null,
-        perimeter_rake_ft: graph.perimeter_gate?.diagnostics?.rake_length_lf ?? perimeterPhase0Snapshot?.rake_length_lf ?? null,
-        perimeter_total_ft: graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? perimeterPhase0Snapshot?.total_perimeter_lf ?? null,
-        unknown_perimeter_lf: graph.perimeter_gate?.diagnostics?.unknown_length_lf ?? graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? perimeterPhase0Snapshot?.unknown_perimeter_lf ?? null,
-        perimeter_area_sqft: graph.perimeter_topology?.perimeter_area_sqft ?? perimeterTopologySnapshot?.perimeter_area_sqft ?? perimeterPhase0Snapshot?.perimeter_area_sqft ?? null,
-        perimeter_failure_reasons: graph.perimeter_gate?.failure_reasons ?? perimeterGateSnapshot?.failure_reasons ?? [],
+        perimeter_phase0: perimeterPhase0Snapshot || graph.perimeter_diagnostics || null,
+        perimeter_gate_passed: perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed ?? null,
+        perimeter_ready: (perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed) ? true : false,
+        perimeter_source: perimeterTopologySnapshot?.perimeter_source ?? graph.perimeter_topology?.perimeter_source ?? null,
+        perimeter_eave_ft: perimeterPhase0Snapshot?.eave_length_lf ?? graph.perimeter_gate?.diagnostics?.eave_length_lf ?? null,
+        perimeter_rake_ft: perimeterPhase0Snapshot?.rake_length_lf ?? graph.perimeter_gate?.diagnostics?.rake_length_lf ?? null,
+        perimeter_total_ft: perimeterPhase0Snapshot?.total_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? null,
+        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? null,
+        perimeter_area_sqft: perimeterTopologySnapshot?.perimeter_area_sqft ?? perimeterPhase0Snapshot?.perimeter_area_sqft ?? graph.perimeter_topology?.perimeter_area_sqft ?? null,
+        perimeter_failure_reasons: perimeterGateSnapshot?.failure_reasons ?? graph.perimeter_gate?.failure_reasons ?? [],
         target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
         // Full perimeter topology object (used for DB persistence: true_outer_roof_perimeter_*, eave_edges, rake_edges, corners)
-        perimeter_topology: graph.perimeter_topology ?? perimeterTopologySnapshot ?? null,
+        perimeter_topology: perimeterTopologySnapshot ?? graph.perimeter_topology ?? null,
       };
 
       // ═══════════════════════════════════════════════════════════════
