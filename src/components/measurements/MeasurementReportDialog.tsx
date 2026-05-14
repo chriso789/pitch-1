@@ -127,6 +127,8 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
 const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   if (!m) return null;
   const grj = m.geometry_report_json || {};
+  const phase0 = grj.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
+  const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || grj.target_mask_isolation || {};
   const dp = grj.debug_pipeline || {};
   const acquisitionAudit = grj.acquisition_audit || grj.source_acquisition_debug?.acquisition_audit || m.source_context?.acquisition_audit || m.source_context?.debug?.acquisition_audit || null;
   const sourceAcquisitionDebug = grj.source_acquisition_debug || m.source_context?.source_acquisition_debug || m.source_context?.debug?.source_acquisition_debug || null;
@@ -188,23 +190,24 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Max Plane Ratio', value: fmt(grj.topology_fidelity?.max_plane_area_ratio) },
     { label: 'Pitch Source', value: String(grj.pitch_source ?? '—') },
     { label: 'Pitch Valid', value: String(grj.pitch_valid ?? '—') },
-    { label: 'Perimeter Inner Trace', value: String(grj.perimeter_inner_trace?.inner_trace_detected ?? '—') },
-    { label: 'Perimeter/Target Mask Ratio', value: fmt(grj.perimeter_inner_trace?.perimeter_to_target_mask_ratio ?? grj.perimeter_inner_trace?.perimeter_to_mask_ratio) },
-    { label: 'Target Mask Area', value: fmt(grj.perimeter_inner_trace?.target_roof_mask_area_sqft, 'sq ft') },
-    { label: 'Global Mask Area', value: fmt(grj.perimeter_inner_trace?.global_roof_mask_area_sqft, 'sq ft') },
-    { label: 'Global Mask Inflation', value: fmt(grj.perimeter_inner_trace?.global_mask_inflation_ratio, '×') },
-    { label: 'Mask Components', value: fmt(grj.perimeter_inner_trace?.target_mask_component_count) },
-    { label: 'Target Overlap w/ Perimeter', value: fmt(grj.perimeter_inner_trace?.target_component_overlap_with_perimeter) },
-    { label: 'Missed Target Roof', value: fmt(grj.perimeter_inner_trace?.missed_target_roof_area_sqft ?? grj.perimeter_inner_trace?.missed_roof_area_sqft, 'sq ft') },
-    { label: 'Solar Sanity OK', value: String(grj.perimeter_inner_trace?.solar_sanity_ok ?? '—') },
+    { label: 'Perimeter Phase 0', value: phase0 ? 'Ran' : 'Perimeter Phase 0 did not run' },
+    { label: 'Perimeter Inner Trace', value: String(targetMask?.inner_trace_detected ?? '—') },
+    { label: 'Perimeter/Target Mask Ratio', value: fmt(targetMask?.perimeter_to_target_mask_ratio ?? targetMask?.perimeter_to_mask_ratio) },
+    { label: 'Target Mask Area', value: fmt(phase0?.target_mask_area_sqft ?? targetMask?.target_mask_area_sqft ?? targetMask?.target_roof_mask_area_sqft, 'sq ft') },
+    { label: 'Global Mask Area', value: fmt(phase0?.global_mask_area_sqft ?? targetMask?.global_mask_area_sqft ?? targetMask?.global_roof_mask_area_sqft, 'sq ft') },
+    { label: 'Global Mask Inflation', value: fmt(phase0?.global_mask_inflation_ratio ?? targetMask?.global_mask_inflation_ratio, '×') },
+    { label: 'Mask Components', value: fmt(phase0?.mask_components_table?.length ?? targetMask?.target_mask_component_count) },
+    { label: 'Target Overlap w/ Perimeter', value: fmt(phase0?.target_mask_overlap_with_perimeter ?? targetMask?.target_mask_overlap_with_perimeter ?? targetMask?.target_component_overlap_with_perimeter) },
+    { label: 'Missed Target Roof', value: fmt(phase0?.missed_target_roof_pct ?? targetMask?.missed_target_roof_pct, '%') },
+    { label: 'Solar Sanity OK', value: String(phase0?.solar_sanity_ok ?? targetMask?.solar_sanity_ok ?? '—') },
     { label: 'Customer Ready', value: String(m.customer_report_ready ?? '—') },
     { label: 'Result State', value: String(m.result_state ?? grj.result_state ?? '—') },
-    { label: 'Perimeter Gate', value: String(grj.perimeter_gate_passed ?? '—') },
-    { label: 'Perimeter Area (sqft)', value: fmt(grj.perimeter_area_sqft) },
-    { label: 'Eaves LF', value: fmt(grj.eave_lf) },
-    { label: 'Rakes LF', value: fmt(grj.rake_lf) },
-    { label: 'Perimeter vs Mask IoU', value: fmt(grj.perimeter_vs_mask_iou) },
-    { label: 'Missed Roof Area %', value: fmt(grj.missed_roof_area_pct) },
+    { label: 'Perimeter Gate', value: String(phase0?.perimeter_gate_passed ?? grj.perimeter_gate_passed ?? m.perimeter_gate_passed ?? '—') },
+    { label: 'Perimeter Area (sqft)', value: fmt(phase0?.perimeter_area_sqft ?? grj.perimeter_area_sqft ?? m.perimeter_area_sqft) },
+    { label: 'Eaves LF', value: fmt(phase0?.eave_length_lf ?? grj.eave_lf ?? m.eave_lf) },
+    { label: 'Rakes LF', value: fmt(phase0?.rake_length_lf ?? grj.rake_lf ?? m.rake_lf) },
+    { label: 'Perimeter vs Mask IoU', value: fmt(phase0?.perimeter_vs_mask_iou ?? grj.perimeter_vs_mask_iou ?? m.perimeter_vs_mask_iou) },
+    { label: 'Missed Roof Area %', value: fmt(phase0?.missed_roof_area_pct ?? phase0?.missed_target_roof_pct ?? grj.missed_roof_area_pct ?? m.missed_roof_area_pct) },
     { label: 'OSM Candidates', value: fmt(sourceAcquisitionDebug?.no_osm_candidates === false ? (grj.candidates_tried ?? grj.candidates?.length) : grj.candidates_tried) },
     { label: 'Solar Insights', value: String(sourceAcquisitionDebug?.solar_insights?.status ?? '—') },
     { label: 'Solar Segments', value: fmt(sourceAcquisitionDebug?.solar_segments_count) },
