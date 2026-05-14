@@ -246,6 +246,36 @@ export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
   };
 }
 
+function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
+  const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
+  if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
+  const reason = String(raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? '').toLowerCase();
+  if (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint')) return 'ai_failed_perimeter';
+  if (reason.includes('topology') || reason.includes('facet') || reason.includes('ridge') || reason.includes('edge')) return 'ai_failed_topology';
+  return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
+}
+
+function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?: unknown): Record<string, any> {
+  const payload: Record<string, any> = { ...(debug || {}) };
+  const phase3A = buildPhase3ABlock(payload.perimeter_phase0 ?? payload.perimeter_gate_metrics ?? null);
+  const resultState = derivePhase3ResultState(rawResultState ?? payload.result_state ?? payload.hard_fail_reason, payload);
+  const hardFailReason = phase3A.perimeter_classification_invalid
+    ? 'perimeter_classification_invalid'
+    : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null);
+  return {
+    ...payload,
+    ...PHASE3_VERSION_BLOCK,
+    phase3A,
+    phase3B: buildPhase3BBlock(edgeRows),
+    result_state: normalizeResultStateForWrite(resultState, payload),
+    hard_fail_reason: hardFailReason,
+    block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
+    failure_stage: payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'),
+    diagram_render_intent: String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true),
+    customer_report_ready: resultState === 'customer_report_ready',
+  };
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
