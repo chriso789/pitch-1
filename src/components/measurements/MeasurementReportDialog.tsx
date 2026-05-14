@@ -222,8 +222,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
-  const failureReasonStr = String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
-  const phase0MissingBug = !phase0 && /perimeter_inner_trace_detected/i.test(failureReasonStr);
+  const failureReasonStr = String(grj.hard_fail_reason ?? sourceCtxDebug?.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '');
+  const innerTraceFired = /perimeter_inner_trace_detected/i.test(failureReasonStr)
+    || (Array.isArray(phase0?.perimeter_failure_reasons) && phase0.perimeter_failure_reasons.some((r: any) => /perimeter_inner_trace_detected/i.test(String(r))));
+  const phase0MissingBug = !phase0 && innerTraceFired;
 
   if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
