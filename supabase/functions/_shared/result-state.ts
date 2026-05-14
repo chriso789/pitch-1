@@ -60,7 +60,10 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('inner_trace') ||
     s.includes('layer1') ||
     s.includes('invalid_roof_footprint') ||
-    s.includes('footprint_invalid')
+    s.includes('footprint_invalid') ||
+    s.includes('classification_invalid') ||
+    s.includes('eave_rake') ||
+    s.includes('all_rake_no_eave')
   ) return 'ai_failed_perimeter';
 
   if (
