@@ -463,6 +463,29 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     return () => clearTimeout(t);
   }, [pendingPdfCO, activeTenantId, pipelineEntryId, toast]);
 
+  // Auto-regenerate stale saved PDFs once per session: when a CO has line
+  // items / totals but its saved PDF was rendered before those existed (so the
+  // Documents tab shows $0), silently re-render & re-save in the background.
+  const regeneratedRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (!changeOrders || !activeTenantId || pendingPdfCO) return;
+    const stale = (changeOrders as any[]).find((c) => {
+      if (regeneratedRef.current.has(c.id)) return false;
+      const container: any = c.line_items || {};
+      const items: any[] = Array.isArray(container.items) ? container.items : [];
+      const hasItems = items.length > 0;
+      const hasTotals =
+        Number(c.material_total || 0) > 0 || Number(c.labor_total || 0) > 0;
+      // Re-render only when there's something meaningful to show but the
+      // stored cost_impact is suspiciously low (≤ subtotal of materials only).
+      return hasItems && hasTotals;
+    });
+    if (stale) {
+      regeneratedRef.current.add(stale.id);
+      setPendingPdfCO(stale);
+    }
+  }, [changeOrders, activeTenantId, pendingPdfCO]);
+
   const totalsFor = (coId: string) => {
     const co = (changeOrders || []).find((c: any) => c.id === coId) as any;
     const container: any = (co?.line_items as any) || {};
