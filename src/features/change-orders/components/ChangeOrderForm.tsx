@@ -170,9 +170,11 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
     .filter((i) => i.kind === 'labor')
     .reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0);
   const subtotal = materialTotal + laborTotal;
-  const overheadAmount = subtotal * (overheadPct / 100);
-  const profitAmount = (subtotal + overheadAmount) * (profitPct / 100);
-  const grandTotal = subtotal + overheadAmount + profitAmount;
+  // Overhead & profit are % of selling price (price-based markup), not of cost.
+  const opDenom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
+  const grandTotal = subtotal / opDenom;
+  const overheadAmount = grandTotal * (overheadPct / 100);
+  const profitAmount = grandTotal * (profitPct / 100);
 
   const addQuickLabor = () => {
     if (laborMode === 'per_square') {
