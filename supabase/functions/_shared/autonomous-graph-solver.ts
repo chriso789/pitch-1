@@ -3039,6 +3039,15 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
             'unknown'
           ),
         };
+        finalizeDeferredEdges(phase3CDiagnostics, new Set(reintroducedEdges.map((e) => {
+          const key = `${Math.round(e.a.x)}:${Math.round(e.a.y)}|${Math.round(e.b.x)}:${Math.round(e.b.y)}`;
+          const match = phase3CDeferredCandidates.find((c) => {
+            const ck = `${Math.round(c.p1[0])}:${Math.round(c.p1[1])}|${Math.round(c.p2[0])}:${Math.round(c.p2[1])}`;
+            const cr = `${Math.round(c.p2[0])}:${Math.round(c.p2[1])}|${Math.round(c.p1[0])}:${Math.round(c.p1[1])}`;
+            return ck === key || cr === key;
+          });
+          return match?.edge_id ?? key;
+        })));
         
         if (refinementAccepted) {
           // Replace faces with refined result
@@ -3065,6 +3074,7 @@ export function solveAutonomousGraph(input: AutonomousGraphInput): AutonomousGra
           oversized_face_area_ratios: oversizedFaceAreaRatios.map(r => Number(r.toFixed(3))),
           rejection_reason: 'insufficient_refinement_candidates',
         };
+        finalizeDeferredEdges(phase3CDiagnostics, new Set());
         console.log(`  [v16 REFINEMENT] Skipped: only ${refinementCandidates.length} qualifying candidates (need ≥2)`);
       }
     }
