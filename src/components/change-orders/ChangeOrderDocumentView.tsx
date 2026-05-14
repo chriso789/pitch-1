@@ -106,12 +106,15 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
     })();
   }, [changeOrder.project_id, pipelineEntryId]);
 
-  const items = useMemo(
-    () => (Array.isArray(changeOrder.line_items) ? changeOrder.line_items : []),
-    [changeOrder.line_items]
-  );
-  const materials = items.filter((i: any) => i.kind === 'material');
-  const labor = items.filter((i: any) => i.kind === 'labor');
+  // `line_items` is stored as { items: [...], overhead_pct, profit_pct, ... }
+  // but legacy rows may store the array directly. Handle both.
+  const rawContainer: any = changeOrder.line_items as any;
+  const itemArray: any[] = Array.isArray(rawContainer)
+    ? rawContainer
+    : Array.isArray(rawContainer?.items)
+      ? rawContainer.items
+      : [];
+  const materials = itemArray.filter((i: any) => i.kind !== 'labor');
   const lineTotal = (i: any) =>
     (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
   const materialTotal =
@@ -119,9 +122,10 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
     materials.reduce((s, i) => s + lineTotal(i), 0);
   const laborTotal =
     Number(changeOrder.labor_total ?? 0) ||
-    labor.reduce((s, i) => s + lineTotal(i), 0);
+    itemArray.filter((i: any) => i.kind === 'labor').reduce((s, i) => s + lineTotal(i), 0);
   const subtotal = materialTotal + laborTotal;
-  const grandTotal = Number(changeOrder.cost_impact ?? subtotal);
+  // Customer-facing price to client: cost_impact already includes overhead + profit.
+  const priceToClient = Number(changeOrder.cost_impact ?? subtotal);
 
   const companyAddress = [
     company?.address_street,
