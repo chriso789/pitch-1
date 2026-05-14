@@ -57,6 +57,21 @@ interface ChangeOrderFormProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultProjectId?: string;
+  /** When provided, the form runs in edit mode and updates this change order instead of inserting a new one. */
+  editingChangeOrder?: {
+    id: string;
+    co_number?: string | null;
+    project_id?: string | null;
+    title?: string | null;
+    description?: string | null;
+    reason?: string | null;
+    original_scope?: string | null;
+    new_scope?: string | null;
+    time_impact_days?: number | null;
+    line_items?: any;
+    material_invoice_url?: string | null;
+    material_invoice_storage_path?: string | null;
+  } | null;
 }
 
 const newRow = (kind: 'material' | 'labor'): LineItem => ({
