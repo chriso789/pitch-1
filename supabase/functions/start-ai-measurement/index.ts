@@ -111,6 +111,24 @@ const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
 export const AI_MEASUREMENT_ENGINE_VERSION = "perimeter-phase0-v2-target-mask";
 export const PERIMETER_CONTRACT_VERSION = "perimeter-contract-v2";
 export const PHASE0_CONTROL_FLOW_VERSION = "phase0-before-any-perimeter-fail";
+// ─── Phase 3 version stamps ───────────────────────────────────────────
+// Each Phase 3 sub-feature carries its own version so reports can prove
+// which subsystems are actually active in a given run. Bump the string
+// as the sub-feature is wired in real code (not just announced).
+//   3A — eave/rake classifier rebuild + hard sanity gate (active)
+//   3B — typed roof_lines persistence (lite: counts/diagnostics only)
+//   3C — deferred connectivity edge pool (NOT WIRED — null)
+//   3D — seed backbone insertion (NOT WIRED — null)
+//   3E — constraint-solver repair pass (already gated by autonomous-graph-solver)
+//   3F — result_state normalizer hardening (active)
+//   3G — diagram_render_intent enforcement (active)
+export const PHASE3_ENGINE_VERSION = "phase3-visibility-and-hard-gates-v1";
+export const PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION = "phase3A-eave-default-hip-prior-confidence-floor-v1";
+export const PHASE3B_ROOF_LINES_PERSISTENCE_VERSION = "phase3B-counts-only-lite-v1";
+export const PHASE3C_CONNECTIVITY_DEFER_VERSION: string | null = null;
+export const PHASE3D_SEED_BACKBONE_VERSION: string | null = null;
+export const PHASE3F_RESULT_STATE_VERSION = "phase3F-normalize-all-writes-v1";
+export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "phase3G-rejected-only-on-ai-failed-v1";
 export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
 export const DEPLOYED_AT = new Date().toISOString();
 export const RUNTIME_VERSION_STAMP = {
