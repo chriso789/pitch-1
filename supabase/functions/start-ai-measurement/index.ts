@@ -121,6 +121,43 @@ function vlog(marker: string, payload: Record<string, unknown> = {}) {
     console.log(`[VTRACE] ${marker}`, payload);
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// result_state normalizer.
+// DB constraint (roof_measurements / ai_measurement_jobs / measurement_jobs)
+// only accepts the 10 stable values below. Any detailed reason MUST live in
+// hard_fail_reason / block_customer_report_reason / geometry_report_json,
+// never in result_state itself.
+// ──────────────────────────────────────────────────────────────────────
+export const ALLOWED_RESULT_STATES = [
+  'customer_report_ready',
+  'perimeter_only',
+  'diagnostic_only',
+  'ai_failed_target_unconfirmed',
+  'ai_failed_source_acquisition',
+  'ai_failed_perimeter',
+  'ai_failed_topology',
+  'ai_failed_pitch',
+  'ai_failed_schema',
+  'ai_failed_unknown',
+] as const;
+export type ResultState = (typeof ALLOWED_RESULT_STATES)[number];
+
+export function normalizeResultState(raw: unknown): ResultState {
+  if (raw == null) return 'ai_failed_unknown';
+  const s = String(raw).toLowerCase();
+  if ((ALLOWED_RESULT_STATES as readonly string[]).includes(s)) return s as ResultState;
+  if (s.includes('target') && s.includes('unconfirm')) return 'ai_failed_target_unconfirmed';
+  if (s.includes('source') || s.includes('acquisition')) return 'ai_failed_source_acquisition';
+  if (s.includes('perimeter') || s.includes('target_mask') || s.includes('inner_trace')) return 'ai_failed_perimeter';
+  if (s.includes('topology') || s.includes('patent') || s.includes('layer1') || s.includes('undersegment')) return 'ai_failed_topology';
+  if (s.includes('pitch')) return 'ai_failed_pitch';
+  if (s.includes('schema') || s.includes('constraint')) return 'ai_failed_schema';
+  if (s.includes('ready')) return 'customer_report_ready';
+  if (s.includes('perimeter_only')) return 'perimeter_only';
+  if (s.includes('diagnostic')) return 'diagnostic_only';
+  return 'ai_failed_unknown';
+}
 // ──────────────────────────────────────────────────────────────────────
 
 
@@ -2108,7 +2145,7 @@ async function processJob(input: any) {
           developer_bug: developerBug,
           hard_fail_reason: developerBug,
           failure_stage: 'perimeter',
-          result_state: 'ai_failed_developer_bug',
+          result_state: normalizeResultState('ai_failed_perimeter'),
           footprint_source: footprintSource,
           footprint_point_count: footprint.length,
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
@@ -2121,8 +2158,8 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          result_state: 'ai_failed_developer_bug',
-          source_context: { gate_reason: developerBug, debug: debugPayload },
+          result_state: normalizeResultState('ai_failed_perimeter'),
+          source_context: { gate_reason: developerBug, hard_fail_reason: developerBug, debug: debugPayload },
         }).eq("id", input.ai_measurement_job_id);
         return;
       }
@@ -6320,7 +6357,7 @@ async function processJob(input: any) {
       && !reviewRequired
       && !vendorTruthComparison?.needs_internal_review
       && !patentBlockReason;
-    let _resultState: string;
+    let _resultState: ResultState;
     if (_customerReady) {
       _resultState = 'customer_report_ready';
     } else if (_perimeterPassed) {
@@ -6329,7 +6366,7 @@ async function processJob(input: any) {
       const _stage = patentBlockReason ? 'patent'
         : topologyMismatch ? 'topology'
         : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
-      _resultState = `ai_failed_${_stage}`;
+      _resultState = normalizeResultState(`ai_failed_${_stage}`);
     }
 
     // Persist patent gate outcome onto the measurement row.
@@ -7524,7 +7561,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     gate_decision: "failed",
     gate_reason: failureReason,
     customer_report_ready: false,
-    result_state: debug?.result_state ?? (failureReason.includes('perimeter') || failureReason.includes('target_mask') ? 'ai_failed_perimeter' : `ai_failed_${debug?.failure_stage || 'solver'}`),
+    result_state: normalizeResultState(debug?.result_state ?? (failureReason.includes('perimeter') || failureReason.includes('target_mask') ? 'ai_failed_perimeter' : `ai_failed_${debug?.failure_stage || 'solver'}`)),
+    block_customer_report_reason: debug?.hard_fail_reason || failureReason,
     internal_debug_report_ready: true,
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
