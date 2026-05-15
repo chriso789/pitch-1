@@ -641,7 +641,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           normalized_description: normalizeInvoiceText(desc),
           supplier_sku: mapLine.supplier_sku || null,
           unit_of_measure: mapLine.invoice_uom || "ea",
-          agreed_unit_price: chargedUnit,
+          agreed_unit_price: agreedUnit,
         })
         .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
         .single();
