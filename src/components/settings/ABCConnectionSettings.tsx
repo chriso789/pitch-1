@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy, ExternalLink, Send, AlertTriangle } from 'lucide-react';
 
 const ABC_CONFIG = {
   authBase: {
@@ -89,6 +89,10 @@ export function ABCConnectionSettings() {
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [testResult, setTestResult] = useState<any | null>(null);
+  const [orderResult, setOrderResult] = useState<any | null>(null);
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -161,10 +165,49 @@ export function ABCConnectionSettings() {
   };
 
   const handleTest = async () => {
-    toast({
-      title: 'Test pending API enablement',
-      description: 'ABC Supply must enable your OAuth client before validation. Saved credentials will activate once your account rep confirms access.',
-    });
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { action: 'test_connection', environment },
+      });
+      if (error) throw error;
+      setTestResult(data);
+      toast({
+        title: data?.success ? 'ABC reachable' : 'ABC test inconclusive',
+        description: data?.interpretation ?? 'See details below.',
+        variant: data?.success ? 'default' : 'destructive',
+      });
+    } catch (e: any) {
+      setTestResult({ success: false, error: e.message });
+      toast({ title: 'Test failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSubmitTestOrder = async () => {
+    setSubmittingOrder(true);
+    setOrderResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { action: 'submit_test_order', environment },
+      });
+      if (error) throw error;
+      setOrderResult(data);
+      toast({
+        title: data?.success ? 'Test order accepted' : 'Test order rejected',
+        description: data?.success
+          ? 'ABC accepted the sandbox order payload.'
+          : `ABC responded ${data?.orderResponse?.status ?? '—'}. See details below.`,
+        variant: data?.success ? 'default' : 'destructive',
+      });
+    } catch (e: any) {
+      setOrderResult({ success: false, error: e.message });
+      toast({ title: 'Submission failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setSubmittingOrder(false);
+    }
   };
 
   const handleRevoke = async () => {
@@ -342,12 +385,15 @@ export function ABCConnectionSettings() {
               Begin OAuth Authorization
             </Button>
 
-            {connection && (
-              <Button variant="outline" onClick={handleTest}>
-                <Link2 className="h-4 w-4 mr-2" />
-                Test Connection
-              </Button>
-            )}
+            <Button variant="outline" onClick={handleTest} disabled={testing}>
+              {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+              Test Connection
+            </Button>
+
+            <Button variant="outline" onClick={handleSubmitTestOrder} disabled={submittingOrder}>
+              {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Submit Test Order ({environment})
+            </Button>
 
             {hasSecret && (
               <Button variant="ghost" onClick={handleRevoke} className="text-destructive">
@@ -356,6 +402,34 @@ export function ABCConnectionSettings() {
               </Button>
             )}
           </div>
+
+          {(testResult || orderResult) && (
+            <div className="space-y-3 pt-2">
+              {testResult && (
+                <div className={`rounded-md border p-3 text-xs space-y-2 ${testResult.success ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {testResult.success ? <CheckCircle className="h-4 w-4 text-emerald-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                    Connection Test — {testResult.environment ?? environment}
+                  </div>
+                  {testResult.interpretation && <p className="text-muted-foreground">{testResult.interpretation}</p>}
+                  <pre className="font-mono text-[10px] bg-background/60 p-2 rounded overflow-x-auto max-h-64">
+                    {JSON.stringify(testResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {orderResult && (
+                <div className={`rounded-md border p-3 text-xs space-y-2 ${orderResult.success ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {orderResult.success ? <CheckCircle className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-destructive" />}
+                    Test Order Submission — HTTP {orderResult.orderResponse?.status ?? '—'}
+                  </div>
+                  <pre className="font-mono text-[10px] bg-background/60 p-2 rounded overflow-x-auto max-h-64">
+                    {JSON.stringify(orderResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
