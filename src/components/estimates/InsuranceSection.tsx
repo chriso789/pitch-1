@@ -18,6 +18,7 @@ import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { XactScopeBuilder } from '@/components/xact-scope/XactScopeBuilder';
+import { ProjectInsuranceTab } from '@/features/projects/components/ProjectInsuranceTab';
 
 
 interface InsuranceSectionProps {
