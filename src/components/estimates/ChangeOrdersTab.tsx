@@ -369,9 +369,10 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   };
 
   const handlePushToInvoice = async (co: ChangeOrder) => {
-    const amount = Number(co.cost_impact || 0);
+    const computed = totalsFor(co.id);
+    const amount = Math.max(Number(co.cost_impact || 0), Number(computed?.budget || 0));
     if (amount <= 0) {
-      toast({ title: 'Cost impact is $0', description: 'Set a cost impact before invoicing.', variant: 'destructive' });
+      toast({ title: 'Cost impact is $0', description: 'Add line items or set a cost impact before invoicing.', variant: 'destructive' });
       return;
     }
     if (!confirm(`Push ${fmt(amount)} to the contract and create a customer invoice?`)) return;
