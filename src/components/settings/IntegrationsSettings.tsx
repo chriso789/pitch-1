@@ -84,6 +84,10 @@ export const IntegrationsSettings = () => {
           <QXOConnectionSettings />
         </TabsContent>
 
+        <TabsContent value="abc" className="space-y-6">
+          <ABCConnectionSettings />
+        </TabsContent>
+
         <TabsContent value="api-keys" className="space-y-6">
           <ApiKeyManager />
         </TabsContent>
