@@ -8,11 +8,10 @@ import { ApiKeyManager } from "./ApiKeyManager";
 import { WebsiteIntegration } from "./WebsiteIntegration";
 import { SLAPolicyManager } from "./SLAPolicyManager";
 import { RoutingRulesManager } from "./RoutingRulesManager";
-import { SmsAutoResponseConfig } from "./SmsAutoResponseConfig";
 import { MetaCAPISettings } from "./MetaCAPISettings";
 import { SRSConnectionSettings } from "./SRSConnectionSettings";
 import { QXOConnectionSettings } from "./QXOConnectionSettings";
-import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, MessageSquare, Facebook, Truck, Package } from "lucide-react";
+import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, Facebook, Truck, Package } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -53,10 +52,6 @@ export const IntegrationsSettings = () => {
           <TabsTrigger value="telnyx" className="flex items-center gap-2">
             <Phone className="h-4 w-4" />
             Telnyx
-          </TabsTrigger>
-          <TabsTrigger value="sms-auto" className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            SMS Auto-Reply
           </TabsTrigger>
           <TabsTrigger value="meta-capi" className="flex items-center gap-2">
             <Facebook className="h-4 w-4" />
@@ -102,10 +97,6 @@ export const IntegrationsSettings = () => {
 
         <TabsContent value="telnyx" className="space-y-6">
           <TelnyxIntegrationPanel />
-        </TabsContent>
-
-        <TabsContent value="sms-auto" className="space-y-6">
-          <SmsAutoResponseConfig />
         </TabsContent>
 
         <TabsContent value="meta-capi" className="space-y-6">

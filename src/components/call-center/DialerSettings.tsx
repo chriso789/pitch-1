@@ -10,6 +10,7 @@ import { Phone, MapPin, ArrowRight, CheckCircle2, Loader2, Smartphone, Save } fr
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from '@/hooks/use-toast';
+import { SmsAutoResponseConfig } from '@/components/settings/SmsAutoResponseConfig';
 
 interface LocationWithPhone {
   id: string;
@@ -310,6 +311,8 @@ export const DialerSettings: React.FC = () => {
           </p>
         </CardContent>
       </Card>
+
+      <SmsAutoResponseConfig />
     </div>
   );
 };
