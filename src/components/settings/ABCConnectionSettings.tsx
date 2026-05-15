@@ -248,10 +248,38 @@ export function ABCConnectionSettings() {
             </p>
           </div>
 
+          <div className="rounded-md border p-3 space-y-2 text-xs">
+            <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
+            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizationUrl} />
+            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl} pending="Pending — request from ABC IT" />
+            <EndpointRow label="Redirect URI" value={ABC_CONFIG.redirectUri} hint="Provide this to ABC when registering the OAuth client" />
+            <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} pending="Pending — request from ABC IT" />
+            <EndpointRow
+              label={`API Base (${environment})`}
+              value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.staging}
+            />
+          </div>
+
           <div className="flex flex-wrap gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving || !clientId}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {hasSecret ? 'Save & Replace Secret' : 'Save Credentials'}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!clientId) {
+                  toast({ title: 'Save Client ID first', variant: 'destructive' });
+                  return;
+                }
+                const url = `${ABC_CONFIG.authorizationUrl}/v1/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&redirect_uri=${encodeURIComponent(ABC_CONFIG.redirectUri)}&state=${effectiveTenantId}`;
+                window.open(url, '_blank', 'noopener,noreferrer');
+              }}
+              disabled={!clientId}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Begin OAuth Authorization
             </Button>
 
             {connection && (
