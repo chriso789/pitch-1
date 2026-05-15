@@ -375,7 +375,10 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       toast({ title: 'Cost impact is $0', description: 'Add line items or set a cost impact before invoicing.', variant: 'destructive' });
       return;
     }
-    if (!confirm(`Push ${fmt(amount)} to the contract and create a customer invoice?`)) return;
+    if (!confirm(
+      `Owner-/builder-requested change order — no customer approval needed.\n\n` +
+      `Push ${fmt(amount)} into the main estimate + budget and add it to open invoices?`
+    )) return;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -391,6 +394,67 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         .from('projects')
         .update({ contract_value: newContract })
         .eq('id', co.project_id);
+
+      // 1b. Merge CO line items into the active estimate (main estimate + budget)
+      try {
+        const { data: estimate } = await (supabase as any)
+          .from('estimates')
+          .select('id, line_items, material_cost, labor_cost, selling_price')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (estimate) {
+          const sections = (estimate.line_items as Record<string, any[]>) || {};
+          const coItems: any[] = ((co.line_items as any)?.items || []);
+          const materialAdds: any[] = [];
+          const laborAdds: any[] = [];
+          if (coItems.length > 0) {
+            for (const it of coItems) {
+              const qty = Number(it.quantity ?? it.qty ?? 1) || 0;
+              const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0) || 0;
+              const total = Number(it.line_total ?? it.total ?? qty * price) || 0;
+              const row = {
+                description: `[${co.co_number}] ${it.description || it.name || it.code || co.title}`,
+                quantity: qty,
+                unit_price: price,
+                line_total: total,
+                source_change_order_id: co.id,
+              };
+              const cat = String(it.kind ?? it.category ?? 'material').toLowerCase();
+              if (cat.startsWith('lab')) laborAdds.push(row);
+              else materialAdds.push(row);
+            }
+          } else {
+            // No itemized lines — push a single summary line so it shows in the estimate.
+            materialAdds.push({
+              description: `[${co.co_number}] ${co.title}`,
+              quantity: 1,
+              unit_price: amount,
+              line_total: amount,
+              source_change_order_id: co.id,
+            });
+          }
+          const mergedSections: Record<string, any[]> = {
+            ...sections,
+            materials: [ ...(sections.materials || []), ...materialAdds ],
+            labor: [ ...(sections.labor || []), ...laborAdds ],
+          };
+          const matAddCost = Number(co.material_total || 0);
+          const lborAddCost = Number(co.labor_total || 0);
+          await (supabase as any)
+            .from('estimates')
+            .update({
+              line_items: mergedSections,
+              material_cost: Number(estimate.material_cost || 0) + matAddCost,
+              labor_cost: Number(estimate.labor_cost || 0) + lborAddCost,
+              selling_price: Number(estimate.selling_price || 0) + amount,
+            })
+            .eq('id', estimate.id);
+        }
+      } catch (mergeErr) {
+        console.warn('CO merge into estimate failed (non-fatal):', mergeErr);
+      }
 
       // 2. Create a customer invoice for this CO
       const { count } = await (supabase as any)
@@ -411,7 +475,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         invoice_number: invoiceNumber,
         amount,
         balance: amount,
-        status: 'draft',
+        status: 'pending',
         notes: `Change Order ${co.co_number}: ${co.title}`,
         created_by: user.id,
         line_items: lineItems as any,
@@ -852,7 +916,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                         onClick={() => handlePushToInvoice(co)}
                       >
                         <Send className="h-3 w-3 mr-1" />
-                        Push to Contract &amp; Invoice
+                        Push (No Approval) — Add to Estimate &amp; Invoice
                       </Button>
                     )}
                     {!co.customer_approved && co.status !== 'invoiced' && (
