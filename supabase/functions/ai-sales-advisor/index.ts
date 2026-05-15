@@ -1,5 +1,6 @@
 import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { logAIUsage } from '../_shared/log-ai-usage.ts';
 
 interface SalesAdvisorRequest {
   analysis_type: 'pipeline_health' | 'lead_scoring' | 'follow_up_strategy' | 'performance_analysis';
