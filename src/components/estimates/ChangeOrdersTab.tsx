@@ -454,13 +454,25 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
           };
           const matAddCost = Number(co.material_total || 0);
           const lborAddCost = Number(co.labor_total || 0);
+          const newMaterialCost = Number(estimate.material_cost || 0) + matAddCost;
+          const newLaborCost = Number(estimate.labor_cost || 0) + lborAddCost;
+          const newSellingPrice = Number(estimate.selling_price || 0) + amount;
+          const ohRate = Number((estimate as any).overhead_percent || 0);
+          const tax = Number((estimate as any).sales_tax_amount || 0);
+          const preTax = newSellingPrice - tax;
+          const newOverhead = Math.round(preTax * (ohRate / 100) * 100) / 100;
+          const newProfit = Math.round((preTax - newMaterialCost - newLaborCost - newOverhead) * 100) / 100;
+          const newProfitPct = preTax > 0 ? Math.round((newProfit / preTax) * 10000) / 100 : 0;
           await (supabase as any)
-            .from('estimates')
+            .from('enhanced_estimates')
             .update({
               line_items: mergedSections,
-              material_cost: Number(estimate.material_cost || 0) + matAddCost,
-              labor_cost: Number(estimate.labor_cost || 0) + lborAddCost,
-              selling_price: Number(estimate.selling_price || 0) + amount,
+              material_cost: newMaterialCost,
+              labor_cost: newLaborCost,
+              selling_price: newSellingPrice,
+              overhead_amount: newOverhead,
+              actual_profit_amount: newProfit,
+              actual_profit_percent: newProfitPct,
             })
             .eq('id', estimate.id);
         }
