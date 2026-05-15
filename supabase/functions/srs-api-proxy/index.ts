@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
               connection_status: isValid ? "connected" : "error",
               valid_indicator: isValid,
               last_validated_at: new Date().toISOString(),
-              last_error: isValid ? null : "Customer validation failed",
+              last_error: isValid ? null : validationDetail,
               job_account_number: jobAccountNumber,
               default_branch_code: defaultBranch,
             })
@@ -325,8 +325,10 @@ Deno.serve(async (req) => {
             success: isValid,
             jobAccountNumber,
             defaultBranch,
+            error: isValid ? undefined : validationDetail,
+            srsResponse: validateData,
           };
-          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: isValid, metadata: { jobAccountNumber } });
+          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: isValid, error: isValid ? null : validationDetail, metadata: { jobAccountNumber, srsResponse: validateData } });
         } catch (err: any) {
           const msg = err instanceof Error ? err.message : String(err);
           await supabase
