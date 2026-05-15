@@ -1287,3 +1287,6 @@ verify_jwt = true
 
 [functions.abc-oauth-callback]
 verify_jwt = false
+
+[functions.track-labor-order-open]
+verify_jwt = false
