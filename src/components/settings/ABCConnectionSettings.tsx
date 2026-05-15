@@ -210,11 +210,14 @@ export function ABCConnectionSettings() {
       });
       if (error) throw error;
       setOrderResult(data);
-      toast({
-        title: data?.success ? 'Test order accepted' : 'Test order rejected',
-        description: data?.success
+      const friendly =
+        data?.interpretation ||
+        (data?.success
           ? 'ABC accepted the sandbox order payload.'
-          : `ABC responded ${data?.orderResponse?.status ?? '—'}. See details below.`,
+          : `ABC responded ${data?.orderResponse?.status ?? '—'}. See details below.`);
+      toast({
+        title: data?.success ? 'Test order accepted' : 'Test order not submitted',
+        description: friendly,
         variant: data?.success ? 'default' : 'destructive',
       });
     } catch (e: any) {
@@ -388,7 +391,9 @@ export function ABCConnectionSettings() {
                     },
                   });
                   if (error) throw error;
-                  if (!data?.authorization_url) throw new Error('No authorization_url returned');
+                  if (!data?.authorization_url) {
+                    throw new Error(data?.interpretation || data?.error || 'No authorization_url returned');
+                  }
                   // Full-page redirect so ABC can return to our callback fn
                   window.location.href = data.authorization_url;
                 } catch (e: any) {

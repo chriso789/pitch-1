@@ -190,8 +190,12 @@ Deno.serve(async (req) => {
       const scopes = Deno.env.get("ABC_SCOPES") || DEFAULT_SCOPES;
       if (!clientId) {
         return new Response(
-          JSON.stringify({ error: `ABC_CLIENT_ID_${envSuffix} not configured.` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          JSON.stringify({
+            success: false,
+            error: `ABC_CLIENT_ID_${envSuffix} not configured`,
+            interpretation: `No ${env} OAuth Client ID is configured on the server. Add the ABC_CLIENT_ID_${envSuffix} secret in Supabase, then retry.`,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
@@ -334,8 +338,13 @@ Deno.serve(async (req) => {
     if (action === "submit_test_order") {
       if (!tenant_id) {
         return new Response(
-          JSON.stringify({ success: false, error: "no_tenant_context" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          JSON.stringify({
+            success: false,
+            environment: env,
+            error: "no_tenant_context",
+            interpretation: "Sign in and select a tenant before submitting a test order.",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
       const tok = await getValidAccessToken(supabase, tenant_id, env);
@@ -343,13 +352,14 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({
             success: false,
+            environment: env,
             error: tok.error,
             interpretation:
               tok.error === "not_connected"
                 ? "Complete ABC OAuth (Begin OAuth Authorization) before submitting an order."
                 : `Cannot obtain token: ${tok.error}`,
           }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
