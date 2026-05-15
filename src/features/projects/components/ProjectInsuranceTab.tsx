@@ -188,20 +188,27 @@ function ScopeUploadCard({
           </Select>
         </div>
         <div>
-          <label className="block">
-            <input
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
-            />
-            <Button asChild variant="outline" className="w-full gap-2" disabled={uploading}>
-              <span>
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Upload Xactimate PDF
-              </span>
-            </Button>
-          </label>
+          <input
+            id={`upload-${title.replace(/\s+/g, '-')}`}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onUpload(f);
+              e.target.value = '';
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            disabled={uploading}
+            onClick={() => document.getElementById(`upload-${title.replace(/\s+/g, '-')}`)?.click()}
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Upload Xactimate PDF
+          </Button>
         </div>
       </CardContent>
     </Card>
