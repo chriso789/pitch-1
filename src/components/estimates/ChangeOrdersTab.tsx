@@ -524,6 +524,11 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       });
       refresh();
       queryClient.invalidateQueries({ queryKey: ['project-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
     } catch (e: any) {
       toast({ title: 'Push failed', description: e.message, variant: 'destructive' });
     }
