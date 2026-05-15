@@ -758,8 +758,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                                 <span className="font-medium truncate block">
                                   {displayName || typeLabel + ' Invoice'}
                                 </span>
-                                {invoice.invoice_number && (
-                                  <span className="text-xs text-muted-foreground">#{invoice.invoice_number}</span>
+                                {(invoice.invoice_number || invoiceDateLabel) && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {invoice.invoice_number ? `#${invoice.invoice_number}` : ''}
+                                    {invoice.invoice_number && invoiceDateLabel ? ' · ' : ''}
+                                    {invoiceDateLabel || ''}
+                                  </span>
                                 )}
                               </>
                             )}
