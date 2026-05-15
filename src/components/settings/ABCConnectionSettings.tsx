@@ -8,7 +8,41 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
+
+const ABC_CONFIG = {
+  authorizationUrl: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
+  tokenUrl: '', // pending ABC confirmation
+  scopes: '', // pending ABC confirmation
+  redirectUri: 'https://pitch-crm.ai/api/abc/callback',
+  apiBase: {
+    staging: 'https://partners-sb.abcsupply.com/api',
+    production: 'https://partners.abcsupply.com/api',
+  },
+};
+
+function EndpointRow({ label, value, pending, hint }: { label: string; value: string; pending?: string; hint?: string }) {
+  const display = value || pending || '—';
+  return (
+    <div className="flex items-start justify-between gap-2 py-1 border-b last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-muted-foreground">{label}</div>
+        <div className={`font-mono text-[11px] break-all ${value ? 'text-foreground' : 'text-amber-600'}`}>{display}</div>
+        {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
+      </div>
+      {value && (
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(value)}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+          title="Copy"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 interface ABCConnection {
   id: string;
@@ -237,10 +271,38 @@ export function ABCConnectionSettings() {
             </p>
           </div>
 
+          <div className="rounded-md border p-3 space-y-2 text-xs">
+            <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
+            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizationUrl} />
+            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl} pending="Pending — request from ABC IT" />
+            <EndpointRow label="Redirect URI" value={ABC_CONFIG.redirectUri} hint="Provide this to ABC when registering the OAuth client" />
+            <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} pending="Pending — request from ABC IT" />
+            <EndpointRow
+              label={`API Base (${environment})`}
+              value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.staging}
+            />
+          </div>
+
           <div className="flex flex-wrap gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving || !clientId}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {hasSecret ? 'Save & Replace Secret' : 'Save Credentials'}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!clientId) {
+                  toast({ title: 'Save Client ID first', variant: 'destructive' });
+                  return;
+                }
+                const url = `${ABC_CONFIG.authorizationUrl}/v1/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&redirect_uri=${encodeURIComponent(ABC_CONFIG.redirectUri)}&state=${effectiveTenantId}`;
+                window.open(url, '_blank', 'noopener,noreferrer');
+              }}
+              disabled={!clientId}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Begin OAuth Authorization
             </Button>
 
             {connection && (
