@@ -391,7 +391,9 @@ export function ABCConnectionSettings() {
                     },
                   });
                   if (error) throw error;
-                  if (!data?.authorization_url) throw new Error('No authorization_url returned');
+                  if (!data?.authorization_url) {
+                    throw new Error(data?.interpretation || data?.error || 'No authorization_url returned');
+                  }
                   // Full-page redirect so ABC can return to our callback fn
                   window.location.href = data.authorization_url;
                 } catch (e: any) {
