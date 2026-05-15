@@ -12,6 +12,7 @@ import {
   AlertTriangle, Search, RefreshCw, ExternalLink, Calendar
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 interface EmailRecord {
   id: string;
@@ -46,6 +47,21 @@ export function EmailActivityDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<string>('7d');
+  const [backfilling, setBackfilling] = useState(false);
+
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('backfill-email-statuses');
+      if (error) throw error;
+      toast.success(`Backfill complete: ${data.updated}/${data.checked} updated`);
+      refetch();
+    } catch (e: any) {
+      toast.error(`Backfill failed: ${e.message}`);
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   // Fetch emails with engagement data
   const { data: emails, isLoading, refetch } = useQuery({
@@ -262,10 +278,16 @@ export function EmailActivityDashboard() {
               <Mail className="h-5 w-5" />
               Email Activity Log
             </CardTitle>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+              <Button variant="default" size="sm" onClick={handleBackfill} disabled={backfilling}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${backfilling ? 'animate-spin' : ''}`} />
+                {backfilling ? 'Backfilling...' : 'Backfill Statuses'}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
