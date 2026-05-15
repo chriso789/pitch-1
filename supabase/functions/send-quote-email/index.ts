@@ -397,6 +397,13 @@ Deno.serve(async (req: Request) => {
         }
       });
 
+    // Mark the estimate itself as sent so the dashboard reflects delivery
+    await supabase
+      .from("enhanced_estimates")
+      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .eq("id", estimate.id)
+      .in("status", ["draft", "pending"]);
+
     // Log to internal notes so the team sees it in the Notes/Activity stream
     if (estimate.pipeline_entry_id) {
       await supabase
