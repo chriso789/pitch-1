@@ -61,17 +61,6 @@ export const IntegrationsSettings = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="srs" className="space-y-6">
-          <SRSConnectionSettings />
-        </TabsContent>
-
-        <TabsContent value="qxo" className="space-y-6">
-          <QXOConnectionSettings />
-        </TabsContent>
-
-        <TabsContent value="abc" className="space-y-6">
-          <ABCConnectionSettings />
-        </TabsContent>
 
         <TabsContent value="api-keys" className="space-y-6">
           <ApiKeyManager />
