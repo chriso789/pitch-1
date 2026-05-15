@@ -438,28 +438,36 @@ Deno.serve(async (req) => {
       }
 
       case "submit_test_order": {
-        // Sends a minimal hard-coded order to SRS staging so SRS Integrations
-        // can confirm an inbound PITCH-attributed call landed in their logs.
-        // Uses customer_code as JAN fallback when validation hasn't run.
-        const branch = (params as any).branch_code
-          || connection.default_branch_code
-          || "SRORL"; // OBrien's home branch per validate response
-        const jan = connection.job_account_number || connection.customer_code;
+        const branch = String(
+          (params as any).branch_code
+            || connection.default_branch_code
+            || "SRORL",
+        ).trim();
+        const janRaw = connection.job_account_number;
+        const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        if (!jan || Number.isNaN(jan)) {
+          throw new Error("Missing numeric jobAccountNumber on connection. Run validate_connection first.");
+        }
         const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
           .toISOString().slice(0, 10);
 
-        const testPayload = {
-          customerCode: connection.customer_code,
-          branchCode: branch,
+        const orderItems = ((params as any).order_items as any[] | undefined) || [
+          { productNumber: "TEST-SHINGLE-001", quantity: 1, uom: "EA", price: 0 },
+        ];
+
+        const testPayload = buildSubmitOrderPayload({
+          sourceSystem: SRS_SOURCE_SYSTEM,
+          customerCode: String(connection.customer_code || "").trim(),
           jobAccountNumber: jan,
-          deliveryMethod: "willcall",
+          branchCode: branch,
+          poNumber: `PITCH-TEST-${Date.now()}`,
           requestedDeliveryDate: tomorrow,
-          poNumber: `job:PITCH-TEST-${Date.now()}`,
+          shippingMethod: "WC",
+          shipTo: (params as any).ship_to || null,
+          customerContact: (params as any).customer_contact || null,
           notes: "PITCH integration test order — please ignore",
-          orderItems: (params as any).order_items || [
-            { productId: "TEST-SHINGLE-001", quantity: 1, uom: "EA" },
-          ],
-        };
+          items: orderItems,
+        });
 
         let srsResp: any;
         let success = false;
@@ -473,12 +481,8 @@ Deno.serve(async (req) => {
         }
 
         await audit({
-          tenant_id,
-          connection_id: connection.id,
-          action: "submit_test_order",
-          success,
-          error: errorMsg,
-          metadata: { request: testPayload, response: srsResp },
+          tenant_id, connection_id: connection.id, action: "submit_test_order",
+          success, error: errorMsg, metadata: { request: testPayload, response: srsResp },
         });
 
         result = { success, request: testPayload, response: srsResp, error: errorMsg };
@@ -489,7 +493,6 @@ Deno.serve(async (req) => {
         const { order_id } = params;
         if (!order_id) throw new Error("order_id required");
 
-        // Load order with items
         const { data: order } = await supabase
           .from("srs_orders")
           .select("*, srs_order_items(*)")
@@ -498,27 +501,35 @@ Deno.serve(async (req) => {
 
         if (!order) throw new Error("Order not found");
 
-        // Build SRS order payload
-        const orderPayload = {
-          customerCode: connection.customer_code,
-          branchCode: order.branch_code,
-          jobAccountNumber: connection.job_account_number,
-          deliveryMethod: order.delivery_method || "delivery",
-          requestedDeliveryDate: order.delivery_date,
-          // Prefix with `job:` so RoofHub webhooks echo back a unique, parseable PO
-          // (subscriberReferenceNum). roofhub-webhook strips the prefix when matching.
+        const janRaw = connection.job_account_number;
+        const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        if (!jan || Number.isNaN(jan)) {
+          throw new Error("Missing numeric jobAccountNumber on connection. Run validate_connection first.");
+        }
+
+        const orderPayload = buildSubmitOrderPayload({
+          sourceSystem: SRS_SOURCE_SYSTEM,
+          customerCode: String(connection.customer_code || "").trim(),
+          jobAccountNumber: jan,
+          branchCode: String(order.branch_code || connection.default_branch_code || "").trim(),
+          // Prefix `job:` so RoofHub webhooks echo back a unique parseable PO.
           poNumber: `job:${order.order_number}`,
+          requestedDeliveryDate: order.delivery_date,
+          shippingMethod: (order.delivery_method === "pickup") ? "WC" : "DEL",
+          shipTo: order.delivery_address ? { freeForm: order.delivery_address } : null,
+          customerContact: null,
           notes: order.notes,
-          orderItems: order.srs_order_items.map((item: any) => ({
-            productId: item.srs_product_id,
+          items: (order.srs_order_items || []).map((item: any) => ({
+            productNumber: item.srs_product_id,
             quantity: item.quantity,
             uom: item.uom,
+            price: item.unit_price,
+            description: item.product_name || item.product_description,
           })),
-        };
+        });
 
         const orderResult = await srsApiCall("/orders/v2/submit", "POST", orderPayload);
 
-        // Update order with SRS response
         await supabase
           .from("srs_orders")
           .update({
@@ -530,15 +541,96 @@ Deno.serve(async (req) => {
           })
           .eq("id", order_id);
 
-        // Log status change
         await supabase.from("srs_order_status_history").insert({
-          order_id,
-          old_status: "draft",
-          new_status: "submitted",
+          order_id, old_status: "draft", new_status: "submitted",
           status_message: `Order submitted. SRS Order ID: ${orderResult.orderID}`,
         });
 
-        result = { success: true, srsOrderId: orderResult.orderID };
+        result = { success: true, srsOrderId: orderResult.orderID, request: orderPayload };
+        break;
+      }
+
+      case "qa_verify": {
+        // Documented 7-step happy-path against the active environment.
+        // Read-only unless params.include_submit === true.
+        const steps: Array<{ step: string; ok: boolean; detail?: any; error?: string }> = [];
+        const safe = async (name: string, fn: () => Promise<any>) => {
+          try { const detail = await fn(); steps.push({ step: name, ok: true, detail }); return detail; }
+          catch (e: any) { steps.push({ step: name, ok: false, error: e?.message || String(e) }); return null; }
+        };
+
+        await safe("1_token", async () => {
+          const t = await getAccessToken();
+          return { acquired: !!t, expiresAt: connection.token_expires_at };
+        });
+        await safe("2_validate", async () => {
+          const ik = (params as any).integration_key;
+          const qs = new URLSearchParams();
+          qs.set("accountNumber", String(connection.customer_code || "").trim());
+          if (ik) qs.set("IntegrationKey", String(ik).trim());
+          const v = await srsApiCall(`/customers/validate/?${qs.toString()}`);
+          return { validIndicator: v?.validIndicator };
+        });
+        await safe("3_branchLocations", async () => {
+          const b = await srsApiCall("/branches/v2/branchLocations");
+          return { count: Array.isArray(b) ? b.length : (b?.branchLocations?.length ?? 0) };
+        });
+        const cbl = await safe("4_customerBranchLocations", async () => {
+          const b = await srsApiCall(`/branches/v2/customerBranchLocations/${connection.customer_code}`);
+          const first = Array.isArray(b) ? b[0] : b;
+          return { jobAccountNumber: first?.jobAccountNumber, branchCode: first?.branchCode };
+        });
+        const branchForProbe = String(
+          (params as any).branch_code
+            || (cbl as any)?.branchCode
+            || connection.default_branch_code
+            || "SRORL",
+        );
+        const products = await safe("5_activeBranchProducts", async () => {
+          const p = await srsApiCall(`/branches/v2/activeBranchProducts/${branchForProbe}`);
+          const list = Array.isArray(p) ? p : (p?.products || []);
+          return { count: list.length, sample: list[0] || null };
+        });
+        await safe("6_price", async () => {
+          const productNumber = String((params as any).product_number || (products as any)?.sample?.productNumber || "");
+          if (!productNumber) throw new Error("No productNumber available for price probe");
+          const jan = Number(connection.job_account_number);
+          if (!jan) throw new Error("connection.job_account_number missing");
+          return await srsApiCall("/products/v2/price", "POST", {
+            sourceSystem: SRS_SOURCE_SYSTEM,
+            transactionId: crypto.randomUUID(),
+            customerCode: String(connection.customer_code || "").trim(),
+            jobAccountNumber: jan,
+            branchCode: branchForProbe,
+            productList: [{ productNumber, quantity: 1, uom: "EA" }],
+          });
+        });
+        if ((params as any).include_submit === true) {
+          await safe("7_submit", async () => {
+            return await srsApiCall("/orders/v2/submit", "POST", buildSubmitOrderPayload({
+              sourceSystem: SRS_SOURCE_SYSTEM,
+              customerCode: String(connection.customer_code || "").trim(),
+              jobAccountNumber: Number(connection.job_account_number),
+              branchCode: branchForProbe,
+              poNumber: `PITCH-QA-${Date.now()}`,
+              requestedDeliveryDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+              shippingMethod: "WC",
+              shipTo: null,
+              customerContact: null,
+              notes: "PITCH QA verify — please ignore",
+              items: [{ productNumber: "TEST-SHINGLE-001", quantity: 1, uom: "EA", price: 0 }],
+            }));
+          });
+        } else {
+          steps.push({ step: "7_submit", ok: true, detail: "skipped (set include_submit=true to exercise)" });
+        }
+
+        const allOk = steps.every((s) => s.ok);
+        await audit({
+          tenant_id, connection_id: connection.id, action: "qa_verify",
+          success: allOk, metadata: { steps, environment: connection.environment },
+        });
+        result = { success: allOk, environment: connection.environment, steps };
         break;
       }
 
