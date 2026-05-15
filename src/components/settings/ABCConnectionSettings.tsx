@@ -8,7 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
+
+const ABC_CONFIG = {
+  authorizationUrl: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
+  tokenUrl: '', // pending ABC confirmation
+  scopes: '', // pending ABC confirmation
+  redirectUri: 'https://pitch-crm.ai/api/abc/callback',
+  apiBase: {
+    staging: 'https://partners-sb.abcsupply.com/api',
+    production: 'https://partners.abcsupply.com/api',
+  },
+};
 
 interface ABCConnection {
   id: string;
