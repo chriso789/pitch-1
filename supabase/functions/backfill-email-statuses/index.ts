@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
     // metadata.email_id) so we can backfill.
     const { data: rows, error } = await supabase
       .from("communication_history")
-      .select("id, resend_message_id, metadata, email_status, delivered_at, opened_at, bounced_at, opened_count, clicked_count, to_address")
+      .select("id, tenant_id, contact_id, resend_message_id, metadata, email_status, delivered_at, opened_at, bounced_at, opened_count, clicked_count, to_address")
       .eq("communication_type", "email")
       .order("created_at", { ascending: false })
       .limit(500);
@@ -95,7 +95,20 @@ Deno.serve(async (req: Request) => {
         if (!row.resend_message_id) update.resend_message_id = emailId;
 
         // Backfill to_address from Resend payload if missing
+        const toAddr = row.to_address || data.to?.[0] || null;
         if (!row.to_address && data.to?.[0]) update.to_address = data.to[0];
+
+        // Link to lead/contact by email if missing
+        if (!row.contact_id && toAddr) {
+          let q = supabase
+            .from("contacts")
+            .select("id")
+            .ilike("email", toAddr)
+            .limit(1);
+          if (row.tenant_id) q = q.eq("tenant_id", row.tenant_id);
+          const { data: matched } = await q.maybeSingle();
+          if (matched?.id) update.contact_id = matched.id;
+        }
 
         // Map last_event -> status
         const evt = (data.last_event || "").toLowerCase();

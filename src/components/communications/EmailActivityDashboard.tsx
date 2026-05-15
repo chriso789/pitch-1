@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,21 +47,6 @@ export function EmailActivityDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<string>('7d');
-  const [backfilling, setBackfilling] = useState(false);
-
-  const handleBackfill = async () => {
-    setBackfilling(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('backfill-email-statuses');
-      if (error) throw error;
-      toast.success(`Backfill complete: ${data.updated}/${data.checked} updated`);
-      refetch();
-    } catch (e: any) {
-      toast.error(`Backfill failed: ${e.message}`);
-    } finally {
-      setBackfilling(false);
-    }
-  };
 
   // Fetch emails with engagement data
   const { data: emails, isLoading, refetch } = useQuery({
@@ -114,6 +99,16 @@ export function EmailActivityDashboard() {
       })) as EmailRecord[];
     }
   });
+
+  // Silently backfill Resend statuses + link to leads on mount
+  useEffect(() => {
+    supabase.functions.invoke('backfill-email-statuses')
+      .then(({ data }) => {
+        if (data?.updated > 0) refetch();
+      })
+      .catch(() => { /* silent */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -282,10 +277,6 @@ export function EmailActivityDashboard() {
               <Button variant="outline" size="sm" onClick={() => refetch()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
-              </Button>
-              <Button variant="default" size="sm" onClick={handleBackfill} disabled={backfilling}>
-                <RefreshCw className={`h-4 w-4 mr-2 ${backfilling ? 'animate-spin' : ''}`} />
-                {backfilling ? 'Backfilling...' : 'Backfill Statuses'}
               </Button>
             </div>
           </div>
