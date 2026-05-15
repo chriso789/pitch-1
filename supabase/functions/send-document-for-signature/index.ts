@@ -318,6 +318,56 @@ Deno.serve(async (req) => {
         },
       });
 
+    // Log to communication_history (Comms tab) and internal_notes for each recipient,
+    // so estimates sent for signature appear in the lead's tracking record.
+    if (document_type === 'estimate') {
+      for (const r of createdRecipients) {
+        try {
+          await supabase.from("communication_history").insert({
+            tenant_id: tenantId,
+            contact_id: resolvedContactId,
+            pipeline_entry_id: resolvedPipelineEntryId,
+            rep_id: user.id,
+            communication_type: "email",
+            direction: "outbound",
+            subject: `Signature requested: ${documentTitle}`,
+            content: email_message || `Signature request for ${documentTitle} sent to ${r.recipient_email}`,
+            from_address: profile?.email || null,
+            to_address: r.recipient_email,
+            delivery_status: "sent",
+            metadata: {
+              source: "send-document-for-signature",
+              envelope_id: envelope.id,
+              envelope_number: envelope.envelope_number,
+              estimate_id: document_id,
+              recipient_id: r.id,
+              ...(cc?.length ? { cc } : {}),
+              ...(bcc?.length ? { bcc } : {}),
+            },
+          });
+        } catch (logErr) {
+          console.warn("comm history log failed:", logErr);
+        }
+      }
+
+      if (resolvedPipelineEntryId) {
+        try {
+          const recipientList = createdRecipients
+            .map((r) => `${r.recipient_name || r.recipient_email} (${r.recipient_email})`)
+            .join(", ");
+          await supabase.from("internal_notes").insert({
+            tenant_id: tenantId,
+            pipeline_entry_id: resolvedPipelineEntryId,
+            contact_id: resolvedContactId,
+            author_id: user.id,
+            content: `✍️ Estimate **${documentTitle}** sent for signature to ${recipientList}.`,
+          });
+        } catch (noteErr) {
+          console.warn("internal note log failed:", noteErr);
+        }
+      }
+    }
+
     console.log(`Signature envelope ${envelope.envelope_number} sent successfully`);
 
     return new Response(JSON.stringify({
