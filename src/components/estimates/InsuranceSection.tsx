@@ -355,9 +355,9 @@ export const InsuranceSection: React.FC<InsuranceSectionProps> = ({
             <SupplementTracker pipelineEntryId={pipelineEntryId} />
           </TabsContent>
 
-          {/* Scope Tracking Tab */}
+          {/* Comparison Tab — upload carrier + contractor scopes and run full comparison report */}
           <TabsContent value="scope" className="space-y-4 mt-0">
-            <ScopeTracker pipelineEntryId={pipelineEntryId} />
+            <ProjectInsuranceTab projectId={pipelineEntryId} jobId={jobId} />
           </TabsContent>
         </Tabs>
       </CardContent>
