@@ -49,7 +49,10 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
     setUploading(kind);
     try {
       const path = `${tenantId}/projects/${projectId}/scopes/${Date.now()}_${file.name}`;
-      const { error: upErr } = await supabase.storage.from('insurance-scopes').upload(path, file);
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, file, {
+        contentType: 'application/pdf',
+        upsert: true,
+      });
       if (upErr) throw upErr;
       const { data, error } = await supabase.functions.invoke('scope-document-ingest', {
         body: {
