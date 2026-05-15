@@ -70,6 +70,7 @@ import { ProjectPhotoSteps } from '@/components/lead-details/ProjectPhotoSteps';
 import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 
 // Hook to get selected estimate id from pipeline metadata
 const useSelectedEstimateId = (pipelineEntryId: string) => {
@@ -1183,6 +1184,7 @@ const LeadDetails = () => {
               <Home className="h-3 w-3" />
               {(lead.contact as any).portal_access_enabled ? 'Portal On' : 'Enable Portal'}
             </Button>
+            <SendReferralLinkButton contactId={lead.contact.id} />
           </div>
         )}
 
