@@ -395,15 +395,27 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         .update({ contract_value: newContract })
         .eq('id', co.project_id);
 
-      // 1b. Merge CO line items into the active estimate (main estimate + budget)
+      // 1b. Merge CO line items into the active estimate (enhanced_estimates - source of truth for Profit Center)
       try {
-        const { data: estimate } = await (supabase as any)
-          .from('estimates')
-          .select('id, line_items, material_cost, labor_cost, selling_price')
-          .eq('pipeline_entry_id', pipelineEntryId)
-          .order('created_at', { ascending: false })
-          .limit(1)
+        // Prefer the pipeline's selected estimate; fall back to the latest one.
+        const { data: pe } = await (supabase as any)
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
           .maybeSingle();
+        const selectedEstimateId = (pe?.metadata as any)?.selected_estimate_id || null;
+        let estimateQuery = (supabase as any)
+          .from('enhanced_estimates')
+          .select('id, line_items, material_cost, labor_cost, selling_price, overhead_percent, sales_tax_amount');
+        if (selectedEstimateId) {
+          estimateQuery = estimateQuery.eq('id', selectedEstimateId);
+        } else {
+          estimateQuery = estimateQuery
+            .eq('pipeline_entry_id', pipelineEntryId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        }
+        const { data: estimate } = await estimateQuery.maybeSingle();
         if (estimate) {
           const sections = (estimate.line_items as Record<string, any[]>) || {};
           const coItems: any[] = ((co.line_items as any)?.items || []);
@@ -442,13 +454,25 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
           };
           const matAddCost = Number(co.material_total || 0);
           const lborAddCost = Number(co.labor_total || 0);
+          const newMaterialCost = Number(estimate.material_cost || 0) + matAddCost;
+          const newLaborCost = Number(estimate.labor_cost || 0) + lborAddCost;
+          const newSellingPrice = Number(estimate.selling_price || 0) + amount;
+          const ohRate = Number((estimate as any).overhead_percent || 0);
+          const tax = Number((estimate as any).sales_tax_amount || 0);
+          const preTax = newSellingPrice - tax;
+          const newOverhead = Math.round(preTax * (ohRate / 100) * 100) / 100;
+          const newProfit = Math.round((preTax - newMaterialCost - newLaborCost - newOverhead) * 100) / 100;
+          const newProfitPct = preTax > 0 ? Math.round((newProfit / preTax) * 10000) / 100 : 0;
           await (supabase as any)
-            .from('estimates')
+            .from('enhanced_estimates')
             .update({
               line_items: mergedSections,
-              material_cost: Number(estimate.material_cost || 0) + matAddCost,
-              labor_cost: Number(estimate.labor_cost || 0) + lborAddCost,
-              selling_price: Number(estimate.selling_price || 0) + amount,
+              material_cost: newMaterialCost,
+              labor_cost: newLaborCost,
+              selling_price: newSellingPrice,
+              overhead_amount: newOverhead,
+              actual_profit_amount: newProfit,
+              actual_profit_percent: newProfitPct,
             })
             .eq('id', estimate.id);
         }
@@ -500,6 +524,11 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       });
       refresh();
       queryClient.invalidateQueries({ queryKey: ['project-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
     } catch (e: any) {
       toast({ title: 'Push failed', description: e.message, variant: 'destructive' });
     }
