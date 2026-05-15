@@ -11,15 +11,40 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
 
 const ABC_CONFIG = {
-  authorizationUrl: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
-  tokenUrl: '', // pending ABC confirmation
-  scopes: '', // pending ABC confirmation
+  authBase: {
+    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8',
+    production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
+  },
+  authorizeUrl: {
+    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize',
+    production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize',
+  },
+  tokenUrl: {
+    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
+    production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token',
+  },
+  scopes: 'pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access',
   redirectUri: 'https://pitch-crm.ai/api/abc/callback',
   apiBase: {
     staging: 'https://partners-sb.abcsupply.com/api',
     production: 'https://partners.abcsupply.com/api',
   },
 };
+
+// PKCE helpers
+function base64UrlEncode(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function generatePkce() {
+  const verifierBytes = new Uint8Array(64);
+  crypto.getRandomValues(verifierBytes);
+  const verifier = base64UrlEncode(verifierBytes.buffer);
+  const challenge = base64UrlEncode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  return { verifier, challenge };
+}
 
 function EndpointRow({ label, value, pending, hint }: { label: string; value: string; pending?: string; hint?: string }) {
   const display = value || pending || '—';
