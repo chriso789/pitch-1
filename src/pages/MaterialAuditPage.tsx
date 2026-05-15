@@ -657,7 +657,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           name: desc,
           description: desc,
           uom: mapLine.invoice_uom || "ea",
-          base_cost: chargedUnit,
+          base_cost: agreedUnit,
           supplier_sku: mapLine.supplier_sku || null,
           active: true,
         });
