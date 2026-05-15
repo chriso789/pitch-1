@@ -11,15 +11,40 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
 
 const ABC_CONFIG = {
-  authorizationUrl: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
-  tokenUrl: '', // pending ABC confirmation
-  scopes: '', // pending ABC confirmation
+  authBase: {
+    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8',
+    production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
+  },
+  authorizeUrl: {
+    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize',
+    production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize',
+  },
+  tokenUrl: {
+    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
+    production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token',
+  },
+  scopes: 'pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access',
   redirectUri: 'https://pitch-crm.ai/api/abc/callback',
   apiBase: {
     staging: 'https://partners-sb.abcsupply.com/api',
     production: 'https://partners.abcsupply.com/api',
   },
 };
+
+// PKCE helpers
+function base64UrlEncode(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function generatePkce() {
+  const verifierBytes = new Uint8Array(64);
+  crypto.getRandomValues(verifierBytes);
+  const verifier = base64UrlEncode(verifierBytes.buffer);
+  const challenge = base64UrlEncode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  return { verifier, challenge };
+}
 
 function EndpointRow({ label, value, pending, hint }: { label: string; value: string; pending?: string; hint?: string }) {
   const display = value || pending || '—';
@@ -273,10 +298,10 @@ export function ABCConnectionSettings() {
 
           <div className="rounded-md border p-3 space-y-2 text-xs">
             <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
-            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizationUrl} />
-            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl} pending="Pending — request from ABC IT" />
+            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment === 'production' ? 'production' : 'staging']} />
+            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment === 'production' ? 'production' : 'staging']} />
             <EndpointRow label="Redirect URI" value={ABC_CONFIG.redirectUri} hint="Provide this to ABC when registering the OAuth client" />
-            <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} pending="Pending — request from ABC IT" />
+            <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} hint="PKCE (S256) + Basic auth on token endpoint" />
             <EndpointRow
               label={`API Base (${environment})`}
               value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.staging}
@@ -291,13 +316,25 @@ export function ABCConnectionSettings() {
 
             <Button
               variant="outline"
-              onClick={() => {
+              onClick={async () => {
                 if (!clientId) {
                   toast({ title: 'Save Client ID first', variant: 'destructive' });
                   return;
                 }
-                const url = `${ABC_CONFIG.authorizationUrl}/v1/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&redirect_uri=${encodeURIComponent(ABC_CONFIG.redirectUri)}&state=${effectiveTenantId}`;
-                window.open(url, '_blank', 'noopener,noreferrer');
+                const { verifier, challenge } = await generatePkce();
+                const env = environment === 'production' ? 'production' : 'staging';
+                const state = `${effectiveTenantId}:${crypto.randomUUID()}`;
+                sessionStorage.setItem(`abc_pkce_${state}`, verifier);
+                const params = new URLSearchParams({
+                  client_id: clientId,
+                  response_type: 'code',
+                  redirect_uri: ABC_CONFIG.redirectUri,
+                  scope: ABC_CONFIG.scopes,
+                  state,
+                  code_challenge: challenge,
+                  code_challenge_method: 'S256',
+                });
+                window.open(`${ABC_CONFIG.authorizeUrl[env]}?${params.toString()}`, '_blank', 'noopener,noreferrer');
               }}
               disabled={!clientId}
             >
