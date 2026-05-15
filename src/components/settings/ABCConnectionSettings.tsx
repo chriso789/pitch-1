@@ -21,6 +21,29 @@ const ABC_CONFIG = {
   },
 };
 
+function EndpointRow({ label, value, pending, hint }: { label: string; value: string; pending?: string; hint?: string }) {
+  const display = value || pending || '—';
+  return (
+    <div className="flex items-start justify-between gap-2 py-1 border-b last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-muted-foreground">{label}</div>
+        <div className={`font-mono text-[11px] break-all ${value ? 'text-foreground' : 'text-amber-600'}`}>{display}</div>
+        {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
+      </div>
+      {value && (
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(value)}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+          title="Copy"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ABCConnection {
   id: string;
   tenant_id: string;
