@@ -878,23 +878,44 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
               </div>
-              <div className="space-y-1.5 pt-1 border-t">
-                <label className="text-xs font-medium text-muted-foreground">New catalog item name</label>
-                <Input
-                  placeholder="Name this item as it should appear in the catalog"
-                  value={catalogName}
-                  onChange={(e) => setCatalogName(e.target.value)}
-                />
+              <div className="space-y-2 pt-1 border-t">
+                <div className="text-[11px] text-muted-foreground">
+                  Can't find this item above? Add it to the supplier pricelist with the <span className="font-semibold text-foreground">contracted price</span> from the SRS pricelist PDF — <span className="font-semibold">not</span> the invoice price. The audit will then flag the invoice as overcharged.
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Pricelist item name</label>
+                    <Input
+                      placeholder="Item description"
+                      value={catalogName}
+                      onChange={(e) => setCatalogName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Contracted unit price ($)
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder={`e.g. lower than $${Number(mapLine?.charged_unit_price || 0).toFixed(2)}`}
+                      value={catalogPrice}
+                      onChange={(e) => setCatalogPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="flex items-center justify-between gap-2 pt-1">
                 <Button
                   variant="secondary"
                   onClick={catalogNewItem}
-                  disabled={cataloging || !catalogName.trim() || !Number(mapLine?.charged_unit_price || 0)}
-                  title="Add this invoice line as a new item in the supplier price list at the charged price"
+                  disabled={cataloging || !catalogName.trim() || !(Number(catalogPrice) > 0)}
+                  title="Add this item to the supplier pricelist at the contracted price"
                 >
                   <Package className="h-4 w-4 mr-2" />
-                  {cataloging ? "Cataloging..." : "Catalog this item"}
+                  {cataloging ? "Adding..." : "Add to pricelist"}
                 </Button>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
