@@ -249,8 +249,15 @@ Deno.serve(async (req) => {
           // If caller passed an environment, persist it before validating so the dropdown selection sticks
           const envParam = (params as Record<string, string>).environment;
           if (envParam && (envParam === "production" || envParam === "staging") && envParam !== connection.environment) {
-            await supabase.from("srs_connections").update({ environment: envParam }).eq("id", connection.id);
+            const { error: envUpdateError } = await supabase.from("srs_connections").update({
+              environment: envParam,
+              access_token: null,
+              token_expires_at: null,
+            }).eq("id", connection.id);
+            if (envUpdateError) throw envUpdateError;
             connection.environment = envParam;
+            connection.access_token = null;
+            connection.token_expires_at = null;
           }
 
           await getAccessToken();
