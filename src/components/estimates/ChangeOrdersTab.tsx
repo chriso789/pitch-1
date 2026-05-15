@@ -395,15 +395,27 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         .update({ contract_value: newContract })
         .eq('id', co.project_id);
 
-      // 1b. Merge CO line items into the active estimate (main estimate + budget)
+      // 1b. Merge CO line items into the active estimate (enhanced_estimates - source of truth for Profit Center)
       try {
-        const { data: estimate } = await (supabase as any)
-          .from('estimates')
-          .select('id, line_items, material_cost, labor_cost, selling_price')
-          .eq('pipeline_entry_id', pipelineEntryId)
-          .order('created_at', { ascending: false })
-          .limit(1)
+        // Prefer the pipeline's selected estimate; fall back to the latest one.
+        const { data: pe } = await (supabase as any)
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
           .maybeSingle();
+        const selectedEstimateId = (pe?.metadata as any)?.selected_estimate_id || null;
+        let estimateQuery = (supabase as any)
+          .from('enhanced_estimates')
+          .select('id, line_items, material_cost, labor_cost, selling_price, overhead_percent, sales_tax_amount');
+        if (selectedEstimateId) {
+          estimateQuery = estimateQuery.eq('id', selectedEstimateId);
+        } else {
+          estimateQuery = estimateQuery
+            .eq('pipeline_entry_id', pipelineEntryId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        }
+        const { data: estimate } = await estimateQuery.maybeSingle();
         if (estimate) {
           const sections = (estimate.line_items as Record<string, any[]>) || {};
           const coItems: any[] = ((co.line_items as any)?.items || []);
