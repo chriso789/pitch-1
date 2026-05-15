@@ -418,11 +418,12 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       });
       if (invErr) throw invErr;
 
-      // 3. Mark CO as invoiced + approved
+      // 3. Mark CO as invoiced + approved (and persist computed cost_impact)
       await (supabase as any)
         .from('change_orders')
         .update({
           status: 'invoiced',
+          cost_impact: amount,
           customer_approved: true,
           customer_approved_at: new Date().toISOString(),
           approved_date: new Date().toISOString(),
