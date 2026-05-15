@@ -262,9 +262,9 @@ Deno.serve(async (req) => {
           // Validate customer (SRS requires invoice proof of ownership)
           const qs = new URLSearchParams();
           qs.set("accountNumber", String(connection.customer_code || "").trim());
-          qs.set("invoiceNumber", invoice_number.trim());
-          if (invoice_date) qs.set("invoiceDate", invoice_date.trim());
-          if (billed_amount) qs.set("billedAmount", billed_amount.trim());
+          qs.set("InvoiceNumber", invoice_number.trim());
+          if (invoice_date) qs.set("InvoiceDate", invoice_date.trim());
+          if (billed_amount) qs.set("BilledAmount", billed_amount.trim());
           const validateData = await srsApiCall(`/customers/validate/?${qs.toString()}`);
 
           const isValid = validateData?.validIndicator === "Y" || validateData?.validIndicator === true;
