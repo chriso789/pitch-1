@@ -1278,8 +1278,6 @@ verify_jwt = false
 verify_jwt = true
 
 
-[functions.abc-oauth-start]
-verify_jwt = true
 
 [functions.abc-oauth-callback]
 verify_jwt = false
