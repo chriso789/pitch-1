@@ -18,6 +18,7 @@ import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { XactScopeBuilder } from '@/components/xact-scope/XactScopeBuilder';
+import { ProjectInsuranceTab } from '@/features/projects/components/ProjectInsuranceTab';
 
 
 interface InsuranceSectionProps {
@@ -177,7 +178,7 @@ export const InsuranceSection: React.FC<InsuranceSectionProps> = ({
             </TabsTrigger>
             <TabsTrigger value="scope" className="text-xs">
               <Search className="h-3 w-3 mr-1" />
-              Scope Tracking
+              Comparison
             </TabsTrigger>
           </TabsList>
 
@@ -354,9 +355,9 @@ export const InsuranceSection: React.FC<InsuranceSectionProps> = ({
             <SupplementTracker pipelineEntryId={pipelineEntryId} />
           </TabsContent>
 
-          {/* Scope Tracking Tab */}
+          {/* Comparison Tab — upload carrier + contractor scopes and run full comparison report */}
           <TabsContent value="scope" className="space-y-4 mt-0">
-            <ScopeTracker pipelineEntryId={pipelineEntryId} />
+            <ProjectInsuranceTab projectId={pipelineEntryId} jobId={jobId} />
           </TabsContent>
         </Tabs>
       </CardContent>
