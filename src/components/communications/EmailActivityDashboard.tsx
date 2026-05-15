@@ -12,6 +12,7 @@ import {
   AlertTriangle, Search, RefreshCw, ExternalLink, Calendar
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 interface EmailRecord {
   id: string;
