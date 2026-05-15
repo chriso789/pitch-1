@@ -402,11 +402,17 @@ Deno.serve(async (req) => {
       }
 
       case "get_pricing": {
-        const { branch_code, product_list } = params;
+        const { branch_code, product_list, job_account_number } = params as Record<string, any>;
         if (!branch_code || !product_list) throw new Error("branch_code and product_list required");
+
+        // SRS /products/v2/price requires JobAccountNumber on every call.
+        // Prefer the explicit param, then the validated value on the connection,
+        // then fall back to customer_code so the request shape is always valid.
+        const jan = job_account_number || connection.job_account_number || connection.customer_code;
 
         const pricing = await srsApiCall("/products/v2/price", "POST", {
           customerCode: connection.customer_code,
+          jobAccountNumber: jan,
           branchCode: branch_code,
           productList: product_list,
         });
