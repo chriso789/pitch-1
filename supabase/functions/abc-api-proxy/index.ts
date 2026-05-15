@@ -130,6 +130,8 @@ async function getValidAccessToken(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  let requestAction: ProxyRequest["action"] | undefined;
+
   try {
     const auth = req.headers.get("Authorization");
     const supabase = createClient(
@@ -140,6 +142,7 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as ProxyRequest;
     const action = body.action;
+    requestAction = action;
     const env = normalizeEnv(body.environment);
     const cfg = ABC[env];
 
@@ -427,8 +430,14 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: false,
         error: error instanceof Error ? error.message : String(error),
+        interpretation: requestAction === "start_oauth"
+          ? `Could not start ABC OAuth: ${error instanceof Error ? error.message : String(error)}`
+          : undefined,
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: requestAction === "start_oauth" ? 200 : 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
