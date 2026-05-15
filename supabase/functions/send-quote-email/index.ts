@@ -402,7 +402,7 @@ Deno.serve(async (req: Request) => {
       .from("enhanced_estimates")
       .update({ status: "sent", sent_to_customer_at: new Date().toISOString() })
       .eq("id", estimate.id)
-      .in("status", ["draft", "pending"]);
+      .eq("status", "draft");
 
     // Log to internal notes so the team sees it in the Notes/Activity stream
     if (estimate.pipeline_entry_id) {
