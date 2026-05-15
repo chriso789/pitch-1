@@ -742,6 +742,16 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="materials" className="space-y-4">
+          <ProjectMaterialsTab
+            projectId={projectId}
+            estimateId={estimate?.id}
+            jobNumber={project?.job_number || project?.name}
+            customerName={contact ? `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() : undefined}
+            projectAddress={contact ? [contact.address_street, contact.address_city, `${contact.address_state || ''} ${contact.address_zip || ''}`.trim()].filter(Boolean).join(', ') : undefined}
+          />
+        </TabsContent>
+
         <TabsContent value="timeline" className="space-y-4">
           <Card>
             <CardHeader>
