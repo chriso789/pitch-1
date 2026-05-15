@@ -551,7 +551,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       if (!sid) return [];
       const { data } = await supabase
         .from("supplier_price_list_items")
-        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
+        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure, pack_quantity, pack_uom")
         .eq("supplier_id", sid)
         .order("item_description")
         .limit(1000);
