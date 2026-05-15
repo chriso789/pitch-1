@@ -597,7 +597,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
         </TabsContent>
 
         <TabsContent value="commission" className="space-y-4">
-
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="h-5 w-5" />
