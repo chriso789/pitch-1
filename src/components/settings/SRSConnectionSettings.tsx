@@ -55,6 +55,7 @@ export function SRSConnectionSettings() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [billedAmount, setBilledAmount] = useState('');
+  const [integrationKey, setIntegrationKey] = useState('');
 
   useEffect(() => {
     if (activeCompanyId) {
@@ -134,10 +135,10 @@ export function SRSConnectionSettings() {
 
   const handleTestConnection = async () => {
     if (!activeCompanyId) return;
-    if (!invoiceNumber.trim() || (!invoiceDate.trim() && !billedAmount.trim())) {
+    if (!integrationKey.trim() && (!invoiceNumber.trim() || (!invoiceDate.trim() && !billedAmount.trim()))) {
       toast({
-        title: 'Invoice info required',
-        description: 'SRS requires a recent Invoice # plus Invoice Date or Billed Amount to confirm account ownership.',
+        title: 'Validation info required',
+        description: 'Provide either an SRS Integration Key OR Invoice # + Invoice Date/Billed Amount.',
         variant: 'destructive',
       });
       return;
@@ -149,7 +150,8 @@ export function SRSConnectionSettings() {
           action: 'validate_connection',
           tenant_id: activeCompanyId,
           environment,
-          invoice_number: invoiceNumber.trim(),
+          integration_key: integrationKey.trim() || undefined,
+          invoice_number: invoiceNumber.trim() || undefined,
           invoice_date: invoiceDate.trim() || undefined,
           billed_amount: billedAmount.trim() || undefined,
         },
@@ -320,14 +322,19 @@ export function SRSConnectionSettings() {
             <div>
               <Label className="text-sm font-semibold">Validate Customer Account</Label>
               <p className="text-xs text-muted-foreground mt-1">
-                SRS requires a recent invoice to prove ownership of this account. Provide the Invoice # plus
-                either the Invoice Date or Billed Amount. This is only needed for the initial validation.
+                Provide an SRS-issued <strong>Integration Key</strong> (fastest) OR a recent Invoice # plus
+                Invoice Date / Billed Amount. Only needed for the initial validation.
               </p>
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Integration Key (recommended)</Label>
+              <Input value={integrationKey} onChange={(e) => setIntegrationKey(e.target.value)} placeholder="e.g. B0Z17e" />
+            </div>
+            <div className="text-xs text-muted-foreground">— or —</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Invoice #</Label>
-                <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="e.g. 12345678" />
+                <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="e.g. 0040412114-001" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Invoice Date</Label>
