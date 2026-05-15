@@ -190,8 +190,12 @@ Deno.serve(async (req) => {
       const scopes = Deno.env.get("ABC_SCOPES") || DEFAULT_SCOPES;
       if (!clientId) {
         return new Response(
-          JSON.stringify({ error: `ABC_CLIENT_ID_${envSuffix} not configured.` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          JSON.stringify({
+            success: false,
+            error: `ABC_CLIENT_ID_${envSuffix} not configured`,
+            interpretation: `No ${env} OAuth Client ID is configured on the server. Add the ABC_CLIENT_ID_${envSuffix} secret in Supabase, then retry.`,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
