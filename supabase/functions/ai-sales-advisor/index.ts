@@ -181,6 +181,8 @@ Deno.serve(async (req) => {
     }`;
 
     // Call OpenAI for analysis
+    const aiModel = 'gpt-4o-mini';
+    const aiStartedAt = Date.now();
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -188,7 +190,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: aiModel,
         messages: [
           { role: 'user', content: analysisPrompt }
         ],
@@ -198,10 +200,19 @@ Deno.serve(async (req) => {
     });
 
     if (!openAIResponse.ok) {
+      const errorText = await openAIResponse.text();
+      const status = openAIResponse.status === 429 ? 'rate_limited' : openAIResponse.status === 402 ? 'payment_required' : 'error';
+      await logAIUsage({ supabase, tenantId, userId: user.id, provider: 'openai', model: aiModel, feature: 'ai-sales-advisor', responseTimeMs: Date.now() - aiStartedAt, status, errorMessage: errorText.slice(0, 500), endpoint: '/ai-sales-advisor' });
       throw new Error('Failed to generate AI analysis');
     }
 
     const aiResult = await openAIResponse.json();
+    await logAIUsage({
+      supabase, tenantId, userId: user.id,
+      provider: 'openai', model: aiModel, feature: 'ai-sales-advisor',
+      promptTokens: aiResult.usage?.prompt_tokens, completionTokens: aiResult.usage?.completion_tokens,
+      responseTimeMs: Date.now() - aiStartedAt, status: 'success', endpoint: '/ai-sales-advisor', requestId: aiResult.id,
+    });
     const analysis = JSON.parse(aiResult.choices[0].message.content);
 
     // Store insights in database
