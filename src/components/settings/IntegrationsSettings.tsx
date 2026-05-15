@@ -34,6 +34,10 @@ export const IntegrationsSettings = () => {
             <Package className="h-4 w-4" />
             QXO / Beacon
           </TabsTrigger>
+          <TabsTrigger value="abc" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            ABC Supply
+          </TabsTrigger>
           <TabsTrigger value="api-keys" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
             API Keys
