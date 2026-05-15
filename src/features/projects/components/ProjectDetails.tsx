@@ -12,6 +12,7 @@ import { CostReconciliationPanel } from "@/components/production/CostReconciliat
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
 import { DrawTally } from "@/components/commission/DrawTally";
 import { ProjectMaterialsTab } from "@/components/orders/ProjectMaterialsTab";
+import { ProjectInsuranceTab } from "./ProjectInsuranceTab";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
@@ -597,7 +598,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
         </TabsContent>
 
         <TabsContent value="commission" className="space-y-4">
-
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="h-5 w-5" />
