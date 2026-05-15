@@ -33,8 +33,8 @@ interface ProxyRequest {
 async function getCreds(env: "staging" | "production") {
   if (env === "production") {
     return {
-      clientId: Deno.env.get("ABC_CLIENT_ID") ?? "",
-      clientSecret: Deno.env.get("ABC_CLIENT_SECRET") ?? "",
+      clientId: Deno.env.get("ABC_CLIENT_ID_PRODUCTION") ?? "",
+      clientSecret: Deno.env.get("ABC_CLIENT_SECRET_PRODUCTION") ?? "",
     };
   }
   return {
@@ -180,8 +180,6 @@ Deno.serve(async (req) => {
         headers: {
           Authorization: accessToken ? `Bearer ${accessToken}` : "Bearer none",
           "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-Source-System": "PITCH",
         },
         body: JSON.stringify(testPayload),
       });
