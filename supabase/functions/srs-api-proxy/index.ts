@@ -421,6 +421,54 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "submit_test_order": {
+        // Sends a minimal hard-coded order to SRS staging so SRS Integrations
+        // can confirm an inbound PITCH-attributed call landed in their logs.
+        // Uses customer_code as JAN fallback when validation hasn't run.
+        const branch = (params as any).branch_code
+          || connection.default_branch_code
+          || "SRORL"; // OBrien's home branch per validate response
+        const jan = connection.job_account_number || connection.customer_code;
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
+          .toISOString().slice(0, 10);
+
+        const testPayload = {
+          customerCode: connection.customer_code,
+          branchCode: branch,
+          jobAccountNumber: jan,
+          deliveryMethod: "willcall",
+          requestedDeliveryDate: tomorrow,
+          poNumber: `job:PITCH-TEST-${Date.now()}`,
+          notes: "PITCH integration test order — please ignore",
+          orderItems: (params as any).order_items || [
+            { productId: "TEST-SHINGLE-001", quantity: 1, uom: "EA" },
+          ],
+        };
+
+        let srsResp: any;
+        let success = false;
+        let errorMsg: string | null = null;
+        try {
+          srsResp = await srsApiCall("/orders/v2/submit", "POST", testPayload);
+          success = true;
+        } catch (e: any) {
+          errorMsg = e?.message || String(e);
+          srsResp = { error: errorMsg };
+        }
+
+        await audit({
+          tenant_id,
+          connection_id: connection.id,
+          action: "submit_test_order",
+          success,
+          error: errorMsg,
+          metadata: { request: testPayload, response: srsResp },
+        });
+
+        result = { success, request: testPayload, response: srsResp, error: errorMsg };
+        break;
+      }
+
       case "submit_order": {
         const { order_id } = params;
         if (!order_id) throw new Error("order_id required");
