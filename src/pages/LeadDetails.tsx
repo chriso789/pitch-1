@@ -1184,6 +1184,7 @@ const LeadDetails = () => {
               <Home className="h-3 w-3" />
               {(lead.contact as any).portal_access_enabled ? 'Portal On' : 'Enable Portal'}
             </Button>
+            <SendReferralLinkButton contactId={lead.contact.id} />
           </div>
         )}
 
