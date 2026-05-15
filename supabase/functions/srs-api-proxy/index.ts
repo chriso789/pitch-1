@@ -6,6 +6,9 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SRS_STAGING_URL = "https://services-qa.roofhub.pro";
 const SRS_PRODUCTION_URL = "https://services.roofhub.pro";
+// Identifier assigned to us by SRS (Angel Perez, 5/14/2026 onboarding email).
+// Sent on every authenticated SRS call so SRS can attribute traffic to PITCH.
+const SRS_SOURCE_SYSTEM = "PITCH";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
