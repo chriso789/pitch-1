@@ -159,51 +159,6 @@ export const OverheadTab: React.FC<OverheadTabProps> = ({ pipelineEntryId }) => 
         </CardContent>
       </Card>
 
-      {/* Dump Fee Calculator */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Truck className="h-4 w-4 text-amber-600" />
-            Dump Fee
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Price per Dump</label>
-              <Input
-                type="number"
-                value={dumpPrice}
-                onChange={(e) => setDumpPrice(Number(e.target.value) || 0)}
-                className="h-9"
-              />
-            </div>
-            <div className="w-20">
-              <label className="text-xs text-muted-foreground mb-1 block">Dumps</label>
-              <Input
-                type="number"
-                value={dumpCount}
-                onChange={(e) => setDumpCount(Math.max(1, Number(e.target.value) || 1))}
-                className="h-9"
-                min={1}
-              />
-            </div>
-            <div className="w-24 text-right">
-              <label className="text-xs text-muted-foreground mb-1 block">Total</label>
-              <p className="font-bold text-sm h-9 flex items-center justify-end">{formatCurrency(dumpTotal)}</p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => addDumpFeeMutation.mutate()}
-              disabled={addDumpFeeMutation.isPending || dumpTotal <= 0}
-              className="h-9"
-            >
-              {addDumpFeeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Other Charges / Overhead Invoices */}
       <Card>
         <CardHeader className="pb-3">
