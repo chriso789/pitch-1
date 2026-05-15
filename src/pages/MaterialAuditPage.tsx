@@ -590,20 +590,26 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
   const [cataloging, setCataloging] = React.useState(false);
   const [catalogName, setCatalogName] = React.useState("");
+  const [catalogPrice, setCatalogPrice] = React.useState<string>("");
 
   React.useEffect(() => {
     const raw = mapLine?.invoice_description || "";
     setCatalogName(raw.replace(/\\(["'\\])/g, "$1"));
+    // Intentionally blank — must be the contracted/pricelist price, NOT the invoice price.
+    setCatalogPrice("");
   }, [mapLine?.id, mapLine?.invoice_description]);
 
   const catalogNewItem = async () => {
     if (!mapLine || !tenantId) return;
     const sid = mapLine.supplier_id || supplierId;
     if (!sid) { toast.error("No supplier on this line"); return; }
-    const chargedUnit = Number(mapLine.charged_unit_price || 0);
-    if (!chargedUnit) { toast.error("Cannot catalog – charged unit price is 0"); return; }
     const desc = (catalogName || "").trim();
     if (!desc) { toast.error("Please enter a name for the new catalog item"); return; }
+    const agreedUnit = Number(catalogPrice);
+    if (!Number.isFinite(agreedUnit) || agreedUnit <= 0) {
+      toast.error("Enter the contracted pricelist unit price (do not use the invoice price)");
+      return;
+    }
     setCataloging(true);
     try {
       // Find or create an active price list for this supplier
