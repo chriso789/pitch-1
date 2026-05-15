@@ -1,5 +1,6 @@
 import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { logAIUsage } from '../_shared/log-ai-usage.ts';
 
 interface CommandContext {
   type: 'contact' | 'pipeline' | 'project' | 'estimate';
@@ -125,6 +126,9 @@ Response format MUST be JSON:
 Be conversational and helpful. Extract specific information from commands.`;
 
     // Call OpenAI
+    const aiModel = 'gpt-4o-mini';
+    const aiStartedAt = Date.now();
+    const tenantIdForLog = user.user_metadata?.tenant_id || null;
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -132,7 +136,7 @@ Be conversational and helpful. Extract specific information from commands.`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: aiModel,
         messages: [
           { role: 'system', content: systemPrompt },
           ...conversation_history.slice(-3).map(msg => ({
@@ -149,10 +153,18 @@ Be conversational and helpful. Extract specific information from commands.`;
     if (!openAIResponse.ok) {
       const errorData = await openAIResponse.text();
       console.error('OpenAI API error:', errorData);
+      const status = openAIResponse.status === 429 ? 'rate_limited' : openAIResponse.status === 402 ? 'payment_required' : 'error';
+      await logAIUsage({ supabase, tenantId: tenantIdForLog, userId: user.id, provider: 'openai', model: aiModel, feature: 'ai-command-processor', responseTimeMs: Date.now() - aiStartedAt, status, errorMessage: errorData.slice(0, 500), endpoint: '/ai-command-processor' });
       throw new Error('Failed to process command with AI');
     }
 
     const aiResult = await openAIResponse.json();
+    await logAIUsage({
+      supabase, tenantId: tenantIdForLog, userId: user.id,
+      provider: 'openai', model: aiModel, feature: 'ai-command-processor',
+      promptTokens: aiResult.usage?.prompt_tokens, completionTokens: aiResult.usage?.completion_tokens,
+      responseTimeMs: Date.now() - aiStartedAt, status: 'success', endpoint: '/ai-command-processor', requestId: aiResult.id,
+    });
     const aiResponse = aiResult.choices[0].message.content;
 
     console.log('AI Response:', aiResponse);

@@ -1,5 +1,6 @@
 // NOTE: Use npm: specifiers and Deno.serve to avoid bundle timeouts
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { logAIUsage } from "../_shared/log-ai-usage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -126,6 +127,8 @@ Deno.serve(async (req) => {
 
     console.log('Calling Lovable AI Gateway with messages:', messages.length);
 
+    const aiModel = "google/gemini-2.5-flash";
+    const aiStartedAt = Date.now();
     // Call Lovable AI Gateway
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -134,7 +137,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: aiModel,
         messages,
         temperature: 0.7,
         max_tokens: 1024,
@@ -142,25 +145,29 @@ Deno.serve(async (req) => {
     });
 
     if (!aiResponse.ok) {
+      const elapsed = Date.now() - aiStartedAt;
+      const status = aiResponse.status === 429 ? 'rate_limited' : aiResponse.status === 402 ? 'payment_required' : 'error';
+      const errorText = aiResponse.status >= 500 ? `HTTP ${aiResponse.status}` : await aiResponse.text();
+      await logAIUsage({ supabase, tenantId, userId, provider: 'lovable-ai', model: aiModel, feature: 'crm-ai-agent', responseTimeMs: elapsed, status, errorMessage: String(errorText).slice(0, 500), endpoint: '/crm-ai-agent' });
       if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "AI service quota exceeded. Please contact support." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ error: "AI service quota exceeded. Please contact support." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      const errorText = await aiResponse.text();
       console.error("AI Gateway error:", aiResponse.status, errorText);
       throw new Error(`AI Gateway error: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
+    const aiElapsed = Date.now() - aiStartedAt;
     const assistantContent = aiData.choices?.[0]?.message?.content || "";
+    await logAIUsage({
+      supabase, tenantId, userId,
+      provider: 'lovable-ai', model: aiModel, feature: 'crm-ai-agent',
+      promptTokens: aiData.usage?.prompt_tokens, completionTokens: aiData.usage?.completion_tokens,
+      responseTimeMs: aiElapsed, status: 'success', endpoint: '/crm-ai-agent', requestId: aiData.id,
+    });
 
     console.log('AI Response:', assistantContent);
 
