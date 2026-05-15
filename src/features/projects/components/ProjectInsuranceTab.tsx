@@ -174,19 +174,18 @@ function ScopeUploadCard({
         <p className="text-xs text-muted-foreground">{subtitle}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div>
-          <Select value={selectedId} onValueChange={onSelect}>
-            <SelectTrigger><SelectValue placeholder="Select an existing scope…" /></SelectTrigger>
-            <SelectContent>
-              {docs.map(d => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.file_name} {d.parse_status !== 'complete' && `· ${d.parse_status}`}
-                </SelectItem>
-              ))}
-              {docs.length === 0 && <div className="px-2 py-1 text-xs text-muted-foreground">No scopes yet</div>}
-            </SelectContent>
-          </Select>
-        </div>
+        {selectedId && (() => {
+          const selected = docs.find(d => d.id === selectedId);
+          if (!selected) return null;
+          return (
+            <div className="text-xs p-2 rounded bg-muted/40 truncate">
+              <span className="font-medium">{selected.file_name}</span>
+              {selected.parse_status !== 'complete' && (
+                <span className="text-muted-foreground"> · {selected.parse_status}</span>
+              )}
+            </div>
+          );
+        })()}
         <div>
           <input
             id={`upload-${title.replace(/\s+/g, '-')}`}
