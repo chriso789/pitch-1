@@ -590,20 +590,26 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
   const [cataloging, setCataloging] = React.useState(false);
   const [catalogName, setCatalogName] = React.useState("");
+  const [catalogPrice, setCatalogPrice] = React.useState<string>("");
 
   React.useEffect(() => {
     const raw = mapLine?.invoice_description || "";
     setCatalogName(raw.replace(/\\(["'\\])/g, "$1"));
+    // Intentionally blank — must be the contracted/pricelist price, NOT the invoice price.
+    setCatalogPrice("");
   }, [mapLine?.id, mapLine?.invoice_description]);
 
   const catalogNewItem = async () => {
     if (!mapLine || !tenantId) return;
     const sid = mapLine.supplier_id || supplierId;
     if (!sid) { toast.error("No supplier on this line"); return; }
-    const chargedUnit = Number(mapLine.charged_unit_price || 0);
-    if (!chargedUnit) { toast.error("Cannot catalog – charged unit price is 0"); return; }
     const desc = (catalogName || "").trim();
     if (!desc) { toast.error("Please enter a name for the new catalog item"); return; }
+    const agreedUnit = Number(catalogPrice);
+    if (!Number.isFinite(agreedUnit) || agreedUnit <= 0) {
+      toast.error("Enter the contracted pricelist unit price (do not use the invoice price)");
+      return;
+    }
     setCataloging(true);
     try {
       // Find or create an active price list for this supplier
@@ -635,7 +641,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           normalized_description: normalizeInvoiceText(desc),
           supplier_sku: mapLine.supplier_sku || null,
           unit_of_measure: mapLine.invoice_uom || "ea",
-          agreed_unit_price: chargedUnit,
+          agreed_unit_price: agreedUnit,
         })
         .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
         .single();
@@ -651,7 +657,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           name: desc,
           description: desc,
           uom: mapLine.invoice_uom || "ea",
-          base_cost: chargedUnit,
+          base_cost: agreedUnit,
           supplier_sku: mapLine.supplier_sku || null,
           active: true,
         });
@@ -663,7 +669,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       setPickItem(newItem.id);
       // Refresh the price items list so the new item appears
       await queryClient.invalidateQueries({ queryKey: ["map-price-items", sid] });
-      toast.success(`"${desc.slice(0, 40)}" added to catalog at $${chargedUnit.toFixed(2)}`);
+      toast.success(`"${desc.slice(0, 40)}" added to pricelist at $${agreedUnit.toFixed(2)}`);
       // Auto-save the mapping immediately using the freshly cataloged item
       await saveMappingWithItem(newItem);
     } catch (e: any) {
@@ -872,23 +878,44 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
               </div>
-              <div className="space-y-1.5 pt-1 border-t">
-                <label className="text-xs font-medium text-muted-foreground">New catalog item name</label>
-                <Input
-                  placeholder="Name this item as it should appear in the catalog"
-                  value={catalogName}
-                  onChange={(e) => setCatalogName(e.target.value)}
-                />
+              <div className="space-y-2 pt-1 border-t">
+                <div className="text-[11px] text-muted-foreground">
+                  Can't find this item above? Add it to the supplier pricelist with the <span className="font-semibold text-foreground">contracted price</span> from the SRS pricelist PDF — <span className="font-semibold">not</span> the invoice price. The audit will then flag the invoice as overcharged.
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Pricelist item name</label>
+                    <Input
+                      placeholder="Item description"
+                      value={catalogName}
+                      onChange={(e) => setCatalogName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Contracted unit price ($)
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder={`e.g. lower than $${Number(mapLine?.charged_unit_price || 0).toFixed(2)}`}
+                      value={catalogPrice}
+                      onChange={(e) => setCatalogPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="flex items-center justify-between gap-2 pt-1">
                 <Button
                   variant="secondary"
                   onClick={catalogNewItem}
-                  disabled={cataloging || !catalogName.trim() || !Number(mapLine?.charged_unit_price || 0)}
-                  title="Add this invoice line as a new item in the supplier price list at the charged price"
+                  disabled={cataloging || !catalogName.trim() || !(Number(catalogPrice) > 0)}
+                  title="Add this item to the supplier pricelist at the contracted price"
                 >
                   <Package className="h-4 w-4 mr-2" />
-                  {cataloging ? "Cataloging..." : "Catalog this item"}
+                  {cataloging ? "Adding..." : "Add to pricelist"}
                 </Button>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setMapLine(null)}>Cancel</Button>
