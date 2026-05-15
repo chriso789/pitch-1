@@ -380,8 +380,9 @@ export function ABCConnectionSettings() {
                   return;
                 }
                 try {
-                  const { data, error } = await supabase.functions.invoke('abc-oauth-start', {
+                  const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
                     body: {
+                      action: 'start_oauth',
                       tenant_id: effectiveTenantId,
                       environment: environment === 'production' ? 'production' : 'sandbox',
                     },
