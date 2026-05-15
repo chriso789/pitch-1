@@ -280,8 +280,12 @@ Deno.serve(async (req) => {
           if (invoice_date) qs.set("InvoiceDate", invoice_date.trim());
           if (billed_amount) qs.set("BilledAmount", billed_amount.trim());
           const validateData = await srsApiCall(`/customers/validate/?${qs.toString()}`);
+          console.log(`SRS validate response (env=${connection.environment}, account=${connection.customer_code}, invoice=${invoice_number}):`, JSON.stringify(validateData));
 
           const isValid = validateData?.validIndicator === "Y" || validateData?.validIndicator === true;
+          const validationDetail = isValid
+            ? null
+            : `SRS rejected validation. Response: ${JSON.stringify(validateData)}. Confirm the Customer Code, Invoice #, Invoice Date and Billed Amount all belong to the ${connection.environment} environment.`;
 
           // If valid, get customer branch locations for job account number
           let jobAccountNumber = null;
@@ -311,7 +315,7 @@ Deno.serve(async (req) => {
               connection_status: isValid ? "connected" : "error",
               valid_indicator: isValid,
               last_validated_at: new Date().toISOString(),
-              last_error: isValid ? null : "Customer validation failed",
+              last_error: isValid ? null : validationDetail,
               job_account_number: jobAccountNumber,
               default_branch_code: defaultBranch,
             })
@@ -321,8 +325,10 @@ Deno.serve(async (req) => {
             success: isValid,
             jobAccountNumber,
             defaultBranch,
+            error: isValid ? undefined : validationDetail,
+            srsResponse: validateData,
           };
-          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: isValid, metadata: { jobAccountNumber } });
+          await audit({ tenant_id, connection_id: connection.id, action: "validate", success: isValid, error: isValid ? null : validationDetail, metadata: { jobAccountNumber, srsResponse: validateData } });
         } catch (err: any) {
           const msg = err instanceof Error ? err.message : String(err);
           await supabase
