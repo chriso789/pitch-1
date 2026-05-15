@@ -212,12 +212,12 @@ Deno.serve(async (req) => {
           .insert({
             tenant_id,
             environment: env,
-            abc_mode: "oauth_auth_code",
+            abc_mode: "individual_business",
             token_strategy: "auth_code_pkce",
             client_id: clientId,
             redirect_uri: redirectUri,
             scopes,
-            status: "pending",
+            status: "disconnected",
             created_by: user.id,
           })
           .select()
@@ -227,7 +227,14 @@ Deno.serve(async (req) => {
       } else {
         await supabase
           .from("abc_integrations")
-          .update({ client_id: clientId, redirect_uri: redirectUri, scopes, status: "pending" })
+          .update({
+            abc_mode: "individual_business",
+            token_strategy: "auth_code_pkce",
+            client_id: clientId,
+            redirect_uri: redirectUri,
+            scopes,
+            status: "disconnected",
+          })
           .eq("id", (integration as any).id);
       }
 
