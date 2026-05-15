@@ -108,6 +108,29 @@ export function ABCConnectionSettings() {
     if (effectiveTenantId) loadConnection();
   }, [effectiveTenantId]);
 
+  // Surface OAuth callback result (?abc=connected|error&msg=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const abc = params.get('abc');
+    if (!abc) return;
+    if (abc === 'connected') {
+      toast({ title: 'ABC Supply connected', description: 'OAuth authorization complete.' });
+      loadConnection();
+    } else if (abc === 'error') {
+      toast({
+        title: 'ABC OAuth failed',
+        description: params.get('msg') || 'Authorization did not complete.',
+        variant: 'destructive',
+      });
+    }
+    // Clean the URL
+    params.delete('abc');
+    params.delete('msg');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadConnection = async () => {
     setLoading(true);
     try {
