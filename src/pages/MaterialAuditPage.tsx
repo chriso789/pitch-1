@@ -669,7 +669,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       setPickItem(newItem.id);
       // Refresh the price items list so the new item appears
       await queryClient.invalidateQueries({ queryKey: ["map-price-items", sid] });
-      toast.success(`"${desc.slice(0, 40)}" added to catalog at $${chargedUnit.toFixed(2)}`);
+      toast.success(`"${desc.slice(0, 40)}" added to pricelist at $${agreedUnit.toFixed(2)}`);
       // Auto-save the mapping immediately using the freshly cataloged item
       await saveMappingWithItem(newItem);
     } catch (e: any) {
