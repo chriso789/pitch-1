@@ -402,11 +402,17 @@ Deno.serve(async (req) => {
       }
 
       case "get_pricing": {
-        const { branch_code, product_list } = params;
+        const { branch_code, product_list, job_account_number } = params as Record<string, any>;
         if (!branch_code || !product_list) throw new Error("branch_code and product_list required");
+
+        // SRS /products/v2/price requires JobAccountNumber on every call.
+        // Prefer the explicit param, then the validated value on the connection,
+        // then fall back to customer_code so the request shape is always valid.
+        const jan = job_account_number || connection.job_account_number || connection.customer_code;
 
         const pricing = await srsApiCall("/products/v2/price", "POST", {
           customerCode: connection.customer_code,
+          jobAccountNumber: jan,
           branchCode: branch_code,
           productList: product_list,
         });
@@ -469,6 +475,113 @@ Deno.serve(async (req) => {
         });
 
         result = { success: true, srsOrderId: orderResult.orderID };
+        break;
+      }
+
+      case "ping": {
+        // Lightweight connection smoke test: forces a token fetch + a simple
+        // authenticated GET so we can prove auth + Source-System headers work
+        // even when no real invoice exists in the staging dataset.
+        const token = await getAccessToken();
+        let branchProbe: any = null;
+        let branchProbeError: string | null = null;
+        try {
+          branchProbe = await srsApiCall("/branches/v2/branchLocations");
+        } catch (e: any) {
+          branchProbeError = e instanceof Error ? e.message : String(e);
+        }
+        result = {
+          success: !!token && !branchProbeError,
+          environment: connection.environment,
+          baseUrl: getBaseUrl(),
+          sourceSystem: SRS_SOURCE_SYSTEM,
+          tokenAcquired: !!token,
+          tokenExpiresAt: connection.token_expires_at,
+          branchProbeOk: !branchProbeError,
+          branchProbeError,
+          branchCount: Array.isArray(branchProbe) ? branchProbe.length : (branchProbe?.branchLocations?.length ?? null),
+        };
+        await audit({ tenant_id, connection_id: connection.id, action: "ping", success: result.success, error: branchProbeError, metadata: { environment: connection.environment } });
+        break;
+      }
+
+      case "get_order_status": {
+        const { srs_order_id, transaction_id } = params as Record<string, string>;
+        if (!srs_order_id && !transaction_id) {
+          throw new Error("srs_order_id or transaction_id required");
+        }
+        const path = srs_order_id
+          ? `/orders/v2/status/${encodeURIComponent(srs_order_id)}`
+          : `/orders/v2/status?transactionID=${encodeURIComponent(transaction_id)}`;
+        const statusData = await srsApiCall(path);
+
+        // Mirror status into our orders table if we recognize the order
+        const matchKey = srs_order_id ? "srs_order_id" : "srs_transaction_id";
+        const matchVal = srs_order_id || transaction_id;
+        const { data: order } = await supabase
+          .from("srs_orders")
+          .select("id, status")
+          .eq("tenant_id", tenant_id)
+          .eq(matchKey, matchVal)
+          .maybeSingle();
+
+        if (order && statusData?.status && statusData.status !== order.status) {
+          await supabase.from("srs_orders").update({ status: statusData.status }).eq("id", order.id);
+          await supabase.from("srs_order_status_history").insert({
+            order_id: order.id,
+            old_status: order.status,
+            new_status: statusData.status,
+            status_message: statusData.statusMessage || `Polled status: ${statusData.status}`,
+            raw_webhook_data: statusData,
+          });
+        }
+
+        result = { success: true, status: statusData };
+        break;
+      }
+
+      case "list_orders": {
+        // List recent orders for this tenant (DB-backed; SRS does not expose a
+        // tenant-scoped list endpoint — orders are echoed via webhook)
+        const { limit = 50 } = params as Record<string, number>;
+        const { data: orders } = await supabase
+          .from("srs_orders")
+          .select("*, srs_order_items(*)")
+          .eq("tenant_id", tenant_id)
+          .order("created_at", { ascending: false })
+          .limit(Math.min(Number(limit) || 50, 200));
+        result = { success: true, orders: orders || [] };
+        break;
+      }
+
+      case "cancel_order": {
+        const { order_id } = params as Record<string, string>;
+        if (!order_id) throw new Error("order_id required");
+        const { data: order } = await supabase
+          .from("srs_orders")
+          .select("*")
+          .eq("id", order_id)
+          .eq("tenant_id", tenant_id)
+          .single();
+        if (!order) throw new Error("Order not found");
+        if (!order.srs_order_id) throw new Error("Order has not been submitted to SRS yet");
+
+        const cancelResult = await srsApiCall(
+          `/orders/v2/cancel/${encodeURIComponent(order.srs_order_id)}`,
+          "POST",
+          { reason: (params as any).reason || "Cancelled by user" }
+        );
+
+        await supabase.from("srs_orders").update({ status: "cancelled" }).eq("id", order_id);
+        await supabase.from("srs_order_status_history").insert({
+          order_id,
+          old_status: order.status,
+          new_status: "cancelled",
+          status_message: (params as any).reason || "Cancelled by user",
+          raw_webhook_data: cancelResult,
+        });
+        await audit({ tenant_id, connection_id: connection.id, action: "cancel_order", success: true, metadata: { srs_order_id: order.srs_order_id } });
+        result = { success: true, srsResponse: cancelResult };
         break;
       }
 
