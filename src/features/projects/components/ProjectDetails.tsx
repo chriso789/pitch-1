@@ -596,8 +596,8 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
           <ProjectInsuranceTab projectId={project.id} jobId={(project as any).job_id || project.id} />
         </TabsContent>
 
+        <TabsContent value="commission" className="space-y-4">
 
-          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="h-5 w-5" />
