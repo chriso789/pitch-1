@@ -165,10 +165,49 @@ export function ABCConnectionSettings() {
   };
 
   const handleTest = async () => {
-    toast({
-      title: 'Test pending API enablement',
-      description: 'ABC Supply must enable your OAuth client before validation. Saved credentials will activate once your account rep confirms access.',
-    });
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { action: 'test_connection', environment },
+      });
+      if (error) throw error;
+      setTestResult(data);
+      toast({
+        title: data?.success ? 'ABC reachable' : 'ABC test inconclusive',
+        description: data?.interpretation ?? 'See details below.',
+        variant: data?.success ? 'default' : 'destructive',
+      });
+    } catch (e: any) {
+      setTestResult({ success: false, error: e.message });
+      toast({ title: 'Test failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSubmitTestOrder = async () => {
+    setSubmittingOrder(true);
+    setOrderResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { action: 'submit_test_order', environment },
+      });
+      if (error) throw error;
+      setOrderResult(data);
+      toast({
+        title: data?.success ? 'Test order accepted' : 'Test order rejected',
+        description: data?.success
+          ? 'ABC accepted the sandbox order payload.'
+          : `ABC responded ${data?.orderResponse?.status ?? '—'}. See details below.`,
+        variant: data?.success ? 'default' : 'destructive',
+      });
+    } catch (e: any) {
+      setOrderResult({ success: false, error: e.message });
+      toast({ title: 'Submission failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setSubmittingOrder(false);
+    }
   };
 
   const handleRevoke = async () => {
