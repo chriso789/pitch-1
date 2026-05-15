@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CostReconciliationPanel } from "@/components/production/CostReconciliationPanel";
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
 import { DrawTally } from "@/components/commission/DrawTally";
+import { ProjectMaterialsTab } from "@/components/orders/ProjectMaterialsTab";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
@@ -448,6 +449,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
             <TabsTrigger value="estimate" className="flex-shrink-0">Estimate</TabsTrigger>
             <TabsTrigger value="commission" className="flex-shrink-0">Commission</TabsTrigger>
             <TabsTrigger value="costs" className="flex-shrink-0">Costs</TabsTrigger>
+            <TabsTrigger value="materials" className="flex-shrink-0">Materials</TabsTrigger>
             <TabsTrigger value="timeline" className="flex-shrink-0">Timeline</TabsTrigger>
             <TabsTrigger value="photos" className="flex-shrink-0">Photos</TabsTrigger>
             <TabsTrigger value="documents" className="flex-shrink-0">Documents</TabsTrigger>
