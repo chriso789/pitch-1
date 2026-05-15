@@ -1273,3 +1273,7 @@ verify_jwt = false
 
 [functions.apply-referral-credit-to-job]
 verify_jwt = false
+
+[functions.backfill-ai-usage]
+verify_jwt = true
+
