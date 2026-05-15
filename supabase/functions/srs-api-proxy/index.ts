@@ -232,6 +232,8 @@ Deno.serve(async (req) => {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "Source-System": SRS_SOURCE_SYSTEM,
+          "X-Source-System": SRS_SOURCE_SYSTEM,
         },
       };
       if (reqBody) opts.body = JSON.stringify(reqBody);
