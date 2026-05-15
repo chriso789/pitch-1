@@ -148,6 +148,7 @@ export function SRSConnectionSettings() {
         body: {
           action: 'validate_connection',
           tenant_id: activeCompanyId,
+          environment,
           invoice_number: invoiceNumber.trim(),
           invoice_date: invoiceDate.trim() || undefined,
           billed_amount: billedAmount.trim() || undefined,

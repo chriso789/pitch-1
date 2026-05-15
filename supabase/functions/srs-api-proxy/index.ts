@@ -246,6 +246,13 @@ Deno.serve(async (req) => {
     switch (action) {
       case "validate_connection": {
         try {
+          // If caller passed an environment, persist it before validating so the dropdown selection sticks
+          const envParam = (params as Record<string, string>).environment;
+          if (envParam && (envParam === "production" || envParam === "staging") && envParam !== connection.environment) {
+            await supabase.from("srs_connections").update({ environment: envParam }).eq("id", connection.id);
+            connection.environment = envParam;
+          }
+
           await getAccessToken();
 
           const { invoice_number, invoice_date, billed_amount } = params as Record<string, string>;
