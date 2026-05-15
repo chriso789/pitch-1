@@ -916,7 +916,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                         onClick={() => handlePushToInvoice(co)}
                       >
                         <Send className="h-3 w-3 mr-1" />
-                        Push to Contract &amp; Invoice
+                        Push (No Approval) — Add to Estimate &amp; Invoice
                       </Button>
                     )}
                     {!co.customer_approved && co.status !== 'invoiced' && (
