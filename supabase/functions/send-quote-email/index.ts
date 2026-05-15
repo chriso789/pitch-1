@@ -368,29 +368,47 @@ Deno.serve(async (req: Request) => {
       resolvedTenantId,
     });
 
-    // Log to communication history with resolvedTenantId
+    // Log to communication history (Comms tab) using canonical column names
+    const estimateLabel = estimate.display_name || estimate.estimate_number || "Estimate";
+    const subjectLine = body.subject || `Your Quote from ${companyName} - ${estimateLabel}`;
     await supabase
       .from("communication_history")
       .insert({
-        tenant_id: resolvedTenantId,  // Use resolved tenant
+        tenant_id: resolvedTenantId,
         contact_id: body.contact_id,
         pipeline_entry_id: estimate.pipeline_entry_id,
-        type: "email",
+        rep_id: user.id,
+        communication_type: "email",
         direction: "outbound",
-        subject: body.subject || `Your Quote from ${companyName}`,
-        body: body.message || "Quote email sent",
+        subject: subjectLine,
+        content: body.message || `Estimate ${estimateLabel} emailed to ${body.recipient_email}`,
         from_address: fromEmail,
         to_address: body.recipient_email,
-        status: "sent",
-        user_id: user.id,
+        delivery_status: "sent",
+        resend_message_id: emailResult.data?.id || null,
         metadata: {
           tracking_link_id: trackingLink.id,
           estimate_id: estimate.id,
-          resend_id: emailResult.data?.id,
+          estimate_number: estimate.estimate_number,
+          estimate_display_name: estimate.display_name,
+          source: "send-quote-email",
           ...(body.cc?.length ? { cc: body.cc } : {}),
           ...(body.bcc?.length ? { bcc: body.bcc } : {}),
         }
       });
+
+    // Log to internal notes so the team sees it in the Notes/Activity stream
+    if (estimate.pipeline_entry_id) {
+      await supabase
+        .from("internal_notes")
+        .insert({
+          tenant_id: resolvedTenantId,
+          pipeline_entry_id: estimate.pipeline_entry_id,
+          contact_id: body.contact_id || null,
+          author_id: user.id,
+          content: `📧 Estimate **${estimateLabel}** emailed to ${body.recipient_name || body.recipient_email} (${body.recipient_email})${body.cc?.length ? ` — cc: ${body.cc.join(", ")}` : ""}${body.bcc?.length ? ` — bcc: ${body.bcc.join(", ")}` : ""}.`,
+        });
+    }
 
     return new Response(
       JSON.stringify({
