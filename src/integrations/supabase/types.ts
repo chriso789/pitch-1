@@ -38537,6 +38537,254 @@ export type Database = {
           },
         ]
       }
+      scope_comparison_lines: {
+        Row: {
+          approved: boolean
+          canonical_item_id: string | null
+          carrier_code: string | null
+          carrier_description: string | null
+          carrier_line_id: string | null
+          carrier_quantity: number | null
+          carrier_total_rcv: number | null
+          carrier_unit: string | null
+          carrier_unit_price: number | null
+          category: string | null
+          change_type: string
+          company_code: string | null
+          company_description: string | null
+          company_line_id: string | null
+          company_quantity: number | null
+          company_total_rcv: number | null
+          company_unit: string | null
+          company_unit_price: number | null
+          comparison_id: string
+          created_at: string
+          delta_percent: number | null
+          delta_quantity: number | null
+          delta_rcv: number | null
+          delta_unit_price: number | null
+          id: string
+          justification: string | null
+          match_method: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved?: boolean
+          canonical_item_id?: string | null
+          carrier_code?: string | null
+          carrier_description?: string | null
+          carrier_line_id?: string | null
+          carrier_quantity?: number | null
+          carrier_total_rcv?: number | null
+          carrier_unit?: string | null
+          carrier_unit_price?: number | null
+          category?: string | null
+          change_type: string
+          company_code?: string | null
+          company_description?: string | null
+          company_line_id?: string | null
+          company_quantity?: number | null
+          company_total_rcv?: number | null
+          company_unit?: string | null
+          company_unit_price?: number | null
+          comparison_id: string
+          created_at?: string
+          delta_percent?: number | null
+          delta_quantity?: number | null
+          delta_rcv?: number | null
+          delta_unit_price?: number | null
+          id?: string
+          justification?: string | null
+          match_method?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved?: boolean
+          canonical_item_id?: string | null
+          carrier_code?: string | null
+          carrier_description?: string | null
+          carrier_line_id?: string | null
+          carrier_quantity?: number | null
+          carrier_total_rcv?: number | null
+          carrier_unit?: string | null
+          carrier_unit_price?: number | null
+          category?: string | null
+          change_type?: string
+          company_code?: string | null
+          company_description?: string | null
+          company_line_id?: string | null
+          company_quantity?: number | null
+          company_total_rcv?: number | null
+          company_unit?: string | null
+          company_unit_price?: number | null
+          comparison_id?: string
+          created_at?: string
+          delta_percent?: number | null
+          delta_quantity?: number | null
+          delta_rcv?: number | null
+          delta_unit_price?: number | null
+          id?: string
+          justification?: string | null
+          match_method?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_comparison_lines_canonical_item_id_fkey"
+            columns: ["canonical_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_canonical_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparison_lines_carrier_line_id_fkey"
+            columns: ["carrier_line_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparison_lines_carrier_line_id_fkey"
+            columns: ["carrier_line_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparison_lines_company_line_id_fkey"
+            columns: ["company_line_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparison_lines_company_line_id_fkey"
+            columns: ["company_line_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparison_lines_comparison_id_fkey"
+            columns: ["comparison_id"]
+            isOneToOne: false
+            referencedRelation: "scope_comparisons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scope_comparisons: {
+        Row: {
+          added_count: number | null
+          carrier_document_id: string
+          carrier_total_rcv: number | null
+          company_document_id: string
+          company_total_rcv: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          job_id: string | null
+          net_supplement_amount: number | null
+          notes: string | null
+          price_change_count: number | null
+          project_id: string | null
+          qty_change_count: number | null
+          removed_count: number | null
+          status: string
+          tenant_id: string
+          totals_json: Json | null
+          updated_at: string
+        }
+        Insert: {
+          added_count?: number | null
+          carrier_document_id: string
+          carrier_total_rcv?: number | null
+          company_document_id: string
+          company_total_rcv?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          job_id?: string | null
+          net_supplement_amount?: number | null
+          notes?: string | null
+          price_change_count?: number | null
+          project_id?: string | null
+          qty_change_count?: number | null
+          removed_count?: number | null
+          status?: string
+          tenant_id: string
+          totals_json?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          added_count?: number | null
+          carrier_document_id?: string
+          carrier_total_rcv?: number | null
+          company_document_id?: string
+          company_total_rcv?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          job_id?: string | null
+          net_supplement_amount?: number | null
+          notes?: string | null
+          price_change_count?: number | null
+          project_id?: string | null
+          qty_change_count?: number | null
+          removed_count?: number | null
+          status?: string
+          tenant_id?: string
+          totals_json?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_comparisons_carrier_document_id_fkey"
+            columns: ["carrier_document_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparisons_carrier_document_id_fkey"
+            columns: ["carrier_document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_intelligence"
+            referencedColumns: ["document_id"]
+          },
+          {
+            foreignKeyName: "scope_comparisons_company_document_id_fkey"
+            columns: ["company_document_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparisons_company_document_id_fkey"
+            columns: ["company_document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_intelligence"
+            referencedColumns: ["document_id"]
+          },
+          {
+            foreignKeyName: "scope_comparisons_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_comparisons_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       scope_documents: {
         Row: {
           approved_at: string | null
@@ -43245,6 +43493,82 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "supplement_cases"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplement_reports: {
+        Row: {
+          comparison_id: string
+          created_at: string
+          created_by: string | null
+          esx_storage_path: string | null
+          esx_url: string | null
+          id: string
+          notes: string | null
+          pdf_storage_path: string | null
+          pdf_url: string | null
+          sent_at: string | null
+          sent_to: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          comparison_id: string
+          created_at?: string
+          created_by?: string | null
+          esx_storage_path?: string | null
+          esx_url?: string | null
+          id?: string
+          notes?: string | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
+          sent_at?: string | null
+          sent_to?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          comparison_id?: string
+          created_at?: string
+          created_by?: string | null
+          esx_storage_path?: string | null
+          esx_url?: string | null
+          id?: string
+          notes?: string | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
+          sent_at?: string | null
+          sent_to?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_reports_comparison_id_fkey"
+            columns: ["comparison_id"]
+            isOneToOne: false
+            referencedRelation: "scope_comparisons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplement_reports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplement_reports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
           },
         ]
       }
