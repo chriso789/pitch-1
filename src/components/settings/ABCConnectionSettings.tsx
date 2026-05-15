@@ -36,19 +36,7 @@ const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
 const SERVER_REDIRECT_URI = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/abc-oauth-callback`;
 
 // PKCE helpers
-function base64UrlEncode(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let str = '';
-  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-async function generatePkce() {
-  const verifierBytes = new Uint8Array(64);
-  crypto.getRandomValues(verifierBytes);
-  const verifier = base64UrlEncode(verifierBytes.buffer);
-  const challenge = base64UrlEncode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-  return { verifier, challenge };
-}
+// PKCE generation now happens server-side in the abc-oauth-start edge function.
 
 function EndpointRow({ label, value, pending, hint }: { label: string; value: string; pending?: string; hint?: string }) {
   const display = value || pending || '—';
