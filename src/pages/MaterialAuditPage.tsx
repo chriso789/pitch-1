@@ -733,7 +733,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       agreed_uom: selectedItem?.unit_of_measure || null,
       agreed_unit_price: agreedUnit,
       expected_extended_price: expectedExt,
-      price_difference_per_unit: agreedUnit != null ? chargedUnit - agreedUnit : null,
+      price_difference_per_unit: agreedUnit != null && qty > 0 ? chargedUnit - (agreedUnit * convertedQty) / qty : null,
       total_difference: totalDiff,
       discrepancy_type: discrepancy,
       discrepancy_status: discrepancy === "no_issue" ? "resolved" : "open",
