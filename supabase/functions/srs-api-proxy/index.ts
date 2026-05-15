@@ -267,9 +267,9 @@ Deno.serve(async (req) => {
 
           await getAccessToken();
 
-          const { invoice_number, invoice_date, billed_amount } = params as Record<string, string>;
-          if (!invoice_number || (!invoice_date && !billed_amount)) {
-            const msg = "SRS requires Invoice # plus Invoice Date or Billed Amount to validate the customer account.";
+          const { invoice_number, invoice_date, billed_amount, integration_key } = params as Record<string, string>;
+          if (!integration_key && (!invoice_number || (!invoice_date && !billed_amount))) {
+            const msg = "SRS requires either an Integration Key OR Invoice # plus Invoice Date/Billed Amount to validate the customer account.";
             await supabase.from("srs_connections").update({
               connection_status: "error", last_error: msg, last_validated_at: new Date().toISOString(),
             }).eq("id", connection.id);
@@ -278,10 +278,11 @@ Deno.serve(async (req) => {
             break;
           }
 
-          // Validate customer (SRS requires invoice proof of ownership)
+          // Validate customer (SRS accepts IntegrationKey OR invoice proof of ownership)
           const qs = new URLSearchParams();
           qs.set("accountNumber", String(connection.customer_code || "").trim());
-          qs.set("InvoiceNumber", invoice_number.trim());
+          if (integration_key) qs.set("IntegrationKey", integration_key.trim());
+          if (invoice_number) qs.set("InvoiceNumber", invoice_number.trim());
           if (invoice_date) qs.set("InvoiceDate", invoice_date.trim());
           if (billed_amount) qs.set("BilledAmount", billed_amount.trim());
           const validateData = await srsApiCall(`/customers/validate/?${qs.toString()}`);
