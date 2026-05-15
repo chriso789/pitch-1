@@ -8,19 +8,29 @@ const supabase = createClient(
 
 const EXPECTED_KEY = Deno.env.get('ROOFHUB_INTEGRATION_KEY');
 
+// Allowed values per srs_orders.status CHECK constraint:
+//   draft | submitted | confirmed | processing | shipped | delivered | cancelled | error
+// Anything outside this list silently fails the UPDATE, so map every RoofHub
+// event code to one of the allowed buckets and persist the granular SRS code
+// in srs_order_status_history.status_message + raw_webhook_data.
 function mapStatus(eventType: string, eventStatus: string): string {
+  const s = (eventStatus || '').toLowerCase();
   switch (eventType) {
-    case 'OU': return 'submitted';
+    case 'OU': {
+      if (s.includes('cancel')) return 'cancelled';
+      if (s.includes('confirm')) return 'confirmed';
+      if (s.includes('ship')) return 'shipped';
+      if (s.includes('deliver')) return 'delivered';
+      return 'submitted';
+    }
     case 'OC': return 'cancelled';
     case 'DU': {
-      const s = (eventStatus || '').toLowerCase();
-      if (s.includes('en route')) return 'delivery_en_route';
-      if (s.includes('arrived')) return 'delivery_arrived';
-      if (s.includes('completed')) return 'delivered';
-      return 'delivery_update';
+      if (s.includes('completed') || s.includes('delivered')) return 'delivered';
+      if (s.includes('en route') || s.includes('arrived') || s.includes('out for delivery')) return 'shipped';
+      return 'processing';
     }
-    case 'IU': return 'invoiced';
-    default: return 'unknown';
+    case 'IU': return 'delivered';
+    default: return 'processing';
   }
 }
 
