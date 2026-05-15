@@ -37,6 +37,9 @@ import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { LeadSources } from "@/features/leads/components/LeadSources";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
+import { SRSConnectionSettings } from "@/components/settings/SRSConnectionSettings";
+import { QXOConnectionSettings } from "@/components/settings/QXOConnectionSettings";
+import { ABCConnectionSettings } from "@/components/settings/ABCConnectionSettings";
 import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { TrustedDevices } from "@/components/settings/TrustedDevices";
 import { CacheManagement } from "@/components/settings/CacheManagement";
@@ -133,6 +136,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   payments: "business",
   "production-checklist": "business",
   "material-audit": "business",
+  "supplier-connections": "business",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
@@ -259,6 +263,21 @@ export const Settings = () => {
       }
       groups[category].push(tab);
     });
+
+    // Always add synthetic "Supplier Connections" entry under Business
+    if (!groups["business"]) groups["business"] = [];
+    if (!groups["business"].some(t => t.tab_key === "supplier-connections")) {
+      groups["business"].push({
+        id: "supplier-connections-synthetic",
+        tab_key: "supplier-connections",
+        label: "Supplier Connections",
+        description: "Connect SRS, QXO/Beacon, and ABC Supply",
+        icon_name: "Truck",
+        order_index: 99,
+        is_active: true,
+        required_role: null,
+      });
+    }
 
     // Add single "Products & Pricing" entry
     if (hasProductTab) {
@@ -440,6 +459,36 @@ export const Settings = () => {
         return <DeveloperAccess />;
       case "integrations":
         return <IntegrationsSettings />;
+      case "supplier-connections":
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">Supplier Connections</h2>
+              <p className="text-muted-foreground">
+                Connect your supplier accounts for live pricing and ordering
+              </p>
+            </div>
+            <Tabs defaultValue="srs" className="space-y-6">
+              <TabsList className="flex-wrap">
+                <TabsTrigger value="srs" className="flex items-center gap-2">
+                  <LucideIcons.Truck className="h-4 w-4" />
+                  SRS Distribution
+                </TabsTrigger>
+                <TabsTrigger value="qxo" className="flex items-center gap-2">
+                  <LucideIcons.Package className="h-4 w-4" />
+                  QXO / Beacon
+                </TabsTrigger>
+                <TabsTrigger value="abc" className="flex items-center gap-2">
+                  <LucideIcons.Building2 className="h-4 w-4" />
+                  ABC Supply
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="srs"><SRSConnectionSettings /></TabsContent>
+              <TabsContent value="qxo"><QXOConnectionSettings /></TabsContent>
+              <TabsContent value="abc"><ABCConnectionSettings /></TabsContent>
+            </Tabs>
+          </div>
+        );
       case "security":
         return (
           <div className="space-y-6">
