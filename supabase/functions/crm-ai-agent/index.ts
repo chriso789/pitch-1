@@ -1,5 +1,6 @@
 // NOTE: Use npm: specifiers and Deno.serve to avoid bundle timeouts
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { logAIUsage } from "../_shared/log-ai-usage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
