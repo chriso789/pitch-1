@@ -6,12 +6,31 @@ import { useAIUsageMetrics, useAIUsageHistory, useAIUsageTimeSeries } from "@/ho
 import { AIUsageCharts } from "./AIUsageCharts";
 import { AIUsageTable } from "./AIUsageTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export const AIUsageDashboard = () => {
   const [timeRange, setTimeRange] = useState<number>(24);
+  const queryClient = useQueryClient();
+
+  // Auto-backfill historical AI activity into ai_usage_metrics on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.functions.invoke("backfill-ai-usage");
+        if (!cancelled && data?.inserted > 0) {
+          queryClient.invalidateQueries({ queryKey: ["ai-usage-metrics"] });
+          queryClient.invalidateQueries({ queryKey: ["ai-usage-history"] });
+          queryClient.invalidateQueries({ queryKey: ["ai-usage-timeseries"] });
+        }
+      } catch (e) {
+        console.warn("ai-usage backfill skipped", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [queryClient]);
   const { data: stats, isLoading: statsLoading } = useAIUsageMetrics(timeRange);
   const { data: history } = useAIUsageHistory(100);
   const { data: timeSeries } = useAIUsageTimeSeries(timeRange);
