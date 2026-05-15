@@ -122,10 +122,13 @@ Deno.serve(async (req) => {
         tokenResult.ok ||
         (tokenResult.response &&
           typeof tokenResult.response === "object" &&
-          // Okta returns these when it knows the client but rejects the grant
-          ["unsupported_grant_type", "invalid_grant", "invalid_scope"].includes(
-            (tokenResult.response as any).error,
-          ));
+          // Okta returns these when it knows the client but rejects the grant/scope/policy
+          [
+            "unsupported_grant_type",
+            "invalid_grant",
+            "invalid_scope",
+            "access_denied", // policy blocks client_credentials — expected for PKCE-only clients
+          ].includes((tokenResult.response as any).error));
 
       return new Response(
         JSON.stringify({
