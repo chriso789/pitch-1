@@ -643,22 +643,34 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             }
           });
 
-          if (tradeTypesInEstimate.size > 1) {
-            const restoredSections: TradeSection[] = Array.from(tradeTypesInEstimate.entries()).map(([type, label]) => ({
-              id: crypto.randomUUID(),
-              tradeType: type,
-              templateId: '',
-              label,
-              isCollapsed: false,
-            }));
-            setTradeSections(restoredSections);
-
-            const newTradeLineItems: Record<string, LineItem[]> = {};
-            restoredSections.forEach(section => {
-              newTradeLineItems[section.id] = allItems.filter(i => i.trade_type === section.tradeType);
-            });
-          setTradeLineItems(newTradeLineItems);
+          // Always seed tradeSections + tradeLineItems from loaded items so that
+          // a subsequent "Add Trade" click merges (instead of overwriting) the
+          // original items. Default single-trade estimates with no trade_type
+          // get bucketed under "roofing" (the historic default).
+          if (tradeTypesInEstimate.size === 0) {
+            tradeTypesInEstimate.set('roofing', 'Roofing');
           }
+          const restoredSections: TradeSection[] = Array.from(tradeTypesInEstimate.entries()).map(([type, label]) => ({
+            id: crypto.randomUUID(),
+            tradeType: type,
+            templateId: estimate.template_id || '',
+            label,
+            isCollapsed: false,
+          }));
+          setTradeSections(restoredSections);
+
+          const newTradeLineItems: Record<string, LineItem[]> = {};
+          restoredSections.forEach(section => {
+            const itemsForSection = allItems.filter(
+              i => (i.trade_type || 'roofing') === section.tradeType
+            );
+            newTradeLineItems[section.id] = itemsForSection.map(i => ({
+              ...i,
+              trade_type: i.trade_type || section.tradeType,
+              trade_label: i.trade_label || section.label,
+            }));
+          });
+          setTradeLineItems(newTradeLineItems);
         }
       }
 
