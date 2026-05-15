@@ -447,6 +447,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               Cost Verification
             </TabsTrigger>
             <TabsTrigger value="estimate" className="flex-shrink-0">Estimate</TabsTrigger>
+            <TabsTrigger value="insurance" className="flex-shrink-0">Insurance</TabsTrigger>
             <TabsTrigger value="commission" className="flex-shrink-0">Commission</TabsTrigger>
             <TabsTrigger value="costs" className="flex-shrink-0">Costs</TabsTrigger>
             <TabsTrigger value="materials" className="flex-shrink-0">Materials</TabsTrigger>
@@ -591,8 +592,12 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
           )}
         </TabsContent>
 
+        <TabsContent value="insurance" className="space-y-4">
+          <ProjectInsuranceTab projectId={project.id} jobId={(project as any).job_id || project.id} />
+        </TabsContent>
+
         <TabsContent value="commission" className="space-y-4">
-          <Card>
+
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="h-5 w-5" />

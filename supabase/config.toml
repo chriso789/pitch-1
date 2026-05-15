@@ -1015,6 +1015,9 @@ verify_jwt = true
 [functions.scope-comparison-analyze]
 verify_jwt = true
 
+[functions.xact-compare-documents]
+verify_jwt = true
+
 [functions.scope-network-line-items]
 verify_jwt = true
 

@@ -1,73 +1,82 @@
-## Goal
+## Xactimate Comparison Tool — Insurance Tab
 
-Give users one place inside a project to push a material order to whichever supplier they've connected (SRS today, QXO/ABC/Beacon next), and a live tracker that shows submission and supplier-side status changes — surfaced in both the **Project Details → Materials tab** and the **Production page** for that project.
+A new **Insurance** tab on the Project (Job) page that lets users upload the carrier's Xactimate PDF, attach or build the company's own Xactimate, run a full line-by-line diff, and export a supplement-ready report explaining every addition, removal, and price change for the carrier.
 
-## What already exists (reuse, don't rebuild)
+### What gets reused (already in the codebase)
 
-- `srs_orders` + `srs_order_status_history` + `srs-api-proxy` + `roofhub-webhook` (live OU/OC/DU/IU status updates land in DB) — SRS QA is 10/10 green.
-- `qxo_orders` + `qxo_connections` + `qxo-submit-order` + `PushToQXOButton`.
-- `MaterialOrderDialog`, `MaterialOrdersList`, `MaterialOrderDetail`, `useMaterialOrders` hook.
-- ProjectDetails uses Tabs but has no Materials tab. Production page has stage keys (`materials_ordered`, `materials_delivered`) but no live order data tied to them.
+- `scope_documents` + `scope_line_items` + `scope_headers` tables and the `scope-document-ingest` edge function (PDF → parsed Xactimate line items, carrier/format detection).
+- `scope-comparison-analyze` edge function (existing matched/missing/discrepancy logic — extended for two-document compare).
+- `XactScopeBuilder`, `XactAreaManager`, `XactScopeItemEditor`, `roofingScopeCatalog.ts` for company-built scope.
+- `canonicalItems.ts` taxonomy for cross-side mapping.
+- `xactimate-exporter` for ESX export of the supplement.
+- `InsuranceClaimManager`, `ScopeDocumentBuilder`, `InsuranceSection`.
 
-## Plan
+### New work
 
-### 1. New unified "Push to Supplier" dialog
-Component: `src/components/orders/PushToSupplierDialog.tsx`
+#### 1. Project "Insurance" tab
+- Add `<TabsTrigger value="insurance">Insurance</TabsTrigger>` to `ProjectDetails.tsx` (after Estimate).
+- New component `src/features/projects/components/ProjectInsuranceTab.tsx`:
+  - **Carrier Estimate** card: upload Xactimate PDF → calls `scope-document-ingest` with `document_type: 'estimate'` and links `job_id`.
+  - **Company Estimate** card: pick from existing company `scope_documents` for that job, OR launch `XactScopeBuilder` to build one in-app (saved as `document_type: 'company_scope'`).
+  - **Run Comparison** button → opens `<XactComparisonView>`.
 
-- Trigger button: `<PushOrderButton />` placed in the Materials tab (project) and the materials drawer (production).
-- On open, query connected suppliers for current tenant in parallel:
-  - `srs_connections` where `connection_status='connected'` and `valid_indicator=true`
-  - `qxo_connections` where `connection_status='connected'`
-  - (extensible: ABC, Beacon — same shape)
-- Render only the supplier cards the tenant actually has linked. If exactly one, auto-select.
-- For each supplier show: branch picker (default branch pre-filled), delivery method, delivery date, ship-to (pre-filled from project address), notes.
-- Items grid pulled from the project's active estimate `material` line items (read-only qty + override allowed).
-- Submit routes to the right edge function:
-  - SRS → `srs-api-proxy` `submit_order` (already spec-compliant; `include_submit:true`).
-  - QXO → `qxo-submit-order` (existing).
-- On success, persist row to `srs_orders` / `qxo_orders` and link to `project_id`.
+#### 2. Two-document comparison engine
+- New edge function `xact-compare-documents`:
+  - Inputs: `carrier_document_id`, `company_document_id`.
+  - Joins line items by `canonical_item_id` (fall back to fuzzy `xactimate_code` + description match using existing mapping logic).
+  - Emits a `ComparisonResult` with four buckets:
+    - `added_by_company` (in company, not in carrier) — supplement candidates.
+    - `removed_by_company` (in carrier, not in company) — flag for review.
+    - `quantity_changes` (qty delta with %).
+    - `price_changes` (unit price / RCV delta with %).
+  - Persists to a new `scope_comparisons` table with `comparison_lines` child rows so reports are reproducible and auditable.
 
-### 2. Live tracker UI
-Component: `src/components/orders/LiveOrderTracker.tsx`
+#### 3. Side-by-side review UI
+- `XactComparisonView.tsx`:
+  - Header with totals: carrier RCV vs company RCV, net delta, supplement amount.
+  - Tabs/filters: All • Added • Removed • Qty Δ • Price Δ.
+  - Each row: code, description, carrier qty/unit/price/RCV, company qty/unit/price/RCV, delta, justification textarea (required for Added/Price Δ rows before report can be generated).
+  - Bulk-justify with AI button → calls existing AI rewriter to suggest justifications grounded in the line description, photos, and measurement report.
+  - "Approve all" / per-row approve toggles.
 
-- Realtime subscription per supplier table, filtered by `tenant_id` + `project_id`:
-  - `srs_orders` (status_code, status_value, on_hold, last_synced_at) + `srs_order_status_history`
-  - `qxo_orders` (status, updated_at)
-- Renders a compact timeline per order: Submitted → Confirmed (OC) → In Fulfillment (DU) → Invoiced (IU), with timestamps and the human status_message from history.
-- Shows supplier badge, PO #, branch, total, ship address, last sync time.
-- "Refresh now" button calls a small `sync-supplier-order` edge function (SRS uses existing pricing/order GET; QXO uses existing sync).
+#### 4. Supplement report generator
+- New edge function `generate-supplement-report` (uses jsPDF/pdf-lib, same pattern as estimate PDFs):
+  - Cover page: carrier, claim #, adjuster, property, deductible, totals.
+  - Executive summary: counts of added/removed/changed + net supplement $.
+  - Line-by-line section, grouped by category (Roofing / Gutters / Flashing / Charges):
+    - Carrier line vs Company line shown side-by-side.
+    - Δ qty, Δ unit price, Δ RCV.
+    - Justification text + reference to evidence (photos, measurement report area, code requirement).
+  - Appendix: full carrier estimate summary, full company estimate summary, signature block for adjuster.
+  - Stored in Storage `{tenant_id}/projects/{project_id}/supplements/`.
+- Optional: ESX export via existing `xactimate-exporter` so the carrier can re-import.
 
-### 3. Project Details → new "Materials" tab
-File: `src/features/projects/components/ProjectDetails.tsx`
+#### 5. Insurance tab also surfaces
+- History of past comparisons / supplement versions (v1, v2…) from `scope_comparisons`.
+- Status pill: Draft → Sent to Carrier → Approved/Denied/Partial (manual stage update + log to existing `insurance_claims` table).
+- "Send to adjuster" action → existing email/SMS flow with the supplement PDF attached.
 
-- Add `<TabsTrigger value="materials">Materials</TabsTrigger>` after Costs.
-- Tab content stack:
-  1. Header row: project totals (materials budget vs ordered vs delivered) + `<PushOrderButton projectId=... />`.
-  2. `<LiveOrderTracker projectId=... />` — all open orders across suppliers.
-  3. `<MaterialOrdersList projectId=... />` — historical/closed orders, click-through to `MaterialOrderDetail`.
+### Database changes
+- New `scope_comparisons` table: `id, tenant_id, project_id, carrier_document_id, company_document_id, totals_json, status, created_by, created_at`.
+- New `comparison_lines` table: one row per diff with `change_type`, carrier/company snapshots, `delta_qty`, `delta_price`, `delta_rcv`, `justification`, `approved`.
+- RLS scoped by `tenant_id` (use `useEffectiveTenantId` pattern).
+- New `supplement_reports` table: `id, comparison_id, version, pdf_url, esx_url, sent_at, status`.
 
-### 4. Production page integration
-File: `src/features/production/components/ProductionWorkflow.tsx` (and the per-project drawer it opens)
+### Files to create
+- `src/features/projects/components/ProjectInsuranceTab.tsx`
+- `src/components/insurance/XactComparisonView.tsx`
+- `src/components/insurance/ComparisonLineRow.tsx`
+- `src/components/insurance/SupplementReportPreview.tsx`
+- `src/hooks/useXactComparison.ts`
+- `supabase/functions/xact-compare-documents/index.ts`
+- `supabase/functions/generate-supplement-report/index.ts`
 
-- In the materials stage section render a condensed `<LiveOrderTracker compact projectId=... />` so foremen see "SRS PO #1234 — Confirmed, ETA 5/20" without leaving Production.
-- Auto-advance stage:
-  - When any linked supplier order hits Confirmed → mark `materials_ordered` complete.
-  - When status flips to Delivered/Invoiced → mark `materials_delivered` complete.
-  - Implemented via a small DB trigger on `srs_orders` / `qxo_orders` updating `production_order_assignments` (or whatever table backs the stage checks — to confirm during build).
+### Files to edit
+- `src/features/projects/components/ProjectDetails.tsx` — add Insurance tab + content.
+- `src/components/xact-scope/XactScopeBuilder.tsx` — accept `job_id` and persist as a `scope_documents` row tagged `company_scope`.
 
-### 5. Edge function: `sync-supplier-order`
-New tiny function that takes `{ supplier, order_id }` and re-pulls the latest status from the supplier API, upserting into the matching orders table + history. Used by the "Refresh now" button and a 15-minute scheduled cron as a safety net to webhook drops.
+### Open questions before I build
 
-### 6. RLS / scoping
-- All queries and realtime subscriptions filtered by `useEffectiveTenantId()` + `.eq('project_id', ...)` per project memory rules.
-- No new tables required — schema already supports everything.
-
-## Out of scope for this pass
-- Adding ABC/Beacon push (structure ready; flip on once their connections land).
-- Supplier-initiated changes to estimate line items (one-way push for now).
-- Mobile-app surface (web first).
-
-## Open questions
-1. Should the **Push** button be gated until the project has a signed estimate, or always available in draft?
-2. When SRS confirms partial fulfillment (some items backordered), do you want the tracker to show line-level status, or keep order-level for v1?
-3. For auto-advancing Production stages — confirm "Confirmed" (OC) is the right trigger for `materials_ordered`, vs "Submitted".
+1. **Company estimate source** — should the "Company Xactimate" side accept (a) an uploaded Xactimate PDF the company already exported from Xactimate desktop, (b) a scope built with the in-app `XactScopeBuilder`, or (c) both? Default plan is both.
+2. **Approval gate** — must every Added / Price-changed line have a typed justification before the report can be generated, or allow AI-only justifications without manual review?
+3. **Send to carrier** — do you want the report delivered via email from inside the app (auto-attach + tracked), or just downloadable PDF + ESX for now?
