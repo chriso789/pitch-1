@@ -70,6 +70,7 @@ import { ProjectPhotoSteps } from '@/components/lead-details/ProjectPhotoSteps';
 import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 
 // Hook to get selected estimate id from pipeline metadata
 const useSelectedEstimateId = (pipelineEntryId: string) => {
