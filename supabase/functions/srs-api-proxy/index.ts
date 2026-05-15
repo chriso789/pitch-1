@@ -634,10 +634,13 @@ Deno.serve(async (req) => {
             `/branches/v2/customerBranchLocations/${connection.customer_code}?BranchCode=${encodeURIComponent(probeBranch)}`,
           );
           const first = Array.isArray(b) ? b[0] : (b?.customerBranchLocations?.[0] || b);
+          const ja = Array.isArray(first?.jobAccounts) ? first.jobAccounts[0] : null;
           return {
-            jobAccountNumber: first?.jobAccountNumber ?? first?.jobAccount ?? null,
+            jobAccountNumber: first?.jobAccountNumber ?? ja?.jobAccountNumber ?? null,
+            jobAccountName: ja?.jobAccountName ?? null,
             branchCode: first?.branchCode ?? probeBranch,
-            raw: first,
+            branchName: first?.branchName ?? null,
+            jobAccountsCount: Array.isArray(first?.jobAccounts) ? first.jobAccounts.length : 0,
           };
         });
         const branchForProbe = String(
