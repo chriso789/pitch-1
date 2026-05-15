@@ -55,6 +55,7 @@ export function SRSConnectionSettings() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [billedAmount, setBilledAmount] = useState('');
+  const [integrationKey, setIntegrationKey] = useState('');
 
   useEffect(() => {
     if (activeCompanyId) {
