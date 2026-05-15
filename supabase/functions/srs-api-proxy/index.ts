@@ -405,20 +405,35 @@ Deno.serve(async (req) => {
       case "get_pricing": {
         const { branch_code, product_list, job_account_number } = params as Record<string, any>;
         if (!branch_code || !product_list) throw new Error("branch_code and product_list required");
+        if (!Array.isArray(product_list) || product_list.length === 0) {
+          throw new Error("product_list must be a non-empty array");
+        }
 
-        // SRS /products/v2/price requires JobAccountNumber on every call.
-        // Prefer the explicit param, then the validated value on the connection,
-        // then fall back to customer_code so the request shape is always valid.
-        const jan = job_account_number || connection.job_account_number || connection.customer_code;
+        // SRS /products/v2/price requires a NUMERIC JobAccountNumber that came
+        // from /branches/v2/customerBranchLocations. customer_code is NOT a
+        // valid fallback (SRS will silently strip the call).
+        const janRaw = job_account_number ?? connection.job_account_number;
+        const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        if (!jan || Number.isNaN(jan)) {
+          throw new Error("Missing numeric jobAccountNumber. Run validate_connection first so we can pull it from /branches/v2/customerBranchLocations.");
+        }
 
-        const pricing = await srsApiCall("/products/v2/price", "POST", {
-          customerCode: connection.customer_code,
+        // Documented body shape per SRS /products/v2/price (2026-05 spec).
+        const pricingPayload = {
+          sourceSystem: SRS_SOURCE_SYSTEM,
+          transactionId: crypto.randomUUID(),
+          customerCode: String(connection.customer_code || "").trim(),
           jobAccountNumber: jan,
-          branchCode: branch_code,
-          productList: product_list,
-        });
+          branchCode: String(branch_code).trim(),
+          productList: product_list.map((p: any) => ({
+            productNumber: String(p.productNumber ?? p.product_number ?? p.sku ?? "").trim(),
+            quantity: Number(p.quantity ?? p.qty ?? 1),
+            uom: String(p.uom ?? p.unitOfMeasure ?? "EA").trim(),
+          })),
+        };
 
-        result = { pricing };
+        const pricing = await srsApiCall("/products/v2/price", "POST", pricingPayload);
+        result = { pricing, request: pricingPayload };
         break;
       }
 
