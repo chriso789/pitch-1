@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useReferralSubmissions } from "@/hooks/referrals/useReferralDashboard";
 import { useReferralActions } from "@/hooks/referrals/useReferralActions";
+import { useReferralEligibilityActions } from "@/hooks/referrals/useReferralEligibility";
+import { ReferralEligibilityOverrideDialog } from "./ReferralEligibilityOverrideDialog";
 import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import { MoreHorizontal } from "lucide-react";
@@ -21,8 +23,10 @@ interface Props { canManage: boolean; }
 export function ReferredLeadsTable({ canManage }: Props) {
   const { data: subs = [], isLoading } = useReferralSubmissions();
   const { updateStatus, rejectSubmission, markValid, approvePayout } = useReferralActions();
+  const { recheck } = useReferralEligibilityActions();
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [overrideId, setOverrideId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     return subs.filter((s: any) => {
@@ -34,6 +38,14 @@ export function ReferredLeadsTable({ canManage }: Props) {
       return true;
     });
   }, [subs, statusFilter, search]);
+
+  const eligibilityBadge = (s: any) => {
+    if (s.admin_override_eligible === true) return <Badge>Override eligible</Badge>;
+    if (s.admin_override_eligible === false) return <Badge variant="destructive">Override blocked</Badge>;
+    if (s.payout_eligible) return <Badge>Eligible</Badge>;
+    if (s.payout_eligibility_reason) return <Badge variant="outline">Not eligible</Badge>;
+    return <Badge variant="secondary">Pending review</Badge>;
+  };
 
   return (
     <div className="space-y-3">
@@ -59,12 +71,11 @@ export function ReferredLeadsTable({ canManage }: Props) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Service</TableHead>
-                  <TableHead>Referrer</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Eligibility</TableHead>
+                  <TableHead>Blocking reason</TableHead>
                   <TableHead>Sold</TableHead>
-                  <TableHead>Eligible</TableHead>
+                  <TableHead>Collected</TableHead>
                   <TableHead>Created</TableHead>
                   {canManage && <TableHead></TableHead>}
                 </TableRow>
@@ -72,16 +83,17 @@ export function ReferredLeadsTable({ canManage }: Props) {
               <TableBody>
                 {filtered.map((s: any) => (
                   <TableRow key={s.id}>
-                    <TableCell>{s.referred_first_name} {s.referred_last_name}</TableCell>
-                    <TableCell className="text-xs">
-                      <div>{s.referred_phone}</div>
-                      <div className="text-muted-foreground">{s.referred_email}</div>
+                    <TableCell>
+                      <div>{s.referred_first_name} {s.referred_last_name}</div>
+                      <div className="text-xs text-muted-foreground">{s.referred_phone}</div>
                     </TableCell>
-                    <TableCell className="text-xs">{s.service_needed || "—"}</TableCell>
-                    <TableCell>{s.referrer ? `${s.referrer.first_name ?? ""} ${s.referrer.last_name ?? ""}`.trim() : "—"}</TableCell>
                     <TableCell><Badge variant="outline">{s.status}</Badge></TableCell>
+                    <TableCell>{eligibilityBadge(s)}</TableCell>
+                    <TableCell className="text-xs max-w-[260px] truncate" title={s.payout_eligibility_reason ?? ""}>
+                      {s.payout_eligible ? "Ready for payout" : s.payout_eligibility_reason || "—"}
+                    </TableCell>
                     <TableCell>{s.sold_value ? formatCurrency(s.sold_value) : "—"}</TableCell>
-                    <TableCell>{s.payout_eligible ? <Badge>Yes</Badge> : <span className="text-xs text-muted-foreground">No</span>}</TableCell>
+                    <TableCell>{s.collected_revenue ? formatCurrency(s.collected_revenue) : "—"}</TableCell>
                     <TableCell className="text-xs">{format(new Date(s.created_at), "MMM d")}</TableCell>
                     {canManage && (
                       <TableCell>
@@ -90,6 +102,16 @@ export function ReferredLeadsTable({ canManage }: Props) {
                             <Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => recheck.mutate(s.id)}>
+                              Recheck eligibility
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setOverrideId(s.id)}>
+                              Admin override…
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => approvePayout.mutate({ referral_submission_id: s.id })}>
+                              Approve payout
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             {STATUSES.filter((st) => st !== s.status).map((st) => (
                               <DropdownMenuItem key={st} onClick={() => updateStatus.mutate({ submissionId: s.id, status: st })}>
                                 Mark {st.replace(/_/g, " ")}
@@ -97,10 +119,7 @@ export function ReferredLeadsTable({ canManage }: Props) {
                             ))}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => markValid.mutate({ submissionId: s.id })}>
-                              Override: payout eligible
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => approvePayout.mutate({ referral_submission_id: s.id })}>
-                              Approve payout
+                              Force payout eligible (legacy)
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -121,6 +140,12 @@ export function ReferredLeadsTable({ canManage }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <ReferralEligibilityOverrideDialog
+        submissionId={overrideId}
+        open={!!overrideId}
+        onOpenChange={(o) => !o && setOverrideId(null)}
+      />
     </div>
   );
 }
