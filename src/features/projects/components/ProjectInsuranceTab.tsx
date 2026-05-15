@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Upload, GitCompare, FileText, Loader2 } from 'lucide-react';
+import { Upload, GitCompare, FileText, Loader2, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
@@ -14,6 +14,8 @@ import {
   useProjectComparisons,
   useComparisonLines,
   useProjectScopeDocuments,
+  useGenerateSupplementReport,
+  useSupplementReports,
 } from '@/hooks/useXactComparison';
 
 interface Props {
