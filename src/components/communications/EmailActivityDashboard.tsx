@@ -47,6 +47,21 @@ export function EmailActivityDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<string>('7d');
+  const [backfilling, setBackfilling] = useState(false);
+
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('backfill-email-statuses');
+      if (error) throw error;
+      toast.success(`Backfill complete: ${data.updated}/${data.checked} updated`);
+      refetch();
+    } catch (e: any) {
+      toast.error(`Backfill failed: ${e.message}`);
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   // Fetch emails with engagement data
   const { data: emails, isLoading, refetch } = useQuery({
