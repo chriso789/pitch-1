@@ -19613,6 +19613,57 @@ export type Database = {
           },
         ]
       }
+      labor_order_emails: {
+        Row: {
+          created_at: string
+          customer_name: string | null
+          estimate_id: string | null
+          id: string
+          last_opened_at: string | null
+          open_count: number
+          opened_at: string | null
+          project_address: string | null
+          recipient_email: string
+          recipient_name: string | null
+          resend_message_id: string | null
+          sent_at: string
+          sent_by: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_name?: string | null
+          estimate_id?: string | null
+          id?: string
+          last_opened_at?: string | null
+          open_count?: number
+          opened_at?: string | null
+          project_address?: string | null
+          recipient_email: string
+          recipient_name?: string | null
+          resend_message_id?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string | null
+          estimate_id?: string | null
+          id?: string
+          last_opened_at?: string | null
+          open_count?: number
+          opened_at?: string | null
+          project_address?: string | null
+          recipient_email?: string
+          recipient_name?: string | null
+          resend_message_id?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       labor_rates: {
         Row: {
           base_rate_per_hour: number
