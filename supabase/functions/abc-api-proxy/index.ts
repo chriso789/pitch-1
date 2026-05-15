@@ -24,13 +24,33 @@ const ABC = {
 type Env = "sandbox" | "production";
 
 interface ProxyRequest {
-  action: "test_connection" | "submit_test_order" | "get_status";
+  action: "test_connection" | "submit_test_order" | "get_status" | "start_oauth";
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
 }
 
+const AUTH_URLS: Record<Env, string> = {
+  sandbox: "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize",
+  production: "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize",
+};
+const DEFAULT_SCOPES =
+  "pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access";
+
 function normalizeEnv(env?: string): Env {
   return env === "production" ? "production" : "sandbox";
+}
+
+function b64url(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function pkce() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return { verifier, challenge: b64url(digest) };
 }
 
 async function getValidAccessToken(
