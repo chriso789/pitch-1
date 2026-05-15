@@ -25,7 +25,7 @@ interface ABCConnection {
 }
 
 export function ABCConnectionSettings() {
-  const { effectiveTenantId } = useEffectiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
