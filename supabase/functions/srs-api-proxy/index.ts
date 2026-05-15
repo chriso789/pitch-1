@@ -627,27 +627,49 @@ Deno.serve(async (req) => {
           const b = await srsApiCall("/branches/v2/branchLocations");
           return { count: Array.isArray(b) ? b.length : (b?.branchLocations?.length ?? 0) };
         });
+        const probeBranch = String((params as any).branch_code || connection.default_branch_code || "SRORL");
         const cbl = await safe("4_customerBranchLocations", async () => {
-          const b = await srsApiCall(`/branches/v2/customerBranchLocations/${connection.customer_code}`);
-          const first = Array.isArray(b) ? b[0] : b;
-          return { jobAccountNumber: first?.jobAccountNumber, branchCode: first?.branchCode };
+          // SRS requires BranchCode (or lat/lng) as a query parameter on this endpoint.
+          const b = await srsApiCall(
+            `/branches/v2/customerBranchLocations/${connection.customer_code}?BranchCode=${encodeURIComponent(probeBranch)}`,
+          );
+          const first = Array.isArray(b) ? b[0] : (b?.customerBranchLocations?.[0] || b);
+          return {
+            jobAccountNumber: first?.jobAccountNumber ?? first?.jobAccount ?? null,
+            branchCode: first?.branchCode ?? probeBranch,
+            raw: first,
+          };
         });
         const branchForProbe = String(
           (params as any).branch_code
             || (cbl as any)?.branchCode
             || connection.default_branch_code
-            || "SRORL",
+            || probeBranch,
         );
         const products = await safe("5_activeBranchProducts", async () => {
           const p = await srsApiCall(`/branches/v2/activeBranchProducts/${branchForProbe}`);
           const list = Array.isArray(p) ? p : (p?.products || []);
-          return { count: list.length, sample: list[0] || null };
+          const sample = list[0] || null;
+          return {
+            count: list.length,
+            sampleProductNumber: sample?.productNumber ?? sample?.productId ?? null,
+            sampleProductName: sample?.productName ?? null,
+          };
         });
         await safe("6_price", async () => {
-          const productNumber = String((params as any).product_number || (products as any)?.sample?.productNumber || "");
+          const productNumber = String(
+            (params as any).product_number
+              || (products as any)?.sampleProductNumber
+              || "",
+          );
           if (!productNumber) throw new Error("No productNumber available for price probe");
-          const jan = Number(connection.job_account_number);
-          if (!jan) throw new Error("connection.job_account_number missing");
+          const jan = Number(
+            (params as any).job_account_number
+              || connection.job_account_number
+              || (cbl as any)?.jobAccountNumber
+              || 0,
+          );
+          if (!jan) throw new Error("jobAccountNumber missing (none on connection or customerBranchLocations response)");
           return await srsApiCall("/products/v2/price", "POST", {
             sourceSystem: SRS_SOURCE_SYSTEM,
             transactionId: crypto.randomUUID(),
