@@ -278,14 +278,16 @@ export function EmailActivityDashboard() {
               <Mail className="h-5 w-5" />
               Email Activity Log
             </CardTitle>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-            <Button variant="default" size="sm" onClick={handleBackfill} disabled={backfilling}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${backfilling ? 'animate-spin' : ''}`} />
-              {backfilling ? 'Backfilling...' : 'Backfill Statuses'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+              <Button variant="default" size="sm" onClick={handleBackfill} disabled={backfilling}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${backfilling ? 'animate-spin' : ''}`} />
+                {backfilling ? 'Backfilling...' : 'Backfill Statuses'}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
