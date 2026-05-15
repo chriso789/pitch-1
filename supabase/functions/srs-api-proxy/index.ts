@@ -248,11 +248,24 @@ Deno.serve(async (req) => {
         try {
           await getAccessToken();
 
-          // Validate customer
-          const accountNumber = encodeURIComponent(String(connection.customer_code || "").trim());
-          const validateData = await srsApiCall(
-            `/customers/validate/?accountNumber=${accountNumber}`
-          );
+          const { invoice_number, invoice_date, billed_amount } = params as Record<string, string>;
+          if (!invoice_number || (!invoice_date && !billed_amount)) {
+            const msg = "SRS requires Invoice # plus Invoice Date or Billed Amount to validate the customer account.";
+            await supabase.from("srs_connections").update({
+              connection_status: "error", last_error: msg, last_validated_at: new Date().toISOString(),
+            }).eq("id", connection.id);
+            await audit({ tenant_id, connection_id: connection.id, action: "validate", success: false, error: msg });
+            result = { success: false, error: msg };
+            break;
+          }
+
+          // Validate customer (SRS requires invoice proof of ownership)
+          const qs = new URLSearchParams();
+          qs.set("accountNumber", String(connection.customer_code || "").trim());
+          qs.set("invoiceNumber", invoice_number.trim());
+          if (invoice_date) qs.set("invoiceDate", invoice_date.trim());
+          if (billed_amount) qs.set("billedAmount", billed_amount.trim());
+          const validateData = await srsApiCall(`/customers/validate/?${qs.toString()}`);
 
           const isValid = validateData?.validIndicator === "Y" || validateData?.validIndicator === true;
 

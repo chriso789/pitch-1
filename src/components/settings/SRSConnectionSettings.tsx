@@ -52,6 +52,9 @@ export function SRSConnectionSettings() {
   const [clientSecret, setClientSecret] = useState('');
   const [customerCode, setCustomerCode] = useState('');
   const [environment, setEnvironment] = useState('staging');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [billedAmount, setBilledAmount] = useState('');
 
   useEffect(() => {
     if (activeCompanyId) {
@@ -131,10 +134,24 @@ export function SRSConnectionSettings() {
 
   const handleTestConnection = async () => {
     if (!activeCompanyId) return;
+    if (!invoiceNumber.trim() || (!invoiceDate.trim() && !billedAmount.trim())) {
+      toast({
+        title: 'Invoice info required',
+        description: 'SRS requires a recent Invoice # plus Invoice Date or Billed Amount to confirm account ownership.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setTesting(true);
     try {
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
-        body: { action: 'validate_connection', tenant_id: activeCompanyId },
+        body: {
+          action: 'validate_connection',
+          tenant_id: activeCompanyId,
+          invoice_number: invoiceNumber.trim(),
+          invoice_date: invoiceDate.trim() || undefined,
+          billed_amount: billedAmount.trim() || undefined,
+        },
       });
       if (error) throw error;
       if (data?.success) {
@@ -297,6 +314,30 @@ export function SRSConnectionSettings() {
             Secrets are stored server-side and never returned to the browser. Don't have credentials? Email{' '}
             <strong>APISupportTeam@srsdistribution.com</strong> with your company name to request API access.
           </p>
+
+          <div className="space-y-3 p-4 border rounded-md bg-muted/20">
+            <div>
+              <Label className="text-sm font-semibold">Validate Customer Account</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                SRS requires a recent invoice to prove ownership of this account. Provide the Invoice # plus
+                either the Invoice Date or Billed Amount. This is only needed for the initial validation.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Invoice #</Label>
+                <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="e.g. 12345678" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Invoice Date</Label>
+                <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Billed Amount ($)</Label>
+                <Input type="number" step="0.01" value={billedAmount} onChange={(e) => setBilledAmount(e.target.value)} placeholder="e.g. 1234.56" />
+              </div>
+            </div>
+          </div>
 
           <div className="flex flex-wrap gap-2 pt-2">
             <Button onClick={() => handleSave(false)} disabled={saving || !clientId || !clientSecret}>
