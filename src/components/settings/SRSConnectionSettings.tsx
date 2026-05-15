@@ -135,10 +135,10 @@ export function SRSConnectionSettings() {
 
   const handleTestConnection = async () => {
     if (!activeCompanyId) return;
-    if (!invoiceNumber.trim() || (!invoiceDate.trim() && !billedAmount.trim())) {
+    if (!integrationKey.trim() && (!invoiceNumber.trim() || (!invoiceDate.trim() && !billedAmount.trim()))) {
       toast({
-        title: 'Invoice info required',
-        description: 'SRS requires a recent Invoice # plus Invoice Date or Billed Amount to confirm account ownership.',
+        title: 'Validation info required',
+        description: 'Provide either an SRS Integration Key OR Invoice # + Invoice Date/Billed Amount.',
         variant: 'destructive',
       });
       return;
@@ -150,7 +150,8 @@ export function SRSConnectionSettings() {
           action: 'validate_connection',
           tenant_id: activeCompanyId,
           environment,
-          invoice_number: invoiceNumber.trim(),
+          integration_key: integrationKey.trim() || undefined,
+          invoice_number: invoiceNumber.trim() || undefined,
           invoice_date: invoiceDate.trim() || undefined,
           billed_amount: billedAmount.trim() || undefined,
         },
