@@ -282,6 +282,10 @@ export function EmailActivityDashboard() {
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
+            <Button variant="default" size="sm" onClick={handleBackfill} disabled={backfilling}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${backfilling ? 'animate-spin' : ''}`} />
+              {backfilling ? 'Backfilling...' : 'Backfill Statuses'}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
