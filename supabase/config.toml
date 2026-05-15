@@ -1277,3 +1277,9 @@ verify_jwt = false
 [functions.backfill-ai-usage]
 verify_jwt = true
 
+
+[functions.abc-oauth-start]
+verify_jwt = true
+
+[functions.abc-oauth-callback]
+verify_jwt = false
