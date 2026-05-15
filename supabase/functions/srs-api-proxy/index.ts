@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const baseUrl = connection.environment === "production" ? SRS_PRODUCTION_URL : SRS_STAGING_URL;
+    const getBaseUrl = () => connection.environment === "production" ? SRS_PRODUCTION_URL : SRS_STAGING_URL;
 
     // Helper to get valid access token
     async function getAccessToken(): Promise<string> {
@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
         scope: "ALL",
       }).toString();
 
-      let tokenResp = await fetch(`${baseUrl}/authentication/token`, {
+      let tokenResp = await fetch(`${getBaseUrl()}/authentication/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: jsonBody,
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
       if (!tokenResp.ok) {
         const firstErr = await tokenResp.text();
         console.warn(`SRS token JSON attempt failed [${tokenResp.status}]: ${firstErr}. Retrying as form-encoded.`);
-        tokenResp = await fetch(`${baseUrl}/authentication/token`, {
+        tokenResp = await fetch(`${getBaseUrl()}/authentication/token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
       };
       if (reqBody) opts.body = JSON.stringify(reqBody);
 
-      const resp = await fetch(`${baseUrl}${path}`, opts);
+      const resp = await fetch(`${getBaseUrl()}${path}`, opts);
       if (!resp.ok) {
         const errText = await resp.text();
         throw new Error(`SRS API error [${resp.status}]: ${errText}`);
