@@ -100,6 +100,16 @@ export function EmailActivityDashboard() {
     }
   });
 
+  // Silently backfill Resend statuses + link to leads on mount
+  useEffect(() => {
+    supabase.functions.invoke('backfill-email-statuses')
+      .then(({ data }) => {
+        if (data?.updated > 0) refetch();
+      })
+      .catch(() => { /* silent */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Calculate metrics
   const metrics = useMemo(() => {
     if (!emails?.length) return { total: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, deliveryRate: 0, openRate: 0, clickRate: 0 };
