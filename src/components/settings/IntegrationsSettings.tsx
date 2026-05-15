@@ -11,7 +11,8 @@ import { RoutingRulesManager } from "./RoutingRulesManager";
 import { MetaCAPISettings } from "./MetaCAPISettings";
 import { SRSConnectionSettings } from "./SRSConnectionSettings";
 import { QXOConnectionSettings } from "./QXOConnectionSettings";
-import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, Facebook, Truck, Package } from "lucide-react";
+import { ABCConnectionSettings } from "./ABCConnectionSettings";
+import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, Facebook, Truck, Package, Building2 } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -32,6 +33,10 @@ export const IntegrationsSettings = () => {
           <TabsTrigger value="qxo" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             QXO / Beacon
+          </TabsTrigger>
+          <TabsTrigger value="abc" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            ABC Supply
           </TabsTrigger>
           <TabsTrigger value="api-keys" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
@@ -77,6 +82,10 @@ export const IntegrationsSettings = () => {
 
         <TabsContent value="qxo" className="space-y-6">
           <QXOConnectionSettings />
+        </TabsContent>
+
+        <TabsContent value="abc" className="space-y-6">
+          <ABCConnectionSettings />
         </TabsContent>
 
         <TabsContent value="api-keys" className="space-y-6">
