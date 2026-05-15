@@ -1,67 +1,73 @@
-## Referral Automation + Eligibility Sync — Plan
+## Goal
 
-### Schema reality check (already in DB)
-- `referral_submissions`: has `tenant_id`, `crm_lead_id`, `crm_contact_id`, `crm_job_id`, `status`, `payout_eligible`, `payout_eligibility_reason`, `estimated_value`, `sold_value`. **Missing**: `collected_revenue`, `sold_at`, `completed_at`, `cancelled_at`, `appointment_completed_at`, `admin_override_eligible`, `admin_override_reason`.
-- `referral_program_settings`: has `payout_trigger`, `minimum_collected_revenue`, `max_rewards_per_referrer_per_year`, `duplicate_window_days`, `block_self_referrals`, `require_admin_approval`, `is_enabled`, reward fields, allow_* method toggles. **Missing**: `reward_expiration_days`, `minimum_days_before_payout`, `allow_self_referrals` (we'll keep `block_self_referrals` and invert), `block_existing_customers`, `block_existing_leads_in_duplicate_window`.
-- `referral_status_history`, `referral_payouts`, `referral_credit_ledger`, `referral_flags`, `referral_payout_profiles`, `referral_codes`: present and usable.
-- CRM tables: `pipeline_entries` + `pipeline_stages` (leads/jobs lifecycle), `jobs`, `projects`, `project_payments`, `project_invoices`, `payments`. Tenancy is `tenant_id` everywhere (not `company_id`).
+Give users one place inside a project to push a material order to whichever supplier they've connected (SRS today, QXO/ABC/Beacon next), and a live tracker that shows submission and supplier-side status changes — surfaced in both the **Project Details → Materials tab** and the **Production page** for that project.
 
-### Phase A — Migration (one batch)
-Add to `referral_submissions`: `collected_revenue numeric default 0`, `sold_at`, `completed_at`, `cancelled_at`, `appointment_completed_at`, `admin_override_eligible boolean`, `admin_override_reason text`.
+## What already exists (reuse, don't rebuild)
 
-Add to `referral_program_settings`: `reward_expiration_days int`, `minimum_days_before_payout int default 0`, `block_existing_customers boolean default true`, `block_existing_leads_in_duplicate_window boolean default true`.
+- `srs_orders` + `srs_order_status_history` + `srs-api-proxy` + `roofhub-webhook` (live OU/OC/DU/IU status updates land in DB) — SRS QA is 10/10 green.
+- `qxo_orders` + `qxo_connections` + `qxo-submit-order` + `PushToQXOButton`.
+- `MaterialOrderDialog`, `MaterialOrdersList`, `MaterialOrderDetail`, `useMaterialOrders` hook.
+- ProjectDetails uses Tabs but has no Materials tab. Production page has stage keys (`materials_ordered`, `materials_delivered`) but no live order data tied to them.
 
-SQL helpers (SECURITY DEFINER, tenant-scoped):
-- `get_referrer_credit_balance(tenant_id, referrer_contact_id) returns numeric`
-- `get_referrer_rewards_paid_this_year(tenant_id, referrer_contact_id) returns table(count int, amount numeric)`
-- `referral_submission_has_blocking_flags(referral_submission_id) returns boolean`
-- `calculate_referral_reward(tenant_id, referral_submission_id) returns numeric`
+## Plan
 
-### Phase B — Frontend service layer
-- `src/lib/referrals/referralStatusMapping.ts` — maps `pipeline_stages.name`/`jobs.status`/`projects.status` strings (loose `includes` match) into the 9 referral submission statuses + 4 job buckets (sold/completed/cancelled/paid). Documented fallback to `new` when unknown.
-- `src/lib/referrals/referralHistory.ts` — `insertReferralStatusHistory`, `getReferralStatusTimeline`.
-- `src/lib/referrals/referralAutomation.ts` — all 8 functions from spec (sync from lead, sync from job, evaluate, createPendingPayoutIfEligible, calculateReferralRewardAmount, rejectReferralPayout, updateReferralFinancials, adminOverrideReferralEligibility). Eligibility implements all 10 blocking rules + 5 trigger modes from the spec.
+### 1. New unified "Push to Supplier" dialog
+Component: `src/components/orders/PushToSupplierDialog.tsx`
 
-### Phase C — Edge functions
-- `supabase/functions/sync-referral-status/index.ts` — accepts `{type:"lead"|"job"|"referral_submission", id}`, runs the corresponding sync server-side using service-role client, returns `{ old_status, new_status, payout_eligible, payout_eligibility_reason, pending_payout_created }`.
-- `supabase/functions/evaluate-referral-eligibility/index.ts` — evaluates + optionally creates pending payout. Returns full eligibility payload.
+- Trigger button: `<PushOrderButton />` placed in the Materials tab (project) and the materials drawer (production).
+- On open, query connected suppliers for current tenant in parallel:
+  - `srs_connections` where `connection_status='connected'` and `valid_indicator=true`
+  - `qxo_connections` where `connection_status='connected'`
+  - (extensible: ABC, Beacon — same shape)
+- Render only the supplier cards the tenant actually has linked. If exactly one, auto-select.
+- For each supplier show: branch picker (default branch pre-filled), delivery method, delivery date, ship-to (pre-filled from project address), notes.
+- Items grid pulled from the project's active estimate `material` line items (read-only qty + override allowed).
+- Submit routes to the right edge function:
+  - SRS → `srs-api-proxy` `submit_order` (already spec-compliant; `include_submit:true`).
+  - QXO → `qxo-submit-order` (existing).
+- On success, persist row to `srs_orders` / `qxo_orders` and link to `project_id`.
 
-Both use `Authorization: Bearer <user JWT>`, validate the user belongs to the submission's tenant via `user_company_access`, then run with service role.
+### 2. Live tracker UI
+Component: `src/components/orders/LiveOrderTracker.tsx`
 
-### Phase D — CRM hookpoints (non-blocking)
-- Add a thin wrapper `src/lib/referrals/triggerReferralSync.ts` that fires-and-forgets `sync-referral-status` and toasts only on failure (admin/dev visible).
-- Hook into existing pipeline stage change handler (`usePipelineData` / pipeline mutation paths) — call wrapper after success when `pipeline_entries.id` matches a referral's `crm_lead_id` or `crm_job_id`.
-- Hook into job/project status updates and payment recorded paths the same way.
-- If no central payment writer is reachable, expose manual `collected_revenue` field in dashboard drawer.
+- Realtime subscription per supplier table, filtered by `tenant_id` + `project_id`:
+  - `srs_orders` (status_code, status_value, on_hold, last_synced_at) + `srs_order_status_history`
+  - `qxo_orders` (status, updated_at)
+- Renders a compact timeline per order: Submitted → Confirmed (OC) → In Fulfillment (DU) → Invoiced (IU), with timestamps and the human status_message from history.
+- Shows supplier badge, PO #, branch, total, ship address, last sync time.
+- "Refresh now" button calls a small `sync-supplier-order` edge function (SRS uses existing pricing/order GET; QXO uses existing sync).
 
-### Phase E — Dashboard UI
-- Extend `ReferredLeadsTable` with columns: Eligibility badge, Blocking reason (truncated), Recommended next step. Row actions: Recheck, Override eligible/blocked, Update financials, Approve payout.
-- Extend `ReferralDetailDrawer` with a "Payout Eligibility" section showing trigger rule, blocking reasons list, recommended step, computed payout amount + method, existing payout status, Recheck + Override buttons.
-- New `ReferralEligibilityOverrideDialog.tsx` — radio (eligible/not), required reason, optional amount + method. Calls `adminOverrideReferralEligibility` then `evaluate-referral-eligibility`.
-- Add eligibility hook `useReferralEligibility(submissionId)` returning live result via TanStack Query.
+### 3. Project Details → new "Materials" tab
+File: `src/features/projects/components/ProjectDetails.tsx`
 
-### Phase F — Pending payout creation rules
-Inside `createPendingPayoutIfEligible`:
-- Pull preferred method from `referral_payout_profiles`; default to `manual_review` with note when missing.
-- `payout_amount` from `calculateReferralRewardAmount`.
-- If `require_admin_approval = false` AND method = `stored_balance`: insert credit ledger row + payout `stored_as_credit`. For `venmo|zelle|gift_card`: payout `approved` (admin still marks paid). Otherwise: `pending`.
-- Idempotent: skip if existing payout in `approved|paid|stored_as_credit`; update method/amount if `pending` and inputs changed.
+- Add `<TabsTrigger value="materials">Materials</TabsTrigger>` after Costs.
+- Tab content stack:
+  1. Header row: project totals (materials budget vs ordered vs delivered) + `<PushOrderButton projectId=... />`.
+  2. `<LiveOrderTracker projectId=... />` — all open orders across suppliers.
+  3. `<MaterialOrdersList projectId=... />` — historical/closed orders, click-through to `MaterialOrderDetail`.
 
-### Phase G — Notifications
-Use `sonner` toasts inside the dashboard mutation handlers ("Referral now eligible", "Pending payout created", "Sync failed"). No external/customer notifications.
+### 4. Production page integration
+File: `src/features/production/components/ProductionWorkflow.tsx` (and the per-project drawer it opens)
 
-### Phase H — QA
-Add `docs/referral-automation-qa.md` with the 20-step checklist for manual verification.
+- In the materials stage section render a condensed `<LiveOrderTracker compact projectId=... />` so foremen see "SRS PO #1234 — Confirmed, ETA 5/20" without leaving Production.
+- Auto-advance stage:
+  - When any linked supplier order hits Confirmed → mark `materials_ordered` complete.
+  - When status flips to Delivered/Invoiced → mark `materials_delivered` complete.
+  - Implemented via a small DB trigger on `srs_orders` / `qxo_orders` updating `production_order_assignments` (or whatever table backs the stage checks — to confirm during build).
 
-### Out of scope (next phase)
-Analytics + CSV exports come after this. Any UI for editing the new settings fields will be light (added to existing `ReferralSettingsPanel`).
+### 5. Edge function: `sync-supplier-order`
+New tiny function that takes `{ supplier, order_id }` and re-pulls the latest status from the supplier API, upserting into the matching orders table + history. Used by the "Refresh now" button and a 15-minute scheduled cron as a safety net to webhook drops.
 
-### Order of execution
-1. Run migration (Phase A) — pause for approval.
-2. Write mapping + history + automation services (B).
-3. Write edge functions (C) — auto-deploy.
-4. Wire CRM hookpoints (D).
-5. Update dashboard UI + override dialog (E).
-6. Add settings panel fields + QA doc.
+### 6. RLS / scoping
+- All queries and realtime subscriptions filtered by `useEffectiveTenantId()` + `.eq('project_id', ...)` per project memory rules.
+- No new tables required — schema already supports everything.
 
-Ready to proceed once you approve the plan and the migration in step 1.
+## Out of scope for this pass
+- Adding ABC/Beacon push (structure ready; flip on once their connections land).
+- Supplier-initiated changes to estimate line items (one-way push for now).
+- Mobile-app surface (web first).
+
+## Open questions
+1. Should the **Push** button be gated until the project has a signed estimate, or always available in draft?
+2. When SRS confirms partial fulfillment (some items backordered), do you want the tracker to show line-level status, or keep order-level for v1?
+3. For auto-advancing Production stages — confirm "Confirmed" (OC) is the right trigger for `materials_ordered`, vs "Submitted".
