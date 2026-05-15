@@ -1,6 +1,5 @@
 // ABC Supply OAuth Authorization Code Flow - CALLBACK
-// ABC redirects the browser here with ?code=...&state=...
-// We exchange the code for tokens and persist them, then redirect back to the app.
+// Exchanges authorization code at Okta /v1/token using HTTP Basic auth + PKCE verifier.
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -8,8 +7,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ABC_TOKEN_URL_STAGING = "https://login-stage.abcsupply.com/oauth2/token";
-const ABC_TOKEN_URL_PROD = "https://login.abcsupply.com/oauth2/token";
+const DEFAULTS = {
+  sandbox: {
+    token_url: "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token",
+  },
+  production: {
+    token_url: "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token",
+  },
+};
 
 const APP_BASE = Deno.env.get("APP_BASE_URL") || "https://pitch-crm.ai";
 
@@ -29,11 +34,15 @@ Deno.serve(async (req) => {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errParam = url.searchParams.get("error");
+  const errDesc = url.searchParams.get("error_description");
 
   const returnTo = `${APP_BASE}/settings?tab=integrations&abc=`;
 
   if (errParam) {
-    return htmlRedirect(returnTo + "error&msg=" + encodeURIComponent(errParam), `ABC returned error: ${errParam}`);
+    return htmlRedirect(
+      returnTo + "error&msg=" + encodeURIComponent(errDesc || errParam),
+      `ABC returned error: ${errDesc || errParam}`
+    );
   }
   if (!code || !state) {
     return htmlRedirect(returnTo + "error&msg=missing_code_or_state", "Missing code or state.");
@@ -55,32 +64,50 @@ Deno.serve(async (req) => {
       return htmlRedirect(returnTo + "error&msg=invalid_state", "Invalid or expired state.");
     }
     if (new Date(stateRow.expires_at).getTime() < Date.now()) {
+      await supabase.from("abc_oauth_states").delete().eq("state", state);
       return htmlRedirect(returnTo + "error&msg=state_expired", "State expired. Please retry.");
     }
 
-    const { data: integration } = await supabase
+    const { data: integration, error: intErr } = await supabase
       .from("abc_integrations")
       .select("*")
       .eq("id", stateRow.integration_id)
       .single();
+    if (intErr || !integration) {
+      return htmlRedirect(returnTo + "error&msg=integration_missing", "Integration row missing.");
+    }
 
-    const clientId = Deno.env.get("ABC_CLIENT_ID")!;
-    const clientSecret = Deno.env.get("ABC_CLIENT_SECRET");
-    const tokenUrl = integration.environment === "production" ? ABC_TOKEN_URL_PROD : ABC_TOKEN_URL_STAGING;
+    const environment: "sandbox" | "production" =
+      integration.environment === "production" ? "production" : "sandbox";
+    const envSuffix = environment === "production" ? "PRODUCTION" : "SANDBOX";
 
-    const body = new URLSearchParams({
+    const clientId = Deno.env.get(`ABC_CLIENT_ID_${envSuffix}`);
+    const clientSecret = Deno.env.get(`ABC_CLIENT_SECRET_${envSuffix}`);
+    const tokenUrl = Deno.env.get(`ABC_TOKEN_URL_${envSuffix}`) || DEFAULTS[environment].token_url;
+
+    if (!clientId || !clientSecret) {
+      return htmlRedirect(
+        returnTo + "error&msg=missing_credentials",
+        `ABC_CLIENT_ID_${envSuffix} or ABC_CLIENT_SECRET_${envSuffix} not configured.`
+      );
+    }
+
+    const basic = btoa(`${clientId}:${clientSecret}`);
+    const form = new URLSearchParams({
       grant_type: "authorization_code",
       code,
       redirect_uri: stateRow.redirect_uri,
-      client_id: clientId,
       code_verifier: stateRow.code_verifier,
     });
-    if (clientSecret) body.set("client_secret", clientSecret);
 
     const tokenResp = await fetch(tokenUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body,
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: form,
     });
 
     const tokenJson = await tokenResp.json().catch(() => ({}));
@@ -88,26 +115,29 @@ Deno.serve(async (req) => {
       console.error("ABC token exchange failed:", tokenResp.status, tokenJson);
       await supabase
         .from("abc_integrations")
-        .update({ status: "error", last_error: JSON.stringify(tokenJson).slice(0, 500) })
+        .update({
+          status: "error",
+          last_error: JSON.stringify(tokenJson).slice(0, 500),
+        })
         .eq("id", integration.id);
-      return htmlRedirect(returnTo + "error&msg=token_exchange_failed", "Token exchange failed: " + (tokenJson.error || tokenResp.status));
+      return htmlRedirect(
+        returnTo + "error&msg=token_exchange_failed",
+        "Token exchange failed: " + (tokenJson.error_description || tokenJson.error || tokenResp.status)
+      );
     }
 
     const expiresAt = new Date(Date.now() + (tokenJson.expires_in ?? 3600) * 1000).toISOString();
-    const refreshExpiresAt = tokenJson.refresh_expires_in
-      ? new Date(Date.now() + tokenJson.refresh_expires_in * 1000).toISOString()
-      : null;
 
     await supabase.from("abc_connections").upsert(
       {
         tenant_id: integration.tenant_id,
-        environment: integration.environment,
+        environment,
         access_token: tokenJson.access_token,
         refresh_token: tokenJson.refresh_token ?? null,
         token_type: tokenJson.token_type ?? "Bearer",
         scope: tokenJson.scope ?? integration.scopes,
         expires_at: expiresAt,
-        refresh_expires_at: refreshExpiresAt,
+        refresh_expires_at: null,
         connection_status: "connected",
         last_validated_at: new Date().toISOString(),
         last_refreshed_at: new Date().toISOString(),
@@ -126,6 +156,9 @@ Deno.serve(async (req) => {
     return htmlRedirect(returnTo + "connected", "ABC Supply connected. Returning to app…");
   } catch (e) {
     console.error("abc-oauth-callback error:", e);
-    return htmlRedirect(returnTo + "error&msg=" + encodeURIComponent(String(e)), "Unexpected error.");
+    return htmlRedirect(
+      returnTo + "error&msg=" + encodeURIComponent(String(e)),
+      "Unexpected error."
+    );
   }
 });
