@@ -476,7 +476,6 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         amount,
         balance: amount,
         status: 'pending',
-        issued_at: new Date().toISOString(),
         notes: `Change Order ${co.co_number}: ${co.title}`,
         created_by: user.id,
         line_items: lineItems as any,
