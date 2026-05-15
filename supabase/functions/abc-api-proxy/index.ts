@@ -1,5 +1,5 @@
-// ABC Supply API proxy — handles test_connection and submit_test_order against
-// ABC's sandbox OAuth + Partner API using project-level sandbox credentials.
+// ABC Supply API proxy — uses per-tenant OAuth token (auth_code + PKCE) stored
+// in abc_connections, auto-refreshes when expired, and submits real orders.
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -9,155 +9,233 @@ const corsHeaders = {
 };
 
 const ABC = {
-  staging: {
-    tokenUrl:
-      "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token",
-    metaUrl:
-      "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/.well-known/oauth-authorization-server",
+  sandbox: {
+    tokenUrl: "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token",
+    metaUrl: "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/.well-known/oauth-authorization-server",
     apiBase: "https://partners-sb.abcsupply.com/api",
   },
   production: {
-    tokenUrl:
-      "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token",
-    metaUrl:
-      "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/.well-known/oauth-authorization-server",
+    tokenUrl: "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token",
+    metaUrl: "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/.well-known/oauth-authorization-server",
     apiBase: "https://partners.abcsupply.com/api",
   },
 };
 
+type Env = "sandbox" | "production";
+
 interface ProxyRequest {
-  action: "test_connection" | "submit_test_order";
-  environment?: "staging" | "production";
+  action: "test_connection" | "submit_test_order" | "get_status";
+  environment?: "staging" | "sandbox" | "production";
+  tenant_id?: string;
 }
 
-async function getCreds(env: "staging" | "production") {
-  if (env === "production") {
-    return {
-      clientId: Deno.env.get("ABC_CLIENT_ID_PRODUCTION") ?? "",
-      clientSecret: Deno.env.get("ABC_CLIENT_SECRET_PRODUCTION") ?? "",
-    };
-  }
-  return {
-    clientId: Deno.env.get("ABC_CLIENT_ID_SANDBOX") ?? "",
-    clientSecret: Deno.env.get("ABC_CLIENT_SECRET_SANDBOX") ?? "",
-  };
+function normalizeEnv(env?: string): Env {
+  return env === "production" ? "production" : "sandbox";
 }
 
-async function tryClientCredentialsToken(env: "staging" | "production") {
-  const { tokenUrl } = ABC[env];
-  const { clientId, clientSecret } = await getCreds(env);
-  if (!clientId || !clientSecret) {
-    return {
-      ok: false,
-      step: "credentials",
-      error: `Missing ABC ${env} client_id / client_secret in project secrets.`,
-    };
+async function getValidAccessToken(
+  supabase: ReturnType<typeof createClient>,
+  tenant_id: string,
+  env: Env,
+): Promise<{ token?: string; error?: string; expires_at?: string }> {
+  const { data: conn } = await supabase
+    .from("abc_connections")
+    .select("*")
+    .eq("tenant_id", tenant_id)
+    .eq("environment", env)
+    .maybeSingle();
+
+  if (!conn || !conn.access_token) {
+    return { error: "not_connected" };
   }
+
+  // 60s safety buffer
+  const expiresAt = conn.expires_at ? new Date(conn.expires_at).getTime() : 0;
+  if (expiresAt > Date.now() + 60_000) {
+    return { token: conn.access_token, expires_at: conn.expires_at };
+  }
+
+  // Refresh inline
+  if (!conn.refresh_token) return { error: "expired_no_refresh" };
+  const envSuffix = env === "production" ? "PRODUCTION" : "SANDBOX";
+  const clientId = Deno.env.get(`ABC_CLIENT_ID_${envSuffix}`);
+  const clientSecret = Deno.env.get(`ABC_CLIENT_SECRET_${envSuffix}`);
+  if (!clientId || !clientSecret) return { error: "missing_server_credentials" };
+
   const basic = btoa(`${clientId}:${clientSecret}`);
-  const body = new URLSearchParams({
-    grant_type: "client_credentials",
-    scope: "pricing.read product.read account.read",
-  });
-  const res = await fetch(tokenUrl, {
+  const resp = await fetch(ABC[env].tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basic}`,
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
-    body,
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: conn.refresh_token,
+      scope: conn.scope ?? "offline_access",
+    }),
   });
-  const text = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    /* not json */
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    await supabase
+      .from("abc_connections")
+      .update({
+        connection_status: "error",
+        last_error: `refresh_failed: ${JSON.stringify(json).slice(0, 400)}`,
+      })
+      .eq("tenant_id", tenant_id)
+      .eq("environment", env);
+    return { error: `refresh_failed:${json.error || resp.status}` };
   }
-  return {
-    ok: res.ok,
-    step: "token",
-    status: res.status,
-    response: json ?? text,
-    clientIdLast4: clientId.slice(-4),
-  };
+  const newExpires = new Date(Date.now() + ((json.expires_in ?? 3600) - 60) * 1000).toISOString();
+  await supabase
+    .from("abc_connections")
+    .update({
+      access_token: json.access_token,
+      refresh_token: json.refresh_token ?? conn.refresh_token,
+      token_type: json.token_type ?? "Bearer",
+      scope: json.scope ?? conn.scope,
+      expires_at: newExpires,
+      connection_status: "connected",
+      last_refreshed_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("tenant_id", tenant_id)
+    .eq("environment", env);
+
+  return { token: json.access_token, expires_at: newExpires };
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const auth = req.headers.get("Authorization");
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      auth ? { global: { headers: { Authorization: auth } } } : undefined,
     );
 
-    const { action, environment = "staging" } = (await req.json()) as ProxyRequest;
-    const env = environment === "production" ? "production" : "staging";
+    const body = (await req.json()) as ProxyRequest;
+    const action = body.action;
+    const env = normalizeEnv(body.environment);
     const cfg = ABC[env];
 
-    console.log("abc-api-proxy", { action, env });
+    // Resolve tenant_id from JWT if not provided
+    let tenant_id = body.tenant_id;
+    if (!tenant_id && auth) {
+      const { data: userRes } = await supabase.auth.getUser();
+      const userId = userRes?.user?.id;
+      if (userId) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("tenant_id")
+          .eq("id", userId)
+          .maybeSingle();
+        tenant_id = (prof as any)?.tenant_id ?? undefined;
+      }
+    }
+
+    console.log("abc-api-proxy", { action, env, tenant_id });
+
+    if (action === "get_status") {
+      if (!tenant_id) {
+        return new Response(JSON.stringify({ connected: false, error: "no_tenant" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: conn } = await supabase
+        .from("abc_connections")
+        .select("connection_status,expires_at,last_refreshed_at,last_validated_at,last_error,scope,environment")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+      return new Response(
+        JSON.stringify({
+          connected: conn?.connection_status === "connected",
+          environment: env,
+          ...conn,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     if (action === "test_connection") {
-      // Step 1: hit the OAuth discovery doc — proves DNS/network/issuer reachable.
+      // Discovery probe
       let metaOk = false;
       let metaStatus = 0;
       try {
-        const metaRes = await fetch(cfg.metaUrl);
-        metaStatus = metaRes.status;
-        metaOk = metaRes.ok;
-        await metaRes.text();
-      } catch (e) {
+        const m = await fetch(cfg.metaUrl);
+        metaStatus = m.status;
+        metaOk = m.ok;
+        await m.text();
+      } catch {
         metaOk = false;
       }
 
-      // Step 2: attempt a client_credentials token grant with the sandbox secrets.
-      // ABC primarily issues authorization_code + PKCE — client_credentials may be
-      // rejected, but the response still tells us whether ABC recognises our client.
-      const tokenResult = await tryClientCredentialsToken(env);
-
-      const recognised =
-        tokenResult.ok ||
-        (tokenResult.response &&
-          typeof tokenResult.response === "object" &&
-          // Okta returns these when it knows the client but rejects the grant/scope/policy
-          [
-            "unsupported_grant_type",
-            "invalid_grant",
-            "invalid_scope",
-            "access_denied", // policy blocks client_credentials — expected for PKCE-only clients
-          ].includes((tokenResult.response as any).error));
-
+      // Try to obtain a real tenant token
+      if (!tenant_id) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            environment: env,
+            metadata: { ok: metaOk, status: metaStatus, url: cfg.metaUrl },
+            interpretation: "No tenant context. Sign in and complete OAuth.",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const tok = await getValidAccessToken(supabase, tenant_id, env);
+      const success = !!tok.token;
+      if (success) {
+        await supabase
+          .from("abc_connections")
+          .update({ last_validated_at: new Date().toISOString() })
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
+      }
       return new Response(
         JSON.stringify({
-          success: !!recognised,
+          success,
           environment: env,
           metadata: { ok: metaOk, status: metaStatus, url: cfg.metaUrl },
-          token: tokenResult,
-          interpretation: tokenResult.ok
-            ? "Client credentials accepted — access token issued."
-            : recognised
-            ? "ABC recognised the client but rejected the grant type. Credentials are valid; full access requires the user-driven authorization_code + PKCE flow."
-            : "ABC did not recognise the client. Verify ABC_CLIENT_ID_SANDBOX / ABC_CLIENT_SECRET_SANDBOX and that ABC has provisioned this client.",
+          token: success
+            ? { ok: true, expires_at: tok.expires_at }
+            : { ok: false, error: tok.error },
+          interpretation: success
+            ? "Tenant has a valid OAuth token; ABC is reachable."
+            : tok.error === "not_connected"
+              ? "Tenant has not completed ABC OAuth. Click 'Begin OAuth Authorization'."
+              : `Token unavailable: ${tok.error}`,
           timestamp: new Date().toISOString(),
         }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        },
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     if (action === "submit_test_order") {
-      // Best-effort sandbox order submission. Without an access token we cannot
-      // actually call the order endpoint, so we attempt client_credentials, then
-      // POST a minimal payload to /orders for the audit trail. ABC will reject
-      // with an auth error if no token is available — that's the expected state
-      // until a tenant completes the OAuth authorization_code flow.
-      const tokenResult = await tryClientCredentialsToken(env);
-      const accessToken = (tokenResult.response as any)?.access_token;
+      if (!tenant_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: "no_tenant_context" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const tok = await getValidAccessToken(supabase, tenant_id, env);
+      if (!tok.token) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: tok.error,
+            interpretation:
+              tok.error === "not_connected"
+                ? "Complete ABC OAuth (Begin OAuth Authorization) before submitting an order."
+                : `Cannot obtain token: ${tok.error}`,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
       const testPayload = {
         sourceSystem: "PITCH",
@@ -165,33 +243,23 @@ Deno.serve(async (req) => {
         accountNumber: Deno.env.get("ABC_ACCOUNT_NUMBER") ?? "TEST-ACCOUNT",
         branchCode: Deno.env.get("ABC_DEFAULT_BRANCH") ?? "0001",
         deliveryType: "PICKUP",
-        lines: [
-          {
-            productNumber: "TEST-SHINGLE-001",
-            quantity: 1,
-            unitOfMeasure: "EA",
-          },
-        ],
+        lines: [{ productNumber: "TEST-SHINGLE-001", quantity: 1, unitOfMeasure: "EA" }],
         notes: "PITCH integration sandbox smoke test — please ignore",
       };
 
       const orderRes = await fetch(`${cfg.apiBase}/orders`, {
         method: "POST",
         headers: {
-          Authorization: accessToken ? `Bearer ${accessToken}` : "Bearer none",
+          Authorization: `Bearer ${tok.token}`,
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify(testPayload),
       });
       const orderText = await orderRes.text();
       let orderJson: any = null;
-      try {
-        orderJson = JSON.parse(orderText);
-      } catch {
-        /* keep text */
-      }
+      try { orderJson = JSON.parse(orderText); } catch { /* keep text */ }
 
-      // Audit log (best effort)
       try {
         await supabase.from("integration_audit_logs").insert({
           integration: "abc",
@@ -201,35 +269,24 @@ Deno.serve(async (req) => {
           response_status: orderRes.status,
           response_body: orderJson ?? orderText,
         });
-      } catch {
-        /* table may not exist — non-fatal */
-      }
+      } catch { /* non-fatal */ }
 
       return new Response(
         JSON.stringify({
           success: orderRes.ok,
           environment: env,
-          tokenIssued: !!accessToken,
+          tokenIssued: true,
           orderRequest: testPayload,
-          orderResponse: {
-            status: orderRes.status,
-            body: orderJson ?? orderText,
-          },
+          orderResponse: { status: orderRes.status, body: orderJson ?? orderText },
           timestamp: new Date().toISOString(),
         }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        },
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(
       JSON.stringify({ success: false, error: `Unknown action: ${action}` }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("abc-api-proxy error:", error);
@@ -238,10 +295,7 @@ Deno.serve(async (req) => {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
