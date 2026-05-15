@@ -52,6 +52,9 @@ export function SRSConnectionSettings() {
   const [clientSecret, setClientSecret] = useState('');
   const [customerCode, setCustomerCode] = useState('');
   const [environment, setEnvironment] = useState('staging');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [billedAmount, setBilledAmount] = useState('');
 
   useEffect(() => {
     if (activeCompanyId) {
@@ -131,10 +134,24 @@ export function SRSConnectionSettings() {
 
   const handleTestConnection = async () => {
     if (!activeCompanyId) return;
+    if (!invoiceNumber.trim() || (!invoiceDate.trim() && !billedAmount.trim())) {
+      toast({
+        title: 'Invoice info required',
+        description: 'SRS requires a recent Invoice # plus Invoice Date or Billed Amount to confirm account ownership.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setTesting(true);
     try {
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
-        body: { action: 'validate_connection', tenant_id: activeCompanyId },
+        body: {
+          action: 'validate_connection',
+          tenant_id: activeCompanyId,
+          invoice_number: invoiceNumber.trim(),
+          invoice_date: invoiceDate.trim() || undefined,
+          billed_amount: billedAmount.trim() || undefined,
+        },
       });
       if (error) throw error;
       if (data?.success) {
