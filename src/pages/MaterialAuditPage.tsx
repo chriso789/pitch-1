@@ -686,7 +686,33 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
     const chargedUnit = Number(mapLine.charged_unit_price || 0);
     const chargedExt = Number(mapLine.charged_extended_price ?? chargedUnit * qty);
     const agreedUnit = selectedItem?.agreed_unit_price != null ? Number(selectedItem.agreed_unit_price) : null;
-    const expectedExt = agreedUnit != null ? agreedUnit * qty : null;
+
+    // Unit-of-measure reconciliation. The price list may be priced per SQ
+    // while the invoice bills per BD (bundle). Without conversion, qty * price
+    // is wildly off (e.g. 57 BD * $115/SQ instead of 19 SQ * $115/SQ).
+    // Priority: explicit pack_quantity on the price-list item, else auto-detect
+    // a "(NBD/SQ)" or "N BD / SQ" hint in either description.
+    let convertedQty = qty;
+    const invUom = String(mapLine.invoice_uom || "").toUpperCase().trim();
+    const plUom = String(selectedItem?.unit_of_measure || "").toUpperCase().trim();
+    const packQty = Number(selectedItem?.pack_quantity || 0);
+    const packUom = String(selectedItem?.pack_uom || "").toUpperCase().trim();
+    if (packQty > 0 && (!packUom || !invUom || packUom === invUom)) {
+      convertedQty = qty / packQty;
+    } else if (invUom && plUom && invUom !== plUom) {
+      const text = `${selectedItem?.item_description || ""} ${mapLine.invoice_description || ""}`;
+      const m = text.match(/(\d+(?:\.\d+)?)\s*([A-Z]{2,4})\s*\/\s*([A-Z]{2,4})/i);
+      if (m) {
+        const n = Number(m[1]);
+        const smaller = m[2].toUpperCase();
+        const larger = m[3].toUpperCase();
+        if (n > 0 && smaller === invUom && larger === plUom) {
+          convertedQty = qty / n;
+        }
+      }
+    }
+
+    const expectedExt = agreedUnit != null ? agreedUnit * convertedQty : null;
     const totalDiff = expectedExt != null ? chargedExt - expectedExt : null;
     const discrepancy = totalDiff == null ? "needs_review" : totalDiff > 0.01 ? "overcharge" : totalDiff < -0.01 ? "undercharge" : "no_issue";
     const { error } = await supabase.from("material_item_match_rules").insert({
