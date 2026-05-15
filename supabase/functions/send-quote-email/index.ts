@@ -400,7 +400,7 @@ Deno.serve(async (req: Request) => {
     // Mark the estimate itself as sent so the dashboard reflects delivery
     await supabase
       .from("enhanced_estimates")
-      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .update({ status: "sent", sent_to_customer_at: new Date().toISOString() })
       .eq("id", estimate.id)
       .in("status", ["draft", "pending"]);
 
