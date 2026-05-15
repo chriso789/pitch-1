@@ -369,9 +369,10 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   };
 
   const handlePushToInvoice = async (co: ChangeOrder) => {
-    const amount = Number(co.cost_impact || 0);
+    const computed = totalsFor(co.id);
+    const amount = Math.max(Number(co.cost_impact || 0), Number(computed?.budget || 0));
     if (amount <= 0) {
-      toast({ title: 'Cost impact is $0', description: 'Set a cost impact before invoicing.', variant: 'destructive' });
+      toast({ title: 'Cost impact is $0', description: 'Add line items or set a cost impact before invoicing.', variant: 'destructive' });
       return;
     }
     if (!confirm(`Push ${fmt(amount)} to the contract and create a customer invoice?`)) return;
@@ -417,11 +418,12 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       });
       if (invErr) throw invErr;
 
-      // 3. Mark CO as invoiced + approved
+      // 3. Mark CO as invoiced + approved (and persist computed cost_impact)
       await (supabase as any)
         .from('change_orders')
         .update({
           status: 'invoiced',
+          cost_impact: amount,
           customer_approved: true,
           customer_approved_at: new Date().toISOString(),
           approved_date: new Date().toISOString(),
