@@ -10,6 +10,58 @@ const SRS_PRODUCTION_URL = "https://services.roofhub.pro";
 // Sent on every authenticated SRS call so SRS can attribute traffic to PITCH.
 const SRS_SOURCE_SYSTEM = "PITCH";
 
+/**
+ * Build the documented SRS /orders/v2/submit payload.
+ * Spec (RoofHub 2026-05): sourceSystem, transactionID, transactionDate,
+ * shipTo{}, poDetails{poNumber, orderType:"WHSE", shippingMethod},
+ * orderLineItemDetails[] with INTEGER price, customerContactInfo{}.
+ */
+function buildSubmitOrderPayload(args: {
+  sourceSystem: string;
+  customerCode: string;
+  jobAccountNumber: number;
+  branchCode: string;
+  poNumber: string;
+  requestedDeliveryDate?: string | null;
+  shippingMethod: string; // e.g. "DEL", "WC"
+  shipTo: any | null;
+  customerContact: any | null;
+  notes?: string | null;
+  items: Array<{
+    productNumber: string | number;
+    quantity: number;
+    uom: string;
+    price?: number;
+    description?: string;
+  }>;
+}) {
+  return {
+    sourceSystem: args.sourceSystem,
+    transactionID: crypto.randomUUID(),
+    transactionDate: new Date().toISOString(),
+    customerCode: args.customerCode,
+    jobAccountNumber: args.jobAccountNumber,
+    branchCode: args.branchCode,
+    requestedDeliveryDate: args.requestedDeliveryDate || null,
+    shipTo: args.shipTo || {},
+    poDetails: {
+      poNumber: args.poNumber,
+      orderType: "WHSE",
+      shippingMethod: args.shippingMethod,
+      notes: args.notes || "",
+    },
+    orderLineItemDetails: args.items.map((i) => ({
+      productNumber: String(i.productNumber ?? "").trim(),
+      quantity: Number(i.quantity),
+      uom: String(i.uom || "EA").trim(),
+      // SRS spec requires INTEGER price (cents not used — whole dollars).
+      price: Math.round(Number(i.price ?? 0)),
+      description: i.description || "",
+    })),
+    customerContactInfo: args.customerContact || {},
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
