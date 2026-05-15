@@ -160,6 +160,102 @@ Deno.serve(async (req) => {
 
     console.log("abc-api-proxy", { action, env, tenant_id });
 
+    if (action === "start_oauth") {
+      if (!auth) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: userRes } = await supabase.auth.getUser();
+      const user = userRes?.user;
+      if (!user) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!tenant_id) {
+        return new Response(JSON.stringify({ error: "tenant_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const envSuffix = env === "production" ? "PRODUCTION" : "SANDBOX";
+      const clientId = Deno.env.get(`ABC_CLIENT_ID_${envSuffix}`);
+      const authUrl = Deno.env.get(`ABC_AUTHORIZATION_URL_${envSuffix}`) || AUTH_URLS[env];
+      const redirectUri =
+        Deno.env.get("ABC_REDIRECT_URI") ||
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/abc-oauth-callback`;
+      const scopes = Deno.env.get("ABC_SCOPES") || DEFAULT_SCOPES;
+      if (!clientId) {
+        return new Response(
+          JSON.stringify({ error: `ABC_CLIENT_ID_${envSuffix} not configured.` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      let { data: integration } = await supabase
+        .from("abc_integrations")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+
+      if (!integration) {
+        const { data: created, error: createErr } = await supabase
+          .from("abc_integrations")
+          .insert({
+            tenant_id,
+            environment: env,
+            abc_mode: "oauth_auth_code",
+            token_strategy: "auth_code_pkce",
+            client_id: clientId,
+            redirect_uri: redirectUri,
+            scopes,
+            status: "pending",
+            created_by: user.id,
+          })
+          .select()
+          .single();
+        if (createErr) throw createErr;
+        integration = created;
+      } else {
+        await supabase
+          .from("abc_integrations")
+          .update({ client_id: clientId, redirect_uri: redirectUri, scopes, status: "pending" })
+          .eq("id", (integration as any).id);
+      }
+
+      const { verifier, challenge } = await pkce();
+      const state = b64url(crypto.getRandomValues(new Uint8Array(24)));
+
+      const { error: stateErr } = await supabase.from("abc_oauth_states").insert({
+        state,
+        tenant_id,
+        integration_id: (integration as any).id,
+        code_verifier: verifier,
+        redirect_uri: redirectUri,
+        created_by: user.id,
+        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      });
+      if (stateErr) throw stateErr;
+
+      const url = new URL(authUrl);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("client_id", clientId);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("scope", scopes);
+      url.searchParams.set("state", state);
+      url.searchParams.set("code_challenge", challenge);
+      url.searchParams.set("code_challenge_method", "S256");
+
+      return new Response(
+        JSON.stringify({ authorization_url: url.toString(), state, redirect_uri: redirectUri, environment: env }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     if (action === "get_status") {
       if (!tenant_id) {
         return new Response(JSON.stringify({ connected: false, error: "no_tenant" }), {
