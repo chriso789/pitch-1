@@ -75,3 +75,38 @@ export function useProjectScopeDocuments(projectId?: string | null, jobId?: stri
     },
   });
 }
+
+export function useGenerateSupplementReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (comparison_id: string) => {
+      const { data, error } = await supabase.functions.invoke('generate-supplement-report', {
+        body: { comparison_id },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scope-comparisons'] });
+      qc.invalidateQueries({ queryKey: ['supplement-reports'] });
+    },
+  });
+}
+
+export function useSupplementReports(comparisonId?: string | null) {
+  const tenantId = useEffectiveTenantId();
+  return useQuery({
+    queryKey: ['supplement-reports', tenantId, comparisonId],
+    enabled: !!tenantId && !!comparisonId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('supplement_reports')
+        .select('*')
+        .eq('tenant_id', tenantId!)
+        .eq('comparison_id', comparisonId!)
+        .order('version', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}

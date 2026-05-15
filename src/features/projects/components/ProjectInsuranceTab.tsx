@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Upload, GitCompare, FileText, Loader2 } from 'lucide-react';
+import { Upload, GitCompare, FileText, Loader2, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
@@ -14,6 +14,8 @@ import {
   useProjectComparisons,
   useComparisonLines,
   useProjectScopeDocuments,
+  useGenerateSupplementReport,
+  useSupplementReports,
 } from '@/hooks/useXactComparison';
 
 interface Props {
@@ -208,6 +210,9 @@ function ScopeUploadCard({
 
 function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
   const lines = useComparisonLines(comparisonId);
+  const reports = useSupplementReports(comparisonId);
+  const generate = useGenerateSupplementReport();
+  const { toast } = useToast();
   const [filter, setFilter] = useState<string>('all');
   const filtered = useMemo(() => {
     const all = lines.data || [];
@@ -215,12 +220,39 @@ function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
     return all.filter(l => l.change_type === filter);
   }, [lines.data, filter]);
 
+  const onGenerate = async () => {
+    try {
+      const res = await generate.mutateAsync(comparisonId);
+      toast({ title: 'Supplement report generated', description: `Version ${res.report?.version}` });
+    } catch (e: any) {
+      toast({ title: 'Generation failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base">Line-by-line Differences</CardTitle>
+        <Button size="sm" onClick={onGenerate} disabled={generate.isPending} className="gap-2">
+          {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          Generate Supplement Report
+        </Button>
       </CardHeader>
       <CardContent>
+        {reports.data && reports.data.length > 0 && (
+          <div className="mb-4 space-y-1">
+            {reports.data.map(r => (
+              <div key={r.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted/40">
+                <span>v{r.version} · {new Date(r.created_at).toLocaleString()} · {r.status}</span>
+                {r.pdf_url && (
+                  <a href={r.pdf_url} target="_blank" rel="noreferrer" className="text-primary underline">
+                    Open PDF
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <Tabs value={filter} onValueChange={setFilter}>
           <TabsList>
             <TabsTrigger value="all">All ({lines.data?.length || 0})</TabsTrigger>
