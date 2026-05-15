@@ -385,12 +385,15 @@ export function ABCConnectionSettings() {
               Begin OAuth Authorization
             </Button>
 
-            {connection && (
-              <Button variant="outline" onClick={handleTest}>
-                <Link2 className="h-4 w-4 mr-2" />
-                Test Connection
-              </Button>
-            )}
+            <Button variant="outline" onClick={handleTest} disabled={testing}>
+              {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+              Test Connection
+            </Button>
+
+            <Button variant="outline" onClick={handleSubmitTestOrder} disabled={submittingOrder}>
+              {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Submit Test Order ({environment})
+            </Button>
 
             {hasSecret && (
               <Button variant="ghost" onClick={handleRevoke} className="text-destructive">
@@ -399,6 +402,34 @@ export function ABCConnectionSettings() {
               </Button>
             )}
           </div>
+
+          {(testResult || orderResult) && (
+            <div className="space-y-3 pt-2">
+              {testResult && (
+                <div className={`rounded-md border p-3 text-xs space-y-2 ${testResult.success ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {testResult.success ? <CheckCircle className="h-4 w-4 text-emerald-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                    Connection Test — {testResult.environment ?? environment}
+                  </div>
+                  {testResult.interpretation && <p className="text-muted-foreground">{testResult.interpretation}</p>}
+                  <pre className="font-mono text-[10px] bg-background/60 p-2 rounded overflow-x-auto max-h-64">
+                    {JSON.stringify(testResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {orderResult && (
+                <div className={`rounded-md border p-3 text-xs space-y-2 ${orderResult.success ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {orderResult.success ? <CheckCircle className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-destructive" />}
+                    Test Order Submission — HTTP {orderResult.orderResponse?.status ?? '—'}
+                  </div>
+                  <pre className="font-mono text-[10px] bg-background/60 p-2 rounded overflow-x-auto max-h-64">
+                    {JSON.stringify(orderResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
