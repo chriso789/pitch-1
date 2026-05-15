@@ -315,6 +315,30 @@ export function SRSConnectionSettings() {
             <strong>APISupportTeam@srsdistribution.com</strong> with your company name to request API access.
           </p>
 
+          <div className="space-y-3 p-4 border rounded-md bg-muted/20">
+            <div>
+              <Label className="text-sm font-semibold">Validate Customer Account</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                SRS requires a recent invoice to prove ownership of this account. Provide the Invoice # plus
+                either the Invoice Date or Billed Amount. This is only needed for the initial validation.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Invoice #</Label>
+                <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="e.g. 12345678" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Invoice Date</Label>
+                <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Billed Amount ($)</Label>
+                <Input type="number" step="0.01" value={billedAmount} onChange={(e) => setBilledAmount(e.target.value)} placeholder="e.g. 1234.56" />
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2 pt-2">
             <Button onClick={() => handleSave(false)} disabled={saving || !clientId || !clientSecret}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
