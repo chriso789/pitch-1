@@ -447,6 +447,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               Cost Verification
             </TabsTrigger>
             <TabsTrigger value="estimate" className="flex-shrink-0">Estimate</TabsTrigger>
+            <TabsTrigger value="insurance" className="flex-shrink-0">Insurance</TabsTrigger>
             <TabsTrigger value="commission" className="flex-shrink-0">Commission</TabsTrigger>
             <TabsTrigger value="costs" className="flex-shrink-0">Costs</TabsTrigger>
             <TabsTrigger value="materials" className="flex-shrink-0">Materials</TabsTrigger>
