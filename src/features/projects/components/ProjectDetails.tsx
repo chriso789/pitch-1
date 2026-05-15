@@ -12,6 +12,7 @@ import { CostReconciliationPanel } from "@/components/production/CostReconciliat
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
 import { DrawTally } from "@/components/commission/DrawTally";
 import { ProjectMaterialsTab } from "@/components/orders/ProjectMaterialsTab";
+import { ProjectInsuranceTab } from "./ProjectInsuranceTab";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
