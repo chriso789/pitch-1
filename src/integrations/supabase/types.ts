@@ -34220,6 +34220,8 @@ export type Database = {
           allow_stored_balance: boolean
           allow_venmo: boolean
           allow_zelle: boolean
+          block_existing_customers: boolean
+          block_existing_leads_in_duplicate_window: boolean
           block_self_referrals: boolean
           brand_primary_color: string | null
           created_at: string
@@ -34233,9 +34235,11 @@ export type Database = {
           is_enabled: boolean
           max_rewards_per_referrer_per_year: number | null
           minimum_collected_revenue: number
+          minimum_days_before_payout: number
           payout_trigger: string
           percentage_reward_rate: number
           require_admin_approval: boolean
+          reward_expiration_days: number | null
           tenant_id: string
           terms_text: string | null
           updated_at: string
@@ -34245,6 +34249,8 @@ export type Database = {
           allow_stored_balance?: boolean
           allow_venmo?: boolean
           allow_zelle?: boolean
+          block_existing_customers?: boolean
+          block_existing_leads_in_duplicate_window?: boolean
           block_self_referrals?: boolean
           brand_primary_color?: string | null
           created_at?: string
@@ -34258,9 +34264,11 @@ export type Database = {
           is_enabled?: boolean
           max_rewards_per_referrer_per_year?: number | null
           minimum_collected_revenue?: number
+          minimum_days_before_payout?: number
           payout_trigger?: string
           percentage_reward_rate?: number
           require_admin_approval?: boolean
+          reward_expiration_days?: number | null
           tenant_id: string
           terms_text?: string | null
           updated_at?: string
@@ -34270,6 +34278,8 @@ export type Database = {
           allow_stored_balance?: boolean
           allow_venmo?: boolean
           allow_zelle?: boolean
+          block_existing_customers?: boolean
+          block_existing_leads_in_duplicate_window?: boolean
           block_self_referrals?: boolean
           brand_primary_color?: string | null
           created_at?: string
@@ -34283,9 +34293,11 @@ export type Database = {
           is_enabled?: boolean
           max_rewards_per_referrer_per_year?: number | null
           minimum_collected_revenue?: number
+          minimum_days_before_payout?: number
           payout_trigger?: string
           percentage_reward_rate?: number
           require_admin_approval?: boolean
+          reward_expiration_days?: number | null
           tenant_id?: string
           terms_text?: string | null
           updated_at?: string
@@ -34459,6 +34471,12 @@ export type Database = {
       }
       referral_submissions: {
         Row: {
+          admin_override_eligible: boolean | null
+          admin_override_reason: string | null
+          appointment_completed_at: string | null
+          cancelled_at: string | null
+          collected_revenue: number
+          completed_at: string | null
           consent_to_contact: boolean
           created_at: string
           crm_contact_id: string | null
@@ -34485,6 +34503,7 @@ export type Database = {
           referrer_contact_id: string | null
           roof_type_interest: string | null
           service_needed: string | null
+          sold_at: string | null
           sold_value: number | null
           source_job_id: string | null
           status: string
@@ -34496,6 +34515,12 @@ export type Database = {
           utm_source: string | null
         }
         Insert: {
+          admin_override_eligible?: boolean | null
+          admin_override_reason?: string | null
+          appointment_completed_at?: string | null
+          cancelled_at?: string | null
+          collected_revenue?: number
+          completed_at?: string | null
           consent_to_contact?: boolean
           created_at?: string
           crm_contact_id?: string | null
@@ -34522,6 +34547,7 @@ export type Database = {
           referrer_contact_id?: string | null
           roof_type_interest?: string | null
           service_needed?: string | null
+          sold_at?: string | null
           sold_value?: number | null
           source_job_id?: string | null
           status?: string
@@ -34533,6 +34559,12 @@ export type Database = {
           utm_source?: string | null
         }
         Update: {
+          admin_override_eligible?: boolean | null
+          admin_override_reason?: string | null
+          appointment_completed_at?: string | null
+          cancelled_at?: string | null
+          collected_revenue?: number
+          completed_at?: string | null
           consent_to_contact?: boolean
           created_at?: string
           crm_contact_id?: string | null
@@ -34559,6 +34591,7 @@ export type Database = {
           referrer_contact_id?: string | null
           roof_type_interest?: string | null
           service_needed?: string | null
+          sold_at?: string | null
           sold_value?: number | null
           source_job_id?: string | null
           status?: string
@@ -49448,7 +49481,7 @@ export type Database = {
         Returns: number
       }
       calculate_referral_reward: {
-        Args: { _submission_id: string; _tenant_id: string }
+        Args: { _referral_submission_id: string; _tenant_id: string }
         Returns: number
       }
       calculate_rep_commission: {
@@ -50038,8 +50071,15 @@ export type Database = {
         Returns: Json
       }
       get_referrer_credit_balance: {
-        Args: { _contact_id: string; _tenant_id: string }
+        Args: { _referrer_contact_id: string; _tenant_id: string }
         Returns: number
+      }
+      get_referrer_rewards_paid_this_year: {
+        Args: { _referrer_contact_id: string; _tenant_id: string }
+        Returns: {
+          reward_amount: number
+          reward_count: number
+        }[]
       }
       get_scope_network_stats: { Args: never; Returns: Json }
       get_tenant_sms_number: { Args: { p_tenant_id: string }; Returns: string }
@@ -50311,6 +50351,10 @@ export type Database = {
       recalculate_change_order_totals: {
         Args: { _co_id: string }
         Returns: undefined
+      }
+      referral_submission_has_blocking_flags: {
+        Args: { _referral_submission_id: string }
+        Returns: boolean
       }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
