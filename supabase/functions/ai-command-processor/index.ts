@@ -1,5 +1,6 @@
 import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { logAIUsage } from '../_shared/log-ai-usage.ts';
 
 interface CommandContext {
   type: 'contact' | 'pipeline' | 'project' | 'estimate';
