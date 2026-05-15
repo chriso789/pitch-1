@@ -1,5 +1,4 @@
-// ABC Supply OAuth Authorization Code Flow - START
-// Generates PKCE challenge, stores state, returns ABC authorization URL.
+// ABC Supply OAuth Authorization Code Flow - START (PKCE + Basic auth at /token)
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -8,8 +7,16 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ABC_AUTH_URL_STAGING = "https://login-stage.abcsupply.com/oauth2/authorize";
-const ABC_AUTH_URL_PROD = "https://login.abcsupply.com/oauth2/authorize";
+const DEFAULTS = {
+  sandbox: {
+    auth_url: "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize",
+  },
+  production: {
+    auth_url: "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize",
+  },
+};
+const DEFAULT_SCOPES =
+  "pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access";
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -41,29 +48,35 @@ Deno.serve(async (req) => {
     const user = userRes?.user;
     if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
 
-    const { tenant_id, environment = "staging" } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const tenant_id: string | undefined = body.tenant_id;
+    const environment: "sandbox" | "production" = body.environment === "production" ? "production" : "sandbox";
     if (!tenant_id) {
       return new Response(JSON.stringify({ error: "tenant_id required" }), { status: 400, headers: corsHeaders });
     }
 
-    // Load or create integration row
+    const envSuffix = environment === "production" ? "PRODUCTION" : "SANDBOX";
+    const clientId = Deno.env.get(`ABC_CLIENT_ID_${envSuffix}`);
+    const authUrl = Deno.env.get(`ABC_AUTHORIZATION_URL_${envSuffix}`) || DEFAULTS[environment].auth_url;
+    const redirectUri =
+      Deno.env.get("ABC_REDIRECT_URI") ||
+      `${Deno.env.get("SUPABASE_URL")}/functions/v1/abc-oauth-callback`;
+    const scopes = Deno.env.get("ABC_SCOPES") || DEFAULT_SCOPES;
+
+    if (!clientId) {
+      return new Response(
+        JSON.stringify({ error: `ABC_CLIENT_ID_${envSuffix} not configured.` }),
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    // Upsert integration row for this tenant+environment
     let { data: integration } = await supabase
       .from("abc_integrations")
       .select("*")
       .eq("tenant_id", tenant_id)
       .eq("environment", environment)
       .maybeSingle();
-
-    const clientId = Deno.env.get("ABC_CLIENT_ID");
-    const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/abc-oauth-callback`;
-    const scopes = integration?.scopes || Deno.env.get("ABC_SCOPES") || "openid profile email offline_access";
-
-    if (!clientId) {
-      return new Response(
-        JSON.stringify({ error: "ABC_CLIENT_ID not configured. Add it via Supabase secrets." }),
-        { status: 500, headers: corsHeaders }
-      );
-    }
 
     if (!integration) {
       const { data: created, error: createErr } = await supabase
@@ -83,6 +96,11 @@ Deno.serve(async (req) => {
         .single();
       if (createErr) throw createErr;
       integration = created;
+    } else {
+      await supabase
+        .from("abc_integrations")
+        .update({ client_id: clientId, redirect_uri: redirectUri, scopes, status: "pending" })
+        .eq("id", integration.id);
     }
 
     const { verifier, challenge } = await pkce();
@@ -99,8 +117,7 @@ Deno.serve(async (req) => {
     });
     if (stateErr) throw stateErr;
 
-    const baseAuth = environment === "production" ? ABC_AUTH_URL_PROD : ABC_AUTH_URL_STAGING;
-    const url = new URL(baseAuth);
+    const url = new URL(authUrl);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
@@ -109,9 +126,10 @@ Deno.serve(async (req) => {
     url.searchParams.set("code_challenge", challenge);
     url.searchParams.set("code_challenge_method", "S256");
 
-    return new Response(JSON.stringify({ authorization_url: url.toString(), state, redirect_uri: redirectUri }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ authorization_url: url.toString(), state, redirect_uri: redirectUri, environment }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (e) {
     console.error("abc-oauth-start error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
