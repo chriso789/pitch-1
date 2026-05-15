@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { LiveOrderTracker } from "@/components/orders/LiveOrderTracker";
 
 interface ProductionWorkflowProps {
   projectId?: string;
@@ -338,6 +339,12 @@ export const ProductionWorkflow: React.FC<ProductionWorkflowProps> = ({
             
             {isActive && (
               <CardContent>
+                {/* Live supplier order tracker for any materials stage */}
+                {projectId && stage.key.startsWith('materials_') && (
+                  <div className="mb-4">
+                    <LiveOrderTracker projectId={projectId} compact />
+                  </div>
+                )}
                 {/* Submit Documents Stage Requirements */}
                 {stage.key === 'submit_documents' && (
                   <div className="space-y-4 mb-4">
