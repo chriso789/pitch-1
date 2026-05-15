@@ -89,6 +89,10 @@ export function ABCConnectionSettings() {
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [testResult, setTestResult] = useState<any | null>(null);
+  const [orderResult, setOrderResult] = useState<any | null>(null);
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
