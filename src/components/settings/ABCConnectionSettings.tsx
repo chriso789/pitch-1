@@ -298,10 +298,10 @@ export function ABCConnectionSettings() {
 
           <div className="rounded-md border p-3 space-y-2 text-xs">
             <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
-            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizationUrl} />
-            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl} pending="Pending — request from ABC IT" />
+            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment === 'production' ? 'production' : 'staging']} />
+            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment === 'production' ? 'production' : 'staging']} />
             <EndpointRow label="Redirect URI" value={ABC_CONFIG.redirectUri} hint="Provide this to ABC when registering the OAuth client" />
-            <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} pending="Pending — request from ABC IT" />
+            <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} hint="PKCE (S256) + Basic auth on token endpoint" />
             <EndpointRow
               label={`API Base (${environment})`}
               value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.staging}
@@ -316,13 +316,25 @@ export function ABCConnectionSettings() {
 
             <Button
               variant="outline"
-              onClick={() => {
+              onClick={async () => {
                 if (!clientId) {
                   toast({ title: 'Save Client ID first', variant: 'destructive' });
                   return;
                 }
-                const url = `${ABC_CONFIG.authorizationUrl}/v1/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&redirect_uri=${encodeURIComponent(ABC_CONFIG.redirectUri)}&state=${effectiveTenantId}`;
-                window.open(url, '_blank', 'noopener,noreferrer');
+                const { verifier, challenge } = await generatePkce();
+                const env = environment === 'production' ? 'production' : 'staging';
+                const state = `${effectiveTenantId}:${crypto.randomUUID()}`;
+                sessionStorage.setItem(`abc_pkce_${state}`, verifier);
+                const params = new URLSearchParams({
+                  client_id: clientId,
+                  response_type: 'code',
+                  redirect_uri: ABC_CONFIG.redirectUri,
+                  scope: ABC_CONFIG.scopes,
+                  state,
+                  code_challenge: challenge,
+                  code_challenge_method: 'S256',
+                });
+                window.open(`${ABC_CONFIG.authorizeUrl[env]}?${params.toString()}`, '_blank', 'noopener,noreferrer');
               }}
               disabled={!clientId}
             >
