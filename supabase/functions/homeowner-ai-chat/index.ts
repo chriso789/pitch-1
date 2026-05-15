@@ -85,6 +85,8 @@ If you cannot answer a question confidently, set shouldEscalate to true in your 
       { role: 'user', content: message }
     ];
 
+    const aiModel = 'google/gemini-2.5-flash';
+    const aiStartedAt = Date.now();
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -92,7 +94,7 @@ If you cannot answer a question confidently, set shouldEscalate to true in your 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: aiModel,
         messages,
         max_tokens: 500,
       }),
@@ -101,11 +103,20 @@ If you cannot answer a question confidently, set shouldEscalate to true in your 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('AI Gateway error:', response.status, errorText);
+      const status = response.status === 429 ? 'rate_limited' : response.status === 402 ? 'payment_required' : 'error';
+      await logAIUsage({ supabase, tenantId, userId: contactId, provider: 'lovable-ai', model: aiModel, feature: 'homeowner-ai-chat', responseTimeMs: Date.now() - aiStartedAt, status, errorMessage: errorText.slice(0, 500), endpoint: '/homeowner-ai-chat' });
       throw new Error('Failed to get AI response');
     }
 
     const aiData = await response.json();
+    const aiElapsed = Date.now() - aiStartedAt;
     const aiResponse = aiData.choices?.[0]?.message?.content || "I'm having trouble processing that. Would you like to speak with someone from our team?";
+    await logAIUsage({
+      supabase, tenantId, userId: contactId,
+      provider: 'lovable-ai', model: aiModel, feature: 'homeowner-ai-chat',
+      promptTokens: aiData.usage?.prompt_tokens, completionTokens: aiData.usage?.completion_tokens,
+      responseTimeMs: aiElapsed, status: 'success', endpoint: '/homeowner-ai-chat', requestId: aiData.id,
+    });
 
     // Check if AI suggests escalation
     const escalationIndicators = [
