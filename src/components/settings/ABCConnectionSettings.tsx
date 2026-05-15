@@ -31,6 +31,10 @@ const ABC_CONFIG = {
   },
 };
 
+// Server-side OAuth callback URL — register THIS with ABC IT.
+const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
+const SERVER_REDIRECT_URI = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/abc-oauth-callback`;
+
 // PKCE helpers
 function base64UrlEncode(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -343,7 +347,7 @@ export function ABCConnectionSettings() {
             <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
             <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment === 'production' ? 'production' : 'staging']} />
             <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment === 'production' ? 'production' : 'staging']} />
-            <EndpointRow label="Redirect URI" value={ABC_CONFIG.redirectUri} hint="Provide this to ABC when registering the OAuth client" />
+            <EndpointRow label="Redirect URI" value={SERVER_REDIRECT_URI} hint="Register THIS exact URL with ABC IT for the OAuth client" />
             <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} hint="PKCE (S256) + Basic auth on token endpoint" />
             <EndpointRow
               label={`API Base (${environment})`}
@@ -358,28 +362,31 @@ export function ABCConnectionSettings() {
             </Button>
 
             <Button
-              variant="outline"
+              variant="default"
               onClick={async () => {
-                if (!clientId) {
-                  toast({ title: 'Save Client ID first', variant: 'destructive' });
+                if (!effectiveTenantId) {
+                  toast({ title: 'No tenant context', variant: 'destructive' });
                   return;
                 }
-                const { verifier, challenge } = await generatePkce();
-                const env = environment === 'production' ? 'production' : 'staging';
-                const state = `${effectiveTenantId}:${crypto.randomUUID()}`;
-                sessionStorage.setItem(`abc_pkce_${state}`, verifier);
-                const params = new URLSearchParams({
-                  client_id: clientId,
-                  response_type: 'code',
-                  redirect_uri: ABC_CONFIG.redirectUri,
-                  scope: ABC_CONFIG.scopes,
-                  state,
-                  code_challenge: challenge,
-                  code_challenge_method: 'S256',
-                });
-                window.open(`${ABC_CONFIG.authorizeUrl[env]}?${params.toString()}`, '_blank', 'noopener,noreferrer');
+                try {
+                  const { data, error } = await supabase.functions.invoke('abc-oauth-start', {
+                    body: {
+                      tenant_id: effectiveTenantId,
+                      environment: environment === 'production' ? 'production' : 'sandbox',
+                    },
+                  });
+                  if (error) throw error;
+                  if (!data?.authorization_url) throw new Error('No authorization_url returned');
+                  // Full-page redirect so ABC can return to our callback fn
+                  window.location.href = data.authorization_url;
+                } catch (e: any) {
+                  toast({
+                    title: 'Could not start OAuth',
+                    description: e.message,
+                    variant: 'destructive',
+                  });
+                }
               }}
-              disabled={!clientId}
             >
               <ExternalLink className="h-4 w-4 mr-2" />
               Begin OAuth Authorization
