@@ -178,7 +178,7 @@ export const InsuranceSection: React.FC<InsuranceSectionProps> = ({
             </TabsTrigger>
             <TabsTrigger value="scope" className="text-xs">
               <Search className="h-3 w-3 mr-1" />
-              Scope Tracking
+              Comparison
             </TabsTrigger>
           </TabsList>
 
