@@ -713,8 +713,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
                 <div className="space-y-2">
                   {invoices.map((invoice) => {
-                    const vendorLabel = invoice.document_name?.trim() || invoice.vendor_name?.trim() || invoice.crew_name?.trim() || (invoice.invoice_type === 'material' ? 'Supplier' : invoice.invoice_type === 'labor' ? 'Crew' : 'Vendor');
+                    const vendorLabel = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.document_name?.trim() || (invoice.invoice_type === 'material' ? 'Supplier' : invoice.invoice_type === 'labor' ? 'Crew' : 'Vendor');
                     const displayName = `${vendorLabel}${jobLabel ? ` — ${jobLabel}` : ''}`;
+                    const invoiceDateLabel = invoice.invoice_date
+                      ? new Date(invoice.invoice_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : null;
                     const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
                     const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     const canRenameInvoice = isValidUuid(invoice.id);
@@ -755,8 +758,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                                 <span className="font-medium truncate block">
                                   {displayName || typeLabel + ' Invoice'}
                                 </span>
-                                {invoice.invoice_number && (
-                                  <span className="text-xs text-muted-foreground">#{invoice.invoice_number}</span>
+                                {(invoice.invoice_number || invoiceDateLabel) && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {invoice.invoice_number ? `#${invoice.invoice_number}` : ''}
+                                    {invoice.invoice_number && invoiceDateLabel ? ' · ' : ''}
+                                    {invoiceDateLabel || ''}
+                                  </span>
                                 )}
                               </>
                             )}
