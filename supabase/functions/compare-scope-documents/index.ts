@@ -10,7 +10,7 @@
 // Re-applies any scope_compare_overrides on a re-open.
 // ============================================================
 
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 import { corsHeaders } from "../_shared/cors.ts";
 import { scopeErrorResponse } from "../_shared/scope-errors.ts";
