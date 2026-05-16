@@ -15,7 +15,7 @@ import {
 } from './fixtures/gaymon-parsed.ts';
 import { reconcileParsedDocument } from '../_shared/scope-reconciler.ts';
 import { evaluateAssemblyRules } from '../_shared/scope-assembly-rules.ts';
-import { compareNormalized } from '../compare-scope-documents/index.ts';
+import { compareNormalized } from '../_shared/scope-compare-core.ts';
 import {
   canonicalScopeKey,
   classifyScopeGroup,

@@ -8,6 +8,8 @@ import { generateAIResponse, parseAIJson } from "../_shared/lovable-ai.ts";
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 import { parseXactimateLines } from "../_shared/xactimate-line-parser.ts";
 import { canonicalScopeKey, classifyScopeGroup } from "../_shared/scope-normalizer.ts";
+import { reconcileParsedDocument } from "../_shared/scope-reconciler.ts";
+import { fingerprintScopeItem } from "../_shared/scope-fingerprint.ts";
 
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
@@ -408,7 +410,7 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
             },
             property: { address: det.header.property_address || undefined },
             price_list: { name: det.header.price_list || undefined },
-            line_items: det.lineItems.map((li) => ({
+            line_items: det.lineItems.map((li: any) => ({
               raw_description: li.raw_description,
               raw_category: li.section_name || undefined,
               quantity: li.quantity ?? undefined,
@@ -419,7 +421,10 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
               total_acv: li.total_acv ?? undefined,
               section_name: li.section_name || undefined,
               page_number: li.page_number ?? undefined,
-              // carry layout-B specifics on the side via type cast
+              _raw_line: li.raw_line ?? null,
+              _previous_line: li.previous_line ?? null,
+              _next_line: li.next_line ?? null,
+              _tax: li.tax ?? null,
               ...(li.remove_price != null || li.replace_price != null
                 ? { _remove_price: li.remove_price, _replace_price: li.replace_price, _layout: li.layout_type }
                 : { _layout: li.layout_type }),
@@ -490,7 +495,35 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
       // Normalize carrier name
       const carrierNormalized = normalizeCarrier(extracted.carrier_name);
 
-      // Update document with carrier info + parser metadata
+      // ---- Layer-2 reconciliation gate ----
+      let layer2Reconciliation: any = null;
+      try {
+        layer2Reconciliation = reconcileParsedDocument({
+          documentId: document.id,
+          parsedLineItems: (extracted.line_items || []).map((li: any) => ({
+            total_rcv: li.total_rcv ?? null,
+            total_acv: li.total_acv ?? null,
+            tax: li._tax ?? null,
+            unit_price: li.unit_price ?? null,
+            quantity: li.quantity ?? null,
+          })),
+          parsedHeaderTotals: {
+            line_item_total: (reconciliation?.sum_of_lines as number | undefined) ?? null,
+            tax_amount: extracted.totals?.tax_amount ?? null,
+            total_rcv: extracted.totals?.total_rcv ?? null,
+            total_acv: extracted.totals?.total_acv ?? null,
+            deductible: extracted.totals?.deductible ?? null,
+            net_claim: extracted.totals?.total_net_claim ?? null,
+          },
+        });
+        console.log('[scope-ingest] layer2 reconciliation:', layer2Reconciliation.status, layer2Reconciliation.warnings);
+      } catch (e) {
+        console.warn('[scope-ingest] reconciliation failed:', e);
+      }
+
+      const reconciliationFailed = layer2Reconciliation?.status === 'fail';
+
+      // Update document with carrier info + parser metadata + reconciliation
       await supabase
         .from("insurance_scope_documents")
         .update({
@@ -502,13 +535,14 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
           format_family: extracted.format_family,
           raw_json_output: {
             ...extracted,
-            parser_version: '2.0.0',
+            parser_version: '2.1.0',
             parser_type: parserType,
             layout_detected: layoutDetected,
             warnings: parserWarnings,
             reconciliation,
+            layer2_reconciliation: layer2Reconciliation,
           },
-          parse_status: 'mapping'
+          parse_status: reconciliationFailed ? 'needs_review' : 'mapping',
         })
         .eq("id", document.id);
 
@@ -544,29 +578,49 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
       }
 
       // Insert line items with canonical mapping + new deterministic columns
-      const lineItemsToInsert = (extracted.line_items || []).map((item: any, idx) => ({
-        header_id: header.id,
-        document_id: document.id,
-        raw_code: item.raw_code,
-        raw_description: item.raw_description,
-        raw_category: item.raw_category,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        total_rcv: item.total_rcv,
-        depreciation_percent: item.depreciation_percent,
-        depreciation_amount: item.depreciation_amount,
-        total_acv: item.total_acv,
-        section_name: item.section_name,
-        line_order: idx,
-        // New deterministic columns (Layout B + classifier)
-        remove_price: item._remove_price ?? null,
-        replace_price: item._replace_price ?? null,
-        effective_unit_price: item.unit_price ?? null,
-        parser_layout: item._layout ?? (parserType === 'deterministic' ? layoutDetected : null),
-        mapping_method: null as string | null,
-        mapping_confidence: null as number | null,
-      }));
+      const lineItemsToInsert = await Promise.all(
+        (extracted.line_items || []).map(async (item: any, idx) => {
+          const canonical_key = canonicalScopeKey(item.raw_description || '');
+          const fingerprint = await fingerprintScopeItem({
+            canonical_key,
+            unit: item.unit ?? null,
+            section_name: item.section_name ?? item.raw_category ?? null,
+            line_number: idx + 1,
+            quantity: item.quantity ?? null,
+            total_rcv: item.total_rcv ?? null,
+          });
+          return {
+            header_id: header.id,
+            document_id: document.id,
+            raw_code: item.raw_code,
+            raw_description: item.raw_description,
+            raw_category: item.raw_category,
+            quantity: item.quantity,
+            unit: item.unit,
+            unit_price: item.unit_price,
+            total_rcv: item.total_rcv,
+            depreciation_percent: item.depreciation_percent,
+            depreciation_amount: item.depreciation_amount,
+            total_acv: item.total_acv,
+            section_name: item.section_name,
+            line_order: idx,
+            // Layout B + classifier
+            remove_price: item._remove_price ?? null,
+            replace_price: item._replace_price ?? null,
+            effective_unit_price: item.unit_price ?? null,
+            parser_layout: item._layout ?? (parserType === 'deterministic' ? layoutDetected : null),
+            // Evidence anchoring (layer 2)
+            page_number: item.page_number ?? null,
+            raw_line: item._raw_line ?? null,
+            previous_line: item._previous_line ?? null,
+            next_line: item._next_line ?? null,
+            fingerprint,
+            tax_amount: item._tax ?? null,
+            mapping_method: null as string | null,
+            mapping_confidence: null as number | null,
+          };
+        }),
+      );
 
 
       if (lineItemsToInsert.length > 0) {
@@ -642,13 +696,13 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
         }
       }
 
-      // Mark as complete
+      // Mark as complete (or keep needs_review when reconciliation failed)
       await supabase
         .from("insurance_scope_documents")
         .update({
-          parse_status: 'complete',
+          parse_status: reconciliationFailed ? 'needs_review' : 'complete',
           parse_completed_at: new Date().toISOString(),
-          parser_version: '2.0.0'
+          parser_version: '2.1.0'
         })
         .eq("id", document.id);
 
