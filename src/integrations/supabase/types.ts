@@ -132,6 +132,7 @@ export type Database = {
           connected_by: string | null
           connection_status: string
           created_at: string
+          default_branch_code: string | null
           environment: string
           expires_at: string | null
           id: string
@@ -160,6 +161,7 @@ export type Database = {
           connected_by?: string | null
           connection_status?: string
           created_at?: string
+          default_branch_code?: string | null
           environment?: string
           expires_at?: string | null
           id?: string
@@ -188,6 +190,7 @@ export type Database = {
           connected_by?: string | null
           connection_status?: string
           created_at?: string
+          default_branch_code?: string | null
           environment?: string
           expires_at?: string | null
           id?: string
