@@ -562,7 +562,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
           Import Report
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96" align="end">
+      <PopoverContent className="w-96" align="start" side="bottom" sideOffset={8} collisionPadding={16}>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-medium">Import Measurement Report</h4>
