@@ -316,7 +316,9 @@ Deno.serve(async (req) => {
 
     const results: SyncResult[] = [];
     for (const conn of connections) {
-      results.push(await syncOneTenant(supabase, conn));
+      // Merge in secrets (username/password/tokens) from qxo_credentials.
+      const full = await loadConnectionWithCredentials(supabase, conn.tenant_id).catch(() => null);
+      results.push(await syncOneTenant(supabase, full || conn));
     }
 
     return new Response(
