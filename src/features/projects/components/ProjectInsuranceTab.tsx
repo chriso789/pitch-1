@@ -5,7 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Upload, GitCompare, FileText, Loader2, FileDown } from 'lucide-react';
+import { Upload, GitCompare, FileText, Loader2, FileDown, Trash2 } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
@@ -16,6 +20,7 @@ import {
   useProjectScopeDocuments,
   useGenerateSupplementReport,
   useSupplementReports,
+  useDeleteComparison,
 } from '@/hooks/useXactComparison';
 
 interface Props {
@@ -29,6 +34,7 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
   const docs = useProjectScopeDocuments(projectId, jobId);
   const comparisons = useProjectComparisons(projectId);
   const runCompare = useRunXactComparison();
+  const deleteComparison = useDeleteComparison();
 
   const [carrierId, setCarrierId] = useState<string>('');
   const [companyId, setCompanyId] = useState<string>('');
@@ -135,12 +141,15 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
           <CardHeader><CardTitle className="text-base">Comparison History</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {comparisons.data.map(c => (
-              <button
+              <div
                 key={c.id}
-                onClick={() => setActiveComparison(c.id)}
-                className={`w-full text-left p-3 rounded-md border transition-colors ${activeComparison === c.id ? 'bg-accent border-primary' : 'hover:bg-accent/50'}`}
+                className={`w-full p-3 rounded-md border transition-colors flex items-center justify-between gap-3 ${activeComparison === c.id ? 'bg-accent border-primary' : 'hover:bg-accent/50'}`}
               >
-                <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setActiveComparison(c.id)}
+                  className="flex-1 text-left"
+                >
                   <div className="text-sm">
                     <div className="font-medium">
                       Net supplement: ${Number(c.net_supplement_amount || 0).toLocaleString()}
@@ -149,9 +158,49 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
                       {new Date(c.created_at).toLocaleString()} · {c.added_count} added · {c.removed_count} removed · {c.price_change_count} price · {c.qty_change_count} qty
                     </div>
                   </div>
+                </button>
+                <div className="flex items-center gap-2 shrink-0">
                   <Badge variant="secondary">{c.status}</Badge>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        disabled={deleteComparison.isPending}
+                        aria-label="Delete comparison"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this comparison?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This permanently removes the comparison along with its diff lines and any generated supplement reports. This cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            try {
+                              await deleteComparison.mutateAsync(c.id);
+                              if (activeComparison === c.id) setActiveComparison(null);
+                              toast({ title: 'Comparison deleted' });
+                            } catch (e: any) {
+                              toast({ title: 'Delete failed', description: e.message, variant: 'destructive' });
+                            }
+                          }}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
-              </button>
+              </div>
             ))}
           </CardContent>
         </Card>
