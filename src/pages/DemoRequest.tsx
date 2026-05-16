@@ -38,6 +38,7 @@ const DemoRequest: React.FC = () => {
     jobTitle: '',
     message: ''
   });
+  const [smsConsent, setSmsConsent] = useState(false);
 
   const [slots, setSlots] = useState<Slot[]>([
     { date: undefined, time: '10:00' },
@@ -64,14 +65,22 @@ const DemoRequest: React.FC = () => {
 
     setLoading(true);
     try {
+      // Only store phone if the user affirmatively consented to SMS.
+      // This keeps us 10DLC/TCPA-compliant: phone is optional and never used for SMS without opt-in.
+      const phoneToStore = formData.phone && smsConsent ? formData.phone : null;
+      const consentNote = formData.phone && smsConsent
+        ? `\n\n[SMS opt-in consent recorded on ${new Date().toISOString()} via web form at ${typeof window !== 'undefined' ? window.location.href : '/demo'}]`
+        : '';
+      const messageToStore = (formData.message || '') + consentNote;
+
       const { data, error: dbError } = await supabase.from('demo_requests').insert({
         first_name: formData.firstName,
         last_name: formData.lastName,
         email: formData.email,
-        phone: formData.phone || null,
+        phone: phoneToStore,
         company_name: formData.companyName,
         job_title: formData.jobTitle || null,
-        message: formData.message || null,
+        message: messageToStore || null,
         email_sent: false,
         interview_status: 'pending',
       }).select('id').single();
@@ -382,16 +391,42 @@ const DemoRequest: React.FC = () => {
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="text-sm">
                     <Phone className="h-4 w-4 inline mr-2" />
-                    Phone Number
+                    Phone Number <span className="text-muted-foreground font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="Enter your phone number"
+                    placeholder="Optional — only needed if you'd like an SMS reminder"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="h-12 text-base"
                   />
+                  <label
+                    htmlFor="smsConsent"
+                    className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm cursor-pointer"
+                  >
+                    <input
+                      id="smsConsent"
+                      type="checkbox"
+                      checked={smsConsent}
+                      onChange={(e) => setSmsConsent(e.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-input accent-primary"
+                    />
+                    <span className="leading-snug text-muted-foreground">
+                      By checking this box, I agree to receive SMS messages from PITCH CRM at
+                      the phone number above, including appointment reminders, demo confirmations,
+                      and occasional product updates. Message &amp; data rates may apply. Message
+                      frequency varies. Reply <strong>HELP</strong> for help, <strong>STOP</strong> to
+                      cancel. See our{' '}
+                      <a href="/legal/privacy" className="underline" target="_blank" rel="noreferrer">
+                        Privacy Policy
+                      </a>{' '}and{' '}
+                      <a href="/legal/terms" className="underline" target="_blank" rel="noreferrer">
+                        Terms
+                      </a>. Consent is not a condition of any purchase and no mobile information is
+                      shared with third parties for marketing purposes.
+                    </span>
+                  </label>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

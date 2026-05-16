@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
           description: description || 'CRM-initiated customer communications including appointment reminders, status updates, and marketing.',
           sample1: sample_messages?.[0] || 'Hi {{first_name}}, your roofing appointment is confirmed for tomorrow at 10am. Reply STOP to opt out.',
           sample2: sample_messages?.[1] || 'Great news {{first_name}}! Your project estimate is ready. View it here: {{link}}. Reply STOP to opt out.',
-          messageFlow: message_flow || 'Customers opt in by providing their phone number during consultation or via our website contact form. They receive appointment reminders, project updates, and occasional promotional offers.',
+          messageFlow: message_flow || 'Consumers opt in via: (1) Website form at https://pitch-crm.ai/demo where the phone field is optional and an unchecked SMS-consent checkbox sits next to it with disclosure "By checking this box, I agree to receive SMS messages including appointment reminders, project updates, estimate follow-ups, and promotional offers. Msg & data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel. See Privacy Policy https://pitch-crm.ai/legal/privacy and Terms https://pitch-crm.ai/legal/terms"; (2) Signed paper/tablet consent form during in-person consultation with the same disclosure language; (3) Texting START to our business number. Reply STOP to opt out, HELP for help. No mobile information is shared with third parties or affiliates for marketing or promotional purposes.',
           numberPool: false,
           ageGated: false,
           directLending: false,

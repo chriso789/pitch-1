@@ -71,7 +71,17 @@ export const TenDLCRegistrationPanel = () => {
     "Great news {{first_name}}! Your project estimate is ready. View it here: {{link}}. Reply STOP to opt out."
   );
   const [messageFlow, setMessageFlow] = useState(
-    "Customers opt in by providing their phone number during in-person consultation, via our website contact form, or by texting START to our business number. They receive appointment reminders, project updates, and occasional promotional offers. They can opt out at any time by replying STOP."
+    [
+      "Consumers opt in through one of the following methods, each requiring affirmative consent:",
+      "",
+      "1) WEBSITE FORM (https://pitch-crm.ai/demo and https://pitch-crm.ai/contact): The consumer fills out a contact / demo request form. The phone number field is OPTIONAL. Directly beside the phone field is an UNCHECKED checkbox with the following disclosure: \"By checking this box, I agree to receive SMS messages from OBrien Contracting at the phone number provided, including appointment reminders, project status updates, estimate follow-ups, and occasional promotional offers. Message & data rates may apply. Message frequency varies. Reply HELP for help, STOP to cancel. See our Privacy Policy (https://pitch-crm.ai/legal/privacy) and Terms (https://pitch-crm.ai/legal/terms).\" The checkbox is not pre-checked and is not a condition of submitting the form or purchasing any service. No SMS is sent unless the consumer affirmatively checks the box and provides a phone number.",
+      "",
+      "2) IN-PERSON / VERBAL: During an in-person sales consultation, the field rep presents a written consent form (paper or tablet) containing the same disclosure language above. The consumer signs the form, which is retained as proof of consent. Verbal-only consent is never accepted.",
+      "",
+      "3) KEYWORD: Existing customers can text START to our business number from their own handset to re-subscribe after having opted out. The auto-reply confirms enrollment and includes \"Msg & data rates may apply. Reply HELP for help, STOP to cancel.\"",
+      "",
+      "Opt-out: Consumers may text STOP, END, CANCEL, UNSUBSCRIBE, or QUIT at any time to immediately stop all messages. Help: Consumers may text HELP to receive contact information. No mobile information is shared with third parties or affiliates for marketing or promotional purposes.",
+    ].join("\n")
   );
 
   // Assign number
