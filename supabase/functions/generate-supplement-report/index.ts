@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 
 interface Body {
   comparison_id: string;
@@ -19,6 +19,18 @@ const CHANGE_LABEL: Record<string, string> = {
   price_change: 'Price Change',
   unchanged: 'Unchanged',
 };
+
+const safePdfText = (value: unknown) => String(value ?? '')
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[•·]/g, '-')
+  .replace(/[Δ∆]/g, 'Delta')
+  .replace(/[×✕]/g, 'x')
+  .replace(/[–—]/g, '-')
+  .replace(/[“”]/g, '"')
+  .replace(/[‘’]/g, "'")
+  .replace(/…/g, '...')
+  .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
