@@ -1,8 +1,8 @@
 // Shared QXO/Beacon auth helper.
-// Uses OAuth (client_credentials-style) to get a Bearer access_token from
-// /v1/rest/com/becn/oauth, caches it on qxo_connections, and refreshes via
-// /rest/model/REST/oauth/token. Falls back to cookie login only if no
-// client_id is configured (legacy v1 endpoints).
+// Reads non-sensitive status from qxo_connections and secrets
+// (username/password/client_id/access_token/refresh_token) from the
+// service-role-only qxo_credentials table. Tokens are persisted back to
+// qxo_credentials; connection status flags stay on qxo_connections.
 
 export const BEACON_BASE_URL = 'https://api.qxo.com';
 const OAUTH_PATH = '/v1/rest/com/becn/oauth';
