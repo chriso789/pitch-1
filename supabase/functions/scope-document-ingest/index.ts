@@ -316,9 +316,9 @@ Return a JSON object with this exact structure:
   
   "line_items": [
     {
-      "raw_code": "Item code (e.g., RFG SHNG)",
-      "raw_description": "Full item description",
-      "raw_category": "Section/category name",
+      "raw_code": "Item code (e.g., RFG SHNG) if present",
+      "raw_description": "Full item description EXACTLY as printed (preserve punctuation like 'w/out felt', 'R&R', dashes, parens)",
+      "raw_category": "Section/category name (e.g., Roof, Dwelling Roof)",
       "quantity": number,
       "unit": "SQ|SF|LF|EA|HR|etc",
       "unit_price": number,
@@ -331,6 +331,23 @@ Return a JSON object with this exact structure:
   ]
 }
 
+COLUMN LAYOUT HANDLING — Xactimate PDFs come in two layouts; detect which one and normalize:
+
+LAYOUT A — Single UNIT PRICE column:
+  DESCRIPTION | QUANTITY | UNIT PRICE | TAX | RCV | DEPREC. | ACV
+  → unit_price = the UNIT PRICE column
+  → total_rcv = RCV column, total_acv = ACV column
+
+LAYOUT B — Split REMOVE + REPLACE columns (combined R&R items):
+  DESCRIPTION | QTY | REMOVE | REPLACE | TAX | TOTAL
+  → unit_price = REMOVE + REPLACE (sum of the two unit costs; this is the effective unit price)
+  → total_rcv = TOTAL column, total_acv = TOTAL column (no separate ACV shown)
+  → For "Remove ..." only rows, unit_price = REMOVE value
+  → For non-R&R replace-only rows (e.g. "Laminated - comp. shingle..."), unit_price = REPLACE value
+  → For "R&R ..." rows, unit_price = REMOVE + REPLACE
+
+Always preserve the original raw_description text verbatim — do not paraphrase, do not strip "Remove" / "R&R" prefixes, do not change "w/out" to "without". Downstream matching depends on exact wording.
+
 Extract ALL line items. Be thorough. Include both roofing and any other trades (siding, gutters, interior, etc.).
 For Xactimate format, pay attention to the item codes starting with 3-letter trade codes (RFG, SDL, GTR, etc.).`;
 
@@ -341,6 +358,11 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
         .update({ parse_status: 'parsing' })
         .eq("id", document.id);
 
+      // Extract actual text from the PDF before calling the AI
+      const pdfText = await extractPdfText(pdfBytes);
+      const truncatedText = pdfText.length > 120000 ? pdfText.slice(0, 120000) : pdfText;
+      console.log("[scope-ingest] Extracted PDF text length:", pdfText.length);
+
       // Call AI for extraction with timeout
       // Create timeout promise (60 seconds)
       const timeoutPromise = new Promise<never>((_, reject) => 
@@ -349,15 +371,14 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
 
       const aiResponsePromise = generateAIResponse({
         system: extractionPrompt,
-        user: `Analyze this insurance scope document. The document is a ${body.document_type} type document.
-               File name: ${fileName}
-               File size: ${pdfBytes.length} bytes
-               
-               Based on the file name and document type, extract what you can infer about this insurance scope.
-               If the file name contains carrier information, use that.
-               Provide realistic sample data that matches expected insurance estimate format.
-               
-               Return a properly structured JSON response with line items for common roofing repairs.`,
+        user: `Extract structured data from this ${body.document_type} insurance scope document.
+File name: ${fileName}
+
+=== BEGIN EXTRACTED PDF TEXT ===
+${truncatedText || '(no extractable text — PDF may be image-only; infer minimal structure from filename only and return empty line_items)'}
+=== END EXTRACTED PDF TEXT ===
+
+Read the ACTUAL text above. Do not invent numbers. Detect whether the columns are LAYOUT A (UNIT PRICE) or LAYOUT B (REMOVE + REPLACE) per the system prompt and normalize unit_price accordingly. Return JSON only.`,
         model: "google/gemini-3-flash-preview",
         temperature: 0
       });
