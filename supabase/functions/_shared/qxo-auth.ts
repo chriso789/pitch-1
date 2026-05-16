@@ -100,7 +100,7 @@ async function oauthLogin(conn: any): Promise<any> {
     );
   }
   try {
-    return await qxoFetch<any>(OAUTH_PATH, {
+    const data = await qxoFetch<any>(OAUTH_PATH, {
       method: 'POST',
       query: {
         response_type: 'code',
@@ -113,9 +113,13 @@ async function oauthLogin(conn: any): Promise<any> {
         password: conn.password,
         siteId: conn.site_id || 'becnus',
       },
-      // OAuth bodies should not be retried on 4xx; 5xx retry is fine.
       retryStatuses: [500, 502, 503, 504],
     });
+    if (!data?.access_token) {
+      const msg = data?.message || data?.messages?.[0]?.value || 'Beacon OAuth returned no access_token';
+      throw new Error(msg);
+    }
+    return data;
   } catch (e) {
     if (e instanceof QxoHttpError) {
       throw new Error(e.message || `Beacon OAuth failed (${e.status})`);
