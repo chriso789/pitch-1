@@ -1,0 +1,43 @@
+{
+  "carrier": {
+    "document_name": "GAYMON_FINAL_DRAFT_CAR.pdf",
+    "price_list": "FLTA8X_OCT24",
+    "line_items": 21,
+    "rcv": 14718.16,
+    "acv": 9906.11,
+    "deductible": 5760.00,
+    "net_claim": 4146.11,
+    "roof_rcv": 10970.08,
+    "exterior_rcv": 3748.08
+  },
+  "contractor": {
+    "document_name": "Supplement estimate (1).pdf",
+    "price_list": "FLTA8X_NOV24",
+    "line_items": 35,
+    "rcv": 29417.87,
+    "net_claim": 29417.87,
+    "roof_rcv": 16363.21,
+    "tarp_rcv": 1704.60
+  },
+  "comparison": {
+    "rcv_difference": 14699.71,
+    "must_flag_missing_from_carrier": [
+      "Water barrier joint taping - Mod. bitumen - 4\" seam tape",
+      "Dumpster load - Approx. 20 yards, 4 tons of debris",
+      "R&R Flat roof exhaust vent / cap - gooseneck 8\"",
+      "Re-nailing of roof sheathing - complete re-nail",
+      "Caulking - butyl rubber",
+      "R&R Gutter / downspout - aluminum - 6\"",
+      "Tarp - all-purpose poly - per sq ft (lab/mat) - after hrs",
+      "Final cleaning - construction - Residential",
+      "Stucco patch / small repair - ready for color"
+    ],
+    "must_flag_quantity_delta": [
+      { "key": "valley metal", "carrier_qty": 22, "contractor_qty": 42, "unit": "LF" },
+      { "key": "hip ridge cap", "carrier_qty": 88, "contractor_qty": 118, "unit": "LF" },
+      { "key": "pipe jack", "carrier_qty": 2, "contractor_qty": 3, "unit": "EA" },
+      { "key": "drip edge", "carrier_qty": 224, "contractor_qty": 227.95, "unit": "LF" }
+    ],
+    "price_list_mismatch": true
+  }
+}
