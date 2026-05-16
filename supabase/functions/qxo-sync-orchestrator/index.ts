@@ -249,9 +249,8 @@ async function syncOneTenant(supabase: any, conn: any): Promise<SyncResult> {
   try {
     const { data: loginData, cookie } = await login(conn);
     result.profile = await syncProfile(supabase, conn, loginData);
-    // re-read account_id after profile sync
-    const { data: refreshed } = await supabase
-      .from('qxo_connections').select('*').eq('id', conn.id).single();
+    // re-read account_id (and merge secrets) after profile sync
+    const refreshed = await loadConnectionWithCredentials(supabase, conn.tenant_id);
     const c2 = refreshed || conn;
     result.balance = await syncBalance(supabase, c2, cookie);
     result.invoices = await syncInvoices(supabase, c2, cookie);
