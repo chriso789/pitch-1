@@ -98,8 +98,8 @@ Deno.serve(async (req) => {
       tenantId = profile?.active_tenant_id || profile?.tenant_id;
     }
 
-    // Parse request body - now accepts locationId
-    const { to, message, contactId, jobId, fromNumber, locationId } = await req.json();
+    // Parse request body - now accepts locationId + blast linkage
+    const { to, message, contactId, jobId, fromNumber, locationId, blast_id, blast_item_id } = await req.json();
 
     if (!to || !message) {
       throw new Error('Missing required fields: to, message');
@@ -383,6 +383,8 @@ Deno.serve(async (req) => {
             sent_at: new Date().toISOString(),
             location_id: resolvedLocationId || null,
             is_read: true,
+            blast_id: blast_id || null,
+            blast_item_id: blast_item_id || null,
           });
 
         if (msgError) {
@@ -404,6 +406,7 @@ Deno.serve(async (req) => {
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } catch (_unreachable_inner) { /* fallthrough */ }
   } catch (error) {
     console.error('SMS send error:', error);
     return new Response(
