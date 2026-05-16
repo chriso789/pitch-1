@@ -1228,9 +1228,9 @@ function buildClaimDocumentHtml(supplierName: string, lines: ClaimableLine[]): s
               <th style="padding:8px">Item</th>
               <th style="padding:8px;text-align:right">Qty</th>
               <th style="padding:8px;text-align:right">Charged Unit</th>
-              <th style="padding:8px;text-align:right">Agreed Unit</th>
+              <th style="padding:8px;text-align:right">Price List Unit</th>
               <th style="padding:8px;text-align:right">Charged Total</th>
-              <th style="padding:8px;text-align:right">Agreed Total</th>
+              <th style="padding:8px;text-align:right">Price List Total</th>
               <th style="padding:8px;text-align:right">Overcharge</th>
             </tr>
           </thead>
