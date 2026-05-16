@@ -12,15 +12,15 @@ import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy,
 
 const ABC_CONFIG = {
   authBase: {
-    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8',
+    sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
   },
   authorizeUrl: {
-    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize',
+    sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize',
   },
   tokenUrl: {
-    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
+    sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token',
   },
   scopes: 'pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access',
@@ -30,6 +30,12 @@ const ABC_CONFIG = {
     production: 'https://partners.abcsupply.com/api',
   },
 };
+
+type ABCEnvironment = 'sandbox' | 'production';
+
+function normalizeABCEnvironment(value?: string | null): ABCEnvironment {
+  return value === 'sandbox' || value === 'staging' ? 'sandbox' : 'production';
+}
 
 // Server-side OAuth callback URL — register THIS with ABC IT.
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
@@ -111,7 +117,7 @@ export function ABCConnectionSettings() {
   const [clientSecret, setClientSecret] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
-  const [environment, setEnvironment] = useState('staging');
+  const [environment, setEnvironment] = useState<ABCEnvironment>('production');
 
   useEffect(() => {
     if (effectiveTenantId) loadConnection();
@@ -154,7 +160,7 @@ export function ABCConnectionSettings() {
         setClientId(data.client_id || '');
         setAccountNumber(data.account_number || '');
         setDefaultBranch(data.default_branch_code || '');
-        setEnvironment(data.environment || 'staging');
+        setEnvironment(normalizeABCEnvironment(data.environment));
       }
     } catch (e) {
       console.error('Failed to load ABC connection:', e);
