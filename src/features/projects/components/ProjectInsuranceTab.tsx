@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Upload, GitCompare, FileText, Loader2, FileDown, Trash2 } from 'lucide-react';
+import { Upload, GitCompare, FileText, Loader2, FileDown, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -324,38 +324,21 @@ function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
               <table className="w-full text-xs">
                 <thead className="text-muted-foreground">
                   <tr className="border-b">
+                    <th className="w-6 p-2"></th>
                     <th className="text-left p-2">Type</th>
                     <th className="text-left p-2">Code</th>
                     <th className="text-left p-2">Description</th>
-                    <th className="text-right p-2">Carrier Qty × $</th>
-                    <th className="text-right p-2">Company Qty × $</th>
+                    <th className="text-right p-2">Carrier Qty × $ = Total</th>
+                    <th className="text-right p-2">Company Qty × $ = Total</th>
                     <th className="text-right p-2">Δ RCV</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(l => (
-                    <tr key={l.id} className="border-b">
-                      <td className="p-2">
-                        <Badge variant={
-                          l.change_type === 'added' ? 'default' :
-                          l.change_type === 'removed' ? 'destructive' : 'secondary'
-                        }>{l.change_type}</Badge>
-                      </td>
-                      <td className="p-2 font-mono">{l.company_code || l.carrier_code || '—'}</td>
-                      <td className="p-2 max-w-[280px] truncate">{l.company_description || l.carrier_description}</td>
-                      <td className="p-2 text-right">
-                        {l.carrier_quantity ? `${Number(l.carrier_quantity)} ${l.carrier_unit || ''} × $${Number(l.carrier_unit_price || 0).toFixed(2)}` : '—'}
-                      </td>
-                      <td className="p-2 text-right">
-                        {l.company_quantity ? `${Number(l.company_quantity)} ${l.company_unit || ''} × $${Number(l.company_unit_price || 0).toFixed(2)}` : '—'}
-                      </td>
-                      <td className="p-2 text-right font-medium">
-                        ${Number(l.delta_rcv || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
+                    <ComparisonRow key={l.id} line={l} />
                   ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No rows.</td></tr>
+                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No rows.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -364,5 +347,94 @@ function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
         </Tabs>
       </CardContent>
     </Card>
+  );
+}
+
+function ComparisonRow({ line: l }: { line: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const children: Array<{ side: 'carrier' | 'company'; section: string | null; description: string | null }> =
+    Array.isArray(l.grouped_children) ? l.grouped_children : [];
+  const hasChildren = children.length > 0;
+
+  const fmtSide = (qty: any, unit: any, price: any, total: any) => {
+    if (qty == null) return '—';
+    const q = Number(qty);
+    const p = Number(price || 0);
+    const t = total != null ? Number(total) : q * p;
+    return (
+      <span>
+        {q} {unit || ''} × ${p.toFixed(2)}
+        <span className="ml-1 text-muted-foreground">= ${t.toFixed(2)}</span>
+      </span>
+    );
+  };
+
+  return (
+    <>
+      <tr className="border-b align-top">
+        <td className="p-2">
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(v => !v)}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label={expanded ? 'Collapse' : 'Expand'}
+            >
+              {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </button>
+          ) : null}
+        </td>
+        <td className="p-2">
+          <Badge variant={
+            l.change_type === 'added' ? 'default' :
+            l.change_type === 'removed' ? 'destructive' : 'secondary'
+          }>{l.change_type}</Badge>
+        </td>
+        <td className="p-2 font-mono">{l.company_code || l.carrier_code || '—'}</td>
+        <td className="p-2 max-w-[280px]">
+          <div className="truncate">{l.company_description || l.carrier_description}</div>
+          {hasChildren && (
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              aggregated from {children.length} line{children.length === 1 ? '' : 's'}
+            </div>
+          )}
+        </td>
+        <td className="p-2 text-right">
+          {fmtSide(l.carrier_quantity, l.carrier_unit, l.carrier_unit_price, l.carrier_total_rcv)}
+        </td>
+        <td className="p-2 text-right">
+          {fmtSide(l.company_quantity, l.company_unit, l.company_unit_price, l.company_total_rcv)}
+        </td>
+        <td className="p-2 text-right font-medium">
+          ${Number(l.delta_rcv || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </td>
+      </tr>
+      {expanded && hasChildren && (
+        <tr className="bg-muted/30">
+          <td></td>
+          <td colSpan={6} className="p-2">
+            <div className="text-[11px] text-muted-foreground mb-1">Aggregated child lines:</div>
+            <table className="w-full text-[11px]">
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th className="text-left p-1">Side</th>
+                  <th className="text-left p-1">Section</th>
+                  <th className="text-left p-1">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {children.map((c, i) => (
+                  <tr key={i} className="border-t border-border/40">
+                    <td className="p-1 capitalize">{c.side}</td>
+                    <td className="p-1">{c.section || '—'}</td>
+                    <td className="p-1">{c.description || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
