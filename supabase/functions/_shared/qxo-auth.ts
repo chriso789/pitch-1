@@ -4,11 +4,13 @@
 // service-role-only qxo_credentials table. Tokens are persisted back to
 // qxo_credentials; connection status flags stay on qxo_connections.
 
-export const BEACON_BASE_URL = 'https://api.qxo.com';
+import { qxoFetch, QxoHttpError, getQxoBaseUrl } from './qxo-http.ts';
+
+export const BEACON_BASE_URL = getQxoBaseUrl();
 const OAUTH_PATH = '/v1/rest/com/becn/oauth';
 const REFRESH_PATH = '/rest/model/REST/oauth/token';
 const DEFAULT_SCOPE = 'manage-rebate';
-const DEFAULT_REDIRECT = 'https://api.qxo.com/oauth/callback';
+const DEFAULT_REDIRECT = `${getQxoBaseUrl()}/oauth/callback`;
 
 export interface BeaconAuth {
   headers: Record<string, string>;
@@ -97,53 +99,59 @@ async function oauthLogin(conn: any): Promise<any> {
       'QXO client_id is not configured. Add your QXO/Beacon API client_id in Settings → QXO before placing orders.',
     );
   }
-  const url = new URL(BEACON_BASE_URL + OAUTH_PATH);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('redirect_uri', DEFAULT_REDIRECT);
-  url.searchParams.set('client_id', conn.client_id);
-  url.searchParams.set('scope', DEFAULT_SCOPE);
-
-  const res = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      username: conn.username,
-      password: conn.password,
-      siteId: conn.site_id || 'becnus',
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.access_token) {
-    const msg =
-      data?.message ||
-      data?.messages?.[0]?.value ||
-      `Beacon OAuth failed (${res.status})`;
-    throw new Error(msg);
+  try {
+    const data = await qxoFetch<any>(OAUTH_PATH, {
+      method: 'POST',
+      query: {
+        response_type: 'code',
+        redirect_uri: DEFAULT_REDIRECT,
+        client_id: conn.client_id,
+        scope: DEFAULT_SCOPE,
+      },
+      body: {
+        username: conn.username,
+        password: conn.password,
+        siteId: conn.site_id || 'becnus',
+      },
+      retryStatuses: [500, 502, 503, 504],
+    });
+    if (!data?.access_token) {
+      const msg = data?.message || data?.messages?.[0]?.value || 'Beacon OAuth returned no access_token';
+      throw new Error(msg);
+    }
+    return data;
+  } catch (e) {
+    if (e instanceof QxoHttpError) {
+      throw new Error(e.message || `Beacon OAuth failed (${e.status})`);
+    }
+    throw e;
   }
-  return data;
 }
 
 async function refreshToken(conn: any): Promise<any | null> {
   if (!conn.refresh_token || !conn.client_id) return null;
-  const url = new URL(BEACON_BASE_URL + REFRESH_PATH);
-  url.searchParams.set('grant_type', 'refresh_token');
-  url.searchParams.set('client_id', conn.client_id);
-  url.searchParams.set('refresh_token', conn.refresh_token);
-  url.searchParams.set('scopes', DEFAULT_SCOPE);
-
-  const res = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      client_id: conn.client_id,
-      refresh_token: conn.refresh_token,
-      scopes: DEFAULT_SCOPE,
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.access_token) return null;
-  return data;
+  try {
+    const data = await qxoFetch<any>(REFRESH_PATH, {
+      method: 'POST',
+      query: {
+        grant_type: 'refresh_token',
+        client_id: conn.client_id,
+        refresh_token: conn.refresh_token,
+        scopes: DEFAULT_SCOPE,
+      },
+      body: {
+        grant_type: 'refresh_token',
+        client_id: conn.client_id,
+        refresh_token: conn.refresh_token,
+        scopes: DEFAULT_SCOPE,
+      },
+      retryStatuses: [500, 502, 503, 504],
+    });
+    if (!data?.access_token) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 export async function getBeaconAuth(supabase: any, tenantId: string): Promise<BeaconAuth> {

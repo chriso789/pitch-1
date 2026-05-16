@@ -1,30 +1,24 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConnectionWithCredentials } from '../_shared/qxo-auth.ts';
+import { qxoFetch, QxoHttpError } from '../_shared/qxo-http.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Beacon Partner Integrations API only exposes a single public host.
-const BEACON_BASE_URL = 'https://api.becn.com';
-
-function baseUrl(_env: string) {
-  return BEACON_BASE_URL;
-}
-
 async function login(conn: any) {
-  const res = await fetch(`${baseUrl(conn.environment)}/v1/rest/com/becn/login`, {
+  const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    body: {
       username: conn.username,
       password: conn.password,
       siteId: conn.site_id || 'dealersChoice',
-    }),
+    },
+  }).catch((e) => {
+    if (e instanceof QxoHttpError) throw new Error(e.message || `Login failed (${e.status})`);
+    throw e;
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || `Login failed (${res.status})`);
   // Beacon returns 200 even on bad credentials; the real error is inside messageInfo
   const info = data?.messageInfo;
   if (typeof info === 'string') throw new Error(`Beacon: ${info}`);
