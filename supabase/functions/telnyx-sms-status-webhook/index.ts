@@ -136,11 +136,20 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Log raw event for the auditable trail
+    await supabaseAdmin.from('telnyx_webhook_events').insert({
+      tenant_id: records?.[0]?.tenant_id ?? null,
+      kind: 'sms',
+      event_type: eventType,
+      telnyx_event_id: body?.data?.id ?? null,
+      payload: body,
+    });
+
     // Also update sms_messages table so thread UI reflects delivery status
     const { data: smsRecords, error: smsFindError } = await supabaseAdmin
       .from('sms_messages')
-      .select('id')
-      .eq('provider_message_id', messageId);
+      .select('id, blast_item_id, blast_id')
+      .or(`provider_message_id.eq.${messageId},telnyx_message_id.eq.${messageId}`);
 
     if (!smsFindError && smsRecords && smsRecords.length > 0) {
       for (const smsRecord of smsRecords) {
@@ -165,6 +174,24 @@ Deno.serve(async (req) => {
           console.log(`✅ Updated sms_messages ${smsRecord.id} to status: ${deliveryStatus}`);
         }
       }
+    }
+
+    // Mirror to sms_blast_items so the campaign dashboard updates live
+    const blastItemUpdate: Record<string, unknown> = {};
+    if (deliveryStatus === 'delivered') {
+      blastItemUpdate.status = 'delivered';
+      blastItemUpdate.delivered_at = new Date().toISOString();
+    } else if (deliveryStatus === 'failed') {
+      blastItemUpdate.status = 'failed';
+      blastItemUpdate.last_error = `${errorCode || ''}: ${errorTitle || ''}`.trim();
+      blastItemUpdate.error_message = blastItemUpdate.last_error;
+    }
+    if (Object.keys(blastItemUpdate).length > 0) {
+      const { error: itemErr } = await supabaseAdmin
+        .from('sms_blast_items')
+        .update(blastItemUpdate)
+        .eq('telnyx_message_id', messageId);
+      if (itemErr) console.error('sms_blast_items mirror failed:', itemErr);
     }
 
     return new Response(
