@@ -406,7 +406,7 @@ Deno.serve(async (req) => {
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (_unreachable_inner) { /* fallthrough */ }
+  
   } catch (error) {
     console.error('SMS send error:', error);
     return new Response(
