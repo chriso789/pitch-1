@@ -1,163 +1,222 @@
 
-# Supplement Engine — Accuracy Layer 2
+# Telnyx SMS Blast — Production Build (no parallel tables)
 
-A layered upgrade on top of the existing parser + comparer. Nothing existing is replaced; new modules are composed into the current pipeline.
+## Audit of what already exists
 
-## Scope note
+Tables (keep, extend only):
+- `sms_blasts`, `sms_blast_items`, `sms_messages`, `sms_threads`
+- `opt_outs` (tenant_id, contact_id, channel, phone, email, reason)
+- `unmatched_inbound` (tenant_id, location_id, channel, from_e164, to_e164, …)
+- `telnyx_webhook_events` (tenant_id, kind, event_type, telnyx_event_id, payload)
+- `locations` (telnyx_phone_number, telnyx_messaging_profile_id)
+- `phone_number_routing` (system_number, telnyx_messaging_profile_id, is_active)
+- `messaging_providers`
 
-The brief references `supabase/functions/compare-scope-documents`. The repo currently uses `scope-comparison-analyze` (primary) and `xact-compare-documents` (Xactimate-specific). I will wire the new layer into `scope-comparison-analyze` and expose it from `xact-compare-documents` too, rather than create a third compare function. If you want a new `compare-scope-documents` function specifically, say so before approval.
+Edge functions (keep, refactor):
+- `telnyx-send-sms` (420 lines) — canonical outbound sender
+- `sms-blast-processor` (183 lines) — current worker, needs throttling rewrite
+- `telnyx-sms-status-webhook` — delivery receipts
+- `asterisk-sms-inbound` — currently only inbound path; we need a Telnyx-native one
 
----
+No `phone_numbers` or `telnyx_numbers` table — the Telnyx number registry lives on `locations` + `phone_number_routing`. **We will add throughput/limit fields there, not create a new table.**
 
-## What gets built
+No cron is currently scheduled for `sms-blast-processor`.
 
-### 1. Shared types
-`supabase/functions/_shared/scope-types.ts`
-- `NormalizedScopeItem` (with `fingerprint`, `parser_layout`, `page_number`, `raw_line`, `canonical_*`, totals, etc.)
-- `ScopeMatch`, `AssemblyFinding`, `ReconciliationResult`, `ScopeCompareSummary`, `ScopeCompareIssue`
-- All other shared modules import from here so the contract is single-sourced.
+## Step 1 — Schema migration (extend only)
 
-### 2. Assembly rule engine
-`supabase/functions/_shared/scope-assembly-rules.ts`
-- `getAssemblyRules()` returns the 5 rules from the brief (roof base, FL code upgrade, exterior elevation, gutter/downspout, temporary repair) with trigger keys, expected/optional related keys, severity, and explanation template.
-- `evaluateAssemblyRules({ carrierItems, contractorItems })` walks both sides, fires rules where triggers match, and emits `AssemblyFinding[]` listing missing related keys + which side is missing them.
+```sql
+-- sms_blasts: throughput + outcome tracking
+alter table sms_blasts
+  add column if not exists target_window_minutes int default 30,
+  add column if not exists required_messages_per_second numeric,
+  add column if not exists actual_messages_per_second numeric,
+  add column if not exists last_processor_run_at timestamptz,
+  add column if not exists failure_rate numeric default 0,
+  add column if not exists delivery_rate numeric default 0,
+  add column if not exists reply_rate numeric default 0,
+  add column if not exists cancelled_at timestamptz,
+  add column if not exists cancel_reason text;
 
-### 3. Total reconciliation
-`supabase/functions/_shared/scope-reconciler.ts`
-- `reconcileParsedDocument(...)` computes sums vs stated header totals, deltas, % delta, and `passed` flag with the 2% / 5% PASS/WARN/FAIL bands.
-- Result persisted at `insurance_scope_documents.raw_json_output.reconciliation`.
-- On FAIL, `parse_status` is flipped to `needs_review`.
-- Called at the end of `scope-document-ingest` after parsing.
+-- sms_blast_items: per-recipient claim + delivery state
+alter table sms_blast_items
+  add column if not exists telnyx_message_id text,
+  add column if not exists from_number text,
+  add column if not exists delivered_at timestamptz,
+  add column if not exists replied_at timestamptz,
+  add column if not exists last_error text,
+  add column if not exists claimed_at timestamptz,
+  add column if not exists attempt_count int default 0;
 
-### 4. Grouped duplicate handling
-Inside `scope-comparison-analyze` (and `xact-compare-documents`):
-- Section-first matching, then quantity-close cross-section, then grouped-by-canonical_key fallback.
-- New `result_type` values: `grouped_quantity_delta`, `grouped_total_delta`, `grouped_missing_from_carrier`, `grouped_possible_duplicate`.
-- Migration adds `group_id text`, `parent_result_id uuid`, `grouped_children jsonb default '[]'` to `scope_compare_results` (only if columns are missing — checked via `IF NOT EXISTS`).
+create unique index if not exists sms_blast_items_telnyx_msg_uq
+  on sms_blast_items(telnyx_message_id) where telnyx_message_id is not null;
 
-### 5. Price list / date normalization
-- Parser captures `price_list` and `estimate_date` into `raw_json_output.header`.
-- Comparer compares both sides and emits summary fields: `price_list_mismatch`, `carrier_price_list`, `contractor_price_list`, `price_list_explanation`.
-- Unit-price deltas reclassified as `price_list_delta_possible` (warning) when lists differ, unless total impact crosses a threshold.
+-- locations: per-number messaging throughput
+alter table locations
+  add column if not exists messages_per_second numeric default 1,
+  add column if not exists telnyx_phone_number_id text,
+  add column if not exists supports_sms boolean default true,
+  add column if not exists supports_voice boolean default true,
+  add column if not exists current_day_sent int default 0,
+  add column if not exists current_day_reset_at date,
+  add column if not exists daily_limit int default 1000,
+  add column if not exists tendlc_campaign_status text;
 
-### 6. Justification builder
-`supabase/functions/_shared/supplement-justification-builder.ts`
-- `buildJustification(issue)` returns the four narratives per issue type (plain English, contractor-friendly, adjuster-facing, internal reviewer) for: `missing_from_carrier`, `quantity_delta`, `price_delta`, `grouped_missing_from_carrier`, `assembly_finding`.
-- Output stored on the result row as `justification jsonb` (new column via migration if missing) so the report builder can render directly.
+-- sms_messages: backfill column the webhook needs
+alter table sms_messages
+  add column if not exists campaign_id uuid,
+  add column if not exists blast_id uuid references sms_blasts(id);
+```
 
-### 7. Confidence scoring v2
-- Replace current scalar score in `scope-comparison-analyze` with weighted components + penalties from the brief.
-- Persist `match_score_breakdown jsonb` (migration if missing) with: `components`, `penalties`, `final`, `classification`, `reason_codes`.
-- Thresholds map to `exact_match | strong_fuzzy_match | possible_match_needs_review | no_match`.
+RLS already exists on all of these tables; no new policies needed beyond what's there.
 
-### 8. PDF evidence anchoring
-- Extend parser output to include `page_number`, `raw_line`, `previous_line`, `next_line`, `section_name`, `layout_type`, `row_bbox` (null if unavailable).
-- Stored on `insurance_scope_line_items` (migration adds any missing columns).
-- UI: per-row “View Evidence” drawer fed by these fields + `match_score_breakdown`.
+## Step 2 — Refactor `telnyx-send-sms` (single sender, no duplicates)
 
-### 9. Acceptance test
-- `supabase/functions/tests/fixtures/gaymon-expected.json` (exactly the JSON in the brief).
-- `supabase/functions/tests/scope-compare-gaymon.test.ts` Deno test that loads a mocked parsed-items fixture, runs the reconciler + comparer + assembly engine, and asserts: totals, missing items, grouped gutter rows, price-list mismatch flag, and that the comparison is blocked from `final` when reconciliation fails.
-- A second small fixture of mocked parsed line items (`gaymon-parsed.json`) avoids needing the real PDFs in the test runner.
+Keep it as the **only** outbound path. AI Follow-Up Queue, single replies, blast worker, sms-auto-responder all call this. Behavior:
+1. Validate body → E.164.
+2. Look up `opt_outs` (tenant_id + normalized phone, channel='sms'). If hit → return 409 `{ blocked:true, reason:'opted_out' }` and mark caller's row.
+3. Resolve `from_number`:
+   - if `from_number` passed, verify it belongs to tenant via `locations` or `phone_number_routing`.
+   - else pick least-loaded active SMS number for tenant.
+4. Insert `sms_messages` row (direction=outbound, status=queued, blast_id/contact_id/thread_id).
+5. POST to `https://api.telnyx.com/v2/messages` with `use_profile_webhooks:true`.
+6. Update `sms_messages` with `telnyx_message_id`, status=`sent_to_provider`, raw response.
+7. Increment `locations.current_day_sent` (reset on day rollover).
+8. Return `{ ok, sms_message_id, telnyx_message_id }`.
 
-### 10. UI quality locks
-`src/pages/SupplementWorkflow.tsx`, `src/pages/SupplementEngine.tsx`, `src/hooks/useScopeIntelligence.ts`
-- Status badges: Parsed, Needs Review, Reconciled, Reconciliation Warning, AI Fallback Used, Final Report Ready.
-- “Generate Final Supplement Report” disabled unless: both docs parsed, both reconciliations PASS (or manual override), compare run completed, and all `possible_match_needs_review` rows reviewed.
-- Reviewer actions wired to a new table.
+## Step 3 — Rewrite `sms-blast-processor` (throughput-aware)
 
-### 11. Manual override table
-Migration: `scope_compare_overrides` with the exact columns from the brief, tenant-scoped RLS (`tenant_id = get_user_tenant_id()`), and re-application on compare-run reopen.
-
-### 12. Hard error handling
-- Every scope edge function returns the structured `{ success, error_code, message, details }` envelope with the listed error codes.
-- A tiny shared helper `_shared/scope-errors.ts` keeps codes consistent.
-
----
-
-## Database migrations (single migration file)
+Pacing model: **pg_cron every 1 minute**, claim-and-send per tick.
 
 ```text
-ALTER TABLE scope_compare_results
-  ADD COLUMN IF NOT EXISTS group_id text,
-  ADD COLUMN IF NOT EXISTS parent_result_id uuid,
-  ADD COLUMN IF NOT EXISTS grouped_children jsonb NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS match_score_breakdown jsonb,
-  ADD COLUMN IF NOT EXISTS justification jsonb;
+per tick (per running blast):
+  capacity_per_minute = sum(active SMS locations.messages_per_second) * 60
+  recipients = atomic claim of next N pending sms_blast_items
+               where N = min(capacity_per_minute, remaining)
+  for each recipient (sequentially, sleep = 1000ms / total_mps):
+    call telnyx-send-sms
+    update sms_blast_items: status, telnyx_message_id, from_number, attempt_count
+  recompute failure_rate; if > 10% → mark blast 'failed', circuit-break
+  update last_processor_run_at, actual_messages_per_second
+  if no remaining → status='completed', completed_at=now()
+```
 
-ALTER TABLE insurance_scope_line_items
-  ADD COLUMN IF NOT EXISTS page_number int,
-  ADD COLUMN IF NOT EXISTS raw_line text,
-  ADD COLUMN IF NOT EXISTS previous_line text,
-  ADD COLUMN IF NOT EXISTS next_line text,
-  ADD COLUMN IF NOT EXISTS layout_type text,
-  ADD COLUMN IF NOT EXISTS row_bbox jsonb,
-  ADD COLUMN IF NOT EXISTS fingerprint text;
+Atomic claim (prevents double-send across overlapping ticks):
+```sql
+update sms_blast_items
+set status='claimed', claimed_at=now(), attempt_count=attempt_count+1
+where id in (
+  select id from sms_blast_items
+   where blast_id=$1 and status in ('pending')
+   order by created_at limit $2
+   for update skip locked
+) returning *;
+```
 
-CREATE TABLE IF NOT EXISTS scope_compare_overrides (
-  id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null,
-  compare_run_id uuid not null,
-  result_id uuid null,
-  override_type text not null,
-  carrier_line_item_id uuid null,
-  contractor_line_item_id uuid null,
-  reviewer_note text null,
-  created_by uuid null,
-  created_at timestamptz default now()
+Skip recipients whose phone is in `opt_outs` (suppression query in same claim CTE) and mark them `opted_out`.
+
+Idempotency: never re-claim rows with non-null `telnyx_message_id`. Admin retry of `failed` rows resets to `pending`.
+
+## Step 4 — Telnyx delivery webhook (`telnyx-sms-status-webhook`)
+
+- Verify Telnyx signature (`Telnyx-Signature-Ed25519` + `Telnyx-Timestamp`, public key from secret).
+- Insert raw event into `telnyx_webhook_events`.
+- Find `sms_messages` by `telnyx_message_id`; map event_type to status:
+  - `message.sent` → `sent`
+  - `message.delivered` → `delivered` + `delivered_at`
+  - `message.finalized` (failed/undelivered) → `failed` + `last_error`
+- Mirror to `sms_blast_items` (same `telnyx_message_id`).
+- Recompute `sms_blasts.delivery_rate` / `failure_rate` (trigger or in-function).
+
+## Step 5 — New `telnyx-inbound-webhook` (replaces asterisk path for Telnyx)
+
+- Verify signature.
+- Normalize `from`/`to` to E.164.
+- Resolve tenant via `locations.telnyx_phone_number = to` OR `phone_number_routing.system_number = to`.
+- If body matches `/^(STOP|UNSUBSCRIBE|CANCEL|END|QUIT)$/i`:
+  - upsert `opt_outs (tenant_id, phone=from, channel='sms', reason=body)`.
+  - mark any pending `sms_blast_items` for that phone as `opted_out`.
+  - send compliant confirmation reply.
+- Match contact: `contacts.tenant_id = tenant AND normalize(phone|mobile_phone|secondary_phone) = from`.
+- If matched:
+  - upsert `sms_threads` (tenant_id, contact_id, location_id).
+  - insert `sms_messages` (direction=inbound, thread_id, from/to, body, telnyx_message_id).
+  - if this `from` had a recent outbound blast item, set `sms_blast_items.replied_at`.
+- If unmatched: insert `unmatched_inbound`.
+- Always insert raw payload into `telnyx_webhook_events`.
+
+## Step 6 — Health check edge function `telnyx-health-check`
+
+Returns a structured report used by `TextBlastCreator` and a new `Settings → SMS Health` page:
+- `TELNYX_API_KEY` present
+- Tenant has ≥1 active SMS-capable location with `telnyx_phone_number` + `telnyx_messaging_profile_id`
+- Sum `messages_per_second` across active numbers
+- For a target N recipients in W minutes: required mps = N/(W*60), estimated_completion_minutes, warning if capacity < required
+- 10DLC campaign status per number (from existing `telnyx-10dlc` data)
+- Telnyx GET `/v2/messaging_profiles/{id}` to verify inbound + delivery webhook URLs
+- `opt_outs` table reachable
+- pg_cron `sms-blast-processor` schedule exists
+
+## Step 7 — Cron schedule
+
+Migration adds (or replaces) every-minute job:
+```sql
+select cron.schedule(
+  'sms-blast-processor-every-minute', '* * * * *',
+  $$ select net.http_post(
+       url := 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/sms-blast-processor',
+       headers := jsonb_build_object('Content-Type','application/json',
+                                     'Authorization','Bearer <SERVICE_ROLE_KEY>')
+     ); $$
 );
--- RLS: tenant_id = get_user_tenant_id()
 ```
 
----
+If `pg_cron` isn't enabled, expose "Run Worker Now" button in `TextBlastDetail` and document fallback.
 
-## File map
+## Step 8 — UI work (existing pages, no new tables)
 
-```text
-supabase/functions/_shared/
-  scope-types.ts                          (new)
-  scope-assembly-rules.ts                 (new)
-  scope-reconciler.ts                     (new)
-  supplement-justification-builder.ts     (new)
-  scope-errors.ts                         (new)
-  scope-normalizer.ts                     (extend: emit fingerprint + canonical_group)
-  xactimate-line-parser.ts                (extend: capture page/raw_line/neighbors/layout/price_list/date)
+- `TextBlastCreator`: pre-send health check banner (capacity, required mps, ETA, warning).
+- `TextBlastDetail`: live counters (sent / delivered / failed / replied / opted-out / remaining), current pacing, ETA remaining, **Run Worker Now**, **Cancel Blast**, **Resume**.
+- Contact timeline: already pulls `sms_messages`; just confirm `delivered_at` and inbound rows render.
+- New `/settings/sms-health` page wrapping `telnyx-health-check`.
+- AI Follow-Up Queue: replace any direct fetch with `supabase.functions.invoke('telnyx-send-sms', ...)` so there's one outbound path.
 
-supabase/functions/scope-document-ingest/index.ts
-  - call reconciler, persist reconciliation, set parse_status=needs_review on FAIL
-  - return structured errors
+## Step 9 — Live test plan (your number)
 
-supabase/functions/scope-comparison-analyze/index.ts
-  - grouped-duplicate logic + v2 confidence + assembly engine + justification
-  - emit price_list_mismatch summary
-  - return structured errors
+Test mode flag on `sms_blasts.is_test_mode` (add column). Test mode:
+- accepts only an allow-list of phone numbers (seeded with `+17708420812`)
+- bypasses cron, runs synchronously, returns full diagnostic JSON
 
-supabase/functions/xact-compare-documents/index.ts
-  - thin wrapper that reuses the same shared modules
+Test sequence:
+1. Health check → green.
+2. Send 1 outbound to +17708420812 → verify `sms_messages.status` progresses queued → sent → delivered.
+3. Reply "TEST" from your phone → verify `sms_messages` inbound row + thread + contact link.
+4. Reply "STOP" → verify `opt_outs` row + suppression on next send (must 409).
+5. Create 10-recipient test blast (all internal test numbers) → verify all 10 delivered + UI counters.
+6. Only after all green → 5,000 production blast.
 
-supabase/functions/tests/
-  fixtures/gaymon-expected.json
-  fixtures/gaymon-parsed.json
-  scope-compare-gaymon.test.ts
+## Throughput math (surfaced in UI)
 
-src/hooks/useScopeIntelligence.ts        (surface new statuses/locks)
-src/pages/SupplementWorkflow.tsx         (badges, locks, reviewer actions, evidence drawer)
-src/pages/SupplementEngine.tsx           (badges + locks)
-src/components/supplement/EvidenceDrawer.tsx  (new)
-src/components/supplement/ReviewActions.tsx   (new)
-```
+For 5,000 in 30 min: required = 2.78 msg/s.
+- 1 num @ 1 mps → ~83 min
+- 2 → ~42 min
+- 3 → ~28 min ✅
+- 4 → ~21 min
 
----
+Health check **blocks** the 5,000 blast unless aggregate mps ≥ 3 (configurable).
 
-## Out of scope (call out before approval if you want these)
+## What I will NOT do
 
-- Re-parsing the Gaymon PDFs end-to-end inside the Deno test runner. The acceptance test will run against a parsed-items JSON fixture; full PDF→text reparse stays out of CI to avoid pulling the PDF library into the test sandbox.
-- Renaming `scope-comparison-analyze` → `compare-scope-documents`. Happy to do it if you want consistency with the brief.
-- Touching `generate-supplement-report` / `generate-supplement-packet` — the new `justification` field is available to them but I will not change their rendering until you confirm.
+- Will not create `sms_campaigns`, `sms_campaign_recipients`, `telnyx_numbers`, `sms_opt_outs`, `sms_delivery_events`, `company_messaging_settings`. Existing tables cover all of these.
+- Will not duplicate the sender. `telnyx-send-sms` stays the only outbound function.
+- Will not invent fake data or seed dummy numbers.
 
-## Verification once built
+## Deliverables order
 
-1. `supabase--test_edge_functions` runs `scope-compare-gaymon.test.ts` and asserts the full expected list.
-2. Manual run on the live Gaymon documents in the UI: badges appear, evidence drawer opens, locks block "Generate Final" until both reconciliations pass, and the produced report contains the bullet list in Phase 12 of the brief.
-3. `supabase--linter` after migration to catch policy/index regressions.
-
+1. Migration (Step 1 + Step 7 cron).
+2. Refactor `telnyx-send-sms`.
+3. Rewrite `sms-blast-processor` with claim + pacing + circuit breaker.
+4. Refactor `telnyx-sms-status-webhook` (signature + blast_item mirror).
+5. New `telnyx-inbound-webhook` (signature + STOP + contact match).
+6. New `telnyx-health-check`.
+7. UI: TextBlastCreator banner, TextBlastDetail controls, `/settings/sms-health`, AI Follow-Up routing fix.
+8. Live test to +17708420812 per Step 9.

@@ -20166,6 +20166,9 @@ export type Database = {
           contact_sequence_counter: number | null
           created_at: string
           created_by: string | null
+          current_day_reset_at: string | null
+          current_day_sent: number | null
+          daily_limit: number | null
           email: string | null
           formatted_address: string | null
           id: string
@@ -20176,16 +20179,21 @@ export type Database = {
           logo_url: string | null
           longitude: number | null
           manager_id: string | null
+          messages_per_second: number | null
           name: string
           phone: string | null
           phone_porting_status: string | null
           phone_setup_metadata: Json | null
           place_id: string | null
           qbo_location_ref: string | null
+          supports_sms: boolean | null
+          supports_voice: boolean | null
           telnyx_messaging_profile_id: string | null
           telnyx_phone_number: string | null
+          telnyx_phone_number_id: string | null
           telnyx_voice_app_id: string | null
           tenant_id: string
+          tendlc_campaign_status: string | null
           updated_at: string
           verified_address: Json | null
         }
@@ -20198,6 +20206,9 @@ export type Database = {
           contact_sequence_counter?: number | null
           created_at?: string
           created_by?: string | null
+          current_day_reset_at?: string | null
+          current_day_sent?: number | null
+          daily_limit?: number | null
           email?: string | null
           formatted_address?: string | null
           id?: string
@@ -20208,16 +20219,21 @@ export type Database = {
           logo_url?: string | null
           longitude?: number | null
           manager_id?: string | null
+          messages_per_second?: number | null
           name: string
           phone?: string | null
           phone_porting_status?: string | null
           phone_setup_metadata?: Json | null
           place_id?: string | null
           qbo_location_ref?: string | null
+          supports_sms?: boolean | null
+          supports_voice?: boolean | null
           telnyx_messaging_profile_id?: string | null
           telnyx_phone_number?: string | null
+          telnyx_phone_number_id?: string | null
           telnyx_voice_app_id?: string | null
           tenant_id: string
+          tendlc_campaign_status?: string | null
           updated_at?: string
           verified_address?: Json | null
         }
@@ -20230,6 +20246,9 @@ export type Database = {
           contact_sequence_counter?: number | null
           created_at?: string
           created_by?: string | null
+          current_day_reset_at?: string | null
+          current_day_sent?: number | null
+          daily_limit?: number | null
           email?: string | null
           formatted_address?: string | null
           id?: string
@@ -20240,16 +20259,21 @@ export type Database = {
           logo_url?: string | null
           longitude?: number | null
           manager_id?: string | null
+          messages_per_second?: number | null
           name?: string
           phone?: string | null
           phone_porting_status?: string | null
           phone_setup_metadata?: Json | null
           place_id?: string | null
           qbo_location_ref?: string | null
+          supports_sms?: boolean | null
+          supports_voice?: boolean | null
           telnyx_messaging_profile_id?: string | null
           telnyx_phone_number?: string | null
+          telnyx_phone_number_id?: string | null
           telnyx_voice_app_id?: string | null
           tenant_id?: string
+          tendlc_campaign_status?: string | null
           updated_at?: string
           verified_address?: Json | null
         }
@@ -41154,36 +41178,57 @@ export type Database = {
       }
       sms_blast_items: {
         Row: {
+          attempt_count: number | null
           blast_id: string
+          claimed_at: string | null
           contact_id: string | null
           contact_name: string | null
+          delivered_at: string | null
           error_message: string | null
+          from_number: string | null
           id: string
+          last_error: string | null
           phone: string
+          replied_at: string | null
           sent_at: string | null
           status: string
+          telnyx_message_id: string | null
           tenant_id: string
         }
         Insert: {
+          attempt_count?: number | null
           blast_id: string
+          claimed_at?: string | null
           contact_id?: string | null
           contact_name?: string | null
+          delivered_at?: string | null
           error_message?: string | null
+          from_number?: string | null
           id?: string
+          last_error?: string | null
           phone: string
+          replied_at?: string | null
           sent_at?: string | null
           status?: string
+          telnyx_message_id?: string | null
           tenant_id: string
         }
         Update: {
+          attempt_count?: number | null
           blast_id?: string
+          claimed_at?: string | null
           contact_id?: string | null
           contact_name?: string | null
+          delivered_at?: string | null
           error_message?: string | null
+          from_number?: string | null
           id?: string
+          last_error?: string | null
           phone?: string
+          replied_at?: string | null
           sent_at?: string | null
           status?: string
+          telnyx_message_id?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -41219,50 +41264,89 @@ export type Database = {
       }
       sms_blasts: {
         Row: {
+          actual_messages_per_second: number | null
+          cancel_reason: string | null
+          cancelled_at: string | null
           completed_at: string | null
           created_at: string
           created_by: string | null
+          delivered_count: number | null
+          delivery_rate: number | null
           failed_count: number
+          failure_rate: number | null
+          from_location_id: string | null
           id: string
+          is_test_mode: boolean | null
+          last_processor_run_at: string | null
           list_id: string | null
           name: string
           opted_out_count: number
+          replied_count: number | null
+          reply_rate: number | null
+          required_messages_per_second: number | null
           script: string
           sent_count: number
           started_at: string | null
           status: string
+          target_window_minutes: number | null
           tenant_id: string
           total_recipients: number
         }
         Insert: {
+          actual_messages_per_second?: number | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          delivered_count?: number | null
+          delivery_rate?: number | null
           failed_count?: number
+          failure_rate?: number | null
+          from_location_id?: string | null
           id?: string
+          is_test_mode?: boolean | null
+          last_processor_run_at?: string | null
           list_id?: string | null
           name: string
           opted_out_count?: number
+          replied_count?: number | null
+          reply_rate?: number | null
+          required_messages_per_second?: number | null
           script: string
           sent_count?: number
           started_at?: string | null
           status?: string
+          target_window_minutes?: number | null
           tenant_id: string
           total_recipients?: number
         }
         Update: {
+          actual_messages_per_second?: number | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          delivered_count?: number | null
+          delivery_rate?: number | null
           failed_count?: number
+          failure_rate?: number | null
+          from_location_id?: string | null
           id?: string
+          is_test_mode?: boolean | null
+          last_processor_run_at?: string | null
           list_id?: string | null
           name?: string
           opted_out_count?: number
+          replied_count?: number | null
+          reply_rate?: number | null
+          required_messages_per_second?: number | null
           script?: string
           sent_count?: number
           started_at?: string | null
           status?: string
+          target_window_minutes?: number | null
           tenant_id?: string
           total_recipients?: number
         }
@@ -41285,6 +41369,8 @@ export type Database = {
       }
       sms_messages: {
         Row: {
+          blast_id: string | null
+          blast_item_id: string | null
           body: string
           brand_id: string | null
           contact_id: string | null
@@ -41308,6 +41394,8 @@ export type Database = {
           to_number: string
         }
         Insert: {
+          blast_id?: string | null
+          blast_item_id?: string | null
           body: string
           brand_id?: string | null
           contact_id?: string | null
@@ -41331,6 +41419,8 @@ export type Database = {
           to_number: string
         }
         Update: {
+          blast_id?: string | null
+          blast_item_id?: string | null
           body?: string
           brand_id?: string | null
           contact_id?: string | null
@@ -41354,6 +41444,20 @@ export type Database = {
           to_number?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "sms_messages_blast_id_fkey"
+            columns: ["blast_id"]
+            isOneToOne: false
+            referencedRelation: "sms_blasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_blast_item_id_fkey"
+            columns: ["blast_item_id"]
+            isOneToOne: false
+            referencedRelation: "sms_blast_items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sms_messages_brand_id_fkey"
             columns: ["brand_id"]
@@ -50247,6 +50351,33 @@ export type Database = {
       check_subcontractor_capacity: {
         Args: { check_date: string; sub_id: string; tenant_id_param: string }
         Returns: boolean
+      }
+      claim_sms_blast_items: {
+        Args: { p_blast_id: string; p_limit: number }
+        Returns: {
+          attempt_count: number | null
+          blast_id: string
+          claimed_at: string | null
+          contact_id: string | null
+          contact_name: string | null
+          delivered_at: string | null
+          error_message: string | null
+          from_number: string | null
+          id: string
+          last_error: string | null
+          phone: string
+          replied_at: string | null
+          sent_at: string | null
+          status: string
+          telnyx_message_id: string | null
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "sms_blast_items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       cleanup_expired_canvass_sessions: { Args: never; Returns: undefined }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
