@@ -26,7 +26,7 @@ const ABC_CONFIG = {
   scopes: 'pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access',
   redirectUri: 'https://pitch-crm.ai/api/abc/callback',
   apiBase: {
-    staging: 'https://partners-sb.abcsupply.com/api',
+    sandbox: 'https://partners-sb.abcsupply.com/api',
     production: 'https://partners.abcsupply.com/api',
   },
 };
