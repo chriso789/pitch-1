@@ -65,14 +65,22 @@ const DemoRequest: React.FC = () => {
 
     setLoading(true);
     try {
+      // Only store phone if the user affirmatively consented to SMS.
+      // This keeps us 10DLC/TCPA-compliant: phone is optional and never used for SMS without opt-in.
+      const phoneToStore = formData.phone && smsConsent ? formData.phone : null;
+      const consentNote = formData.phone && smsConsent
+        ? `\n\n[SMS opt-in consent recorded on ${new Date().toISOString()} via web form at ${typeof window !== 'undefined' ? window.location.href : '/demo'}]`
+        : '';
+      const messageToStore = (formData.message || '') + consentNote;
+
       const { data, error: dbError } = await supabase.from('demo_requests').insert({
         first_name: formData.firstName,
         last_name: formData.lastName,
         email: formData.email,
-        phone: formData.phone || null,
+        phone: phoneToStore,
         company_name: formData.companyName,
         job_title: formData.jobTitle || null,
-        message: formData.message || null,
+        message: messageToStore || null,
         email_sent: false,
         interview_status: 'pending',
       }).select('id').single();
