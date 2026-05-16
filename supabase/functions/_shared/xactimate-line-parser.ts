@@ -55,6 +55,8 @@ export interface ParseDebugRow {
   rejection_reason: string | null;
 }
 
+// Augmented at post-pass; declared via index signature on ParsedLineItem consumers
+
 export interface ParseResult {
   header: ParsedHeader;
   lineItems: ParsedLineItem[];
@@ -366,6 +368,12 @@ export function parseXactimateLines(rawText: string, _documentId: string): Parse
     }
   }
   flushPending();
+
+  // Post-pass: attach previous_line / next_line for evidence anchoring
+  for (let i = 0; i < items.length; i++) {
+    (items[i] as any).previous_line = i > 0 ? items[i - 1].raw_line : null;
+    (items[i] as any).next_line = i < items.length - 1 ? items[i + 1].raw_line : null;
+  }
 
   const totals = parseTotals(rawText);
   const header = parseHeader(rawText);
