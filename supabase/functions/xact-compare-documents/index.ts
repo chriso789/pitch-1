@@ -18,11 +18,26 @@ function norm(s: string | null | undefined): string {
   return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function matchKey(line: any): string {
-  // canonical_item_id wins, otherwise xact code, otherwise normalized desc
+// Normalize a description so the same line item matches across docs even when
+// the parser assigns slightly different Xactimate codes or punctuation.
+// Preserves meaningful distinctions like "w/ felt" vs "w/out felt".
+function descKey(line: any): string {
+  let s = String(line.raw_description || '').toLowerCase();
+  // Preserve felt distinction before stripping punctuation
+  const woFelt = /w\/?\s*out\s*felt|without\s*felt|no\s*felt/.test(s);
+  const wFelt = !woFelt && /w\/?\s*felt|with\s*felt/.test(s);
+  // Strip leading verbs like "remove", "r&r", "detach & reset"
+  s = s.replace(/^(r\s*&\s*r|remove\s*&\s*replace|remove|detach\s*&\s*reset|reset|install)\b/i, '');
+  s = s.replace(/[^a-z0-9]+/g, ' ').trim();
+  const feltTag = woFelt ? ' wofelt' : wFelt ? ' wfelt' : '';
+  const removeTag = /^(remove|r\s*r|detach)/.test(String(line.raw_description || '').toLowerCase()) ? ' rm' : '';
+  return s + feltTag + removeTag;
+}
+
+function codeKey(line: any): string | null {
   if (line.canonical_item_id) return `c:${line.canonical_item_id}`;
   if (line.raw_code) return `k:${norm(line.raw_code)}`;
-  return `d:${norm(line.raw_description)}`;
+  return null;
 }
 
 // Skip tax line items - tax handled separately at totals level, not compared
