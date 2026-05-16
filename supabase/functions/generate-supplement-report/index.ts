@@ -231,7 +231,8 @@ Deno.serve(async (req: Request) => {
     drawText(`Company RCV Total: ${fmtMoney(comparison.company_total_rcv)}`);
     drawText(`Net Supplement Requested: ${fmtMoney(comparison.net_supplement_amount)}`, { bold: true });
     y -= 2;
-    drawText(`Lines Added: ${comparison.added_count ?? 0}   •   Removed: ${comparison.removed_count ?? 0}   •   Qty Δ: ${comparison.qty_change_count ?? 0}   •   Price Δ: ${comparison.price_change_count ?? 0}`, { size: 9, color: [0.35, 0.35, 0.4] });
+    const nameChangeCount = (lines ?? []).filter((l: any) => l.change_type === 'name_change').length;
+    drawText(`Name Diffs: ${nameChangeCount}   •   Added: ${comparison.added_count ?? 0}   •   Removed: ${comparison.removed_count ?? 0}   •   Qty Δ: ${comparison.qty_change_count ?? 0}   •   Price Δ: ${comparison.price_change_count ?? 0}`, { size: 9, color: [0.35, 0.35, 0.4] });
     drawDivider(brand);
 
     // ===== Price List (first page) =====
