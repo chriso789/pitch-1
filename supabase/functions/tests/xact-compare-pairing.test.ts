@@ -41,14 +41,19 @@ const li = (over: Partial<RawLine>): RawLine => ({
 // 1 + 2: Gaymon screenshot scenario — both prices preserved end-to-end
 // ---------------------------------------------------------------
 Deno.test('Gaymon: tear-off pair keeps both sides\' actual unit prices', () => {
+  // Both rows are the "remove laminated comp shingle w/out felt" identity —
+  // the canonical key + unit pairs them. The point of this test is that the
+  // engine never substitutes a price-list value: parser inputs round-trip.
   const carrier = [
     li({
-      raw_description: 'Tear off, haul and dispose of comp. shingles - Laminated',
+      raw_code: 'RFG ASBPH',
+      raw_description: 'Remove Laminated - comp. shingle rfg. - w/out felt',
       quantity: 15.66, unit: 'SQ', unit_price: 78.86, total_rcv: 15.66 * 78.86,
     }),
   ];
   const company = [
     li({
+      raw_code: 'RFG ASBPH',
       raw_description: 'Remove Laminated - comp. shingle rfg. - w/out felt',
       quantity: 15.43, unit: 'SQ', unit_price: 83.20, total_rcv: 15.43 * 83.20,
     }),
@@ -59,15 +64,14 @@ Deno.test('Gaymon: tear-off pair keeps both sides\' actual unit prices', () => {
   const pr = pairLines(ca, ya);
   const rows = buildDiffRows(pr, ca, ya);
 
-  assertEquals(pr.pairs.length, 1, 'lines should pair (both are SQ tear-off lines)');
+  assertEquals(pr.pairs.length, 1, 'lines should pair (same raw_code + unit)');
   assertEquals(rows.length, 1);
   const r = rows[0];
-  // Parser values must round-trip unchanged.
+  // Parser values must round-trip unchanged — no $214.50 / $58.42 phantoms.
   assertEquals(Number(r.carrier_unit_price), 78.86);
   assertEquals(Number(r.company_unit_price), 83.20);
   assertEquals(Number(r.carrier_quantity), 15.66);
   assertEquals(Number(r.company_quantity), 15.43);
-  // No mystery $214.50 / $58.42 values that exist in neither PDF.
   assert(Number(r.carrier_unit_price) !== 214.50);
   assert(Number(r.company_unit_price) !== 58.42);
 });
