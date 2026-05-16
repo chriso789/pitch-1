@@ -271,6 +271,7 @@ Deno.serve(async (req) => {
       removed: rows.filter(r => r.change_type === 'removed').length,
       qty_change: rows.filter(r => r.change_type === 'qty_change').length,
       price_change: rows.filter(r => r.change_type === 'price_change').length,
+      name_change: rows.filter(r => r.change_type === 'name_change').length,
     };
 
     // Persist
