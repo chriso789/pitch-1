@@ -235,6 +235,38 @@ Deno.serve(async (req: Request) => {
     drawText(`Name Diffs: ${nameChangeCount}   •   Added: ${comparison.added_count ?? 0}   •   Removed: ${comparison.removed_count ?? 0}   •   Qty Δ: ${comparison.qty_change_count ?? 0}   •   Price Δ: ${comparison.price_change_count ?? 0}`, { size: 9, color: [0.35, 0.35, 0.4] });
     drawDivider(brand);
 
+    // ===== Line Item Name Differences (lead section) =====
+    const nameDiffRows = (lines ?? []).filter((l: any) => l.change_type === 'name_change');
+    if (nameDiffRows.length) {
+      drawText('Line Item Name Differences', { size: 12, bold: true, color: brand });
+      drawText('Same item, different wording between the carrier estimate and the company estimate.', { size: 8, color: [0.45, 0.45, 0.5] });
+      y -= 4;
+      const colHdrY = y;
+      page.drawRectangle({ x: MARGIN, y: y - 12, width: PAGE_W - MARGIN * 2, height: 12, color: rgb(0.94, 0.96, 0.99) });
+      page.drawText('CARRIER WORDING', { x: MARGIN + 4, y: y - 9, size: 8, font: bold, color: rgb(0.25, 0.3, 0.4) });
+      page.drawText('COMPANY WORDING', { x: MARGIN + (PAGE_W - MARGIN * 2) / 2 + 4, y: y - 9, size: 8, font: bold, color: rgb(0.25, 0.3, 0.4) });
+      y -= 14;
+      const halfW = (PAGE_W - MARGIN * 2) / 2 - 6;
+      for (const l of nameDiffRows) {
+        const cLines = wrap(`${l.carrier_code || ''}  ${l.carrier_description || ''}`.trim(), 8, halfW);
+        const yLines = wrap(`${l.company_code || ''}  ${l.company_description || ''}`.trim(), 8, halfW);
+        const rowH = Math.max(cLines.length, yLines.length) * 10 + 6;
+        ensureSpace(rowH);
+        const yStart = y;
+        for (let i = 0; i < cLines.length; i++) {
+          page.drawText(safePdfText(cLines[i]), { x: MARGIN, y: yStart - 8 - i * 10, size: 8, font, color: rgb(0.15, 0.15, 0.2) });
+        }
+        for (let i = 0; i < yLines.length; i++) {
+          page.drawText(safePdfText(yLines[i]), { x: MARGIN + (PAGE_W - MARGIN * 2) / 2 + 4, y: yStart - 8 - i * 10, size: 8, font, color: rgb(0.15, 0.15, 0.2) });
+        }
+        y -= rowH;
+        page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.3, color: rgb(0.88, 0.88, 0.92) });
+        y -= 4;
+      }
+      drawDivider(brand);
+    }
+
+
     // ===== Price List (first page) =====
     drawText('Price List Reference', { size: 12, bold: true, color: brand });
     drawText('Unit pricing used in this comparison (deduplicated by item code).', { size: 8, color: [0.45, 0.45, 0.5] });
