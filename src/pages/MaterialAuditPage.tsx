@@ -1377,7 +1377,7 @@ function CreditClaimsTab({ claims, tenantId, audits }: { claims: any[]; tenantId
                           <TableHead className="text-xs">Item</TableHead>
                           <TableHead className="text-xs text-right">Qty</TableHead>
                           <TableHead className="text-xs text-right">Charged</TableHead>
-                          <TableHead className="text-xs text-right">Agreed</TableHead>
+                          <TableHead className="text-xs text-right">Price List</TableHead>
                           <TableHead className="text-xs text-right">Overcharge</TableHead>
                         </TableRow>
                       </TableHeader>
