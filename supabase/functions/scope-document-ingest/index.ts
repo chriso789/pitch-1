@@ -648,7 +648,7 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
         .update({
           parse_status: 'complete',
           parse_completed_at: new Date().toISOString(),
-          parser_version: '1.0.0'
+          parser_version: '2.0.0'
         })
         .eq("id", document.id);
 
