@@ -1,101 +1,96 @@
+## Problem
 
-# Supplement Engine — Accuracy Layer v2
+In the comparison view (`ProjectInsuranceTab` → `ComparisonDetail`) every row shows `Carrier Qty × $` and `Company Qty × $` that do not match either source PDF. Example from the screenshot:
 
-This plan adds a second layer on top of the existing scope-document-ingest / compare-scope-documents / SupplementEngine code. Nothing existing is removed; new modules wrap and augment the current pipeline.
+- Row `RFG ASBPH — Remove Laminated comp. shingle rfg. w/ felt`
+  - UI says: Carrier `28.33 SQ × $214.50`, Company `28.33 SQ × $58.42`
+  - Actual carrier PDF: `15.66 SQ × $78.86` (Tear off / Remove laminated)
+  - Actual company PDF: `15.43 SQ × $83.20` (Remove laminated w/out felt)
+- Several "added" rows (Gutter, Ice & water, Turbine, Drip edge) show a carrier value of "—" even when those items exist in the carrier scope under slightly different descriptions.
 
-## 1. Shared types and rules (new files)
+This is a backend correctness problem in the comparison engine, not a Gaymon-only issue. It affects every project across every company.
 
-- `supabase/functions/_shared/scope-types.ts` — `NormalizedScopeItem`, `ScopeMatch`, `AssemblyFinding`, `ReconciliationResult`, `ScopeCompareSummary`, `ScopeCompareIssue`. Includes deterministic `fingerprint = sha1(canonical_key|unit|section|line_number|round(qty,2)|round(total,2))` to prevent accidental merges.
-- `supabase/functions/_shared/scope-assembly-rules.ts` — Exports `getAssemblyRules()` and `evaluateAssemblyRules({carrierItems, contractorItems})`. Ships rules: `ROOF_REPLACEMENT_BASE_ASSEMBLY`, `FLORIDA_ROOF_CODE_UPGRADE_ASSEMBLY`, `EXTERIOR_ELEVATION_REPAIR_ASSEMBLY`, `GUTTER_DOWNSPOUT_ASSEMBLY`, `TEMPORARY_REPAIR_ASSEMBLY` with trigger keys, expected/optional related keys, severity, and explanation templates as specified.
+## Root-cause hypotheses to confirm during Phase 1
 
-## 2. Reconciliation engine
+1. **Wrong matching key.** `scope-compare-core.ts` is pairing carrier and company lines by something other than canonical code + unit + section (e.g., partial description match or `raw_code` only), so unrelated lines collide on the same row.
+2. **Quantity / unit-price aggregation bug.** When multiple parsed lines share a canonical key (elevation-specific gutters, multi-page subtotals), the engine sums quantities but copies a unit price from one arbitrary line instead of computing `total / qty`.
+3. **Description swap.** The `description` written to `scope_compare_results` is taken from the contractor side, but the `unit_price` is taken from the network/default price list, not from the parsed PDF line — producing the $214.50 / $58.42 numbers that exist nowhere in either PDF.
+4. **Tear-off vs. R&R confusion.** Xactimate `RFG ASBPH` (remove + replace) is being matched against the carrier's plain "Remove" line, so quantity (15.66 vs 28.33) and price get doubled.
 
-- `supabase/functions/_shared/scope-reconciler.ts` — `reconcileParsedDocument({documentId, parsedLineItems, parsedHeaderTotals})` returns `ReconciliationResult` with sums, stated values, deltas, % delta, `passed`, and `warnings`.
-  - PASS if within 2% or $2 of stated RCV; WARNING 2–5%; FAIL >5%.
-  - On FAIL: write back to `insurance_scope_documents.raw_json_output.reconciliation` and set `parse_status='needs_review'`.
-- Wired into `scope-document-ingest` post-parse step.
+## Plan
 
-## 3. Compare engine upgrades
+### Phase 1 — Audit (no code changes)
+1. Pick 3 real projects across 3 tenants that already have a comparison row (Gaymon + 2 others).
+2. For each, dump:
+   - `scope_parse_debug_rows` for both documents → confirm parser captured the correct `quantity`, `unit`, `unit_price`, `total` per line.
+   - `scope_compare_results` rows → confirm what was persisted.
+3. Compare parser output to comparison output. Locate the exact step that drops/replaces the unit price.
+4. Write findings into `docs/SUPPLEMENT_COMPARISON_AUDIT.md`.
 
-In `compare-scope-documents/index.ts`:
+### Phase 2 — Fix pairing in `scope-compare-core.ts`
+1. Pair lines by composite key in this priority order:
+   1. `canonical_key` (from `scope-normalizer`)
+   2. `xactimate_code` (e.g., `RFG ASBPH`) + `unit`
+   3. Fuzzy description match only as a last resort and only when units agree
+2. Reject any pairing where `unit` differs (SQ vs LF vs EA) — emit two rows instead.
+3. When multiple lines on one side share the same key (elevation rows), aggregate them into a parent row and put the per-elevation lines under `grouped_children` (column already exists).
+4. Always carry `unit_price` straight from the parsed line. Never substitute a price-list value into `carrier_unit_price` / `company_unit_price`. Price-list deltas live in a separate `price_list_delta_possible` flag.
 
-- Normalize both sides to `NormalizedScopeItem[]` via the shared model.
-- **Grouped duplicate handling**: keep elevation-specific lines, but when contractor has N elevation lines and carrier has fewer/grouped, do canonical_key+unit aggregation, emit one parent row + `grouped_children`. New `result_type`s: `grouped_quantity_delta`, `grouped_total_delta`, `grouped_missing_from_carrier`, `grouped_possible_duplicate`.
-- **Matching priority**: same section first → quantity-close cross-section (lower confidence) → grouped roll-up → missing_from_carrier when carrier grouped total = 0.
-- **Confidence v2** scoring with the exact weights, penalties, and bands (`exact_match` / `strong_fuzzy_match` / `possible_match_needs_review` / `no_match`). Persist `match_score_breakdown` jsonb with components + reason codes + penalties.
-- **Price list / date awareness**: detect carrier vs contractor price list (e.g. `FLTA8X_OCT24` vs `FLTA8X_NOV24`). Add `price_list_mismatch`, `carrier_price_list`, `contractor_price_list`, `price_list_explanation` to compare summary. Unit-price diffs become `price_list_delta_possible` (warning) instead of overcharge when lists differ, unless total impact is large.
-- Run assembly rules and append `AssemblyFinding[]` to summary.
+### Phase 3 — Fix the persistence layer in `compare-scope-documents/index.ts`
+1. When writing `scope_compare_results`, store:
+   - `carrier_quantity`, `carrier_unit`, `carrier_unit_price`, `carrier_total` from the matched carrier line
+   - Same for company side
+   - `delta_rcv = company_total − carrier_total` (per row)
+2. If one side is missing, store `null` for that side and `change_type = 'added'` or `'removed'` (not "—" derived in the UI).
+3. Re-derive `change_type` after pairing:
+   - both present, qty equal, price equal → `match`
+   - both present, qty differs → `qty_change`
+   - both present, price differs → `price_change`
+   - only one side → `added` / `removed`
 
-## 4. Justification builder
+### Phase 4 — Backfill existing comparisons
+1. Add an admin-only edge function `recompute-scope-comparisons` that:
+   - Iterates every row in `scope_compare_runs`
+   - Re-runs the comparison from the already-parsed `insurance_scope_documents`
+   - Overwrites `scope_compare_results` for that run
+2. Trigger it once for all tenants after Phase 3 ships. Existing UI will instantly show corrected values.
 
-- `supabase/functions/_shared/supplement-justification-builder.ts` — `buildJustification(issue)` returns the four templated strings (missing/qty/price/grouped/assembly) and emits `{plain_english, contractor_note, adjuster_note, internal_note}`. Called by compare function and surfaced per row in the UI.
+### Phase 5 — Regression tests
+1. Extend `supabase/functions/tests/fixtures/gaymon-parsed.ts` with the exact numeric facts visible in the user screenshots:
+   - Carrier `Remove laminated` = `15.66 SQ × $78.86`
+   - Company `Remove laminated w/out felt` = `15.43 SQ × $83.20`
+   - 4 elevations of gutter on company side aggregate to `85 LF × $8.50`
+2. Add assertions:
+   - The paired row keeps both sides' actual prices.
+   - No row contains a unit price that was not present in either parsed source.
+   - `change_type` matches the qty/price relationship.
+3. Add a second fixture from a non-Gaymon project (use one of the 3 projects audited in Phase 1) to prove the fix generalises.
 
-## 5. Database migration
+### Phase 6 — UI polish (small)
+1. Show both sides' totals (`carrier_total`, `company_total`) inline so reviewers can sanity-check `Δ RCV` without math.
+2. When a row is aggregated from elevation children, show a small chevron and the child rows in a sub-table.
 
-New columns / table:
+## Technical Details
 
-```sql
-ALTER TABLE scope_compare_results
-  ADD COLUMN IF NOT EXISTS group_id text,
-  ADD COLUMN IF NOT EXISTS parent_result_id uuid REFERENCES scope_compare_results(id),
-  ADD COLUMN IF NOT EXISTS grouped_children jsonb NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS match_score_breakdown jsonb;
+- Files touched:
+  - `supabase/functions/_shared/scope-compare-core.ts` (pairing rewrite)
+  - `supabase/functions/_shared/scope-normalizer.ts` (only if Phase 1 shows canonical keys are unstable)
+  - `supabase/functions/compare-scope-documents/index.ts` (persistence)
+  - new `supabase/functions/recompute-scope-comparisons/index.ts`
+  - `supabase/functions/tests/fixtures/gaymon-parsed.ts` + new fixture
+  - `src/features/projects/components/ProjectInsuranceTab.tsx` (sub-row UI only)
+- Database: no schema changes required; `scope_compare_results` already has `carrier_*`, `company_*`, `grouped_children`, `match_score_breakdown`.
+- Backfill is idempotent: `recompute-scope-comparisons` deletes and re-inserts rows per run, wrapped in a transaction.
 
-CREATE TABLE scope_compare_overrides (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  compare_run_id uuid NOT NULL,
-  result_id uuid,
-  override_type text NOT NULL,
-  carrier_line_item_id uuid,
-  contractor_line_item_id uuid,
-  reviewer_note text,
-  created_by uuid,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE scope_compare_overrides ENABLE ROW LEVEL SECURITY;
--- Tenant-scoped policies via user_company_access.
-```
+## Out of scope
 
-If `scope_compare_results` doesn't exist under that name in this project, the migration is adjusted to the actual table (`scope_comparison_lines`) — verified during build.
+- Re-parsing the source PDFs (parser output is trusted; Phase 1 will confirm).
+- Changing the supplement-report PDF format.
+- Any change to the assembly-rule engine or justification builder.
 
-## 6. Evidence anchoring
+## Success criteria
 
-- Extend the parser output per item: `page_number`, `raw_line`, `previous_line`, `next_line`, `section_name`, `layout_type`, `row_bbox` (nullable). Persisted on `insurance_scope_line_items` (or `evidence_jsonb` if column already exists).
-- UI: add "View Evidence" drawer per result row showing both raw lines, parser layout, page #, parsed fields, and the confidence breakdown. Falls back to "Page unavailable from parser text extraction."
-
-## 7. UI quality locks (`SupplementEngine.tsx` / `SupplementWorkflow.tsx`)
-
-- Status badges (already partially present in `ScopeStatusBadges.tsx`): Parsed / Needs Review / Reconciled / Reconciliation Warning / AI Fallback Used / Final Report Ready.
-- Disable "Generate Final Supplement Report" unless both docs parsed + reconciliation passed (or explicit override) + compare completed + missing/possible rows reviewed.
-- Reviewer actions: mark correct / not a match / link / split / merge / exclude / include / add note → write to `scope_compare_overrides`. Overrides reapplied on re-open.
-
-## 8. Hard error contract
-
-Every edge function returns:
-```json
-{ "success": false, "error_code": "...", "message": "...", "details": {} }
-```
-Codes: `DOCUMENT_NOT_FOUND`, `DOCUMENT_NOT_PARSED`, `PARSER_NO_LINE_ITEMS`, `PARSER_LAYOUT_UNKNOWN`, `PARSER_RECONCILIATION_FAILED`, `COMPARE_NO_CARRIER_LINES`, `COMPARE_NO_CONTRACTOR_LINES`, `COMPARE_LOW_CONFIDENCE`, `TENANT_ACCESS_DENIED`.
-
-## 9. Gaymon acceptance test
-
-- `supabase/functions/tests/fixtures/gaymon-expected.json` — exact fixture from the spec.
-- `supabase/functions/tests/scope-compare-gaymon.test.ts` — feeds mocked normalized items into the compare pipeline and asserts: totals, every required `missing_from_carrier` description, every `quantity_delta` (valley/hip-ridge/pipe-jack/drip-edge), grouped gutter roll-up, `price_list_mismatch=true`, and that `can_mark_final=false` when reconciliation fails.
-
-## 10. Implementation order
-
-1. Types + assembly rules + reconciler (pure modules, unit-testable).
-2. DB migration (results columns + overrides table + RLS).
-3. Compare function: normalize → group → score v2 → price-list → assembly → justification.
-4. Ingest function: reconcile post-parse, persist evidence fields.
-5. Error envelope across all four edge functions.
-6. UI: evidence drawer, reviewer actions, gating logic, badges already wired.
-7. Gaymon fixture + test, run via `supabase--test_edge_functions`.
-
-## Out of scope (explicit)
-
-- No replacement of existing parser or comparison entry points.
-- No new AI model calls; assembly + reconciliation are deterministic.
-- No changes to unrelated CRM modules.
-
+- For every row in every project's comparison, `carrier_unit_price` and `company_unit_price` either equal a value present in the corresponding parsed PDF line or are `null`.
+- No row pairs lines whose units differ.
+- Gaymon and the second-project fixture both pass the new regression tests.
+- After backfill, the screenshot scenario shows `Carrier 15.66 SQ × $78.86 / Company 15.43 SQ × $83.20 / Δ RCV` matching the real delta.
