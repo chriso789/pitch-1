@@ -360,20 +360,98 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
         .update({ parse_status: 'parsing' })
         .eq("id", document.id);
 
-      // Extract actual text from the PDF before calling the AI
+      // Extract actual text from the PDF
       const pdfText = await extractPdfText(pdfBytes);
       const truncatedText = pdfText.length > 120000 ? pdfText.slice(0, 120000) : pdfText;
       console.log("[scope-ingest] Extracted PDF text length:", pdfText.length);
 
-      // Call AI for extraction with timeout
-      // Create timeout promise (60 seconds)
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('AI extraction timeout after 60 seconds')), 60000)
-      );
+      // ---- DETERMINISTIC PARSER FIRST ----
+      let extracted: ExtractedScope = { line_items: [] };
+      let parserType: 'deterministic' | 'ai_fallback' | 'hybrid' = 'ai_fallback';
+      let layoutDetected: string = 'unknown';
+      let parserWarnings: string[] = [];
+      let reconciliation: any = null;
+      let debugRowsToInsert: any[] = [];
 
-      const aiResponsePromise = generateAIResponse({
-        system: extractionPrompt,
-        user: `Extract structured data from this ${body.document_type} insurance scope document.
+      try {
+        const det = parseXactimateLines(pdfText || '', document.id);
+        layoutDetected = det.layout_detected;
+        parserWarnings = det.warnings;
+        reconciliation = det.reconciliation;
+        console.log('[scope-parser] deterministic result:', {
+          layout: det.layout_detected,
+          items: det.lineItems.length,
+          warnings: det.warnings,
+          reconciliation: det.reconciliation,
+        });
+
+        // Accept deterministic result if we have items AND we reconcile within 5%
+        // OR we have many items and no doc total to compare to.
+        const accept = det.lineItems.length > 0 && (
+          det.reconciliation.within_tolerance === true ||
+          det.reconciliation.doc_rcv == null
+        );
+
+        if (accept) {
+          parserType = 'deterministic';
+          extracted = {
+            carrier_name: det.header.carrier_name || undefined,
+            claim_number: det.header.claim_number || undefined,
+            format_family: 'xactimate',
+            totals: {
+              total_rcv: det.totals.total_rcv ?? undefined,
+              total_acv: det.totals.total_acv ?? undefined,
+              recoverable_depreciation: det.totals.recoverable_depreciation ?? undefined,
+              deductible: det.totals.deductible ?? undefined,
+              tax_amount: det.totals.material_sales_tax ?? undefined,
+              total_net_claim: det.totals.net_claim ?? undefined,
+            },
+            property: { address: det.header.property_address || undefined },
+            price_list: { name: det.header.price_list || undefined },
+            line_items: det.lineItems.map((li) => ({
+              raw_description: li.raw_description,
+              raw_category: li.section_name || undefined,
+              quantity: li.quantity ?? undefined,
+              unit: li.unit ?? undefined,
+              unit_price: li.effective_unit_price ?? li.unit_price ?? undefined,
+              total_rcv: li.total_rcv ?? undefined,
+              depreciation_amount: li.depreciation_amount ?? undefined,
+              total_acv: li.total_acv ?? undefined,
+              section_name: li.section_name || undefined,
+              page_number: li.page_number ?? undefined,
+              // carry layout-B specifics on the side via type cast
+              ...(li.remove_price != null || li.replace_price != null
+                ? { _remove_price: li.remove_price, _replace_price: li.replace_price, _layout: li.layout_type }
+                : { _layout: li.layout_type }),
+            }) as any),
+          };
+        }
+
+        // Stage debug rows for persistence after document insert
+        debugRowsToInsert = det.debugRows.map((r) => ({
+          tenant_id: tenantId,
+          document_id: document.id,
+          raw_line: r.raw_line,
+          page_number: r.page_number,
+          parser_layout: r.parser_layout,
+          parsed_json: r.parsed_json,
+          accepted: r.accepted,
+          rejection_reason: r.rejection_reason,
+        }));
+      } catch (detErr) {
+        console.error('[scope-parser] deterministic parser failed:', detErr);
+        parserWarnings.push(`deterministic_error:${detErr instanceof Error ? detErr.message : String(detErr)}`);
+      }
+
+      // ---- AI FALLBACK if deterministic didn't yield usable items ----
+      if (parserType !== 'deterministic') {
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('AI extraction timeout after 60 seconds')), 60000)
+        );
+
+        const aiResponsePromise = generateAIResponse({
+          system: extractionPrompt,
+          user: `Extract structured data from this ${body.document_type} insurance scope document.
 File name: ${fileName}
 
 === BEGIN EXTRACTED PDF TEXT ===
@@ -381,21 +459,33 @@ ${truncatedText || '(no extractable text — PDF may be image-only; infer minima
 === END EXTRACTED PDF TEXT ===
 
 Read the ACTUAL text above. Do not invent numbers. Detect whether the columns are LAYOUT A (UNIT PRICE) or LAYOUT B (REMOVE + REPLACE) per the system prompt and normalize unit_price accordingly. Return JSON only.`,
-        model: "google/gemini-3-flash-preview",
-        temperature: 0
-      });
+          model: "google/gemini-3-flash-preview",
+          temperature: 0,
+        });
 
-      // Race the AI call against the timeout
-      const aiResponse = await Promise.race([aiResponsePromise, timeoutPromise]);
+        const aiResponse = await Promise.race([aiResponsePromise, timeoutPromise]);
+        extracted = parseAIJson<ExtractedScope>(aiResponse.text, { line_items: [] });
+        console.log("[scope-ingest] AI fallback extraction complete:", {
+          carrier: extracted.carrier_name,
+          line_items_count: extracted.line_items?.length || 0,
+        });
+      }
 
-      const extracted = parseAIJson<ExtractedScope>(aiResponse.text, {
-        line_items: []
-      });
+      // Persist parser debug rows (best-effort)
+      if (debugRowsToInsert.length > 0) {
+        try {
+          const CHUNK = 500;
+          for (let i = 0; i < debugRowsToInsert.length; i += CHUNK) {
+            const { error: dbgErr } = await supabase
+              .from('scope_parse_debug_rows')
+              .insert(debugRowsToInsert.slice(i, i + CHUNK));
+            if (dbgErr) console.warn('[scope-parser] debug insert error:', dbgErr.message);
+          }
+        } catch (e) {
+          console.warn('[scope-parser] debug insert failed:', e);
+        }
+      }
 
-      console.log("[scope-ingest] AI extraction complete:", {
-        carrier: extracted.carrier_name,
-        line_items_count: extracted.line_items?.length || 0
-      });
 
       // Normalize carrier name
       const carrierNormalized = normalizeCarrier(extracted.carrier_name);
