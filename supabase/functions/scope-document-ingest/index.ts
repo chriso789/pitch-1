@@ -8,6 +8,8 @@ import { generateAIResponse, parseAIJson } from "../_shared/lovable-ai.ts";
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 import { parseXactimateLines } from "../_shared/xactimate-line-parser.ts";
 import { canonicalScopeKey, classifyScopeGroup } from "../_shared/scope-normalizer.ts";
+import { reconcileParsedDocument } from "../_shared/scope-reconciler.ts";
+import { fingerprintScopeItem } from "../_shared/scope-fingerprint.ts";
 
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
@@ -408,7 +410,7 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
             },
             property: { address: det.header.property_address || undefined },
             price_list: { name: det.header.price_list || undefined },
-            line_items: det.lineItems.map((li) => ({
+            line_items: det.lineItems.map((li: any) => ({
               raw_description: li.raw_description,
               raw_category: li.section_name || undefined,
               quantity: li.quantity ?? undefined,
@@ -419,7 +421,10 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
               total_acv: li.total_acv ?? undefined,
               section_name: li.section_name || undefined,
               page_number: li.page_number ?? undefined,
-              // carry layout-B specifics on the side via type cast
+              _raw_line: li.raw_line ?? null,
+              _previous_line: li.previous_line ?? null,
+              _next_line: li.next_line ?? null,
+              _tax: li.tax ?? null,
               ...(li.remove_price != null || li.replace_price != null
                 ? { _remove_price: li.remove_price, _replace_price: li.replace_price, _layout: li.layout_type }
                 : { _layout: li.layout_type }),
