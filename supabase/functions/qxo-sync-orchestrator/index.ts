@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { loadConnectionWithCredentials } from '../_shared/qxo-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -248,9 +249,8 @@ async function syncOneTenant(supabase: any, conn: any): Promise<SyncResult> {
   try {
     const { data: loginData, cookie } = await login(conn);
     result.profile = await syncProfile(supabase, conn, loginData);
-    // re-read account_id after profile sync
-    const { data: refreshed } = await supabase
-      .from('qxo_connections').select('*').eq('id', conn.id).single();
+    // re-read account_id (and merge secrets) after profile sync
+    const refreshed = await loadConnectionWithCredentials(supabase, conn.tenant_id);
     const c2 = refreshed || conn;
     result.balance = await syncBalance(supabase, c2, cookie);
     result.invoices = await syncInvoices(supabase, c2, cookie);
@@ -316,7 +316,9 @@ Deno.serve(async (req) => {
 
     const results: SyncResult[] = [];
     for (const conn of connections) {
-      results.push(await syncOneTenant(supabase, conn));
+      // Merge in secrets (username/password/tokens) from qxo_credentials.
+      const full = await loadConnectionWithCredentials(supabase, conn.tenant_id).catch(() => null);
+      results.push(await syncOneTenant(supabase, full || conn));
     }
 
     return new Response(

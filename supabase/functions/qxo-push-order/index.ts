@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { loadConnectionWithCredentials } from '../_shared/qxo-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -78,13 +79,8 @@ Deno.serve(async (req) => {
       throw new Error('tenant_id and items[] are required');
     }
 
-    const { data: conn, error: connErr } = await supabase
-      .from('qxo_connections')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .maybeSingle();
-    if (connErr) throw connErr;
-    if (!conn) throw new Error('No QXO connection found for this tenant.');
+    // Secrets live in qxo_credentials (service-role only) and are merged in here.
+    const conn = await loadConnectionWithCredentials(supabase, tenant_id);
 
     // Authenticate (also validates credentials surface in-body errors)
     const { data: loginData, cookie } = await login(conn);

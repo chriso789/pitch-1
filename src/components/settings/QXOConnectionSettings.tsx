@@ -8,26 +8,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck } from 'lucide-react';
 import { QXOArDashboard } from './QXOArDashboard';
 import { QXOActivityPanel } from './QXOActivityPanel';
 import { QXOBrowser } from './QXOBrowser';
 
+// NOTE: Secrets (username/password/client_id/tokens) are stored in the
+// service-role-only `qxo_credentials` table and are never read by the
+// browser. This component only ever sees non-sensitive status fields.
 interface QXOConnection {
   id: string;
   tenant_id: string;
-  username: string | null;
-  password: string | null;
   site_id: string | null;
   account_id: string | null;
   profile_id: string | null;
   default_branch_code: string | null;
-  client_id: string | null;
   connection_status: string;
   last_validated_at: string | null;
   last_error: string | null;
   valid_indicator: boolean;
   environment: string;
+  has_credentials: boolean;
 }
 
 export function QXOConnectionSettings() {
@@ -38,6 +39,7 @@ export function QXOConnectionSettings() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  // Credential inputs are always blank — we never hydrate secrets back to the UI.
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [clientId, setClientId] = useState('');
@@ -46,21 +48,19 @@ export function QXOConnectionSettings() {
 
   useEffect(() => {
     if (activeCompanyId) loadConnection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCompanyId]);
 
   const loadConnection = async () => {
     try {
       const { data, error } = await (supabase as any)
         .from('qxo_connections')
-        .select('*')
+        .select('id, tenant_id, site_id, account_id, profile_id, default_branch_code, connection_status, last_validated_at, last_error, valid_indicator, environment, has_credentials')
         .eq('tenant_id', activeCompanyId)
         .maybeSingle();
       if (error) throw error;
       if (data) {
         setConnection(data);
-        setUsername(data.username || '');
-        setPassword(data.password || '');
-        setClientId(data.client_id || '');
         setSiteId(data.site_id || 'dealersChoice');
         setEnvironment(data.environment || 'staging');
       }
@@ -75,30 +75,21 @@ export function QXOConnectionSettings() {
     if (!activeCompanyId) return;
     setSaving(true);
     try {
-      const payload = {
-        tenant_id: activeCompanyId,
-        username,
-        password,
-        client_id: clientId || null,
-        site_id: siteId,
-        environment,
-        connection_status: 'disconnected',
-        access_token: null,
-        token_expires_at: null,
-      };
-      if (connection) {
-        const { error } = await (supabase as any)
-          .from('qxo_connections')
-          .update(payload)
-          .eq('id', connection.id);
-        if (error) throw error;
-      } else {
-        const { error } = await (supabase as any)
-          .from('qxo_connections')
-          .insert(payload);
-        if (error) throw error;
-      }
+      const { data, error } = await supabase.functions.invoke('qxo-save-credentials', {
+        body: {
+          tenant_id: activeCompanyId,
+          username,
+          password,
+          client_id: clientId || null,
+          site_id: siteId,
+          environment,
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Save failed');
       toast({ title: 'QXO credentials saved', description: 'Click "Test Connection" to validate.' });
+      // Clear the password field after save; never re-display secrets.
+      setPassword('');
       await loadConnection();
     } catch (error: any) {
       toast({ title: 'Save failed', description: error.message, variant: 'destructive' });
@@ -129,18 +120,17 @@ export function QXOConnectionSettings() {
   };
 
   const handleDisconnect = async () => {
-    if (!connection) return;
+    if (!activeCompanyId) return;
     try {
-      await (supabase as any)
-        .from('qxo_connections')
-        .update({
-          connection_status: 'disconnected',
-          access_token: null,
-          token_expires_at: null,
-          valid_indicator: false,
-        })
-        .eq('id', connection.id);
-      toast({ title: 'Disconnected from QXO' });
+      const { data, error } = await supabase.functions.invoke('qxo-save-credentials', {
+        body: { tenant_id: activeCompanyId, clear: true },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Disconnect failed');
+      toast({ title: 'Disconnected from QXO', description: 'Stored credentials were removed.' });
+      setUsername('');
+      setPassword('');
+      setClientId('');
       await loadConnection();
     } catch (error: any) {
       toast({ title: 'Disconnect failed', description: error.message, variant: 'destructive' });
@@ -158,6 +148,7 @@ export function QXOConnectionSettings() {
   }
 
   const isConnected = connection?.connection_status === 'connected';
+  const hasCredentials = !!connection?.has_credentials;
 
   return (
     <div className="space-y-6">
@@ -191,6 +182,19 @@ export function QXOConnectionSettings() {
             </div>
           )}
 
+          {hasCredentials && (
+            <div className="p-3 bg-muted/40 border rounded-md text-sm flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 mt-0.5 text-green-600" />
+              <div>
+                <div className="font-medium">Credentials stored securely</div>
+                <div className="text-muted-foreground text-xs">
+                  Username, password, and API client ID are encrypted server-side and never sent to the browser.
+                  Re-enter them only if you need to update or rotate.
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Environment</Label>
@@ -217,19 +221,31 @@ export function QXOConnectionSettings() {
 
             <div className="space-y-2">
               <Label>Username / Email</Label>
-              <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="you@company.com" />
+              <Input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={hasCredentials ? '•••••• (set — re-enter to change)' : 'you@company.com'}
+                autoComplete="off"
+              />
             </div>
 
             <div className="space-y-2">
               <Label>Password</Label>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={hasCredentials ? '•••••• (set — re-enter to change)' : '••••••••'}
+                autoComplete="new-password"
+              />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>API Client ID</Label>
               <Input
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                placeholder="Provided by QXO/Beacon partner integrations"
+                placeholder={hasCredentials ? '•••••• (set — re-enter to change)' : 'Provided by QXO/Beacon partner integrations'}
+                autoComplete="off"
               />
               <p className="text-xs text-muted-foreground">
                 Required to obtain Bearer access tokens for v2 endpoints (orders, quotes, invoices).
@@ -244,21 +260,21 @@ export function QXOConnectionSettings() {
           <div className="flex flex-wrap gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving || !username || !password}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Credentials
+              {hasCredentials ? 'Update Credentials' : 'Save Credentials'}
             </Button>
 
-            {connection && (
+            {hasCredentials && (
               <Button
                 variant="outline"
                 onClick={handleTestConnection}
-                disabled={testing || !connection.username}
+                disabled={testing}
               >
                 {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
                 Test Connection
               </Button>
             )}
 
-            {isConnected && (
+            {hasCredentials && (
               <Button variant="ghost" onClick={handleDisconnect} className="text-destructive">
                 <Unlink className="h-4 w-4 mr-2" />
                 Disconnect

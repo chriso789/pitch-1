@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { loadConnectionWithCredentials } from '../_shared/qxo-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,8 +7,6 @@ const corsHeaders = {
 };
 
 // Beacon Partner Integrations API only exposes a single public host.
-// There is no separately-resolvable public staging hostname, so all
-// environments route to api.becn.com (Beacon gates non-prod data per credential).
 const BEACON_BASE_URL = 'https://api.becn.com';
 
 function baseUrl(_env: string) {
@@ -50,13 +49,8 @@ Deno.serve(async (req) => {
     const { action, tenant_id } = await req.json();
     if (!action || !tenant_id) throw new Error('action and tenant_id required');
 
-    const { data: conn, error } = await supabase
-      .from('qxo_connections')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .maybeSingle();
-    if (error) throw error;
-    if (!conn) throw new Error('No QXO connection found for tenant');
+    // Secrets live in qxo_credentials (service-role only) and are merged in here.
+    const conn = await loadConnectionWithCredentials(supabase, tenant_id);
 
     if (action === 'validate_connection') {
       try {
