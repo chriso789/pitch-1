@@ -76,6 +76,27 @@ export function useProjectScopeDocuments(projectId?: string | null, jobId?: stri
   });
 }
 
+export function useDeleteComparison() {
+  const qc = useQueryClient();
+  const tenantId = useEffectiveTenantId();
+  return useMutation({
+    mutationFn: async (comparisonId: string) => {
+      const { error } = await supabase
+        .from('scope_comparisons')
+        .delete()
+        .eq('tenant_id', tenantId!)
+        .eq('id', comparisonId);
+      if (error) throw error;
+      return comparisonId;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scope-comparisons'] });
+      qc.invalidateQueries({ queryKey: ['scope-comparison-lines'] });
+      qc.invalidateQueries({ queryKey: ['supplement-reports'] });
+    },
+  });
+}
+
 export function useGenerateSupplementReport() {
   const qc = useQueryClient();
   return useMutation({
