@@ -4,11 +4,13 @@
 // service-role-only qxo_credentials table. Tokens are persisted back to
 // qxo_credentials; connection status flags stay on qxo_connections.
 
-export const BEACON_BASE_URL = 'https://api.qxo.com';
+import { qxoFetch, QxoHttpError, getQxoBaseUrl } from './qxo-http.ts';
+
+export const BEACON_BASE_URL = getQxoBaseUrl();
 const OAUTH_PATH = '/v1/rest/com/becn/oauth';
 const REFRESH_PATH = '/rest/model/REST/oauth/token';
 const DEFAULT_SCOPE = 'manage-rebate';
-const DEFAULT_REDIRECT = 'https://api.qxo.com/oauth/callback';
+const DEFAULT_REDIRECT = `${getQxoBaseUrl()}/oauth/callback`;
 
 export interface BeaconAuth {
   headers: Record<string, string>;
