@@ -1290,3 +1290,6 @@ verify_jwt = false
 
 [functions.track-labor-order-open]
 verify_jwt = false
+
+[functions.qxo-save-credentials]
+verify_jwt = true
