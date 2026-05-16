@@ -338,10 +338,10 @@ export function ABCConnectionSettings() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Environment</Label>
-              <Select value={environment} onValueChange={setEnvironment}>
+              <Select value={environment} onValueChange={(value) => setEnvironment(normalizeABCEnvironment(value))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="staging">Staging (Testing)</SelectItem>
+                  <SelectItem value="sandbox">Sandbox (Testing)</SelectItem>
                   <SelectItem value="production">Production (Live)</SelectItem>
                 </SelectContent>
               </Select>
@@ -386,13 +386,13 @@ export function ABCConnectionSettings() {
 
           <div className="rounded-md border p-3 space-y-2 text-xs">
             <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
-            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment === 'production' ? 'production' : 'staging']} />
-            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment === 'production' ? 'production' : 'staging']} />
+            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment]} />
+            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment]} />
             <EndpointRow label="Redirect URI" value={SERVER_REDIRECT_URI} hint="Register THIS exact URL with ABC IT for the OAuth client" />
             <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} hint="PKCE (S256) + Basic auth on token endpoint" />
             <EndpointRow
               label={`API Base (${environment})`}
-              value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.staging}
+              value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.sandbox}
             />
           </div>
 
@@ -414,7 +414,7 @@ export function ABCConnectionSettings() {
                     body: {
                       action: 'start_oauth',
                       tenant_id: effectiveTenantId,
-                      environment: environment === 'production' ? 'production' : 'sandbox',
+                      environment,
                     },
                   });
                   if (error) throw error;
