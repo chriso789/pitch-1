@@ -4,7 +4,13 @@
 // ============================================================
 import { corsHeaders } from '../_shared/cors.ts';
 import { supabaseService, supabaseAuth } from '../_shared/supabase.ts';
-import { canonicalScopeKey, normalizeDescription, normalizeUnit, tokenSimilarity } from '../_shared/scope-normalizer.ts';
+import {
+  aggregateByIdentity,
+  isTaxLine,
+  pairLines,
+  buildDiffRows,
+  type DiffRow,
+} from '../_shared/xact-compare-core.ts';
 
 interface CompareRequest {
   carrier_document_id: string;
