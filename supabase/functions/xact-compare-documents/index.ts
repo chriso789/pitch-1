@@ -47,6 +47,80 @@ function isTaxLine(line: any): boolean {
   return /\b(sales\s*tax|material\s*tax|tax\s*amount|\btax\b)\b/.test(hay);
 }
 
+// Aggregate same-identity lines on one side BEFORE pairing.
+// This solves the "elevation duplicates" problem (one carrier line vs four
+// company gutter elevations) and ensures unit_price is a weighted average
+// = total / qty rather than a single arbitrary row's value.
+function aggregateByIdentity(lines: any[]): any[] {
+  const groups = new Map<string, any[]>();
+  for (const l of lines) {
+    const code = (l.raw_code || '').trim().toLowerCase();
+    const unit = normalizeUnit(l.unit) || '';
+    // Identity = code + unit when code exists, else canonical_scope_key + unit, else desc + unit
+    const canon = canonicalScopeKey(l.raw_description || '', l.unit);
+    const identity = code
+      ? `code:${code}|${unit}`
+      : canon && !canon.startsWith('desc:')
+        ? `canon:${canon}|${unit}`
+        : `desc:${descKey(l)}|${unit}`;
+    const arr = groups.get(identity) || [];
+    arr.push(l);
+    groups.set(identity, arr);
+  }
+  const aggregated: any[] = [];
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      aggregated.push(group[0]);
+      continue;
+    }
+    // Multiple lines share the same identity (e.g. 4 elevation rows of gutter).
+    // Combine: sum qty + total, recompute unit_price = total/qty.
+    const totalQty = group.reduce((s, x) => s + Number(x.quantity || 0), 0);
+    const totalRcv = group.reduce((s, x) => s + Number(x.total_rcv || 0), 0);
+    const unitPrice = totalQty > 0 ? totalRcv / totalQty : (group[0].unit_price ?? null);
+    aggregated.push({
+      ...group[0], // keep first row's id / code / desc as anchor
+      id: group[0].id, // primary id for FK
+      quantity: totalQty || group[0].quantity,
+      total_rcv: totalRcv || group[0].total_rcv,
+      unit_price: unitPrice,
+      _aggregated_from: group.map(g => g.id),
+      _aggregated_count: group.length,
+      _aggregated_descriptions: group.map(g => g.raw_description).filter(Boolean),
+    });
+  }
+  return aggregated;
+}
+
+// Unit-aware equality. Returns true when units are compatible.
+function unitsCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeUnit(a);
+  const nb = normalizeUnit(b);
+  if (!na && !nb) return true;
+  if (!na || !nb) return true; // be permissive when one side missing a unit
+  return na === nb;
+}
+
+// Pick the best companion when an identity has multiple matches on both sides.
+// Prefer closer quantities, then closer unit prices.
+function pickBest(candidates: any[], target: any): any {
+  if (candidates.length === 1) return candidates[0];
+  const tq = Number(target.quantity || 0);
+  const tp = Number(target.unit_price || 0);
+  let best = candidates[0];
+  let bestScore = Infinity;
+  for (const c of candidates) {
+    const qDiff = Math.abs(Number(c.quantity || 0) - tq);
+    const pDiff = Math.abs(Number(c.unit_price || 0) - tp);
+    const score = qDiff + pDiff * 0.01;
+    if (score < bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -103,18 +177,27 @@ Deno.serve(async (req) => {
       loadLines(carrier_document_id),
       loadLines(company_document_id),
     ]);
-    // Exclude tax rows from the comparison entirely
-    const carrierLines = carrierLinesRaw.filter(l => !isTaxLine(l));
-    const companyLines = companyLinesRaw.filter(l => !isTaxLine(l));
+    // Exclude tax rows from the comparison entirely, then aggregate
+    // same-identity duplicates so elevation-specific rows pair as one.
+    const carrierLines = aggregateByIdentity(carrierLinesRaw.filter(l => !isTaxLine(l)));
+    const companyLines = aggregateByIdentity(companyLinesRaw.filter(l => !isTaxLine(l)));
 
-    // Two-pass matching: (1) by code/canonical, (2) leftovers by normalized description
-    const carrierRemaining = [...carrierLines];
-    const companyRemaining = [...companyLines];
+    // Multi-pass matching with unit-equality enforced at every step:
+    //   Pass 0: exact raw_code + unit  (most stable Xactimate identity)
+    //   Pass 1: canonical scope key + unit
+    //   Pass 2: canonical_item_id + unit
+    //   Pass 3: normalized description + unit
+    // When multiple candidates collide, pickBest() chooses the closest match
+    // by quantity (and tie-breaks on unit price), so we never pair lines by
+    // arbitrary array order.
     const pairs: Array<{ c: any | null; y: any | null; method: string }> = [];
+    const consumedC = new Set<string>();
+    const consumedY = new Set<string>();
 
-    const indexBy = (arr: any[], keyFn: (l: any) => string | null) => {
+    const indexBy = (arr: any[], keyFn: (l: any) => string | null, consumed: Set<string>) => {
       const m = new Map<string, any[]>();
       for (const l of arr) {
+        if (consumed.has(l.id)) continue;
         const k = keyFn(l);
         if (!k) continue;
         const a = m.get(k) || [];
@@ -124,63 +207,69 @@ Deno.serve(async (req) => {
       return m;
     };
 
-    // Pass 0: canonical scope key (deterministic roofing taxonomy)
-    const canonKey = (l: any) => {
-      const k = canonicalScopeKey(l.raw_description || '', l.unit);
-      // Only trust real canonical keys, not desc:* fallbacks (those go to pass 2)
-      return k && !k.startsWith('desc:') ? `s:${k}` : null;
+    const runPass = (
+      keyFn: (l: any) => string | null,
+      method: string,
+    ) => {
+      const cIdx = indexBy(carrierLines, keyFn, consumedC);
+      const yIdx = indexBy(companyLines, keyFn, consumedY);
+      const keys = new Set([...cIdx.keys(), ...yIdx.keys()]);
+      for (const k of keys) {
+        let cs = (cIdx.get(k) || []).filter(c => !consumedC.has(c.id));
+        let ys = (yIdx.get(k) || []).filter(y => !consumedY.has(y.id));
+        while (cs.length && ys.length) {
+          const target = cs[0];
+          const validYs = ys.filter(y => unitsCompatible(y.unit, target.unit));
+          if (validYs.length === 0) break;
+          const best = pickBest(validYs, target);
+          pairs.push({ c: target, y: best, method });
+          consumedC.add(target.id);
+          consumedY.add(best.id);
+          cs = cs.filter(c => c.id !== target.id);
+          ys = ys.filter(y => y.id !== best.id);
+        }
+      }
     };
-    const cByCanon = indexBy(carrierRemaining, canonKey);
-    const yByCanon = indexBy(companyRemaining, canonKey);
-    const canonKeys = new Set([...cByCanon.keys(), ...yByCanon.keys()]);
-    const consumedC = new Set<string>();
-    const consumedY = new Set<string>();
-    for (const k of canonKeys) {
-      const cs = cByCanon.get(k) || [];
-      const ys = yByCanon.get(k) || [];
-      const n = Math.min(cs.length, ys.length);
-      for (let i = 0; i < n; i++) {
-        pairs.push({ c: cs[i], y: ys[i], method: 'canonical_scope' });
-        consumedC.add(cs[i].id);
-        consumedY.add(ys[i].id);
-      }
-    }
 
-    // Pass 1: code / canonical_item_id
-    const remC1 = carrierRemaining.filter(l => !consumedC.has(l.id));
-    const remY1 = companyRemaining.filter(l => !consumedY.has(l.id));
-    const cByCode = indexBy(remC1, codeKey);
-    const yByCode = indexBy(remY1, codeKey);
-    const codeKeys = new Set([...cByCode.keys(), ...yByCode.keys()]);
-    for (const k of codeKeys) {
-      const cs = cByCode.get(k) || [];
-      const ys = yByCode.get(k) || [];
-      const n = Math.min(cs.length, ys.length);
-      for (let i = 0; i < n; i++) {
-        pairs.push({ c: cs[i], y: ys[i], method: k.startsWith('c:') ? 'canonical' : 'code' });
-        consumedC.add(cs[i].id);
-        consumedY.add(ys[i].id);
-      }
-    }
+    // Pass 0: raw_code + unit (e.g. RFG ASBPH + SQ)
+    runPass(
+      (l) => {
+        const code = (l.raw_code || '').trim().toLowerCase();
+        const unit = normalizeUnit(l.unit) || '';
+        return code ? `code:${code}|${unit}` : null;
+      },
+      'code',
+    );
 
-    // Pass 2: leftovers matched by normalized description
-    const leftoverC = carrierRemaining.filter(l => !consumedC.has(l.id));
-    const leftoverY = companyRemaining.filter(l => !consumedY.has(l.id));
-    const cByDesc = indexBy(leftoverC, (l) => `d:${descKey(l)}`);
-    const yByDesc = indexBy(leftoverY, (l) => `d:${descKey(l)}`);
-    const descKeys = new Set([...cByDesc.keys(), ...yByDesc.keys()]);
-    for (const k of descKeys) {
-      const cs = cByDesc.get(k) || [];
-      const ys = yByDesc.get(k) || [];
-      const n = Math.min(cs.length, ys.length);
-      for (let i = 0; i < n; i++) {
-        pairs.push({ c: cs[i], y: ys[i], method: 'description' });
-        consumedC.add(cs[i].id);
-        consumedY.add(ys[i].id);
-      }
-      for (let i = n; i < cs.length; i++) pairs.push({ c: cs[i], y: null, method: 'description' });
-      for (let i = n; i < ys.length; i++) pairs.push({ c: null, y: ys[i], method: 'description' });
-    }
+    // Pass 1: canonical scope key + unit
+    runPass(
+      (l) => {
+        const k = canonicalScopeKey(l.raw_description || '', l.unit);
+        if (!k || k.startsWith('desc:')) return null;
+        const unit = normalizeUnit(l.unit) || '';
+        return `canon:${k}|${unit}`;
+      },
+      'canonical_scope',
+    );
+
+    // Pass 2: canonical_item_id + unit
+    runPass(
+      (l) => {
+        if (!l.canonical_item_id) return null;
+        const unit = normalizeUnit(l.unit) || '';
+        return `ci:${l.canonical_item_id}|${unit}`;
+      },
+      'canonical',
+    );
+
+    // Pass 3: normalized description + unit
+    runPass(
+      (l) => {
+        const unit = normalizeUnit(l.unit) || '';
+        return `desc:${descKey(l)}|${unit}`;
+      },
+      'description',
+    );
 
     const rows: DiffRow[] = [];
 
