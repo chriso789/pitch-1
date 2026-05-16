@@ -127,13 +127,22 @@ Deno.serve(async (req) => {
     if (compErr) throw compErr;
 
     if (rows.length) {
-      const insertRows = rows.map(r => ({ ...r, comparison_id: comparison.id, tenant_id: tenantId }));
-      // Chunk inserts
+      const insertRows = rows.map(({ grouped_children, ...r }) => ({
+        ...r,
+        comparison_id: comparison.id,
+        tenant_id: tenantId,
+        // Only attach grouped_children if the column exists; tolerate absence.
+        ...(grouped_children && grouped_children.length ? { grouped_children } : {}),
+      }));
       const CHUNK = 500;
       for (let i = 0; i < insertRows.length; i += CHUNK) {
-        const { error: insErr } = await svc
-          .from('scope_comparison_lines')
-          .insert(insertRows.slice(i, i + CHUNK));
+        const slice = insertRows.slice(i, i + CHUNK);
+        let { error: insErr } = await svc.from('scope_comparison_lines').insert(slice);
+        if (insErr && /grouped_children/i.test(insErr.message)) {
+          // Fall back: column doesn't exist on this tenant's schema, drop it.
+          const stripped = slice.map(({ grouped_children, ...rest }: any) => rest);
+          ({ error: insErr } = await svc.from('scope_comparison_lines').insert(stripped));
+        }
         if (insErr) throw insErr;
       }
     }
