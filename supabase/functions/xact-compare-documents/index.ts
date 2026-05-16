@@ -198,10 +198,16 @@ Deno.serve(async (req) => {
         const qtyDeltaPct = cq ? Math.abs((yq - cq) / cq) * 100 : (yq ? 100 : 0);
         const priceDeltaPct = cp ? Math.abs((yp - cp) / cp) * 100 : (yp ? 100 : 0);
 
+        // Detect exact line item name differences (raw description mismatch on otherwise-matched pair)
+        const cDesc = String(c.raw_description || '').trim();
+        const yDesc = String(y.raw_description || '').trim();
+        const nameDiffers = !!cDesc && !!yDesc && cDesc.toLowerCase() !== yDesc.toLowerCase();
+
         let change_type: DiffRow['change_type'] = 'unchanged';
         if (qtyDeltaPct > qty_tolerance_pct && priceDeltaPct > price_tolerance_pct) change_type = 'price_change';
         else if (qtyDeltaPct > qty_tolerance_pct) change_type = 'qty_change';
         else if (priceDeltaPct > price_tolerance_pct) change_type = 'price_change';
+        else if (nameDiffers) change_type = 'name_change';
 
         if (change_type === 'unchanged') continue;
 
