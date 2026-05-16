@@ -33,16 +33,56 @@ function expiresInToISO(seconds: number): string {
   return new Date(Date.now() + Math.max(60, seconds - 60) * 1000).toISOString();
 }
 
-async function persistTokens(supabase: any, connId: string, tok: any) {
+/**
+ * Load a tenant's qxo connection joined with its server-side credentials.
+ * Only call from edge functions running with the service role — qxo_credentials
+ * has RLS enabled with no policies, so anon/authenticated clients cannot read it.
+ */
+export async function loadConnectionWithCredentials(supabase: any, tenantId: string) {
+  if (!tenantId) throw new Error('tenant_id is required');
+  const { data: conn, error: connErr } = await supabase
+    .from('qxo_connections')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (connErr) throw connErr;
+  if (!conn) throw new Error('No QXO connection found for this tenant.');
+
+  const { data: creds, error: credErr } = await supabase
+    .from('qxo_credentials')
+    .select('username, password, client_id, access_token, refresh_token, token_expires_at')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (credErr) throw credErr;
+
+  return {
+    ...conn,
+    username: creds?.username ?? null,
+    password: creds?.password ?? null,
+    client_id: creds?.client_id ?? null,
+    access_token: creds?.access_token ?? null,
+    refresh_token: creds?.refresh_token ?? null,
+    token_expires_at: creds?.token_expires_at ?? null,
+  };
+}
+
+async function persistTokens(supabase: any, tenantId: string, connId: string, tok: any) {
   const expiresAt = tok?.expires_in
     ? expiresInToISO(Number(tok.expires_in))
     : new Date(Date.now() + 25 * 60 * 1000).toISOString();
+  // Tokens go to the service-role-only credentials table.
   await supabase
-    .from('qxo_connections')
+    .from('qxo_credentials')
     .update({
       access_token: tok.access_token,
       refresh_token: tok.refresh_token ?? undefined,
       token_expires_at: expiresAt,
+    })
+    .eq('tenant_id', tenantId);
+  // Non-sensitive status flags stay on qxo_connections (visible to tenant via RLS).
+  await supabase
+    .from('qxo_connections')
+    .update({
       connection_status: 'connected',
       last_validated_at: new Date().toISOString(),
       last_error: null,
