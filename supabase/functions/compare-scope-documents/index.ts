@@ -21,6 +21,7 @@ import {
   detectPriceListMismatch,
   compareNormalized,
 } from "../_shared/scope-compare-core.ts";
+import { buildJustification } from "../_shared/supplement-justification-builder.ts";
 import type {
   ScopeCompareSummary,
   ReconciliationResult,
