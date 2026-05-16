@@ -49,13 +49,8 @@ Deno.serve(async (req) => {
     const { action, tenant_id } = await req.json();
     if (!action || !tenant_id) throw new Error('action and tenant_id required');
 
-    const { data: conn, error } = await supabase
-      .from('qxo_connections')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .maybeSingle();
-    if (error) throw error;
-    if (!conn) throw new Error('No QXO connection found for tenant');
+    // Secrets live in qxo_credentials (service-role only) and are merged in here.
+    const conn = await loadConnectionWithCredentials(supabase, tenant_id);
 
     if (action === 'validate_connection') {
       try {
