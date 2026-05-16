@@ -336,7 +336,7 @@ Deno.serve(async (req: Request) => {
     };
 
     // Group: changes first, then unchanged
-    const order = ['added', 'qty_change', 'price_change', 'removed', 'unchanged'];
+    const order = ['name_change', 'added', 'qty_change', 'price_change', 'removed', 'unchanged'];
     const grouped: Record<string, any[]> = {};
     for (const l of lines ?? []) {
       const k = l.change_type ?? 'unchanged';
