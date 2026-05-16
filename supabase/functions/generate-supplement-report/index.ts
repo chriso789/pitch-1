@@ -13,6 +13,7 @@ const fmtQty = (n: number | null | undefined) =>
   Number(n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 const CHANGE_LABEL: Record<string, string> = {
+  name_change: 'Line Item Name Difference',
   added: 'Added by Company',
   removed: 'Removed by Company',
   qty_change: 'Quantity Change',
