@@ -161,6 +161,12 @@ Deno.serve(async (req: Request) => {
       const sig = `${line.supplier_sku || ""}|${line.normalized_description}|${line.quantity}|${line.charged_unit_price}`;
       const dupCount = lineSigs.get(sig) || 1;
 
+      const hasRealCompare =
+        matchedItem &&
+        agreedUnit != null && agreedUnit > 0 &&
+        chargedUnit != null && chargedUnit > 0 &&
+        qty > 0;
+
       if (!matchedItem) {
         discrepancyType = priceListId ? "unmatched_item" : "missing_price_list";
         unmatched++;
@@ -170,6 +176,10 @@ Deno.serve(async (req: Request) => {
         !uomConverted
       ) {
         discrepancyType = "uom_mismatch";
+        unmatched++;
+      } else if (!hasRealCompare) {
+        // Matched but missing a price/qty to actually compare — never auto-OK
+        discrepancyType = "needs_review";
         unmatched++;
       } else if (totalDiff != null && totalDiff > 0.01) {
         discrepancyType = "overcharge";
