@@ -6,6 +6,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { generateAIResponse, parseAIJson } from "../_shared/lovable-ai.ts";
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
+import { parseXactimateLines } from "../_shared/xactimate-line-parser.ts";
+import { canonicalScopeKey, classifyScopeGroup } from "../_shared/scope-normalizer.ts";
 
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
