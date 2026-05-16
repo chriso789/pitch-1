@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { loadConnectionWithCredentials } from '../_shared/qxo-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,8 +7,6 @@ const corsHeaders = {
 };
 
 // Beacon Partner Integrations API only exposes a single public host.
-// There is no separately-resolvable public staging hostname, so all
-// environments route to api.becn.com (Beacon gates non-prod data per credential).
 const BEACON_BASE_URL = 'https://api.becn.com';
 
 function baseUrl(_env: string) {
