@@ -793,7 +793,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
             <TableHead className="text-xs">Matched To</TableHead>
             <TableHead className="text-xs text-right">Qty</TableHead>
             <TableHead className="text-xs text-right">Charged</TableHead>
-            <TableHead className="text-xs text-right">Agreed</TableHead>
+            <TableHead className="text-xs text-right">Price List</TableHead>
             <TableHead className="text-xs text-right">Difference</TableHead>
             <TableHead className="text-xs">Status</TableHead>
             <TableHead className="text-xs"></TableHead>
