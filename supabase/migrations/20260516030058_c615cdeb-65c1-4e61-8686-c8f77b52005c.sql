@@ -1,0 +1,2 @@
+ALTER TABLE public.scope_comparison_lines DROP CONSTRAINT IF EXISTS scope_comparison_lines_change_type_check;
+ALTER TABLE public.scope_comparison_lines ADD CONSTRAINT scope_comparison_lines_change_type_check CHECK (change_type = ANY (ARRAY['added'::text, 'removed'::text, 'qty_change'::text, 'price_change'::text, 'name_change'::text, 'unchanged'::text]));
