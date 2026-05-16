@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface Body {
   comparison_id: string;
@@ -50,7 +50,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Load comparison + lines + docs
     const { data: comparison, error: cmpErr } = await admin
       .from('scope_comparisons')
       .select('*')
@@ -67,11 +66,18 @@ Deno.serve(async (req: Request) => {
 
     const { data: docs } = await admin
       .from('insurance_scope_documents')
-      .select('id, file_name, carrier_normalized, claim_number, adjuster_name, property_address, document_type')
+      .select('id, file_name, carrier_normalized, claim_number_detected, adjuster_name, document_type')
       .in('id', [comparison.carrier_document_id, comparison.company_document_id]);
 
     const carrierDoc = docs?.find((d) => d.id === comparison.carrier_document_id);
     const companyDoc = docs?.find((d) => d.id === comparison.company_document_id);
+
+    // Load tenant (the company the report is being built for)
+    const { data: tenant } = await admin
+      .from('tenants')
+      .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, website, brand_primary_color')
+      .eq('id', comparison.tenant_id)
+      .single();
 
     // Build PDF
     const pdf = await PDFDocument.create();
@@ -84,15 +90,23 @@ Deno.serve(async (req: Request) => {
     let page = pdf.addPage([PAGE_W, PAGE_H]);
     let y = PAGE_H - MARGIN;
 
+    // Parse brand color
+    const parseHex = (hex?: string | null): [number, number, number] => {
+      if (!hex) return [0.12, 0.25, 0.55];
+      const m = hex.replace('#', '').match(/^([0-9a-f]{6})$/i);
+      if (!m) return [0.12, 0.25, 0.55];
+      const v = m[1];
+      return [parseInt(v.slice(0, 2), 16) / 255, parseInt(v.slice(2, 4), 16) / 255, parseInt(v.slice(4, 6), 16) / 255];
+    };
+    const brand = parseHex(tenant?.brand_primary_color);
+
     const newPage = () => {
       page = pdf.addPage([PAGE_W, PAGE_H]);
       y = PAGE_H - MARGIN;
     };
-
     const ensureSpace = (h: number) => {
       if (y - h < MARGIN) newPage();
     };
-
     const drawText = (
       text: string,
       opts: { size?: number; bold?: boolean; color?: [number, number, number]; x?: number } = {}
@@ -101,7 +115,7 @@ Deno.serve(async (req: Request) => {
       const f = opts.bold ? bold : font;
       const c = opts.color ?? [0.1, 0.1, 0.15];
       ensureSpace(size + 4);
-      page.drawText(text, {
+      page.drawText(String(text ?? ''), {
         x: opts.x ?? MARGIN,
         y: y - size,
         size,
@@ -110,147 +124,220 @@ Deno.serve(async (req: Request) => {
       });
       y -= size + 4;
     };
-
-    const drawDivider = () => {
+    const drawDivider = (color: [number, number, number] = [0.85, 0.85, 0.9]) => {
       ensureSpace(10);
       page.drawLine({
         start: { x: MARGIN, y: y - 4 },
         end: { x: PAGE_W - MARGIN, y: y - 4 },
         thickness: 0.5,
-        color: rgb(0.7, 0.7, 0.75),
+        color: rgb(color[0], color[1], color[2]),
       });
       y -= 10;
     };
-
     const wrap = (text: string, size: number, maxW: number, f = font): string[] => {
       if (!text) return [''];
       const words = String(text).split(/\s+/);
-      const lines: string[] = [];
+      const out: string[] = [];
       let cur = '';
       for (const w of words) {
         const test = cur ? `${cur} ${w}` : w;
         if (f.widthOfTextAtSize(test, size) > maxW && cur) {
-          lines.push(cur);
+          out.push(cur);
           cur = w;
         } else {
           cur = test;
         }
       }
-      if (cur) lines.push(cur);
-      return lines;
+      if (cur) out.push(cur);
+      return out;
     };
 
-    // ===== Cover =====
-    drawText('Insurance Supplement Report', { size: 22, bold: true });
-    y -= 6;
-    drawText(`Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, {
-      size: 10,
-      color: [0.4, 0.4, 0.45],
+    // ===== Company Header Banner =====
+    page.drawRectangle({
+      x: 0,
+      y: PAGE_H - 80,
+      width: PAGE_W,
+      height: 80,
+      color: rgb(brand[0], brand[1], brand[2]),
     });
-    drawDivider();
 
-    drawText('Carrier Information', { size: 13, bold: true });
+    // Try to embed logo
+    let logoEmbedded = false;
+    if (tenant?.logo_url) {
+      try {
+        const resp = await fetch(tenant.logo_url);
+        if (resp.ok) {
+          const bytes = new Uint8Array(await resp.arrayBuffer());
+          const ct = resp.headers.get('content-type') ?? '';
+          const img = ct.includes('png') ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+          const h = 50;
+          const w = (img.width / img.height) * h;
+          page.drawImage(img, { x: MARGIN, y: PAGE_H - 65, width: w, height: h });
+          logoEmbedded = true;
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    const headerTextX = logoEmbedded ? MARGIN + 130 : MARGIN;
+    page.drawText(tenant?.name ?? 'Company', {
+      x: headerTextX, y: PAGE_H - 35, size: 18, font: bold, color: rgb(1, 1, 1),
+    });
+    const headerSub = [
+      tenant?.address_street,
+      [tenant?.address_city, tenant?.address_state, tenant?.address_zip].filter(Boolean).join(', '),
+      tenant?.phone, tenant?.email, tenant?.license_number ? `License: ${tenant.license_number}` : null,
+    ].filter(Boolean).join('  •  ');
+    page.drawText(headerSub.slice(0, 110), {
+      x: headerTextX, y: PAGE_H - 55, size: 8, font, color: rgb(0.92, 0.95, 1),
+    });
+
+    y = PAGE_H - 100;
+
+    // ===== Title =====
+    drawText('Insurance Supplement Report', { size: 20, bold: true });
+    drawText(
+      `Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      { size: 9, color: [0.4, 0.4, 0.45] }
+    );
+    drawDivider(brand);
+
+    // ===== Claim / Doc info =====
+    drawText('Claim & Document Information', { size: 12, bold: true, color: brand });
     drawText(`Carrier: ${carrierDoc?.carrier_normalized ?? '—'}`);
-    drawText(`Claim #: ${carrierDoc?.claim_number ?? '—'}`);
+    drawText(`Claim #: ${carrierDoc?.claim_number_detected ?? '—'}`);
     drawText(`Adjuster: ${carrierDoc?.adjuster_name ?? '—'}`);
-    drawText(`Property: ${carrierDoc?.property_address ?? '—'}`);
     drawText(`Carrier Estimate: ${carrierDoc?.file_name ?? '—'}`);
     drawText(`Company Estimate: ${companyDoc?.file_name ?? '—'}`);
-    y -= 8;
+    y -= 6;
 
-    drawText('Executive Summary', { size: 13, bold: true });
+    // ===== Executive Summary =====
+    drawText('Executive Summary', { size: 12, bold: true, color: brand });
     drawText(`Carrier RCV Total: ${fmtMoney(comparison.carrier_total_rcv)}`);
     drawText(`Company RCV Total: ${fmtMoney(comparison.company_total_rcv)}`);
     drawText(`Net Supplement Requested: ${fmtMoney(comparison.net_supplement_amount)}`, { bold: true });
-    y -= 4;
-    drawText(`Lines Added by Company: ${comparison.added_count ?? 0}`);
-    drawText(`Lines Removed by Company: ${comparison.removed_count ?? 0}`);
-    drawText(`Quantity Adjustments: ${comparison.qty_change_count ?? 0}`);
-    drawText(`Price Adjustments: ${comparison.price_change_count ?? 0}`);
-    drawDivider();
+    y -= 2;
+    drawText(`Lines Added: ${comparison.added_count ?? 0}   •   Removed: ${comparison.removed_count ?? 0}   •   Qty Δ: ${comparison.qty_change_count ?? 0}   •   Price Δ: ${comparison.price_change_count ?? 0}`, { size: 9, color: [0.35, 0.35, 0.4] });
+    drawDivider(brand);
 
-    // ===== Line-by-line =====
-    drawText('Line-by-Line Differences', { size: 13, bold: true });
-    y -= 4;
+    // ===== Price List (first page) =====
+    drawText('Price List Reference', { size: 12, bold: true, color: brand });
+    drawText('Unit pricing used in this comparison (deduplicated by item code).', { size: 8, color: [0.45, 0.45, 0.5] });
+    y -= 2;
 
-    const groups: Record<string, typeof lines> = {
-      added: [],
-      qty_change: [],
-      price_change: [],
-      removed: [],
-    };
+    // Build price list from all lines (company price preferred, else carrier)
+    type PriceRow = { code: string; desc: string; unit: string; price: number; source: string };
+    const seen = new Map<string, PriceRow>();
     for (const l of lines ?? []) {
-      if (l.change_type !== 'unchanged' && groups[l.change_type]) groups[l.change_type].push(l);
+      const code = (l.company_code || l.carrier_code || '').trim();
+      if (!code || seen.has(code)) continue;
+      const price = Number(l.company_unit_price ?? l.carrier_unit_price ?? 0);
+      seen.set(code, {
+        code,
+        desc: (l.company_description || l.carrier_description || '').slice(0, 60),
+        unit: (l.company_unit || l.carrier_unit || '') as string,
+        price,
+        source: l.company_unit_price != null ? 'Company' : 'Carrier',
+      });
     }
+    const priceRows = Array.from(seen.values()).sort((a, b) => a.code.localeCompare(b.code));
 
-    const drawLine = (l: any) => {
-      ensureSpace(80);
-      const startY = y;
-      // Header strip
-      page.drawRectangle({
-        x: MARGIN,
-        y: y - 14,
-        width: PAGE_W - MARGIN * 2,
-        height: 14,
-        color: rgb(0.93, 0.95, 0.98),
-      });
-      drawText(`${CHANGE_LABEL[l.change_type] ?? l.change_type}  •  ${l.category ?? 'Uncategorized'}`, {
-        size: 9,
-        bold: true,
-        color: [0.15, 0.3, 0.55],
-      });
+    // Header row
+    const colX = { code: MARGIN, desc: MARGIN + 80, unit: MARGIN + 330, price: MARGIN + 390, src: MARGIN + 460 };
+    ensureSpace(14);
+    page.drawRectangle({ x: MARGIN, y: y - 12, width: PAGE_W - MARGIN * 2, height: 12, color: rgb(0.94, 0.96, 0.99) });
+    const drawHdr = (t: string, x: number) =>
+      page.drawText(t, { x, y: y - 9, size: 8, font: bold, color: rgb(0.25, 0.3, 0.4) });
+    drawHdr('CODE', colX.code); drawHdr('DESCRIPTION', colX.desc);
+    drawHdr('UNIT', colX.unit); drawHdr('UNIT PRICE', colX.price); drawHdr('SOURCE', colX.src);
+    y -= 14;
+
+    for (const r of priceRows) {
+      ensureSpace(12);
+      page.drawText(r.code, { x: colX.code, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(r.desc, { x: colX.desc, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(r.unit ?? '', { x: colX.unit, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(fmtMoney(r.price), { x: colX.price, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(r.source, { x: colX.src, y: y - 9, size: 8, font, color: rgb(0.4, 0.4, 0.45) });
+      y -= 12;
+    }
+    drawDivider(brand);
+
+    // ===== Full Line Items Table (ALL lines including unchanged) =====
+    newPage();
+    drawText('Full Line Item Breakdown', { size: 14, bold: true, color: brand });
+    drawText('All items from both estimates with carrier vs company quantities and pricing.', { size: 8, color: [0.45, 0.45, 0.5] });
+    drawDivider(brand);
+
+    const drawFullRow = (l: any) => {
+      ensureSpace(56);
+      const badgeColor: Record<string, [number, number, number]> =  {
+        added: [0.1, 0.4, 0.8], removed: [0.8, 0.2, 0.2],
+        qty_change: [0.95, 0.55, 0.1], price_change: [0.6, 0.3, 0.7],
+        unchanged: [0.5, 0.5, 0.55],
+      };
+      const bc = badgeColor[l.change_type] ?? [0.5, 0.5, 0.55];
+      page.drawRectangle({ x: MARGIN, y: y - 12, width: 70, height: 12, color: rgb(bc[0], bc[1], bc[2]) });
+      page.drawText(l.change_type ?? '', { x: MARGIN + 4, y: y - 9, size: 7, font: bold, color: rgb(1, 1, 1) });
 
       const code = l.company_code || l.carrier_code || '—';
       const desc = l.company_description || l.carrier_description || '—';
-      drawText(`${code}  ${desc}`, { size: 10, bold: true });
+      page.drawText(code, { x: MARGIN + 78, y: y - 9, size: 9, font: bold, color: rgb(0.1, 0.1, 0.15) });
+      const descLines = wrap(desc, 9, PAGE_W - MARGIN - 160);
+      page.drawText(descLines[0] ?? '', { x: MARGIN + 160, y: y - 9, size: 9, font, color: rgb(0.15, 0.15, 0.2) });
+      y -= 14;
 
-      // Two-column carrier vs company
       const colW = (PAGE_W - MARGIN * 2 - 10) / 2;
-      const leftX = MARGIN;
-      const rightX = MARGIN + colW + 10;
-      const rowY = y;
-
       const block = (label: string, qty: any, unit: any, price: any, total: any, x: number) => {
-        let yy = rowY;
-        page.drawText(label, { x, y: yy - 9, size: 8, font: bold, color: rgb(0.4, 0.4, 0.45) });
-        yy -= 11;
-        const txt = `Qty ${fmtQty(qty)} ${unit ?? ''}  @ ${fmtMoney(price)}  =  ${fmtMoney(total)}`;
-        page.drawText(txt, { x, y: yy - 9, size: 9, font, color: rgb(0.1, 0.1, 0.15) });
+        page.drawText(label, { x, y: y - 8, size: 7, font: bold, color: rgb(0.4, 0.4, 0.45) });
+        page.drawText(
+          `${fmtQty(qty)} ${unit ?? ''} @ ${fmtMoney(price)} = ${fmtMoney(total)}`,
+          { x: x + 50, y: y - 8, size: 8, font, color: rgb(0.1, 0.1, 0.15) }
+        );
       };
-      block('CARRIER', l.carrier_quantity, l.carrier_unit, l.carrier_unit_price, l.carrier_total_rcv, leftX);
-      block('COMPANY', l.company_quantity, l.company_unit, l.company_unit_price, l.company_total_rcv, rightX);
-      y -= 24;
+      block('CARRIER', l.carrier_quantity, l.carrier_unit, l.carrier_unit_price, l.carrier_total_rcv, MARGIN);
+      block('COMPANY', l.company_quantity, l.company_unit, l.company_unit_price, l.company_total_rcv, MARGIN + colW + 10);
+      y -= 12;
 
-      const deltaTxt = `Δ Qty ${fmtQty(l.delta_quantity)}   Δ Unit ${fmtMoney(l.delta_unit_price)}   Δ RCV ${fmtMoney(l.delta_rcv)}`;
-      drawText(deltaTxt, { size: 9, color: [0.55, 0.2, 0.2], bold: true });
+      page.drawText(
+        `Δ Qty ${fmtQty(l.delta_quantity)}   Δ Unit ${fmtMoney(l.delta_unit_price)}   Δ RCV ${fmtMoney(l.delta_rcv)}`,
+        { x: MARGIN, y: y - 8, size: 8, font: bold, color: rgb(0.55, 0.2, 0.2) }
+      );
+      y -= 14;
 
       if (l.justification) {
-        const wrapped = wrap(`Justification: ${l.justification}`, 9, PAGE_W - MARGIN * 2);
-        for (const w of wrapped) drawText(w, { size: 9, color: [0.25, 0.25, 0.3] });
+        for (const w of wrap(`Note: ${l.justification}`, 8, PAGE_W - MARGIN * 2)) {
+          ensureSpace(10);
+          page.drawText(w, { x: MARGIN, y: y - 8, size: 8, font, color: rgb(0.3, 0.3, 0.35) });
+          y -= 10;
+        }
       }
-      y -= 6;
       page.drawLine({
-        start: { x: MARGIN, y },
-        end: { x: PAGE_W - MARGIN, y },
-        thickness: 0.3,
-        color: rgb(0.85, 0.85, 0.9),
+        start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y },
+        thickness: 0.3, color: rgb(0.88, 0.88, 0.92),
       });
-      y -= 8;
-      void startY;
+      y -= 6;
     };
 
-    for (const key of ['added', 'qty_change', 'price_change', 'removed']) {
-      const arr = groups[key];
-      if (!arr.length) continue;
+    // Group: changes first, then unchanged
+    const order = ['added', 'qty_change', 'price_change', 'removed', 'unchanged'];
+    const grouped: Record<string, any[]> = {};
+    for (const l of lines ?? []) {
+      const k = l.change_type ?? 'unchanged';
+      (grouped[k] ||= []).push(l);
+    }
+    for (const k of order) {
+      const arr = grouped[k];
+      if (!arr?.length) continue;
       ensureSpace(20);
-      drawText(`${CHANGE_LABEL[key]} (${arr.length})`, { size: 11, bold: true, color: [0.15, 0.3, 0.55] });
-      for (const l of arr) drawLine(l);
+      drawText(`${CHANGE_LABEL[k]} (${arr.length})`, { size: 11, bold: true, color: brand });
+      for (const l of arr) drawFullRow(l);
+      y -= 4;
     }
 
     // ===== Signature =====
     ensureSpace(80);
-    drawDivider();
-    drawText('Adjuster Acknowledgement', { size: 12, bold: true });
+    drawDivider(brand);
+    drawText('Adjuster Acknowledgement', { size: 12, bold: true, color: brand });
     y -= 18;
     page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + 240, y }, thickness: 0.5, color: rgb(0.3, 0.3, 0.3) });
     page.drawLine({ start: { x: MARGIN + 280, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: rgb(0.3, 0.3, 0.3) });
@@ -260,7 +347,6 @@ Deno.serve(async (req: Request) => {
 
     const pdfBytes = await pdf.save();
 
-    // Determine version
     const { data: existing } = await admin
       .from('supplement_reports')
       .select('version')
