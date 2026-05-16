@@ -18443,6 +18443,7 @@ export type Database = {
           depreciation_amount: number | null
           depreciation_percent: number | null
           document_id: string
+          effective_unit_price: number | null
           header_id: string
           id: string
           is_taxable: boolean | null
@@ -18452,10 +18453,13 @@ export type Database = {
           mapping_confidence: number | null
           mapping_method: string | null
           material_amount: number | null
+          parser_layout: string | null
           quantity: number | null
           raw_category: string | null
           raw_code: string | null
           raw_description: string
+          remove_price: number | null
+          replace_price: number | null
           section_name: string | null
           tax_amount: number | null
           total_acv: number | null
@@ -18471,6 +18475,7 @@ export type Database = {
           depreciation_amount?: number | null
           depreciation_percent?: number | null
           document_id: string
+          effective_unit_price?: number | null
           header_id: string
           id?: string
           is_taxable?: boolean | null
@@ -18480,10 +18485,13 @@ export type Database = {
           mapping_confidence?: number | null
           mapping_method?: string | null
           material_amount?: number | null
+          parser_layout?: string | null
           quantity?: number | null
           raw_category?: string | null
           raw_code?: string | null
           raw_description: string
+          remove_price?: number | null
+          replace_price?: number | null
           section_name?: string | null
           tax_amount?: number | null
           total_acv?: number | null
@@ -18499,6 +18507,7 @@ export type Database = {
           depreciation_amount?: number | null
           depreciation_percent?: number | null
           document_id?: string
+          effective_unit_price?: number | null
           header_id?: string
           id?: string
           is_taxable?: boolean | null
@@ -18508,10 +18517,13 @@ export type Database = {
           mapping_confidence?: number | null
           mapping_method?: string | null
           material_amount?: number | null
+          parser_layout?: string | null
           quantity?: number | null
           raw_category?: string | null
           raw_code?: string | null
           raw_description?: string
+          remove_price?: number | null
+          replace_price?: number | null
           section_name?: string | null
           tax_amount?: number | null
           total_acv?: number | null
@@ -38588,6 +38600,200 @@ export type Database = {
           },
         ]
       }
+      scope_compare_results: {
+        Row: {
+          canonical_group: string | null
+          carrier_description: string | null
+          carrier_line_item_id: string | null
+          carrier_quantity: number | null
+          carrier_tax: number | null
+          carrier_total_acv: number | null
+          carrier_total_rcv: number | null
+          carrier_unit_price: number | null
+          compare_run_id: string
+          contractor_description: string | null
+          contractor_line_item_id: string | null
+          contractor_quantity: number | null
+          contractor_tax: number | null
+          contractor_total_acv: number | null
+          contractor_total_rcv: number | null
+          contractor_unit_price: number | null
+          created_at: string
+          evidence: Json | null
+          explanation: string | null
+          id: string
+          match_confidence: number | null
+          match_method: string | null
+          normalized_key: string | null
+          quantity_delta: number | null
+          result_type: string
+          severity: string
+          tax_delta: number | null
+          tenant_id: string
+          total_acv_delta: number | null
+          total_rcv_delta: number | null
+          unit: string | null
+          unit_price_delta: number | null
+        }
+        Insert: {
+          canonical_group?: string | null
+          carrier_description?: string | null
+          carrier_line_item_id?: string | null
+          carrier_quantity?: number | null
+          carrier_tax?: number | null
+          carrier_total_acv?: number | null
+          carrier_total_rcv?: number | null
+          carrier_unit_price?: number | null
+          compare_run_id: string
+          contractor_description?: string | null
+          contractor_line_item_id?: string | null
+          contractor_quantity?: number | null
+          contractor_tax?: number | null
+          contractor_total_acv?: number | null
+          contractor_total_rcv?: number | null
+          contractor_unit_price?: number | null
+          created_at?: string
+          evidence?: Json | null
+          explanation?: string | null
+          id?: string
+          match_confidence?: number | null
+          match_method?: string | null
+          normalized_key?: string | null
+          quantity_delta?: number | null
+          result_type: string
+          severity?: string
+          tax_delta?: number | null
+          tenant_id: string
+          total_acv_delta?: number | null
+          total_rcv_delta?: number | null
+          unit?: string | null
+          unit_price_delta?: number | null
+        }
+        Update: {
+          canonical_group?: string | null
+          carrier_description?: string | null
+          carrier_line_item_id?: string | null
+          carrier_quantity?: number | null
+          carrier_tax?: number | null
+          carrier_total_acv?: number | null
+          carrier_total_rcv?: number | null
+          carrier_unit_price?: number | null
+          compare_run_id?: string
+          contractor_description?: string | null
+          contractor_line_item_id?: string | null
+          contractor_quantity?: number | null
+          contractor_tax?: number | null
+          contractor_total_acv?: number | null
+          contractor_total_rcv?: number | null
+          contractor_unit_price?: number | null
+          created_at?: string
+          evidence?: Json | null
+          explanation?: string | null
+          id?: string
+          match_confidence?: number | null
+          match_method?: string | null
+          normalized_key?: string | null
+          quantity_delta?: number | null
+          result_type?: string
+          severity?: string
+          tax_delta?: number | null
+          tenant_id?: string
+          total_acv_delta?: number | null
+          total_rcv_delta?: number | null
+          unit?: string | null
+          unit_price_delta?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_compare_results_compare_run_id_fkey"
+            columns: ["compare_run_id"]
+            isOneToOne: false
+            referencedRelation: "scope_compare_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scope_compare_runs: {
+        Row: {
+          analysis_json: Json | null
+          carrier_document_id: string
+          carrier_line_count: number | null
+          carrier_total_rcv: number | null
+          carrier_total_tax: number | null
+          claim_id: string | null
+          contractor_document_id: string
+          contractor_line_count: number | null
+          contractor_total_rcv: number | null
+          contractor_total_tax: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          job_id: string | null
+          matched_count: number | null
+          missing_from_carrier_count: number | null
+          missing_from_contractor_count: number | null
+          price_delta_count: number | null
+          quantity_delta_count: number | null
+          status: string
+          tax_difference: number | null
+          tenant_id: string
+          total_difference_rcv: number | null
+          updated_at: string
+        }
+        Insert: {
+          analysis_json?: Json | null
+          carrier_document_id: string
+          carrier_line_count?: number | null
+          carrier_total_rcv?: number | null
+          carrier_total_tax?: number | null
+          claim_id?: string | null
+          contractor_document_id: string
+          contractor_line_count?: number | null
+          contractor_total_rcv?: number | null
+          contractor_total_tax?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          job_id?: string | null
+          matched_count?: number | null
+          missing_from_carrier_count?: number | null
+          missing_from_contractor_count?: number | null
+          price_delta_count?: number | null
+          quantity_delta_count?: number | null
+          status?: string
+          tax_difference?: number | null
+          tenant_id: string
+          total_difference_rcv?: number | null
+          updated_at?: string
+        }
+        Update: {
+          analysis_json?: Json | null
+          carrier_document_id?: string
+          carrier_line_count?: number | null
+          carrier_total_rcv?: number | null
+          carrier_total_tax?: number | null
+          claim_id?: string | null
+          contractor_document_id?: string
+          contractor_line_count?: number | null
+          contractor_total_rcv?: number | null
+          contractor_total_tax?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          job_id?: string | null
+          matched_count?: number | null
+          missing_from_carrier_count?: number | null
+          missing_from_contractor_count?: number | null
+          price_delta_count?: number | null
+          quantity_delta_count?: number | null
+          status?: string
+          tax_difference?: number | null
+          tenant_id?: string
+          total_difference_rcv?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       scope_comparison_lines: {
         Row: {
           approved: boolean
@@ -38940,6 +39146,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scope_parse_debug_rows: {
+        Row: {
+          accepted: boolean | null
+          created_at: string
+          document_id: string
+          id: string
+          page_number: number | null
+          parsed_json: Json | null
+          parser_layout: string | null
+          raw_line: string
+          rejection_reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          accepted?: boolean | null
+          created_at?: string
+          document_id: string
+          id?: string
+          page_number?: number | null
+          parsed_json?: Json | null
+          parser_layout?: string | null
+          raw_line: string
+          rejection_reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          accepted?: boolean | null
+          created_at?: string
+          document_id?: string
+          id?: string
+          page_number?: number | null
+          parsed_json?: Json | null
+          parser_layout?: string | null
+          raw_line?: string
+          rejection_reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
       }
       scraped_invoice_inbox: {
         Row: {

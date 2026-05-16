@@ -1,82 +1,103 @@
-## Xactimate Comparison Tool — Insurance Tab
+## Supplement Scope Analyzer Accuracy Fix
 
-A new **Insurance** tab on the Project (Job) page that lets users upload the carrier's Xactimate PDF, attach or build the company's own Xactimate, run a full line-by-line diff, and export a supplement-ready report explaining every addition, removal, and price change for the carrier.
+The root cause is that `scope-document-ingest` hands merged PDF text to AI and then relies on fuzzy matching downstream. We will flip the architecture: **deterministic parsing first, AI only as fallback/explainer**, and build a dedicated comparison engine with auditable results. Existing UI (`SupplementEngine`, `SupplementWorkflow`, `ScopeUploader`, `ScopeDocumentBrowser`, `useScopeIntelligence`) will be wired into the new engine, not replaced.
 
-### What gets reused (already in the codebase)
+### Phase 1 — Database migration
+New migration `scope_compare_accuracy.sql`:
+- `scope_compare_runs` — per-run summary (totals, deltas, counts, analysis_json)
+- `scope_compare_results` — one row per matched/missing/delta line with carrier+contractor snapshots, confidence, evidence
+- `scope_parse_debug_rows` — every raw line attempted with accepted/rejected reason
+- Add columns to `insurance_scope_line_items` if missing: `remove_price`, `replace_price`, `effective_unit_price`, `parser_layout`
+- Indexes on tenant_id, job_id, claim_id, compare_run_id, document_id, result_type
+- RLS scoped via active tenant pattern already used in the project
 
-- `scope_documents` + `scope_line_items` + `scope_headers` tables and the `scope-document-ingest` edge function (PDF → parsed Xactimate line items, carrier/format detection).
-- `scope-comparison-analyze` edge function (existing matched/missing/discrepancy logic — extended for two-document compare).
-- `XactScopeBuilder`, `XactAreaManager`, `XactScopeItemEditor`, `roofingScopeCatalog.ts` for company-built scope.
-- `canonicalItems.ts` taxonomy for cross-side mapping.
-- `xactimate-exporter` for ESX export of the supplement.
-- `InsuranceClaimManager`, `ScopeDocumentBuilder`, `InsuranceSection`.
+### Phase 2 — Shared normalization library
+`supabase/functions/_shared/scope-normalizer.ts` exports:
+- `normalizeMoney`, `normalizeQuantity`, `normalizeUnit`, `normalizeDescription`
+- `stripActionPrefix` (Remove / R&R / R/R / replace / clean / paint)
+- `canonicalScopeKey` with curated mappings for laminated shingles, tear-off, felt, drip edge, starter, hip/ridge, pipe jack, valley metal, dumpster, water barrier tape, re-nailing, butyl caulk, gutter/downspout, tarp, pressure cleaning, stucco seal/paint, gooseneck vent, etc.
+- `classifyTrade`, `classifyScopeGroup` → roofing / demolition / moisture_protection / ventilation / flashing / exterior_painting / stucco / gutter / temporary_repair / cleaning / other
+- `calculateLineTotal`, `nearlyEqual`
+- Raw `raw_description` is never mutated; normalization is only used for matching keys.
 
-### New work
+### Phase 3 — Deterministic Xactimate line parser
+`supabase/functions/_shared/xactimate-line-parser.ts`:
+- Walk page text line-by-line; detect section/room headers (Roof, Dwelling Roof, elevations, Tarp, Exterior, CONTINUED sections).
+- Detect Layout A (`DESCRIPTION QUANTITY UNIT PRICE TAX RCV DEPREC. ACV`) vs Layout B (`DESCRIPTION QTY REMOVE REPLACE TAX TOTAL`).
+- Parse numbered rows, **merging wrapped description lines** into the active line until the next numbered row or Totals.
+- Capture quantity, unit, remove_price, replace_price, unit_price, tax, total_rcv, depreciation, total_acv, page, section, layout_type.
+- Reject non-line rows (headers, recap, disclaimers, drawings, policy letters) and persist them to `scope_parse_debug_rows` with rejection_reason.
+- Parse document totals (Line Item Total, Material Sales Tax, RCV, ACV, Net Claim, deductible, recoverable depreciation).
+- Compute effective_unit_price for Layout B (REMOVE / REPLACE / REMOVE+REPLACE depending on action).
 
-#### 1. Project "Insurance" tab
-- Add `<TabsTrigger value="insurance">Insurance</TabsTrigger>` to `ProjectDetails.tsx` (after Estimate).
-- New component `src/features/projects/components/ProjectInsuranceTab.tsx`:
-  - **Carrier Estimate** card: upload Xactimate PDF → calls `scope-document-ingest` with `document_type: 'estimate'` and links `job_id`.
-  - **Company Estimate** card: pick from existing company `scope_documents` for that job, OR launch `XactScopeBuilder` to build one in-app (saved as `document_type: 'company_scope'`).
-  - **Run Comparison** button → opens `<XactComparisonView>`.
+### Phase 4 — Rework `scope-document-ingest`
+1. Extract PDF text via existing `unpdf` flow.
+2. Run `parseXactimateLines`.
+3. If parser returns ≥1 item AND reconciles within ~2% of document RCV → use as source of truth, AI cannot overwrite numbers.
+4. Otherwise call existing AI extraction as fallback, tag `fallback_used: true`.
+5. Insert parsed lines into `insurance_scope_line_items` (with new columns).
+6. Insert debug rows.
+7. Update `insurance_scope_documents.raw_json_output` with `parser_version`, `parser_type` (deterministic | ai_fallback | hybrid), `layout_detected`, `warnings`, counts.
+8. Existing AI path is preserved as fallback only.
 
-#### 2. Two-document comparison engine
-- New edge function `xact-compare-documents`:
-  - Inputs: `carrier_document_id`, `company_document_id`.
-  - Joins line items by `canonical_item_id` (fall back to fuzzy `xactimate_code` + description match using existing mapping logic).
-  - Emits a `ComparisonResult` with four buckets:
-    - `added_by_company` (in company, not in carrier) — supplement candidates.
-    - `removed_by_company` (in carrier, not in company) — flag for review.
-    - `quantity_changes` (qty delta with %).
-    - `price_changes` (unit price / RCV delta with %).
-  - Persists to a new `scope_comparisons` table with `comparison_lines` child rows so reports are reproducible and auditable.
+### Phase 5 — Comparison edge function
+`supabase/functions/compare-scope-documents/index.ts`:
+- Body: `{ carrier_document_id, contractor_document_id, job_id?, claim_id? }`
+- Auth + active tenant resolution.
+- Load both sides' line items, normalize via shared lib.
+- Weighted match scoring:
+  - canonical key exact +0.50, same unit +0.15, same group +0.10, qty close +0.10, token-similarity>0.75 +0.15, action match +0.05
+  - action-mismatch penalty unless contractor R&R ↔ carrier remove+replace split
+- Thresholds: ≥0.86 accept, 0.70–0.85 possible (warning), <0.70 missing.
+- One-to-one assignment; carrier line can only match one contractor line unless action-split logic triggers.
+- Produce result rows: `exact_match`, `fuzzy_match`, `missing_from_carrier`, `missing_from_contractor`, `quantity_delta`, `price_delta`, `total_delta`, `tax_delta`.
+- Severity: critical if missing_from_carrier total ≥ $250 or total_delta ≥ $250; warning for smaller deltas; info for exact.
+- Insert `scope_compare_runs` + `scope_compare_results`, return full report JSON.
+- Encode the special-case canonical mappings called out (tear-off ↔ Remove Laminated, drip edge ↔ R&R drip edge, pipe jack lead, hip/ridge cap variants, pressure clean, seal & paint stucco, etc.).
 
-#### 3. Side-by-side review UI
-- `XactComparisonView.tsx`:
-  - Header with totals: carrier RCV vs company RCV, net delta, supplement amount.
-  - Tabs/filters: All • Added • Removed • Qty Δ • Price Δ.
-  - Each row: code, description, carrier qty/unit/price/RCV, company qty/unit/price/RCV, delta, justification textarea (required for Added/Price Δ rows before report can be generated).
-  - Bulk-justify with AI button → calls existing AI rewriter to suggest justifications grounded in the line description, photos, and measurement report.
-  - "Approve all" / per-row approve toggles.
+### Phase 6 — UI wiring (no replacement)
+In `SupplementEngine.tsx`, `SupplementWorkflow.tsx`, `useScopeIntelligence.ts`:
+- Carrier + contractor document selectors.
+- "Run Scope Comparison" button → `supabase.functions.invoke('compare-scope-documents', ...)`.
+- Results table grouped: Missing From Carrier / Qty Diffs / Price Diffs / Total Diffs / Matched.
+- Summary cards: Carrier RCV, Contractor RCV, Difference, Missing-from-carrier total, Qty delta total, Tax delta, Avg match confidence.
+- Debug drawer: parsed rows, rejected rows, layout, warnings, AI fallback flag.
+- Export buttons: JSON, CSV, Generate Supplement Report (reuses existing `generate-supplement-report`).
 
-#### 4. Supplement report generator
-- New edge function `generate-supplement-report` (uses jsPDF/pdf-lib, same pattern as estimate PDFs):
-  - Cover page: carrier, claim #, adjuster, property, deductible, totals.
-  - Executive summary: counts of added/removed/changed + net supplement $.
-  - Line-by-line section, grouped by category (Roofing / Gutters / Flashing / Charges):
-    - Carrier line vs Company line shown side-by-side.
-    - Δ qty, Δ unit price, Δ RCV.
-    - Justification text + reference to evidence (photos, measurement report area, code requirement).
-  - Appendix: full carrier estimate summary, full company estimate summary, signature block for adjuster.
-  - Stored in Storage `{tenant_id}/projects/{project_id}/supplements/`.
-- Optional: ESX export via existing `xactimate-exporter` so the carrier can re-import.
+### Phase 7 — Report output
+Sections: Claim/Property Summary → Totals Comparison → Missing Items From Carrier → Qty Differences → Unit Price Differences → Tax/Total Differences → Matched Items → Parser Audit Log. Each row carries description, qty, unit, prices, totals, section, reason, evidence, and (for deltas) both sides + match confidence + explanation.
 
-#### 5. Insurance tab also surfaces
-- History of past comparisons / supplement versions (v1, v2…) from `scope_comparisons`.
-- Status pill: Draft → Sent to Carrier → Approved/Denied/Partial (manual stage update + log to existing `insurance_claims` table).
-- "Send to adjuster" action → existing email/SMS flow with the supplement PDF attached.
+### Phase 8 — Acceptance tests against provided documents
+Hard-coded expectations validated in a Deno test for `compare-scope-documents`:
+- Carrier: RCV 14,718.16; ACV 9,906.11; deductible 5,760.00; net 4,146.11; roof subtotal ~10,970.08; 21 line items.
+- Contractor: RCV 29,417.87; net 29,417.87; roof subtotal 16,363.21; tarp subtotal 1,704.60; 35 line items.
+- Total RCV difference 14,699.71.
+- Missing-from-carrier must include: water barrier joint taping, 20-yd dumpster, gooseneck vent R&R, re-nailing sheathing, butyl caulking, R&R gutter/downspout 6", tarp poly, final cleaning, stucco patch.
+- Quantity deltas must surface: valley metal 22→42 LF, hip/ridge cap 88→118 LF, pipe jack 2→3 EA, drip edge 224→227.95 LF.
 
-### Database changes
-- New `scope_comparisons` table: `id, tenant_id, project_id, carrier_document_id, company_document_id, totals_json, status, created_by, created_at`.
-- New `comparison_lines` table: one row per diff with `change_type`, carrier/company snapshots, `delta_qty`, `delta_price`, `delta_rcv`, `justification`, `approved`.
-- RLS scoped by `tenant_id` (use `useEffectiveTenantId` pattern).
-- New `supplement_reports` table: `id, comparison_id, version, pdf_url, esx_url, sent_at, status`.
+### Phase 9 — Quality gates
+- Parsed totals must reconcile within 2% of document RCV or attach warning.
+- Zero items parsed → fail with clear error.
+- Layout undetected → mark `parser_layout = unknown`, fall back to AI.
+- AI fallback can never overwrite a deterministic number; AI value stored separately.
+- Duplicate line numbers preserved + flagged `duplicate_line_number`.
+- Best-match-only enforcement, with action-split exception.
+- Same description across elevations stays separate by `section_name`; only grouped in summary rollups.
 
-### Files to create
-- `src/features/projects/components/ProjectInsuranceTab.tsx`
-- `src/components/insurance/XactComparisonView.tsx`
-- `src/components/insurance/ComparisonLineRow.tsx`
-- `src/components/insurance/SupplementReportPreview.tsx`
-- `src/hooks/useXactComparison.ts`
-- `supabase/functions/xact-compare-documents/index.ts`
-- `supabase/functions/generate-supplement-report/index.ts`
+### Phase 10 — Deployment
+- Add migrations + deploy `scope-document-ingest`, `compare-scope-documents`.
+- TypeScript + Supabase linter checks.
+- Verify RLS policies on the three new tables.
+- Structured logs prefixed `[scope-parser]`, `[scope-compare]`, `[scope-debug]`.
+- Surface clear UI errors; do not regress existing supplement workflow.
 
-### Files to edit
-- `src/features/projects/components/ProjectDetails.tsx` — add Insurance tab + content.
-- `src/components/xact-scope/XactScopeBuilder.tsx` — accept `job_id` and persist as a `scope_documents` row tagged `company_scope`.
+### Technical notes
+- All new tables tenant-scoped via the existing `useEffectiveTenantId` / profile-based pattern; never bypass RLS.
+- Edge functions use `npm:` specifiers and explicit `Deno.serve(handler)` per project rules.
+- Description normalization is matching-only; persisted `raw_description` always preserved exactly as parsed.
+- Existing AI extraction path stays intact behind a fallback flag — no functional regression for documents the deterministic parser cannot handle.
 
-### Open questions before I build
-
-1. **Company estimate source** — should the "Company Xactimate" side accept (a) an uploaded Xactimate PDF the company already exported from Xactimate desktop, (b) a scope built with the in-app `XactScopeBuilder`, or (c) both? Default plan is both.
-2. **Approval gate** — must every Added / Price-changed line have a typed justification before the report can be generated, or allow AI-only justifications without manual review?
-3. **Send to carrier** — do you want the report delivered via email from inside the app (auto-attach + tracked), or just downloadable PDF + ESX for now?
+### Open questions
+1. Should "possible match" (0.70–0.85) rows appear in the main results table by default or only in the debug drawer?
+2. For action-split (carrier separate Remove + Replace vs contractor R&R), should we collapse into one delta row or keep two linked rows?
+3. Do you want the Supplement Report PDF auto-generated at the end of a comparison run, or only when the user clicks Generate?
