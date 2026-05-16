@@ -287,6 +287,7 @@ Deno.serve(async (req: Request) => {
     const drawFullRow = (l: any) => {
       ensureSpace(56);
       const badgeColor: Record<string, [number, number, number]> =  {
+        name_change: [0.85, 0.45, 0.1],
         added: [0.1, 0.4, 0.8], removed: [0.8, 0.2, 0.2],
         qty_change: [0.95, 0.55, 0.1], price_change: [0.6, 0.3, 0.7],
         unchanged: [0.5, 0.5, 0.55],
