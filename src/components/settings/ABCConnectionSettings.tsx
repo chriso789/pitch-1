@@ -38,6 +38,27 @@ const SERVER_REDIRECT_URI = `https://${SUPABASE_PROJECT_ID}.supabase.co/function
 // PKCE helpers
 // PKCE generation now happens server-side in the abc-oauth-start edge function.
 
+function formatErrorMessage(error: unknown): string {
+  if (!error) return 'Unknown error';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  const anyError = error as any;
+  const parts = [
+    anyError.message,
+    anyError.context?.error_description,
+    anyError.context?.error,
+    anyError.details,
+    anyError.hint,
+    anyError.code ? `code=${anyError.code}` : null,
+  ].filter(Boolean);
+  if (parts.length) return parts.join(' | ');
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 function EndpointRow({ label, value, pending, hint }: { label: string; value: string; pending?: string; hint?: string }) {
   const display = value || pending || '—';
   return (
@@ -399,7 +420,7 @@ export function ABCConnectionSettings() {
                 } catch (e: any) {
                   toast({
                     title: 'Could not start OAuth',
-                    description: e.message,
+                    description: formatErrorMessage(e),
                     variant: 'destructive',
                   });
                 }
