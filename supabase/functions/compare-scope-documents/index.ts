@@ -14,26 +14,15 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 import { corsHeaders } from "../_shared/cors.ts";
 import { scopeErrorResponse } from "../_shared/scope-errors.ts";
-import {
-  canonicalScopeKey,
-  classifyScopeGroup,
-  classifyTrade,
-  stripActionPrefix,
-  normalizeDescription,
-  normalizeUnit,
-  normalizeMoney,
-  normalizeQuantity,
-} from "../_shared/scope-normalizer.ts";
-import { fingerprintScopeItem } from "../_shared/scope-fingerprint.ts";
-import { scoreMatch } from "../_shared/scope-confidence-v2.ts";
 import { evaluateAssemblyRules } from "../_shared/scope-assembly-rules.ts";
-import { buildJustification } from "../_shared/supplement-justification-builder.ts";
 import { reconcileParsedDocument } from "../_shared/scope-reconciler.ts";
+import {
+  toNormalizedItem,
+  detectPriceListMismatch,
+  compareNormalized,
+} from "../_shared/scope-compare-core.ts";
 import type {
-  NormalizedScopeItem,
-  ScopeMatch,
   ScopeCompareSummary,
-  ScopeSource,
   ReconciliationResult,
   ParsedHeaderTotals,
 } from "../_shared/scope-types.ts";
