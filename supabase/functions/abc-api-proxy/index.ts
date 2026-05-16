@@ -137,6 +137,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       auth ? { global: { headers: { Authorization: auth } } } : undefined,
     );
 
@@ -149,7 +153,7 @@ Deno.serve(async (req) => {
     // Resolve tenant_id from JWT if not provided
     let tenant_id = body.tenant_id;
     if (!tenant_id && auth) {
-      const { data: userRes } = await supabase.auth.getUser();
+      const { data: userRes } = await authClient.auth.getUser();
       const userId = userRes?.user?.id;
       if (userId) {
         const { data: prof } = await supabase
@@ -170,7 +174,7 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { data: userRes } = await supabase.auth.getUser();
+      const { data: userRes } = await authClient.auth.getUser();
       const user = userRes?.user;
       if (!user) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
