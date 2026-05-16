@@ -426,12 +426,32 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("abc-api-proxy error:", error);
+    // Robustly extract a human message from Error, PostgrestError, FetchError,
+    // plain objects, etc. (avoids the "[object Object]" toast bug)
+    const serializeErr = (e: unknown): string => {
+      if (!e) return "unknown error";
+      if (typeof e === "string") return e;
+      if (e instanceof Error) return e.message;
+      const anyE = e as any;
+      const parts = [
+        anyE.message,
+        anyE.error_description,
+        anyE.error,
+        anyE.details,
+        anyE.hint,
+        anyE.code ? `code=${anyE.code}` : null,
+      ].filter(Boolean);
+      if (parts.length) return parts.join(" | ");
+      try { return JSON.stringify(e); } catch { return String(e); }
+    };
+    const msg = serializeErr(error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: msg,
+        raw_error: (() => { try { return JSON.parse(JSON.stringify(error)); } catch { return null; } })(),
         interpretation: requestAction === "start_oauth"
-          ? `Could not start ABC OAuth: ${error instanceof Error ? error.message : String(error)}`
+          ? `Could not start ABC OAuth: ${msg}`
           : undefined,
       }),
       {
