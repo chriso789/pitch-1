@@ -490,7 +490,7 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
       // Normalize carrier name
       const carrierNormalized = normalizeCarrier(extracted.carrier_name);
 
-      // Update document with carrier info
+      // Update document with carrier info + parser metadata
       await supabase
         .from("insurance_scope_documents")
         .update({
@@ -500,7 +500,14 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
           claim_number_detected: extracted.claim_number,
           loss_date_detected: extracted.loss_date,
           format_family: extracted.format_family,
-          raw_json_output: extracted,
+          raw_json_output: {
+            ...extracted,
+            parser_version: '2.0.0',
+            parser_type: parserType,
+            layout_detected: layoutDetected,
+            warnings: parserWarnings,
+            reconciliation,
+          },
           parse_status: 'mapping'
         })
         .eq("id", document.id);
@@ -536,8 +543,8 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
         throw headerError;
       }
 
-      // Insert line items with canonical mapping attempt
-      const lineItemsToInsert = (extracted.line_items || []).map((item, idx) => ({
+      // Insert line items with canonical mapping + new deterministic columns
+      const lineItemsToInsert = (extracted.line_items || []).map((item: any, idx) => ({
         header_id: header.id,
         document_id: document.id,
         raw_code: item.raw_code,
@@ -552,9 +559,15 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
         total_acv: item.total_acv,
         section_name: item.section_name,
         line_order: idx,
+        // New deterministic columns (Layout B + classifier)
+        remove_price: item._remove_price ?? null,
+        replace_price: item._replace_price ?? null,
+        effective_unit_price: item.unit_price ?? null,
+        parser_layout: item._layout ?? (parserType === 'deterministic' ? layoutDetected : null),
         mapping_method: null as string | null,
-        mapping_confidence: null as number | null
+        mapping_confidence: null as number | null,
       }));
+
 
       if (lineItemsToInsert.length > 0) {
         // Try to match each line item to canonical items
