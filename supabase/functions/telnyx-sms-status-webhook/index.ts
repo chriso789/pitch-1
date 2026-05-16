@@ -91,12 +91,7 @@ Deno.serve(async (req) => {
     }
 
     if (!records || records.length === 0) {
-      console.log(`⚠️ No communication_history record found for message_id: ${messageId}`);
-      // Still return success - Telnyx might send webhooks for messages we don't have
-      return new Response(
-        JSON.stringify({ success: true, message: 'Message not found in system' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.log(`⚠️ No communication_history record for ${messageId}; continuing to update sms_messages + sms_blast_items`);
     }
 
     // Update all matching records (should typically be 1)
