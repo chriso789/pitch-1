@@ -121,7 +121,7 @@ export function ABCConnectionSettings() {
 
   useEffect(() => {
     if (effectiveTenantId) loadConnection();
-  }, [effectiveTenantId]);
+  }, [effectiveTenantId, environment]);
 
   // Surface OAuth callback result (?abc=connected|error&msg=...)
   useEffect(() => {
@@ -153,6 +153,9 @@ export function ABCConnectionSettings() {
         .from('abc_connections')
         .select('*')
         .eq('tenant_id', effectiveTenantId)
+        .in('environment', environment === 'sandbox' ? ['sandbox', 'staging'] : ['production'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (error) throw error;
       if (data) {
@@ -160,7 +163,11 @@ export function ABCConnectionSettings() {
         setClientId(data.client_id || '');
         setAccountNumber(data.account_number || '');
         setDefaultBranch(data.default_branch_code || '');
-        setEnvironment(normalizeABCEnvironment(data.environment));
+      } else {
+        setConnection(null);
+        setClientId('');
+        setAccountNumber('');
+        setDefaultBranch('');
       }
     } catch (e) {
       console.error('Failed to load ABC connection:', e);
