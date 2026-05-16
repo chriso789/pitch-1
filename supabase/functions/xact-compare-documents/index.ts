@@ -18,11 +18,26 @@ function norm(s: string | null | undefined): string {
   return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function matchKey(line: any): string {
-  // canonical_item_id wins, otherwise xact code, otherwise normalized desc
+// Normalize a description so the same line item matches across docs even when
+// the parser assigns slightly different Xactimate codes or punctuation.
+// Preserves meaningful distinctions like "w/ felt" vs "w/out felt".
+function descKey(line: any): string {
+  let s = String(line.raw_description || '').toLowerCase();
+  // Preserve felt distinction before stripping punctuation
+  const woFelt = /w\/?\s*out\s*felt|without\s*felt|no\s*felt/.test(s);
+  const wFelt = !woFelt && /w\/?\s*felt|with\s*felt/.test(s);
+  // Strip leading verbs like "remove", "r&r", "detach & reset"
+  s = s.replace(/^(r\s*&\s*r|remove\s*&\s*replace|remove|detach\s*&\s*reset|reset|install)\b/i, '');
+  s = s.replace(/[^a-z0-9]+/g, ' ').trim();
+  const feltTag = woFelt ? ' wofelt' : wFelt ? ' wfelt' : '';
+  const removeTag = /^(remove|r\s*r|detach)/.test(String(line.raw_description || '').toLowerCase()) ? ' rm' : '';
+  return s + feltTag + removeTag;
+}
+
+function codeKey(line: any): string | null {
   if (line.canonical_item_id) return `c:${line.canonical_item_id}`;
   if (line.raw_code) return `k:${norm(line.raw_code)}`;
-  return `d:${norm(line.raw_description)}`;
+  return null;
 }
 
 // Skip tax line items - tax handled separately at totals level, not compared
@@ -91,57 +106,62 @@ Deno.serve(async (req) => {
     const carrierLines = carrierLinesRaw.filter(l => !isTaxLine(l));
     const companyLines = companyLinesRaw.filter(l => !isTaxLine(l));
 
-    // Index by match key
-    const carrierByKey = new Map<string, any[]>();
-    for (const l of carrierLines) {
-      const k = matchKey(l);
-      const arr = carrierByKey.get(k) || [];
-      arr.push(l);
-      carrierByKey.set(k, arr);
-    }
-    const companyByKey = new Map<string, any[]>();
-    for (const l of companyLines) {
-      const k = matchKey(l);
-      const arr = companyByKey.get(k) || [];
-      arr.push(l);
-      companyByKey.set(k, arr);
-    }
+    // Two-pass matching: (1) by code/canonical, (2) leftovers by normalized description
+    const carrierRemaining = [...carrierLines];
+    const companyRemaining = [...companyLines];
+    const pairs: Array<{ c: any | null; y: any | null; method: string }> = [];
 
-    type DiffRow = {
-      change_type: 'added' | 'removed' | 'qty_change' | 'price_change' | 'unchanged';
-      category: string | null;
-      canonical_item_id: string | null;
-      match_method: string;
-      carrier_line_id: string | null;
-      carrier_code: string | null;
-      carrier_description: string | null;
-      carrier_quantity: number | null;
-      carrier_unit: string | null;
-      carrier_unit_price: number | null;
-      carrier_total_rcv: number | null;
-      company_line_id: string | null;
-      company_code: string | null;
-      company_description: string | null;
-      company_quantity: number | null;
-      company_unit: string | null;
-      company_unit_price: number | null;
-      company_total_rcv: number | null;
-      delta_quantity: number | null;
-      delta_unit_price: number | null;
-      delta_rcv: number | null;
-      delta_percent: number | null;
+    const indexBy = (arr: any[], keyFn: (l: any) => string | null) => {
+      const m = new Map<string, any[]>();
+      for (const l of arr) {
+        const k = keyFn(l);
+        if (!k) continue;
+        const a = m.get(k) || [];
+        a.push(l);
+        m.set(k, a);
+      }
+      return m;
     };
 
+    // Pass 1: code / canonical
+    const cByCode = indexBy(carrierRemaining, codeKey);
+    const yByCode = indexBy(companyRemaining, codeKey);
+    const codeKeys = new Set([...cByCode.keys(), ...yByCode.keys()]);
+    const consumedC = new Set<string>();
+    const consumedY = new Set<string>();
+    for (const k of codeKeys) {
+      const cs = cByCode.get(k) || [];
+      const ys = yByCode.get(k) || [];
+      const n = Math.min(cs.length, ys.length);
+      for (let i = 0; i < n; i++) {
+        pairs.push({ c: cs[i], y: ys[i], method: k.startsWith('c:') ? 'canonical' : 'code' });
+        consumedC.add(cs[i].id);
+        consumedY.add(ys[i].id);
+      }
+    }
+
+    // Pass 2: leftovers matched by normalized description
+    const leftoverC = carrierRemaining.filter(l => !consumedC.has(l.id));
+    const leftoverY = companyRemaining.filter(l => !consumedY.has(l.id));
+    const cByDesc = indexBy(leftoverC, (l) => `d:${descKey(l)}`);
+    const yByDesc = indexBy(leftoverY, (l) => `d:${descKey(l)}`);
+    const descKeys = new Set([...cByDesc.keys(), ...yByDesc.keys()]);
+    for (const k of descKeys) {
+      const cs = cByDesc.get(k) || [];
+      const ys = yByDesc.get(k) || [];
+      const n = Math.min(cs.length, ys.length);
+      for (let i = 0; i < n; i++) {
+        pairs.push({ c: cs[i], y: ys[i], method: 'description' });
+        consumedC.add(cs[i].id);
+        consumedY.add(ys[i].id);
+      }
+      for (let i = n; i < cs.length; i++) pairs.push({ c: cs[i], y: null, method: 'description' });
+      for (let i = n; i < ys.length; i++) pairs.push({ c: null, y: ys[i], method: 'description' });
+    }
+
     const rows: DiffRow[] = [];
-    const allKeys = new Set<string>([...carrierByKey.keys(), ...companyByKey.keys()]);
 
-    for (const k of allKeys) {
-      const cArr = carrierByKey.get(k) || [];
-      const yArr = companyByKey.get(k) || [];
-      const c = cArr[0];
-      const y = yArr[0];
-      const matchMethod = k.startsWith('c:') ? 'canonical' : k.startsWith('k:') ? 'code' : 'description';
-
+    for (const { c, y, method: matchMethod } of pairs) {
       if (c && !y) {
         rows.push({
           change_type: 'removed', category: c.raw_category || c.section_name || null,
@@ -202,7 +222,40 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Aggregate totals
+    // Add unmatched carrier-only leftovers (no companion at all in either pass)
+    for (const c of carrierLines) {
+      if (consumedC.has(c.id)) continue;
+      if (pairs.some(p => p.c?.id === c.id)) continue;
+      rows.push({
+        change_type: 'removed', category: c.raw_category || c.section_name || null,
+        canonical_item_id: c.canonical_item_id || null, match_method: 'unmatched',
+        carrier_line_id: c.id, carrier_code: c.raw_code, carrier_description: c.raw_description,
+        carrier_quantity: c.quantity, carrier_unit: c.unit, carrier_unit_price: c.unit_price, carrier_total_rcv: c.total_rcv,
+        company_line_id: null, company_code: null, company_description: null,
+        company_quantity: null, company_unit: null, company_unit_price: null, company_total_rcv: null,
+        delta_quantity: c.quantity ? -Number(c.quantity) : null,
+        delta_unit_price: null,
+        delta_rcv: c.total_rcv ? -Number(c.total_rcv) : null,
+        delta_percent: -100,
+      });
+    }
+    for (const y of companyLines) {
+      if (consumedY.has(y.id)) continue;
+      if (pairs.some(p => p.y?.id === y.id)) continue;
+      rows.push({
+        change_type: 'added', category: y.raw_category || y.section_name || null,
+        canonical_item_id: y.canonical_item_id || null, match_method: 'unmatched',
+        carrier_line_id: null, carrier_code: null, carrier_description: null,
+        carrier_quantity: null, carrier_unit: null, carrier_unit_price: null, carrier_total_rcv: null,
+        company_line_id: y.id, company_code: y.raw_code, company_description: y.raw_description,
+        company_quantity: y.quantity, company_unit: y.unit, company_unit_price: y.unit_price, company_total_rcv: y.total_rcv,
+        delta_quantity: y.quantity ? Number(y.quantity) : null,
+        delta_unit_price: y.unit_price ? Number(y.unit_price) : null,
+        delta_rcv: y.total_rcv ? Number(y.total_rcv) : null,
+        delta_percent: 100,
+      });
+    }
+
     const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
     const carrier_total_rcv = sum(carrierLines.map(l => Number(l.total_rcv || 0)));
     const company_total_rcv = sum(companyLines.map(l => Number(l.total_rcv || 0)));
