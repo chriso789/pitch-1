@@ -25,6 +25,12 @@ function matchKey(line: any): string {
   return `d:${norm(line.raw_description)}`;
 }
 
+// Skip tax line items - tax handled separately at totals level, not compared
+function isTaxLine(line: any): boolean {
+  const hay = `${line.raw_code || ''} ${line.raw_description || ''} ${line.raw_category || ''} ${line.section_name || ''}`.toLowerCase();
+  return /\b(sales\s*tax|material\s*tax|tax\s*amount|\btax\b)\b/.test(hay);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -77,10 +83,13 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return data || [];
     };
-    const [carrierLines, companyLines] = await Promise.all([
+    const [carrierLinesRaw, companyLinesRaw] = await Promise.all([
       loadLines(carrier_document_id),
       loadLines(company_document_id),
     ]);
+    // Exclude tax rows from the comparison entirely
+    const carrierLines = carrierLinesRaw.filter(l => !isTaxLine(l));
+    const companyLines = companyLinesRaw.filter(l => !isTaxLine(l));
 
     // Index by match key
     const carrierByKey = new Map<string, any[]>();
