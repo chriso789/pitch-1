@@ -77,6 +77,36 @@ const Privacy = () => {
           <li><strong>Google Maps:</strong> Mapping and location services</li>
           <li><strong>OpenAI/Anthropic:</strong> AI features and analysis</li>
         </ul>
+
+        <h3>4.2 SMS / Text Messaging Consent &amp; Mobile Information</h3>
+        <p>
+          <strong>
+            No mobile information will be shared with third parties or affiliates for marketing
+            or promotional purposes. All the above categories exclude text messaging originator
+            opt-in data and consent; this information will not be shared with any third parties.
+          </strong>
+        </p>
+        <p>
+          When you affirmatively opt in to receive SMS messages from {BRAND.name} (for example,
+          by checking the SMS-consent checkbox on our demo or contact form, signing a written
+          consent form during an in-person consultation, or texting <strong>START</strong> to our
+          business number), you may receive messages such as appointment reminders, project status
+          updates, estimate follow-ups, demo confirmations, and occasional promotional offers.
+        </p>
+        <ul>
+          <li><strong>Message frequency:</strong> Varies based on your activity and account settings.</li>
+          <li><strong>Message &amp; data rates:</strong> May apply, depending on your mobile carrier and plan.</li>
+          <li><strong>Help:</strong> Reply <strong>HELP</strong> to any message for assistance, or email <a href={`mailto:${BRAND.contact.privacy}`}>{BRAND.contact.privacy}</a>.</li>
+          <li><strong>Opt-out:</strong> Reply <strong>STOP</strong>, <strong>END</strong>, <strong>CANCEL</strong>, <strong>UNSUBSCRIBE</strong>, or <strong>QUIT</strong> to any message at any time to immediately stop all SMS messages from {BRAND.name}.</li>
+          <li><strong>Carriers:</strong> Carriers are not liable for delayed or undelivered messages.</li>
+        </ul>
+        <p>
+          Mobile phone numbers, opt-in records, and SMS consent data are used solely to deliver
+          the messages you have requested and to maintain compliance records. They are not sold,
+          rented, or shared with third parties or affiliates for marketing or promotional purposes.
+          We may share this information with service providers strictly for the purpose of
+          transmitting your messages (for example, our SMS carrier, Telnyx) and as required by law.
+        </p>
       </section>
 
       <section>
