@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 
 interface Body {
   comparison_id: string;
@@ -19,6 +19,18 @@ const CHANGE_LABEL: Record<string, string> = {
   price_change: 'Price Change',
   unchanged: 'Unchanged',
 };
+
+const safePdfText = (value: unknown) => String(value ?? '')
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[•·]/g, '-')
+  .replace(/[Δ∆]/g, 'Delta')
+  .replace(/[×✕]/g, 'x')
+  .replace(/[–—]/g, '-')
+  .replace(/[“”]/g, '"')
+  .replace(/[‘’]/g, "'")
+  .replace(/…/g, '...')
+  .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -111,11 +123,12 @@ Deno.serve(async (req: Request) => {
       text: string,
       opts: { size?: number; bold?: boolean; color?: [number, number, number]; x?: number } = {}
     ) => {
+      const safeText = safePdfText(text);
       const size = opts.size ?? 10;
       const f = opts.bold ? bold : font;
       const c = opts.color ?? [0.1, 0.1, 0.15];
       ensureSpace(size + 4);
-      page.drawText(String(text ?? ''), {
+      page.drawText(safeText, {
         x: opts.x ?? MARGIN,
         y: y - size,
         size,
@@ -135,8 +148,9 @@ Deno.serve(async (req: Request) => {
       y -= 10;
     };
     const wrap = (text: string, size: number, maxW: number, f = font): string[] => {
-      if (!text) return [''];
-      const words = String(text).split(/\s+/);
+      const safeText = safePdfText(text);
+      if (!safeText) return [''];
+      const words = safeText.split(/\s+/);
       const out: string[] = [];
       let cur = '';
       for (const w of words) {
@@ -179,7 +193,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const headerTextX = logoEmbedded ? MARGIN + 130 : MARGIN;
-    page.drawText(tenant?.name ?? 'Company', {
+    page.drawText(safePdfText(tenant?.name ?? 'Company'), {
       x: headerTextX, y: PAGE_H - 35, size: 18, font: bold, color: rgb(1, 1, 1),
     });
     const headerSub = [
@@ -187,7 +201,7 @@ Deno.serve(async (req: Request) => {
       [tenant?.address_city, tenant?.address_state, tenant?.address_zip].filter(Boolean).join(', '),
       tenant?.phone, tenant?.email, tenant?.license_number ? `License: ${tenant.license_number}` : null,
     ].filter(Boolean).join('  •  ');
-    page.drawText(headerSub.slice(0, 110), {
+    page.drawText(safePdfText(headerSub).slice(0, 110), {
       x: headerTextX, y: PAGE_H - 55, size: 8, font, color: rgb(0.92, 0.95, 1),
     });
 
@@ -253,11 +267,11 @@ Deno.serve(async (req: Request) => {
 
     for (const r of priceRows) {
       ensureSpace(12);
-      page.drawText(r.code, { x: colX.code, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
-      page.drawText(r.desc, { x: colX.desc, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
-      page.drawText(r.unit ?? '', { x: colX.unit, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(safePdfText(r.code), { x: colX.code, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(safePdfText(r.desc), { x: colX.desc, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(safePdfText(r.unit ?? ''), { x: colX.unit, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
       page.drawText(fmtMoney(r.price), { x: colX.price, y: y - 9, size: 8, font, color: rgb(0.1, 0.1, 0.15) });
-      page.drawText(r.source, { x: colX.src, y: y - 9, size: 8, font, color: rgb(0.4, 0.4, 0.45) });
+      page.drawText(safePdfText(r.source), { x: colX.src, y: y - 9, size: 8, font, color: rgb(0.4, 0.4, 0.45) });
       y -= 12;
     }
     drawDivider(brand);
@@ -277,20 +291,20 @@ Deno.serve(async (req: Request) => {
       };
       const bc = badgeColor[l.change_type] ?? [0.5, 0.5, 0.55];
       page.drawRectangle({ x: MARGIN, y: y - 12, width: 70, height: 12, color: rgb(bc[0], bc[1], bc[2]) });
-      page.drawText(l.change_type ?? '', { x: MARGIN + 4, y: y - 9, size: 7, font: bold, color: rgb(1, 1, 1) });
+      page.drawText(safePdfText(l.change_type ?? ''), { x: MARGIN + 4, y: y - 9, size: 7, font: bold, color: rgb(1, 1, 1) });
 
       const code = l.company_code || l.carrier_code || '—';
       const desc = l.company_description || l.carrier_description || '—';
-      page.drawText(code, { x: MARGIN + 78, y: y - 9, size: 9, font: bold, color: rgb(0.1, 0.1, 0.15) });
+      page.drawText(safePdfText(code), { x: MARGIN + 78, y: y - 9, size: 9, font: bold, color: rgb(0.1, 0.1, 0.15) });
       const descLines = wrap(desc, 9, PAGE_W - MARGIN - 160);
-      page.drawText(descLines[0] ?? '', { x: MARGIN + 160, y: y - 9, size: 9, font, color: rgb(0.15, 0.15, 0.2) });
+      page.drawText(safePdfText(descLines[0] ?? ''), { x: MARGIN + 160, y: y - 9, size: 9, font, color: rgb(0.15, 0.15, 0.2) });
       y -= 14;
 
       const colW = (PAGE_W - MARGIN * 2 - 10) / 2;
       const block = (label: string, qty: any, unit: any, price: any, total: any, x: number) => {
         page.drawText(label, { x, y: y - 8, size: 7, font: bold, color: rgb(0.4, 0.4, 0.45) });
         page.drawText(
-          `${fmtQty(qty)} ${unit ?? ''} @ ${fmtMoney(price)} = ${fmtMoney(total)}`,
+          safePdfText(`${fmtQty(qty)} ${unit ?? ''} @ ${fmtMoney(price)} = ${fmtMoney(total)}`),
           { x: x + 50, y: y - 8, size: 8, font, color: rgb(0.1, 0.1, 0.15) }
         );
       };
@@ -299,7 +313,7 @@ Deno.serve(async (req: Request) => {
       y -= 12;
 
       page.drawText(
-        `Δ Qty ${fmtQty(l.delta_quantity)}   Δ Unit ${fmtMoney(l.delta_unit_price)}   Δ RCV ${fmtMoney(l.delta_rcv)}`,
+        safePdfText(`Delta Qty ${fmtQty(l.delta_quantity)}   Delta Unit ${fmtMoney(l.delta_unit_price)}   Delta RCV ${fmtMoney(l.delta_rcv)}`),
         { x: MARGIN, y: y - 8, size: 8, font: bold, color: rgb(0.55, 0.2, 0.2) }
       );
       y -= 14;
@@ -343,7 +357,7 @@ Deno.serve(async (req: Request) => {
     page.drawLine({ start: { x: MARGIN + 280, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: rgb(0.3, 0.3, 0.3) });
     y -= 12;
     drawText('Adjuster Signature', { size: 8, color: [0.4, 0.4, 0.45] });
-    page.drawText('Date', { x: MARGIN + 280, y: y + 4, size: 8, font, color: rgb(0.4, 0.4, 0.45) });
+    page.drawText(safePdfText('Date'), { x: MARGIN + 280, y: y + 4, size: 8, font, color: rgb(0.4, 0.4, 0.45) });
 
     const pdfBytes = await pdf.save();
 
