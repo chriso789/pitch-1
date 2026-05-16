@@ -696,13 +696,13 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
         }
       }
 
-      // Mark as complete
+      // Mark as complete (or keep needs_review when reconciliation failed)
       await supabase
         .from("insurance_scope_documents")
         .update({
-          parse_status: 'complete',
+          parse_status: reconciliationFailed ? 'needs_review' : 'complete',
           parse_completed_at: new Date().toISOString(),
-          parser_version: '2.0.0'
+          parser_version: '2.1.0'
         })
         .eq("id", document.id);
 
