@@ -5,6 +5,18 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { generateAIResponse, parseAIJson } from "../_shared/lovable-ai.ts";
+import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
+
+async function extractPdfText(bytes: Uint8Array): Promise<string> {
+  try {
+    const pdf = await getDocumentProxy(bytes);
+    const { text } = await extractText(pdf, { mergePages: true });
+    return Array.isArray(text) ? text.join("\n") : (text || "");
+  } catch (e) {
+    console.error("[scope-ingest] PDF text extraction failed:", e);
+    return "";
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
