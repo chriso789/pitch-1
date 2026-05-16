@@ -147,15 +147,7 @@ async function refreshToken(conn: any): Promise<any | null> {
 }
 
 export async function getBeaconAuth(supabase: any, tenantId: string): Promise<BeaconAuth> {
-  if (!tenantId) throw new Error('tenant_id is required');
-
-  const { data: conn, error } = await supabase
-    .from('qxo_connections')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!conn) throw new Error('No QXO connection found for this tenant.');
+  const conn = await loadConnectionWithCredentials(supabase, tenantId);
 
   // 1) Use cached access_token if still valid.
   let accessToken: string | null = null;
@@ -169,7 +161,7 @@ export async function getBeaconAuth(supabase: any, tenantId: string): Promise<Be
     try {
       const tok = await refreshToken(conn);
       if (tok?.access_token) {
-        await persistTokens(supabase, conn.id, tok);
+        await persistTokens(supabase, tenantId, conn.id, tok);
         accessToken = tok.access_token;
         conn.refresh_token = tok.refresh_token ?? conn.refresh_token;
       }
@@ -180,7 +172,7 @@ export async function getBeaconAuth(supabase: any, tenantId: string): Promise<Be
   if (!accessToken) {
     try {
       const tok = await oauthLogin(conn);
-      await persistTokens(supabase, conn.id, tok);
+      await persistTokens(supabase, tenantId, conn.id, tok);
       accessToken = tok.access_token;
     } catch (e: any) {
       await supabase
