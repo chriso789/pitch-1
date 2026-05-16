@@ -33441,67 +33441,91 @@ export type Database = {
       }
       qxo_connections: {
         Row: {
-          access_token: string | null
           account_id: string | null
-          client_id: string | null
           connection_status: string
           created_at: string
           default_branch_code: string | null
           environment: string
+          has_credentials: boolean
           id: string
           last_error: string | null
           last_validated_at: string | null
-          password: string | null
           profile_id: string | null
-          refresh_token: string | null
           site_id: string | null
+          tenant_id: string
+          updated_at: string
+          valid_indicator: boolean
+        }
+        Insert: {
+          account_id?: string | null
+          connection_status?: string
+          created_at?: string
+          default_branch_code?: string | null
+          environment?: string
+          has_credentials?: boolean
+          id?: string
+          last_error?: string | null
+          last_validated_at?: string | null
+          profile_id?: string | null
+          site_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          valid_indicator?: boolean
+        }
+        Update: {
+          account_id?: string | null
+          connection_status?: string
+          created_at?: string
+          default_branch_code?: string | null
+          environment?: string
+          has_credentials?: boolean
+          id?: string
+          last_error?: string | null
+          last_validated_at?: string | null
+          profile_id?: string | null
+          site_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          valid_indicator?: boolean
+        }
+        Relationships: []
+      }
+      qxo_credentials: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          created_at: string
+          id: string
+          password: string | null
+          refresh_token: string | null
           tenant_id: string
           token_expires_at: string | null
           updated_at: string
           username: string | null
-          valid_indicator: boolean
         }
         Insert: {
           access_token?: string | null
-          account_id?: string | null
           client_id?: string | null
-          connection_status?: string
           created_at?: string
-          default_branch_code?: string | null
-          environment?: string
           id?: string
-          last_error?: string | null
-          last_validated_at?: string | null
           password?: string | null
-          profile_id?: string | null
           refresh_token?: string | null
-          site_id?: string | null
           tenant_id: string
           token_expires_at?: string | null
           updated_at?: string
           username?: string | null
-          valid_indicator?: boolean
         }
         Update: {
           access_token?: string | null
-          account_id?: string | null
           client_id?: string | null
-          connection_status?: string
           created_at?: string
-          default_branch_code?: string | null
-          environment?: string
           id?: string
-          last_error?: string | null
-          last_validated_at?: string | null
           password?: string | null
-          profile_id?: string | null
           refresh_token?: string | null
-          site_id?: string | null
           tenant_id?: string
           token_expires_at?: string | null
           updated_at?: string
           username?: string | null
-          valid_indicator?: boolean
         }
         Relationships: []
       }
