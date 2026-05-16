@@ -18462,22 +18462,29 @@ export type Database = {
           depreciation_percent: number | null
           document_id: string
           effective_unit_price: number | null
+          fingerprint: string | null
           header_id: string
           id: string
           is_taxable: boolean | null
           labor_amount: number | null
+          layout_type: string | null
           life_years: number | null
           line_order: number | null
           mapping_confidence: number | null
           mapping_method: string | null
           material_amount: number | null
+          next_line: string | null
+          page_number: number | null
           parser_layout: string | null
+          previous_line: string | null
           quantity: number | null
           raw_category: string | null
           raw_code: string | null
           raw_description: string
+          raw_line: string | null
           remove_price: number | null
           replace_price: number | null
+          row_bbox: Json | null
           section_name: string | null
           tax_amount: number | null
           total_acv: number | null
@@ -18494,22 +18501,29 @@ export type Database = {
           depreciation_percent?: number | null
           document_id: string
           effective_unit_price?: number | null
+          fingerprint?: string | null
           header_id: string
           id?: string
           is_taxable?: boolean | null
           labor_amount?: number | null
+          layout_type?: string | null
           life_years?: number | null
           line_order?: number | null
           mapping_confidence?: number | null
           mapping_method?: string | null
           material_amount?: number | null
+          next_line?: string | null
+          page_number?: number | null
           parser_layout?: string | null
+          previous_line?: string | null
           quantity?: number | null
           raw_category?: string | null
           raw_code?: string | null
           raw_description: string
+          raw_line?: string | null
           remove_price?: number | null
           replace_price?: number | null
+          row_bbox?: Json | null
           section_name?: string | null
           tax_amount?: number | null
           total_acv?: number | null
@@ -18526,22 +18540,29 @@ export type Database = {
           depreciation_percent?: number | null
           document_id?: string
           effective_unit_price?: number | null
+          fingerprint?: string | null
           header_id?: string
           id?: string
           is_taxable?: boolean | null
           labor_amount?: number | null
+          layout_type?: string | null
           life_years?: number | null
           line_order?: number | null
           mapping_confidence?: number | null
           mapping_method?: string | null
           material_amount?: number | null
+          next_line?: string | null
+          page_number?: number | null
           parser_layout?: string | null
+          previous_line?: string | null
           quantity?: number | null
           raw_category?: string | null
           raw_code?: string | null
           raw_description?: string
+          raw_line?: string | null
           remove_price?: number | null
           replace_price?: number | null
+          row_bbox?: Json | null
           section_name?: string | null
           tax_amount?: number | null
           total_acv?: number | null
@@ -38618,8 +38639,51 @@ export type Database = {
           },
         ]
       }
+      scope_compare_overrides: {
+        Row: {
+          carrier_line_item_id: string | null
+          compare_run_id: string
+          contractor_line_item_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          override_type: string
+          payload: Json
+          result_id: string | null
+          reviewer_note: string | null
+          tenant_id: string
+        }
+        Insert: {
+          carrier_line_item_id?: string | null
+          compare_run_id: string
+          contractor_line_item_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          override_type: string
+          payload?: Json
+          result_id?: string | null
+          reviewer_note?: string | null
+          tenant_id: string
+        }
+        Update: {
+          carrier_line_item_id?: string | null
+          compare_run_id?: string
+          contractor_line_item_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          override_type?: string
+          payload?: Json
+          result_id?: string | null
+          reviewer_note?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       scope_compare_results: {
         Row: {
+          assembly_finding_id: string | null
           canonical_group: string | null
           carrier_description: string | null
           carrier_line_item_id: string | null
@@ -38639,10 +38703,15 @@ export type Database = {
           created_at: string
           evidence: Json | null
           explanation: string | null
+          group_id: string | null
+          grouped_children: Json
           id: string
+          justification: Json | null
           match_confidence: number | null
           match_method: string | null
+          match_score_breakdown: Json | null
           normalized_key: string | null
+          parent_result_id: string | null
           quantity_delta: number | null
           result_type: string
           severity: string
@@ -38654,6 +38723,7 @@ export type Database = {
           unit_price_delta: number | null
         }
         Insert: {
+          assembly_finding_id?: string | null
           canonical_group?: string | null
           carrier_description?: string | null
           carrier_line_item_id?: string | null
@@ -38673,10 +38743,15 @@ export type Database = {
           created_at?: string
           evidence?: Json | null
           explanation?: string | null
+          group_id?: string | null
+          grouped_children?: Json
           id?: string
+          justification?: Json | null
           match_confidence?: number | null
           match_method?: string | null
+          match_score_breakdown?: Json | null
           normalized_key?: string | null
+          parent_result_id?: string | null
           quantity_delta?: number | null
           result_type: string
           severity?: string
@@ -38688,6 +38763,7 @@ export type Database = {
           unit_price_delta?: number | null
         }
         Update: {
+          assembly_finding_id?: string | null
           canonical_group?: string | null
           carrier_description?: string | null
           carrier_line_item_id?: string | null
@@ -38707,10 +38783,15 @@ export type Database = {
           created_at?: string
           evidence?: Json | null
           explanation?: string | null
+          group_id?: string | null
+          grouped_children?: Json
           id?: string
+          justification?: Json | null
           match_confidence?: number | null
           match_method?: string | null
+          match_score_breakdown?: Json | null
           normalized_key?: string | null
+          parent_result_id?: string | null
           quantity_delta?: number | null
           result_type?: string
           severity?: string
