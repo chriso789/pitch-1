@@ -4,6 +4,7 @@
 // ============================================================
 import { corsHeaders } from '../_shared/cors.ts';
 import { supabaseService, supabaseAuth } from '../_shared/supabase.ts';
+import { canonicalScopeKey, normalizeDescription, normalizeUnit, tokenSimilarity } from '../_shared/scope-normalizer.ts';
 
 interface CompareRequest {
   carrier_document_id: string;
@@ -123,12 +124,34 @@ Deno.serve(async (req) => {
       return m;
     };
 
-    // Pass 1: code / canonical
-    const cByCode = indexBy(carrierRemaining, codeKey);
-    const yByCode = indexBy(companyRemaining, codeKey);
-    const codeKeys = new Set([...cByCode.keys(), ...yByCode.keys()]);
+    // Pass 0: canonical scope key (deterministic roofing taxonomy)
+    const canonKey = (l: any) => {
+      const k = canonicalScopeKey(l.raw_description || '', l.unit);
+      // Only trust real canonical keys, not desc:* fallbacks (those go to pass 2)
+      return k && !k.startsWith('desc:') ? `s:${k}` : null;
+    };
+    const cByCanon = indexBy(carrierRemaining, canonKey);
+    const yByCanon = indexBy(companyRemaining, canonKey);
+    const canonKeys = new Set([...cByCanon.keys(), ...yByCanon.keys()]);
     const consumedC = new Set<string>();
     const consumedY = new Set<string>();
+    for (const k of canonKeys) {
+      const cs = cByCanon.get(k) || [];
+      const ys = yByCanon.get(k) || [];
+      const n = Math.min(cs.length, ys.length);
+      for (let i = 0; i < n; i++) {
+        pairs.push({ c: cs[i], y: ys[i], method: 'canonical_scope' });
+        consumedC.add(cs[i].id);
+        consumedY.add(ys[i].id);
+      }
+    }
+
+    // Pass 1: code / canonical_item_id
+    const remC1 = carrierRemaining.filter(l => !consumedC.has(l.id));
+    const remY1 = companyRemaining.filter(l => !consumedY.has(l.id));
+    const cByCode = indexBy(remC1, codeKey);
+    const yByCode = indexBy(remY1, codeKey);
+    const codeKeys = new Set([...cByCode.keys(), ...yByCode.keys()]);
     for (const k of codeKeys) {
       const cs = cByCode.get(k) || [];
       const ys = yByCode.get(k) || [];
