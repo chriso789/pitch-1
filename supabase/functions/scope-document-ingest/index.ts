@@ -347,7 +347,7 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
                
                Return a properly structured JSON response with line items for common roofing repairs.`,
         model: "google/gemini-3-flash-preview",
-        temperature: 0.2
+        temperature: 0
       });
 
       // Race the AI call against the timeout
