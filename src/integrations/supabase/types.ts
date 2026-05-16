@@ -124,6 +124,11 @@ export type Database = {
           access_token: string | null
           account_id: string | null
           account_name: string | null
+          account_number: string | null
+          client_id: string | null
+          client_secret_encrypted: string | null
+          client_secret_last_four: string | null
+          client_secret_rotated_at: string | null
           connected_by: string | null
           connection_status: string
           created_at: string
@@ -147,6 +152,11 @@ export type Database = {
           access_token?: string | null
           account_id?: string | null
           account_name?: string | null
+          account_number?: string | null
+          client_id?: string | null
+          client_secret_encrypted?: string | null
+          client_secret_last_four?: string | null
+          client_secret_rotated_at?: string | null
           connected_by?: string | null
           connection_status?: string
           created_at?: string
@@ -170,6 +180,11 @@ export type Database = {
           access_token?: string | null
           account_id?: string | null
           account_name?: string | null
+          account_number?: string | null
+          client_id?: string | null
+          client_secret_encrypted?: string | null
+          client_secret_last_four?: string | null
+          client_secret_rotated_at?: string | null
           connected_by?: string | null
           connection_status?: string
           created_at?: string
