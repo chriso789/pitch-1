@@ -495,7 +495,35 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
       // Normalize carrier name
       const carrierNormalized = normalizeCarrier(extracted.carrier_name);
 
-      // Update document with carrier info + parser metadata
+      // ---- Layer-2 reconciliation gate ----
+      let layer2Reconciliation: any = null;
+      try {
+        layer2Reconciliation = reconcileParsedDocument({
+          documentId: document.id,
+          parsedLineItems: (extracted.line_items || []).map((li: any) => ({
+            total_rcv: li.total_rcv ?? null,
+            total_acv: li.total_acv ?? null,
+            tax: li._tax ?? null,
+            unit_price: li.unit_price ?? null,
+            quantity: li.quantity ?? null,
+          })),
+          parsedHeaderTotals: {
+            line_item_total: (reconciliation?.sum_of_lines as number | undefined) ?? null,
+            tax_amount: extracted.totals?.tax_amount ?? null,
+            total_rcv: extracted.totals?.total_rcv ?? null,
+            total_acv: extracted.totals?.total_acv ?? null,
+            deductible: extracted.totals?.deductible ?? null,
+            net_claim: extracted.totals?.total_net_claim ?? null,
+          },
+        });
+        console.log('[scope-ingest] layer2 reconciliation:', layer2Reconciliation.status, layer2Reconciliation.warnings);
+      } catch (e) {
+        console.warn('[scope-ingest] reconciliation failed:', e);
+      }
+
+      const reconciliationFailed = layer2Reconciliation?.status === 'fail';
+
+      // Update document with carrier info + parser metadata + reconciliation
       await supabase
         .from("insurance_scope_documents")
         .update({
@@ -507,13 +535,14 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
           format_family: extracted.format_family,
           raw_json_output: {
             ...extracted,
-            parser_version: '2.0.0',
+            parser_version: '2.1.0',
             parser_type: parserType,
             layout_detected: layoutDetected,
             warnings: parserWarnings,
             reconciliation,
+            layer2_reconciliation: layer2Reconciliation,
           },
-          parse_status: 'mapping'
+          parse_status: reconciliationFailed ? 'needs_review' : 'mapping',
         })
         .eq("id", document.id);
 
