@@ -34,6 +34,7 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
   const docs = useProjectScopeDocuments(projectId, jobId);
   const comparisons = useProjectComparisons(projectId);
   const runCompare = useRunXactComparison();
+  const deleteComparison = useDeleteComparison();
 
   const [carrierId, setCarrierId] = useState<string>('');
   const [companyId, setCompanyId] = useState<string>('');
