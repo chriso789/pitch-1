@@ -47,6 +47,80 @@ function isTaxLine(line: any): boolean {
   return /\b(sales\s*tax|material\s*tax|tax\s*amount|\btax\b)\b/.test(hay);
 }
 
+// Aggregate same-identity lines on one side BEFORE pairing.
+// This solves the "elevation duplicates" problem (one carrier line vs four
+// company gutter elevations) and ensures unit_price is a weighted average
+// = total / qty rather than a single arbitrary row's value.
+function aggregateByIdentity(lines: any[]): any[] {
+  const groups = new Map<string, any[]>();
+  for (const l of lines) {
+    const code = (l.raw_code || '').trim().toLowerCase();
+    const unit = normalizeUnit(l.unit) || '';
+    // Identity = code + unit when code exists, else canonical_scope_key + unit, else desc + unit
+    const canon = canonicalScopeKey(l.raw_description || '', l.unit);
+    const identity = code
+      ? `code:${code}|${unit}`
+      : canon && !canon.startsWith('desc:')
+        ? `canon:${canon}|${unit}`
+        : `desc:${descKey(l)}|${unit}`;
+    const arr = groups.get(identity) || [];
+    arr.push(l);
+    groups.set(identity, arr);
+  }
+  const aggregated: any[] = [];
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      aggregated.push(group[0]);
+      continue;
+    }
+    // Multiple lines share the same identity (e.g. 4 elevation rows of gutter).
+    // Combine: sum qty + total, recompute unit_price = total/qty.
+    const totalQty = group.reduce((s, x) => s + Number(x.quantity || 0), 0);
+    const totalRcv = group.reduce((s, x) => s + Number(x.total_rcv || 0), 0);
+    const unitPrice = totalQty > 0 ? totalRcv / totalQty : (group[0].unit_price ?? null);
+    aggregated.push({
+      ...group[0], // keep first row's id / code / desc as anchor
+      id: group[0].id, // primary id for FK
+      quantity: totalQty || group[0].quantity,
+      total_rcv: totalRcv || group[0].total_rcv,
+      unit_price: unitPrice,
+      _aggregated_from: group.map(g => g.id),
+      _aggregated_count: group.length,
+      _aggregated_descriptions: group.map(g => g.raw_description).filter(Boolean),
+    });
+  }
+  return aggregated;
+}
+
+// Unit-aware equality. Returns true when units are compatible.
+function unitsCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeUnit(a);
+  const nb = normalizeUnit(b);
+  if (!na && !nb) return true;
+  if (!na || !nb) return true; // be permissive when one side missing a unit
+  return na === nb;
+}
+
+// Pick the best companion when an identity has multiple matches on both sides.
+// Prefer closer quantities, then closer unit prices.
+function pickBest(candidates: any[], target: any): any {
+  if (candidates.length === 1) return candidates[0];
+  const tq = Number(target.quantity || 0);
+  const tp = Number(target.unit_price || 0);
+  let best = candidates[0];
+  let bestScore = Infinity;
+  for (const c of candidates) {
+    const qDiff = Math.abs(Number(c.quantity || 0) - tq);
+    const pDiff = Math.abs(Number(c.unit_price || 0) - tp);
+    const score = qDiff + pDiff * 0.01;
+    if (score < bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
