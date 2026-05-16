@@ -12,24 +12,30 @@ import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck, Copy,
 
 const ABC_CONFIG = {
   authBase: {
-    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8',
+    sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357',
   },
   authorizeUrl: {
-    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize',
+    sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize',
   },
   tokenUrl: {
-    staging: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
+    sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token',
   },
   scopes: 'pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access',
   redirectUri: 'https://pitch-crm.ai/api/abc/callback',
   apiBase: {
-    staging: 'https://partners-sb.abcsupply.com/api',
+    sandbox: 'https://partners-sb.abcsupply.com/api',
     production: 'https://partners.abcsupply.com/api',
   },
 };
+
+type ABCEnvironment = 'sandbox' | 'production';
+
+function normalizeABCEnvironment(value?: string | null): ABCEnvironment {
+  return value === 'sandbox' || value === 'staging' ? 'sandbox' : 'production';
+}
 
 // Server-side OAuth callback URL — register THIS with ABC IT.
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
@@ -111,11 +117,11 @@ export function ABCConnectionSettings() {
   const [clientSecret, setClientSecret] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
-  const [environment, setEnvironment] = useState('staging');
+  const [environment, setEnvironment] = useState<ABCEnvironment>('production');
 
   useEffect(() => {
     if (effectiveTenantId) loadConnection();
-  }, [effectiveTenantId]);
+  }, [effectiveTenantId, environment]);
 
   // Surface OAuth callback result (?abc=connected|error&msg=...)
   useEffect(() => {
@@ -147,6 +153,9 @@ export function ABCConnectionSettings() {
         .from('abc_connections')
         .select('*')
         .eq('tenant_id', effectiveTenantId)
+        .in('environment', environment === 'sandbox' ? ['sandbox', 'staging'] : ['production'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (error) throw error;
       if (data) {
@@ -154,7 +163,11 @@ export function ABCConnectionSettings() {
         setClientId(data.client_id || '');
         setAccountNumber(data.account_number || '');
         setDefaultBranch(data.default_branch_code || '');
-        setEnvironment(data.environment || 'staging');
+      } else {
+        setConnection(null);
+        setClientId('');
+        setAccountNumber('');
+        setDefaultBranch('');
       }
     } catch (e) {
       console.error('Failed to load ABC connection:', e);
@@ -332,10 +345,10 @@ export function ABCConnectionSettings() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Environment</Label>
-              <Select value={environment} onValueChange={setEnvironment}>
+              <Select value={environment} onValueChange={(value) => setEnvironment(normalizeABCEnvironment(value))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="staging">Staging (Testing)</SelectItem>
+                  <SelectItem value="sandbox">Sandbox (Testing)</SelectItem>
                   <SelectItem value="production">Production (Live)</SelectItem>
                 </SelectContent>
               </Select>
@@ -380,13 +393,13 @@ export function ABCConnectionSettings() {
 
           <div className="rounded-md border p-3 space-y-2 text-xs">
             <p className="font-medium text-foreground text-sm">OAuth & API endpoints</p>
-            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment === 'production' ? 'production' : 'staging']} />
-            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment === 'production' ? 'production' : 'staging']} />
+            <EndpointRow label="Authorization URL" value={ABC_CONFIG.authorizeUrl[environment]} />
+            <EndpointRow label="Token URL" value={ABC_CONFIG.tokenUrl[environment]} />
             <EndpointRow label="Redirect URI" value={SERVER_REDIRECT_URI} hint="Register THIS exact URL with ABC IT for the OAuth client" />
             <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} hint="PKCE (S256) + Basic auth on token endpoint" />
             <EndpointRow
               label={`API Base (${environment})`}
-              value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.staging}
+              value={environment === 'production' ? ABC_CONFIG.apiBase.production : ABC_CONFIG.apiBase.sandbox}
             />
           </div>
 
@@ -408,7 +421,7 @@ export function ABCConnectionSettings() {
                     body: {
                       action: 'start_oauth',
                       tenant_id: effectiveTenantId,
-                      environment: environment === 'production' ? 'production' : 'sandbox',
+                      environment,
                     },
                   });
                   if (error) throw error;
