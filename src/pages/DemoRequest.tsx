@@ -38,6 +38,7 @@ const DemoRequest: React.FC = () => {
     jobTitle: '',
     message: ''
   });
+  const [smsConsent, setSmsConsent] = useState(false);
 
   const [slots, setSlots] = useState<Slot[]>([
     { date: undefined, time: '10:00' },
