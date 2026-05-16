@@ -578,29 +578,49 @@ Read the ACTUAL text above. Do not invent numbers. Detect whether the columns ar
       }
 
       // Insert line items with canonical mapping + new deterministic columns
-      const lineItemsToInsert = (extracted.line_items || []).map((item: any, idx) => ({
-        header_id: header.id,
-        document_id: document.id,
-        raw_code: item.raw_code,
-        raw_description: item.raw_description,
-        raw_category: item.raw_category,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        total_rcv: item.total_rcv,
-        depreciation_percent: item.depreciation_percent,
-        depreciation_amount: item.depreciation_amount,
-        total_acv: item.total_acv,
-        section_name: item.section_name,
-        line_order: idx,
-        // New deterministic columns (Layout B + classifier)
-        remove_price: item._remove_price ?? null,
-        replace_price: item._replace_price ?? null,
-        effective_unit_price: item.unit_price ?? null,
-        parser_layout: item._layout ?? (parserType === 'deterministic' ? layoutDetected : null),
-        mapping_method: null as string | null,
-        mapping_confidence: null as number | null,
-      }));
+      const lineItemsToInsert = await Promise.all(
+        (extracted.line_items || []).map(async (item: any, idx) => {
+          const canonical_key = canonicalScopeKey(item.raw_description || '');
+          const fingerprint = await fingerprintScopeItem({
+            canonical_key,
+            unit: item.unit ?? null,
+            section_name: item.section_name ?? item.raw_category ?? null,
+            line_number: idx + 1,
+            quantity: item.quantity ?? null,
+            total_rcv: item.total_rcv ?? null,
+          });
+          return {
+            header_id: header.id,
+            document_id: document.id,
+            raw_code: item.raw_code,
+            raw_description: item.raw_description,
+            raw_category: item.raw_category,
+            quantity: item.quantity,
+            unit: item.unit,
+            unit_price: item.unit_price,
+            total_rcv: item.total_rcv,
+            depreciation_percent: item.depreciation_percent,
+            depreciation_amount: item.depreciation_amount,
+            total_acv: item.total_acv,
+            section_name: item.section_name,
+            line_order: idx,
+            // Layout B + classifier
+            remove_price: item._remove_price ?? null,
+            replace_price: item._replace_price ?? null,
+            effective_unit_price: item.unit_price ?? null,
+            parser_layout: item._layout ?? (parserType === 'deterministic' ? layoutDetected : null),
+            // Evidence anchoring (layer 2)
+            page_number: item.page_number ?? null,
+            raw_line: item._raw_line ?? null,
+            previous_line: item._previous_line ?? null,
+            next_line: item._next_line ?? null,
+            fingerprint,
+            tax_amount: item._tax ?? null,
+            mapping_method: null as string | null,
+            mapping_confidence: null as number | null,
+          };
+        }),
+      );
 
 
       if (lineItemsToInsert.length > 0) {
