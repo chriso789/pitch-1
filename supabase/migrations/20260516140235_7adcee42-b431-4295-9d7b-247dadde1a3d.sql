@@ -1,0 +1,1 @@
+ALTER TABLE public.abc_connections ADD COLUMN IF NOT EXISTS default_branch_code TEXT;
