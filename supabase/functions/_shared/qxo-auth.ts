@@ -131,7 +131,7 @@ async function oauthLogin(conn: any): Promise<any> {
 async function refreshToken(conn: any): Promise<any | null> {
   if (!conn.refresh_token || !conn.client_id) return null;
   try {
-    return await qxoFetch<any>(REFRESH_PATH, {
+    const data = await qxoFetch<any>(REFRESH_PATH, {
       method: 'POST',
       query: {
         grant_type: 'refresh_token',
@@ -147,6 +147,8 @@ async function refreshToken(conn: any): Promise<any | null> {
       },
       retryStatuses: [500, 502, 503, 504],
     });
+    if (!data?.access_token) return null;
+    return data;
   } catch {
     return null;
   }
