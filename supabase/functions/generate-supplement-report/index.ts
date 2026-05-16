@@ -123,11 +123,12 @@ Deno.serve(async (req: Request) => {
       text: string,
       opts: { size?: number; bold?: boolean; color?: [number, number, number]; x?: number } = {}
     ) => {
+      const safeText = safePdfText(text);
       const size = opts.size ?? 10;
       const f = opts.bold ? bold : font;
       const c = opts.color ?? [0.1, 0.1, 0.15];
       ensureSpace(size + 4);
-      page.drawText(String(text ?? ''), {
+      page.drawText(safeText, {
         x: opts.x ?? MARGIN,
         y: y - size,
         size,
@@ -147,8 +148,9 @@ Deno.serve(async (req: Request) => {
       y -= 10;
     };
     const wrap = (text: string, size: number, maxW: number, f = font): string[] => {
-      if (!text) return [''];
-      const words = String(text).split(/\s+/);
+      const safeText = safePdfText(text);
+      if (!safeText) return [''];
+      const words = safeText.split(/\s+/);
       const out: string[] = [];
       let cur = '';
       for (const w of words) {
