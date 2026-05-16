@@ -714,7 +714,12 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
     const expectedExt = agreedUnit != null ? agreedUnit * convertedQty : null;
     const totalDiff = expectedExt != null ? chargedExt - expectedExt : null;
-    const discrepancy = totalDiff == null ? "needs_review" : totalDiff > 0.01 ? "overcharge" : totalDiff < -0.01 ? "undercharge" : "no_issue";
+    const hasRealCompare = agreedUnit != null && agreedUnit > 0 && chargedUnit > 0 && convertedQty > 0;
+    const discrepancy = totalDiff == null || !hasRealCompare
+      ? "needs_review"
+      : totalDiff > 0.01 ? "overcharge"
+      : totalDiff < -0.01 ? "undercharge"
+      : "no_issue";
     const { error } = await supabase.from("material_item_match_rules").insert({
       company_id: tenantId,
       supplier_id: sid,
@@ -793,7 +798,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
             <TableHead className="text-xs">Matched To</TableHead>
             <TableHead className="text-xs text-right">Qty</TableHead>
             <TableHead className="text-xs text-right">Charged</TableHead>
-            <TableHead className="text-xs text-right">Agreed</TableHead>
+            <TableHead className="text-xs text-right">Price List</TableHead>
             <TableHead className="text-xs text-right">Difference</TableHead>
             <TableHead className="text-xs">Status</TableHead>
             <TableHead className="text-xs"></TableHead>
@@ -824,14 +829,15 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                 <TableCell className="text-xs text-right">{Number(l.quantity || 0)}</TableCell>
                 <TableCell className="text-xs text-right">${Number(l.charged_unit_price || 0).toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right">{l.agreed_unit_price != null ? `$${Number(l.agreed_unit_price).toFixed(2)}` : "—"}</TableCell>
-                <TableCell className={`text-xs text-right font-medium ${isOver ? "text-destructive" : isUnder ? "text-emerald-600" : ""}`}>
+                <TableCell className={`text-xs text-right font-medium ${isOver ? "text-destructive" : isUnder ? "text-amber-600" : ""}`}>
                   {l.total_difference != null ? `${diff > 0 ? "+" : ""}$${diff.toFixed(2)}` : "—"}
                 </TableCell>
                 <TableCell>
-                  {isOver && <Badge variant="destructive" className="text-[10px]">Overcharge</Badge>}
-                  {isUnder && <Badge className="bg-emerald-600 text-[10px]">Undercharge</Badge>}
+                  {isOver && <Badge variant="destructive" className="text-[10px]">Overcharged</Badge>}
+                  {isUnder && <Badge className="bg-amber-500 hover:bg-amber-600 text-[10px]">Below Price List</Badge>}
                   {isUnmatched && <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-600">Unmatched</Badge>}
-                  {!isOver && !isUnder && !isUnmatched && <Badge variant="outline" className="text-[10px]">OK</Badge>}
+                  {!isOver && !isUnder && !isUnmatched && l.discrepancy_type === "needs_review" && <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600">Needs Review</Badge>}
+                  {!isOver && !isUnder && !isUnmatched && l.discrepancy_type !== "needs_review" && <Badge variant="outline" className="text-[10px] border-emerald-500 text-emerald-700">Matches Price List</Badge>}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -1227,9 +1233,9 @@ function buildClaimDocumentHtml(supplierName: string, lines: ClaimableLine[]): s
               <th style="padding:8px">Item</th>
               <th style="padding:8px;text-align:right">Qty</th>
               <th style="padding:8px;text-align:right">Charged Unit</th>
-              <th style="padding:8px;text-align:right">Agreed Unit</th>
+              <th style="padding:8px;text-align:right">Price List Unit</th>
               <th style="padding:8px;text-align:right">Charged Total</th>
-              <th style="padding:8px;text-align:right">Agreed Total</th>
+              <th style="padding:8px;text-align:right">Price List Total</th>
               <th style="padding:8px;text-align:right">Overcharge</th>
             </tr>
           </thead>
@@ -1376,7 +1382,7 @@ function CreditClaimsTab({ claims, tenantId, audits }: { claims: any[]; tenantId
                           <TableHead className="text-xs">Item</TableHead>
                           <TableHead className="text-xs text-right">Qty</TableHead>
                           <TableHead className="text-xs text-right">Charged</TableHead>
-                          <TableHead className="text-xs text-right">Agreed</TableHead>
+                          <TableHead className="text-xs text-right">Price List</TableHead>
                           <TableHead className="text-xs text-right">Overcharge</TableHead>
                         </TableRow>
                       </TableHeader>
