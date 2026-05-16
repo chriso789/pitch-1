@@ -714,7 +714,12 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
     const expectedExt = agreedUnit != null ? agreedUnit * convertedQty : null;
     const totalDiff = expectedExt != null ? chargedExt - expectedExt : null;
-    const discrepancy = totalDiff == null ? "needs_review" : totalDiff > 0.01 ? "overcharge" : totalDiff < -0.01 ? "undercharge" : "no_issue";
+    const hasRealCompare = agreedUnit != null && agreedUnit > 0 && chargedUnit > 0 && convertedQty > 0;
+    const discrepancy = totalDiff == null || !hasRealCompare
+      ? "needs_review"
+      : totalDiff > 0.01 ? "overcharge"
+      : totalDiff < -0.01 ? "undercharge"
+      : "no_issue";
     const { error } = await supabase.from("material_item_match_rules").insert({
       company_id: tenantId,
       supplier_id: sid,
