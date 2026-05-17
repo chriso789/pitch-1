@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Upload, GitCompare, FileText, Loader2, FileDown, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
+import { Upload, GitCompare, FileText, Loader2, FileDown, Trash2, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -35,6 +35,28 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
   const comparisons = useProjectComparisons(projectId);
   const runCompare = useRunXactComparison();
   const deleteComparison = useDeleteComparison();
+  const [recomputingId, setRecomputingId] = useState<string | null>(null);
+
+  const handleRecompute = async (comparisonId: string) => {
+    setRecomputingId(comparisonId);
+    try {
+      const { data, error } = await supabase.functions.invoke('xact-recompute-comparisons', {
+        body: { comparison_ids: [comparisonId] },
+      });
+      if (error) throw error;
+      const failed = (data?.results || []).filter((r: any) => !r.ok);
+      if (failed.length) {
+        toast({ title: 'Recompute partial', description: failed[0].reason, variant: 'destructive' });
+      } else {
+        toast({ title: 'Comparison recomputed', description: 'Prices and quantities refreshed from parsed sources.' });
+      }
+      comparisons.refetch();
+    } catch (e: any) {
+      toast({ title: 'Recompute failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setRecomputingId(null);
+    }
+  };
 
   const [carrierId, setCarrierId] = useState<string>('');
   const [companyId, setCompanyId] = useState<string>('');
@@ -161,6 +183,18 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
                 </button>
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge variant="secondary">{c.status}</Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                    disabled={recomputingId === c.id}
+                    aria-label="Recompute comparison"
+                    onClick={() => handleRecompute(c.id)}
+                  >
+                    {recomputingId === c.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <RefreshCw className="h-4 w-4" />}
+                  </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
