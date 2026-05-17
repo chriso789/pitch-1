@@ -38944,6 +38944,7 @@ export type Database = {
       scope_comparison_lines: {
         Row: {
           approved: boolean
+          canonical_group: string | null
           canonical_item_id: string | null
           carrier_code: string | null
           carrier_description: string | null
@@ -38967,14 +38968,19 @@ export type Database = {
           delta_quantity: number | null
           delta_rcv: number | null
           delta_unit_price: number | null
+          grouped_children: Json
           id: string
           justification: string | null
+          match_confidence: number | null
           match_method: string | null
+          match_score_breakdown: Json | null
+          normalized_key: string | null
           tenant_id: string
           updated_at: string
         }
         Insert: {
           approved?: boolean
+          canonical_group?: string | null
           canonical_item_id?: string | null
           carrier_code?: string | null
           carrier_description?: string | null
@@ -38998,14 +39004,19 @@ export type Database = {
           delta_quantity?: number | null
           delta_rcv?: number | null
           delta_unit_price?: number | null
+          grouped_children?: Json
           id?: string
           justification?: string | null
+          match_confidence?: number | null
           match_method?: string | null
+          match_score_breakdown?: Json | null
+          normalized_key?: string | null
           tenant_id: string
           updated_at?: string
         }
         Update: {
           approved?: boolean
+          canonical_group?: string | null
           canonical_item_id?: string | null
           carrier_code?: string | null
           carrier_description?: string | null
@@ -39029,9 +39040,13 @@ export type Database = {
           delta_quantity?: number | null
           delta_rcv?: number | null
           delta_unit_price?: number | null
+          grouped_children?: Json
           id?: string
           justification?: string | null
+          match_confidence?: number | null
           match_method?: string | null
+          match_score_breakdown?: Json | null
+          normalized_key?: string | null
           tenant_id?: string
           updated_at?: string
         }
