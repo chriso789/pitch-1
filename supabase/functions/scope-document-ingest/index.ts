@@ -411,6 +411,7 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
             property: { address: det.header.property_address || undefined },
             price_list: { name: det.header.price_list || undefined },
             line_items: det.lineItems.map((li: any) => ({
+              raw_code: li.raw_code ?? undefined,
               raw_description: li.raw_description,
               raw_category: li.section_name || undefined,
               quantity: li.quantity ?? undefined,
