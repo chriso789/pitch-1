@@ -323,11 +323,12 @@ export function parseXactimateLines(rawText: string, _documentId: string): Parse
       return;
     }
 
+    const split = splitCodeAndDescription(parsed.raw_description || merged);
     const item: ParsedLineItem = {
       line_number: lineNum,
       section_name: currentSection,
-      raw_code: splitCodeAndDescription(parsed.raw_description || merged).raw_code,
-      raw_description: splitCodeAndDescription(parsed.raw_description || merged).raw_description,
+      raw_code: split.raw_code,
+      raw_description: split.raw_description,
       quantity: parsed.quantity ?? null,
       unit: parsed.unit ?? null,
       remove_price: parsed.remove_price ?? null,
