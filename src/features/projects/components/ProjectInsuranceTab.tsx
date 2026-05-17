@@ -183,7 +183,19 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
 
       {comparisons.data && comparisons.data.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Comparison History</CardTitle></CardHeader>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Comparison History</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              disabled={recomputingAll}
+              onClick={handleRecomputeAll}
+            >
+              {recomputingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Recompute all
+            </Button>
+          </CardHeader>
           <CardContent className="space-y-2">
             {comparisons.data.map(c => (
               <div
