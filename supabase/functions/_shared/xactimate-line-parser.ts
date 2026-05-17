@@ -11,6 +11,7 @@ export type LayoutType = 'A' | 'B' | 'unknown';
 export interface ParsedLineItem {
   line_number: number | null;
   section_name: string | null;
+  raw_code: string | null;
   raw_description: string;
   quantity: number | null;
   unit: string | null;
@@ -128,6 +129,15 @@ const REJECT_PATTERNS = [
 
 function parseNum(s: string | undefined | null): number | null {
   return normalizeMoney(s ?? null);
+}
+
+function splitCodeAndDescription(rawDesc: string): { raw_code: string | null; raw_description: string } {
+  const desc = rawDesc.replace(/\s+/g, ' ').trim();
+  const match = desc.match(/^([A-Z]{2,4}\s+[A-Z0-9][A-Z0-9.-]{1,14}(?:\s+[A-Z0-9.-]{2,14})?)\s+(.+)$/);
+  if (!match) return { raw_code: null, raw_description: desc };
+  const [, code, rest] = match;
+  if (!/[a-z]/.test(rest) && rest.split(/\s+/).length < 3) return { raw_code: null, raw_description: desc };
+  return { raw_code: code.trim(), raw_description: rest.trim() };
 }
 
 function isSectionHeader(line: string): string | null {
@@ -313,10 +323,12 @@ export function parseXactimateLines(rawText: string, _documentId: string): Parse
       return;
     }
 
+    const split = splitCodeAndDescription(parsed.raw_description || merged);
     const item: ParsedLineItem = {
       line_number: lineNum,
       section_name: currentSection,
-      raw_description: parsed.raw_description || merged,
+      raw_code: split.raw_code,
+      raw_description: split.raw_description,
       quantity: parsed.quantity ?? null,
       unit: parsed.unit ?? null,
       remove_price: parsed.remove_price ?? null,

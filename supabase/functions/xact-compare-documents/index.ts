@@ -19,10 +19,28 @@ interface CompareRequest {
   job_id?: string | null;
   price_tolerance_pct?: number; // default 1%
   qty_tolerance_pct?: number;   // default 1%
+  force_exact_documents?: boolean;
 }
 
 function norm(s: string | null | undefined): string {
   return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+async function resolveCanonicalDocument(svc: any, doc: any) {
+  if (!doc?.file_hash) return doc;
+  const { data, error } = await svc
+    .from('insurance_scope_documents')
+    .select('id, tenant_id, document_type, file_name, file_hash, parse_status, parser_version, created_at')
+    .eq('tenant_id', doc.tenant_id)
+    .eq('document_type', doc.document_type)
+    .eq('file_hash', doc.file_hash)
+    .order('created_at', { ascending: false })
+    .limit(25);
+  if (error || !data?.length) return doc;
+  return data.find((d: any) => d.parse_status === 'complete' && d.parser_version === '2.1.0')
+    ?? data.find((d: any) => d.parse_status === 'complete')
+    ?? data[0]
+    ?? doc;
 }
 
 Deno.serve(async (req) => {
@@ -44,6 +62,7 @@ Deno.serve(async (req) => {
       job_id = null,
       price_tolerance_pct = 1,
       qty_tolerance_pct = 1,
+      force_exact_documents = false,
     } = body;
 
     if (!carrier_document_id || !company_document_id) {
@@ -61,12 +80,17 @@ Deno.serve(async (req) => {
     // Load both docs (and verify same tenant)
     const { data: docs, error: docsErr } = await svc
       .from('insurance_scope_documents')
-      .select('id, tenant_id, document_type, file_name')
+      .select('id, tenant_id, document_type, file_name, file_hash, parse_status, parser_version, created_at')
       .in('id', [carrier_document_id, company_document_id]);
     if (docsErr) throw docsErr;
     if (!docs || docs.length !== 2) throw new Error('Documents not found');
-    const tenantId = docs[0].tenant_id;
-    if (docs.some(d => d.tenant_id !== tenantId)) throw new Error('Tenant mismatch');
+    const carrierDocOriginal = docs.find(d => d.id === carrier_document_id);
+    const companyDocOriginal = docs.find(d => d.id === company_document_id);
+    if (!carrierDocOriginal || !companyDocOriginal) throw new Error('Documents not found');
+    const tenantId = carrierDocOriginal.tenant_id;
+    if (companyDocOriginal.tenant_id !== tenantId) throw new Error('Tenant mismatch');
+    const carrierDoc = force_exact_documents ? carrierDocOriginal : await resolveCanonicalDocument(svc, carrierDocOriginal);
+    const companyDoc = force_exact_documents ? companyDocOriginal : await resolveCanonicalDocument(svc, companyDocOriginal);
 
     // Load line items
     const loadLines = async (docId: string) => {
@@ -78,8 +102,8 @@ Deno.serve(async (req) => {
       return data || [];
     };
     const [carrierLinesRaw, companyLinesRaw] = await Promise.all([
-      loadLines(carrier_document_id),
-      loadLines(company_document_id),
+      loadLines(carrierDoc.id),
+      loadLines(companyDoc.id),
     ]);
     // Exclude tax rows from the comparison entirely, then aggregate
     // same-identity duplicates so elevation-specific rows pair as one.
@@ -112,7 +136,7 @@ Deno.serve(async (req) => {
       .insert({
         tenant_id: tenantId,
         project_id, job_id,
-        carrier_document_id, company_document_id,
+        carrier_document_id: carrierDoc.id, company_document_id: companyDoc.id,
         status: 'draft',
         carrier_total_rcv, company_total_rcv, net_supplement_amount,
         added_count: counts.added,
