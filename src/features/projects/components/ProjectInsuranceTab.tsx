@@ -326,8 +326,9 @@ function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
                   <tr className="border-b">
                     <th className="w-6 p-2"></th>
                     <th className="text-left p-2">Type</th>
+                    <th className="text-left p-2">Confidence</th>
                     <th className="text-left p-2">Code</th>
-                    <th className="text-left p-2">Description</th>
+                    <th className="text-left p-2">Aligned Evidence</th>
                     <th className="text-right p-2">Carrier Qty × $ = Total</th>
                     <th className="text-right p-2">Company Qty × $ = Total</th>
                     <th className="text-right p-2">Δ RCV</th>
@@ -338,7 +339,7 @@ function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
                     <ComparisonRow key={l.id} line={l} />
                   ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No rows.</td></tr>
+                    <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">No rows.</td></tr>
                   )}
                 </tbody>
               </table>
