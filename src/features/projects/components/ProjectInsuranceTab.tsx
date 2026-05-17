@@ -353,9 +353,10 @@ function ComparisonDetail({ comparisonId }: { comparisonId: string }) {
 
 function ComparisonRow({ line: l }: { line: any }) {
   const [expanded, setExpanded] = useState(false);
-  const children: Array<{ side: 'carrier' | 'company'; section: string | null; description: string | null }> =
+  const children: Array<{ side: 'carrier' | 'company'; code?: string | null; section: string | null; description: string | null; quantity?: number | null; unit?: string | null; unit_price?: number | null; total_rcv?: number | null; page_number?: number | null }> =
     Array.isArray(l.grouped_children) ? l.grouped_children : [];
   const hasChildren = children.length > 0;
+  const confidence = typeof l.match_confidence === 'number' ? l.match_confidence : Number(l.match_confidence ?? 0);
 
   const fmtSide = (qty: any, unit: any, price: any, total: any) => {
     if (qty == null) return '—';
@@ -391,14 +392,22 @@ function ComparisonRow({ line: l }: { line: any }) {
             l.change_type === 'removed' ? 'destructive' : 'secondary'
           }>{l.change_type}</Badge>
         </td>
+        <td className="p-2">
+          <div className="font-medium">{Math.round(confidence * 100)}%</div>
+          <div className="text-[10px] text-muted-foreground">{l.match_method || '—'}</div>
+        </td>
         <td className="p-2 font-mono">{l.company_code || l.carrier_code || '—'}</td>
-        <td className="p-2 max-w-[280px]">
-          <div className="truncate">{l.company_description || l.carrier_description}</div>
+        <td className="p-2 max-w-[360px]">
+          <div className="space-y-1">
+            <div><span className="text-muted-foreground">Carrier:</span> {l.carrier_description || '—'}</div>
+            <div><span className="text-muted-foreground">Company:</span> {l.company_description || '—'}</div>
+          </div>
           {hasChildren && (
             <div className="text-[10px] text-muted-foreground mt-0.5">
               aggregated from {children.length} line{children.length === 1 ? '' : 's'}
             </div>
           )}
+          {l.justification && <div className="mt-1 text-[10px] text-muted-foreground line-clamp-2">{l.justification}</div>}
         </td>
         <td className="p-2 text-right">
           {fmtSide(l.carrier_quantity, l.carrier_unit, l.carrier_unit_price, l.carrier_total_rcv)}
@@ -413,22 +422,26 @@ function ComparisonRow({ line: l }: { line: any }) {
       {expanded && hasChildren && (
         <tr className="bg-muted/30">
           <td></td>
-          <td colSpan={6} className="p-2">
+          <td colSpan={7} className="p-2">
             <div className="text-[11px] text-muted-foreground mb-1">Aggregated child lines:</div>
             <table className="w-full text-[11px]">
               <thead className="text-muted-foreground">
                 <tr>
                   <th className="text-left p-1">Side</th>
+                  <th className="text-left p-1">Code</th>
                   <th className="text-left p-1">Section</th>
                   <th className="text-left p-1">Description</th>
+                  <th className="text-right p-1">Qty × $ = Total</th>
                 </tr>
               </thead>
               <tbody>
                 {children.map((c, i) => (
                   <tr key={i} className="border-t border-border/40">
                     <td className="p-1 capitalize">{c.side}</td>
+                    <td className="p-1 font-mono">{c.code || '—'}</td>
                     <td className="p-1">{c.section || '—'}</td>
                     <td className="p-1">{c.description || '—'}</td>
+                    <td className="p-1 text-right">{fmtSide(c.quantity, c.unit, c.unit_price, c.total_rcv)}</td>
                   </tr>
                 ))}
               </tbody>
