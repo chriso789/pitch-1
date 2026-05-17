@@ -86,8 +86,39 @@ Deno.serve(async (req: Request) => {
       }
       q = q.eq('tenant_id', tenantId);
     }
-    const { data: targets, error } = await q;
+    let { data: targets, error } = await q;
     if (error) throw error;
+
+    if (body.comparison_ids?.length && targets?.length) {
+      const docIds = Array.from(new Set(targets.flatMap((t: any) => [t.carrier_document_id, t.company_document_id]).filter(Boolean)));
+      const { data: seedDocs } = await svc
+        .from('insurance_scope_documents')
+        .select('id, tenant_id, document_type, file_hash')
+        .in('id', docIds);
+      const hashes = Array.from(new Set((seedDocs || []).map((d: any) => d.file_hash).filter(Boolean)));
+      if (hashes.length) {
+        const { data: hashDocs } = await svc
+          .from('insurance_scope_documents')
+          .select('id, document_type, file_hash')
+          .in('file_hash', hashes);
+        const carrierIds = (hashDocs || []).filter((d: any) => d.document_type !== 'company_scope').map((d: any) => d.id);
+        const companyIds = (hashDocs || []).filter((d: any) => d.document_type === 'company_scope').map((d: any) => d.id);
+        if (carrierIds.length && companyIds.length) {
+          const projectIds = Array.from(new Set(targets.map((t: any) => t.project_id).filter(Boolean)));
+          let siblingQ = svc
+            .from('scope_comparisons')
+            .select('id, tenant_id, project_id, job_id, carrier_document_id, company_document_id')
+            .in('carrier_document_id', carrierIds)
+            .in('company_document_id', companyIds);
+          if (projectIds.length) siblingQ = siblingQ.in('project_id', projectIds);
+          if (!isMaster || !body.all_tenants) siblingQ = siblingQ.eq('tenant_id', tenantId);
+          const { data: siblings } = await siblingQ;
+          const byId = new Map((targets || []).map((t: any) => [t.id, t]));
+          for (const s of siblings || []) byId.set(s.id, s);
+          targets = Array.from(byId.values());
+        }
+      }
+    }
 
     if (body.dry_run) {
       return new Response(JSON.stringify({
