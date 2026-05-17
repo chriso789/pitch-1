@@ -183,6 +183,18 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
                 </button>
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge variant="secondary">{c.status}</Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                    disabled={recomputingId === c.id}
+                    aria-label="Recompute comparison"
+                    onClick={() => handleRecompute(c.id)}
+                  >
+                    {recomputingId === c.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <RefreshCw className="h-4 w-4" />}
+                  </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
