@@ -36,6 +36,29 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
   const runCompare = useRunXactComparison();
   const deleteComparison = useDeleteComparison();
   const [recomputingId, setRecomputingId] = useState<string | null>(null);
+  const [recomputingAll, setRecomputingAll] = useState(false);
+
+  const handleRecomputeAll = async () => {
+    setRecomputingAll(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('xact-recompute-comparisons', {
+        body: { project_id: projectId },
+      });
+      if (error) throw error;
+      const failed = (data?.results || []).filter((r: any) => !r.ok).length;
+      const succeeded = data?.succeeded ?? 0;
+      toast({
+        title: failed ? 'Recompute partial' : 'All comparisons recomputed',
+        description: `${succeeded} succeeded${failed ? `, ${failed} failed` : ''}.`,
+        variant: failed ? 'destructive' : 'default',
+      });
+      comparisons.refetch();
+    } catch (e: any) {
+      toast({ title: 'Recompute failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setRecomputingAll(false);
+    }
+  };
 
   const handleRecompute = async (comparisonId: string) => {
     setRecomputingId(comparisonId);
@@ -160,7 +183,19 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
 
       {comparisons.data && comparisons.data.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Comparison History</CardTitle></CardHeader>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Comparison History</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              disabled={recomputingAll}
+              onClick={handleRecomputeAll}
+            >
+              {recomputingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Recompute all
+            </Button>
+          </CardHeader>
           <CardContent className="space-y-2">
             {comparisons.data.map(c => (
               <div
