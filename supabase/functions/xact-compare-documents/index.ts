@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     const loadLines = async (docId: string) => {
       const { data, error } = await svc
         .from('insurance_scope_line_items')
-        .select('id, raw_code, raw_description, raw_category, quantity, unit, unit_price, total_rcv, canonical_item_id, section_name')
+        .select('id, raw_code, raw_description, raw_category, quantity, unit, unit_price, total_rcv, canonical_item_id, section_name, page_number, raw_line')
         .eq('document_id', docId);
       if (error) throw error;
       return data || [];
@@ -127,20 +127,20 @@ Deno.serve(async (req) => {
     if (compErr) throw compErr;
 
     if (rows.length) {
-      const insertRows = rows.map(({ grouped_children, ...r }) => ({
+      const insertRows = rows.map(({ grouped_children, match_score_breakdown, ...r }) => ({
         ...r,
         comparison_id: comparison.id,
         tenant_id: tenantId,
-        // Only attach grouped_children if the column exists; tolerate absence.
+        match_score_breakdown: match_score_breakdown ?? null,
         ...(grouped_children && grouped_children.length ? { grouped_children } : {}),
       }));
       const CHUNK = 500;
       for (let i = 0; i < insertRows.length; i += CHUNK) {
         const slice = insertRows.slice(i, i + CHUNK);
         let { error: insErr } = await svc.from('scope_comparison_lines').insert(slice);
-        if (insErr && /grouped_children/i.test(insErr.message)) {
-          // Fall back: column doesn't exist on this tenant's schema, drop it.
-          const stripped = slice.map(({ grouped_children, ...rest }: any) => rest);
+        if (insErr && /(grouped_children|match_score_breakdown|match_confidence|normalized_key|canonical_group)/i.test(insErr.message)) {
+          // Fall back for older local schemas; deployed DB has these columns.
+          const stripped = slice.map(({ grouped_children, match_score_breakdown, match_confidence, normalized_key, canonical_group, ...rest }: any) => rest);
           ({ error: insErr } = await svc.from('scope_comparison_lines').insert(stripped));
         }
         if (insErr) throw insErr;
