@@ -35,6 +35,28 @@ export function ProjectInsuranceTab({ projectId, jobId }: Props) {
   const comparisons = useProjectComparisons(projectId);
   const runCompare = useRunXactComparison();
   const deleteComparison = useDeleteComparison();
+  const [recomputingId, setRecomputingId] = useState<string | null>(null);
+
+  const handleRecompute = async (comparisonId: string) => {
+    setRecomputingId(comparisonId);
+    try {
+      const { data, error } = await supabase.functions.invoke('xact-recompute-comparisons', {
+        body: { comparison_ids: [comparisonId] },
+      });
+      if (error) throw error;
+      const failed = (data?.results || []).filter((r: any) => !r.ok);
+      if (failed.length) {
+        toast({ title: 'Recompute partial', description: failed[0].reason, variant: 'destructive' });
+      } else {
+        toast({ title: 'Comparison recomputed', description: 'Prices and quantities refreshed from parsed sources.' });
+      }
+      comparisons.refetch();
+    } catch (e: any) {
+      toast({ title: 'Recompute failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setRecomputingId(null);
+    }
+  };
 
   const [carrierId, setCarrierId] = useState<string>('');
   const [companyId, setCompanyId] = useState<string>('');
