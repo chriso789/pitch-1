@@ -477,6 +477,97 @@ export function SRSConnectionSettings() {
         </Card>
       )}
 
+      {isConnected && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <CardTitle className="text-lg">Synced Branches</CardTitle>
+                <CardDescription>
+                  {branches.length > 0
+                    ? `${branches.length} branches available for ordering.`
+                    : 'No branches synced yet. Click "Sync Branches" above.'}
+                </CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" onClick={loadBranches} disabled={loadingBranches}>
+                {loadingBranches ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {branches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">—</p>
+            ) : (
+              <div className="text-xs max-h-80 overflow-auto border rounded-md">
+                <div className="grid grid-cols-12 gap-2 font-medium text-muted-foreground border-b px-3 py-2 sticky top-0 bg-background">
+                  <div className="col-span-2">Code</div>
+                  <div className="col-span-4">Name</div>
+                  <div className="col-span-3">City / State</div>
+                  <div className="col-span-3">Phone</div>
+                </div>
+                {branches.map((b) => (
+                  <div key={b.branch_code} className="grid grid-cols-12 gap-2 px-3 py-2 border-b last:border-b-0">
+                    <div className="col-span-2 font-mono">{b.branch_code}</div>
+                    <div className="col-span-4 truncate">{b.branch_name || '—'}</div>
+                    <div className="col-span-3 truncate text-muted-foreground">
+                      {[b.city, b.state].filter(Boolean).join(', ') || '—'}
+                    </div>
+                    <div className="col-span-3 truncate text-muted-foreground">{b.phone || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isConnected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">SRS Staging End-to-End Test</CardTitle>
+            <CardDescription>
+              Sends a real test order to SRS staging using the default branch ({connection?.default_branch_code || 'SRORL'})
+              and customer code {connection?.customer_code || '—'}. SRS uses the round-trip response to confirm certification.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              onClick={handleSubmitTestOrder}
+              disabled={submittingTestOrder || !connection?.job_account_number}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {submittingTestOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
+              Send Test Order to SRS
+            </Button>
+            {!connection?.job_account_number && (
+              <p className="text-xs text-muted-foreground">
+                Run "Test Connection" first so the Job Account Number is populated — SRS rejects orders without it.
+              </p>
+            )}
+            {testOrderResult && (
+              <div className="space-y-2">
+                <div className={`flex items-center gap-2 text-sm font-medium ${testOrderResult.success ? 'text-emerald-600' : 'text-destructive'}`}>
+                  {testOrderResult.success ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  {testOrderResult.success ? 'SRS accepted the order' : 'SRS rejected the order'}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">SRS Response</p>
+                  <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-64">
+{JSON.stringify(testOrderResult.response, null, 2)}
+                  </pre>
+                </div>
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground">View request payload sent to SRS</summary>
+                  <pre className="bg-muted p-3 rounded-md overflow-auto max-h-64 mt-2">
+{JSON.stringify(testOrderResult.request, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {audit.length > 0 && (
         <Card>
           <CardHeader>
