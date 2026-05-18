@@ -712,7 +712,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                     />
                     <PushToSupplierButton
                       estimateId={existingEstimate.id}
-                      jobId={(pipelineData as any)?.id}
+                      jobId={pipelineEntryId}
                       jobNumber={jobNumber}
                       customerName={customerName}
                       projectAddress={projectAddress}
