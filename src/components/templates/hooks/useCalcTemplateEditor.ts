@@ -418,6 +418,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           manufacturer: updates.manufacturer,
           active: updates.active,
           margin_override: updates.margin_override,
+          requires_color: updates.requires_color,
         })
         .eq('id', itemId);
 
