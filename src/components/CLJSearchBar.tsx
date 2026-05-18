@@ -277,7 +277,7 @@ export const CLJSearchBar = () => {
           ref={dropdownRef}
           className="fixed left-3 right-3 top-[7.5rem] md:absolute md:top-full md:left-0 md:right-0 mt-1 bg-popover border border-border rounded-md shadow-lg z-[60] max-h-[60vh] md:max-h-[400px] overflow-y-auto"
         >
-          <Command shouldFilter={false}>
+          <Command shouldFilter={false} filter={() => 1}>
             <CommandList>
               {loading && (
                 <CommandEmpty>Searching...</CommandEmpty>
@@ -341,9 +341,11 @@ export const CLJSearchBar = () => {
                     return (
                       <CommandItem
                         key={`job-${result.entity_id}`}
+                        value={`1-job-${result.entity_id}`}
                         onSelect={() => handleSelect(result)}
                         className="flex items-center justify-between cursor-pointer"
                       >
+
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className={cn("p-1 rounded", "bg-green-50")}>
                             <Icon className={cn("h-4 w-4", config.iconClass)} />
@@ -380,9 +382,11 @@ export const CLJSearchBar = () => {
                     return (
                       <CommandItem
                         key={`lead-${result.entity_id}`}
+                        value={`2-lead-${result.entity_id}`}
                         onSelect={() => handleSelect(result)}
                         className="flex items-center justify-between cursor-pointer"
                       >
+
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className={cn("p-1 rounded", "bg-orange-50")}>
                             <Icon className={cn("h-4 w-4", config.iconClass)} />
@@ -419,9 +423,11 @@ export const CLJSearchBar = () => {
                     return (
                       <CommandItem
                         key={`contact-${result.entity_id}`}
+                        value={`3-contact-${result.entity_id}`}
                         onSelect={() => handleSelect(result)}
                         className="flex items-center justify-between cursor-pointer"
                       >
+
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className={cn("p-1 rounded", "bg-blue-50")}>
                             <Icon className={cn("h-4 w-4", config.iconClass)} />
