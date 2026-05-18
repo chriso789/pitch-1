@@ -349,8 +349,8 @@ export function PushToSupplierDialog({
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <Label>Items ({editableItems.length})</Label>
-                    <span className="text-sm text-muted-foreground">
-                      Subtotal ${totalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    <span className="text-xs text-muted-foreground">
+                      Pricing will be quoted by the supplier
                     </span>
                   </div>
                   <div className="max-h-64 overflow-y-auto rounded-md border">
@@ -361,7 +361,6 @@ export function PushToSupplierDialog({
                           <th className="p-2 text-left">SKU</th>
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
-                          <th className="p-2 text-right">Unit $</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -380,12 +379,11 @@ export function PushToSupplierDialog({
                               />
                             </td>
                             <td className="p-2">{it.unit}</td>
-                            <td className="p-2 text-right">${Number(it.unit_cost).toFixed(2)}</td>
                           </tr>
                         ))}
                         {editableItems.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="p-6 text-center text-muted-foreground">
+                            <td colSpan={4} className="p-6 text-center text-muted-foreground">
                               <Package className="mx-auto mb-2 h-5 w-5" />
                               No material line items found on this project's estimate.
                             </td>
