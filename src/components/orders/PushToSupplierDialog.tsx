@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
-type SupplierKey = 'srs' | 'qxo';
+type SupplierKey = 'srs' | 'qxo' | 'abc';
 
 interface SupplierOption {
   key: SupplierKey;
