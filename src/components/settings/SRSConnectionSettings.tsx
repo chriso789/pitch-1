@@ -282,6 +282,7 @@ export function SRSConnectionSettings() {
   const daysSinceRotation = rotatedAt ? Math.floor((Date.now() - rotatedAt.getTime()) / 86_400_000) : null;
   const rotationOverdue = daysSinceRotation !== null && daysSinceRotation >= ROTATION_MANDATORY_DAYS;
   const rotationDueSoon = daysSinceRotation !== null && daysSinceRotation >= ROTATION_RECOMMENDED_DAYS && !rotationOverdue;
+  const canSubmitTestOrder = isConnected && !!connection?.customer_code;
 
   return (
     <div className="space-y-6">
@@ -533,15 +534,14 @@ export function SRSConnectionSettings() {
           <CardContent className="space-y-3">
             <Button
               onClick={handleSubmitTestOrder}
-              disabled={submittingTestOrder || !connection?.job_account_number}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
+              disabled={submittingTestOrder || !canSubmitTestOrder}
             >
               {submittingTestOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
               Send Test Order to SRS
             </Button>
-            {!connection?.job_account_number && (
+            {!canSubmitTestOrder && (
               <p className="text-xs text-muted-foreground">
-                Run "Test Connection" first so the Job Account Number is populated — SRS rejects orders without it.
+                Validate the customer connection first so the test order can use the SRS customer code.
               </p>
             )}
             {testOrderResult && (

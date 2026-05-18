@@ -588,11 +588,9 @@ Deno.serve(async (req) => {
             || connection.default_branch_code
             || "SRORL",
         ).trim();
-        const janRaw = connection.job_account_number;
+        const janRaw = (params as any).job_account_number ?? connection.job_account_number;
         const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
-        if (!jan || Number.isNaN(jan)) {
-          throw new Error("Missing numeric jobAccountNumber on connection. Run validate_connection first.");
-        }
+        const jobAccountNumber = janRaw != null && Number.isFinite(jan) ? jan : null;
         const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
           .toISOString().slice(0, 10);
 
@@ -604,7 +602,7 @@ Deno.serve(async (req) => {
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
           accountNumber: String(connection.customer_code || "").trim(),
-          jobAccountNumber: jan,
+          jobAccountNumber,
           shipToSequenceNumber: (params as any).ship_to_sequence_number ?? 1,
           branchCode: branch,
           poNumber: `PITCH-TEST-${Date.now()}`,
