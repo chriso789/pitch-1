@@ -382,9 +382,11 @@ export const CLJSearchBar = () => {
                     return (
                       <CommandItem
                         key={`lead-${result.entity_id}`}
+                        value={`2-lead-${result.entity_id}`}
                         onSelect={() => handleSelect(result)}
                         className="flex items-center justify-between cursor-pointer"
                       >
+
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className={cn("p-1 rounded", "bg-orange-50")}>
                             <Icon className={cn("h-4 w-4", config.iconClass)} />
