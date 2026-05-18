@@ -272,6 +272,7 @@ export default function GooglePropertyMarkersLayer({
   symbolSettings,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   // Ref for onPropertyClick so marker listeners never go stale
   const onPropertyClickRef = useRef(onPropertyClick);
   onPropertyClickRef.current = onPropertyClick;
