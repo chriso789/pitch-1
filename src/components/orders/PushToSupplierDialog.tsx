@@ -19,6 +19,8 @@ interface SupplierOption {
   label: string;
   defaultBranch?: string | null;
   environment?: string | null;
+  status?: 'connected' | 'error' | 'not_configured' | 'coming_soon';
+  statusNote?: string;
 }
 
 interface MaterialItem {
