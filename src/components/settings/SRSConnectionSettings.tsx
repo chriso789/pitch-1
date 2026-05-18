@@ -378,8 +378,8 @@ export function SRSConnectionSettings() {
             )}
 
             {isConnected && (
-              <Button variant="outline" onClick={handleSyncBranches}>
-                <RefreshCw className="h-4 w-4 mr-2" />
+              <Button variant="outline" onClick={handleSyncBranches} disabled={syncing}>
+                {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                 Sync Branches
               </Button>
             )}
