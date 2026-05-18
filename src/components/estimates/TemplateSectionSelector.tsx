@@ -14,7 +14,7 @@ import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
-import { PushToQXOButton } from '@/components/orders/PushToQXOButton';
+import { PushToSupplierButton } from '@/components/orders/PushToSupplierButton';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
@@ -710,7 +710,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                       companyInfo={companyInfo || undefined}
                       jobNumber={jobNumber}
                     />
-                    <PushToQXOButton
+                    <PushToSupplierButton
                       estimateId={existingEstimate.id}
                       jobId={(pipelineData as any)?.id}
                       jobNumber={jobNumber}

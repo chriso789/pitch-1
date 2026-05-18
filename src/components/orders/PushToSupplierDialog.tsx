@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
-type SupplierKey = 'srs' | 'qxo';
+type SupplierKey = 'srs' | 'qxo' | 'abc';
 
 interface SupplierOption {
   key: SupplierKey;
@@ -107,13 +107,21 @@ export function PushToSupplierDialog({
           environment: qxoRes.data.environment,
         });
       }
+      // ABC Supply: always show as a coming-soon option so users know it's planned.
+      found.push({
+        key: 'abc',
+        label: 'ABC Supply (coming soon)',
+        defaultBranch: null,
+        environment: null,
+      });
 
       if (cancelled) return;
       setSuppliers(found);
-      if (found.length === 1) {
-        setSelected(found[0].key);
-        setBranchCode(found[0].defaultBranch || '');
-      } else if (found.length === 0) {
+      const connected = found.filter(s => s.key !== 'abc');
+      if (connected.length === 1) {
+        setSelected(connected[0].key);
+        setBranchCode(connected[0].defaultBranch || '');
+      } else if (connected.length === 0) {
         setSelected(null);
       }
       setLoadingSuppliers(false);
@@ -146,6 +154,13 @@ export function PushToSupplierDialog({
 
   const submit = async () => {
     if (!tenantId || !selected) return;
+    if (selected === 'abc') {
+      toast({
+        title: 'ABC Supply coming soon',
+        description: 'ABC Supply integration is on the roadmap. Use SRS or QXO for now.',
+      });
+      return;
+    }
     if (!editableItems.length) {
       toast({ title: 'No items to push', variant: 'destructive' });
       return;
@@ -263,10 +278,10 @@ export function PushToSupplierDialog({
             <Loader2 className="h-6 w-6 animate-spin" />
             <span className="ml-2 text-sm text-muted-foreground">Checking connected suppliers…</span>
           </div>
-        ) : suppliers.length === 0 ? (
+        ) : suppliers.filter(s => s.key !== 'abc').length === 0 ? (
           <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
             <AlertCircle className="mx-auto mb-2 h-6 w-6 text-amber-500" />
-            No supplier accounts are connected for this tenant. Connect SRS or QXO in Settings → Integrations.
+            No supplier accounts are connected for this tenant. Connect SRS or QXO in Settings → Integrations. (ABC Supply integration is coming soon.)
           </div>
         ) : (
           <div className="space-y-5">
