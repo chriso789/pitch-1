@@ -1337,7 +1337,24 @@ Deno.serve(async (req) => {
         parsed = parseEagleView(extractedText);
       } else if ((provider as string) === "xactimate") {
         console.log("roof-report-ingest: Using Xactimate parser...");
-        parsed = parseXactimate(extractedText);
+        try {
+          parsed = parseXactimate(extractedText);
+        } catch (xErr) {
+          console.error("roof-report-ingest: parseXactimate threw, falling back to generic+AI:", xErr);
+          parsed = parseGeneric(extractedText);
+        }
+        if (!hasValidMeasurements(parsed)) {
+          console.log("roof-report-ingest: Xactimate parse sparse, trying AI text extraction...");
+          try {
+            const aiParsed = await extractWithAI(extractedText);
+            if (aiParsed && hasValidMeasurements(aiParsed)) {
+              parsed = { ...aiParsed, provider: "xactimate" as const };
+              console.log("roof-report-ingest: Using AI extraction result for Xactimate");
+            }
+          } catch (aiErr) {
+            console.error("roof-report-ingest: AI fallback also failed:", aiErr);
+          }
+        }
       } else {
         // Try generic parser first
         parsed = parseGeneric(extractedText);
