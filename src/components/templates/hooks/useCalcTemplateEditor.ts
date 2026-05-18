@@ -373,6 +373,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         active: data.active,
         margin_override: Number(data.margin_override) || 0,
         material_id: savedMaterialId || data.material_id || null,
+        requires_color: !!(data as any).requires_color,
       };
 
       setGroups(
