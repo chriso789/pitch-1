@@ -218,8 +218,38 @@ export function PushToSupplierDialog({
       toast({ title: 'No items to push', variant: 'destructive' });
       return;
     }
+
+    // Color requirement gate: every "requires color" line must have a color filled in.
+    const missingColor = editableItems.filter(
+      i => i.requires_color && !(i.color_specs && i.color_specs.trim())
+    );
+    if (missingColor.length) {
+      toast({
+        title: 'Color required',
+        description: `Add a color for: ${missingColor.map(i => i.item_name).join(', ')}. The order can't be pushed to the supplier until every color-required item has a color.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
+      // Remember this branch as the user's default for this supplier.
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id;
+        if (userId && branchCode && userBranchPrefs[selected] !== branchCode) {
+          const nextPrefs = { ...userBranchPrefs, [selected]: branchCode };
+          await supabase
+            .from('profiles')
+            .update({ default_supplier_branches: nextPrefs } as any)
+            .eq('id', userId);
+          setUserBranchPrefs(nextPrefs);
+        }
+      } catch (e) {
+        console.warn('[PushToSupplier] could not save default branch preference', e);
+      }
+
       if (selected === 'srs') {
         // 1. Create the srs_orders draft + items linked to the project
         const orderNumber = `PITCH-${jobNumber || 'JOB'}-${Date.now()}`;
