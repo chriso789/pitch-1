@@ -85,6 +85,19 @@ export function PushToSupplierDialog({
       setLoadingSuppliers(true);
       const found: SupplierOption[] = [];
 
+      // Load the signed-in user's per-supplier default branch overrides.
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      let prefs: Record<string, string> = {};
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_supplier_branches')
+          .eq('id', userId)
+          .maybeSingle();
+        prefs = ((profile as any)?.default_supplier_branches as Record<string, string>) || {};
+      }
+
       const [srsRes, qxoRes] = await Promise.all([
         supabase
           .from('srs_connections')
@@ -102,7 +115,7 @@ export function PushToSupplierDialog({
         found.push({
           key: 'srs',
           label: `SRS Distribution${srsRes.data.environment === 'production' ? '' : ' (QA)'}`,
-          defaultBranch: srsRes.data.default_branch_code,
+          defaultBranch: prefs.srs || srsRes.data.default_branch_code,
           environment: srsRes.data.environment,
           status: 'connected',
         });
@@ -119,7 +132,7 @@ export function PushToSupplierDialog({
         found.push({
           key: 'qxo',
           label: `QXO / Beacon${qxoRes.data.environment === 'production' ? '' : ' (Test)'}`,
-          defaultBranch: qxoRes.data.default_branch_code,
+          defaultBranch: prefs.qxo || qxoRes.data.default_branch_code,
           environment: qxoRes.data.environment,
           status: 'connected',
         });
@@ -146,6 +159,7 @@ export function PushToSupplierDialog({
       });
 
       if (cancelled) return;
+      setUserBranchPrefs(prefs);
       setSuppliers(found);
       const connected = found.filter(s => s.status === 'connected');
       if (connected.length === 1) {
