@@ -312,38 +312,60 @@ export function PushToSupplierDialog({
             <Loader2 className="h-6 w-6 animate-spin" />
             <span className="ml-2 text-sm text-muted-foreground">Checking connected suppliers…</span>
           </div>
-        ) : suppliers.filter(s => s.key !== 'abc').length === 0 ? (
-          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-            <AlertCircle className="mx-auto mb-2 h-6 w-6 text-amber-500" />
-            No supplier accounts are connected for this tenant. Connect SRS or QXO in Settings → Integrations. (ABC Supply integration is coming soon.)
-          </div>
         ) : (
           <div className="space-y-5">
             {/* Supplier picker */}
             <div>
               <Label className="mb-2 block">Supplier</Label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {suppliers.map(s => (
-                  <Card
-                    key={s.key}
-                    onClick={() => handleSelectSupplier(s.key)}
-                    className={`cursor-pointer transition ${
-                      selected === s.key ? 'ring-2 ring-primary' : 'hover:bg-muted/50'
-                    }`}
-                  >
-                    <CardContent className="flex items-center justify-between p-4">
-                      <div>
-                        <div className="font-medium">{s.label}</div>
-                        {s.defaultBranch && (
-                          <div className="text-xs text-muted-foreground">Branch {s.defaultBranch}</div>
-                        )}
-                      </div>
-                      <Badge variant={selected === s.key ? 'default' : 'outline'}>
-                        {selected === s.key ? 'Selected' : 'Choose'}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {suppliers.map(s => {
+                  const disabled = s.status !== 'connected';
+                  const isSelected = selected === s.key;
+                  return (
+                    <Card
+                      key={s.key}
+                      onClick={() => !disabled && handleSelectSupplier(s.key)}
+                      className={`transition ${
+                        disabled
+                          ? 'cursor-not-allowed opacity-60'
+                          : isSelected
+                          ? 'cursor-pointer ring-2 ring-primary'
+                          : 'cursor-pointer hover:bg-muted/50'
+                      }`}
+                    >
+                      <CardContent className="flex items-center justify-between gap-2 p-4">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{s.label}</div>
+                          {s.defaultBranch && (
+                            <div className="text-xs text-muted-foreground">Branch {s.defaultBranch}</div>
+                          )}
+                          {s.statusNote && (
+                            <div className="text-xs text-muted-foreground truncate">{s.statusNote}</div>
+                          )}
+                        </div>
+                        <Badge
+                          variant={
+                            isSelected
+                              ? 'default'
+                              : s.status === 'connected'
+                              ? 'outline'
+                              : 'secondary'
+                          }
+                        >
+                          {isSelected
+                            ? 'Selected'
+                            : s.status === 'connected'
+                            ? 'Choose'
+                            : s.status === 'coming_soon'
+                            ? 'Soon'
+                            : s.status === 'error'
+                            ? 'Error'
+                            : 'Setup'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
 
