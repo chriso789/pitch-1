@@ -467,29 +467,52 @@ export function PushToSupplierDialog({
                           <th className="p-2 text-left">SKU</th>
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
+                          <th className="p-2 text-left">Color</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {editableItems.map((it, i) => (
-                          <tr key={i} className="border-t">
-                            <td className="p-2">{it.item_name}</td>
-                            <td className="p-2">
-                              <code className="text-xs">{it.srs_item_code || '—'}</code>
-                            </td>
-                            <td className="p-2 text-right">
-                              <Input
-                                type="number"
-                                value={it.quantity}
-                                onChange={e => updateItem(i, { quantity: Number(e.target.value) })}
-                                className="h-7 w-20 text-right"
-                              />
-                            </td>
-                            <td className="p-2">{it.unit}</td>
-                          </tr>
-                        ))}
+                        {editableItems.map((it, i) => {
+                          const colorMissing = it.requires_color && !(it.color_specs && it.color_specs.trim());
+                          return (
+                            <tr key={i} className={`border-t ${colorMissing ? 'bg-destructive/5' : ''}`}>
+                              <td className="p-2">
+                                <div className="flex items-center gap-2">
+                                  <span>{it.item_name}</span>
+                                  {it.requires_color && (
+                                    <Badge variant="outline" className="text-[10px]">Color req.</Badge>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <code className="text-xs">{it.srs_item_code || '—'}</code>
+                              </td>
+                              <td className="p-2 text-right">
+                                <Input
+                                  type="number"
+                                  value={it.quantity}
+                                  onChange={e => updateItem(i, { quantity: Number(e.target.value) })}
+                                  className="h-7 w-20 text-right"
+                                />
+                              </td>
+                              <td className="p-2">{it.unit}</td>
+                              <td className="p-2">
+                                {it.requires_color ? (
+                                  <Input
+                                    value={it.color_specs || ''}
+                                    onChange={e => updateItem(i, { color_specs: e.target.value })}
+                                    placeholder="Color…"
+                                    className={`h-7 w-32 ${colorMissing ? 'border-destructive' : ''}`}
+                                  />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">{it.color_specs || '—'}</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                         {editableItems.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                            <td colSpan={5} className="p-6 text-center text-muted-foreground">
                               <Package className="mx-auto mb-2 h-5 w-5" />
                               No material line items found on this project's estimate.
                             </td>
@@ -498,6 +521,12 @@ export function PushToSupplierDialog({
                       </tbody>
                     </table>
                   </div>
+                  {editableItems.some(i => i.requires_color && !(i.color_specs && i.color_specs.trim())) && (
+                    <p className="mt-2 flex items-center gap-1 text-xs text-destructive">
+                      <AlertCircle className="h-3 w-3" />
+                      A color is required on every highlighted line before this order can be pushed to the supplier.
+                    </p>
+                  )}
                   {selected === 'srs' && editableItems.some(i => !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
                       Items without an SRS SKU will be skipped. Map SKUs in the estimate to include them.
