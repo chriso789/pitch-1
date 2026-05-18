@@ -430,8 +430,9 @@ export function PushToSupplierDialog({
                     <Select value={deliveryMethod} onValueChange={(v: any) => setDeliveryMethod(v)}>
                       <SelectTrigger id="dmethod"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="delivery">Delivery</SelectItem>
-                        <SelectItem value="pickup">Pickup / Will-call</SelectItem>
+                        <SelectItem value="roof_load">Roof Load</SelectItem>
+                        <SelectItem value="ground_drop">Ground Drop</SelectItem>
+                        <SelectItem value="pickup">Pick up / Will-call</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
