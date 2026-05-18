@@ -582,17 +582,23 @@ Deno.serve(async (req) => {
           .toISOString().slice(0, 10);
 
         const orderItems = ((params as any).order_items as any[] | undefined) || [
-          { productNumber: "TEST-SHINGLE-001", quantity: 1, uom: "EA", price: 0 },
+          { productId: 3473, productName: "Atlas ProLam HP42 Shingles", option: "Black Shadow", quantity: 1, uom: "BD", customerItem: "TEST" },
         ];
 
         const testPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
+          accountNumber: String(connection.customer_code || "").trim(),
           jobAccountNumber: jan,
+          shipToSequenceNumber: (params as any).ship_to_sequence_number ?? 1,
           branchCode: branch,
           poNumber: `PITCH-TEST-${Date.now()}`,
-          requestedDeliveryDate: tomorrow,
-          shippingMethod: "WC",
+          reference: (params as any).reference ?? "",
+          jobNumber: (params as any).job_number ?? "",
+          orderDate: new Date().toISOString().slice(0, 10),
+          expectedDeliveryDate: tomorrow,
+          expectedDeliveryTime: (params as any).expected_delivery_time ?? "Anytime",
+          shippingMethod: srsShippingMethodLabel((params as any).shipping_method || "will_call"),
           shipTo: (params as any).ship_to || null,
           customerContact: (params as any).customer_contact || null,
           notes: "PITCH integration test order — please ignore",
@@ -627,7 +633,7 @@ Deno.serve(async (req) => {
           .from("srs_orders")
           .select("*, srs_order_items(*)")
           .eq("id", order_id)
-          .single();
+          .maybeSingle();
 
         if (!order) throw new Error("Order not found");
 
