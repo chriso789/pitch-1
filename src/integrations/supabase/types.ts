@@ -13774,6 +13774,7 @@ export type Database = {
           material_id: string | null
           measurement_type: string | null
           qty_formula: string
+          requires_color: boolean
           sku_pattern: string | null
           sort_order: number
           tenant_id: string
@@ -13796,6 +13797,7 @@ export type Database = {
           material_id?: string | null
           measurement_type?: string | null
           qty_formula?: string
+          requires_color?: boolean
           sku_pattern?: string | null
           sort_order?: number
           tenant_id: string
@@ -13818,6 +13820,7 @@ export type Database = {
           material_id?: string | null
           measurement_type?: string | null
           qty_formula?: string
+          requires_color?: boolean
           sku_pattern?: string | null
           sort_order?: number
           tenant_id?: string
@@ -30419,6 +30422,7 @@ export type Database = {
           created_at: string | null
           created_by_master: string | null
           current_location: Json | null
+          default_supplier_branches: Json
           email: string | null
           first_name: string | null
           hidden_at: string | null
@@ -30470,6 +30474,7 @@ export type Database = {
           created_at?: string | null
           created_by_master?: string | null
           current_location?: Json | null
+          default_supplier_branches?: Json
           email?: string | null
           first_name?: string | null
           hidden_at?: string | null
@@ -30521,6 +30526,7 @@ export type Database = {
           created_at?: string | null
           created_by_master?: string | null
           current_location?: Json | null
+          default_supplier_branches?: Json
           email?: string | null
           first_name?: string | null
           hidden_at?: string | null
