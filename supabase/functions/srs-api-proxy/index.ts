@@ -426,21 +426,23 @@ Deno.serve(async (req) => {
             ? null
             : `SRS rejected validation. Response: ${JSON.stringify(validateData)}. Confirm the Customer Code, Invoice #, Invoice Date and Billed Amount all belong to the ${connection.environment} environment.`;
 
-          // If valid, get customer branch locations for job account number
-          let jobAccountNumber = null;
-          let defaultBranch = null;
+          // Pull home branch directly from validate response — most reliable source.
+          let jobAccountNumber: number | null = null;
+          let defaultBranch: string | null = validateData?.homeBranchCode || null;
 
           if (isValid && connection.customer_code) {
+            // Try customerBranchLocations with branchCode (required by SRS) to pull JAN.
+            const branchCodeForQuery = defaultBranch || "SRORL";
             try {
               const branchData = await srsApiCall(
-                `/branches/v2/customerBranchLocations/${connection.customer_code}`
+                `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchCodeForQuery)}`
               );
-              if (branchData && Array.isArray(branchData) && branchData.length > 0) {
-                jobAccountNumber = branchData[0].jobAccountNumber;
-                defaultBranch = branchData[0].branchCode;
+              if (Array.isArray(branchData) && branchData.length > 0) {
+                jobAccountNumber = Number(branchData[0].jobAccountNumber) || null;
+                defaultBranch = branchData[0].branchCode || defaultBranch;
               } else if (branchData?.jobAccountNumber) {
-                jobAccountNumber = branchData.jobAccountNumber;
-                defaultBranch = branchData.branchCode;
+                jobAccountNumber = Number(branchData.jobAccountNumber) || null;
+                defaultBranch = branchData.branchCode || defaultBranch;
               }
             } catch (e) {
               console.warn("Could not fetch branch locations:", e);
@@ -598,6 +600,21 @@ Deno.serve(async (req) => {
           { productId: 3473, productName: "Atlas ProLam HP42 Shingles", option: "Black Shadow", quantity: 1, uom: "BD", customerItem: "TEST" },
         ];
 
+        const testShipTo = (params as any).ship_to || {
+          addressLine1: "4063 Fonsica Ave",
+          addressLine2: "",
+          addressLine3: "",
+          city: "North Port",
+          state: "FL",
+          zipCode: "34286",
+        };
+        const testContact = (params as any).customer_contact || {
+          customerContactName: "PITCH Integration Test",
+          customerContactAddress: "4063 Fonsica Ave, North Port, FL 34286",
+          customerContactPhone: "7708420812",
+          customerContactEmail: "test@pitch-crm.ai",
+        };
+
         const testPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
@@ -612,8 +629,8 @@ Deno.serve(async (req) => {
           expectedDeliveryDate: tomorrow,
           expectedDeliveryTime: (params as any).expected_delivery_time ?? "Anytime",
           shippingMethod: srsShippingMethodLabel((params as any).shipping_method || "will_call"),
-          shipTo: (params as any).ship_to || null,
-          customerContact: (params as any).customer_contact || null,
+          shipTo: testShipTo,
+          customerContact: testContact,
           notes: "PITCH integration test order — please ignore",
           items: orderItems,
         });
