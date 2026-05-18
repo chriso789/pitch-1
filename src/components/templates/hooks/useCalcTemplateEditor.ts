@@ -30,6 +30,7 @@ export interface CalcTemplateItem {
   active: boolean;
   margin_override: number;
   material_id: string | null;
+  requires_color: boolean;
 }
 
 export interface CalcTemplate {
