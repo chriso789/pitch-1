@@ -610,9 +610,15 @@ Deno.serve(async (req) => {
         };
         const testContact = (params as any).customer_contact || {
           customerContactName: "PITCH Integration Test",
-          customerContactAddress: "4063 Fonsica Ave, North Port, FL 34286",
           customerContactPhone: "7708420812",
           customerContactEmail: "test@pitch-crm.ai",
+          customerContactAddress: {
+            addressLine1: "4063 Fonsica Ave",
+            city: "North Port",
+            state: "FL",
+            zipCode: "34286",
+          },
+          additionalContactEmails: [],
         };
 
         const testPayload = buildSubmitOrderPayload({
