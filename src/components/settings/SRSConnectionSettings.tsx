@@ -227,10 +227,42 @@ export function SRSConnectionSettings() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast({ title: 'Branches synced', description: `${data?.branchCount ?? 0} branches loaded` });
+      await loadBranches();
     } catch (error: any) {
       toast({ title: 'Sync failed', description: error?.message || 'Unknown error', variant: 'destructive' });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleSubmitTestOrder = async () => {
+    if (!activeCompanyId) return;
+    setSubmittingTestOrder(true);
+    setTestOrderResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: { action: 'submit_test_order', tenant_id: activeCompanyId },
+      });
+      if (error) throw error;
+      setTestOrderResult(data);
+      if (data?.success) {
+        const orderNum = data?.response?.orderNumber || data?.response?.orderId || data?.response?.confirmationNumber;
+        toast({
+          title: 'Test order submitted to SRS STG',
+          description: orderNum ? `SRS confirmation: ${orderNum}` : 'SRS accepted the order. See response below.',
+        });
+      } else {
+        toast({
+          title: 'SRS rejected test order',
+          description: data?.error || 'See response below for details.',
+          variant: 'destructive',
+        });
+      }
+      await loadAudit();
+    } catch (error: any) {
+      toast({ title: 'Test order failed', description: error?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSubmittingTestOrder(false);
     }
   };
 
