@@ -11,55 +11,133 @@ const SRS_PRODUCTION_URL = "https://services.roofhub.pro";
 const SRS_SOURCE_SYSTEM = "PITCH";
 
 /**
- * Build the documented SRS /orders/v2/submit payload.
- * Spec (RoofHub 2026-05): sourceSystem, transactionID, transactionDate,
- * shipTo{}, poDetails{poNumber, orderType:"WHSE", shippingMethod},
- * orderLineItemDetails[] with INTEGER price, customerContactInfo{}.
+ * Build the SRS /orders/v2/submit payload.
+ * Spec aligned with the RoofHub sample shared by Jessica Zapata (2026-05-18):
+ *  - top-level `notes`, `accountNumber` (string), `shipToSequenceNumber`
+ *  - structured `shipTo` { addressLine1/2/3, city, state, zipCode }
+ *  - poDetails: { poNumber, reference, jobNumber, orderDate,
+ *                 expectedDeliveryDate, expectedDeliveryTime,
+ *                 orderType:"WHSE", shippingMethod (label e.g. "Ground Drop") }
+ *  - orderLineItemDetails: { productId (number), productName, option,
+ *                            quantity, uom, customerItem }
+ *      → SRS prices the order from their catalog; we do NOT send `price`.
+ *  - customerContactInfo: structured object with nested address +
+ *    additionalContactEmails[].
  */
+
+type SrsShipTo = {
+  addressLine1?: string; addressLine2?: string; addressLine3?: string;
+  city?: string; state?: string; zipCode?: string;
+};
+
+type SrsCustomerContact = {
+  customerContactName?: string;
+  customerContactPhone?: string;
+  customerContactEmail?: string;
+  customerContactAddress?: {
+    addressLine1?: string; city?: string; state?: string; zipCode?: string;
+  };
+  additionalContactEmails?: string[];
+};
+
+type SrsLineItem = {
+  productId: number | string;
+  productName?: string;
+  option?: string;
+  quantity: number;
+  uom: string;
+  customerItem?: string;
+};
+
 function buildSubmitOrderPayload(args: {
   sourceSystem: string;
   customerCode: string;
-  jobAccountNumber: number;
+  accountNumber?: string | null;          // string form of S046834
+  jobAccountNumber?: number | null;       // numeric (kept for legacy callers)
+  shipToSequenceNumber?: number;          // default 1
   branchCode: string;
   poNumber: string;
-  requestedDeliveryDate?: string | null;
-  shippingMethod: string; // e.g. "DEL", "WC"
-  shipTo: any | null;
-  customerContact: any | null;
+  reference?: string | null;
+  jobNumber?: string | null;
+  orderDate?: string | null;              // YYYY-MM-DD
+  expectedDeliveryDate?: string | null;   // YYYY-MM-DD
+  expectedDeliveryTime?: string | null;   // e.g. "Anytime"
+  shippingMethod: string;                 // label e.g. "Ground Drop", "Will Call", "Delivery"
+  shipTo?: SrsShipTo | null;
+  customerContact?: SrsCustomerContact | null;
   notes?: string | null;
-  items: Array<{
-    productNumber: string | number;
-    quantity: number;
-    uom: string;
-    price?: number;
-    description?: string;
-  }>;
+  items: SrsLineItem[];
 }) {
-  return {
+  const today = new Date().toISOString().slice(0, 10);
+  const payload: Record<string, unknown> = {
     sourceSystem: args.sourceSystem,
+    customerCode: args.customerCode,
+    shipToSequenceNumber: args.shipToSequenceNumber ?? 1,
+    branchCode: args.branchCode,
+    accountNumber: String(args.accountNumber ?? args.customerCode ?? "").trim(),
     transactionID: crypto.randomUUID(),
     transactionDate: new Date().toISOString(),
-    customerCode: args.customerCode,
-    jobAccountNumber: args.jobAccountNumber,
-    branchCode: args.branchCode,
-    requestedDeliveryDate: args.requestedDeliveryDate || null,
-    shipTo: args.shipTo || {},
+    notes: args.notes ?? "",
+    shipTo: args.shipTo ?? {
+      addressLine1: "", addressLine2: "", addressLine3: "",
+      city: "", state: "", zipCode: "",
+    },
     poDetails: {
       poNumber: args.poNumber,
+      reference: args.reference ?? "",
+      jobNumber: args.jobNumber ?? "",
+      orderDate: args.orderDate ?? today,
+      expectedDeliveryDate: args.expectedDeliveryDate ?? today,
+      expectedDeliveryTime: args.expectedDeliveryTime ?? "Anytime",
       orderType: "WHSE",
       shippingMethod: args.shippingMethod,
-      notes: args.notes || "",
     },
-    orderLineItemDetails: args.items.map((i) => ({
-      productNumber: String(i.productNumber ?? "").trim(),
-      quantity: Number(i.quantity),
-      uom: String(i.uom || "EA").trim(),
-      // SRS spec requires INTEGER price (cents not used — whole dollars).
-      price: Math.round(Number(i.price ?? 0)),
-      description: i.description || "",
-    })),
-    customerContactInfo: args.customerContact || {},
+    orderLineItemDetails: args.items.map((i) => {
+      const numericId = Number(i.productId);
+      return {
+        productId: Number.isFinite(numericId) ? numericId : i.productId,
+        productName: i.productName ?? "",
+        option: i.option ?? "",
+        quantity: Number(i.quantity),
+        uom: String(i.uom || "EA").trim(),
+        customerItem: i.customerItem ?? "",
+      };
+    }),
+    customerContactInfo: args.customerContact ?? {},
   };
+  // jobAccountNumber kept only when present — some SRS flows still echo it.
+  if (args.jobAccountNumber != null && !Number.isNaN(Number(args.jobAccountNumber))) {
+    payload.jobAccountNumber = Number(args.jobAccountNumber);
+  }
+  return payload;
+}
+
+/** Map our internal delivery_method codes to SRS shipping-method labels. */
+function srsShippingMethodLabel(internal: string | null | undefined): string {
+  switch ((internal || "").toLowerCase()) {
+    case "pickup":
+    case "wc":
+    case "will_call":
+      return "Will Call";
+    case "ground_drop":
+    case "drop":
+      return "Ground Drop";
+    case "delivery":
+    case "del":
+    default:
+      return "Delivery";
+  }
+}
+
+/** Best-effort parse of a freeform single-line address into structured shipTo. */
+function parseShipToFreeform(address: string | null | undefined): SrsShipTo {
+  if (!address) return { addressLine1: "", addressLine2: "", addressLine3: "", city: "", state: "", zipCode: "" };
+  // Format expected: "123 Main St, City, ST 12345"
+  const m = address.match(/^(.*?),\s*([^,]+),\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)\s*$/);
+  if (m) {
+    return { addressLine1: m[1].trim(), addressLine2: "", addressLine3: "", city: m[2].trim(), state: m[3].toUpperCase(), zipCode: m[4] };
+  }
+  return { addressLine1: address.trim(), addressLine2: "", addressLine3: "", city: "", state: "", zipCode: "" };
 }
 
 Deno.serve(async (req) => {
