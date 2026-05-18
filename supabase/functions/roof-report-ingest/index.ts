@@ -358,21 +358,21 @@ function parseXactimate(textRaw: string) {
   // Calculate flat area from squares (squares × 100)
   const flatArea = squares ? squares * 100 : null;
   
-  // Drip edge from line item "Drip edge ... 199.11 LF"
-  const dripEdgeMatch = text.match(/Drip\s*edge[^0-9]*([\d,]+(?:\.\d+)?)\s*LF/i);
+  // Drip edge from line item "Drip edge ... 199.11 LF" (also accept SF/EA/no unit)
+  const dripEdgeMatch = text.match(/Drip\s*edge[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
   const dripEdge = dripEdgeMatch ? parseFloatSafe(dripEdgeMatch[1]) : perimeter;
   
   // Hip/Ridge cap total from line item "Hip / Ridge cap ... 127.39 LF"
-  const hipRidgeCapMatch = text.match(/Hip\s*\/\s*Ridge\s*cap[^0-9]*([\d,]+(?:\.\d+)?)\s*LF/i)
-                        || text.match(/Hip\s*&\s*Ridge\s*cap[^0-9]*([\d,]+(?:\.\d+)?)\s*LF/i);
+  const hipRidgeCapMatch = text.match(/Hip\s*\/\s*Ridge\s*cap[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i)
+                        || text.match(/Hip\s*&\s*Ridge\s*cap[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
   const hipRidgeCap = hipRidgeCapMatch ? parseFloatSafe(hipRidgeCapMatch[1]) : null;
   
   // Step flashing
-  const stepFlashingMatch = text.match(/Step\s*flashing[^0-9]*([\d,]+(?:\.\d+)?)\s*LF/i);
+  const stepFlashingMatch = text.match(/Step\s*flashing[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
   const stepFlashing = stepFlashingMatch ? parseFloatSafe(stepFlashingMatch[1]) : null;
   
   // Starter from line item
-  const starterMatch = text.match(/Starter[^0-9]*([\d,]+(?:\.\d+)?)\s*LF/i);
+  const starterMatch = text.match(/Starter[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
   const starter = starterMatch ? parseFloatSafe(starterMatch[1]) : null;
   
   // Derive pitch from surface area vs flat area ratio
