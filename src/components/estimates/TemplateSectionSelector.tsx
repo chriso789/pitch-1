@@ -327,7 +327,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
     const { data: templateItems, error } = await supabase
       .from('estimate_calc_template_items')
-      .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order')
+      .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order, requires_color')
       .eq('calc_template_id', templateId)
       .eq('tenant_id', effectiveTenantId)
       .eq('item_type', sectionType)
@@ -355,8 +355,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         unit: item.unit || 'ea',
         unit_cost: unitCost,
         line_total: qty * unitCost,
-        notes: item.description || ''
-      };
+        notes: item.description || '',
+        requires_color: !!item.requires_color,
+      } as any;
     });
 
     setLineItems(calculatedItems);
