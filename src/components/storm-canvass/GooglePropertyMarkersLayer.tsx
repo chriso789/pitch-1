@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 import { type SymbolSettings, DEFAULT_DISPOSITION_SYMBOLS } from './MapSymbolSettings';
 
