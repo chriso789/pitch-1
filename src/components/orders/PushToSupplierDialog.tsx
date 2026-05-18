@@ -270,7 +270,7 @@ export function PushToSupplierDialog({
             project_id: projectId,
             estimate_id: estimateId || null,
             order_number: orderNumber,
-            branch_code: branchCode || null,
+            branch_code: branchCode.trim(),
             status: 'draft',
             delivery_method: deliveryMethod,
             delivery_date: deliveryDate,
