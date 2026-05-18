@@ -232,6 +232,16 @@ export function PushToSupplierDialog({
       return;
     }
 
+    // Branch code gate: SRS requires a branch on every order row.
+    if (selected === 'srs' && !branchCode.trim()) {
+      toast({
+        title: 'Branch code required',
+        description: 'Enter the SRS branch code for this order (e.g. SROCA). You can set a default in your profile so it auto-fills next time.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       // Remember this branch as the user's default for this supplier.
