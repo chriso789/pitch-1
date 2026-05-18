@@ -11,9 +11,69 @@ import { canonicalScopeKey, classifyScopeGroup } from "../_shared/scope-normaliz
 import { reconcileParsedDocument } from "../_shared/scope-reconciler.ts";
 import { fingerprintScopeItem } from "../_shared/scope-fingerprint.ts";
 
+// Coordinate-based PDF text extraction.
+// Xactimate estimates are columnar (DESCRIPTION | QTY | UNIT | PRICE | TAX | RCV | DEPREC | ACV).
+// Flattening text destroys column alignment and the downstream parser sees garbage.
+// We group items by Y (same visual line), sort by X (left→right), and emit a
+// double-space wherever there's a wide horizontal gap so the line parser can
+// tokenize columns reliably.
+async function extractStructuredPageText(page: any): Promise<string> {
+  const content = await page.getTextContent();
+  const Y_TOLERANCE = 3;
+  const lineMap = new Map<number, Array<{ str: string; x: number; width: number }>>();
+
+  for (const item of content.items as any[]) {
+    if (!item.str || !item.str.trim()) continue;
+    const yRaw = item.transform?.[5] ?? 0;
+    const xRaw = item.transform?.[4] ?? 0;
+    const y = Math.round(yRaw / Y_TOLERANCE) * Y_TOLERANCE;
+    if (!lineMap.has(y)) lineMap.set(y, []);
+    lineMap.get(y)!.push({
+      str: item.str,
+      x: xRaw,
+      width: item.width || item.str.length * 5,
+    });
+  }
+
+  const lines = Array.from(lineMap.entries())
+    .sort((a, b) => b[0] - a[0]) // top→bottom (PDF Y grows upward)
+    .map(([_, items]) => {
+      items.sort((a, b) => a.x - b.x);
+      let line = "";
+      for (let i = 0; i < items.length; i++) {
+        if (i > 0) {
+          const prev = items[i - 1];
+          const gap = items[i].x - (prev.x + prev.width);
+          if (gap > 10) line += "  "; // column gap marker
+          else if (gap > 0) line += " ";
+        }
+        line += items[i].str;
+      }
+      return line.trimEnd();
+    })
+    .filter((l) => l.length > 0);
+
+  return lines.join("\n");
+}
+
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
     const pdf = await getDocumentProxy(bytes);
+    const pageCount = pdf.numPages ?? 0;
+    const pages: string[] = [];
+    for (let i = 1; i <= pageCount; i++) {
+      try {
+        const page = await pdf.getPage(i);
+        const pageText = await extractStructuredPageText(page);
+        // Page marker so the line parser can attribute page numbers
+        pages.push(`\n----- PAGE ${i} -----\n${pageText}`);
+      } catch (pageErr) {
+        console.error(`[scope-ingest] page ${i} extraction failed:`, pageErr);
+      }
+    }
+    if (pages.length > 0) return pages.join("\n");
+
+    // Fallback: flat extract if structured extraction yielded nothing
     const { text } = await extractText(pdf, { mergePages: true });
     return Array.isArray(text) ? text.join("\n") : (text || "");
   } catch (e) {
