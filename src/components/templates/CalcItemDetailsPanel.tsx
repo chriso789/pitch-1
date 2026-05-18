@@ -289,6 +289,25 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
                 placeholder="e.g., GAF, Owens Corning"
               />
             </div>
+
+            {/* Requires Color toggle */}
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="requires_color" className="text-sm font-medium">
+                  Requires color selection
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  When on, the rep must enter a color on this line before the order can be pushed to the supplier.
+                </p>
+              </div>
+              <input
+                id="requires_color"
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-primary"
+                checked={!!localItem.requires_color}
+                onChange={(e) => handleLocalUpdate({ requires_color: e.target.checked })}
+              />
+            </div>
           </>
         )}
       </div>

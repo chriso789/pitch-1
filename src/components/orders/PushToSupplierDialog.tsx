@@ -30,6 +30,8 @@ interface MaterialItem {
   unit: string;
   unit_cost: number;
   srs_item_code?: string | null;
+  color_specs?: string;
+  requires_color?: boolean;
 }
 
 interface Props {
@@ -44,6 +46,8 @@ interface Props {
   onSubmitted?: () => void;
 }
 
+type DeliveryMethod = 'roof_load' | 'ground_drop' | 'pickup';
+
 export function PushToSupplierDialog({
   open, onOpenChange, projectId, estimateId, jobNumber,
   customerName, projectAddress, items, onSubmitted,
@@ -54,7 +58,8 @@ export function PushToSupplierDialog({
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
   const [branchCode, setBranchCode] = useState('');
-  const [deliveryMethod, setDeliveryMethod] = useState<'delivery' | 'pickup'>('delivery');
+  const [userBranchPrefs, setUserBranchPrefs] = useState<Record<string, string>>({});
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('roof_load');
   const [deliveryDate, setDeliveryDate] = useState<string>(() => {
     const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
     return d.toISOString().slice(0, 10);
@@ -80,6 +85,19 @@ export function PushToSupplierDialog({
       setLoadingSuppliers(true);
       const found: SupplierOption[] = [];
 
+      // Load the signed-in user's per-supplier default branch overrides.
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      let prefs: Record<string, string> = {};
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_supplier_branches')
+          .eq('id', userId)
+          .maybeSingle();
+        prefs = ((profile as any)?.default_supplier_branches as Record<string, string>) || {};
+      }
+
       const [srsRes, qxoRes] = await Promise.all([
         supabase
           .from('srs_connections')
@@ -97,7 +115,7 @@ export function PushToSupplierDialog({
         found.push({
           key: 'srs',
           label: `SRS Distribution${srsRes.data.environment === 'production' ? '' : ' (QA)'}`,
-          defaultBranch: srsRes.data.default_branch_code,
+          defaultBranch: prefs.srs || srsRes.data.default_branch_code,
           environment: srsRes.data.environment,
           status: 'connected',
         });
@@ -114,7 +132,7 @@ export function PushToSupplierDialog({
         found.push({
           key: 'qxo',
           label: `QXO / Beacon${qxoRes.data.environment === 'production' ? '' : ' (Test)'}`,
-          defaultBranch: qxoRes.data.default_branch_code,
+          defaultBranch: prefs.qxo || qxoRes.data.default_branch_code,
           environment: qxoRes.data.environment,
           status: 'connected',
         });
@@ -141,6 +159,7 @@ export function PushToSupplierDialog({
       });
 
       if (cancelled) return;
+      setUserBranchPrefs(prefs);
       setSuppliers(found);
       const connected = found.filter(s => s.status === 'connected');
       if (connected.length === 1) {
@@ -199,8 +218,38 @@ export function PushToSupplierDialog({
       toast({ title: 'No items to push', variant: 'destructive' });
       return;
     }
+
+    // Color requirement gate: every "requires color" line must have a color filled in.
+    const missingColor = editableItems.filter(
+      i => i.requires_color && !(i.color_specs && i.color_specs.trim())
+    );
+    if (missingColor.length) {
+      toast({
+        title: 'Color required',
+        description: `Add a color for: ${missingColor.map(i => i.item_name).join(', ')}. The order can't be pushed to the supplier until every color-required item has a color.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
+      // Remember this branch as the user's default for this supplier.
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id;
+        if (userId && branchCode && userBranchPrefs[selected] !== branchCode) {
+          const nextPrefs = { ...userBranchPrefs, [selected]: branchCode };
+          await supabase
+            .from('profiles')
+            .update({ default_supplier_branches: nextPrefs } as any)
+            .eq('id', userId);
+          setUserBranchPrefs(nextPrefs);
+        }
+      } catch (e) {
+        console.warn('[PushToSupplier] could not save default branch preference', e);
+      }
+
       if (selected === 'srs') {
         // 1. Create the srs_orders draft + items linked to the project
         const orderNumber = `PITCH-${jobNumber || 'JOB'}-${Date.now()}`;
@@ -381,8 +430,9 @@ export function PushToSupplierDialog({
                     <Select value={deliveryMethod} onValueChange={(v: any) => setDeliveryMethod(v)}>
                       <SelectTrigger id="dmethod"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="delivery">Delivery</SelectItem>
-                        <SelectItem value="pickup">Pickup / Will-call</SelectItem>
+                        <SelectItem value="roof_load">Roof Load</SelectItem>
+                        <SelectItem value="ground_drop">Ground Drop</SelectItem>
+                        <SelectItem value="pickup">Pick up / Will-call</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -417,29 +467,52 @@ export function PushToSupplierDialog({
                           <th className="p-2 text-left">SKU</th>
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
+                          <th className="p-2 text-left">Color</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {editableItems.map((it, i) => (
-                          <tr key={i} className="border-t">
-                            <td className="p-2">{it.item_name}</td>
-                            <td className="p-2">
-                              <code className="text-xs">{it.srs_item_code || '—'}</code>
-                            </td>
-                            <td className="p-2 text-right">
-                              <Input
-                                type="number"
-                                value={it.quantity}
-                                onChange={e => updateItem(i, { quantity: Number(e.target.value) })}
-                                className="h-7 w-20 text-right"
-                              />
-                            </td>
-                            <td className="p-2">{it.unit}</td>
-                          </tr>
-                        ))}
+                        {editableItems.map((it, i) => {
+                          const colorMissing = it.requires_color && !(it.color_specs && it.color_specs.trim());
+                          return (
+                            <tr key={i} className={`border-t ${colorMissing ? 'bg-destructive/5' : ''}`}>
+                              <td className="p-2">
+                                <div className="flex items-center gap-2">
+                                  <span>{it.item_name}</span>
+                                  {it.requires_color && (
+                                    <Badge variant="outline" className="text-[10px]">Color req.</Badge>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <code className="text-xs">{it.srs_item_code || '—'}</code>
+                              </td>
+                              <td className="p-2 text-right">
+                                <Input
+                                  type="number"
+                                  value={it.quantity}
+                                  onChange={e => updateItem(i, { quantity: Number(e.target.value) })}
+                                  className="h-7 w-20 text-right"
+                                />
+                              </td>
+                              <td className="p-2">{it.unit}</td>
+                              <td className="p-2">
+                                {it.requires_color ? (
+                                  <Input
+                                    value={it.color_specs || ''}
+                                    onChange={e => updateItem(i, { color_specs: e.target.value })}
+                                    placeholder="Color…"
+                                    className={`h-7 w-32 ${colorMissing ? 'border-destructive' : ''}`}
+                                  />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">{it.color_specs || '—'}</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                         {editableItems.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                            <td colSpan={5} className="p-6 text-center text-muted-foreground">
                               <Package className="mx-auto mb-2 h-5 w-5" />
                               No material line items found on this project's estimate.
                             </td>
@@ -448,6 +521,12 @@ export function PushToSupplierDialog({
                       </tbody>
                     </table>
                   </div>
+                  {editableItems.some(i => i.requires_color && !(i.color_specs && i.color_specs.trim())) && (
+                    <p className="mt-2 flex items-center gap-1 text-xs text-destructive">
+                      <AlertCircle className="h-3 w-3" />
+                      A color is required on every highlighted line before this order can be pushed to the supplier.
+                    </p>
+                  )}
                   {selected === 'srs' && editableItems.some(i => !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
                       Items without an SRS SKU will be skipped. Map SKUs in the estimate to include them.

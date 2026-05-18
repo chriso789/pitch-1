@@ -122,6 +122,9 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
     case "ground_drop":
     case "drop":
       return "Ground Drop";
+    case "roof_load":
+    case "rooftop":
+      return "Roof Load";
     case "delivery":
     case "del":
     default:

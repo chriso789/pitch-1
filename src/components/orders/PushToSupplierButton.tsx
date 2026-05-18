@@ -11,6 +11,7 @@ interface MaterialItem {
   notes?: string;
   color_specs?: string;
   srs_item_code?: string;
+  requires_color?: boolean;
 }
 
 interface Props {
@@ -54,6 +55,8 @@ export function PushToSupplierButton({
             unit: i.unit,
             unit_cost: i.unit_cost,
             srs_item_code: i.srs_item_code,
+            color_specs: i.color_specs,
+            requires_color: !!i.requires_color,
           }))}
         />
       )}
