@@ -66,8 +66,27 @@ export function SRSConnectionSettings() {
     if (activeCompanyId) {
       loadConnection();
       loadAudit();
+      loadBranches();
     }
   }, [activeCompanyId]);
+
+  const loadBranches = async () => {
+    if (!activeCompanyId) return;
+    setLoadingBranches(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('srs_branches')
+        .select('branch_code, branch_name, city, state, zip_code, phone')
+        .eq('tenant_id', activeCompanyId)
+        .order('branch_name');
+      if (error) throw error;
+      setBranches(data || []);
+    } catch (e) {
+      console.error('Failed to load SRS branches:', e);
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
 
   const loadConnection = async () => {
     try {
