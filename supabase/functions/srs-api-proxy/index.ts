@@ -598,6 +598,21 @@ Deno.serve(async (req) => {
           { productId: 3473, productName: "Atlas ProLam HP42 Shingles", option: "Black Shadow", quantity: 1, uom: "BD", customerItem: "TEST" },
         ];
 
+        const testShipTo = (params as any).ship_to || {
+          addressLine1: "4063 Fonsica Ave",
+          addressLine2: "",
+          addressLine3: "",
+          city: "North Port",
+          state: "FL",
+          zipCode: "34286",
+        };
+        const testContact = (params as any).customer_contact || {
+          customerContactName: "PITCH Integration Test",
+          customerContactAddress: "4063 Fonsica Ave, North Port, FL 34286",
+          customerContactPhone: "7708420812",
+          customerContactEmail: "test@pitch-crm.ai",
+        };
+
         const testPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
@@ -612,8 +627,8 @@ Deno.serve(async (req) => {
           expectedDeliveryDate: tomorrow,
           expectedDeliveryTime: (params as any).expected_delivery_time ?? "Anytime",
           shippingMethod: srsShippingMethodLabel((params as any).shipping_method || "will_call"),
-          shipTo: (params as any).ship_to || null,
-          customerContact: (params as any).customer_contact || null,
+          shipTo: testShipTo,
+          customerContact: testContact,
           notes: "PITCH integration test order — please ignore",
           items: orderItems,
         });
