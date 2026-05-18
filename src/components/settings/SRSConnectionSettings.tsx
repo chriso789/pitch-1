@@ -76,7 +76,7 @@ export function SRSConnectionSettings() {
     try {
       const { data, error } = await (supabase as any)
         .from('srs_branches')
-        .select('branch_code, branch_name, city, state, zip_code, phone')
+        .select('branch_code, branch_name, city, state, zip, phone')
         .eq('tenant_id', activeCompanyId)
         .order('branch_name');
       if (error) throw error;
