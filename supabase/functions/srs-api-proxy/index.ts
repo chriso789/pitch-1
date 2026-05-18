@@ -778,15 +778,19 @@ Deno.serve(async (req) => {
             return await srsApiCall("/orders/v2/submit", "POST", buildSubmitOrderPayload({
               sourceSystem: SRS_SOURCE_SYSTEM,
               customerCode: String(connection.customer_code || "").trim(),
+              accountNumber: String(connection.customer_code || "").trim(),
               jobAccountNumber: Number(connection.job_account_number),
+              shipToSequenceNumber: 1,
               branchCode: branchForProbe,
               poNumber: `PITCH-QA-${Date.now()}`,
-              requestedDeliveryDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-              shippingMethod: "WC",
+              orderDate: new Date().toISOString().slice(0, 10),
+              expectedDeliveryDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+              expectedDeliveryTime: "Anytime",
+              shippingMethod: "Will Call",
               shipTo: null,
               customerContact: null,
               notes: "PITCH QA verify — please ignore",
-              items: [{ productNumber: "TEST-SHINGLE-001", quantity: 1, uom: "EA", price: 0 }],
+              items: [{ productId: 3473, productName: "Atlas ProLam HP42 Shingles", option: "Black Shadow", quantity: 1, uom: "BD", customerItem: "QA" }],
             }));
           });
         } else {
