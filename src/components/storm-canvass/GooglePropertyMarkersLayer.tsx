@@ -303,13 +303,13 @@ export default function GooglePropertyMarkersLayer({
     radius: number,
     cellsInCluster: string[]
   ) => {
-    if (!profile?.tenant_id) return false;
+    if (!effectiveTenantId) return false;
 
     try {
       console.log('[GooglePropertyMarkersLayer] Loading cluster of', cellsInCluster.length, 'cells at', clusterCenter.lat.toFixed(5), clusterCenter.lng.toFixed(5));
 
       const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
-        body: { lat: clusterCenter.lat, lng: clusterCenter.lng, radius, tenant_id: profile.tenant_id, force: true }
+        body: { lat: clusterCenter.lat, lng: clusterCenter.lng, radius, tenant_id: effectiveTenantId, force: true }
       });
 
       if (error) {
@@ -346,7 +346,7 @@ export default function GooglePropertyMarkersLayer({
       console.error('[GooglePropertyMarkersLayer] Edge function error:', err);
       return false;
     }
-  }, [profile?.tenant_id, onPropertiesLoaded]);
+  }, [effectiveTenantId, onPropertiesLoaded]);
 
   const getDispositionColor = (disposition: string | null): string => {
     if (!disposition) return DEFAULT_COLOR;
@@ -492,7 +492,7 @@ export default function GooglePropertyMarkersLayer({
   }, []);
 
   const loadProperties = useCallback(async () => {
-    if (!profile?.tenant_id || !map || !mountedRef.current) return;
+    if (!effectiveTenantId || !map || !mountedRef.current) return;
     
     // Acquire a new load version; any in-flight load with a lower version is now stale
     const thisLoadVersion = ++loadVersionRef.current;
@@ -523,7 +523,7 @@ export default function GooglePropertyMarkersLayer({
           const { data: chunkData, error: chunkErr } = await supabase
             .from('canvassiq_properties')
             .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
-            .eq('tenant_id', profile.tenant_id)
+            .eq('tenant_id', effectiveTenantId)
             .in('id', chunk)
             .gte('lat', sw.lat())
             .lte('lat', ne.lat())
@@ -537,7 +537,7 @@ export default function GooglePropertyMarkersLayer({
         const res = await supabase
           .from('canvassiq_properties')
           .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
-          .eq('tenant_id', profile.tenant_id)
+          .eq('tenant_id', effectiveTenantId)
           .gte('lat', sw.lat())
           .lte('lat', ne.lat())
           .gte('lng', sw.lng())
@@ -618,7 +618,7 @@ export default function GooglePropertyMarkersLayer({
             const { data: newRawProperties } = await supabase
               .from('canvassiq_properties')
               .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
-              .eq('tenant_id', profile.tenant_id)
+              .eq('tenant_id', effectiveTenantId)
               .gte('lat', sw.lat())
               .lte('lat', ne.lat())
               .gte('lng', sw.lng())
@@ -650,7 +650,7 @@ export default function GooglePropertyMarkersLayer({
     } catch (err) {
       console.error('Error in loadProperties:', err);
     }
-  }, [profile?.tenant_id, map, reconcileMarkers, loadParcelsForCluster, getLoadRadius, onLoadingChange, areaPropertyIds]);
+  }, [effectiveTenantId, map, reconcileMarkers, loadParcelsForCluster, getLoadRadius, onLoadingChange, areaPropertyIds]);
 
   // Update marker sizes when zoom changes significantly
   const updateMarkerSizes = useCallback(() => {
