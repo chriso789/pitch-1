@@ -30,6 +30,8 @@ interface MaterialItem {
   unit: string;
   unit_cost: number;
   srs_item_code?: string | null;
+  color_specs?: string;
+  requires_color?: boolean;
 }
 
 interface Props {
@@ -44,6 +46,8 @@ interface Props {
   onSubmitted?: () => void;
 }
 
+type DeliveryMethod = 'roof_load' | 'ground_drop' | 'pickup';
+
 export function PushToSupplierDialog({
   open, onOpenChange, projectId, estimateId, jobNumber,
   customerName, projectAddress, items, onSubmitted,
@@ -54,7 +58,8 @@ export function PushToSupplierDialog({
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
   const [branchCode, setBranchCode] = useState('');
-  const [deliveryMethod, setDeliveryMethod] = useState<'delivery' | 'pickup'>('delivery');
+  const [userBranchPrefs, setUserBranchPrefs] = useState<Record<string, string>>({});
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('roof_load');
   const [deliveryDate, setDeliveryDate] = useState<string>(() => {
     const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
     return d.toISOString().slice(0, 10);
