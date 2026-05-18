@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface AssignedAreaData {
   assignedArea: { id: string; name: string; color: string } | null;
@@ -11,13 +12,14 @@ interface AssignedAreaData {
 
 export function useAssignedArea(): AssignedAreaData {
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   const [assignedArea, setAssignedArea] = useState<AssignedAreaData['assignedArea']>(null);
   const [areaPolygon, setAreaPolygon] = useState<any>(null);
   const [propertyIds, setPropertyIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile?.id || !profile?.tenant_id) {
+    if (!profile?.id || !effectiveTenantId) {
       setLoading(false);
       return;
     }
@@ -31,7 +33,7 @@ export function useAssignedArea(): AssignedAreaData {
       const { data: assignments, error: assignErr } = await supabase
         .from('canvass_area_assignments')
         .select('area_id')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('user_id', profile.id)
         .eq('is_active', true)
         .limit(1);
@@ -53,7 +55,7 @@ export function useAssignedArea(): AssignedAreaData {
         .from('canvass_areas')
         .select('id, name, color, polygon_geojson')
         .eq('id', areaId)
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .single();
 
       if (!mounted) return;
@@ -73,7 +75,7 @@ export function useAssignedArea(): AssignedAreaData {
       const { data: splitRows } = await (supabase
         .from('canvass_area_property_assignments' as any)
         .select('property_id')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('area_id', areaId)
         .eq('user_id', profile.id) as any);
 
@@ -91,7 +93,7 @@ export function useAssignedArea(): AssignedAreaData {
       const { data: memberRows } = await supabase
         .from('canvass_area_properties')
         .select('property_id')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('area_id', areaId);
 
       if (!mounted) return;
@@ -107,7 +109,7 @@ export function useAssignedArea(): AssignedAreaData {
     load();
 
     return () => { mounted = false; };
-  }, [profile?.id, profile?.tenant_id]);
+  }, [profile?.id, effectiveTenantId]);
 
   return { assignedArea, areaPolygon, propertyIds, loading };
 }
