@@ -232,6 +232,16 @@ export function PushToSupplierDialog({
       return;
     }
 
+    // Branch code gate: SRS requires a branch on every order row.
+    if (selected === 'srs' && !branchCode.trim()) {
+      toast({
+        title: 'Branch code required',
+        description: 'Enter the SRS branch code for this order (e.g. SROCA). You can set a default in your profile so it auto-fills next time.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       // Remember this branch as the user's default for this supplier.
@@ -260,7 +270,7 @@ export function PushToSupplierDialog({
             project_id: projectId,
             estimate_id: estimateId || null,
             order_number: orderNumber,
-            branch_code: branchCode || null,
+            branch_code: branchCode.trim(),
             status: 'draft',
             delivery_method: deliveryMethod,
             delivery_date: deliveryDate,
@@ -422,8 +432,17 @@ export function PushToSupplierDialog({
               <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
-                    <Label htmlFor="branch">Branch code</Label>
-                    <Input id="branch" value={branchCode} onChange={e => setBranchCode(e.target.value)} />
+                    <Label htmlFor="branch">
+                      Branch code <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="branch"
+                      value={branchCode}
+                      onChange={e => setBranchCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. SROCA"
+                      aria-invalid={selected === 'srs' && !branchCode.trim()}
+                      className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
+                    />
                   </div>
                   <div>
                     <Label htmlFor="dmethod">Delivery method</Label>
