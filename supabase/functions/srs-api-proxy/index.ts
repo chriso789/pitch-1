@@ -486,21 +486,33 @@ Deno.serve(async (req) => {
       }
 
       case "sync_branches": {
-        const branchData = await srsApiCall("/branches/v2/branchLocations");
-        const branches = Array.isArray(branchData) ? branchData : branchData?.branchLocations || [];
+        // SRS /branches/v2/branchLocations requires BranchCode or lat/long, so
+        // we use the customer-scoped endpoint instead (same as validate). It
+        // returns the branches this customer can actually order from.
+        if (!connection.customer_code) {
+          throw new Error("Missing customer_code on connection. Run Test Connection / validate first.");
+        }
+        const branchData = await srsApiCall(
+          `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}`
+        );
+        const branches = Array.isArray(branchData)
+          ? branchData
+          : branchData?.customerBranchLocations || branchData?.branchLocations || (branchData ? [branchData] : []);
 
         // Upsert branches
         for (const branch of branches) {
+          const code = branch.branchCode || branch.code || branch.homeBranchCode;
+          if (!code) continue;
           await supabase.from("srs_branches").upsert(
             {
               tenant_id,
-              branch_code: branch.branchCode || branch.code,
-              branch_name: branch.branchName || branch.name,
-              address: branch.address || branch.streetAddress,
-              city: branch.city,
-              state: branch.state,
-              zip: branch.zip || branch.postalCode,
-              phone: branch.phone,
+              branch_code: code,
+              branch_name: branch.branchName || branch.name || branch.customerName || code,
+              address: branch.address || branch.streetAddress || branch.customerAddress1,
+              city: branch.city || branch.customerCity,
+              state: branch.state || branch.customerState,
+              zip: branch.zip || branch.postalCode || branch.customerZipCode,
+              phone: branch.phone || branch.customerPhone,
               shipping_methods: branch.shippingMethods || [],
               cached_at: new Date().toISOString(),
             },
