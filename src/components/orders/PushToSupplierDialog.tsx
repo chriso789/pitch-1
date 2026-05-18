@@ -19,6 +19,8 @@ interface SupplierOption {
   label: string;
   defaultBranch?: string | null;
   environment?: string | null;
+  status?: 'connected' | 'error' | 'not_configured' | 'coming_soon';
+  statusNote?: string;
 }
 
 interface MaterialItem {
@@ -97,27 +99,50 @@ export function PushToSupplierDialog({
           label: `SRS Distribution${srsRes.data.environment === 'production' ? '' : ' (QA)'}`,
           defaultBranch: srsRes.data.default_branch_code,
           environment: srsRes.data.environment,
+          status: 'connected',
+        });
+      } else {
+        found.push({
+          key: 'srs',
+          label: 'SRS Distribution',
+          status: 'not_configured',
+          statusNote: 'Connect in Settings → Integrations',
         });
       }
+
       if (qxoRes.data && qxoRes.data.connection_status === 'connected') {
         found.push({
           key: 'qxo',
           label: `QXO / Beacon${qxoRes.data.environment === 'production' ? '' : ' (Test)'}`,
           defaultBranch: qxoRes.data.default_branch_code,
           environment: qxoRes.data.environment,
+          status: 'connected',
+        });
+      } else {
+        found.push({
+          key: 'qxo',
+          label: 'QXO / Beacon',
+          environment: qxoRes.data?.environment,
+          status: qxoRes.data ? 'error' : 'not_configured',
+          statusNote: qxoRes.data
+            ? 'Connection error — re-authenticate in Settings → Integrations'
+            : 'Connect in Settings → Integrations',
         });
       }
+
       // ABC Supply: always show as a coming-soon option so users know it's planned.
       found.push({
         key: 'abc',
-        label: 'ABC Supply (coming soon)',
+        label: 'ABC Supply',
         defaultBranch: null,
         environment: null,
+        status: 'coming_soon',
+        statusNote: 'Coming soon',
       });
 
       if (cancelled) return;
       setSuppliers(found);
-      const connected = found.filter(s => s.key !== 'abc');
+      const connected = found.filter(s => s.status === 'connected');
       if (connected.length === 1) {
         setSelected(connected[0].key);
         setBranchCode(connected[0].defaultBranch || '');
@@ -154,10 +179,19 @@ export function PushToSupplierDialog({
 
   const submit = async () => {
     if (!tenantId || !selected) return;
-    if (selected === 'abc') {
+    const sel = suppliers.find(s => s.key === selected);
+    if (selected === 'abc' || sel?.status === 'coming_soon') {
       toast({
         title: 'ABC Supply coming soon',
         description: 'ABC Supply integration is on the roadmap. Use SRS or QXO for now.',
+      });
+      return;
+    }
+    if (sel?.status !== 'connected') {
+      toast({
+        title: `${sel?.label || 'Supplier'} not connected`,
+        description: sel?.statusNote || 'Set up this supplier in Settings → Integrations first.',
+        variant: 'destructive',
       });
       return;
     }
@@ -278,38 +312,60 @@ export function PushToSupplierDialog({
             <Loader2 className="h-6 w-6 animate-spin" />
             <span className="ml-2 text-sm text-muted-foreground">Checking connected suppliers…</span>
           </div>
-        ) : suppliers.filter(s => s.key !== 'abc').length === 0 ? (
-          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-            <AlertCircle className="mx-auto mb-2 h-6 w-6 text-amber-500" />
-            No supplier accounts are connected for this tenant. Connect SRS or QXO in Settings → Integrations. (ABC Supply integration is coming soon.)
-          </div>
         ) : (
           <div className="space-y-5">
             {/* Supplier picker */}
             <div>
               <Label className="mb-2 block">Supplier</Label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {suppliers.map(s => (
-                  <Card
-                    key={s.key}
-                    onClick={() => handleSelectSupplier(s.key)}
-                    className={`cursor-pointer transition ${
-                      selected === s.key ? 'ring-2 ring-primary' : 'hover:bg-muted/50'
-                    }`}
-                  >
-                    <CardContent className="flex items-center justify-between p-4">
-                      <div>
-                        <div className="font-medium">{s.label}</div>
-                        {s.defaultBranch && (
-                          <div className="text-xs text-muted-foreground">Branch {s.defaultBranch}</div>
-                        )}
-                      </div>
-                      <Badge variant={selected === s.key ? 'default' : 'outline'}>
-                        {selected === s.key ? 'Selected' : 'Choose'}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {suppliers.map(s => {
+                  const disabled = s.status !== 'connected';
+                  const isSelected = selected === s.key;
+                  return (
+                    <Card
+                      key={s.key}
+                      onClick={() => !disabled && handleSelectSupplier(s.key)}
+                      className={`transition ${
+                        disabled
+                          ? 'cursor-not-allowed opacity-60'
+                          : isSelected
+                          ? 'cursor-pointer ring-2 ring-primary'
+                          : 'cursor-pointer hover:bg-muted/50'
+                      }`}
+                    >
+                      <CardContent className="flex items-center justify-between gap-2 p-4">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{s.label}</div>
+                          {s.defaultBranch && (
+                            <div className="text-xs text-muted-foreground">Branch {s.defaultBranch}</div>
+                          )}
+                          {s.statusNote && (
+                            <div className="text-xs text-muted-foreground truncate">{s.statusNote}</div>
+                          )}
+                        </div>
+                        <Badge
+                          variant={
+                            isSelected
+                              ? 'default'
+                              : s.status === 'connected'
+                              ? 'outline'
+                              : 'secondary'
+                          }
+                        >
+                          {isSelected
+                            ? 'Selected'
+                            : s.status === 'connected'
+                            ? 'Choose'
+                            : s.status === 'coming_soon'
+                            ? 'Soon'
+                            : s.status === 'error'
+                            ? 'Error'
+                            : 'Setup'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
 
