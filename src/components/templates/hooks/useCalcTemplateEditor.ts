@@ -126,6 +126,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
             active: item.active,
             margin_override: Number(item.margin_override) || 0,
             material_id: item.material_id || null,
+            requires_color: !!item.requires_color,
           })),
       }));
 
