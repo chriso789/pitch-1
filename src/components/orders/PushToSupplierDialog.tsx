@@ -278,10 +278,10 @@ export function PushToSupplierDialog({
             <Loader2 className="h-6 w-6 animate-spin" />
             <span className="ml-2 text-sm text-muted-foreground">Checking connected suppliers…</span>
           </div>
-        ) : suppliers.length === 0 ? (
+        ) : suppliers.filter(s => s.key !== 'abc').length === 0 ? (
           <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
             <AlertCircle className="mx-auto mb-2 h-6 w-6 text-amber-500" />
-            No supplier accounts are connected for this tenant. Connect SRS or QXO in Settings → Integrations.
+            No supplier accounts are connected for this tenant. Connect SRS or QXO in Settings → Integrations. (ABC Supply integration is coming soon.)
           </div>
         ) : (
           <div className="space-y-5">
