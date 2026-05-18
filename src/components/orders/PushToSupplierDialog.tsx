@@ -107,6 +107,13 @@ export function PushToSupplierDialog({
           environment: qxoRes.data.environment,
         });
       }
+      // ABC Supply: always show as a coming-soon option so users know it's planned.
+      found.push({
+        key: 'abc',
+        label: 'ABC Supply (coming soon)',
+        defaultBranch: null,
+        environment: null,
+      });
 
       if (cancelled) return;
       setSuppliers(found);
