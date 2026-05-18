@@ -47,6 +47,7 @@ export function SRSConnectionSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
