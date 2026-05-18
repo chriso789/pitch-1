@@ -724,6 +724,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         notes: li.notes,
                         color_specs: li.color_specs,
                         srs_item_code: li.srs_item_code || li.product_code,
+                        requires_color: !!(li.requires_color ?? li.metadata?.requires_color),
                       }))}
                     />
                   </>
