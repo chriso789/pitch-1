@@ -47,6 +47,7 @@ export function SRSConnectionSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -189,15 +190,24 @@ export function SRSConnectionSettings() {
   };
 
   const handleSyncBranches = async () => {
-    if (!activeCompanyId) return;
+    if (!activeCompanyId) {
+      toast({ title: 'No active company', description: 'Switch to a tenant before syncing branches.', variant: 'destructive' });
+      return;
+    }
+    setSyncing(true);
     try {
+      console.log('[SRS] sync_branches invoke', { tenant_id: activeCompanyId });
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
         body: { action: 'sync_branches', tenant_id: activeCompanyId },
       });
+      console.log('[SRS] sync_branches result', { data, error });
       if (error) throw error;
-      toast({ title: 'Branches synced', description: `${data?.branchCount || 0} branches loaded` });
+      if (data?.error) throw new Error(data.error);
+      toast({ title: 'Branches synced', description: `${data?.branchCount ?? 0} branches loaded` });
     } catch (error: any) {
-      toast({ title: 'Sync failed', description: error.message, variant: 'destructive' });
+      toast({ title: 'Sync failed', description: error?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -368,8 +378,8 @@ export function SRSConnectionSettings() {
             )}
 
             {isConnected && (
-              <Button variant="outline" onClick={handleSyncBranches}>
-                <RefreshCw className="h-4 w-4 mr-2" />
+              <Button variant="outline" onClick={handleSyncBranches} disabled={syncing}>
+                {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                 Sync Branches
               </Button>
             )}
