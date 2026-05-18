@@ -117,10 +117,11 @@ export function PushToSupplierDialog({
 
       if (cancelled) return;
       setSuppliers(found);
-      if (found.length === 1) {
-        setSelected(found[0].key);
-        setBranchCode(found[0].defaultBranch || '');
-      } else if (found.length === 0) {
+      const connected = found.filter(s => s.key !== 'abc');
+      if (connected.length === 1) {
+        setSelected(connected[0].key);
+        setBranchCode(connected[0].defaultBranch || '');
+      } else if (connected.length === 0) {
         setSelected(null);
       }
       setLoadingSuppliers(false);
