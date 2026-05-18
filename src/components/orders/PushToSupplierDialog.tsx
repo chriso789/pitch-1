@@ -99,27 +99,50 @@ export function PushToSupplierDialog({
           label: `SRS Distribution${srsRes.data.environment === 'production' ? '' : ' (QA)'}`,
           defaultBranch: srsRes.data.default_branch_code,
           environment: srsRes.data.environment,
+          status: 'connected',
+        });
+      } else {
+        found.push({
+          key: 'srs',
+          label: 'SRS Distribution',
+          status: 'not_configured',
+          statusNote: 'Connect in Settings → Integrations',
         });
       }
+
       if (qxoRes.data && qxoRes.data.connection_status === 'connected') {
         found.push({
           key: 'qxo',
           label: `QXO / Beacon${qxoRes.data.environment === 'production' ? '' : ' (Test)'}`,
           defaultBranch: qxoRes.data.default_branch_code,
           environment: qxoRes.data.environment,
+          status: 'connected',
+        });
+      } else {
+        found.push({
+          key: 'qxo',
+          label: 'QXO / Beacon',
+          environment: qxoRes.data?.environment,
+          status: qxoRes.data ? 'error' : 'not_configured',
+          statusNote: qxoRes.data
+            ? 'Connection error — re-authenticate in Settings → Integrations'
+            : 'Connect in Settings → Integrations',
         });
       }
+
       // ABC Supply: always show as a coming-soon option so users know it's planned.
       found.push({
         key: 'abc',
-        label: 'ABC Supply (coming soon)',
+        label: 'ABC Supply',
         defaultBranch: null,
         environment: null,
+        status: 'coming_soon',
+        statusNote: 'Coming soon',
       });
 
       if (cancelled) return;
       setSuppliers(found);
-      const connected = found.filter(s => s.key !== 'abc');
+      const connected = found.filter(s => s.status === 'connected');
       if (connected.length === 1) {
         setSelected(connected[0].key);
         setBranchCode(connected[0].defaultBranch || '');
