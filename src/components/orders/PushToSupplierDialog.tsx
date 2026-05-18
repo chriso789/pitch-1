@@ -179,10 +179,19 @@ export function PushToSupplierDialog({
 
   const submit = async () => {
     if (!tenantId || !selected) return;
-    if (selected === 'abc') {
+    const sel = suppliers.find(s => s.key === selected);
+    if (selected === 'abc' || sel?.status === 'coming_soon') {
       toast({
         title: 'ABC Supply coming soon',
         description: 'ABC Supply integration is on the roadmap. Use SRS or QXO for now.',
+      });
+      return;
+    }
+    if (sel?.status !== 'connected') {
+      toast({
+        title: `${sel?.label || 'Supplier'} not connected`,
+        description: sel?.statusNote || 'Set up this supplier in Settings → Integrations first.',
+        variant: 'destructive',
       });
       return;
     }
