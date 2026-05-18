@@ -154,6 +154,13 @@ export function PushToSupplierDialog({
 
   const submit = async () => {
     if (!tenantId || !selected) return;
+    if (selected === 'abc') {
+      toast({
+        title: 'ABC Supply coming soon',
+        description: 'ABC Supply integration is on the roadmap. Use SRS or QXO for now.',
+      });
+      return;
+    }
     if (!editableItems.length) {
       toast({ title: 'No items to push', variant: 'destructive' });
       return;
