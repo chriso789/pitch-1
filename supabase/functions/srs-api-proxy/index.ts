@@ -426,21 +426,23 @@ Deno.serve(async (req) => {
             ? null
             : `SRS rejected validation. Response: ${JSON.stringify(validateData)}. Confirm the Customer Code, Invoice #, Invoice Date and Billed Amount all belong to the ${connection.environment} environment.`;
 
-          // If valid, get customer branch locations for job account number
-          let jobAccountNumber = null;
-          let defaultBranch = null;
+          // Pull home branch directly from validate response — most reliable source.
+          let jobAccountNumber: number | null = null;
+          let defaultBranch: string | null = validateData?.homeBranchCode || null;
 
           if (isValid && connection.customer_code) {
+            // Try customerBranchLocations with branchCode (required by SRS) to pull JAN.
+            const branchCodeForQuery = defaultBranch || "SRORL";
             try {
               const branchData = await srsApiCall(
-                `/branches/v2/customerBranchLocations/${connection.customer_code}`
+                `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchCodeForQuery)}`
               );
-              if (branchData && Array.isArray(branchData) && branchData.length > 0) {
-                jobAccountNumber = branchData[0].jobAccountNumber;
-                defaultBranch = branchData[0].branchCode;
+              if (Array.isArray(branchData) && branchData.length > 0) {
+                jobAccountNumber = Number(branchData[0].jobAccountNumber) || null;
+                defaultBranch = branchData[0].branchCode || defaultBranch;
               } else if (branchData?.jobAccountNumber) {
-                jobAccountNumber = branchData.jobAccountNumber;
-                defaultBranch = branchData.branchCode;
+                jobAccountNumber = Number(branchData.jobAccountNumber) || null;
+                defaultBranch = branchData.branchCode || defaultBranch;
               }
             } catch (e) {
               console.warn("Could not fetch branch locations:", e);
