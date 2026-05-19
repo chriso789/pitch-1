@@ -416,10 +416,12 @@ export function ABCConnectionSettings() {
                   toast({ title: 'No tenant context', variant: 'destructive' });
                   return;
                 }
-                // Pre-open a tab synchronously to preserve user-gesture (popup blocker)
+                // Pre-open a writable tab synchronously to preserve user-gesture (popup blocker).
+                // Do not pass `noopener` here: browsers intentionally return null for that feature,
+                // which leaves the user staring at an un-navigated about:blank tab.
                 let oauthWindow: Window | null = null;
                 try {
-                  oauthWindow = window.open('', '_blank', 'noopener');
+                  oauthWindow = window.open('about:blank', '_blank');
                 } catch {
                   oauthWindow = null;
                 }
@@ -436,16 +438,20 @@ export function ABCConnectionSettings() {
                     throw new Error(data?.interpretation || data?.error || 'No authorization_url returned');
                   }
                   const url = data.authorization_url as string;
-                  const safeUrl = url.replace(/"/g, '&quot;');
+                  const safeUrl = url
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
 
                   const navigated = (() => {
                     if (!oauthWindow || oauthWindow.closed) return false;
-                    // Sandboxed iframe blocks setting .location.href on about:blank tabs.
+                    // Sandboxed iframe can block assigning .location.href from the preview frame.
                     // document.write a redirect page instead — runs in the new tab's own context.
                     try {
                       oauthWindow.document.open();
                       oauthWindow.document.write(
-                        `<!doctype html><meta http-equiv="refresh" content="0;url=${safeUrl}"><title>Redirecting to ABC…</title><script>location.replace(${JSON.stringify(url)});</script><p>Redirecting to ABC Supply… <a href="${safeUrl}">Click here</a> if not redirected.</p>`
+                        `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${safeUrl}"><title>Redirecting to ABC…</title></head><body><script>window.opener=null;location.replace(${JSON.stringify(url)});</script><p>Redirecting to ABC Supply… <a rel="noopener noreferrer" href="${safeUrl}">Click here</a> if not redirected.</p></body></html>`
                       );
                       oauthWindow.document.close();
                       oauthWindow.focus();
