@@ -612,7 +612,9 @@ export function PushToSupplierDialog({
                   <div className="mb-2 flex items-center justify-between">
                     <Label>Items ({editableItems.length})</Label>
                     <span className="text-xs text-muted-foreground">
-                      Pricing will be quoted by the supplier
+                      {resolvingSkus
+                        ? 'Looking up supplier SKUs…'
+                        : 'Pricing will be quoted by the supplier'}
                     </span>
                   </div>
                   <div className="max-h-64 overflow-y-auto rounded-md border">
@@ -620,7 +622,9 @@ export function PushToSupplierDialog({
                       <thead className="bg-muted/50 text-xs uppercase">
                         <tr>
                           <th className="p-2 text-left">Item</th>
-                          <th className="p-2 text-left">SKU</th>
+                          <th className="p-2 text-left">
+                            {selected ? `${selected.toUpperCase()} SKU` : 'SKU'}
+                          </th>
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
                           <th className="p-2 text-left">Color</th>
