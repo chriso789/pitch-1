@@ -41891,6 +41891,59 @@ export type Database = {
           },
         ]
       }
+      srs_order_documents: {
+        Row: {
+          captured_at: string | null
+          created_at: string
+          doc_type: string
+          event_id: string | null
+          file_name: string | null
+          id: string
+          mime_type: string | null
+          order_id: string
+          raw: Json | null
+          source_url: string | null
+          storage_path: string | null
+          tenant_id: string
+        }
+        Insert: {
+          captured_at?: string | null
+          created_at?: string
+          doc_type?: string
+          event_id?: string | null
+          file_name?: string | null
+          id?: string
+          mime_type?: string | null
+          order_id: string
+          raw?: Json | null
+          source_url?: string | null
+          storage_path?: string | null
+          tenant_id: string
+        }
+        Update: {
+          captured_at?: string | null
+          created_at?: string
+          doc_type?: string
+          event_id?: string | null
+          file_name?: string | null
+          id?: string
+          mime_type?: string | null
+          order_id?: string
+          raw?: Json | null
+          source_url?: string | null
+          storage_path?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "srs_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       srs_order_items: {
         Row: {
           created_at: string
