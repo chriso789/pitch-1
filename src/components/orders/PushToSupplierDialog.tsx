@@ -24,6 +24,7 @@ interface SupplierOption {
 }
 
 interface MaterialItem {
+  id?: string;
   item_name: string;
   description?: string;
   quantity: number;
