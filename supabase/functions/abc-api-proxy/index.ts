@@ -24,9 +24,29 @@ const ABC = {
 type Env = "sandbox" | "production";
 
 interface ProxyRequest {
-  action: "test_connection" | "submit_test_order" | "get_status" | "start_oauth";
+  action: "test_connection" | "submit_test_order" | "get_status" | "start_oauth" | "submit_order";
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
+  // submit_order payload
+  project_id?: string;
+  estimate_id?: string;
+  job_number?: string;
+  customer_name?: string;
+  branch_code?: string;
+  delivery_method?: "roof_load" | "ground_drop" | "pickup";
+  delivery_date?: string;
+  delivery_address?: string;
+  notes?: string;
+  items?: Array<{
+    item_name: string;
+    description?: string;
+    quantity: number;
+    unit?: string;
+    unit_cost?: number;
+    abc_item_code?: string | null;
+    srs_item_code?: string | null;
+    color_specs?: string | null;
+  }>;
 }
 
 const AUTH_URLS: Record<Env, string> = {
