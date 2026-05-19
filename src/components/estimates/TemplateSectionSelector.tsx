@@ -183,8 +183,21 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             unit: item.unit || 'ea',
             unit_cost: unitCost,
             line_total: lineTotal,
-            notes: item.notes || ''
-          };
+            notes: item.notes || '',
+            // Preserve supplier SKU fields so Push-to-Supplier can map items.
+            srs_item_code:
+              item.srs_item_code ||
+              item.srs_sku ||
+              item.product_code ||
+              item.sku ||
+              item.metadata?.srs_item_code ||
+              item.metadata?.srs_sku ||
+              null,
+            product_code: item.product_code || item.sku || null,
+            color_specs: item.color_specs || item.metadata?.color_specs,
+            requires_color: item.requires_color ?? item.metadata?.requires_color ?? false,
+            metadata: item.metadata,
+          } as any;
         });
         
         setLineItems(normalizedItems);
