@@ -292,10 +292,15 @@ export function PushToSupplierDialog({
             order_number: orderNumber,
             branch_code: branchCode.trim(),
             status: 'draft',
-            delivery_method: deliveryMethod,
+            // srs_orders.delivery_method only allows 'pickup' | 'delivery'
+            delivery_method: deliveryMethod === 'pickup' ? 'pickup' : 'delivery',
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
-            notes: notes || null,
+            notes: [
+              deliveryMethod === 'roof_load' ? 'Delivery: Roof Load' :
+              deliveryMethod === 'ground_drop' ? 'Delivery: Ground Drop' : null,
+              notes,
+            ].filter(Boolean).join('\n') || null,
             total_amount: totalCost,
           } as any)
           .select('id')
