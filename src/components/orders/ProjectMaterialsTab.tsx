@@ -29,13 +29,14 @@ export function ProjectMaterialsTab({
     setLoading(true);
     const { data } = await supabase
       .from('estimate_line_items')
-      .select('item_name, description, quantity, unit_type, unit_cost, srs_item_code, item_category')
+      .select('id, item_name, description, quantity, unit_type, unit_cost, srs_item_code, item_category')
       .eq('estimate_id', estimateId)
       .order('sort_order', { ascending: true });
 
     const mapped = (data || [])
       .filter((r: any) => (r.item_category || '').toLowerCase().includes('material') || r.srs_item_code)
       .map((r: any) => ({
+        id: r.id,
         item_name: r.item_name,
         description: r.description,
         quantity: Number(r.quantity || 0),
