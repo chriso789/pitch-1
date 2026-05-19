@@ -332,25 +332,46 @@ export function PushToSupplierDialog({
           .single();
         if (orderErr) throw orderErr;
 
-        const itemsPayload = editableItems
-          .filter(i => i.srs_item_code && Number(i.quantity) > 0)
-          .map(i => ({
-            order_id: orderRow.id,
-            srs_product_id: Number(i.srs_item_code),
-            product_name: i.item_name,
-            product_description: i.description || i.item_name,
-            quantity: Number(i.quantity),
-            uom: (i.unit || 'EA').toUpperCase(),
-            unit_price: Number(i.unit_cost || 0),
-            total_price: Number(i.quantity || 0) * Number(i.unit_cost || 0),
-          }));
+        const mappedItems = editableItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
+        const unmappedItems = editableItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
 
-        if (!itemsPayload.length) {
-          throw new Error('No items have an SRS product code. Map SKUs in the estimate first.');
+        const itemsPayload = mappedItems.map(i => ({
+          order_id: orderRow.id,
+          srs_product_id: Number(i.srs_item_code),
+          product_name: i.item_name,
+          product_description: i.description || i.item_name,
+          quantity: Number(i.quantity),
+          uom: (i.unit || 'EA').toUpperCase(),
+          unit_price: Number(i.unit_cost || 0),
+          total_price: Number(i.quantity || 0) * Number(i.unit_cost || 0),
+        }));
+
+        if (itemsPayload.length) {
+          const { error: itemsErr } = await supabase.from('srs_order_items').insert(itemsPayload);
+          if (itemsErr) throw itemsErr;
         }
 
-        const { error: itemsErr } = await supabase.from('srs_order_items').insert(itemsPayload);
-        if (itemsErr) throw itemsErr;
+        // Append unmapped item names to notes so the SRS rep can add them manually.
+        if (unmappedItems.length) {
+          const unmappedNote =
+            'Items pending SKU mapping (please add):\n' +
+            unmappedItems
+              .map(i => `- ${i.item_name} — ${i.quantity} ${(i.unit || 'EA').toUpperCase()}`)
+              .join('\n');
+          const mergedNotes = [notes?.trim(), unmappedNote].filter(Boolean).join('\n\n');
+          await supabase.from('srs_orders').update({ notes: mergedNotes }).eq('id', orderRow.id);
+
+          if (!itemsPayload.length) {
+            toast({
+              title: 'Saved as draft — no SRS SKUs',
+              description: 'SRS requires at least one mapped SKU to accept the order. The full item list was saved to the order notes for manual entry.',
+            });
+            onSubmitted?.();
+            onOpenChange(false);
+            setSubmitting(false);
+            return;
+          }
+        }
 
         // 2. Submit through the proxy
         const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
