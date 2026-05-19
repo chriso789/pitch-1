@@ -292,10 +292,15 @@ export function PushToSupplierDialog({
             order_number: orderNumber,
             branch_code: branchCode.trim(),
             status: 'draft',
-            delivery_method: deliveryMethod,
+            // srs_orders.delivery_method only allows 'pickup' | 'delivery'
+            delivery_method: deliveryMethod === 'pickup' ? 'pickup' : 'delivery',
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
-            notes: notes || null,
+            notes: [
+              deliveryMethod === 'roof_load' ? 'Delivery: Roof Load' :
+              deliveryMethod === 'ground_drop' ? 'Delivery: Ground Drop' : null,
+              notes,
+            ].filter(Boolean).join('\n') || null,
             total_amount: totalCost,
           } as any)
           .select('id')
@@ -439,18 +444,13 @@ export function PushToSupplierDialog({
               <Label className="mb-2 block">Supplier</Label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {suppliers.map(s => {
-                  const disabled = s.status !== 'connected';
                   const isSelected = selected === s.key;
                   return (
                     <Card
                       key={s.key}
-                      onClick={() => !disabled && handleSelectSupplier(s.key)}
-                      className={`transition ${
-                        disabled
-                          ? 'cursor-not-allowed opacity-60'
-                          : isSelected
-                          ? 'cursor-pointer ring-2 ring-primary'
-                          : 'cursor-pointer hover:bg-muted/50'
+                      onClick={() => handleSelectSupplier(s.key)}
+                      className={`cursor-pointer transition ${
+                        isSelected ? 'ring-2 ring-primary' : 'hover:bg-muted/50'
                       }`}
                     >
                       <CardContent className="flex items-center justify-between gap-2 p-4">
