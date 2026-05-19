@@ -416,9 +416,10 @@ export function ABCConnectionSettings() {
                   toast({ title: 'No tenant context', variant: 'destructive' });
                   return;
                 }
+                // Pre-open a tab synchronously to preserve user-gesture (popup blocker)
                 let oauthWindow: Window | null = null;
                 try {
-                  oauthWindow = window.open('about:blank', '_blank');
+                  oauthWindow = window.open('', '_blank', 'noopener');
                 } catch {
                   oauthWindow = null;
                 }
@@ -434,14 +435,35 @@ export function ABCConnectionSettings() {
                   if (!data?.authorization_url) {
                     throw new Error(data?.interpretation || data?.error || 'No authorization_url returned');
                   }
-                  // ABC/Okta blocks embedded iframe navigation in Lovable preview,
-                  // so launch OAuth in a top-level browser tab instead.
-                  if (oauthWindow && !oauthWindow.closed) {
-                    oauthWindow.opener = null;
-                    oauthWindow.location.href = data.authorization_url;
-                    oauthWindow.focus();
-                  } else {
-                    window.open(data.authorization_url, '_blank', 'noopener,noreferrer') || window.location.assign(data.authorization_url);
+                  const url = data.authorization_url as string;
+                  const safeUrl = url.replace(/"/g, '&quot;');
+
+                  const navigated = (() => {
+                    if (!oauthWindow || oauthWindow.closed) return false;
+                    // Sandboxed iframe blocks setting .location.href on about:blank tabs.
+                    // document.write a redirect page instead — runs in the new tab's own context.
+                    try {
+                      oauthWindow.document.open();
+                      oauthWindow.document.write(
+                        `<!doctype html><meta http-equiv="refresh" content="0;url=${safeUrl}"><title>Redirecting to ABC…</title><script>location.replace(${JSON.stringify(url)});</script><p>Redirecting to ABC Supply… <a href="${safeUrl}">Click here</a> if not redirected.</p>`
+                      );
+                      oauthWindow.document.close();
+                      oauthWindow.focus();
+                      return true;
+                    } catch {
+                      return false;
+                    }
+                  })();
+
+                  if (!navigated) {
+                    // Fallback: synthesize a user-gesture anchor click in top context.
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                   }
                 } catch (e: any) {
                   if (oauthWindow && !oauthWindow.closed) oauthWindow.close();
