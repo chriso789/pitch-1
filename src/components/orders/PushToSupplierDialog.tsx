@@ -98,7 +98,7 @@ export function PushToSupplierDialog({
         prefs = ((profile as any)?.default_supplier_branches as Record<string, string>) || {};
       }
 
-      const [srsRes, qxoRes] = await Promise.all([
+      const [srsRes, qxoRes, abcRes] = await Promise.all([
         supabase
           .from('srs_connections')
           .select('default_branch_code, environment, connection_status, valid_indicator')
@@ -106,6 +106,11 @@ export function PushToSupplierDialog({
           .maybeSingle(),
         supabase
           .from('qxo_connections')
+          .select('default_branch_code, environment, connection_status')
+          .eq('tenant_id', tenantId as any)
+          .maybeSingle(),
+        supabase
+          .from('abc_connections')
           .select('default_branch_code, environment, connection_status')
           .eq('tenant_id', tenantId as any)
           .maybeSingle(),
@@ -148,15 +153,26 @@ export function PushToSupplierDialog({
         });
       }
 
-      // ABC Supply: always show as a coming-soon option so users know it's planned.
-      found.push({
-        key: 'abc',
-        label: 'ABC Supply',
-        defaultBranch: null,
-        environment: null,
-        status: 'coming_soon',
-        statusNote: 'Coming soon',
-      });
+      if (abcRes.data && abcRes.data.connection_status === 'connected') {
+        found.push({
+          key: 'abc',
+          label: `ABC Supply${abcRes.data.environment === 'production' ? '' : ' (Sandbox)'}`,
+          defaultBranch: prefs.abc || abcRes.data.default_branch_code,
+          environment: abcRes.data.environment,
+          status: 'connected',
+        });
+      } else {
+        found.push({
+          key: 'abc',
+          label: 'ABC Supply',
+          defaultBranch: null,
+          environment: abcRes.data?.environment ?? null,
+          status: abcRes.data ? 'error' : 'not_configured',
+          statusNote: abcRes.data
+            ? 'Connection error — re-authenticate in Settings → Integrations'
+            : 'Connect in Settings → Integrations',
+        });
+      }
 
       if (cancelled) return;
       setUserBranchPrefs(prefs);
