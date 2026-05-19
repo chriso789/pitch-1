@@ -112,6 +112,15 @@ export function ABCConnectionSettings() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [testResult, setTestResult] = useState<any | null>(null);
   const [orderResult, setOrderResult] = useState<any | null>(null);
+  const [consoleResult, setConsoleResult] = useState<any | null>(null);
+  const [consoleBusy, setConsoleBusy] = useState<string | null>(null);
+  const [branchInput, setBranchInput] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [priceItemNumber, setPriceItemNumber] = useState('');
+  const [priceQty, setPriceQty] = useState('1');
+  const [priceShipTo, setPriceShipTo] = useState('');
+  const [priceBranch, setPriceBranch] = useState('');
+  const [orderStatusNumber, setOrderStatusNumber] = useState('');
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -279,6 +288,22 @@ export function ABCConnectionSettings() {
     }
     toast({ title: 'Credentials revoked' });
     await loadConnection();
+  };
+
+  const runConsole = async (label: string, body: Record<string, any>) => {
+    setConsoleBusy(label);
+    setConsoleResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { tenant_id: effectiveTenantId, environment, ...body },
+      });
+      if (error) throw error;
+      setConsoleResult({ label, ...data });
+    } catch (e: any) {
+      setConsoleResult({ label, success: false, error: e.message });
+    } finally {
+      setConsoleBusy(null);
+    }
   };
 
   if (loading) {
@@ -530,6 +555,160 @@ export function ABCConnectionSettings() {
               )}
             </div>
           )}
+
+          <div className="rounded-md border p-3 space-y-3">
+            <div className="text-sm font-medium">Sandbox Test Console</div>
+            <p className="text-xs text-muted-foreground">
+              All calls go through <code>abc-api-proxy</code> using the {environment} environment. Raw JSON + mapped error code shown below.
+            </p>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2 rounded border p-2">
+                <Label className="text-xs">Test Branch Lookup</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="branchNumber (blank = list all)"
+                    value={branchInput}
+                    onChange={(e) => setBranchInput(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!consoleBusy}
+                    onClick={() =>
+                      runConsole(
+                        branchInput.trim() ? 'get_branch' : 'get_branches',
+                        branchInput.trim()
+                          ? { action: 'get_branch', branchNumber: branchInput.trim() }
+                          : { action: 'get_branches' },
+                      )
+                    }
+                  >
+                    {consoleBusy === 'get_branch' || consoleBusy === 'get_branches' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : 'Run'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded border p-2">
+                <Label className="text-xs">Test Product Search</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="query (e.g. shingle)"
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!consoleBusy || !productQuery.trim()}
+                    onClick={() =>
+                      runConsole('search_products', {
+                        action: 'search_products',
+                        query: productQuery.trim(),
+                      })
+                    }
+                  >
+                    {consoleBusy === 'search_products' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Run'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded border p-2 md:col-span-2">
+                <Label className="text-xs">Test Price Items</Label>
+                <div className="grid gap-2 md:grid-cols-4">
+                  <Input placeholder="itemNumber" value={priceItemNumber} onChange={(e) => setPriceItemNumber(e.target.value)} />
+                  <Input placeholder="qty" type="number" value={priceQty} onChange={(e) => setPriceQty(e.target.value)} />
+                  <Input placeholder="shipToNumber" value={priceShipTo} onChange={(e) => setPriceShipTo(e.target.value)} />
+                  <Input placeholder="branchNumber" value={priceBranch} onChange={(e) => setPriceBranch(e.target.value)} />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!!consoleBusy || !priceItemNumber.trim() || !priceShipTo.trim() || !priceBranch.trim()}
+                  onClick={() =>
+                    runConsole('price_items', {
+                      action: 'price_items',
+                      shipToNumber: priceShipTo.trim(),
+                      branchNumber: priceBranch.trim(),
+                      purpose: 'QUOTE',
+                      lines: [{ itemNumber: priceItemNumber.trim(), quantity: Number(priceQty) || 1, unitOfMeasure: 'EA' }],
+                    })
+                  }
+                >
+                  {consoleBusy === 'price_items' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Get Price'}
+                </Button>
+              </div>
+
+              <div className="space-y-2 rounded border p-2">
+                <Label className="text-xs">Test Order Status</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="orderNumber or confirmationNumber"
+                    value={orderStatusNumber}
+                    onChange={(e) => setOrderStatusNumber(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!consoleBusy || !orderStatusNumber.trim()}
+                    onClick={() =>
+                      runConsole('get_order_status', {
+                        action: 'get_order_status',
+                        orderNumber: /^\d+$/.test(orderStatusNumber.trim()) ? orderStatusNumber.trim() : undefined,
+                        confirmationNumber: /^\d+$/.test(orderStatusNumber.trim()) ? undefined : orderStatusNumber.trim(),
+                      })
+                    }
+                  >
+                    {consoleBusy === 'get_order_status' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Run'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded border p-2">
+                <Label className="text-xs">Submit Sandbox Test Order</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  POSTs the canned PITCH sandbox payload to <code>/order/v2/orders</code>.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!!consoleBusy}
+                  onClick={() => runConsole('submit_test_order', { action: 'submit_test_order' })}
+                >
+                  {consoleBusy === 'submit_test_order' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Submit'}
+                </Button>
+              </div>
+            </div>
+
+            {consoleResult && (
+              <div
+                className={`rounded-md border p-3 text-xs space-y-2 ${
+                  consoleResult.success ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-destructive/30 bg-destructive/5'
+                }`}
+              >
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  {consoleResult.success ? (
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                  {consoleResult.label} — HTTP {consoleResult.status ?? '—'}
+                  {consoleResult.error_code && (
+                    <Badge variant="destructive" className="ml-2">{consoleResult.error_code}</Badge>
+                  )}
+                </div>
+                {consoleResult.endpoint && (
+                  <div className="font-mono text-[10px] text-muted-foreground break-all">{consoleResult.endpoint}</div>
+                )}
+                <pre className="font-mono text-[10px] bg-background/60 p-2 rounded overflow-x-auto max-h-80">
+                  {JSON.stringify(consoleResult, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+
         </CardContent>
       </Card>
     </div>

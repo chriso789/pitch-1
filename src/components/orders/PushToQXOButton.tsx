@@ -42,46 +42,44 @@ export function PushToQXOButton({
     }
     setPushing(true);
     try {
-      const addr = projectAddress
-        ? (() => {
-            // Best-effort parse: "123 Main St, City, ST 12345"
-            const m = projectAddress.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
-            return m
-              ? { address1: m[1], city: m[2], state: m[3].toUpperCase(), postalCode: m[4] }
-              : { address1: projectAddress };
-          })()
-        : null;
-      const { data, error } = await supabase.functions.invoke('qxo-submit-order', {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
         body: {
+          action: 'place_order',
           tenant_id: effectiveTenantId,
+          environment: 'production',
           project_id: jobId,
           job_id: jobId,
           job_name: customerName,
           job_number: jobNumber,
-          delivery_address: addr,
+          delivery_address: projectAddress,
+          delivery_method: 'roof_load',
           special_instruction: customerName ? `For ${customerName}` : undefined,
           on_hold: true,
-          check_for_availability: 'no',
           items: items.map((i) => ({
-            ...i,
-            unit_price: i.unit_cost,
+            abc_item_code: i.srs_item_code,
+            itemNumber: i.srs_item_code,
+            description: i.item_name,
+            quantity: i.qty,
+            unitOfMeasure: (i.unit || 'EA').toUpperCase(),
+            unitPrice: i.unit_cost,
+            notes: i.notes,
+            color_specs: i.color_specs,
           })),
         },
       });
       if (error) throw error;
       if (!data?.success) {
         toast({
-          title: 'QXO push failed',
-          description: data?.message || data?.error || 'Beacon rejected the order.',
+          title: 'ABC push failed',
+          description: data?.error_code || data?.interpretation || data?.error || 'ABC rejected the order.',
           variant: 'destructive',
         });
         return;
       }
+      const cn = data?.body?.[0]?.confirmationNumber ?? data?.body?.confirmationNumber;
       toast({
-        title: 'Pushed to QXO',
-        description: data.beacon_order_id
-          ? `Beacon order ${data.beacon_order_id} created (PO ${data.po_number}).`
-          : `PO ${data.po_number} submitted.`,
+        title: 'Pushed to ABC Supply',
+        description: cn ? `ABC confirmation ${cn}` : `HTTP ${data.status} accepted.`,
       });
     } catch (e: any) {
       toast({ title: 'Push failed', description: e.message, variant: 'destructive' });
