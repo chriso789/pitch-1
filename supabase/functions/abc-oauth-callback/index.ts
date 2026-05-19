@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
     const expiresAt = new Date(Date.now() + (tokenJson.expires_in ?? 3600) * 1000).toISOString();
 
-    await supabase.from("abc_connections").upsert(
+    const { error: upsertErr } = await supabase.from("abc_connections").upsert(
       {
         tenant_id: integration.tenant_id,
         environment,
@@ -146,12 +146,26 @@ Deno.serve(async (req) => {
       { onConflict: "tenant_id,environment" }
     );
 
-    await supabase
+    if (upsertErr) {
+      console.error("abc_connections upsert failed:", upsertErr);
+      await supabase
+        .from("abc_integrations")
+        .update({ status: "error", last_error: `connection_upsert_failed: ${upsertErr.message}`.slice(0, 500) })
+        .eq("id", integration.id);
+      return htmlRedirect(
+        returnTo + "error&msg=" + encodeURIComponent("connection_upsert_failed: " + upsertErr.message),
+        "Failed to persist token: " + upsertErr.message
+      );
+    }
+
+    const { error: intUpdErr } = await supabase
       .from("abc_integrations")
       .update({ status: "connected", last_error: null })
       .eq("id", integration.id);
+    if (intUpdErr) console.error("abc_integrations update failed:", intUpdErr);
 
-    await supabase.from("abc_oauth_states").delete().eq("state", state);
+    const { error: delErr } = await supabase.from("abc_oauth_states").delete().eq("state", state);
+    if (delErr) console.error("abc_oauth_states delete failed:", delErr);
 
     return htmlRedirect(returnTo + "connected", "ABC Supply connected. Returning to app…");
   } catch (e) {
