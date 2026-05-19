@@ -132,6 +132,17 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
   }
 }
 
+function normalizeCustomerBranchLocations(branchData: any): any[] {
+  if (Array.isArray(branchData)) return branchData;
+  return branchData?.customerBranchLocations || branchData?.branchLocations || (branchData ? [branchData] : []);
+}
+
+function extractJobAccountNumber(branch: any): number | null {
+  const raw = branch?.jobAccountNumber ?? branch?.jobAccounts?.[0]?.jobAccountNumber;
+  const value = Number(raw);
+  return value && Number.isFinite(value) ? value : null;
+}
+
 /** Best-effort parse of a freeform single-line address into structured shipTo. */
 function parseShipToFreeform(address: string | null | undefined): SrsShipTo {
   if (!address) return { addressLine1: "", addressLine2: "", addressLine3: "", city: "", state: "", zipCode: "" };
