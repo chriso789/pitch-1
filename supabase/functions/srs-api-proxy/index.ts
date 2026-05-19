@@ -132,6 +132,17 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
   }
 }
 
+function normalizeCustomerBranchLocations(branchData: any): any[] {
+  if (Array.isArray(branchData)) return branchData;
+  return branchData?.customerBranchLocations || branchData?.branchLocations || (branchData ? [branchData] : []);
+}
+
+function extractJobAccountNumber(branch: any): number | null {
+  const raw = branch?.jobAccountNumber ?? branch?.jobAccounts?.[0]?.jobAccountNumber;
+  const value = Number(raw);
+  return value && Number.isFinite(value) ? value : null;
+}
+
 /** Best-effort parse of a freeform single-line address into structured shipTo. */
 function parseShipToFreeform(address: string | null | undefined): SrsShipTo {
   if (!address) return { addressLine1: "", addressLine2: "", addressLine3: "", city: "", state: "", zipCode: "" };
@@ -435,31 +446,32 @@ Deno.serve(async (req) => {
             const branchCodeForQuery = defaultBranch || "SRORL";
             try {
               const branchData = await srsApiCall(
-                `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchCodeForQuery)}`
+                `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(branchCodeForQuery)}`
               );
-              if (Array.isArray(branchData) && branchData.length > 0) {
-                jobAccountNumber = Number(branchData[0].jobAccountNumber) || null;
-                defaultBranch = branchData[0].branchCode || defaultBranch;
-              } else if (branchData?.jobAccountNumber) {
-                jobAccountNumber = Number(branchData.jobAccountNumber) || null;
-                defaultBranch = branchData.branchCode || defaultBranch;
+              const branches = normalizeCustomerBranchLocations(branchData);
+              const preferred = branches.find((b: any) => String(b?.branchCode || b?.code || "").toUpperCase() === String(branchCodeForQuery).toUpperCase()) || branches[0];
+              if (preferred) {
+                jobAccountNumber = extractJobAccountNumber(preferred);
+                defaultBranch = preferred.branchCode || preferred.code || defaultBranch;
               }
             } catch (e) {
               console.warn("Could not fetch branch locations:", e);
             }
           }
 
-          // Update connection status
+          const connectionUpdate: Record<string, unknown> = {
+            connection_status: isValid ? "connected" : "error",
+            valid_indicator: isValid,
+            last_validated_at: new Date().toISOString(),
+            last_error: isValid ? null : validationDetail,
+            default_branch_code: defaultBranch,
+          };
+          if (jobAccountNumber) connectionUpdate.job_account_number = jobAccountNumber;
+
+          // Update connection status without wiping an existing JAN when SRS omits it.
           await supabase
             .from("srs_connections")
-            .update({
-              connection_status: isValid ? "connected" : "error",
-              valid_indicator: isValid,
-              last_validated_at: new Date().toISOString(),
-              last_error: isValid ? null : validationDetail,
-              job_account_number: jobAccountNumber,
-              default_branch_code: defaultBranch,
-            })
+            .update(connectionUpdate)
             .eq("id", connection.id);
 
           result = {
@@ -494,17 +506,23 @@ Deno.serve(async (req) => {
         if (!connection.customer_code) {
           throw new Error("Missing customer_code on connection. Run Test Connection / validate first.");
         }
+        const requestedBranchCode = String((params as any).branch_code || connection.default_branch_code || "SRORL").trim();
         const branchData = await srsApiCall(
-          `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}`
+          `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(requestedBranchCode)}`
         );
-        const branches = Array.isArray(branchData)
-          ? branchData
-          : branchData?.customerBranchLocations || branchData?.branchLocations || (branchData ? [branchData] : []);
+        const branches = normalizeCustomerBranchLocations(branchData);
 
         // Upsert branches
+        const preferredBranchCode = requestedBranchCode.toUpperCase();
+        let defaultBranch = connection.default_branch_code || null;
+        let jobAccountNumber: number | null = null;
         for (const branch of branches) {
           const code = branch.branchCode || branch.code || branch.homeBranchCode;
           if (!code) continue;
+          if (!jobAccountNumber && (String(code).toUpperCase() === preferredBranchCode || !defaultBranch)) {
+            jobAccountNumber = extractJobAccountNumber(branch);
+            defaultBranch = code;
+          }
           await supabase.from("srs_branches").upsert(
             {
               tenant_id,
@@ -522,7 +540,15 @@ Deno.serve(async (req) => {
           );
         }
 
-        result = { success: true, branchCount: branches.length };
+        const connectionPatch: Record<string, unknown> = { default_branch_code: defaultBranch };
+        if (jobAccountNumber) connectionPatch.job_account_number = jobAccountNumber;
+        if (jobAccountNumber && connection.valid_indicator) {
+          connectionPatch.connection_status = "connected";
+          connectionPatch.last_error = null;
+        }
+        await supabase.from("srs_connections").update(connectionPatch).eq("id", connection.id);
+
+        result = { success: true, branchCount: branches.length, jobAccountNumber, defaultBranch };
         break;
       }
 
@@ -680,10 +706,11 @@ Deno.serve(async (req) => {
           const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRORL").trim();
           try {
             const branchData = await srsApiCall(
-              `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchForLookup)}`
+              `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(branchForLookup)}`
             );
-            const first = Array.isArray(branchData) ? branchData[0] : branchData;
-            const fetched = Number(first?.jobAccountNumber);
+            const branches = normalizeCustomerBranchLocations(branchData);
+            const first = branches.find((b: any) => String(b?.branchCode || b?.code || "").toUpperCase() === branchForLookup.toUpperCase()) || branches[0];
+            const fetched = extractJobAccountNumber(first);
             if (fetched && !Number.isNaN(fetched)) {
               jan = fetched;
               await supabase.from("srs_connections").update({
