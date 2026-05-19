@@ -6,7 +6,8 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-const EXPECTED_KEY = Deno.env.get('ROOFHUB_INTEGRATION_KEY');
+// Per SRS Web Hooks docs: "Authentication: No API key applied".
+// Endpoint is intentionally open — validation is structural (eventType/eventId).
 
 // Allowed values per srs_orders.status CHECK constraint:
 //   draft | submitted | confirmed | processing | shipped | delivered | cancelled | error
