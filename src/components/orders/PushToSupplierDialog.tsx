@@ -494,7 +494,20 @@ export function PushToSupplierDialog({
         const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
           body: { action: 'submit_order', tenant_id: tenantId, order_id: orderRow.id },
         });
-        if (error) throw error;
+        if (error) {
+          // Supabase FunctionsHttpError hides the response body; pull it out.
+          let detail = error.message;
+          try {
+            const ctx: any = (error as any).context;
+            if (ctx && typeof ctx.json === 'function') {
+              const body = await ctx.json();
+              detail = body?.error || body?.message || JSON.stringify(body);
+            } else if (ctx && typeof ctx.text === 'function') {
+              detail = (await ctx.text()) || detail;
+            }
+          } catch {}
+          throw new Error(detail);
+        }
         if (!data?.success) throw new Error(data?.error || 'SRS rejected the order');
 
         toast({
