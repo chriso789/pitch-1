@@ -292,8 +292,24 @@ Deno.serve(async (req) => {
       url.searchParams.set("code_challenge", challenge);
       url.searchParams.set("code_challenge_method", "S256");
 
+      const builtUrl = url.toString();
+      console.log("abc-api-proxy start_oauth built authorize URL", {
+        env,
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scopes,
+        authorization_url: builtUrl,
+      });
+
       return new Response(
-        JSON.stringify({ authorization_url: url.toString(), state, redirect_uri: redirectUri, environment: env }),
+        JSON.stringify({
+          authorization_url: builtUrl,
+          state,
+          redirect_uri: redirectUri,
+          scopes,
+          client_id: clientId,
+          environment: env,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
