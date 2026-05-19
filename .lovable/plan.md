@@ -1,96 +1,94 @@
-## Problem
+## ABC Supply Integration — Audit Repair Plan
 
-In the comparison view (`ProjectInsuranceTab` → `ComparisonDetail`) every row shows `Carrier Qty × $` and `Company Qty × $` that do not match either source PDF. Example from the screenshot:
+Adopting the audit verbatim. Fixes are scoped to 4 files plus 1 migration.
 
-- Row `RFG ASBPH — Remove Laminated comp. shingle rfg. w/ felt`
-  - UI says: Carrier `28.33 SQ × $214.50`, Company `28.33 SQ × $58.42`
-  - Actual carrier PDF: `15.66 SQ × $78.86` (Tear off / Remove laminated)
-  - Actual company PDF: `15.43 SQ × $83.20` (Remove laminated w/out felt)
-- Several "added" rows (Gutter, Ice & water, Turbine, Drip edge) show a carrier value of "—" even when those items exist in the carrier scope under slightly different descriptions.
+### 1. Redirect URI hardening (frontend + backend)
+- `src/components/settings/ABCConnectionSettings.tsx`: stop deriving the callback URL from `VITE_SUPABASE_PROJECT_ID`. Hardcode `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-oauth-callback` and display it verbatim (with copy button) so the user pastes the right value into the ABC developer portal.
+- `abc-api-proxy` `start_oauth`: ignore any client-supplied redirect, always use `${SUPABASE_URL}/functions/v1/abc-oauth-callback`.
 
-This is a backend correctness problem in the comparison engine, not a Gaymon-only issue. It affects every project across every company.
+### 2. Secure token storage
+- Rewrite `abc-oauth-callback` to write into the existing `abc_tokens` table (encrypted columns) instead of plaintext columns on `abc_connections`.
+- Add a small migration: `pgsodium` encrypt helper or `pgp_sym_encrypt` using `ABC_TOKEN_ENC_KEY` secret; expose `abc_tokens_upsert(tenant_id, env, access, refresh, expires_at, scope)` SECURITY DEFINER function. Callback + proxy use this function only.
+- Update all proxy reads to fetch tokens via a matching `abc_tokens_get(tenant_id, env)` definer function returning decrypted values to the edge function context only.
+- Leave `abc_connections` for metadata (client_id, scopes, environment, connection status, last_test). Drop reliance on plaintext token columns (keep columns nullable for now; clear on migration).
 
-## Root-cause hypotheses to confirm during Phase 1
+### 3. Correct ABC endpoint paths + payloads in `abc-api-proxy`
+Replace fictional `/orders` calls. Use exact paths under `${cfg.apiBase}`:
 
-1. **Wrong matching key.** `scope-compare-core.ts` is pairing carrier and company lines by something other than canonical code + unit + section (e.g., partial description match or `raw_code` only), so unrelated lines collide on the same row.
-2. **Quantity / unit-price aggregation bug.** When multiple parsed lines share a canonical key (elevation-specific gutters, multi-page subtotals), the engine sums quantities but copies a unit price from one arbitrary line instead of computing `total / qty`.
-3. **Description swap.** The `description` written to `scope_compare_results` is taken from the contractor side, but the `unit_price` is taken from the network/default price list, not from the parsed PDF line — producing the $214.50 / $58.42 numbers that exist nowhere in either PDF.
-4. **Tear-off vs. R&R confusion.** Xactimate `RFG ASBPH` (remove + replace) is being matched against the carrier's plain "Remove" line, so quantity (15.66 vs 28.33) and price get doubled.
+```text
+POST /pricing/v2/prices
+GET  /location/v1/branches
+GET  /location/v1/branches/{branchNumber}
+POST /product/v1/search/items
+GET  /product/v1/items/{itemNumber}
+POST /order/v2/orders
+GET  /order/v2/orders?confirmationNumber={cn}
+GET  /order/v2/orders/{orderNumber}
+GET  /order/v2/orders/orderHistory
+```
 
-## Plan
+Add proxy actions and remove the bad ones:
+- `price_items` → POST /pricing/v2/prices
+- `get_branches` → GET /location/v1/branches (optional `branchNumber` query)
+- `search_products` → POST /product/v1/search/items
+- `get_item` → GET /product/v1/items/{itemNumber}
+- `place_order` (replaces `submit_order`) → POST /order/v2/orders
+- `get_order_status` → GET /order/v2/orders/{orderNumber} (or by confirmationNumber)
+- `submit_test_order` → same as place_order but with hardcoded sandbox-safe payload and `on_hold=true`
+- Keep: `start_oauth`, `test_connection`, `get_status`
 
-### Phase 1 — Audit (no code changes)
-1. Pick 3 real projects across 3 tenants that already have a comparison row (Gaymon + 2 others).
-2. For each, dump:
-   - `scope_parse_debug_rows` for both documents → confirm parser captured the correct `quantity`, `unit`, `unit_price`, `total` per line.
-   - `scope_compare_results` rows → confirm what was persisted.
-3. Compare parser output to comparison output. Locate the exact step that drops/replaces the unit price.
-4. Write findings into `docs/SUPPLEMENT_COMPARISON_AUDIT.md`.
+Payload shapes wired exactly as in the audit (orders is a JSON array of one order object; pricing uses `requestId`, `shipToNumber`, `branchNumber`, `purpose`, `lines[]`). `Authorization: Bearer <access_token>` only — no subscription key.
 
-### Phase 2 — Fix pairing in `scope-compare-core.ts`
-1. Pair lines by composite key in this priority order:
-   1. `canonical_key` (from `scope-normalizer`)
-   2. `xactimate_code` (e.g., `RFG ASBPH`) + `unit`
-   3. Fuzzy description match only as a last resort and only when units agree
-2. Reject any pairing where `unit` differs (SQ vs LF vs EA) — emit two rows instead.
-3. When multiple lines on one side share the same key (elevation rows), aggregate them into a parent row and put the per-elevation lines under `grouped_children` (column already exists).
-4. Always carry `unit_price` straight from the parsed line. Never substitute a price-list value into `carrier_unit_price` / `company_unit_price`. Price-list deltas live in a separate `price_list_delta_possible` flag.
+Update `PushToQXOButton` / any callers using `submit_order` → `place_order` and map item fields (`itemNumber`, `orderedQty.value/uom`, `unitPrice`).
 
-### Phase 3 — Fix the persistence layer in `compare-scope-documents/index.ts`
-1. When writing `scope_compare_results`, store:
-   - `carrier_quantity`, `carrier_unit`, `carrier_unit_price`, `carrier_total` from the matched carrier line
-   - Same for company side
-   - `delta_rcv = company_total − carrier_total` (per row)
-2. If one side is missing, store `null` for that side and `change_type = 'added'` or `'removed'` (not "—" derived in the UI).
-3. Re-derive `change_type` after pairing:
-   - both present, qty equal, price equal → `match`
-   - both present, qty differs → `qty_change`
-   - both present, price differs → `price_change`
-   - only one side → `added` / `removed`
+### 4. Token refresh helper
+Extract inline refresh logic into a `refreshAccessToken(tenant_id, env)` helper inside `abc-api-proxy`. Every action calls `ensureValidToken()` which refreshes when `expires_at - now < 60s`. Refreshed tokens go through `abc_tokens_upsert`.
 
-### Phase 4 — Backfill existing comparisons
-1. Add an admin-only edge function `recompute-scope-comparisons` that:
-   - Iterates every row in `scope_compare_runs`
-   - Re-runs the comparison from the already-parsed `insurance_scope_documents`
-   - Overwrites `scope_compare_results` for that run
-2. Trigger it once for all tenants after Phase 3 ships. Existing UI will instantly show corrected values.
+### 5. Scopes
+Default `ABC_SCOPES` becomes:
+`pricing.read order.read order.write product.read account.read location.read offline_access`
+(Notification scopes stay opt-in for when webhooks are registered.)
 
-### Phase 5 — Regression tests
-1. Extend `supabase/functions/tests/fixtures/gaymon-parsed.ts` with the exact numeric facts visible in the user screenshots:
-   - Carrier `Remove laminated` = `15.66 SQ × $78.86`
-   - Company `Remove laminated w/out felt` = `15.43 SQ × $83.20`
-   - 4 elevations of gutter on company side aggregate to `85 LF × $8.50`
-2. Add assertions:
-   - The paired row keeps both sides' actual prices.
-   - No row contains a unit price that was not present in either parsed source.
-   - `change_type` matches the qty/price relationship.
-3. Add a second fixture from a non-Gaymon project (use one of the 3 projects audited in Phase 1) to prove the fix generalises.
+### 6. Audit logging
+Add `abc_api_audit` table (migration): `tenant_id, environment, action, endpoint, method, request_body_redacted jsonb, status_code, response_body jsonb, duration_ms, created_at`. RLS: tenant admins read own rows; service role inserts. Every proxy outbound call wrapped in a logger that strips `Authorization`, `access_token`, `refresh_token`, `client_secret`.
 
-### Phase 6 — UI polish (small)
-1. Show both sides' totals (`carrier_total`, `company_total`) inline so reviewers can sanity-check `Δ RCV` without math.
-2. When a row is aggregated from elevation children, show a small chevron and the child rows in a sub-table.
+### 7. Error mapping
+Central `mapAbcError(status, body)` returning a stable `code` from:
+`not_connected | token_expired | missing_scope | invalid_redirect_uri | invalid_client | abc_400_bad_payload | abc_401_unauthorized | abc_403_forbidden | abc_404_not_found | abc_429_rate_limited | abc_500_upstream`
+Return `{ ok:false, code, message, abc_status, abc_body }` to the UI.
 
-## Technical Details
+### 8. UI test buttons (`ABCConnectionSettings.tsx`)
+Add a "Sandbox Test Console" panel exposing:
+- Begin OAuth Authorization (existing)
+- Test Token (calls `test_connection`)
+- Test Branch Lookup (asks for branch number, calls `get_branches`)
+- Test Product Search (item search input → `search_products`)
+- Test Price Items (item + qty → `price_items`)
+- Test Order Status (order number → `get_order_status`)
+- Submit Sandbox Test Order (calls `submit_test_order`)
 
-- Files touched:
-  - `supabase/functions/_shared/scope-compare-core.ts` (pairing rewrite)
-  - `supabase/functions/_shared/scope-normalizer.ts` (only if Phase 1 shows canonical keys are unstable)
-  - `supabase/functions/compare-scope-documents/index.ts` (persistence)
-  - new `supabase/functions/recompute-scope-comparisons/index.ts`
-  - `supabase/functions/tests/fixtures/gaymon-parsed.ts` + new fixture
-  - `src/features/projects/components/ProjectInsuranceTab.tsx` (sub-row UI only)
-- Database: no schema changes required; `scope_compare_results` already has `carrier_*`, `company_*`, `grouped_children`, `match_score_breakdown`.
-- Backfill is idempotent: `recompute-scope-comparisons` deletes and re-inserts rows per run, wrapped in a transaction.
+Each button shows raw JSON response + mapped error code in a result drawer so we can hand evidence to Penny.
 
-## Out of scope
+### 9. config.toml (verify, no change expected)
+```toml
+[functions.abc-api-proxy]
+verify_jwt = true
+[functions.abc-oauth-callback]
+verify_jwt = false
+```
 
-- Re-parsing the source PDFs (parser output is trusted; Phase 1 will confirm).
-- Changing the supplement-report PDF format.
-- Any change to the assembly-rule engine or justification builder.
+### 10. Cleanup of `abc-pricing`
+It's a legacy stub. Two options — recommend **delete** to avoid drift. (Will confirm before deleting.)
 
-## Success criteria
+### Files touched
+- `supabase/functions/abc-api-proxy/index.ts` (rewrite action router, add helpers, fix paths/payloads)
+- `supabase/functions/abc-oauth-callback/index.ts` (write to `abc_tokens` via RPC)
+- `src/components/settings/ABCConnectionSettings.tsx` (hardcoded redirect URI display + new test console)
+- `src/components/orders/PushToQXOButton.tsx` (rename action to `place_order`, remap payload)
+- New migration: `abc_tokens` RPC helpers, `abc_api_audit` table + RLS
+- `supabase/functions/abc-pricing/` (delete, pending confirmation)
 
-- For every row in every project's comparison, `carrier_unit_price` and `company_unit_price` either equal a value present in the corresponding parsed PDF line or are `null`.
-- No row pairs lines whose units differ.
-- Gaymon and the second-project fixture both pass the new regression tests.
-- After backfill, the screenshot scenario shows `Carrier 15.66 SQ × $78.86 / Company 15.43 SQ × $83.20 / Δ RCV` matching the real delta.
+### Open questions
+1. OK to delete `abc-pricing` edge function? It's superseded by `abc-api-proxy` `price_items`.
+2. Do you already have `ABC_TOKEN_ENC_KEY` secret, or should I add it and use `pgp_sym_encrypt` (pgcrypto) for token-at-rest encryption?
+3. For "Submit Sandbox Test Order", do you have a known-good sandbox `branchNumber` + `shipToNumber` + `itemNumber` from Penny we should hardcode as the default test payload? If not, I'll wire the form to require them.
