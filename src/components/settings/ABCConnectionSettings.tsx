@@ -201,7 +201,7 @@ export function ABCConnectionSettings() {
       }
       const { error } = await (supabase as any)
         .from('abc_connections')
-        .upsert(payload, { onConflict: 'tenant_id' });
+        .upsert(payload, { onConflict: 'tenant_id,environment' });
       if (error) throw error;
       toast({ title: 'Credentials saved', description: 'Click Test Connection to validate.' });
       setClientSecret('');
