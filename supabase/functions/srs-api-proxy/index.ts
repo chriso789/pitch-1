@@ -448,12 +448,11 @@ Deno.serve(async (req) => {
               const branchData = await srsApiCall(
                 `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchCodeForQuery)}`
               );
-              if (Array.isArray(branchData) && branchData.length > 0) {
-                jobAccountNumber = Number(branchData[0].jobAccountNumber) || null;
-                defaultBranch = branchData[0].branchCode || defaultBranch;
-              } else if (branchData?.jobAccountNumber) {
-                jobAccountNumber = Number(branchData.jobAccountNumber) || null;
-                defaultBranch = branchData.branchCode || defaultBranch;
+              const branches = normalizeCustomerBranchLocations(branchData);
+              const preferred = branches.find((b: any) => String(b?.branchCode || b?.code || "").toUpperCase() === String(branchCodeForQuery).toUpperCase()) || branches[0];
+              if (preferred) {
+                jobAccountNumber = extractJobAccountNumber(preferred);
+                defaultBranch = preferred.branchCode || preferred.code || defaultBranch;
               }
             } catch (e) {
               console.warn("Could not fetch branch locations:", e);
