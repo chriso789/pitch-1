@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Package, DollarSign, Clock, Building2 } from "lucide-react";
+import { SupplierSkuPanel } from "@/components/products/SupplierSkuPanel";
 
 interface Product {
   id: string;
