@@ -674,9 +674,32 @@ Deno.serve(async (req) => {
         if (!order) throw new Error("Order not found");
 
         const janRaw = connection.job_account_number;
-        const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        let jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
         if (!jan || Number.isNaN(jan)) {
-          throw new Error("Missing numeric jobAccountNumber on connection. Run validate_connection first.");
+          // Auto-recover: fetch JAN from customerBranchLocations using the order's branch.
+          const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRORL").trim();
+          try {
+            const branchData = await srsApiCall(
+              `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchForLookup)}`
+            );
+            const first = Array.isArray(branchData) ? branchData[0] : branchData;
+            const fetched = Number(first?.jobAccountNumber);
+            if (fetched && !Number.isNaN(fetched)) {
+              jan = fetched;
+              await supabase.from("srs_connections").update({
+                job_account_number: fetched,
+                default_branch_code: first?.branchCode || connection.default_branch_code,
+              }).eq("id", connection.id);
+              console.log(`Recovered jobAccountNumber=${fetched} for branch ${branchForLookup}`);
+            }
+          } catch (e: any) {
+            console.warn("JAN auto-recovery failed:", e?.message || e);
+          }
+          if (!jan || Number.isNaN(jan)) {
+            throw new Error(
+              `Missing jobAccountNumber on SRS connection (branch ${branchForLookup}). Open Settings → SRS Distribution and run "Validate Connection" with a recent invoice or Integration Key so SRS returns the job account number for your customer code.`
+            );
+          }
         }
 
         const orderPayload = buildSubmitOrderPayload({
