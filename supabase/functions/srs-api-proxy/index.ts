@@ -707,7 +707,26 @@ Deno.serve(async (req) => {
           })),
         });
 
-        const orderResult = await srsApiCall("/orders/v2/submit", "POST", orderPayload);
+        let orderResult: any;
+        try {
+          orderResult = await srsApiCall("/orders/v2/submit", "POST", orderPayload);
+        } catch (e: any) {
+          const errMsg = e?.message || String(e);
+          // Persist the failure so we can debug w/ SRS (transactionID + payload + error).
+          await supabase
+            .from("srs_orders")
+            .update({
+              status: "failed",
+              srs_transaction_id: (orderPayload as any).transactionID,
+              srs_response: { error: errMsg, request: orderPayload },
+            })
+            .eq("id", order_id);
+          await supabase.from("srs_order_status_history").insert({
+            order_id, old_status: "draft", new_status: "failed",
+            status_message: `SRS submit failed: ${errMsg}`,
+          });
+          throw new Error(`SRS submit failed (transactionID=${(orderPayload as any).transactionID}): ${errMsg}`);
+        }
 
         await supabase
           .from("srs_orders")
@@ -728,6 +747,7 @@ Deno.serve(async (req) => {
         result = { success: true, srsOrderId: orderResult.orderID, request: orderPayload };
         break;
       }
+
 
       case "qa_verify": {
         // Documented 7-step happy-path against the active environment.
