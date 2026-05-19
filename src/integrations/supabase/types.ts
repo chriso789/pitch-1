@@ -50053,7 +50053,7 @@ export type Database = {
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       abc_is_tenant_admin: { Args: { _tenant_id: string }; Returns: boolean }
       abc_tokens_get: {
-        Args: { p_integration_id: string }
+        Args: { p_enc_key: string; p_integration_id: string }
         Returns: {
           access_token: string
           access_token_expires_at: string
@@ -50066,6 +50066,7 @@ export type Database = {
         Args: {
           p_access_token: string
           p_access_token_expires_at: string
+          p_enc_key: string
           p_integration_id: string
           p_raw: Json
           p_refresh_token: string
