@@ -1293,3 +1293,6 @@ verify_jwt = false
 
 [functions.qxo-save-credentials]
 verify_jwt = true
+
+[functions.roofhub-webhook]
+verify_jwt = false
