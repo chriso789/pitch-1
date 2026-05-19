@@ -290,6 +290,22 @@ export function ABCConnectionSettings() {
     await loadConnection();
   };
 
+  const runConsole = async (label: string, body: Record<string, any>) => {
+    setConsoleBusy(label);
+    setConsoleResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { tenant_id: effectiveTenantId, environment, ...body },
+      });
+      if (error) throw error;
+      setConsoleResult({ label, ...data });
+    } catch (e: any) {
+      setConsoleResult({ label, success: false, error: e.message });
+    } finally {
+      setConsoleBusy(null);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
