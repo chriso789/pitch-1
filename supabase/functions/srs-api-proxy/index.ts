@@ -459,17 +459,19 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Update connection status
+          const connectionUpdate: Record<string, unknown> = {
+            connection_status: isValid ? "connected" : "error",
+            valid_indicator: isValid,
+            last_validated_at: new Date().toISOString(),
+            last_error: isValid ? null : validationDetail,
+            default_branch_code: defaultBranch,
+          };
+          if (jobAccountNumber) connectionUpdate.job_account_number = jobAccountNumber;
+
+          // Update connection status without wiping an existing JAN when SRS omits it.
           await supabase
             .from("srs_connections")
-            .update({
-              connection_status: isValid ? "connected" : "error",
-              valid_indicator: isValid,
-              last_validated_at: new Date().toISOString(),
-              last_error: isValid ? null : validationDetail,
-              job_account_number: jobAccountNumber,
-              default_branch_code: defaultBranch,
-            })
+            .update(connectionUpdate)
             .eq("id", connection.id);
 
           result = {
