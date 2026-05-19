@@ -748,7 +748,10 @@ const LeadDetails = () => {
         );
       case 'materials':
         return (
-          <MaterialsSection pipelineEntryId={id!} />
+          <div className="space-y-4">
+            <LiveOrderTracker projectId={id!} />
+            <MaterialsSection pipelineEntryId={id!} />
+          </div>
         );
       case 'labor':
         return (
