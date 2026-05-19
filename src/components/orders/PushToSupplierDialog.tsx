@@ -215,10 +215,10 @@ export function PushToSupplierDialog({
   const submit = async () => {
     if (!tenantId || !selected) return;
     const sel = suppliers.find(s => s.key === selected);
-    if (selected === 'abc' || sel?.status === 'coming_soon') {
+    if (sel?.status === 'coming_soon') {
       toast({
-        title: 'ABC Supply coming soon',
-        description: 'ABC Supply integration is on the roadmap. Use SRS or QXO for now.',
+        title: `${sel.label} coming soon`,
+        description: 'This supplier integration is on the roadmap.',
       });
       return;
     }
