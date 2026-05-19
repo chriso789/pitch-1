@@ -1,94 +1,78 @@
-## ABC Supply Integration — Audit Repair Plan
+# Multi-Supplier SKU Mapping System
 
-Adopting the audit verbatim. Fixes are scoped to 4 files plus 1 migration.
+## Goal
+Every material/product carries a **per-supplier SKU** (SRS, ABC, QXO, …) on a hidden back-side panel. When a material order pushes to a supplier, the system automatically attaches that supplier's SKU. New SKUs discovered on scraped invoices auto-fill into the same map so coverage grows over time.
 
-### 1. Redirect URI hardening (frontend + backend)
-- `src/components/settings/ABCConnectionSettings.tsx`: stop deriving the callback URL from `VITE_SUPABASE_PROJECT_ID`. Hardcode `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-oauth-callback` and display it verbatim (with copy button) so the user pastes the right value into the ABC developer portal.
-- `abc-api-proxy` `start_oauth`: ignore any client-supplied redirect, always use `${SUPABASE_URL}/functions/v1/abc-oauth-callback`.
+## Current State (what already exists)
+- `products` (tenant-scoped catalog) — has a legacy `srs_item_code` column
+- `vendor_products` — links `product_id` ↔ `vendor_id` with `vendor_sku` (multi-supplier ready, unused in UI)
+- `vendors` (SRS, future ABC/QXO)
+- `material_invoice_line_items` — scraped invoice rows with `supplier_sku`, `manufacturer_sku`, `normalized_description`
+- `material_item_match_rules` — learned mapping rules (SKU/description → catalog item)
+- Push-to-Supplier dialog reads `srs_item_code` only
 
-### 2. Secure token storage
-- Rewrite `abc-oauth-callback` to write into the existing `abc_tokens` table (encrypted columns) instead of plaintext columns on `abc_connections`.
-- Add a small migration: `pgsodium` encrypt helper or `pgp_sym_encrypt` using `ABC_TOKEN_ENC_KEY` secret; expose `abc_tokens_upsert(tenant_id, env, access, refresh, expires_at, scope)` SECURITY DEFINER function. Callback + proxy use this function only.
-- Update all proxy reads to fetch tokens via a matching `abc_tokens_get(tenant_id, env)` definer function returning decrypted values to the edge function context only.
-- Leave `abc_connections` for metadata (client_id, scopes, environment, connection status, last_test). Drop reliance on plaintext token columns (keep columns nullable for now; clear on migration).
+## What's broken
+1. UI only knows about `srs_item_code` (one column, one supplier). No place to manage ABC/QXO SKUs.
+2. Estimate line items have no link to `products` — SKUs can never be resolved.
+3. Invoice scraper saves to `material_invoice_line_items` but never creates `vendor_products` rows, so no learning.
 
-### 3. Correct ABC endpoint paths + payloads in `abc-api-proxy`
-Replace fictional `/orders` calls. Use exact paths under `${cfg.apiBase}`:
+## The Plan
 
-```text
-POST /pricing/v2/prices
-GET  /location/v1/branches
-GET  /location/v1/branches/{branchNumber}
-POST /product/v1/search/items
-GET  /product/v1/items/{itemNumber}
-POST /order/v2/orders
-GET  /order/v2/orders?confirmationNumber={cn}
-GET  /order/v2/orders/{orderNumber}
-GET  /order/v2/orders/orderHistory
-```
+### 1. Data layer — promote `vendor_products` as the single source of truth
+- Backfill: copy every `products.srs_item_code` into a `vendor_products` row for the SRS vendor (one-time migration). Keep `srs_item_code` column for backward read compatibility but stop writing to it.
+- Add a unique index on `(tenant_id, vendor_id, product_id)` and `(tenant_id, vendor_id, vendor_sku)` so upserts are clean.
 
-Add proxy actions and remove the bad ones:
-- `price_items` → POST /pricing/v2/prices
-- `get_branches` → GET /location/v1/branches (optional `branchNumber` query)
-- `search_products` → POST /product/v1/search/items
-- `get_item` → GET /product/v1/items/{itemNumber}
-- `place_order` (replaces `submit_order`) → POST /order/v2/orders
-- `get_order_status` → GET /order/v2/orders/{orderNumber} (or by confirmationNumber)
-- `submit_test_order` → same as place_order but with hardcoded sandbox-safe payload and `on_hold=true`
-- Keep: `start_oauth`, `test_connection`, `get_status`
+### 2. Resolver — one function, all suppliers
+New edge function `resolve-supplier-skus`:
+- Input: `{ vendor_id, items: [{ product_id?, name, description }] }`
+- For each item: try `vendor_products` by `product_id`; fall back to fuzzy match on name/description against `products` + `vendor_products`; final fallback to `material_item_match_rules`.
+- Output: each item with `{ vendor_sku, matched_via, confidence }`.
 
-Payload shapes wired exactly as in the audit (orders is a JSON array of one order object; pricing uses `requestId`, `shipToNumber`, `branchNumber`, `purpose`, `lines[]`). `Authorization: Bearer <access_token>` only — no subscription key.
+Push-to-Supplier dialog calls this immediately before submission instead of reading `srs_item_code` directly. Future ABC/QXO push buttons reuse the same function with their `vendor_id`.
 
-Update `PushToQXOButton` / any callers using `submit_order` → `place_order` and map item fields (`itemNumber`, `orderedQty.value/uom`, `unitPrice`).
+### 3. UI — back-side SKU panel on every product / material
+On the Product / Material edit drawer (existing), add a collapsible **"Supplier SKUs"** section:
+- One row per active supplier in the tenant
+- Columns: Supplier | Supplier SKU | Vendor part name | Last seen on invoice | Confidence | Edit
+- Inline edit writes to `vendor_products` (upsert)
+- Rows with `auto_matched=true` show a "Confirm" button to promote to verified
 
-### 4. Token refresh helper
-Extract inline refresh logic into a `refreshAccessToken(tenant_id, env)` helper inside `abc-api-proxy`. Every action calls `ensureValidToken()` which refreshes when `expires_at - now < 60s`. Refreshed tokens go through `abc_tokens_upsert`.
+On the **Push to Supplier dialog**, replace the current "no SRS SKUs" warning with:
+- A live preview table showing each line + resolved SKU + status badge (matched / unmatched / low-confidence)
+- Per-line "Map SKU" link that opens the same SKU panel inline so reps can map missing ones without leaving the dialog
+- Submit button is enabled as soon as ≥1 line is mapped (existing relaxed gate stays)
 
-### 5. Scopes
-Default `ABC_SCOPES` becomes:
-`pricing.read order.read order.write product.read account.read location.read offline_access`
-(Notification scopes stay opt-in for when webhooks are registered.)
+### 4. Auto-learning from invoices
+Extend the existing invoice processor (`material-invoice-process`):
+- After saving `material_invoice_line_items`, run a matcher: for each line, find the best `products` row by normalized description + UOM + brand.
+- If match confidence ≥0.85 and no `vendor_products` row exists for `(product, supplier)`, **upsert one** with `vendor_sku = supplier_sku`, `auto_matched=true`, `confidence`, and `source_invoice_id`.
+- Lower-confidence matches go to a `pending_sku_suggestions` queue surfaced in the Product SKU panel as "Suggested from invoice — approve?".
 
-### 6. Audit logging
-Add `abc_api_audit` table (migration): `tenant_id, environment, action, endpoint, method, request_body_redacted jsonb, status_code, response_body jsonb, duration_ms, created_at`. RLS: tenant admins read own rows; service role inserts. Every proxy outbound call wrapped in a logger that strips `Authorization`, `access_token`, `refresh_token`, `client_secret`.
+### 5. Same pattern when ABC & QXO go live
+No new tables, no new UI — just:
+- Insert a `vendors` row for ABC / QXO
+- Their invoice processors push into the same `material_invoice_line_items` → same auto-mapper → `vendor_products` fills itself
+- Their respective "Push to ABC / Push to QXO" buttons call `resolve-supplier-skus` with their `vendor_id`
 
-### 7. Error mapping
-Central `mapAbcError(status, body)` returning a stable `code` from:
-`not_connected | token_expired | missing_scope | invalid_redirect_uri | invalid_client | abc_400_bad_payload | abc_401_unauthorized | abc_403_forbidden | abc_404_not_found | abc_429_rate_limited | abc_500_upstream`
-Return `{ ok:false, code, message, abc_status, abc_body }` to the UI.
+## Technical Details
 
-### 8. UI test buttons (`ABCConnectionSettings.tsx`)
-Add a "Sandbox Test Console" panel exposing:
-- Begin OAuth Authorization (existing)
-- Test Token (calls `test_connection`)
-- Test Branch Lookup (asks for branch number, calls `get_branches`)
-- Test Product Search (item search input → `search_products`)
-- Test Price Items (item + qty → `price_items`)
-- Test Order Status (order number → `get_order_status`)
-- Submit Sandbox Test Order (calls `submit_test_order`)
+### New / changed files
+- `supabase/migrations/*` — backfill + indexes on `vendor_products`, add `pending_sku_suggestions` table, add `auto_matched/confidence/source_invoice_id` columns on `vendor_products`
+- `supabase/functions/resolve-supplier-skus/index.ts` — new
+- `supabase/functions/material-invoice-process/index.ts` — add auto-mapper step
+- `src/components/products/SupplierSkuPanel.tsx` — new reusable component
+- `src/components/products/ProductEditDrawer.tsx` — mount the panel
+- `src/components/orders/PushToSupplierDialog.tsx` — call resolver, render preview table, inline map action
+- `src/hooks/useSupplierSkuResolver.ts` — small hook around the edge function
 
-Each button shows raw JSON response + mapped error code in a result drawer so we can hand evidence to Penny.
+### Out of scope (later)
+- Bulk CSV importer for supplier price books (already partially exists in `supplier_price_lists`)
+- Live SRS / ABC / QXO product-search endpoints for manual mapping (additive — drop-in once their APIs are wired)
 
-### 9. config.toml (verify, no change expected)
-```toml
-[functions.abc-api-proxy]
-verify_jwt = true
-[functions.abc-oauth-callback]
-verify_jwt = false
-```
-
-### 10. Cleanup of `abc-pricing`
-It's a legacy stub. Two options — recommend **delete** to avoid drift. (Will confirm before deleting.)
-
-### Files touched
-- `supabase/functions/abc-api-proxy/index.ts` (rewrite action router, add helpers, fix paths/payloads)
-- `supabase/functions/abc-oauth-callback/index.ts` (write to `abc_tokens` via RPC)
-- `src/components/settings/ABCConnectionSettings.tsx` (hardcoded redirect URI display + new test console)
-- `src/components/orders/PushToQXOButton.tsx` (rename action to `place_order`, remap payload)
-- New migration: `abc_tokens` RPC helpers, `abc_api_audit` table + RLS
-- `supabase/functions/abc-pricing/` (delete, pending confirmation)
-
-### Open questions
-1. OK to delete `abc-pricing` edge function? It's superseded by `abc-api-proxy` `price_items`.
-2. Do you already have `ABC_TOKEN_ENC_KEY` secret, or should I add it and use `pgp_sym_encrypt` (pgcrypto) for token-at-rest encryption?
-3. For "Submit Sandbox Test Order", do you have a known-good sandbox `branchNumber` + `shipToNumber` + `itemNumber` from Penny we should hardcode as the default test payload? If not, I'll wire the form to require them.
+## Build Order
+1. Migration (vendor_products columns + backfill + suggestions table)
+2. `resolve-supplier-skus` edge function
+3. Push dialog rewire (gives Jessica a real SRS submission immediately for any product that already has `srs_item_code`)
+4. `SupplierSkuPanel` + mount on product drawer
+5. Invoice auto-mapper
+6. ABC / QXO vendor records (just data — drop in when ready)
