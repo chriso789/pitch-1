@@ -361,6 +361,47 @@ export function PushToSupplierDialog({
             ? `Beacon order ${data.beacon_order_id} created (PO ${data.po_number}).`
             : `PO ${data.po_number} submitted.`,
         });
+      } else if (selected === 'abc') {
+        const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+          body: {
+            action: 'submit_order',
+            tenant_id: tenantId,
+            environment: sel?.environment === 'production' ? 'production' : 'sandbox',
+            project_id: projectId,
+            estimate_id: estimateId,
+            job_number: jobNumber,
+            customer_name: customerName,
+            branch_code: branchCode.trim() || undefined,
+            delivery_method: deliveryMethod,
+            delivery_date: deliveryDate,
+            delivery_address: shipAddress,
+            notes,
+            items: editableItems.map(i => ({
+              item_name: i.item_name,
+              description: i.description,
+              quantity: Number(i.quantity),
+              unit: i.unit,
+              unit_cost: Number(i.unit_cost || 0),
+              srs_item_code: i.srs_item_code || null,
+              color_specs: i.color_specs || null,
+            })),
+          },
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const body = data?.orderResponse?.body;
+          const msg =
+            (typeof body === 'object' && body && (body.error_description || body.message || body.error)) ||
+            data?.error ||
+            'ABC rejected the order.';
+          throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        }
+        toast({
+          title: 'Pushed to ABC Supply',
+          description: data.abcOrderNumber
+            ? `ABC order ${data.abcOrderNumber} created (PO ${data.purchaseOrderNumber}).`
+            : `PO ${data.purchaseOrderNumber} submitted.`,
+        });
       }
 
       onSubmitted?.();
