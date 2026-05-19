@@ -162,15 +162,19 @@ export function PushToSupplierDialog({
           status: 'connected',
         });
       } else {
+        const status = abcRes.data?.connection_status;
+        const isPending = status === 'pending' || (abcRes.data && !abcRes.data.connection_status);
         found.push({
           key: 'abc',
           label: 'ABC Supply',
           defaultBranch: null,
           environment: abcRes.data?.environment ?? null,
           status: abcRes.data ? 'error' : 'not_configured',
-          statusNote: abcRes.data
-            ? 'Connection error — re-authenticate in Settings → Integrations'
-            : 'Connect in Settings → Integrations',
+          statusNote: !abcRes.data
+            ? 'Connect in Settings → Integrations'
+            : isPending
+            ? 'Not authorized yet — complete OAuth in Settings → Integrations → ABC Supply'
+            : `Connection ${status || 'error'} — re-authenticate in Settings → Integrations`,
         });
       }
 
