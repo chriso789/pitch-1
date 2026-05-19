@@ -313,7 +313,7 @@ export function PushToSupplierDialog({
             tenant_id: tenantId as any,
             project_id: resolvedProjectId,
 
-            estimate_id: estimateId || null,
+            estimate_id: resolvedEstimateId,
             order_number: orderNumber,
             branch_code: branchCode.trim(),
             status: 'draft',
