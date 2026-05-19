@@ -53,8 +53,12 @@ const AUTH_URLS: Record<Env, string> = {
   sandbox: "https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize",
   production: "https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/authorize",
 };
+// Minimum-viable scope set. notification.* and account.read/location.read are
+// not provisioned on most ABC Okta clients and cause Okta to return a 400
+// before redirecting back. Override per-tenant via the ABC_SCOPES secret if
+// the partner portal confirms those scopes are granted on your client.
 const DEFAULT_SCOPES =
-  "pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access";
+  "pricing.read order.read order.write product.read offline_access";
 
 function normalizeEnv(env?: string): Env {
   return env === "production" ? "production" : "sandbox";
