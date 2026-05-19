@@ -311,8 +311,10 @@ export function PushToSupplierDialog({
   const handleSelectSupplier = async (key: SupplierKey) => {
     setSelected(key);
     const s = suppliers.find(s => s.key === key);
-    setBranchCode(s?.defaultBranch || '');
-    const next = await resolveSkusFor(key, items);
+    const nextBranch = s?.defaultBranch || '';
+    setBranchCode(nextBranch);
+    const resolved = await resolveSkusFor(key, items);
+    const next = key === 'srs' ? await resolveSrsCatalogSkus(resolved, nextBranch) : resolved;
     setEditableItems(next);
   };
 
