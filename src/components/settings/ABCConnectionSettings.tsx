@@ -416,6 +416,12 @@ export function ABCConnectionSettings() {
                   toast({ title: 'No tenant context', variant: 'destructive' });
                   return;
                 }
+                let oauthWindow: Window | null = null;
+                try {
+                  oauthWindow = window.open('about:blank', '_blank');
+                } catch {
+                  oauthWindow = null;
+                }
                 try {
                   const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
                     body: {
@@ -428,9 +434,17 @@ export function ABCConnectionSettings() {
                   if (!data?.authorization_url) {
                     throw new Error(data?.interpretation || data?.error || 'No authorization_url returned');
                   }
-                  // Full-page redirect so ABC can return to our callback fn
-                  window.location.href = data.authorization_url;
+                  // ABC/Okta blocks embedded iframe navigation in Lovable preview,
+                  // so launch OAuth in a top-level browser tab instead.
+                  if (oauthWindow && !oauthWindow.closed) {
+                    oauthWindow.opener = null;
+                    oauthWindow.location.href = data.authorization_url;
+                    oauthWindow.focus();
+                  } else {
+                    window.open(data.authorization_url, '_blank', 'noopener,noreferrer') || window.location.assign(data.authorization_url);
+                  }
                 } catch (e: any) {
+                  if (oauthWindow && !oauthWindow.closed) oauthWindow.close();
                   toast({
                     title: 'Could not start OAuth',
                     description: formatErrorMessage(e),
