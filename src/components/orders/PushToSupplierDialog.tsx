@@ -398,6 +398,12 @@ export function PushToSupplierDialog({
           .single();
         if (orderErr) throw orderErr;
 
+        await Promise.all(
+          editableItems
+            .filter(i => i.srs_item_code && Number(i.quantity) > 0)
+            .map(i => persistSku(i, i.srs_item_code!.trim())),
+        );
+
         const mappedItems = editableItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
         const unmappedItems = editableItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
 
@@ -683,15 +689,7 @@ export function PushToSupplierDialog({
                                 <Input
                                   value={it.srs_item_code || ''}
                                   onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
-                                  onBlur={async e => {
-                                    const sku = e.target.value.trim() || null;
-                                    if (it.id) {
-                                      await supabase
-                                        .from('estimate_line_items')
-                                        .update({ srs_item_code: sku })
-                                        .eq('id', it.id);
-                                    }
-                                  }}
+                                  onBlur={async e => persistSku(it, e.target.value.trim() || null)}
                                   placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
                                   className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
                                 />
