@@ -112,6 +112,15 @@ export function ABCConnectionSettings() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [testResult, setTestResult] = useState<any | null>(null);
   const [orderResult, setOrderResult] = useState<any | null>(null);
+  const [consoleResult, setConsoleResult] = useState<any | null>(null);
+  const [consoleBusy, setConsoleBusy] = useState<string | null>(null);
+  const [branchInput, setBranchInput] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [priceItemNumber, setPriceItemNumber] = useState('');
+  const [priceQty, setPriceQty] = useState('1');
+  const [priceShipTo, setPriceShipTo] = useState('');
+  const [priceBranch, setPriceBranch] = useState('');
+  const [orderStatusNumber, setOrderStatusNumber] = useState('');
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
