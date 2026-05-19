@@ -62,6 +62,51 @@ export type Database = {
         }
         Relationships: []
       }
+      abc_api_audit: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          duration_ms: number | null
+          endpoint: string | null
+          environment: string
+          error_code: string | null
+          id: string
+          request_body_redacted: Json | null
+          response_body: Json | null
+          status_code: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number | null
+          endpoint?: string | null
+          environment: string
+          error_code?: string | null
+          id?: string
+          request_body_redacted?: Json | null
+          response_body?: Json | null
+          status_code?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number | null
+          endpoint?: string | null
+          environment?: string
+          error_code?: string | null
+          id?: string
+          request_body_redacted?: Json | null
+          response_body?: Json | null
+          status_code?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       abc_branches: {
         Row: {
           branch_number: string
@@ -50007,6 +50052,30 @@ export type Database = {
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       abc_is_tenant_admin: { Args: { _tenant_id: string }; Returns: boolean }
+      abc_tokens_get: {
+        Args: { p_enc_key: string; p_integration_id: string }
+        Returns: {
+          access_token: string
+          access_token_expires_at: string
+          refresh_token: string
+          scope: string
+          token_type: string
+        }[]
+      }
+      abc_tokens_upsert: {
+        Args: {
+          p_access_token: string
+          p_access_token_expires_at: string
+          p_enc_key: string
+          p_integration_id: string
+          p_raw: Json
+          p_refresh_token: string
+          p_scope: string
+          p_tenant_id: string
+          p_token_type: string
+        }
+        Returns: undefined
+      }
       add_canvassiq_property: {
         Args: {
           p_address: Json

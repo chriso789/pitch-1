@@ -1,5 +1,6 @@
 // ABC Supply OAuth Authorization Code Flow - CALLBACK
 // Exchanges authorization code at Okta /v1/token using HTTP Basic auth + PKCE verifier.
+// Stores tokens ENCRYPTED in abc_tokens via abc_tokens_upsert RPC.
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -17,6 +18,10 @@ const DEFAULTS = {
 };
 
 const APP_BASE = Deno.env.get("APP_BASE_URL") || "https://pitch-crm.ai";
+// Hardcoded canonical redirect URI — must match the one registered with ABC Okta
+// and the one used by abc-api-proxy start_oauth.
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://alxelfrbjzkmtnsulcei.supabase.co";
+const CANONICAL_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/abc-oauth-callback`;
 
 function htmlRedirect(target: string, message: string) {
   return new Response(
@@ -83,6 +88,7 @@ Deno.serve(async (req) => {
 
     const clientId = Deno.env.get(`ABC_CLIENT_ID_${envSuffix}`);
     const clientSecret = Deno.env.get(`ABC_CLIENT_SECRET_${envSuffix}`);
+    const encKey = Deno.env.get("ABC_TOKEN_ENC_KEY");
     const tokenUrl = Deno.env.get(`ABC_TOKEN_URL_${envSuffix}`) || DEFAULTS[environment].token_url;
 
     if (!clientId || !clientSecret) {
@@ -91,12 +97,18 @@ Deno.serve(async (req) => {
         `ABC_CLIENT_ID_${envSuffix} or ABC_CLIENT_SECRET_${envSuffix} not configured.`
       );
     }
+    if (!encKey) {
+      return htmlRedirect(
+        returnTo + "error&msg=missing_enc_key",
+        "ABC_TOKEN_ENC_KEY not configured."
+      );
+    }
 
     const basic = btoa(`${clientId}:${clientSecret}`);
     const form = new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: stateRow.redirect_uri,
+      redirect_uri: CANONICAL_REDIRECT_URI,
       code_verifier: stateRow.code_verifier,
     });
 
@@ -128,12 +140,38 @@ Deno.serve(async (req) => {
 
     const expiresAt = new Date(Date.now() + (tokenJson.expires_in ?? 3600) * 1000).toISOString();
 
-    const { error: upsertErr } = await supabase.from("abc_connections").upsert(
+    // Store encrypted tokens in abc_tokens
+    const { error: tokErr } = await supabase.rpc("abc_tokens_upsert", {
+      p_integration_id: integration.id,
+      p_tenant_id: integration.tenant_id,
+      p_access_token: tokenJson.access_token,
+      p_refresh_token: tokenJson.refresh_token ?? null,
+      p_token_type: tokenJson.token_type ?? "Bearer",
+      p_scope: tokenJson.scope ?? integration.scopes,
+      p_access_token_expires_at: expiresAt,
+      p_raw: tokenJson,
+      p_enc_key: encKey,
+    });
+
+    if (tokErr) {
+      console.error("abc_tokens_upsert failed:", tokErr);
+      await supabase
+        .from("abc_integrations")
+        .update({ status: "error", last_error: `token_store_failed: ${tokErr.message}`.slice(0, 500) })
+        .eq("id", integration.id);
+      return htmlRedirect(
+        returnTo + "error&msg=" + encodeURIComponent("token_store_failed: " + tokErr.message),
+        "Failed to persist token: " + tokErr.message
+      );
+    }
+
+    // Maintain abc_connections row for status/UX (no plaintext tokens)
+    await supabase.from("abc_connections").upsert(
       {
         tenant_id: integration.tenant_id,
         environment,
-        access_token: tokenJson.access_token,
-        refresh_token: tokenJson.refresh_token ?? null,
+        access_token: null,
+        refresh_token: null,
         token_type: tokenJson.token_type ?? "Bearer",
         scope: tokenJson.scope ?? integration.scopes,
         expires_at: expiresAt,
@@ -146,26 +184,12 @@ Deno.serve(async (req) => {
       { onConflict: "tenant_id,environment" }
     );
 
-    if (upsertErr) {
-      console.error("abc_connections upsert failed:", upsertErr);
-      await supabase
-        .from("abc_integrations")
-        .update({ status: "error", last_error: `connection_upsert_failed: ${upsertErr.message}`.slice(0, 500) })
-        .eq("id", integration.id);
-      return htmlRedirect(
-        returnTo + "error&msg=" + encodeURIComponent("connection_upsert_failed: " + upsertErr.message),
-        "Failed to persist token: " + upsertErr.message
-      );
-    }
-
-    const { error: intUpdErr } = await supabase
+    await supabase
       .from("abc_integrations")
       .update({ status: "connected", last_error: null })
       .eq("id", integration.id);
-    if (intUpdErr) console.error("abc_integrations update failed:", intUpdErr);
 
-    const { error: delErr } = await supabase.from("abc_oauth_states").delete().eq("state", state);
-    if (delErr) console.error("abc_oauth_states delete failed:", delErr);
+    await supabase.from("abc_oauth_states").delete().eq("state", state);
 
     return htmlRedirect(returnTo + "connected", "ABC Supply connected. Returning to app…");
   } catch (e) {
