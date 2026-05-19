@@ -297,6 +297,14 @@ export function PushToSupplierDialog({
           throw new Error('No project record found for this lead. Convert the lead to a project before pushing to SRS.');
         }
 
+        // Validate estimateId actually exists in estimates table (avoid FK violation)
+        let resolvedEstimateId: string | null = null;
+        if (estimateId) {
+          const { data: estRow } = await supabase
+            .from('estimates').select('id').eq('id', estimateId).maybeSingle();
+          if (estRow?.id) resolvedEstimateId = estRow.id;
+        }
+
         // 1. Create the srs_orders draft + items linked to the project
         const orderNumber = `PITCH-${jobNumber || 'JOB'}-${Date.now()}`;
         const { data: orderRow, error: orderErr } = await supabase
