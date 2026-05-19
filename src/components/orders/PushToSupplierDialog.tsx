@@ -204,6 +204,47 @@ export function PushToSupplierDialog({
     setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
 
+  const normalizeSkuText = (value: string | null | undefined) =>
+    (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const tokenScore = (a: string, b: string) => {
+    const A = new Set(normalizeSkuText(a).split(' ').filter(Boolean));
+    const B = new Set(normalizeSkuText(b).split(' ').filter(Boolean));
+    if (!A.size || !B.size) return 0;
+    let hits = 0;
+    A.forEach(t => { if (B.has(t)) hits += 1; });
+    return hits / A.size;
+  };
+
+  const resolveSrsCatalogSkus = async (base: MaterialItem[], branch: string) => {
+    if (!tenantId || !branch.trim()) return base;
+    const needsSku = base.some(i => !i.srs_item_code);
+    if (!needsSku) return base;
+
+    const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+      body: { action: 'get_products', tenant_id: tenantId, branch_code: branch.trim() },
+    });
+    if (error) throw error;
+    const products = Array.isArray(data?.products) ? data.products : [];
+
+    return base.map(item => {
+      if (item.srs_item_code) return item;
+      const haystack = `${item.item_name} ${item.description || ''}`;
+      let best: any = null;
+      let bestScore = 0;
+      for (const product of products) {
+        const score = tokenScore(haystack, product.productName || '');
+        if (score > bestScore) {
+          best = product;
+          bestScore = score;
+        }
+      }
+      return best?.productId && bestScore >= 0.55
+        ? { ...item, srs_item_code: String(best.productId) }
+        : item;
+    });
+  };
+
   const persistSku = async (item: MaterialItem, sku: string | null) => {
     if (item.id) {
       await supabase
