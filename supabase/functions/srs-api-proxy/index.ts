@@ -507,9 +507,7 @@ Deno.serve(async (req) => {
         const branchData = await srsApiCall(
           `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}`
         );
-        const branches = Array.isArray(branchData)
-          ? branchData
-          : branchData?.customerBranchLocations || branchData?.branchLocations || (branchData ? [branchData] : []);
+        const branches = normalizeCustomerBranchLocations(branchData);
 
         // Upsert branches
         for (const branch of branches) {
@@ -690,10 +688,11 @@ Deno.serve(async (req) => {
           const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRORL").trim();
           try {
             const branchData = await srsApiCall(
-              `/branches/v2/customerBranchLocations/${connection.customer_code}?branchCode=${encodeURIComponent(branchForLookup)}`
+              `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?branchCode=${encodeURIComponent(branchForLookup)}`
             );
-            const first = Array.isArray(branchData) ? branchData[0] : branchData;
-            const fetched = Number(first?.jobAccountNumber);
+            const branches = normalizeCustomerBranchLocations(branchData);
+            const first = branches.find((b: any) => String(b?.branchCode || b?.code || "").toUpperCase() === branchForLookup.toUpperCase()) || branches[0];
+            const fetched = extractJobAccountNumber(first);
             if (fetched && !Number.isNaN(fetched)) {
               jan = fetched;
               await supabase.from("srs_connections").update({
