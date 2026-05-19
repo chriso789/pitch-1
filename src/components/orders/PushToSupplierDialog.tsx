@@ -390,6 +390,8 @@ export function PushToSupplierDialog({
       }
 
       if (selected === 'srs') {
+        const catalogResolvedItems = await resolveSrsCatalogSkus(editableItems, branchCode);
+        setEditableItems(catalogResolvedItems);
         // Resolve a real projects.id (the route may pass a pipeline_entries.id from /lead/:id)
         let resolvedProjectId: string | null = null;
         {
@@ -442,13 +444,13 @@ export function PushToSupplierDialog({
         if (orderErr) throw orderErr;
 
         await Promise.all(
-          editableItems
+          catalogResolvedItems
             .filter(i => i.srs_item_code && Number(i.quantity) > 0)
             .map(i => persistSku(i, i.srs_item_code!.trim())),
         );
 
-        const mappedItems = editableItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
-        const unmappedItems = editableItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
+        const mappedItems = catalogResolvedItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
+        const unmappedItems = catalogResolvedItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
 
         const itemsPayload = mappedItems.map(i => ({
           order_id: orderRow.id,
