@@ -23,7 +23,7 @@ const ABC_CONFIG = {
     sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token',
   },
-  scopes: 'pricing.read order.read order.write product.read account.read location.read notification.read notification.write offline_access',
+  scopes: 'pricing.read order.read order.write product.read offline_access',
   redirectUri: 'https://pitch-crm.ai/api/abc/callback',
   apiBase: {
     sandbox: 'https://partners-sb.abcsupply.com/api',
