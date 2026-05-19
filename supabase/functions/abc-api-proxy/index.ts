@@ -444,6 +444,185 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "submit_order") {
+      if (!tenant_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: "no_tenant_context" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const items = (body.items || []).filter(
+        (i) => Number(i.quantity) > 0 && (i.abc_item_code || i.srs_item_code || i.item_name),
+      );
+      if (!items.length) {
+        return new Response(
+          JSON.stringify({ success: false, error: "no_items", interpretation: "No items to submit." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const tok = await getValidAccessToken(supabase, tenant_id, env);
+      if (!tok.token) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: tok.error,
+            interpretation:
+              tok.error === "not_connected"
+                ? "Complete ABC OAuth (Begin OAuth Authorization) before submitting an order."
+                : `Cannot obtain token: ${tok.error}`,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const { data: conn } = await supabase
+        .from("abc_connections")
+        .select("account_number,default_branch_code")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+
+      const accountNumber =
+        (conn as any)?.account_number ||
+        Deno.env.get("ABC_ACCOUNT_NUMBER") ||
+        "";
+      const branchCode = (body.branch_code || (conn as any)?.default_branch_code || "").toString().trim();
+      const deliveryType =
+        body.delivery_method === "pickup"
+          ? "PICKUP"
+          : body.delivery_method === "ground_drop"
+            ? "GROUND_DROP"
+            : "ROOF_LOAD";
+
+      const parseAddr = (raw?: string) => {
+        if (!raw) return null;
+        const m = raw.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
+        return m
+          ? { addressLine1: m[1].trim(), city: m[2].trim(), state: m[3].toUpperCase(), postalCode: m[4] }
+          : { addressLine1: raw.trim() };
+      };
+
+      const poNumber = `PITCH-${body.job_number || "JOB"}-${Date.now()}`;
+      const orderPayload = {
+        sourceSystem: "PITCH",
+        purchaseOrderNumber: poNumber,
+        accountNumber,
+        branchCode,
+        deliveryType,
+        requestedDeliveryDate: body.delivery_date,
+        shipTo: parseAddr(body.delivery_address),
+        notes: body.notes || (body.customer_name ? `For ${body.customer_name}` : undefined),
+        lines: items.map((i, idx) => ({
+          lineNumber: idx + 1,
+          productNumber: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
+          description: i.description || i.item_name,
+          quantity: Number(i.quantity),
+          unitOfMeasure: (i.unit || "EA").toUpperCase(),
+          color: i.color_specs || undefined,
+        })),
+      };
+
+      const orderRes = await fetch(`${cfg.apiBase}/orders`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tok.token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(orderPayload),
+      });
+      const orderText = await orderRes.text();
+      let orderJson: any = null;
+      try { orderJson = JSON.parse(orderText); } catch { /* keep text */ }
+
+      // Audit
+      try {
+        await supabase.from("integration_audit_logs").insert({
+          integration: "abc",
+          action: "submit_order",
+          environment: env,
+          request_payload: orderPayload,
+          response_status: orderRes.status,
+          response_body: orderJson ?? orderText,
+        });
+      } catch { /* non-fatal */ }
+
+      // Persist on success
+      if (orderRes.ok) {
+        try {
+          const orderNumber =
+            orderJson?.orderNumber || orderJson?.order_number || poNumber;
+          const confirmation =
+            orderJson?.confirmationNumber || orderJson?.confirmation_number || null;
+          const totalAmount =
+            Number(orderJson?.totalAmount || orderJson?.total_amount || 0) ||
+            items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_cost || 0), 0);
+
+          const { data: orderRow } = await supabase
+            .from("abc_orders")
+            .insert({
+              tenant_id,
+              order_number: orderNumber,
+              purchase_order: poNumber,
+              confirmation_number: confirmation,
+              order_status: orderJson?.status || "submitted",
+              branch_number: branchCode || null,
+              sold_to_number: accountNumber || null,
+              ship_to_number: accountNumber || null,
+              ordered_on: new Date().toISOString().slice(0, 10),
+              delivery_requested_for: body.delivery_date || null,
+              total_amount: totalAmount,
+              currency: "USD",
+              source: "pitch",
+              raw_payload: { request: orderPayload, response: orderJson ?? orderText },
+            })
+            .select("id")
+            .single();
+
+          if (orderRow?.id) {
+            await supabase.from("abc_order_lines").insert(
+              items.map((i, idx) => ({
+                order_id: orderRow.id,
+                tenant_id,
+                line_id: String(idx + 1),
+                item_number: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
+                item_description: i.description || i.item_name,
+                ordered_qty: Number(i.quantity),
+                ordered_uom: (i.unit || "EA").toUpperCase(),
+                unit_price: Number(i.unit_cost || 0),
+                amount: Number(i.quantity || 0) * Number(i.unit_cost || 0),
+                raw_payload: i,
+              })),
+            );
+            if (body.project_id) {
+              await supabase.from("abc_order_job_links").insert({
+                tenant_id,
+                order_id: orderRow.id,
+                job_id: body.project_id,
+                estimate_id: body.estimate_id || null,
+              });
+            }
+          }
+        } catch (persistErr) {
+          console.error("abc submit_order persist error", persistErr);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: orderRes.ok,
+          environment: env,
+          orderRequest: orderPayload,
+          orderResponse: { status: orderRes.status, body: orderJson ?? orderText },
+          purchaseOrderNumber: poNumber,
+          abcOrderNumber: orderJson?.orderNumber || null,
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     return new Response(
       JSON.stringify({ success: false, error: `Unknown action: ${action}` }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
