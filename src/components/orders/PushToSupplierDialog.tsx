@@ -281,13 +281,30 @@ export function PushToSupplierDialog({
       }
 
       if (selected === 'srs') {
+        // Resolve a real projects.id (the route may pass a pipeline_entries.id from /lead/:id)
+        let resolvedProjectId: string | null = null;
+        {
+          const { data: pById } = await supabase
+            .from('projects').select('id').eq('id', projectId).maybeSingle();
+          if (pById?.id) resolvedProjectId = pById.id;
+          if (!resolvedProjectId) {
+            const { data: pByPipeline } = await supabase
+              .from('projects').select('id').eq('pipeline_entry_id', projectId).maybeSingle();
+            if (pByPipeline?.id) resolvedProjectId = pByPipeline.id;
+          }
+        }
+        if (!resolvedProjectId) {
+          throw new Error('No project record found for this lead. Convert the lead to a project before pushing to SRS.');
+        }
+
         // 1. Create the srs_orders draft + items linked to the project
         const orderNumber = `PITCH-${jobNumber || 'JOB'}-${Date.now()}`;
         const { data: orderRow, error: orderErr } = await supabase
           .from('srs_orders')
           .insert({
             tenant_id: tenantId as any,
-            project_id: projectId,
+            project_id: resolvedProjectId,
+
             estimate_id: estimateId || null,
             order_number: orderNumber,
             branch_code: branchCode.trim(),
