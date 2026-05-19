@@ -93,7 +93,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
         .from('qxo_orders')
         .select('id, po_number, beacon_order_id, status_code, status_value, on_hold, total, ship_address, order_placed_date, last_synced_at, selling_branch, project_id')
         .eq('tenant_id', tenantId as any)
-        .eq('project_id', projectId)
+        .eq('project_id' as any, projectId as any)
         .order('created_at', { ascending: false }),
     ]);
 
