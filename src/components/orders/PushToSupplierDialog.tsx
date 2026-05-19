@@ -644,7 +644,12 @@ export function PushToSupplierDialog({
                                 </div>
                               </td>
                               <td className="p-2">
-                                <code className="text-xs">{it.srs_item_code || '—'}</code>
+                                <Input
+                                  value={it.srs_item_code || ''}
+                                  onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
+                                  placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
+                                  className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
+                                />
                               </td>
                               <td className="p-2 text-right">
                                 <Input
