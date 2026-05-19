@@ -204,6 +204,76 @@ export function PushToSupplierDialog({
     setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
 
+  const normalizeSkuText = (value: string | null | undefined) =>
+    (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const tokenScore = (a: string, b: string) => {
+    const A = new Set(normalizeSkuText(a).split(' ').filter(Boolean));
+    const B = new Set(normalizeSkuText(b).split(' ').filter(Boolean));
+    if (!A.size || !B.size) return 0;
+    let hits = 0;
+    A.forEach(t => { if (B.has(t)) hits += 1; });
+    return hits / A.size;
+  };
+
+  const resolveSrsCatalogSkus = async (base: MaterialItem[], branch: string) => {
+    if (!tenantId || !branch.trim()) return base;
+    const needsSku = base.some(i => !i.srs_item_code);
+    if (!needsSku) return base;
+
+    const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+      body: { action: 'get_products', tenant_id: tenantId, branch_code: branch.trim() },
+    });
+    if (error) throw error;
+    const products = Array.isArray(data?.products) ? data.products : [];
+
+    return base.map(item => {
+      if (item.srs_item_code) return item;
+      const haystack = `${item.item_name} ${item.description || ''}`;
+      let best: any = null;
+      let bestScore = 0;
+      for (const product of products) {
+        const score = tokenScore(haystack, product.productName || '');
+        if (score > bestScore) {
+          best = product;
+          bestScore = score;
+        }
+      }
+      return best?.productId && bestScore >= 0.55
+        ? { ...item, srs_item_code: String(best.productId) }
+        : item;
+    });
+  };
+
+  const persistSku = async (item: MaterialItem, sku: string | null) => {
+    if (item.id) {
+      await supabase
+        .from('estimate_line_items')
+        .update({ srs_item_code: sku })
+        .eq('id', item.id);
+    }
+
+    if (estimateId) {
+      const { data: enhanced } = await (supabase.from('enhanced_estimates') as any)
+        .select('id, line_items')
+        .eq('id', estimateId)
+        .maybeSingle();
+
+      const lineItems = (enhanced?.line_items || {}) as Record<string, any[]>;
+      const materials = Array.isArray(lineItems.materials) ? lineItems.materials : Array.isArray(lineItems.material) ? lineItems.material : [];
+      if (enhanced?.id && materials.length) {
+        const nextMaterials = materials.map((li: any) => {
+          const sameId = item.id && li.id === item.id;
+          const sameName = li.item_name === item.item_name || li.name === item.item_name;
+          return sameId || sameName ? { ...li, srs_item_code: sku, product_code: sku || li.product_code } : li;
+        });
+        await (supabase.from('enhanced_estimates') as any)
+          .update({ line_items: { ...lineItems, materials: nextMaterials } })
+          .eq('id', estimateId);
+      }
+    }
+  };
+
   // Resolve per-supplier SKUs via vendor_products map. Overwrites srs_item_code
   // with the SKU for the currently selected supplier so downstream submit code
   // (which already reads srs_item_code) works for SRS / ABC / QXO alike.
@@ -223,7 +293,13 @@ export function PushToSupplierDialog({
       const map = new Map<string, string | null>(
         (data?.items || []).map((r: any) => [String(r.key), r.vendor_sku as string | null]),
       );
-      return base.map((it, i) => ({ ...it, srs_item_code: map.get(String(i)) ?? null }));
+      return base.map((it, i) => ({
+        ...it,
+        // Never erase a SKU the user already typed/saved just because the resolver
+        // has no vendor_products match yet. That empty mapping is why SRS was being
+        // blocked with "Saved as draft — no SRS SKUs".
+        srs_item_code: map.get(String(i)) || it.srs_item_code || null,
+      }));
     } catch (e) {
       console.warn('[PushToSupplier] SKU resolution failed', e);
       return base;
@@ -235,8 +311,10 @@ export function PushToSupplierDialog({
   const handleSelectSupplier = async (key: SupplierKey) => {
     setSelected(key);
     const s = suppliers.find(s => s.key === key);
-    setBranchCode(s?.defaultBranch || '');
-    const next = await resolveSkusFor(key, items);
+    const nextBranch = s?.defaultBranch || '';
+    setBranchCode(nextBranch);
+    const resolved = await resolveSkusFor(key, items);
+    const next = key === 'srs' ? await resolveSrsCatalogSkus(resolved, nextBranch) : resolved;
     setEditableItems(next);
   };
 
@@ -312,6 +390,8 @@ export function PushToSupplierDialog({
       }
 
       if (selected === 'srs') {
+        const catalogResolvedItems = await resolveSrsCatalogSkus(editableItems, branchCode);
+        setEditableItems(catalogResolvedItems);
         // Resolve a real projects.id (the route may pass a pipeline_entries.id from /lead/:id)
         let resolvedProjectId: string | null = null;
         {
@@ -363,8 +443,14 @@ export function PushToSupplierDialog({
           .single();
         if (orderErr) throw orderErr;
 
-        const mappedItems = editableItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
-        const unmappedItems = editableItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
+        await Promise.all(
+          catalogResolvedItems
+            .filter(i => i.srs_item_code && Number(i.quantity) > 0)
+            .map(i => persistSku(i, i.srs_item_code!.trim())),
+        );
+
+        const mappedItems = catalogResolvedItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
+        const unmappedItems = catalogResolvedItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
 
         const itemsPayload = mappedItems.map(i => ({
           order_id: orderRow.id,
@@ -648,15 +734,7 @@ export function PushToSupplierDialog({
                                 <Input
                                   value={it.srs_item_code || ''}
                                   onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
-                                  onBlur={async e => {
-                                    const sku = e.target.value.trim() || null;
-                                    if (it.id) {
-                                      await supabase
-                                        .from('estimate_line_items')
-                                        .update({ srs_item_code: sku })
-                                        .eq('id', it.id);
-                                    }
-                                  }}
+                                  onBlur={async e => persistSku(it, e.target.value.trim() || null)}
                                   placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
                                   className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
                                 />

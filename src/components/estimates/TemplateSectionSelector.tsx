@@ -731,6 +731,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                       customerName={customerName}
                       projectAddress={projectAddress}
                       items={lineItems.map((li: any) => ({
+                        id: li.id,
                         item_name: li.item_name,
                         qty: Number(li.qty || 0),
                         unit: li.unit || 'EA',

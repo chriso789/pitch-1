@@ -4,6 +4,7 @@ import { Truck } from 'lucide-react';
 import { PushToSupplierDialog } from './PushToSupplierDialog';
 
 interface MaterialItem {
+  id?: string;
   item_name: string;
   qty: number;
   unit: string;
@@ -49,6 +50,7 @@ export function PushToSupplierButton({
           customerName={customerName}
           projectAddress={projectAddress}
           items={items.map(i => ({
+            id: i.id,
             item_name: i.item_name,
             description: i.notes,
             quantity: i.qty,
