@@ -204,6 +204,35 @@ export function PushToSupplierDialog({
     setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
 
+  const persistSku = async (item: MaterialItem, sku: string | null) => {
+    if (item.id) {
+      await supabase
+        .from('estimate_line_items')
+        .update({ srs_item_code: sku })
+        .eq('id', item.id);
+    }
+
+    if (estimateId) {
+      const { data: enhanced } = await (supabase.from('enhanced_estimates') as any)
+        .select('id, line_items')
+        .eq('id', estimateId)
+        .maybeSingle();
+
+      const lineItems = (enhanced?.line_items || {}) as Record<string, any[]>;
+      const materials = Array.isArray(lineItems.materials) ? lineItems.materials : Array.isArray(lineItems.material) ? lineItems.material : [];
+      if (enhanced?.id && materials.length) {
+        const nextMaterials = materials.map((li: any) => {
+          const sameId = item.id && li.id === item.id;
+          const sameName = li.item_name === item.item_name || li.name === item.item_name;
+          return sameId || sameName ? { ...li, srs_item_code: sku, product_code: sku || li.product_code } : li;
+        });
+        await (supabase.from('enhanced_estimates') as any)
+          .update({ line_items: { ...lineItems, materials: nextMaterials } })
+          .eq('id', estimateId);
+      }
+    }
+  };
+
   // Resolve per-supplier SKUs via vendor_products map. Overwrites srs_item_code
   // with the SKU for the currently selected supplier so downstream submit code
   // (which already reads srs_item_code) works for SRS / ABC / QXO alike.
@@ -223,7 +252,13 @@ export function PushToSupplierDialog({
       const map = new Map<string, string | null>(
         (data?.items || []).map((r: any) => [String(r.key), r.vendor_sku as string | null]),
       );
-      return base.map((it, i) => ({ ...it, srs_item_code: map.get(String(i)) ?? null }));
+      return base.map((it, i) => ({
+        ...it,
+        // Never erase a SKU the user already typed/saved just because the resolver
+        // has no vendor_products match yet. That empty mapping is why SRS was being
+        // blocked with "Saved as draft — no SRS SKUs".
+        srs_item_code: map.get(String(i)) || it.srs_item_code || null,
+      }));
     } catch (e) {
       console.warn('[PushToSupplier] SKU resolution failed', e);
       return base;
