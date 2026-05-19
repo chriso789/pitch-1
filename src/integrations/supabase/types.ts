@@ -26479,6 +26479,60 @@ export type Database = {
           },
         ]
       }
+      pending_sku_suggestions: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          id: string
+          normalized_description: string | null
+          product_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_invoice_id: string | null
+          source_invoice_line_id: string | null
+          status: string
+          suggested_vendor_sku: string
+          tenant_id: string
+          updated_at: string
+          vendor_description: string | null
+          vendor_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          normalized_description?: string | null
+          product_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_invoice_id?: string | null
+          source_invoice_line_id?: string | null
+          status?: string
+          suggested_vendor_sku: string
+          tenant_id: string
+          updated_at?: string
+          vendor_description?: string | null
+          vendor_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          normalized_description?: string | null
+          product_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_invoice_id?: string | null
+          source_invoice_line_id?: string | null
+          status?: string
+          suggested_vendor_sku?: string
+          tenant_id?: string
+          updated_at?: string
+          vendor_description?: string | null
+          vendor_id?: string
+        }
+        Relationships: []
+      }
       permit_application_templates: {
         Row: {
           authority_id: string
@@ -47455,14 +47509,18 @@ export type Database = {
       }
       vendor_products: {
         Row: {
+          auto_matched: boolean
+          confidence: number | null
           created_at: string | null
           created_by: string | null
           id: string
           is_active: boolean | null
           is_preferred: boolean | null
+          last_seen_on_invoice_at: string | null
           lead_time_days: number | null
           minimum_order_qty: number | null
           product_id: string
+          source_invoice_id: string | null
           tenant_id: string
           updated_at: string | null
           vendor_id: string
@@ -47470,14 +47528,18 @@ export type Database = {
           vendor_sku: string | null
         }
         Insert: {
+          auto_matched?: boolean
+          confidence?: number | null
           created_at?: string | null
           created_by?: string | null
           id?: string
           is_active?: boolean | null
           is_preferred?: boolean | null
+          last_seen_on_invoice_at?: string | null
           lead_time_days?: number | null
           minimum_order_qty?: number | null
           product_id: string
+          source_invoice_id?: string | null
           tenant_id: string
           updated_at?: string | null
           vendor_id: string
@@ -47485,14 +47547,18 @@ export type Database = {
           vendor_sku?: string | null
         }
         Update: {
+          auto_matched?: boolean
+          confidence?: number | null
           created_at?: string | null
           created_by?: string | null
           id?: string
           is_active?: boolean | null
           is_preferred?: boolean | null
+          last_seen_on_invoice_at?: string | null
           lead_time_days?: number | null
           minimum_order_qty?: number | null
           product_id?: string
+          source_invoice_id?: string | null
           tenant_id?: string
           updated_at?: string | null
           vendor_id?: string

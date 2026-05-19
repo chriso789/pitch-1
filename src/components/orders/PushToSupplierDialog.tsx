@@ -203,10 +203,40 @@ export function PushToSupplierDialog({
     setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
 
-  const handleSelectSupplier = (key: SupplierKey) => {
+  // Resolve per-supplier SKUs via vendor_products map. Overwrites srs_item_code
+  // with the SKU for the currently selected supplier so downstream submit code
+  // (which already reads srs_item_code) works for SRS / ABC / QXO alike.
+  const [resolvingSkus, setResolvingSkus] = useState(false);
+  const resolveSkusFor = async (key: SupplierKey, base: MaterialItem[]) => {
+    if (!tenantId || !base.length) return base;
+    setResolvingSkus(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('resolve-supplier-skus', {
+        body: {
+          tenant_id: tenantId,
+          supplier_key: key,
+          items: base.map((it, i) => ({ key: String(i), name: it.item_name, description: it.description })),
+        },
+      });
+      if (error) throw error;
+      const map = new Map<string, string | null>(
+        (data?.items || []).map((r: any) => [String(r.key), r.vendor_sku as string | null]),
+      );
+      return base.map((it, i) => ({ ...it, srs_item_code: map.get(String(i)) ?? null }));
+    } catch (e) {
+      console.warn('[PushToSupplier] SKU resolution failed', e);
+      return base;
+    } finally {
+      setResolvingSkus(false);
+    }
+  };
+
+  const handleSelectSupplier = async (key: SupplierKey) => {
     setSelected(key);
     const s = suppliers.find(s => s.key === key);
     setBranchCode(s?.defaultBranch || '');
+    const next = await resolveSkusFor(key, items);
+    setEditableItems(next);
   };
 
   const parseAddress = (raw: string) => {
@@ -582,7 +612,9 @@ export function PushToSupplierDialog({
                   <div className="mb-2 flex items-center justify-between">
                     <Label>Items ({editableItems.length})</Label>
                     <span className="text-xs text-muted-foreground">
-                      Pricing will be quoted by the supplier
+                      {resolvingSkus
+                        ? 'Looking up supplier SKUs…'
+                        : 'Pricing will be quoted by the supplier'}
                     </span>
                   </div>
                   <div className="max-h-64 overflow-y-auto rounded-md border">
@@ -590,7 +622,9 @@ export function PushToSupplierDialog({
                       <thead className="bg-muted/50 text-xs uppercase">
                         <tr>
                           <th className="p-2 text-left">Item</th>
-                          <th className="p-2 text-left">SKU</th>
+                          <th className="p-2 text-left">
+                            {selected ? `${selected.toUpperCase()} SKU` : 'SKU'}
+                          </th>
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
                           <th className="p-2 text-left">Color</th>
@@ -653,9 +687,9 @@ export function PushToSupplierDialog({
                       A color is required on every highlighted line before this order can be pushed to the supplier.
                     </p>
                   )}
-                  {selected === 'srs' && editableItems.some(i => !i.srs_item_code) && (
+                  {selected && editableItems.some(i => !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
-                      Items without an SRS SKU will be skipped. Map SKUs in the estimate to include them.
+                      Items without a {selected.toUpperCase()} SKU will be skipped. Map a SKU on the product so it auto-fills next time (and on every supplier).
                     </p>
                   )}
                 </div>

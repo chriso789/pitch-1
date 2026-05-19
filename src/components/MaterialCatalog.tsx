@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Package, DollarSign, Clock, Building2 } from "lucide-react";
+import { SupplierSkuPanel } from "@/components/products/SupplierSkuPanel";
 
 interface Product {
   id: string;
@@ -462,50 +463,10 @@ const MaterialCatalog = () => {
                 </TabsContent>
                 
                 <TabsContent value="vendors" className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h4 className="font-medium">Vendor Availability</h4>
-                    <Button size="sm" onClick={() => refreshPricing(selectedProduct.id)}>
-                      Refresh Pricing
-                    </Button>
-                  </div>
-                  
-                  {vendorProducts.length > 0 ? (
-                    <div className="space-y-2">
-                      {vendorProducts.map((vp) => (
-                        <div key={vp.id} className="p-3 border rounded-lg">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h5 className="font-medium flex items-center">
-                                <Building2 className="h-4 w-4 mr-2" />
-                                {vp.vendors.name}
-                              </h5>
-                              <p className="text-sm text-muted-foreground">
-                                Vendor SKU: {vp.vendor_sku}
-                              </p>
-                            </div>
-                            <Badge variant={vp.is_active ? "default" : "secondary"}>
-                              {vp.is_active ? "Available" : "Unavailable"}
-                            </Badge>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                            <div className="flex items-center">
-                              <Package className="h-3 w-3 mr-1" />
-                              Min: {vp.minimum_order_qty}
-                            </div>
-                            <div className="flex items-center">
-                              <Clock className="h-3 w-3 mr-1" />
-                              {vp.lead_time_days} days
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-center py-4">
-                      No vendor data available for this product
-                    </p>
-                  )}
+                  <SupplierSkuPanel
+                    productId={selectedProduct.id}
+                    onUpdated={() => refreshPricing(selectedProduct.id)}
+                  />
                 </TabsContent>
                 
                 <TabsContent value="pricing" className="space-y-4">
