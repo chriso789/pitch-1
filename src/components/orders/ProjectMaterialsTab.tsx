@@ -114,6 +114,8 @@ export function ProjectMaterialsTab({
 
       <LiveOrderTracker projectId={projectId} />
 
+      <SrsDiagnosticsPanel projectId={projectId} />
+
       <PushToSupplierDialog
         open={pushOpen}
         onOpenChange={setPushOpen}
