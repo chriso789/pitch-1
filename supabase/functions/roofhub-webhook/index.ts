@@ -117,6 +117,77 @@ Deno.serve(async (req) => {
       raw_webhook_data: payload,
     });
 
+    // Extract any delivery photos / documents (BOL, POD, signed slips) from the
+    // RoofHub payload. SRS sends them under several possible keys depending on
+    // event type, so we collect from any of them.
+    const docCandidates: Array<{ url: string; name?: string; type?: string }> = [];
+    const collect = (arr: any) => {
+      if (!Array.isArray(arr)) return;
+      for (const a of arr) {
+        if (!a) continue;
+        const url = a.url || a.URL || a.href || a.link || a.fileUrl || a.downloadUrl;
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+          docCandidates.push({
+            url,
+            name: a.fileName || a.name || a.title,
+            type: a.documentType || a.type || a.category,
+          });
+        }
+      }
+    };
+    collect(payload?.attachments);
+    collect(payload?.documents);
+    collect(payload?.images);
+    collect(payload?.proofOfDelivery);
+    collect(payload?.pod);
+    collect(payload?.deliveryDocuments);
+
+    for (const doc of docCandidates) {
+      try {
+        // Skip if already captured
+        const { data: dupe } = await supabase
+          .from('srs_order_documents')
+          .select('id')
+          .eq('order_id', order.id)
+          .eq('source_url', doc.url)
+          .maybeSingle();
+        if (dupe) continue;
+
+        const resp = await fetch(doc.url);
+        if (!resp.ok) {
+          console.warn('roofhub-webhook: failed to fetch attachment', doc.url, resp.status);
+          continue;
+        }
+        const mime = resp.headers.get('content-type') || 'application/octet-stream';
+        const buf = new Uint8Array(await resp.arrayBuffer());
+        const safeName = (doc.name || doc.url.split('/').pop() || `doc-${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `${order.tenant_id}/${order.id}/${Date.now()}-${safeName}`;
+
+        const { error: upErr } = await supabase.storage
+          .from('srs-order-documents')
+          .upload(path, buf, { contentType: mime, upsert: false });
+        if (upErr) {
+          console.error('roofhub-webhook: storage upload failed', upErr);
+          continue;
+        }
+
+        await supabase.from('srs_order_documents').insert({
+          order_id: order.id,
+          tenant_id: order.tenant_id,
+          doc_type: (doc.type || (mime.startsWith('image/') ? 'delivery_photo' : 'delivery_document')),
+          file_name: safeName,
+          mime_type: mime,
+          storage_path: path,
+          source_url: doc.url,
+          event_id: String(eventId),
+          captured_at: eventDateTime ? new Date(eventDateTime).toISOString() : new Date().toISOString(),
+          raw: doc as any,
+        });
+      } catch (e) {
+        console.error('roofhub-webhook: doc capture failed', e);
+      }
+    }
+
     // IU → create a pending material invoice tied to the project for Profit Center
     if (eventType === 'IU' && order.project_id) {
       const invoiceNumber = String(eventId);

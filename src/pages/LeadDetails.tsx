@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
+import { LiveOrderTracker } from "@/components/orders/LiveOrderTracker";
 import { supabase } from '@/integrations/supabase/client';
 import { useContactStatuses } from '@/hooks/useContactStatuses';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -748,7 +749,10 @@ const LeadDetails = () => {
         );
       case 'materials':
         return (
-          <MaterialsSection pipelineEntryId={id!} />
+          <div className="space-y-4">
+            <LiveOrderTracker projectId={id!} />
+            <MaterialsSection pipelineEntryId={id!} />
+          </div>
         );
       case 'labor':
         return (
