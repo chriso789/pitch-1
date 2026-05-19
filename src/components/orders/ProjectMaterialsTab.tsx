@@ -5,6 +5,7 @@ import { Truck, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { PushToSupplierDialog } from './PushToSupplierDialog';
 import { LiveOrderTracker } from './LiveOrderTracker';
+import { SrsDiagnosticsPanel } from './SrsDiagnosticsPanel';
 
 interface Props {
   projectId: string;
