@@ -687,9 +687,9 @@ export function PushToSupplierDialog({
                       A color is required on every highlighted line before this order can be pushed to the supplier.
                     </p>
                   )}
-                  {selected === 'srs' && editableItems.some(i => !i.srs_item_code) && (
+                  {selected && editableItems.some(i => !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
-                      Items without an SRS SKU will be skipped. Map SKUs in the estimate to include them.
+                      Items without a {selected.toUpperCase()} SKU will be skipped. Map a SKU on the product so it auto-fills next time (and on every supplier).
                     </p>
                   )}
                 </div>
