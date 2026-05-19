@@ -39,14 +39,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    // Auth: header X-Integration-Key or query ?key=
-    const url = new URL(req.url);
-    const key = req.headers.get('x-integration-key') || url.searchParams.get('key');
-    if (!EXPECTED_KEY || key !== EXPECTED_KEY) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // No auth — SRS Web Hooks send unauthenticated POSTs.
+
 
     const payload = await req.json();
     const {
