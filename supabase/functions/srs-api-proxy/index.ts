@@ -506,13 +506,14 @@ Deno.serve(async (req) => {
         if (!connection.customer_code) {
           throw new Error("Missing customer_code on connection. Run Test Connection / validate first.");
         }
+        const requestedBranchCode = String((params as any).branch_code || connection.default_branch_code || "SRORL").trim();
         const branchData = await srsApiCall(
-          `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}`
+          `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(requestedBranchCode)}`
         );
         const branches = normalizeCustomerBranchLocations(branchData);
 
         // Upsert branches
-        const preferredBranchCode = String(connection.default_branch_code || "SRORL").toUpperCase();
+        const preferredBranchCode = requestedBranchCode.toUpperCase();
         let defaultBranch = connection.default_branch_code || null;
         let jobAccountNumber: number | null = null;
         for (const branch of branches) {
