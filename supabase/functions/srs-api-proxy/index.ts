@@ -1160,23 +1160,41 @@ Deno.serve(async (req) => {
       }
 
       case "get_order_status": {
-        const { srs_order_id, transaction_id } = params as Record<string, string>;
+        const { order_id } = params as Record<string, string>;
+        let { srs_order_id, transaction_id } = params as Record<string, string>;
+        let order: any = null;
+
+        if (order_id) {
+          const { data } = await supabase
+            .from("srs_orders")
+            .select("id, status, submitted_at, srs_order_id, srs_transaction_id")
+            .eq("tenant_id", tenant_id)
+            .eq("id", order_id)
+            .maybeSingle();
+          order = data;
+          srs_order_id = srs_order_id || order?.srs_order_id || "";
+          transaction_id = transaction_id || order?.srs_transaction_id || "";
+        }
+
         if (!srs_order_id && !transaction_id) {
-          throw new Error("srs_order_id or transaction_id required");
+          throw new Error("srs_order_id, transaction_id, or order_id with a saved transaction is required");
         }
         const path = srs_order_id
           ? `/orders/v2/status/${encodeURIComponent(srs_order_id)}`
           : `/orders/v2/status?transactionID=${encodeURIComponent(transaction_id)}`;
 
         // Mirror status into our orders table if we recognize the order
-        const matchKey = srs_order_id ? "srs_order_id" : "srs_transaction_id";
-        const matchVal = srs_order_id || transaction_id;
-        const { data: order } = await supabase
-          .from("srs_orders")
-          .select("id, status, submitted_at")
-          .eq("tenant_id", tenant_id)
-          .eq(matchKey, matchVal)
-          .maybeSingle();
+        if (!order) {
+          const matchKey = srs_order_id ? "srs_order_id" : "srs_transaction_id";
+          const matchVal = srs_order_id || transaction_id;
+          const { data } = await supabase
+            .from("srs_orders")
+            .select("id, status, submitted_at")
+            .eq("tenant_id", tenant_id)
+            .eq(matchKey, matchVal)
+            .maybeSingle();
+          order = data;
+        }
 
         let statusData: any = null;
         let notFound = false;
