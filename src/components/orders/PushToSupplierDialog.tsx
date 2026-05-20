@@ -877,3 +877,111 @@ export function PushToSupplierDialog({
     </Dialog>
   );
 }
+
+function CatalogSearchPopover({
+  catalog,
+  loading,
+  branchCode,
+  initialQuery,
+  onOpen,
+  onPick,
+}: {
+  catalog: any[];
+  loading: boolean;
+  branchCode: string;
+  initialQuery: string;
+  onOpen: () => void;
+  onPick: (productId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (open) setQuery('');
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return catalog.slice(0, 200);
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const matches: any[] = [];
+    for (const p of catalog) {
+      const pid = String(p.productId ?? p.productNumber ?? '');
+      const name = String(p.productName ?? p.description ?? '');
+      const opt = String(p.option ?? '');
+      const hay = `${pid} ${name} ${opt}`.toLowerCase();
+      if (tokens.every((t) => hay.includes(t))) {
+        matches.push(p);
+        if (matches.length >= 200) break;
+      }
+    }
+    return matches;
+  }, [catalog, query]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (v) onOpen();
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          title="Search SRS catalog"
+        >
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[28rem] p-0" align="start">
+        <div className="flex items-center border-b px-3 py-2 gap-2">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Search ${branchCode || 'SRS'} catalog…`}
+            className="flex-1 bg-transparent outline-none text-sm"
+          />
+        </div>
+        <div className="px-3 py-1.5 text-[11px] text-muted-foreground border-b">
+          {loading
+            ? 'Loading catalog…'
+            : `${filtered.length}${filtered.length >= 200 ? '+' : ''} of ${catalog.length} products`}
+        </div>
+        <div className="max-h-80 overflow-y-auto overscroll-contain">
+          {!loading && catalog.length === 0 && (
+            <div className="p-4 text-xs text-muted-foreground">Catalog not loaded.</div>
+          )}
+          {!loading && catalog.length > 0 && filtered.length === 0 && (
+            <div className="p-4 text-xs text-muted-foreground">No matches for "{query}".</div>
+          )}
+          {filtered.map((p: any) => {
+            const pid = String(p.productId ?? p.productNumber ?? '');
+            const name = String(p.productName ?? p.description ?? '');
+            const opt = p.option ? ` — ${p.option}` : '';
+            const uom = p.uom ? ` [${p.uom}]` : '';
+            return (
+              <button
+                key={`${pid}-${name}-${opt}`}
+                type="button"
+                onClick={() => {
+                  onPick(pid);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-accent flex items-start gap-2 border-b last:border-b-0"
+              >
+                <span className="font-mono text-muted-foreground shrink-0 w-14">{pid}</span>
+                <span className="flex-1">{name}{opt}{uom}</span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
