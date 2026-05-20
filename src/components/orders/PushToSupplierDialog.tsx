@@ -981,28 +981,38 @@ function CatalogSearchPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (open) setQuery('');
-  }, [open]);
+    if (open) setQuery(initialQuery || '');
+  }, [initialQuery, open]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizeSkuText(query);
     if (!q) return catalog.slice(0, 200);
-    const tokens = q.split(/\s+/).filter(Boolean);
-    const matches: any[] = [];
-    for (const p of catalog) {
-      const pid = String(p.productId ?? p.productNumber ?? '');
-      const name = String(p.productName ?? p.description ?? '');
-      const opt = String(p.option ?? '');
-      const hay = `${pid} ${name} ${opt}`.toLowerCase();
-      if (tokens.every((t) => hay.includes(t))) {
-        matches.push(p);
-        if (matches.length >= 200) break;
-      }
-    }
-    return matches;
+    const tokens = skuTokens(q);
+    const scored = catalog
+      .map((p) => {
+        const pid = String(p.productId ?? p.productNumber ?? '');
+        const hay = normalizeSkuText(productText(p));
+        const hayTokens = new Set(skuTokens(hay));
+        const exactId = pid === q || pid.includes(q);
+        const allTokensMatch = tokens.every((t) => hay.includes(t) || tokenMatches(t, hayTokens));
+        const score = exactId ? 2 : tokens.reduce((sum, token) => sum + (hay.includes(token) || tokenMatches(token, hayTokens) ? 1 : 0), 0) / Math.max(tokens.length, 1);
+        return { p, score, allTokensMatch };
+      })
+      .filter((entry) => entry.allTokensMatch || entry.score >= 0.75)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 200);
+    return scored.map((entry) => entry.p);
   }, [catalog, query]);
+
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop += event.deltaY;
+    event.stopPropagation();
+  };
 
   return (
     <Popover
