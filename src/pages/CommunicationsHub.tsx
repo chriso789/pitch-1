@@ -135,10 +135,6 @@ const CommunicationsHub = () => {
                 <Mail className="h-4 w-4" />
                 Email Activity
               </TabsTrigger>
-              <TabsTrigger value="text-blast" className="gap-2">
-                <Megaphone className="h-4 w-4" />
-                Text Blast
-              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -225,10 +221,6 @@ const CommunicationsHub = () => {
             <EmailActivityDashboard />
           </TabsContent>
 
-          {/* Text Blast Tab */}
-          <TabsContent value="text-blast" className="flex-1 m-0 overflow-hidden">
-            <TextBlastManager />
-          </TabsContent>
         </Tabs>
       </div>
 

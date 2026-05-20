@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText } from 'lucide-react';
+import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText, Megaphone } from 'lucide-react';
 import { CallAnalyticsDashboard } from '@/components/ai-agent/CallAnalyticsDashboard';
 import { LiveCallTranscript } from '@/components/ai-agent/LiveCallTranscript';
 import { OutboundCampaignBuilder } from '@/components/ai-agent/OutboundCampaignBuilder';
 import { CallTranscriptViewer } from '@/components/ai-agent/CallTranscriptViewer';
+import { TextBlastManager } from '@/components/communications/TextBlastManager';
 
 export default function AIAgentDashboardPage() {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export default function AIAgentDashboardPage() {
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -50,6 +51,10 @@ export default function AIAgentDashboardPage() {
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
               Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="text-blast" className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4" />
+              Text Blast
             </TabsTrigger>
           </TabsList>
 
@@ -85,6 +90,10 @@ export default function AIAgentDashboardPage() {
 
           <TabsContent value="campaigns">
             <OutboundCampaignBuilder />
+          </TabsContent>
+
+          <TabsContent value="text-blast">
+            <TextBlastManager />
           </TabsContent>
         </Tabs>
       </div>
