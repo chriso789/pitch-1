@@ -226,8 +226,11 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
                     <span className="truncate">{item.contact_name || item.phone}</span>
                     <span className="text-muted-foreground text-xs">{item.phone}</span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant="outline" className="text-xs">{item.status}</Badge>
+                    {item.delivered_at && <Badge variant="outline" className="text-xs border-blue-500/40 text-blue-600">delivered</Badge>}
+                    {item.replied_at && <Badge variant="outline" className="text-xs border-violet-500/40 text-violet-600">replied</Badge>}
+                    {item.routing_verified && <Badge variant="outline" className="text-xs border-green-500/40 text-green-600">routed</Badge>}
                     {item.status === 'sent' && (
                       <Button
                         variant="ghost"
