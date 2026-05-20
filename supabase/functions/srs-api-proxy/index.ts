@@ -64,7 +64,8 @@ function buildSubmitOrderPayload(args: {
   orderDate?: string | null;              // YYYY-MM-DD
   expectedDeliveryDate?: string | null;   // YYYY-MM-DD
   expectedDeliveryTime?: string | null;   // e.g. "Anytime"
-  shippingMethod: string;                 // label e.g. "Ground Drop", "Will Call", "Delivery"
+  orderType?: "WHSE" | "WILLCALL";        // defaults to WHSE
+  shippingMethod: string;                 // label e.g. "Ground Drop", "Will Call"
   shipTo?: SrsShipTo | null;
   customerContact?: SrsCustomerContact | null;
   notes?: string | null;
