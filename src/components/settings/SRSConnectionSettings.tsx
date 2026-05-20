@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useToast } from '@/hooks/use-toast';
+import { SrsDiagnosticsPanel } from '@/components/orders/SrsDiagnosticsPanel';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 interface SRSConnection {
@@ -568,11 +569,13 @@ export function SRSConnectionSettings() {
         </Card>
       )}
 
+      {isConnected && <SrsDiagnosticsPanel />}
+
       {audit.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Credential Activity</CardTitle>
-            <CardDescription>Most recent 20 events. Use this to detect unusual access.</CardDescription>
+            <CardDescription>Credential, validation, and test-order events only. Real job order status is shown above.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-xs">
