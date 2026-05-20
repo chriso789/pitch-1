@@ -174,8 +174,93 @@ Deno.serve(async (req) => {
     });
     const sendJson = await sendRes.json().catch(() => ({}));
 
+    // 5. On hot intents, drop into MSFH pipeline + spawn rep tasks
+    let pipelineEntryId: string | null = null;
+    const HOT = new Set(['positive_interest', 'call_me', 'inspection_question', 'financing_question']);
+    if (HOT.has(intent) && contact_id) {
+      try {
+        const { data: stage } = await supabase
+          .from('pipeline_stages')
+          .select('key')
+          .eq('tenant_id', tenant_id)
+          .eq('key', 'msfh_interested')
+          .maybeSingle();
+
+        if (stage) {
+          // Reuse existing MSFH entry for this contact if present
+          const { data: existing } = await supabase
+            .from('pipeline_entries')
+            .select('id, status')
+            .eq('tenant_id', tenant_id)
+            .eq('contact_id', contact_id)
+            .like('status', 'msfh_%')
+            .eq('is_deleted', false)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existing) {
+            pipelineEntryId = existing.id;
+            // Only advance if currently at contacted
+            if (existing.status === 'msfh_contacted') {
+              await supabase.from('pipeline_entries').update({
+                status: 'msfh_interested',
+                status_entered_at: new Date().toISOString(),
+                last_status_change_reason: `SMS reply classified as ${intent}`,
+              }).eq('id', existing.id);
+            }
+          } else {
+            const { data: inserted } = await supabase.from('pipeline_entries').insert({
+              tenant_id,
+              contact_id,
+              status: 'msfh_interested',
+              source: 'sms_campaign',
+              priority: 'high',
+              assigned_to: blast.created_by,
+              notes: `Auto-created from MSFH SMS reply (intent: ${intent})\nReply: "${body.slice(0, 200)}"`,
+              metadata: { msfh_campaign: true, source_blast_id: blast.id, intent },
+              created_by: blast.created_by,
+            }).select('id').single();
+            pipelineEntryId = inserted?.id ?? null;
+          }
+
+          // Spawn 4 follow-up tasks
+          if (pipelineEntryId) {
+            const dueSoon = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+            const dueDay = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const taskDefs = [
+              { title: 'Call MSFH lead within 15 minutes', priority: 'urgent', due_date: dueSoon },
+              { title: 'Verify roof age + condition',     priority: 'high',   due_date: dueDay },
+              { title: 'Check existing wind mitigation',   priority: 'high',   due_date: dueDay },
+              { title: 'Schedule free wind mit inspection',priority: 'high',   due_date: dueDay },
+            ];
+            // Skip task creation if identical pending tasks already exist for this entry
+            const { data: existingTasks } = await supabase
+              .from('tasks')
+              .select('title')
+              .eq('pipeline_entry_id', pipelineEntryId)
+              .eq('status', 'pending');
+            const have = new Set((existingTasks || []).map((t: any) => t.title));
+            const toInsert = taskDefs.filter(t => !have.has(t.title)).map(t => ({
+              tenant_id,
+              contact_id,
+              pipeline_entry_id: pipelineEntryId,
+              assigned_to: blast.created_by,
+              status: 'pending',
+              ai_generated: true,
+              ai_context: { source: 'msfh_ai_followup', intent, blast_id: blast.id },
+              ...t,
+            }));
+            if (toInsert.length) await supabase.from('tasks').insert(toInsert);
+          }
+        }
+      } catch (pipeErr) {
+        console.error('[ai-followup] pipeline/task error', pipeErr);
+      }
+    }
+
     return new Response(
-      JSON.stringify({ intent, replied: !!sendJson?.success, reply, telnyx: sendJson }),
+      JSON.stringify({ intent, replied: !!sendJson?.success, reply, telnyx: sendJson, pipeline_entry_id: pipelineEntryId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (e: any) {
