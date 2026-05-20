@@ -994,6 +994,55 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Ensure the freeform-parsed shipTo carries a name (SRS public example requires it).
+        if (derivedShipTo && !derivedShipTo.name) {
+          derivedShipTo.name = derivedContact?.customerContactName || "Customer";
+        }
+
+        // Build line items from the branch catalog first
+        const baseItems = orderItems.map((item: any) =>
+          buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
+        );
+
+        // Price probe — SRS public docs include `price` on each line and
+        // explicitly flag price mismatch as a submit-rejection cause. Pull
+        // authoritative prices from /products/v2/price for this branch/JAN
+        // and inject them. If pricing fails, log and submit without price
+        // (server still computes it on their end).
+        const pricedItems = [...baseItems];
+        try {
+          const priceProbe = await srsApiCall("/products/v2/price", "POST", {
+            sourceSystem: SRS_SOURCE_SYSTEM,
+            transactionId: crypto.randomUUID(),
+            customerCode: String(connection.customer_code || "").trim(),
+            jobAccountNumber: jan,
+            branchCode,
+            productList: baseItems.map((i: any) => ({
+              productNumber: String(i.productId),
+              quantity: Number(i.quantity),
+              uom: i.uom,
+            })),
+          });
+          const priceArr: any[] = Array.isArray(priceProbe)
+            ? priceProbe
+            : (priceProbe?.products || priceProbe?.priceList || priceProbe?.data || []);
+          const priceByProduct = new Map<string, number>();
+          for (const p of priceArr) {
+            const pid = String(p?.productId ?? p?.productNumber ?? "");
+            const px = Number(p?.price ?? p?.unitPrice ?? p?.netPrice ?? 0);
+            if (pid && px > 0) priceByProduct.set(pid, px);
+          }
+          for (const li of pricedItems) {
+            const px = priceByProduct.get(String(li.productId));
+            if (px && px > 0) (li as any).price = px;
+          }
+        } catch (priceErr) {
+          console.warn(
+            "SRS price probe failed; submitting without explicit prices:",
+            (priceErr as any)?.message || priceErr
+          );
+        }
+
         const orderPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
@@ -1008,14 +1057,34 @@ Deno.serve(async (req) => {
           orderDate: new Date().toISOString().slice(0, 10),
           expectedDeliveryDate: order.delivery_date,
           expectedDeliveryTime: (order as any).delivery_time_window || "Anytime",
+          orderType: srsOrderType(order.delivery_method),
           shippingMethod: srsShippingMethodLabel(order.delivery_method),
           shipTo: derivedShipTo,
           customerContact: derivedContact,
           notes: order.notes,
-          items: orderItems.map((item: any) =>
-            buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
-          ),
+          items: pricedItems,
         });
+
+        // Persist a pre-submit audit row so we always have the exact JSON
+        // that was sent to SRS, even when the submit "succeeds" but is later
+        // silently dropped by their queue.
+        let auditId: string | null = null;
+        try {
+          const { data: auditRow } = await supabase
+            .from("srs_submit_audit")
+            .insert({
+              order_id,
+              tenant_id,
+              transaction_id: (orderPayload as any).transactionID,
+              request_json: orderPayload,
+              success: false,
+            })
+            .select("id")
+            .single();
+          auditId = (auditRow as any)?.id ?? null;
+        } catch (auditErr) {
+          console.warn("srs_submit_audit insert failed:", (auditErr as any)?.message || auditErr);
+        }
 
         let orderResult: any;
         try {
@@ -1035,8 +1104,23 @@ Deno.serve(async (req) => {
             order_id, old_status: "draft", new_status: "failed",
             status_message: `SRS submit failed: ${errMsg}`,
           });
+          if (auditId) {
+            await supabase
+              .from("srs_submit_audit")
+              .update({ success: false, error_message: errMsg, updated_at: new Date().toISOString() })
+              .eq("id", auditId);
+          }
           throw new Error(`SRS submit failed (transactionID=${(orderPayload as any).transactionID}): ${errMsg}`);
         }
+
+        // Update audit with the SRS response on success
+        if (auditId) {
+          await supabase
+            .from("srs_submit_audit")
+            .update({ response_json: orderResult, success: true, updated_at: new Date().toISOString() })
+            .eq("id", auditId);
+        }
+
 
         // SRS's /orders/v2/submit always returns 200 even when the order has only
         // been accepted into their ingestion *queue*. The queue entry can later be
