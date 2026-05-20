@@ -91,7 +91,15 @@ export default function AIAgentDashboardPage() {
           <TabsContent value="campaigns">
             <OutboundCampaignBuilder />
           </TabsContent>
+
+          <TabsContent value="text-blast">
+            <TextBlastManager />
+          </TabsContent>
         </Tabs>
+      </div>
+    </GlobalLayout>
+  );
+}
       </div>
     </GlobalLayout>
   );
