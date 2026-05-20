@@ -1049,7 +1049,12 @@ function CatalogSearchPopover({
           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[min(28rem,calc(100vw-2rem))] p-0" align="start" onOpenAutoFocus={(event) => event.preventDefault()}>
+      <PopoverContent
+        className="w-[min(28rem,calc(100vw-2rem))] p-0"
+        align="start"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onWheelCapture={handleWheel}
+      >
         <div className="flex items-center border-b px-3 py-2 gap-2">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
           <input
@@ -1067,7 +1072,6 @@ function CatalogSearchPopover({
         </div>
         <div
           ref={scrollRef}
-          onWheelCapture={handleWheel}
           className="max-h-80 overflow-y-scroll overscroll-contain touch-pan-y [scrollbar-gutter:stable]"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
