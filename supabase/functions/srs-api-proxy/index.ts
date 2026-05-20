@@ -133,6 +133,57 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
   }
 }
 
+/**
+ * Normalize free-text UOM values from estimate line items into the codes
+ * SRS accepts. SRS's async validator silently drops orders with unknown UOMs
+ * (e.g. "EACH" instead of "EA"), so this mapping is required before submit.
+ */
+function normalizeUom(raw: string | null | undefined): string {
+  const v = String(raw || "EA").trim().toUpperCase();
+  const map: Record<string, string> = {
+    "EACH": "EA",
+    "EA.": "EA",
+    "PC": "EA",
+    "PCS": "EA",
+    "PIECE": "EA",
+    "PIECES": "EA",
+    "UNIT": "EA",
+    "UNITS": "EA",
+    "BOX": "BX",
+    "BOXES": "BX",
+    "BUNDLE": "BDL",
+    "BUNDLES": "BDL",
+    "BDLS": "BDL",
+    "BD": "BDL",
+    "ROLL": "RL",
+    "ROLLS": "RL",
+    "SQUARE": "SQ",
+    "SQUARES": "SQ",
+    "SQS": "SQ",
+    "SHEET": "SHT",
+    "SHEETS": "SHT",
+    "LINEAL FOOT": "LF",
+    "LINEAR FOOT": "LF",
+    "LINEAL FEET": "LF",
+    "LINEAR FEET": "LF",
+    "LFT": "LF",
+    "FT": "LF",
+    "FOOT": "LF",
+    "FEET": "LF",
+    "GAL": "GA",
+    "GALLON": "GA",
+    "GALLONS": "GA",
+    "PAIL": "PL",
+    "PAILS": "PL",
+    "BAG": "BG",
+    "BAGS": "BG",
+    "TUBE": "TB",
+    "TUBES": "TB",
+  };
+  return map[v] || v;
+}
+
+
 function normalizeCustomerBranchLocations(branchData: any): any[] {
   if (Array.isArray(branchData)) return branchData;
   return branchData?.customerBranchLocations || branchData?.branchLocations || (branchData ? [branchData] : []);
