@@ -34,6 +34,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showListBuilder, setShowListBuilder] = useState(false);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+  const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
+  const [goal, setGoal] = useState<string>('');
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
