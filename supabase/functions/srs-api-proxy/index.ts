@@ -753,7 +753,13 @@ Deno.serve(async (req) => {
 
         const janRaw = connection.job_account_number;
         let jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        // Reject the legacy stub value of 1 — SRS silently queue-drops orders
+        // submitted with a placeholder JAN. Force re-validation instead.
+        if (jan === 1) {
+          jan = NaN;
+        }
         if (!jan || Number.isNaN(jan)) {
+
           // Auto-recover: fetch JAN from customerBranchLocations using the order's branch.
           const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRFTL").trim();
           try {
