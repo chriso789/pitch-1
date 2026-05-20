@@ -145,8 +145,12 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
       return "Roof Load";
     case "delivery":
     case "del":
+      throw new Error(
+        "Generic 'delivery' is not a valid SRS shippingMethod. " +
+        "Choose Roof Load, Ground Drop, or Will Call before submit."
+      );
     default:
-      return "Delivery";
+      throw new Error(`Unknown SRS shipping method: ${internal}`);
   }
 }
 
