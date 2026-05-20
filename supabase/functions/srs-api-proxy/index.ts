@@ -668,9 +668,61 @@ Deno.serve(async (req) => {
             || connection.default_branch_code
             || "SRFTL",
         ).trim();
-        const janRaw = (params as any).job_account_number ?? connection.job_account_number;
-        const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
-        const jobAccountNumber = janRaw != null && Number.isFinite(jan) ? jan : null;
+
+        // ---- Resolve a real numeric jobAccountNumber. ----
+        // SRS treats `1` as a placeholder — orders submitted with it are
+        // queued (HTTP 200) but silently rejected by their order-placement
+        // backend. Refuse to send a stub.
+        const janInitialRaw = (params as any).job_account_number ?? connection.job_account_number;
+        let jan: number | null = (() => {
+          const n = Number(janInitialRaw);
+          return Number.isFinite(n) && n > 1 ? n : null;
+        })();
+
+        let recoveryDiagnostic: any = null;
+
+        if (!jan) {
+          // Auto-recover from /branches/v2/customerBranchLocations.
+          try {
+            const branchData = await srsApiCall(
+              `/branches/v2/customerBranchLocations/${encodeURIComponent(String(connection.customer_code || ""))}?BranchCode=${encodeURIComponent(branch)}`
+            );
+            const branches = normalizeCustomerBranchLocations(branchData);
+            recoveryDiagnostic = { source: "customerBranchLocations", branchCount: branches.length, sample: branches.slice(0, 3) };
+
+            // Look across *every* returned branch for a JAN > 1.
+            for (const b of branches) {
+              const candidate = extractJobAccountNumber(b);
+              if (candidate && candidate > 1) {
+                jan = candidate;
+                await supabase.from("srs_connections").update({
+                  job_account_number: candidate,
+                  default_branch_code: b?.branchCode || connection.default_branch_code,
+                }).eq("id", connection.id);
+                break;
+              }
+            }
+          } catch (e: any) {
+            recoveryDiagnostic = { source: "customerBranchLocations", error: e?.message || String(e) };
+          }
+        }
+
+        if (!jan) {
+          const msg =
+            `SRS has not assigned a real jobAccountNumber to customer ${connection.customer_code} on branch ${branch} ` +
+            `in the ${connection.environment} environment. Their API is returning the placeholder value "1", which causes orders ` +
+            `to be queued (HTTP 200) but rejected during downstream order placement. ` +
+            `Ask your SRS rep (Jessica) to provision a valid job account number for customer code ${connection.customer_code} on branch ${branch}, ` +
+            `then re-run Validate Connection.`;
+          await audit({
+            tenant_id, connection_id: connection.id, action: "submit_test_order",
+            success: false, error: msg,
+            metadata: { blocked: true, reason: "missing_real_jan", branch, customerCode: connection.customer_code, recoveryDiagnostic },
+          });
+          result = { success: false, blocked: true, error: msg, recoveryDiagnostic };
+          break;
+        }
+
         const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
           .toISOString().slice(0, 10);
 
@@ -703,7 +755,7 @@ Deno.serve(async (req) => {
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
           accountNumber: String(connection.customer_code || "").trim(),
-          jobAccountNumber,
+          jobAccountNumber: jan,
           shipToSequenceNumber: (params as any).ship_to_sequence_number ?? 1,
           branchCode: branch,
           poNumber: `PITCH-TEST-${Date.now()}`,
@@ -732,7 +784,7 @@ Deno.serve(async (req) => {
 
         await audit({
           tenant_id, connection_id: connection.id, action: "submit_test_order",
-          success, error: errorMsg, metadata: { request: testPayload, response: srsResp },
+          success, error: errorMsg, metadata: { request: testPayload, response: srsResp, recoveryDiagnostic },
         });
 
         result = { success, request: testPayload, response: srsResp, error: errorMsg };
