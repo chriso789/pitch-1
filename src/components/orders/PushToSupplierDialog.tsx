@@ -422,6 +422,7 @@ export function PushToSupplierDialog({
       const products = Array.isArray(data?.products) ? data.products : [];
       setSrsCatalog(products);
       setSrsCatalogBranch(branch.trim());
+      setEditableItems((prev) => autoFillSrsCatalogSkus(prev, products).items);
     } catch (e) {
       console.warn('[PushToSupplier] catalog load failed', e);
     } finally {
