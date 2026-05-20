@@ -743,6 +743,21 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         requires_color: !!(li.requires_color ?? li.metadata?.requires_color),
                       }))}
                     />
+                    <ShareMaterialsButton
+                      items={lineItems.map((li: any) => ({
+                        item_name: li.item_name,
+                        qty: Number(li.qty || 0),
+                        unit: li.unit || 'EA',
+                        unit_cost: Number(li.unit_cost || 0),
+                        srs_item_code: li.srs_item_code || li.product_code,
+                        notes: li.notes,
+                      }))}
+                      totalAmount={sectionTotal}
+                      customerName={customerName}
+                      projectAddress={projectAddress}
+                      jobNumber={jobNumber}
+                      companyName={companyInfo?.company_name}
+                    />
                   </>
                 )}
                 {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
