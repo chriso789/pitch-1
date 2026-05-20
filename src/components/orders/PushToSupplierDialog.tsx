@@ -418,7 +418,10 @@ export function PushToSupplierDialog({
   // for items the auto-resolver missed.
   const loadSrsCatalog = async (branch: string) => {
     if (!tenantId || !branch.trim()) return;
-    if (srsCatalogBranch === branch.trim() && srsCatalog.length) return;
+    if (srsCatalogBranch === branch.trim() && srsCatalog.length) {
+      setEditableItems((prev) => autoFillSrsCatalogSkus(prev, srsCatalog).items);
+      return;
+    }
     setSrsCatalogLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
