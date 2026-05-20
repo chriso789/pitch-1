@@ -825,6 +825,7 @@ Deno.serve(async (req) => {
           orderDate: new Date().toISOString().slice(0, 10),
           expectedDeliveryDate: tomorrow,
           expectedDeliveryTime: (params as any).expected_delivery_time ?? "Anytime",
+          orderType: srsOrderType((params as any).shipping_method || "will_call"),
           shippingMethod: srsShippingMethodLabel((params as any).shipping_method || "will_call"),
           shipTo: testShipTo,
           customerContact: testContact,
