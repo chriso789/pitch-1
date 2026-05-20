@@ -356,12 +356,19 @@ const Dashboard = () => {
   const { stages } = usePipelineStages();
 
   const dashboardPipelineData = useMemo(() => 
-    stages.map(stage => ({
-      status: stage.name,
-      count: (pipelineStatusCounts as Record<string, number>)[stage.key] || 0,
-      color: stage.color, // Tailwind class like bg-blue-500
-      key: stage.key,
-    })),
+    stages
+      .filter(stage => {
+        // Hide MSFH (My Safe Florida Home) stages from the dashboard pipeline overview
+        const name = (stage.name || '').toLowerCase();
+        const key = (stage.key || '').toLowerCase();
+        return !name.includes('msfh') && !key.includes('msfh');
+      })
+      .map(stage => ({
+        status: stage.name,
+        count: (pipelineStatusCounts as Record<string, number>)[stage.key] || 0,
+        color: stage.color, // Tailwind class like bg-blue-500
+        key: stage.key,
+      })),
     [stages, pipelineStatusCounts]
   );
 
