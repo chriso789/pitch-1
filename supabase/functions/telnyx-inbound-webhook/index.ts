@@ -187,26 +187,28 @@ Deno.serve(async (req) => {
       is_read: false,
     });
 
-    // If the inbound is a reply to a recent outbound blast for this phone, mark replied
+    // If the inbound is a reply to a recent outbound blast for this phone, mark replied.
+    // Include 'replied' so multi-turn conversations keep matching the original blast.
     const { data: lastBlastItem } = await supabase
       .from('sms_blast_items')
       .select('id, blast_id')
       .eq('tenant_id', tenantId)
       .eq('phone', fromE164)
-      .in('status', ['sent', 'delivered'])
+      .in('status', ['sent', 'delivered', 'replied'])
       .order('sent_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
     if (lastBlastItem) {
       await supabase
         .from('sms_blast_items')
         .update({ status: 'replied', replied_at: new Date().toISOString() })
         .eq('id', lastBlastItem.id);
 
-      // Fire-and-forget AI consultative follow-up (no STOP word, blast must have AI enabled)
       if (!STOP_WORDS.has(upper)) {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         fetch(`${supabaseUrl}/functions/v1/ai-followup-worker`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
@@ -219,6 +221,19 @@ Deno.serve(async (req) => {
           }),
         }).catch((e) => console.error('[inbound] ai-followup dispatch failed', e));
       }
+    } else if (!STOP_WORDS.has(upper)) {
+      // Cold / non-blast inbound from a known contact → route to general AI inbound router
+      fetch(`${supabaseUrl}/functions/v1/ai-inbound-router`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          contact_id: contactId,
+          inbound_text: body,
+          channel: 'sms',
+          from_number: fromE164,
+        }),
+      }).catch((e) => console.error('[inbound] ai-inbound-router dispatch failed', e));
     }
   } else {
     await supabase.from('unmatched_inbound').insert({
@@ -229,6 +244,7 @@ Deno.serve(async (req) => {
       to_e164: toE164,
       event_type: eventType,
     });
+
   }
 
   return new Response('ok', { headers: corsHeaders });
