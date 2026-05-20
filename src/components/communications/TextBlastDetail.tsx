@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Ban, CheckCircle, XCircle, ShieldOff, Send, Clock } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle, XCircle, ShieldOff, Send, Clock, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 
 interface TextBlastDetailProps {
   blastId: string;
