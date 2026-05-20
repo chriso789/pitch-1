@@ -792,6 +792,7 @@ Deno.serve(async (req) => {
         ];
 
         const testShipTo = (params as any).ship_to || {
+          name: "PITCH Integration Test",
           addressLine1: "4063 Fonsica Ave",
           addressLine2: "",
           addressLine3: "",
