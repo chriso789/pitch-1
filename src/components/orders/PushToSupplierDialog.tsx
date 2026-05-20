@@ -449,12 +449,14 @@ export function PushToSupplierDialog({
             .map(i => persistSku(i, i.srs_item_code!.trim())),
         );
 
-        const mappedItems = catalogResolvedItems.filter(i => i.srs_item_code && Number(i.quantity) > 0);
-        const unmappedItems = catalogResolvedItems.filter(i => !i.srs_item_code && Number(i.quantity) > 0);
+        // Send ALL items (mapped + unmapped). Unmapped lines go in with srs_product_id=null
+        // so the SRS rep sees the product name/qty and assigns a SKU on their end.
+        const allItems = catalogResolvedItems.filter(i => Number(i.quantity) > 0);
+        const unmappedItems = allItems.filter(i => !i.srs_item_code);
 
-        const itemsPayload = mappedItems.map(i => ({
+        const itemsPayload = allItems.map(i => ({
           order_id: orderRow.id,
-          srs_product_id: Number(i.srs_item_code),
+          srs_product_id: i.srs_item_code ? Number(i.srs_item_code) : null,
           product_name: i.item_name,
           product_description: i.description || i.item_name,
           quantity: Number(i.quantity),
@@ -468,26 +470,15 @@ export function PushToSupplierDialog({
           if (itemsErr) throw itemsErr;
         }
 
-        // Append unmapped item names to notes so the SRS rep can add them manually.
+        // Append unmapped item names to notes as an explicit callout for the SRS rep.
         if (unmappedItems.length) {
           const unmappedNote =
-            'Items pending SKU mapping (please add):\n' +
+            'Items pending SKU mapping (please assign SRS productId):\n' +
             unmappedItems
               .map(i => `- ${i.item_name} — ${i.quantity} ${(i.unit || 'EA').toUpperCase()}`)
               .join('\n');
           const mergedNotes = [notes?.trim(), unmappedNote].filter(Boolean).join('\n\n');
           await supabase.from('srs_orders').update({ notes: mergedNotes }).eq('id', orderRow.id);
-
-          if (!itemsPayload.length) {
-            toast({
-              title: 'Saved as draft — no SRS SKUs',
-              description: 'SRS requires at least one mapped SKU to accept the order. The full item list was saved to the order notes for manual entry.',
-            });
-            onSubmitted?.();
-            onOpenChange(false);
-            setSubmitting(false);
-            return;
-          }
         }
 
         // 2. Submit through the proxy
