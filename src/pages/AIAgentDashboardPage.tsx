@@ -100,7 +100,3 @@ export default function AIAgentDashboardPage() {
     </GlobalLayout>
   );
 }
-      </div>
-    </GlobalLayout>
-  );
-}
