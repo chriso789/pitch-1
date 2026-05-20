@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { safeStorageUpload } from "@/lib/storage/safeUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -82,7 +83,11 @@ export default function BlueprintsPage() {
     try {
       const docId = crypto.randomUUID();
       const path = `${tenantId}/${docId}/${file.name}`;
-      const { error: upErr } = await supabase.storage.from("blueprints").upload(path, file, {
+      const { error: upErr } = await safeStorageUpload({
+        bucket: "blueprints",
+        path,
+        file,
+        tenantId,
         contentType: "application/pdf",
         upsert: false,
       });
