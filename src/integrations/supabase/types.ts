@@ -51528,6 +51528,7 @@ export type Database = {
         }
         Returns: string
       }
+      prune_log_tables: { Args: never; Returns: undefined }
       recalculate_change_order_totals: {
         Args: { _co_id: string }
         Returns: undefined
