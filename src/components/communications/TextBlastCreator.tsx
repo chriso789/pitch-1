@@ -69,13 +69,39 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!selectedListId,
   });
 
+  // Fetch SMS templates (smart-tag enabled, used for MSFH-style rotation pools)
+  const { data: templates } = useQuery({
+    queryKey: ['sms-templates', activeTenantId],
+    queryFn: async () => {
+      if (!activeTenantId) return [];
+      const { data, error } = await supabase
+        .from('sms_templates')
+        .select('id, template_name, template_body, category, goal')
+        .eq('tenant_id', activeTenantId)
+        .eq('active', true)
+        .order('template_name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeTenantId,
+  });
+
   const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
 
-  const previewMessage = script
-    .replace(/\{\{first_name\}\}/gi, sendMode === 'single' ? (manualName.split(' ')[0] || 'Friend') : 'John')
-    .replace(/\{\{last_name\}\}/gi, sendMode === 'single' ? (manualName.split(' ').slice(1).join(' ') || '') : 'Smith')
-    .replace(/\{\{full_name\}\}/gi, sendMode === 'single' ? (manualName || 'Friend') : 'John Smith')
-    .replace(/\{\{phone\}\}/gi, manualPhone || '+15551234567');
+  // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
+  const sampleCtx = sendMode === 'single' && (manualName || manualPhone)
+    ? {
+        ...SAMPLE_TAG_CONTEXT,
+        contact: {
+          ...SAMPLE_TAG_CONTEXT.contact,
+          first_name: manualName.split(' ')[0] || SAMPLE_TAG_CONTEXT.contact?.first_name,
+          last_name: manualName.split(' ').slice(1).join(' ') || SAMPLE_TAG_CONTEXT.contact?.last_name,
+          phone: manualPhone || SAMPLE_TAG_CONTEXT.contact?.phone,
+        },
+      }
+    : SAMPLE_TAG_CONTEXT;
+
+  const previewMessage = resolveSmsTags(script, sampleCtx);
 
   const hasStopClause = /stop/i.test(script);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
