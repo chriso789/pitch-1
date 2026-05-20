@@ -375,6 +375,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardContent>
           </Card>
 
+          <div className="flex gap-2">
 
             <Button
               onClick={handleSend}
