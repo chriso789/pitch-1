@@ -294,7 +294,7 @@ Deno.serve(async (req) => {
     // Credential write actions: must run BEFORE we require an existing row.
     // ------------------------------------------------------------------
     if (action === "save_credentials" || action === "rotate_credentials") {
-      const { client_id, client_secret, customer_code, environment } = params as Record<string, string>;
+      const { client_id, client_secret, customer_code, environment, integration_key, default_branch_code } = params as Record<string, string>;
       if (!client_id || !client_secret) {
         await audit({ tenant_id, action, success: false, error: "missing client_id/client_secret" });
         return new Response(JSON.stringify({ error: "client_id and client_secret required" }), {
@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
       const nowIso = new Date().toISOString();
 
       const { data: existing } = await supabase
-        .from("srs_connections").select("id").eq("tenant_id", tenant_id).maybeSingle();
+        .from("srs_connections").select("id, integration_key, default_branch_code").eq("tenant_id", tenant_id).maybeSingle();
 
       const payload: Record<string, unknown> = {
         tenant_id,
@@ -322,6 +322,19 @@ Deno.serve(async (req) => {
         last_error: null,
       };
 
+      // Preserve the integration key across rotations; only overwrite if a new
+      // one was explicitly supplied. Same for default branch.
+      if (typeof integration_key === "string" && integration_key.trim()) {
+        payload.integration_key = integration_key.trim();
+      } else if (existing?.integration_key) {
+        payload.integration_key = existing.integration_key;
+      }
+      if (typeof default_branch_code === "string" && default_branch_code.trim()) {
+        payload.default_branch_code = default_branch_code.trim().toUpperCase();
+      } else if (existing?.default_branch_code) {
+        payload.default_branch_code = existing.default_branch_code;
+      }
+
       let connId: string | null = existing?.id ?? null;
       if (existing) {
         const { error } = await supabase.from("srs_connections").update(payload).eq("id", existing.id);
@@ -331,11 +344,42 @@ Deno.serve(async (req) => {
         if (error) throw error;
         connId = data.id;
       }
-      await audit({ tenant_id, connection_id: connId, action, success: true, metadata: { last_four: last4, environment } });
+      await audit({ tenant_id, connection_id: connId, action, success: true, metadata: { last_four: last4, environment, integration_key_saved: !!payload.integration_key, default_branch_code: payload.default_branch_code } });
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Lightweight settings update — does not touch credentials.
+    if (action === "update_connection_settings") {
+      const { default_branch_code, integration_key } = params as Record<string, string>;
+      const patch: Record<string, unknown> = {};
+      if (typeof default_branch_code === "string" && default_branch_code.trim()) {
+        patch.default_branch_code = default_branch_code.trim().toUpperCase();
+      }
+      if (typeof integration_key === "string") {
+        patch.integration_key = integration_key.trim() || null;
+      }
+      if (!Object.keys(patch).length) {
+        return new Response(JSON.stringify({ error: "no fields to update" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: existing } = await supabase
+        .from("srs_connections").select("id").eq("tenant_id", tenant_id).maybeSingle();
+      if (!existing) {
+        return new Response(JSON.stringify({ error: "SRS connection not configured" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { error } = await supabase.from("srs_connections").update(patch).eq("id", existing.id);
+      if (error) throw error;
+      await audit({ tenant_id, connection_id: existing.id, action: "update_connection_settings", success: true, metadata: patch });
+      return new Response(JSON.stringify({ success: true, patch }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
 
     if (action === "revoke_credentials") {
       const { data: existing } = await supabase
