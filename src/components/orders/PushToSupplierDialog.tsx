@@ -7,7 +7,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Truck, Loader2, Package, AlertCircle } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Truck, Loader2, Package, AlertCircle, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
@@ -69,6 +71,9 @@ export function PushToSupplierDialog({
   const [notes, setNotes] = useState('');
   const [editableItems, setEditableItems] = useState<MaterialItem[]>(items);
   const [submitting, setSubmitting] = useState(false);
+  const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
+  const [srsCatalogLoading, setSrsCatalogLoading] = useState(false);
+  const [srsCatalogBranch, setSrsCatalogBranch] = useState<string>('');
 
   useEffect(() => {
     setEditableItems(items);
@@ -317,6 +322,34 @@ export function PushToSupplierDialog({
     const next = key === 'srs' ? await resolveSrsCatalogSkus(resolved, nextBranch) : resolved;
     setEditableItems(next);
   };
+
+  // Lazy-load the SRS branch catalog so users can manually look up productIds
+  // for items the auto-resolver missed.
+  const loadSrsCatalog = async (branch: string) => {
+    if (!tenantId || !branch.trim()) return;
+    if (srsCatalogBranch === branch.trim() && srsCatalog.length) return;
+    setSrsCatalogLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: { action: 'get_products', tenant_id: tenantId, branch_code: branch.trim() },
+      });
+      if (error) throw error;
+      const products = Array.isArray(data?.products) ? data.products : [];
+      setSrsCatalog(products);
+      setSrsCatalogBranch(branch.trim());
+    } catch (e) {
+      console.warn('[PushToSupplier] catalog load failed', e);
+    } finally {
+      setSrsCatalogLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selected === 'srs' && branchCode.trim()) {
+      loadSrsCatalog(branchCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, branchCode]);
 
   const parseAddress = (raw: string) => {
     const m = raw.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
@@ -729,13 +762,68 @@ export function PushToSupplierDialog({
                                 </div>
                               </td>
                               <td className="p-2">
-                                <Input
-                                  value={it.srs_item_code || ''}
-                                  onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
-                                  onBlur={async e => persistSku(it, e.target.value.trim() || null)}
-                                  placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
-                                  className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
-                                />
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    value={it.srs_item_code || ''}
+                                    onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
+                                    onBlur={async e => persistSku(it, e.target.value.trim() || null)}
+                                    placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
+                                    className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
+                                  />
+                                  {selected === 'srs' && (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="icon"
+                                          className="h-7 w-7 shrink-0"
+                                          title="Search SRS catalog"
+                                          onClick={() => loadSrsCatalog(branchCode)}
+                                        >
+                                          {srsCatalogLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-96 p-0" align="start">
+                                        <Command
+                                          filter={(value, search) => {
+                                            const s = search.toLowerCase();
+                                            return value.toLowerCase().includes(s) ? 1 : 0;
+                                          }}
+                                        >
+                                          <CommandInput placeholder={`Search ${branchCode || 'SRS'} catalog…`} defaultValue={it.item_name} />
+                                          <CommandList>
+                                            <CommandEmpty>
+                                              {srsCatalogLoading ? 'Loading catalog…' : srsCatalog.length ? 'No matches.' : 'Catalog not loaded.'}
+                                            </CommandEmpty>
+                                            <CommandGroup heading={`${srsCatalog.length} products`}>
+                                              {srsCatalog.slice(0, 500).map((p: any) => {
+                                                const pid = String(p.productId ?? p.productNumber ?? '');
+                                                const name = String(p.productName ?? p.description ?? '');
+                                                const opt = p.option ? ` — ${p.option}` : '';
+                                                const uom = p.uom ? ` [${p.uom}]` : '';
+                                                return (
+                                                  <CommandItem
+                                                    key={`${pid}-${name}`}
+                                                    value={`${pid} ${name}${opt}`}
+                                                    onSelect={() => {
+                                                      updateItem(i, { srs_item_code: pid });
+                                                      persistSku(it, pid);
+                                                    }}
+                                                    className="text-xs"
+                                                  >
+                                                    <span className="font-mono mr-2 text-muted-foreground">{pid}</span>
+                                                    <span className="truncate">{name}{opt}{uom}</span>
+                                                  </CommandItem>
+                                                );
+                                              })}
+                                            </CommandGroup>
+                                          </CommandList>
+                                        </Command>
+                                      </PopoverContent>
+                                    </Popover>
+                                  )}
+                                </div>
                               </td>
                               <td className="p-2 text-right">
                                 <Input
