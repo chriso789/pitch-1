@@ -119,6 +119,8 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
 
     const unified: UnifiedOrder[] = [];
     (srsRes.data || []).forEach((o: any) => {
+      // Hide pure drafts (never submitted)
+      if ((o.status || '').toLowerCase() === 'draft' && !o.srs_order_id) return;
       unified.push({
         id: `srs:${o.id}`,
         rawId: o.id,
