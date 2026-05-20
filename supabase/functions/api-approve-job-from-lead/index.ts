@@ -109,28 +109,42 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create project record (for Production board)
-    const projectData = {
-      tenant_id: profile.tenant_id,
-      pipeline_entry_id: pipelineEntryId,
-      name: jobDetails?.name || `${pipelineEntry.contacts?.first_name} ${pipelineEntry.contacts?.last_name} - ${pipelineEntry.contacts?.address_street}`,
-      description: jobDetails?.description || `Project created from pipeline entry for ${pipelineEntry.roof_type}`,
-      status: 'active',
-      created_by: user.id
-    };
-
-    const { data: newProject, error: projectError } = await supabase
+    // Reuse existing project for this pipeline entry if one already exists
+    // (DB trigger create_production_workflow may have created it, or a prior
+    // approval attempt partially completed).
+    const { data: existingProject } = await supabase
       .from('projects')
-      .insert(projectData)
-      .select()
-      .single();
+      .select('*')
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .eq('tenant_id', profile.tenant_id)
+      .maybeSingle();
 
-    if (projectError) {
-      console.error('Error creating project:', projectError);
-      return new Response(JSON.stringify({ error: 'Failed to create project' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let newProject: any = existingProject;
+
+    if (!newProject) {
+      const projectData = {
+        tenant_id: profile.tenant_id,
+        pipeline_entry_id: pipelineEntryId,
+        name: jobDetails?.name || `${pipelineEntry.contacts?.first_name} ${pipelineEntry.contacts?.last_name} - ${pipelineEntry.contacts?.address_street}`,
+        description: jobDetails?.description || `Project created from pipeline entry for ${pipelineEntry.roof_type}`,
+        status: 'active',
+        created_by: user.id
+      };
+
+      const { data: insertedProject, error: projectError } = await supabase
+        .from('projects')
+        .insert(projectData)
+        .select()
+        .single();
+
+      if (projectError) {
+        console.error('Error creating project:', projectError);
+        return new Response(JSON.stringify({ error: 'Failed to create project' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      newProject = insertedProject;
     }
 
     // Update pipeline entry status to 'project'
