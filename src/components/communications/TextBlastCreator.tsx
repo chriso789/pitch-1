@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle, Sparkles, FileText } from 'lucide-react';
 import { TextBlastListBuilder } from './TextBlastListBuilder';
+import { resolveSmsTags, SAMPLE_TAG_CONTEXT, SMS_AVAILABLE_TAGS } from '@/lib/smartTags/smsTagResolver';
 
 interface TextBlastCreatorProps {
   onBack: () => void;
@@ -33,6 +34,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showListBuilder, setShowListBuilder] = useState(false);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+  const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
+  const [goal, setGoal] = useState<string>('');
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
@@ -65,13 +69,39 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!selectedListId,
   });
 
+  // Fetch SMS templates (smart-tag enabled, used for MSFH-style rotation pools)
+  const { data: templates } = useQuery({
+    queryKey: ['sms-templates', activeTenantId],
+    queryFn: async () => {
+      if (!activeTenantId) return [];
+      const { data, error } = await supabase
+        .from('sms_templates')
+        .select('id, template_name, template_body, category, goal')
+        .eq('tenant_id', activeTenantId)
+        .eq('active', true)
+        .order('template_name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeTenantId,
+  });
+
   const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
 
-  const previewMessage = script
-    .replace(/\{\{first_name\}\}/gi, sendMode === 'single' ? (manualName.split(' ')[0] || 'Friend') : 'John')
-    .replace(/\{\{last_name\}\}/gi, sendMode === 'single' ? (manualName.split(' ').slice(1).join(' ') || '') : 'Smith')
-    .replace(/\{\{full_name\}\}/gi, sendMode === 'single' ? (manualName || 'Friend') : 'John Smith')
-    .replace(/\{\{phone\}\}/gi, manualPhone || '+15551234567');
+  // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
+  const sampleCtx = sendMode === 'single' && (manualName || manualPhone)
+    ? {
+        ...SAMPLE_TAG_CONTEXT,
+        contact: {
+          ...SAMPLE_TAG_CONTEXT.contact,
+          first_name: manualName.split(' ')[0] || SAMPLE_TAG_CONTEXT.contact?.first_name,
+          last_name: manualName.split(' ').slice(1).join(' ') || SAMPLE_TAG_CONTEXT.contact?.last_name,
+          phone: manualPhone || SAMPLE_TAG_CONTEXT.contact?.phone,
+        },
+      }
+    : SAMPLE_TAG_CONTEXT;
+
+  const previewMessage = resolveSmsTags(script, sampleCtx);
 
   const hasStopClause = /stop/i.test(script);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
@@ -97,6 +127,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             total_recipients: 1,
             daily_send_limit: dailyLimit,
             status: 'draft',
+            template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
+            ai_followup_enabled: aiFollowupEnabled,
+            goal: goal || null,
           })
           .select()
           .single();
@@ -139,6 +172,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             total_recipients: listItems!.length,
             daily_send_limit: dailyLimit,
             status: 'draft',
+            template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
+            ai_followup_enabled: aiFollowupEnabled,
+            goal: goal || null,
           })
           .select()
           .single();
@@ -295,6 +331,93 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
           <Card>
             <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Templates & Smart Tags
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label>Campaign Goal</Label>
+                <Select value={goal || 'none'} onValueChange={(v) => setGoal(v === 'none' ? '' : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a goal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">General outreach</SelectItem>
+                    <SelectItem value="msfh_grant">My Safe Florida Home (MSFH) Grant</SelectItem>
+                    <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
+                    <SelectItem value="dormant_reactivation">Dormant Lead Reactivation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Template Rotation Pool (optional)</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Pick 2+ templates to randomly rotate per recipient — reduces carrier spam flags. Leave empty to use the single Message Script below.
+                </p>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto rounded-md border border-border p-2">
+                  {!templates?.length && (
+                    <p className="text-xs text-muted-foreground italic px-1 py-2">No templates yet for this tenant.</p>
+                  )}
+                  {templates?.filter((t: any) => !goal || !t.goal || t.goal === goal).map((t: any) => {
+                    const checked = selectedTemplateIds.includes(t.id);
+                    return (
+                      <label key={t.id} className="flex items-start gap-2 p-1.5 rounded hover:bg-muted/50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedTemplateIds((prev) =>
+                              e.target.checked ? [...prev, t.id] : prev.filter((id) => id !== t.id)
+                            );
+                            if (e.target.checked && !script.trim()) setScript(t.template_body);
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium truncate">{t.template_name}</span>
+                            {t.category && <Badge variant="outline" className="text-[10px] py-0">{t.category}</Badge>}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2">{t.template_body}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-[11px] h-6 px-2"
+                          onClick={(e) => { e.preventDefault(); setScript(t.template_body); }}
+                        >
+                          Use
+                        </Button>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border border-border p-2.5">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 text-primary mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium">AI Follow-up Agent</p>
+                    <p className="text-[11px] text-muted-foreground">Consultative auto-replies on positive intent (MSFH-aware)</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={aiFollowupEnabled}
+                  onChange={(e) => setAiFollowupEnabled(e.target.checked)}
+                  className="h-4 w-4"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
               <CardTitle className="text-base">Message Script</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -302,16 +425,24 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 <Label htmlFor="script">Message</Label>
                 <Textarea
                   id="script"
-                  placeholder="Hi {{first_name}}, this is your roofing team..."
+                  placeholder="Hi {{contact.first_name}}, this is {{assigned_user.first_name}} with {{company.name}}..."
                   value={script}
                   onChange={(e) => setScript(e.target.value)}
-                  rows={5}
+                  rows={6}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Variables: <code className="px-1 bg-muted rounded">{'{{first_name}}'}</code>{' '}
-                  <code className="px-1 bg-muted rounded">{'{{last_name}}'}</code>{' '}
-                  <code className="px-1 bg-muted rounded">{'{{full_name}}'}</code>
-                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {SMS_AVAILABLE_TAGS.map((t) => (
+                    <button
+                      key={t.tag}
+                      type="button"
+                      onClick={() => setScript((s) => s + (s.endsWith(' ') || !s ? '' : ' ') + t.tag)}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/70 font-mono"
+                      title={t.label}
+                    >
+                      {t.tag}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {!hasStopClause && script.trim() && (
@@ -324,6 +455,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               )}
             </CardContent>
           </Card>
+
 
           <Card>
             <CardHeader className="pb-3">
