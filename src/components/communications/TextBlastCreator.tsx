@@ -127,6 +127,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             total_recipients: 1,
             daily_send_limit: dailyLimit,
             status: 'draft',
+            template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
+            ai_followup_enabled: aiFollowupEnabled,
+            goal: goal || null,
           })
           .select()
           .single();
