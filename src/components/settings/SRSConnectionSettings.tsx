@@ -98,7 +98,7 @@ export function SRSConnectionSettings() {
     try {
       const { data, error } = await (supabase as any)
         .from('srs_connections')
-        .select('id, tenant_id, customer_code, client_id, client_secret_last_four, client_secret_rotated_at, connection_status, last_validated_at, last_error, job_account_number, default_branch_code, valid_indicator, environment')
+        .select('id, tenant_id, customer_code, client_id, client_secret_last_four, client_secret_rotated_at, connection_status, last_validated_at, last_error, job_account_number, default_branch_code, integration_key, valid_indicator, environment')
         .eq('tenant_id', activeCompanyId)
         .maybeSingle();
 
@@ -109,6 +109,7 @@ export function SRSConnectionSettings() {
         setClientSecret('');
         setCustomerCode(data.customer_code || '');
         setEnvironment(data.environment || 'staging');
+        setIntegrationKey(data.integration_key || '');
       }
     } catch (error) {
       console.error('Failed to load SRS connection:', error);
@@ -116,6 +117,7 @@ export function SRSConnectionSettings() {
       setLoading(false);
     }
   };
+
 
   const loadAudit = async () => {
     try {
