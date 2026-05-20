@@ -20,6 +20,7 @@ import { GlobalSoftphone } from '@/components/communications/GlobalSoftphone';
 import { SoftphonePanel } from '@/components/telephony/SoftphonePanel';
 import { EmailActivityDashboard } from '@/components/communications/EmailActivityDashboard';
 import { TextBlastManager } from '@/components/communications/TextBlastManager';
+import { CallDetailPanel } from '@/components/communications/CallDetailPanel';
 import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommunications';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
