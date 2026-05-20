@@ -88,6 +88,15 @@ async function processBlast(
   serviceKey: string,
   supabaseUrl: string,
 ) {
+  // 0. Quiet-hours gate — skip this tick if outside configured send window
+  if (!isWithinSendWindow(blast)) {
+    await supabase
+      .from('sms_blasts')
+      .update({ last_processor_run_at: new Date().toISOString() })
+      .eq('id', blast.id);
+    return { blast_id: blast.id, skipped: 'outside_send_window' };
+  }
+
   // 1. Resolve sending capacity from active SMS-capable locations
   const { data: numbers } = await supabase
     .from('locations')
