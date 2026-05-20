@@ -29,6 +29,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
   const [script, setScript] = useState('');
+  const [dailyLimit, setDailyLimit] = useState<number>(100);
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showListBuilder, setShowListBuilder] = useState(false);
