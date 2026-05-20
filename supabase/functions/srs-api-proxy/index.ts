@@ -952,6 +952,7 @@ Deno.serve(async (req) => {
                   }
                   if (!derivedShipTo && contact.address_street) {
                     derivedShipTo = {
+                      name,
                       addressLine1: contact.address_street,
                       addressLine2: "", addressLine3: "",
                       city: contact.address_city || "",
