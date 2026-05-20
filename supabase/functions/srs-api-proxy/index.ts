@@ -99,10 +99,11 @@ function buildSubmitOrderPayload(args: {
         productName: i.productName ?? "",
         option: i.option ?? "",
         quantity: Number(i.quantity),
-        uom: String(i.uom || "EA").trim(),
+        uom: normalizeUom(i.uom),
         customerItem: i.customerItem ?? "",
       };
     }),
+
     customerContactInfo: args.customerContact ?? {},
   };
   // jobAccountNumber kept only when present — some SRS flows still echo it.
@@ -131,6 +132,57 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
       return "Delivery";
   }
 }
+
+/**
+ * Normalize free-text UOM values from estimate line items into the codes
+ * SRS accepts. SRS's async validator silently drops orders with unknown UOMs
+ * (e.g. "EACH" instead of "EA"), so this mapping is required before submit.
+ */
+function normalizeUom(raw: string | null | undefined): string {
+  const v = String(raw || "EA").trim().toUpperCase();
+  const map: Record<string, string> = {
+    "EACH": "EA",
+    "EA.": "EA",
+    "PC": "EA",
+    "PCS": "EA",
+    "PIECE": "EA",
+    "PIECES": "EA",
+    "UNIT": "EA",
+    "UNITS": "EA",
+    "BOX": "BX",
+    "BOXES": "BX",
+    "BUNDLE": "BDL",
+    "BUNDLES": "BDL",
+    "BDLS": "BDL",
+    "BD": "BDL",
+    "ROLL": "RL",
+    "ROLLS": "RL",
+    "SQUARE": "SQ",
+    "SQUARES": "SQ",
+    "SQS": "SQ",
+    "SHEET": "SHT",
+    "SHEETS": "SHT",
+    "LINEAL FOOT": "LF",
+    "LINEAR FOOT": "LF",
+    "LINEAL FEET": "LF",
+    "LINEAR FEET": "LF",
+    "LFT": "LF",
+    "FT": "LF",
+    "FOOT": "LF",
+    "FEET": "LF",
+    "GAL": "GA",
+    "GALLON": "GA",
+    "GALLONS": "GA",
+    "PAIL": "PL",
+    "PAILS": "PL",
+    "BAG": "BG",
+    "BAGS": "BG",
+    "TUBE": "TB",
+    "TUBES": "TB",
+  };
+  return map[v] || v;
+}
+
 
 function normalizeCustomerBranchLocations(branchData: any): any[] {
   if (Array.isArray(branchData)) return branchData;
@@ -701,7 +753,13 @@ Deno.serve(async (req) => {
 
         const janRaw = connection.job_account_number;
         let jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        // Reject the legacy stub value of 1 — SRS silently queue-drops orders
+        // submitted with a placeholder JAN. Force re-validation instead.
+        if (jan === 1) {
+          jan = NaN;
+        }
         if (!jan || Number.isNaN(jan)) {
+
           // Auto-recover: fetch JAN from customerBranchLocations using the order's branch.
           const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRFTL").trim();
           try {
