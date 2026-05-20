@@ -618,9 +618,19 @@ Deno.serve(async (req) => {
             valid_indicator: isValid,
             last_validated_at: new Date().toISOString(),
             last_error: isValid ? null : validationDetail,
-            default_branch_code: defaultBranch,
           };
+          // Persist the integration_key on a successful validation so it
+          // can be reused without re-typing.
+          if (isValid && ikRaw && ikRaw.trim()) {
+            connectionUpdate.integration_key = ikRaw.trim();
+          }
+          // Only seed default_branch_code from SRS if the user hasn't set one
+          // explicitly yet. Once set, preserve the user's override.
+          if (defaultBranch && !connection.default_branch_code) {
+            connectionUpdate.default_branch_code = defaultBranch;
+          }
           if (jobAccountNumber && jobAccountNumber > 1) connectionUpdate.job_account_number = jobAccountNumber;
+
 
           // Update connection status without wiping an existing JAN when SRS omits it.
           await supabase
