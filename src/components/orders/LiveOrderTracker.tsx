@@ -208,7 +208,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     if (!tenantId || !projectId) return;
     const channel = supabase
       .channel(`orders-${projectId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_orders', filter: `project_id=eq.${projectId}` }, () => fetchOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_orders' }, () => fetchOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_order_status_history' }, () => fetchOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_order_documents' }, () => fetchOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'qxo_orders' }, () => fetchOrders())
