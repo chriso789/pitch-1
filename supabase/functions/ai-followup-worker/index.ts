@@ -62,13 +62,21 @@ async function generateReply(
   inboundBody: string,
   intent: string,
   contact: any,
+  history: Array<{ direction: string; body: string }>,
 ): Promise<string | null> {
+  const historyText = history.length
+    ? history.map((m) => `${m.direction === 'inbound' ? 'Homeowner' : 'You'}: ${m.body}`).join('\n')
+    : '(no prior messages)';
+
   const userContext = `Homeowner ${contact?.first_name || 'there'} replied: "${inboundBody}"
 
 Classified intent: ${intent}
 Property: ${contact?.address_street || 'unknown'}, ${contact?.address_city || ''}, FL
 
-Write a short consultative SMS reply.`;
+Recent conversation (oldest first):
+${historyText}
+
+Write a short consultative SMS reply that naturally continues the conversation. Do not repeat prior messages.`;
 
   const res = await fetch(LOVABLE_AI_URL, {
     method: 'POST',
@@ -89,6 +97,7 @@ Write a short consultative SMS reply.`;
   const txt = String(json?.choices?.[0]?.message?.content || '').trim();
   return txt || null;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
