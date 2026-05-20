@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
 import { PushToSupplierButton } from '@/components/orders/PushToSupplierButton';
+import { ShareMaterialsButton } from '@/components/orders/ShareMaterialsButton';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
@@ -742,6 +743,21 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         requires_color: !!(li.requires_color ?? li.metadata?.requires_color),
                       }))}
                     />
+                    <ShareMaterialsButton
+                      items={lineItems.map((li: any) => ({
+                        item_name: li.item_name,
+                        qty: Number(li.qty || 0),
+                        unit: li.unit || 'EA',
+                        unit_cost: Number(li.unit_cost || 0),
+                        srs_item_code: li.srs_item_code || li.product_code,
+                        notes: li.notes,
+                      }))}
+                      totalAmount={sectionTotal}
+                      customerName={customerName}
+                      projectAddress={projectAddress}
+                      jobNumber={jobNumber}
+                      companyName={companyInfo?.name}
+                    />
                   </>
                 )}
                 {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
@@ -786,15 +802,17 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
           </div>
         </div>
       ) : lineItems.length > 0 ? (
-        <div className="mt-4">
+        <div className="mt-3 flex justify-end">
           <AlertDialog open={showLockDialog} onOpenChange={setShowLockDialog}>
             <AlertDialogTrigger asChild>
-              <Button 
-                className="w-full bg-green-600 hover:bg-green-700 text-white"
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800 dark:text-green-400 dark:border-green-700 dark:hover:bg-green-950/40"
                 disabled={lineItems.length === 0}
               >
-                <Lock className="h-4 w-4 mr-2" />
-                Save & Lock Original {sectionType === 'material' ? 'Material' : 'Labor'} Cost
+                <Lock className="h-3.5 w-3.5 mr-1.5" />
+                Lock {sectionType === 'material' ? 'Material' : 'Labor'} Baseline
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
