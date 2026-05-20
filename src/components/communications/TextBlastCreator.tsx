@@ -325,7 +325,57 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardContent>
           </Card>
 
-          <div className="flex gap-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Throttle & Verification Agents
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="daily-limit">Max Sends Per Day</Label>
+                <Input
+                  id="daily-limit"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={dailyLimit}
+                  onChange={(e) => setDailyLimit(Math.max(1, Number(e.target.value) || 0))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The processor will pause after {dailyLimit} sends in a rolling 24-hour window.
+                  {recipientCount > dailyLimit && (
+                    <> Will take ~{Math.ceil(recipientCount / dailyLimit)} day(s) to complete.</>
+                  )}
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-border">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Active Agents
+                </p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-medium">Delivery Verifier</span>
+                      <span className="text-muted-foreground"> — tracks which numbers received, delivered, and replied (via Telnyx status webhook).</span>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-medium">Routing Verifier</span>
+                      <span className="text-muted-foreground"> — confirms each number maps to the intended contact, and routes inbound replies back to that contact's timeline.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+
             <Button
               onClick={handleSend}
               disabled={sending || !isValid}
