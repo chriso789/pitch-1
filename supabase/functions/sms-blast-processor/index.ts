@@ -28,6 +28,60 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+// Returns true if the current time is within the blast's send window.
+// Defaults: 09:00 - 18:00 in America/New_York.
+function isWithinSendWindow(blast: any): boolean {
+  const tz = blast.timezone || 'America/New_York';
+  const startStr = (blast.send_window_start || '09:00:00') as string;
+  const endStr = (blast.send_window_end || '18:00:00') as string;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit',
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hh = Number(parts.find(p => p.type === 'hour')?.value || '0');
+    const mm = Number(parts.find(p => p.type === 'minute')?.value || '0');
+    const now = hh * 60 + mm;
+    const [sh, sm] = startStr.split(':').map(Number);
+    const [eh, em] = endStr.split(':').map(Number);
+    const start = sh * 60 + (sm || 0);
+    const end = eh * 60 + (em || 0);
+    return now >= start && now < end;
+  } catch {
+    return true; // fail open
+  }
+}
+
+// Pick a from-number that best matches the recipient's area code.
+// FL preset: 941 (west coast) vs 561 (east coast). Otherwise area-code match,
+// otherwise fall back to round-robin.
+function pickFromNumber(
+  toE164: string,
+  activeNumbers: any[],
+  cursor: number,
+): any {
+  if (!activeNumbers.length) return null;
+  const digits = toE164.replace(/\D/g, '');
+  // US format: +1XXXYYYZZZZ → area code is digits[1..4]
+  const area = digits.length === 11 && digits.startsWith('1') ? digits.slice(1, 4) : null;
+
+  if (area) {
+    // FL coast preset: route 941 area codes (west) to a 941 number; 561/east to 561
+    const preferred = area === '941' || area === '239' || area === '813'
+      ? activeNumbers.find(n => String(n.telnyx_phone_number).includes('941'))
+      : area === '561' || area === '954' || area === '305' || area === '786'
+        ? activeNumbers.find(n => String(n.telnyx_phone_number).includes('561'))
+        : null;
+    if (preferred) return preferred;
+
+    // Otherwise: prefer an exact area-code match
+    const match = activeNumbers.find(n => String(n.telnyx_phone_number).includes(area));
+    if (match) return match;
+  }
+
+  return activeNumbers[cursor % activeNumbers.length];
+}
+
 async function processBlast(
   supabase: ReturnType<typeof createClient>,
   blast: any,
