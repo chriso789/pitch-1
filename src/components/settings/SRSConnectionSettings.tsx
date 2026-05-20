@@ -504,9 +504,35 @@ export function SRSConnectionSettings() {
                 <p className="font-medium">{connection.job_account_number || '—'}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Default Branch</span>
-                <p className="font-medium">{connection.default_branch_code || '—'}</p>
+                <span className="text-muted-foreground flex items-center gap-1">
+                  Default Branch {savingBranch && <Loader2 className="h-3 w-3 animate-spin" />}
+                </span>
+                {branches.length > 0 ? (
+                  <Select
+                    value={connection.default_branch_code || ''}
+                    onValueChange={(v) => handleSaveBranch(v)}
+                    disabled={savingBranch}
+                  >
+                    <SelectTrigger className="h-8 mt-1">
+                      <SelectValue placeholder="Select branch" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-80">
+                      {branches.map((b) => (
+                        <SelectItem key={b.branch_code} value={b.branch_code}>
+                          <span className="font-mono mr-2">{b.branch_code}</span>
+                          <span className="text-muted-foreground">{b.branch_name || ''}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="font-medium">
+                    {connection.default_branch_code || '—'}{' '}
+                    <span className="text-xs text-muted-foreground">(sync branches to edit)</span>
+                  </p>
+                )}
               </div>
+
               <div>
                 <span className="text-muted-foreground">Last Validated</span>
                 <p className="font-medium">
