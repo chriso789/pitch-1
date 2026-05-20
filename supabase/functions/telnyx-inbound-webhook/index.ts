@@ -1,4 +1,4 @@
-// Telnyx inbound SMS webhook.
+// Telnyx inbound SMS webhook. (redeploy 2026-05-20)
 // - normalizes from/to phone numbers
 // - resolves tenant from locations.telnyx_phone_number OR phone_number_routing.system_number
 // - handles STOP/UNSUBSCRIBE/CANCEL/END/QUIT -> opt_outs + suppress remaining blast items
