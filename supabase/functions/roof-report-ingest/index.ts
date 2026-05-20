@@ -1159,7 +1159,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Resolve tenant_id from auth header for all insert paths
+    // Resolve tenant_id from auth header for all insert paths.
+    // CRITICAL: prefer profiles.active_tenant_id so a master/COB user who
+    // switched into another company (e.g. Cox Roofing) ingests under that
+    // company instead of their home tenant. Keeps dedupe scoped per-tenant
+    // so the same vendor PDF can be re-imported as a test in another tenant.
     let resolvedTenantId: string | null = null;
     let resolvedUserId: string | null = null;
     const authHeader = req.headers.get('authorization');
@@ -1170,11 +1174,15 @@ Deno.serve(async (req) => {
         resolvedUserId = user.id;
         const { data: profile } = await supabase
           .from('profiles')
-          .select('tenant_id')
+          .select('tenant_id, active_tenant_id')
           .eq('id', user.id)
           .single();
-        resolvedTenantId = profile?.tenant_id || null;
+        resolvedTenantId = profile?.active_tenant_id || profile?.tenant_id || null;
       }
+    }
+    // Optional explicit override from caller (must be a tenant the user can access via RLS)
+    if (typeof body?.tenant_id === 'string' && body.tenant_id.length > 0) {
+      resolvedTenantId = body.tenant_id;
     }
 
     // Check if this is an image file (JPEG, PNG, HEIC)
