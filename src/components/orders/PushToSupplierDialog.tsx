@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Truck, Loader2, Package, AlertCircle, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,6 +49,126 @@ interface Props {
 }
 
 type DeliveryMethod = 'roof_load' | 'ground_drop' | 'pickup';
+
+const SKU_STOP_WORDS = new Set([
+  'and', 'the', 'for', 'with', 'of', 'a', 'an', 'to', 'by', 'roof', 'roofing',
+  'material', 'materials', 'item', 'product', 'standard', 'premium', 'generic',
+]);
+
+const SKU_SYNONYMS: Record<string, string[]> = {
+  bdl: ['bd', 'bundle'],
+  bd: ['bdl', 'bundle'],
+  pc: ['piece', 'ea', 'each'],
+  ea: ['pc', 'piece', 'each'],
+  shingle: ['shingles', 'laminate', 'architectural'],
+  shingles: ['shingle', 'laminate', 'architectural'],
+  ridge: ['cap', 'hip', 'ridgecap'],
+  hip: ['ridge', 'cap', 'ridgecap'],
+  cap: ['ridge', 'hip', 'ridgecap'],
+  starter: ['start', 'starterstrip'],
+  strip: ['starterstrip'],
+  underlayment: ['underlay', 'felt', 'synthetic'],
+  underlay: ['underlayment', 'felt', 'synthetic'],
+  ice: ['water', 'barrier', 'leak'],
+  water: ['ice', 'barrier', 'leak'],
+  leak: ['ice', 'water', 'barrier'],
+  drip: ['edge', 'dedge'],
+  edge: ['drip', 'dedge'],
+  nail: ['nails', 'coil'],
+  nails: ['nail', 'coil'],
+  coil: ['nail', 'nails'],
+  vent: ['ventilation', 'ridgevent'],
+  ventilation: ['vent'],
+  pipe: ['boot', 'flashing'],
+  boot: ['pipe', 'flashing'],
+  flashing: ['pipe', 'boot', 'step'],
+};
+
+const normalizeSkuText = (value: string | null | undefined) =>
+  (value || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+const singularSkuToken = (token: string) => {
+  if (token.endsWith('ies') && token.length > 4) return `${token.slice(0, -3)}y`;
+  if (token.endsWith('es') && token.length > 4) return token.slice(0, -2);
+  if (token.endsWith('s') && token.length > 4) return token.slice(0, -1);
+  return token;
+};
+
+const skuTokens = (value: string | null | undefined) =>
+  normalizeSkuText(value)
+    .split(/\s+/)
+    .map(singularSkuToken)
+    .filter((token) => token && !SKU_STOP_WORDS.has(token));
+
+const skuAcronym = (value: string | null | undefined) =>
+  skuTokens(value)
+    .filter((token) => token.length > 2)
+    .map((token) => token[0])
+    .join('');
+
+const tokenMatches = (needle: string, haystack: Set<string>) => {
+  if (haystack.has(needle)) return true;
+  const aliases = SKU_SYNONYMS[needle] || [];
+  return aliases.some((alias) => haystack.has(singularSkuToken(alias)));
+};
+
+const productText = (p: any) =>
+  `${p.productId ?? p.productNumber ?? ''} ${p.productName ?? p.description ?? ''} ${p.option ?? ''} ${p.uom ?? ''}`;
+
+const scoreSrsProductMatch = (item: MaterialItem, product: any) => {
+  const itemText = `${item.item_name} ${item.description || ''} ${item.color_specs || ''}`;
+  const itemTokens = skuTokens(itemText).filter((token) => !/^\d+$/.test(token));
+  const productTokens = skuTokens(productText(product));
+  if (!itemTokens.length || !productTokens.length) return 0;
+
+  const productSet = new Set(productTokens);
+  let totalWeight = 0;
+  let matchedWeight = 0;
+
+  for (const token of itemTokens) {
+    const important = ['shingle', 'ridge', 'hip', 'cap', 'starter', 'underlayment', 'ice', 'water', 'drip', 'edge', 'nail', 'coil', 'vent', 'boot', 'flashing'].includes(token);
+    const weight = important ? 1.35 : token.length <= 2 ? 0.35 : 1;
+    totalWeight += weight;
+    if (tokenMatches(token, productSet)) {
+      matchedWeight += weight;
+    } else if (token.length > 3 && productTokens.some((p) => p.startsWith(token) || token.startsWith(p))) {
+      matchedWeight += weight * 0.65;
+    }
+  }
+
+  let score = matchedWeight / Math.max(totalWeight, 1);
+  const normalizedProduct = normalizeSkuText(productText(product));
+  const normalizedItem = normalizeSkuText(itemText);
+  if (normalizedItem.length > 8 && normalizedProduct.includes(normalizedItem)) score += 0.2;
+  if (item.unit && normalizedProduct.split(' ').includes(normalizeSkuText(item.unit))) score += 0.06;
+  return Math.min(score, 1);
+};
+
+const bestSrsCatalogMatch = (item: MaterialItem, catalog: any[]) => {
+  const ranked = catalog
+    .map((product) => ({ product, score: scoreSrsProductMatch(item, product) }))
+    .filter((entry) => entry.product?.productId || entry.product?.productNumber)
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  const runnerUp = ranked[1];
+  const ambiguous = Boolean(best && runnerUp && best.score < 0.88 && best.score - runnerUp.score < 0.08);
+  return best ? { ...best, ambiguous } : null;
+};
+
+const autoFillSrsCatalogSkus = (base: MaterialItem[], catalog: any[]) => {
+  let matchedCount = 0;
+  const items = base.map((item) => {
+    if (item.srs_item_code) return item;
+    const best = bestSrsCatalogMatch(item, catalog);
+    const productId = best?.product?.productId ?? best?.product?.productNumber;
+    if (productId && best.score >= 0.72 && !best.ambiguous) {
+      matchedCount += 1;
+      return { ...item, srs_item_code: String(productId) };
+    }
+    return item;
+  });
+  return { items, matchedCount };
+};
 
 export function PushToSupplierDialog({
   open, onOpenChange, projectId, estimateId, jobNumber,
@@ -209,18 +328,6 @@ export function PushToSupplierDialog({
     setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
 
-  const normalizeSkuText = (value: string | null | undefined) =>
-    (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-  const tokenScore = (a: string, b: string) => {
-    const A = new Set(normalizeSkuText(a).split(' ').filter(Boolean));
-    const B = new Set(normalizeSkuText(b).split(' ').filter(Boolean));
-    if (!A.size || !B.size) return 0;
-    let hits = 0;
-    A.forEach(t => { if (B.has(t)) hits += 1; });
-    return hits / A.size;
-  };
-
   const resolveSrsCatalogSkus = async (base: MaterialItem[], branch: string) => {
     if (!tenantId || !branch.trim()) return base;
     const needsSku = base.some(i => !i.srs_item_code);
@@ -231,23 +338,7 @@ export function PushToSupplierDialog({
     });
     if (error) throw error;
     const products = Array.isArray(data?.products) ? data.products : [];
-
-    return base.map(item => {
-      if (item.srs_item_code) return item;
-      const haystack = `${item.item_name} ${item.description || ''}`;
-      let best: any = null;
-      let bestScore = 0;
-      for (const product of products) {
-        const score = tokenScore(haystack, product.productName || '');
-        if (score > bestScore) {
-          best = product;
-          bestScore = score;
-        }
-      }
-      return best?.productId && bestScore >= 0.55
-        ? { ...item, srs_item_code: String(best.productId) }
-        : item;
-    });
+    return autoFillSrsCatalogSkus(base, products).items;
   };
 
   const persistSku = async (item: MaterialItem, sku: string | null) => {
@@ -327,7 +418,10 @@ export function PushToSupplierDialog({
   // for items the auto-resolver missed.
   const loadSrsCatalog = async (branch: string) => {
     if (!tenantId || !branch.trim()) return;
-    if (srsCatalogBranch === branch.trim() && srsCatalog.length) return;
+    if (srsCatalogBranch === branch.trim() && srsCatalog.length) {
+      setEditableItems((prev) => autoFillSrsCatalogSkus(prev, srsCatalog).items);
+      return;
+    }
     setSrsCatalogLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
@@ -337,6 +431,7 @@ export function PushToSupplierDialog({
       const products = Array.isArray(data?.products) ? data.products : [];
       setSrsCatalog(products);
       setSrsCatalogBranch(branch.trim());
+      setEditableItems((prev) => autoFillSrsCatalogSkus(prev, products).items);
     } catch (e) {
       console.warn('[PushToSupplier] catalog load failed', e);
     } finally {
@@ -895,28 +990,55 @@ function CatalogSearchPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (open) setQuery('');
-  }, [open]);
+    if (!open) return;
+    setQuery(initialQuery || '');
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }, [initialQuery, open]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [query]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizeSkuText(query);
     if (!q) return catalog.slice(0, 200);
-    const tokens = q.split(/\s+/).filter(Boolean);
-    const matches: any[] = [];
-    for (const p of catalog) {
-      const pid = String(p.productId ?? p.productNumber ?? '');
-      const name = String(p.productName ?? p.description ?? '');
-      const opt = String(p.option ?? '');
-      const hay = `${pid} ${name} ${opt}`.toLowerCase();
-      if (tokens.every((t) => hay.includes(t))) {
-        matches.push(p);
-        if (matches.length >= 200) break;
-      }
-    }
-    return matches;
+    const tokens = skuTokens(q);
+    const scored = catalog
+      .map((p) => {
+        const pid = String(p.productId ?? p.productNumber ?? '');
+        const hay = normalizeSkuText(productText(p));
+        const hayTokens = new Set(skuTokens(hay));
+        const acronym = skuAcronym(productText(p));
+        const exactId = pid === q || pid.includes(q);
+        const matchesToken = (token: string) =>
+          token.length <= 2
+            ? hayTokens.has(token) || acronym.includes(token) || tokenMatches(token, hayTokens)
+            : hay.includes(token) || tokenMatches(token, hayTokens);
+        const allTokensMatch = tokens.every(matchesToken);
+        const score = exactId ? 2 : tokens.reduce((sum, token) => sum + (matchesToken(token) ? 1 : 0), 0) / Math.max(tokens.length, 1);
+        return { p, score, allTokensMatch };
+      })
+      .filter((entry) => entry.allTokensMatch || entry.score >= 0.75)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 200);
+    return scored.map((entry) => entry.p);
   }, [catalog, query]);
+
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    event.preventDefault();
+    el.scrollTop += event.deltaY;
+    el.scrollLeft += event.deltaX;
+    event.stopPropagation();
+  };
 
   return (
     <Popover
@@ -937,11 +1059,16 @@ function CatalogSearchPopover({
           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[28rem] p-0" align="start">
+      <PopoverContent
+        className="w-[min(28rem,calc(100vw-2rem))] p-0"
+        align="start"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onWheelCapture={handleWheel}
+      >
         <div className="flex items-center border-b px-3 py-2 gap-2">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
           <input
-            autoFocus
+            ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search ${branchCode || 'SRS'} catalog…`}
@@ -953,7 +1080,11 @@ function CatalogSearchPopover({
             ? 'Loading catalog…'
             : `${filtered.length}${filtered.length >= 200 ? '+' : ''} of ${catalog.length} products`}
         </div>
-        <div className="max-h-80 overflow-y-auto overscroll-contain">
+        <div
+          ref={scrollRef}
+          className="max-h-80 overflow-y-scroll overscroll-contain touch-pan-y [scrollbar-gutter:stable]"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {!loading && catalog.length === 0 && (
             <div className="p-4 text-xs text-muted-foreground">Catalog not loaded.</div>
           )}
