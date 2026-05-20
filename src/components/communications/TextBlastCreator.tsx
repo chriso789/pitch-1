@@ -137,6 +137,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: script.trim(),
             list_id: selectedListId,
             total_recipients: listItems!.length,
+            daily_send_limit: dailyLimit,
             status: 'draft',
           })
           .select()
