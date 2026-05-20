@@ -780,7 +780,7 @@ export function PushToSupplierDialog({
                   )}
                   {selected && editableItems.some(i => !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
-                      Items without a {selected.toUpperCase()} SKU will still be sent — the rep will see the product name & quantity and assign the SKU on their end. Map a SKU on the product to auto-fill next time.
+                      Items without a {selected.toUpperCase()} SKU cannot be placed automatically. Add a valid supplier SKU/productId to every line before pushing.
                     </p>
                   )}
                 </div>
