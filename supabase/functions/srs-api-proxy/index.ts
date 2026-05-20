@@ -729,23 +729,99 @@ Deno.serve(async (req) => {
           }
         }
 
+        // SRS requires non-empty customerContactInfo (name/phone/address) and a
+        // non-empty customerItem on every line. srs_orders doesn't persist
+        // contact info today, so derive it from the linked project → contact.
+        let derivedContact: SrsCustomerContact | null =
+          (order as any).customer_contact_info || null;
+        let derivedShipTo: SrsShipTo | null = order.delivery_address
+          ? parseShipToFreeform(order.delivery_address)
+          : null;
+        let derivedJobNumber: string =
+          (order as any).job_number || order.order_number || "";
+
+        try {
+          if (order.project_id) {
+            const { data: proj } = await supabase
+              .from("projects")
+              .select("job_number, pipeline_entry_id")
+              .eq("id", order.project_id)
+              .maybeSingle();
+            if (proj?.job_number) derivedJobNumber = proj.job_number;
+
+            if (proj?.pipeline_entry_id) {
+              const { data: pe } = await supabase
+                .from("pipeline_entries")
+                .select("contact_id")
+                .eq("id", proj.pipeline_entry_id)
+                .maybeSingle();
+              const contactId = (pe as any)?.contact_id;
+              if (contactId) {
+                const { data: contact } = await supabase
+                  .from("contacts")
+                  .select("first_name, last_name, company_name, phone, email, address_street, address_city, address_state, address_zip")
+                  .eq("id", contactId)
+                  .maybeSingle();
+                if (contact) {
+                  const name = [contact.first_name, contact.last_name]
+                    .filter(Boolean).join(" ").trim() || contact.company_name || "Customer";
+                  const addr = {
+                    addressLine1: contact.address_street || "",
+                    city: contact.address_city || "",
+                    state: contact.address_state || "",
+                    zipCode: contact.address_zip || "",
+                  };
+                  if (!derivedContact || !derivedContact.customerContactName) {
+                    derivedContact = {
+                      customerContactName: name,
+                      customerContactPhone: contact.phone || "",
+                      customerContactEmail: contact.email || "",
+                      customerContactAddress: addr,
+                    };
+                  }
+                  if (!derivedShipTo && contact.address_street) {
+                    derivedShipTo = {
+                      addressLine1: contact.address_street,
+                      addressLine2: "", addressLine3: "",
+                      city: contact.address_city || "",
+                      state: contact.address_state || "",
+                      zipCode: contact.address_zip || "",
+                    };
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("contact derivation failed:", (e as any)?.message || e);
+        }
+
+        // Final validation — SRS rejects empty name/phone/address.
+        if (!derivedContact?.customerContactName || !derivedContact?.customerContactPhone || !derivedContact?.customerContactAddress?.addressLine1) {
+          throw new Error(
+            "Missing customer contact info for SRS order. Add a contact name, phone, and street address on the linked lead/project, then retry Push to Supplier."
+          );
+        }
+
+        const customerItemFallback = (derivedJobNumber || order.order_number || "PITCH").toString().slice(0, 32);
+
         const orderPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
           accountNumber: String(connection.customer_code || "").trim(),
           jobAccountNumber: jan,
-          shipToSequenceNumber: Number(order.ship_to_sequence_number ?? 1),
+          shipToSequenceNumber: Number((order as any).ship_to_sequence_number ?? 1),
           branchCode: String(order.branch_code || connection.default_branch_code || "").trim(),
           // Prefix `job:` so RoofHub webhooks echo back a unique parseable PO.
           poNumber: `job:${order.order_number}`,
-          reference: order.reference || "",
-          jobNumber: order.job_number || "",
+          reference: (order as any).reference || "",
+          jobNumber: derivedJobNumber,
           orderDate: new Date().toISOString().slice(0, 10),
           expectedDeliveryDate: order.delivery_date,
-          expectedDeliveryTime: order.delivery_time_window || "Anytime",
+          expectedDeliveryTime: (order as any).delivery_time_window || "Anytime",
           shippingMethod: srsShippingMethodLabel(order.delivery_method),
-          shipTo: order.delivery_address ? parseShipToFreeform(order.delivery_address) : null,
-          customerContact: order.customer_contact_info || null,
+          shipTo: derivedShipTo,
+          customerContact: derivedContact,
           notes: order.notes,
           items: (order.srs_order_items || []).map((item: any) => ({
             productId: item.srs_product_id,
@@ -753,7 +829,7 @@ Deno.serve(async (req) => {
             option: item.product_option || "",
             quantity: item.quantity,
             uom: item.uom,
-            customerItem: item.customer_item || "",
+            customerItem: (item.customer_item && String(item.customer_item).trim()) || customerItemFallback,
           })),
         });
 
