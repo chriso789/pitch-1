@@ -568,15 +568,12 @@ export function PushToSupplierDialog({
             order_number: orderNumber,
             branch_code: branchCode.trim(),
             status: 'draft',
-            // srs_orders.delivery_method only allows 'pickup' | 'delivery'
-            delivery_method: deliveryMethod === 'pickup' ? 'pickup' : 'delivery',
+            // Preserve the rep's real choice so SRS gets the correct
+            // orderType + shippingMethod label downstream.
+            delivery_method: deliveryMethod,
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
-            notes: [
-              deliveryMethod === 'roof_load' ? 'Delivery: Roof Load' :
-              deliveryMethod === 'ground_drop' ? 'Delivery: Ground Drop' : null,
-              notes,
-            ].filter(Boolean).join('\n') || null,
+            notes: notes || null,
             total_amount: totalCost,
           } as any)
           .select('id')
