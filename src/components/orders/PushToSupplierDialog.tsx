@@ -323,6 +323,34 @@ export function PushToSupplierDialog({
     setEditableItems(next);
   };
 
+  // Lazy-load the SRS branch catalog so users can manually look up productIds
+  // for items the auto-resolver missed.
+  const loadSrsCatalog = async (branch: string) => {
+    if (!tenantId || !branch.trim()) return;
+    if (srsCatalogBranch === branch.trim() && srsCatalog.length) return;
+    setSrsCatalogLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: { action: 'get_products', tenant_id: tenantId, branch_code: branch.trim() },
+      });
+      if (error) throw error;
+      const products = Array.isArray(data?.products) ? data.products : [];
+      setSrsCatalog(products);
+      setSrsCatalogBranch(branch.trim());
+    } catch (e) {
+      console.warn('[PushToSupplier] catalog load failed', e);
+    } finally {
+      setSrsCatalogLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selected === 'srs' && branchCode.trim()) {
+      loadSrsCatalog(branchCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, branchCode]);
+
   const parseAddress = (raw: string) => {
     const m = raw.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
     return m
