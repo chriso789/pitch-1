@@ -159,16 +159,16 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     const idList = Array.from(relatedIds);
 
     const [srsRes, qxoRes] = await Promise.all([
-      supabase
-        .from('srs_orders')
+      (supabase
+        .from('srs_orders') as any)
         .select('id, order_number, srs_order_id, branch_code, status, total_amount, delivery_address, delivery_date, submitted_at, updated_at, project_id')
-        .eq('tenant_id', tenantId as any)
+        .eq('tenant_id', tenantId)
         .in('project_id', idList)
         .order('created_at', { ascending: false }),
-      supabase
-        .from('qxo_orders')
+      (supabase
+        .from('qxo_orders') as any)
         .select('id, po_number, beacon_order_id, status_code, status_value, on_hold, total, ship_address, order_placed_date, last_synced_at, selling_branch')
-        .eq('tenant_id', tenantId as any)
+        .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false }),
     ]);
 
