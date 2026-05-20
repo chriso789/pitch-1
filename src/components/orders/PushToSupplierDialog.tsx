@@ -194,9 +194,13 @@ export function PushToSupplierDialog({
   const [srsCatalogLoading, setSrsCatalogLoading] = useState(false);
   const [srsCatalogBranch, setSrsCatalogBranch] = useState<string>('');
 
+  // Only sync from props when the dialog opens — otherwise parent re-renders
+  // (which pass a freshly mapped `items` array each time) would wipe out
+  // user edits like picked SRS productIds.
   useEffect(() => {
-    setEditableItems(items);
-  }, [items]);
+    if (open) setEditableItems(items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     setShipAddress(projectAddress || '');
