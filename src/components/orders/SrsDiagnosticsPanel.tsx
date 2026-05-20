@@ -21,18 +21,28 @@ interface StatusEvent {
   created_at: string;
 }
 
+interface JobInfo {
+  job_number?: string | null;
+  customer_name?: string | null;
+  address?: string | null;
+}
+
 interface SrsAttempt {
   id: string;
+  project_id: string | null;
   order_number: string;
   srs_order_id: string | null;
   srs_transaction_id: string | null;
   branch_code: string | null;
+  branch_name: string | null;
   status: string;
   total_amount: number | null;
   submitted_at: string | null;
   updated_at: string;
   srs_response: any;
+  delivery_address: any;
   history: StatusEvent[];
+  job?: JobInfo;
 }
 
 function extractError(resp: any, history: StatusEvent[]): string | null {
