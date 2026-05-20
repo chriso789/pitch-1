@@ -45,6 +45,7 @@ type SrsLineItem = {
   productName?: string;
   option?: string;
   quantity: number;
+  price?: number;
   uom: string;
   customerItem?: string;
 };
