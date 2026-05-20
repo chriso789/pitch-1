@@ -762,13 +762,68 @@ export function PushToSupplierDialog({
                                 </div>
                               </td>
                               <td className="p-2">
-                                <Input
-                                  value={it.srs_item_code || ''}
-                                  onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
-                                  onBlur={async e => persistSku(it, e.target.value.trim() || null)}
-                                  placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
-                                  className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
-                                />
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    value={it.srs_item_code || ''}
+                                    onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
+                                    onBlur={async e => persistSku(it, e.target.value.trim() || null)}
+                                    placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
+                                    className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
+                                  />
+                                  {selected === 'srs' && (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="icon"
+                                          className="h-7 w-7 shrink-0"
+                                          title="Search SRS catalog"
+                                          onClick={() => loadSrsCatalog(branchCode)}
+                                        >
+                                          {srsCatalogLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-96 p-0" align="start">
+                                        <Command
+                                          filter={(value, search) => {
+                                            const s = search.toLowerCase();
+                                            return value.toLowerCase().includes(s) ? 1 : 0;
+                                          }}
+                                        >
+                                          <CommandInput placeholder={`Search ${branchCode || 'SRS'} catalog…`} defaultValue={it.item_name} />
+                                          <CommandList>
+                                            <CommandEmpty>
+                                              {srsCatalogLoading ? 'Loading catalog…' : srsCatalog.length ? 'No matches.' : 'Catalog not loaded.'}
+                                            </CommandEmpty>
+                                            <CommandGroup heading={`${srsCatalog.length} products`}>
+                                              {srsCatalog.slice(0, 500).map((p: any) => {
+                                                const pid = String(p.productId ?? p.productNumber ?? '');
+                                                const name = String(p.productName ?? p.description ?? '');
+                                                const opt = p.option ? ` — ${p.option}` : '';
+                                                const uom = p.uom ? ` [${p.uom}]` : '';
+                                                return (
+                                                  <CommandItem
+                                                    key={`${pid}-${name}`}
+                                                    value={`${pid} ${name}${opt}`}
+                                                    onSelect={() => {
+                                                      updateItem(i, { srs_item_code: pid });
+                                                      persistSku(it, pid);
+                                                    }}
+                                                    className="text-xs"
+                                                  >
+                                                    <span className="font-mono mr-2 text-muted-foreground">{pid}</span>
+                                                    <span className="truncate">{name}{opt}{uom}</span>
+                                                  </CommandItem>
+                                                );
+                                              })}
+                                            </CommandGroup>
+                                          </CommandList>
+                                        </Command>
+                                      </PopoverContent>
+                                    </Popover>
+                                  )}
+                                </div>
                               </td>
                               <td className="p-2 text-right">
                                 <Input
