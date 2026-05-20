@@ -28,12 +28,75 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+// Returns true if the current time is within the blast's send window.
+// Defaults: 09:00 - 18:00 in America/New_York.
+function isWithinSendWindow(blast: any): boolean {
+  const tz = blast.timezone || 'America/New_York';
+  const startStr = (blast.send_window_start || '09:00:00') as string;
+  const endStr = (blast.send_window_end || '18:00:00') as string;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit',
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hh = Number(parts.find(p => p.type === 'hour')?.value || '0');
+    const mm = Number(parts.find(p => p.type === 'minute')?.value || '0');
+    const now = hh * 60 + mm;
+    const [sh, sm] = startStr.split(':').map(Number);
+    const [eh, em] = endStr.split(':').map(Number);
+    const start = sh * 60 + (sm || 0);
+    const end = eh * 60 + (em || 0);
+    return now >= start && now < end;
+  } catch {
+    return true; // fail open
+  }
+}
+
+// Pick a from-number that best matches the recipient's area code.
+// FL preset: 941 (west coast) vs 561 (east coast). Otherwise area-code match,
+// otherwise fall back to round-robin.
+function pickFromNumber(
+  toE164: string,
+  activeNumbers: any[],
+  cursor: number,
+): any {
+  if (!activeNumbers.length) return null;
+  const digits = toE164.replace(/\D/g, '');
+  // US format: +1XXXYYYZZZZ → area code is digits[1..4]
+  const area = digits.length === 11 && digits.startsWith('1') ? digits.slice(1, 4) : null;
+
+  if (area) {
+    // FL coast preset: route 941 area codes (west) to a 941 number; 561/east to 561
+    const preferred = area === '941' || area === '239' || area === '813'
+      ? activeNumbers.find(n => String(n.telnyx_phone_number).includes('941'))
+      : area === '561' || area === '954' || area === '305' || area === '786'
+        ? activeNumbers.find(n => String(n.telnyx_phone_number).includes('561'))
+        : null;
+    if (preferred) return preferred;
+
+    // Otherwise: prefer an exact area-code match
+    const match = activeNumbers.find(n => String(n.telnyx_phone_number).includes(area));
+    if (match) return match;
+  }
+
+  return activeNumbers[cursor % activeNumbers.length];
+}
+
 async function processBlast(
   supabase: ReturnType<typeof createClient>,
   blast: any,
   serviceKey: string,
   supabaseUrl: string,
 ) {
+  // 0. Quiet-hours gate — skip this tick if outside configured send window
+  if (!isWithinSendWindow(blast)) {
+    await supabase
+      .from('sms_blasts')
+      .update({ last_processor_run_at: new Date().toISOString() })
+      .eq('id', blast.id);
+    return { blast_id: blast.id, skipped: 'outside_send_window' };
+  }
+
   // 1. Resolve sending capacity from active SMS-capable locations
   const { data: numbers } = await supabase
     .from('locations')
@@ -112,13 +175,26 @@ async function processBlast(
     .in('phone', phones);
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
+  // Pre-fetch personalized messages for claimed items (set by generate-campaign-messages)
+  const claimedIds = (claimed as any[]).map((c: any) => c.id);
+  const personalizedMap = new Map<string, string>();
+  if (claimedIds.length > 0) {
+    const { data: pers } = await supabase
+      .from('sms_blast_items')
+      .select('id, personalized_message')
+      .in('id', claimedIds);
+    (pers || []).forEach((p: any) => {
+      if (p.personalized_message) personalizedMap.set(p.id, p.personalized_message);
+    });
+  }
+
   let sent = 0;
   let failed = 0;
   let opted = 0;
 
   const sleepMs = Math.max(50, Math.floor(1000 / Math.max(totalMps, 0.5)));
 
-  // Round-robin from-number assignment
+  // Cursor used as fallback for from-number rotation
   let cursor = 0;
   for (const item of claimed) {
     // Honor cancel flag mid-tick
@@ -156,18 +232,18 @@ async function processBlast(
       continue;
     }
 
-    // Template tokens
+    // Prefer personalized_message (smart-tag resolved) over raw script
     const firstName = (item.contact_name || '').split(' ')[0] || '';
     const lastName = (item.contact_name || '').split(' ').slice(1).join(' ') || '';
-    let body = String(blast.script || '')
+    let body = personalizedMap.get(item.id) || String(blast.script || '')
       .replace(/\{\{first_name\}\}/gi, firstName)
       .replace(/\{\{last_name\}\}/gi, lastName)
       .replace(/\{\{full_name\}\}/gi, item.contact_name || '')
       .replace(/\{\{phone\}\}/gi, toE164);
     if (!/stop/i.test(body)) body += '\n\nReply STOP to opt out.';
 
-    // Pick a from-number (round-robin among active locations)
-    const loc = activeNumbers[cursor % activeNumbers.length];
+    // Pick a from-number — prefer area-code / FL-coast match, fallback round-robin
+    const loc = pickFromNumber(toE164, activeNumbers, cursor);
     cursor++;
 
     try {

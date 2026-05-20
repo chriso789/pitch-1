@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Ban, CheckCircle, XCircle, ShieldOff, Send, Clock } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle, XCircle, ShieldOff, Send, Clock, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 
 interface TextBlastDetailProps {
   blastId: string;
@@ -80,6 +81,26 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     refetchItems();
   };
 
+  const [generating, setGenerating] = useState(false);
+  const handleGeneratePersonalized = async () => {
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-campaign-messages', {
+        body: { blast_id: blastId },
+      });
+      if (error) throw error;
+      toast({
+        title: 'Personalized messages generated',
+        description: `${data?.updated || 0} of ${data?.total || 0} items personalized with smart tags.`,
+      });
+      refetchItems();
+    } catch (e: any) {
+      toast({ title: 'Generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!blast) return null;
 
   const progress = blast.total_recipients > 0
@@ -115,13 +136,23 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
             {blast.status}
           </Badge>
         </div>
-        {blast.status === 'sending' && (
-          <Button variant="destructive" size="sm" onClick={handleCancel}>
-            <Ban className="h-4 w-4 mr-2" />
-            Cancel Blast
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {(blast.status === 'draft' || blast.status === 'paused') && (
+            <Button variant="outline" size="sm" onClick={handleGeneratePersonalized} disabled={generating}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              {generating ? 'Generating…' : 'Generate Personalized Messages'}
+            </Button>
+          )}
+          {blast.status === 'sending' && (
+            <Button variant="destructive" size="sm" onClick={handleCancel}>
+              <Ban className="h-4 w-4 mr-2" />
+              Cancel Blast
+            </Button>
+          )}
+        </div>
       </div>
+
+
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 shrink-0">
