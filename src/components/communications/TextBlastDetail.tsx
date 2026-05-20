@@ -81,7 +81,26 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     refetchItems();
   };
 
-  if (!blast) return null;
+  const [generating, setGenerating] = useState(false);
+  const handleGeneratePersonalized = async () => {
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-campaign-messages', {
+        body: { blast_id: blastId },
+      });
+      if (error) throw error;
+      toast({
+        title: 'Personalized messages generated',
+        description: `${data?.updated || 0} of ${data?.total || 0} items personalized with smart tags.`,
+      });
+      refetchItems();
+    } catch (e: any) {
+      toast({ title: 'Generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
 
   const progress = blast.total_recipients > 0
     ? Math.round(((blast.sent_count + blast.failed_count + blast.opted_out_count) / blast.total_recipients) * 100)
