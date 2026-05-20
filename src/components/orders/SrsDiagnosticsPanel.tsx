@@ -203,6 +203,19 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                           <Webhook className="h-3 w-3" /> {webhookCount} webhook{webhookCount === 1 ? '' : 's'}
                         </Badge>
                       </div>
+                      {(a.job?.job_number || a.job?.customer_name || a.job?.address) && (
+                        <div className="rounded-md bg-muted/50 border px-2 py-1.5 text-xs space-y-0.5">
+                          {a.job?.job_number && (
+                            <div><span className="text-muted-foreground">Job:</span> <span className="font-medium">{a.job.job_number}</span></div>
+                          )}
+                          {a.job?.customer_name && (
+                            <div><span className="text-muted-foreground">Customer:</span> {a.job.customer_name}</div>
+                          )}
+                          {a.job?.address && (
+                            <div><span className="text-muted-foreground">Address:</span> {a.job.address}</div>
+                          )}
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground space-y-0.5">
                         {a.submitted_at && (
                           <div>
@@ -210,7 +223,7 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                             {formatDistanceToNow(new Date(a.submitted_at), { addSuffix: true })})
                           </div>
                         )}
-                        {a.branch_code && <div>Branch: {a.branch_code}</div>}
+                        {(a.branch_code || a.branch_name) && <div>Branch: {a.branch_name || a.branch_code} {a.branch_name && a.branch_code ? `(${a.branch_code})` : ''}</div>}
                         {a.srs_order_id && (
                           <div className="flex items-center gap-1">
                             orderID: <code className="text-[11px]">{a.srs_order_id}</code>
