@@ -804,11 +804,47 @@ export function PushToSupplierDialog({
           </div>
         )}
 
+        {selected && (() => {
+          const sel = suppliers.find(s => s.key === selected);
+          const env = (sel?.environment || '').toLowerCase();
+          const isProd = env === 'production';
+          if (env && !isProd) {
+            return (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <div className="font-medium">
+                      {selected.toUpperCase()} is connected to <span className="uppercase">{env || 'non-production'}</span> — orders cannot be pushed.
+                    </div>
+                    <div className="mt-1 text-xs">
+                      Anything submitted here will NOT reach the real {selected.toUpperCase()} rep. Switch the integration to <strong>Production</strong> in Settings → Integrations and re-validate with production credentials before pushing.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={!selected || submitting || editableItems.length === 0}>
+          <Button
+            onClick={submit}
+            disabled={
+              !selected ||
+              submitting ||
+              editableItems.length === 0 ||
+              (() => {
+                const sel = suppliers.find(s => s.key === selected);
+                const env = (sel?.environment || '').toLowerCase();
+                return !!env && env !== 'production';
+              })()
+            }
+          >
             {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
             Push to {selected ? selected.toUpperCase() : 'Supplier'}
           </Button>
