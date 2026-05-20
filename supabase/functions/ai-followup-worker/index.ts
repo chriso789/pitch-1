@@ -138,6 +138,52 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 1a. Opt-out check (homeowner may have opted out previously)
+    const { data: optOut } = await supabase
+      .from('opt_outs')
+      .select('id')
+      .eq('tenant_id', tenant_id)
+      .eq('phone', from_phone)
+      .eq('channel', 'sms')
+      .maybeSingle();
+    if (optOut) {
+      return new Response(JSON.stringify({ skipped: 'opted_out' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 1b. Human-takeover check — if any outbound was sent on this thread that did NOT come
+    // from a blast (blast_id IS NULL), a human has taken over and AI must stay silent.
+    const { data: humanMsg } = await supabase
+      .from('sms_messages')
+      .select('id, created_at')
+      .eq('tenant_id', tenant_id)
+      .eq('direction', 'outbound')
+      .or(`to_number.eq.${from_phone},from_number.eq.${from_phone}`)
+      .is('blast_id', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (humanMsg) {
+      console.log('[ai-followup] human takeover detected, skipping AI reply');
+      return new Response(JSON.stringify({ skipped: 'human_takeover' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 2. Classify
+    const intent = await classifyIntent(apiKey, body);
+    console.log('[ai-followup] intent', intent, 'for', from_phone);
+
+    // STOP / not_interested → never reply
+    const SILENT = new Set(['stop', 'not_interested', 'other']);
+    if (SILENT.has(intent)) {
+      return new Response(JSON.stringify({ intent, replied: false }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+
     // 2. Classify
     const intent = await classifyIntent(apiKey, body);
     console.log('[ai-followup] intent', intent, 'for', from_phone);
