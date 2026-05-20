@@ -982,10 +982,20 @@ function CatalogSearchPopover({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (open) setQuery(initialQuery || '');
+    if (!open) return;
+    setQuery(initialQuery || '');
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
   }, [initialQuery, open]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [query]);
 
   const filtered = useMemo(() => {
     const q = normalizeSkuText(query);
@@ -1041,7 +1051,7 @@ function CatalogSearchPopover({
         <div className="flex items-center border-b px-3 py-2 gap-2">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
           <input
-            autoFocus
+            ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search ${branchCode || 'SRS'} catalog…`}
