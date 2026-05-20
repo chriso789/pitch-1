@@ -99,10 +99,11 @@ function buildSubmitOrderPayload(args: {
         productName: i.productName ?? "",
         option: i.option ?? "",
         quantity: Number(i.quantity),
-        uom: String(i.uom || "EA").trim(),
+        uom: normalizeUom(i.uom),
         customerItem: i.customerItem ?? "",
       };
     }),
+
     customerContactInfo: args.customerContact ?? {},
   };
   // jobAccountNumber kept only when present — some SRS flows still echo it.
