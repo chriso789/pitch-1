@@ -82,7 +82,6 @@ function buildSubmitOrderPayload(args: {
     transactionDate: new Date().toISOString(),
     notes: args.notes ?? "",
     shipTo: args.shipTo ?? {
-      name: args.customerContact?.customerContactName ?? "Customer",
       addressLine1: "", addressLine2: "", addressLine3: "",
       city: "", state: "", zipCode: "",
     },
@@ -96,9 +95,12 @@ function buildSubmitOrderPayload(args: {
       orderType: args.orderType ?? "WHSE",
       shippingMethod: args.shippingMethod,
     },
+    // Per SRS spec (Jessica Zapata sample 2026-05-18): submit payload does
+    // NOT include `price` on line items. SRS prices server-side from their
+    // catalog; sending price triggers price-mismatch rejection.
     orderLineItemDetails: args.items.map((i) => {
       const numericId = Number(i.productId);
-      const line: Record<string, unknown> = {
+      return {
         productId: Number.isFinite(numericId) ? numericId : i.productId,
         productName: i.productName ?? "",
         option: i.option ?? "N/A",
@@ -106,21 +108,12 @@ function buildSubmitOrderPayload(args: {
         uom: normalizeUom(i.uom),
         customerItem: i.customerItem ?? "",
       };
-      // Include price only when we have a real SRS-returned price from the
-      // pricing API. SRS public docs include `price` in submit; sending a
-      // bad/guessed value triggers price-mismatch rejection, so omit when 0.
-      if (i.price != null && Number(i.price) > 0) {
-        line.price = Number(i.price);
-      }
-      return line;
     }),
 
     customerContactInfo: args.customerContact ?? {},
   };
-  // jobAccountNumber kept only when present — some SRS flows still echo it.
-  if (args.jobAccountNumber != null && !Number.isNaN(Number(args.jobAccountNumber))) {
-    payload.jobAccountNumber = Number(args.jobAccountNumber);
-  }
+  // NOTE: top-level `jobAccountNumber` removed — not in current SRS spec.
+  // SRS resolves the job account from customerCode + shipToSequenceNumber.
   return payload;
 }
 
