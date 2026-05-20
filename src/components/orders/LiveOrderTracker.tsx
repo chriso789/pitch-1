@@ -43,21 +43,20 @@ interface UnifiedOrder {
   docs: OrderDoc[];
 }
 
-// Flow: Ordered → Sent to supplier → Received by supplier → Out for delivery → Delivered/Confirmed
+// 4-step supplier delivery flow
 const STAGES = [
-  { key: 'ordered', label: 'Ordered', icon: Package },
-  { key: 'sent', label: 'Sent', icon: Truck },
-  { key: 'received', label: 'Received', icon: CheckCircle2 },
+  { key: 'submitted', label: 'Submitted', icon: Package },
+  { key: 'received', label: 'Received by Supplier', icon: CheckCircle2 },
   { key: 'shipped', label: 'Out for Delivery', icon: Truck },
   { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
 ];
 
-function stageIndex(status?: string | null): number {
+function stageIndex(status?: string | null, hasExternalId?: boolean): number {
   const s = (status || '').toLowerCase();
-  if (s.includes('deliver') || s === 'iu') return 4;
-  if (s.includes('ship') || s === 'du') return 3;
-  if (s.includes('confirm') || s.includes('process') || s === 'oc') return 2;
-  if (s.includes('submit') || s === 'ou') return 1;
+  if (s.includes('deliver') || s === 'iu') return 3;
+  if (s.includes('ship') || s === 'du' || s.includes('out_for')) return 2;
+  if (s.includes('confirm') || s.includes('process') || s.includes('received') || s === 'oc' || s === 'acknowledged') return 1;
+  if (s.includes('submit') || s === 'ou' || hasExternalId) return 0;
   return 0;
 }
 
@@ -120,6 +119,8 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
 
     const unified: UnifiedOrder[] = [];
     (srsRes.data || []).forEach((o: any) => {
+      // Hide pure drafts (never submitted)
+      if ((o.status || '').toLowerCase() === 'draft' && !o.srs_order_id) return;
       unified.push({
         id: `srs:${o.id}`,
         rawId: o.id,
@@ -229,7 +230,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
       </CardHeader>
       <CardContent className="space-y-4">
         {orders.map(o => {
-          const activeIdx = stageIndex(o.status);
+          const activeIdx = stageIndex(o.status, !!o.externalId);
           return (
             <div key={o.id} className="rounded-md border p-3">
               <div className="flex items-start justify-between gap-2">
@@ -241,7 +242,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
                       <span className="text-xs text-muted-foreground">→ {o.externalId}</span>
                     )}
                     {o.onHold && <Badge variant="outline" className="text-amber-600 border-amber-600">On Hold</Badge>}
-                    {activeIdx === 4 && <Badge className="bg-green-600 text-white">Delivered</Badge>}
+                    {activeIdx === 3 && <Badge className="bg-green-600 text-white">Delivered</Badge>}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {o.branch && <>Branch {o.branch} · </>}
@@ -259,6 +260,21 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
                     : <RefreshCw className="h-4 w-4" />}
                 </Button>
               </div>
+
+              {/* Supplier confirmation banner */}
+              {o.externalId && (
+                <div className="mt-3 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900 p-2.5">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs">
+                    <div className="font-medium text-green-900 dark:text-green-200">
+                      Confirmed received by {o.supplier}
+                    </div>
+                    <div className="text-green-700 dark:text-green-300 mt-0.5 break-all">
+                      Order ID: <span className="font-mono">{o.externalId}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-3 flex items-start justify-between gap-1">
                 {STAGES.map((s, idx) => {
