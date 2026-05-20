@@ -41332,6 +41332,7 @@ export type Database = {
           from_number: string | null
           id: string
           last_error: string | null
+          personalized_message: string | null
           phone: string
           replied_at: string | null
           routed_contact_id: string | null
@@ -41341,6 +41342,7 @@ export type Database = {
           sent_at: string | null
           status: string
           telnyx_message_id: string | null
+          template_id: string | null
           tenant_id: string
         }
         Insert: {
@@ -41354,6 +41356,7 @@ export type Database = {
           from_number?: string | null
           id?: string
           last_error?: string | null
+          personalized_message?: string | null
           phone: string
           replied_at?: string | null
           routed_contact_id?: string | null
@@ -41363,6 +41366,7 @@ export type Database = {
           sent_at?: string | null
           status?: string
           telnyx_message_id?: string | null
+          template_id?: string | null
           tenant_id: string
         }
         Update: {
@@ -41376,6 +41380,7 @@ export type Database = {
           from_number?: string | null
           id?: string
           last_error?: string | null
+          personalized_message?: string | null
           phone?: string
           replied_at?: string | null
           routed_contact_id?: string | null
@@ -41385,6 +41390,7 @@ export type Database = {
           sent_at?: string | null
           status?: string
           telnyx_message_id?: string | null
+          template_id?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -41410,6 +41416,13 @@ export type Database = {
             referencedColumns: ["contact_id"]
           },
           {
+            foreignKeyName: "sms_blast_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "sms_templates"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sms_blast_items_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -41421,6 +41434,7 @@ export type Database = {
       sms_blasts: {
         Row: {
           actual_messages_per_second: number | null
+          ai_followup_enabled: boolean
           cancel_reason: string | null
           cancelled_at: string | null
           completed_at: string | null
@@ -41433,6 +41447,7 @@ export type Database = {
           failed_count: number
           failure_rate: number | null
           from_location_id: string | null
+          goal: string | null
           id: string
           is_test_mode: boolean | null
           last_processor_run_at: string | null
@@ -41443,16 +41458,21 @@ export type Database = {
           reply_rate: number | null
           required_messages_per_second: number | null
           script: string
+          send_window_end: string
+          send_window_start: string
           sent_count: number
           sent_today_count: number | null
           started_at: string | null
           status: string
           target_window_minutes: number | null
+          template_pool_ids: string[] | null
           tenant_id: string
+          timezone: string
           total_recipients: number
         }
         Insert: {
           actual_messages_per_second?: number | null
+          ai_followup_enabled?: boolean
           cancel_reason?: string | null
           cancelled_at?: string | null
           completed_at?: string | null
@@ -41465,6 +41485,7 @@ export type Database = {
           failed_count?: number
           failure_rate?: number | null
           from_location_id?: string | null
+          goal?: string | null
           id?: string
           is_test_mode?: boolean | null
           last_processor_run_at?: string | null
@@ -41475,16 +41496,21 @@ export type Database = {
           reply_rate?: number | null
           required_messages_per_second?: number | null
           script: string
+          send_window_end?: string
+          send_window_start?: string
           sent_count?: number
           sent_today_count?: number | null
           started_at?: string | null
           status?: string
           target_window_minutes?: number | null
+          template_pool_ids?: string[] | null
           tenant_id: string
+          timezone?: string
           total_recipients?: number
         }
         Update: {
           actual_messages_per_second?: number | null
+          ai_followup_enabled?: boolean
           cancel_reason?: string | null
           cancelled_at?: string | null
           completed_at?: string | null
@@ -41497,6 +41523,7 @@ export type Database = {
           failed_count?: number
           failure_rate?: number | null
           from_location_id?: string | null
+          goal?: string | null
           id?: string
           is_test_mode?: boolean | null
           last_processor_run_at?: string | null
@@ -41507,12 +41534,16 @@ export type Database = {
           reply_rate?: number | null
           required_messages_per_second?: number | null
           script?: string
+          send_window_end?: string
+          send_window_start?: string
           sent_count?: number
           sent_today_count?: number | null
           started_at?: string | null
           status?: string
           target_window_minutes?: number | null
+          template_pool_ids?: string[] | null
           tenant_id?: string
+          timezone?: string
           total_recipients?: number
         }
         Relationships: [
@@ -41673,6 +41704,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sms_templates: {
+        Row: {
+          active: boolean
+          category: string | null
+          created_at: string
+          created_by: string | null
+          goal: string | null
+          id: string
+          template_body: string
+          template_name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          goal?: string | null
+          id?: string
+          template_body: string
+          template_name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          goal?: string | null
+          id?: string
+          template_body?: string
+          template_name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       sms_threads: {
         Row: {
@@ -50619,6 +50689,7 @@ export type Database = {
           from_number: string | null
           id: string
           last_error: string | null
+          personalized_message: string | null
           phone: string
           replied_at: string | null
           routed_contact_id: string | null
@@ -50628,6 +50699,7 @@ export type Database = {
           sent_at: string | null
           status: string
           telnyx_message_id: string | null
+          template_id: string | null
           tenant_id: string
         }[]
         SetofOptions: {
