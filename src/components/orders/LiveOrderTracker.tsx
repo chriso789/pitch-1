@@ -43,21 +43,20 @@ interface UnifiedOrder {
   docs: OrderDoc[];
 }
 
-// Flow: Ordered → Sent to supplier → Received by supplier → Out for delivery → Delivered/Confirmed
+// 4-step supplier delivery flow
 const STAGES = [
-  { key: 'ordered', label: 'Ordered', icon: Package },
-  { key: 'sent', label: 'Sent', icon: Truck },
-  { key: 'received', label: 'Received', icon: CheckCircle2 },
+  { key: 'submitted', label: 'Submitted', icon: Package },
+  { key: 'received', label: 'Received by Supplier', icon: CheckCircle2 },
   { key: 'shipped', label: 'Out for Delivery', icon: Truck },
   { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
 ];
 
-function stageIndex(status?: string | null): number {
+function stageIndex(status?: string | null, hasExternalId?: boolean): number {
   const s = (status || '').toLowerCase();
-  if (s.includes('deliver') || s === 'iu') return 4;
-  if (s.includes('ship') || s === 'du') return 3;
-  if (s.includes('confirm') || s.includes('process') || s === 'oc') return 2;
-  if (s.includes('submit') || s === 'ou') return 1;
+  if (s.includes('deliver') || s === 'iu') return 3;
+  if (s.includes('ship') || s === 'du' || s.includes('out_for')) return 2;
+  if (s.includes('confirm') || s.includes('process') || s.includes('received') || s === 'oc' || s === 'acknowledged') return 1;
+  if (s.includes('submit') || s === 'ou' || hasExternalId) return 0;
   return 0;
 }
 
