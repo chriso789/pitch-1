@@ -137,9 +137,9 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
       // 5) fan out across every sibling for the same contact
       if (contactId) {
         const [{ data: peList }, { data: jobList }, { data: prjList }] = await Promise.all([
-          supabase.from('pipeline_entries').select('id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
-          supabase.from('jobs').select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
-          supabase.from('projects').select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
+          (supabase.from('pipeline_entries') as any).select('id').eq('contact_id', contactId).eq('tenant_id', tenantId),
+          (supabase.from('jobs') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
+          (supabase.from('projects') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
         ]);
         (peList || []).forEach((r: any) => r.id && relatedIds.add(r.id));
         (jobList || []).forEach((r: any) => {
