@@ -23,9 +23,11 @@ interface SRSConnection {
   last_error: string | null;
   job_account_number: number | null;
   default_branch_code: string | null;
+  integration_key: string | null;
   valid_indicator: boolean;
   environment: string;
 }
+
 
 interface AuditRow {
   id: string;
