@@ -561,7 +561,10 @@ Deno.serve(async (req) => {
 
           await getAccessToken();
 
-          const { invoice_number, invoice_date, billed_amount, integration_key } = params as Record<string, string>;
+          const { invoice_number, invoice_date, billed_amount, integration_key: ikRaw } = params as Record<string, string>;
+          // Use the supplied key first, fall back to whatever was previously
+          // saved on the connection so users don't have to re-paste it.
+          const integration_key = (ikRaw && ikRaw.trim()) || (connection.integration_key && String(connection.integration_key).trim()) || "";
           if (!integration_key && (!invoice_number || (!invoice_date && !billed_amount))) {
             const msg = "SRS requires either an Integration Key OR Invoice # plus Invoice Date/Billed Amount to validate the customer account.";
             await supabase.from("srs_connections").update({
@@ -571,6 +574,7 @@ Deno.serve(async (req) => {
             result = { success: false, error: msg };
             break;
           }
+
 
           // Validate customer (SRS accepts IntegrationKey OR invoice proof of ownership)
           const qs = new URLSearchParams();
