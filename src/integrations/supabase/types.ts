@@ -42306,6 +42306,53 @@ export type Database = {
           },
         ]
       }
+      srs_submit_audit: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          order_id: string | null
+          request_json: Json
+          response_json: Json | null
+          success: boolean
+          tenant_id: string
+          transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          request_json: Json
+          response_json?: Json | null
+          success?: boolean
+          tenant_id: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          request_json?: Json
+          response_json?: Json | null
+          success?: boolean
+          tenant_id?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_submit_audit_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "srs_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_workload: {
         Row: {
           active_conversations: number | null
