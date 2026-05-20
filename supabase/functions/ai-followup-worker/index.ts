@@ -1,432 +1,187 @@
-// ============================================
-// AI FOLLOW-UP WORKER
-// Processes ai_outreach_queue to send automated SMS and calls
-// ============================================
+// AI follow-up worker for inbound SMS replies on MSFH-style campaigns.
+// Called fire-and-forget from telnyx-inbound-webhook after a blast reply is matched.
+//
+// Pipeline:
+//   1. Load the inbound message + last outbound blast item to find the blast
+//   2. Check blast.ai_followup_enabled — bail if disabled
+//   3. Classify intent via Lovable AI (google/gemini-2.5-flash-lite)
+//   4. If intent is conversational (positive_interest | inspection_question | call_me |
+//      financing_question | roof_issue), generate a consultative reply
+//   5. Send reply via telnyx-send-sms with ai_generated metadata
+import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 
-import { handleOptions, json, badRequest, serverError } from '../_shared/http.ts';
-import { supabaseService } from '../_shared/supabase.ts';
-import { normalizeE164 } from '../_shared/phone.ts';
-import { sendTelnyxMessage, initiateCall } from '../_shared/telnyx.ts';
-import { ENV } from '../_shared/env.ts';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
-interface WorkerRequest {
-  limit?: number;
+const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+
+const SYSTEM_PROMPT = `You are a local roofing and restoration specialist helping Florida homeowners understand and navigate the My Safe Florida Home (MSFH) grant program.
+
+Your role is to:
+- educate, never sell
+- guide and simplify the process
+- answer questions about inspections, eligibility, and timelines
+- offer to help schedule a free wind-mitigation inspection when appropriate
+
+Hard rules:
+- Keep replies under 320 characters when possible. SMS-friendly tone.
+- No emojis. No exclamation points. No aggressive urgency.
+- Never claim guaranteed approval or specific dollar amounts.
+- If the homeowner asks for a call, confirm a good time window and say a teammate will reach out.
+- If the homeowner says they already applied, congratulate them briefly and offer help if they have issues.
+- Always sound like a neighbor who knows the program, not a salesperson.`;
+
+async function classifyIntent(apiKey: string, body: string): Promise<string> {
+  const res = await fetch(LOVABLE_AI_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash-lite',
+      messages: [
+        {
+          role: 'system',
+          content: 'Classify the homeowner SMS reply into ONE of: positive_interest, not_interested, stop, already_applied, call_me, inspection_question, roof_issue, financing_question, other. Reply with only the label.',
+        },
+        { role: 'user', content: body.slice(0, 500) },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    console.error('[ai-followup] classify failed', res.status, await res.text());
+    return 'other';
+  }
+  const json = await res.json();
+  const raw = String(json?.choices?.[0]?.message?.content || 'other').toLowerCase().trim();
+  return raw.replace(/[^a-z_]/g, '');
 }
 
-/**
- * Rule-based AI message generator
- * Replace with LLM call for more sophisticated responses
- */
-function generateAiMessage(input: {
-  contactName?: string | null;
-  contactPhone: string;
-  companyName?: string | null;
-  lastInboundText?: string | null;
-  touchNumber?: number;
-}): string {
-  const name = input.contactName?.split(' ')?.[0] ?? 'there';
-  const company = input.companyName || 'us';
-  const touch = input.touchNumber || 1;
-  const last = (input.lastInboundText ?? '').toLowerCase();
+async function generateReply(
+  apiKey: string,
+  inboundBody: string,
+  intent: string,
+  contact: any,
+): Promise<string | null> {
+  const userContext = `Homeowner ${contact?.first_name || 'there'} replied: "${inboundBody}"
 
-  // Detect opt-out keywords
-  if (['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'].some(k => last.includes(k))) {
-    return ''; // Don't send anything
+Classified intent: ${intent}
+Property: ${contact?.address_street || 'unknown'}, ${contact?.address_city || ''}, FL
+
+Write a short consultative SMS reply.`;
+
+  const res = await fetch(LOVABLE_AI_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'google/gemini-3-flash-preview',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContext },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    console.error('[ai-followup] generate failed', res.status, await res.text());
+    return null;
   }
-
-  // Reply-to-interest detection
-  if (last.includes('price') || last.includes('cost') || last.includes('quote')) {
-    return `Hey ${name} — pricing depends on the scope of work and materials. Want me to get you on the schedule for a free inspection so we can give you an accurate estimate?`;
-  }
-
-  if (last.includes('insurance') || last.includes('claim')) {
-    return `Hey ${name} — we work with all major insurance companies and can help document everything properly. Would you like us to come take a look and help with the claims process?`;
-  }
-
-  if (last.includes('schedule') || last.includes('appointment') || last.includes('when')) {
-    return `Hey ${name} — I'd be happy to get you scheduled! What day and time works best for you? We have openings this week.`;
-  }
-
-  if (last.includes('yes') || last.includes('interested') || last.includes('sure')) {
-    return `Great to hear, ${name}! Let me connect you with one of our specialists who can answer your questions and get you scheduled. They'll reach out shortly!`;
-  }
-
-  // Standard follow-up sequences based on touch number
-  const followUpMessages = [
-    `Hey ${name}, this is ${company} following up. We wanted to make sure you got our previous message. Do you have any questions about your roof?`,
-    `Hi ${name}, just checking in. We haven't heard back and wanted to see if you're still interested in a free roof inspection. Reply YES and we'll get you scheduled!`,
-    `Hey ${name}, last check-in from ${company}. If you're not interested right now, no worries at all. Just reply STOP and we won't bother you again. Otherwise, we're here when you're ready!`,
-  ];
-
-  const messageIndex = Math.min(touch - 1, followUpMessages.length - 1);
-  return followUpMessages[messageIndex];
-}
-
-/**
- * Check if current time is within working hours
- */
-function isWithinWorkingHours(workingHours: {
-  tz: string;
-  days: number[];
-  start: string;
-  end: string;
-}): boolean {
-  try {
-    const now = new Date();
-    
-    // Get current time in configured timezone
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: workingHours.tz,
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false,
-      weekday: 'short',
-    });
-    
-    const parts = formatter.formatToParts(now);
-    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
-    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
-    const weekday = parts.find(p => p.type === 'weekday')?.value;
-    
-    // Map weekday to number (0=Sun, 1=Mon, etc.)
-    const dayMap: Record<string, number> = {
-      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
-    };
-    const currentDay = dayMap[weekday || 'Mon'] ?? 1;
-    
-    // Check if today is a working day
-    if (!workingHours.days.includes(currentDay)) {
-      return false;
-    }
-    
-    // Check time range
-    const [startHour, startMin] = workingHours.start.split(':').map(Number);
-    const [endHour, endMin] = workingHours.end.split(':').map(Number);
-    
-    const currentMinutes = hour * 60 + minute;
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
-    
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  } catch (err) {
-    console.error('Error checking working hours:', err);
-    return true; // Default to allow if error
-  }
+  const json = await res.json();
+  const txt = String(json?.choices?.[0]?.message?.content || '').trim();
+  return txt || null;
 }
 
 Deno.serve(async (req) => {
-  const opt = handleOptions(req);
-  if (opt) return opt;
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    if (req.method !== 'POST') return badRequest('POST only');
-
-    const { limit = 25 } = (await req.json().catch(() => ({}))) as WorkerRequest;
-    
-    const admin = supabaseService();
-
-    // Pull due queue rows
-    const { data: queueRows, error: qErr } = await admin
-      .from('ai_outreach_queue')
-      .select(`
-        id, tenant_id, contact_id, conversation_id, channel, 
-        scheduled_for, attempts, state
-      `)
-      .eq('state', 'queued')
-      .lte('scheduled_for', new Date().toISOString())
-      .order('scheduled_for', { ascending: true })
-      .limit(limit);
-
-    if (qErr) throw qErr;
-    if (!queueRows?.length) {
-      return json({ ok: true, processed: 0, message: 'No items in queue' });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log(`Processing ${queueRows.length} queue items`);
+    const supabase = createClient(supabaseUrl, serviceKey);
 
-    let processed = 0;
-    let failed = 0;
-
-    for (const row of queueRows) {
-      // Lock row (optimistic locking)
-      const { data: locked } = await admin
-        .from('ai_outreach_queue')
-        .update({ 
-          state: 'running', 
-          attempts: (row.attempts ?? 0) + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id)
-        .eq('state', 'queued')
-        .select()
-        .maybeSingle();
-
-      if (!locked) {
-        console.log(`Queue item ${row.id} already locked by another worker`);
-        continue;
-      }
-
-      try {
-        // Load AI agent config
-        const { data: agent } = await admin
-          .from('ai_agents')
-          .select('id, enabled, location_id, working_hours, persona_prompt')
-          .eq('tenant_id', row.tenant_id)
-          .eq('enabled', true)
-          .maybeSingle();
-
-        if (!agent) {
-          await admin.from('ai_outreach_queue').update({
-            state: 'failed',
-            last_error: 'AI agent not enabled for this tenant',
-          }).eq('id', row.id);
-          failed++;
-          continue;
-        }
-
-        // Check working hours
-        const workingHours = agent.working_hours as {
-          tz: string;
-          days: number[];
-          start: string;
-          end: string;
-        };
-
-        if (!isWithinWorkingHours(workingHours)) {
-          // Reschedule for next business hour
-          console.log(`Queue item ${row.id} outside working hours, rescheduling`);
-          await admin.from('ai_outreach_queue').update({
-            state: 'queued',
-            scheduled_for: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // +2 hours
-          }).eq('id', row.id);
-          continue;
-        }
-
-        // Get location config
-        const locationId = agent.location_id;
-        let fromNumber: string | null = null;
-        let connectionId: string | null = null;
-
-        if (locationId) {
-          const { data: location } = await admin
-            .from('locations')
-            .select('id, telnyx_phone_number, telnyx_connection_id')
-            .eq('id', locationId)
-            .eq('tenant_id', row.tenant_id)
-            .single();
-
-          if (location) {
-            fromNumber = location.telnyx_phone_number;
-            connectionId = location.telnyx_connection_id;
-          }
-        }
-
-        // Fallback to any location with phone
-        if (!fromNumber) {
-          const { data: anyLoc } = await admin
-            .from('locations')
-            .select('id, telnyx_phone_number, telnyx_connection_id')
-            .eq('tenant_id', row.tenant_id)
-            .not('telnyx_phone_number', 'is', null)
-            .limit(1)
-            .maybeSingle();
-
-          if (anyLoc) {
-            fromNumber = anyLoc.telnyx_phone_number;
-            connectionId = anyLoc.telnyx_connection_id;
-          }
-        }
-
-        // Use env defaults
-        fromNumber = fromNumber || ENV.TELNYX_PHONE_NUMBER;
-        connectionId = connectionId || ENV.TELNYX_CONNECTION_ID;
-
-        if (!fromNumber) {
-          throw new Error('No from number configured for AI agent');
-        }
-
-        // Load contact
-        const { data: contact } = await admin
-          .from('contacts')
-          .select('id, first_name, last_name, phone')
-          .eq('id', row.contact_id)
-          .eq('tenant_id', row.tenant_id)
-          .single();
-
-        if (!contact?.phone) {
-          throw new Error('Contact not found or missing phone');
-        }
-
-        // Load tenant/company name
-        const { data: tenant } = await admin
-          .from('tenants')
-          .select('name')
-          .eq('id', row.tenant_id)
-          .single();
-
-        // Get last inbound message for context
-        const { data: lastMsg } = await admin
-          .from('sms_messages')
-          .select('body, direction')
-          .eq('contact_id', row.contact_id)
-          .eq('direction', 'inbound')
-          .order('sent_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const from = normalizeE164(fromNumber);
-        const to = normalizeE164(contact.phone);
-
-        // Get or create conversation if not set
-        let conversationId = row.conversation_id;
-        if (!conversationId) {
-          const { data: convId } = await admin.rpc('rpc_create_or_get_conversation', {
-            _tenant_id: row.tenant_id,
-            _contact_id: row.contact_id,
-            _channel: row.channel,
-            _location_id: locationId || null,
-          });
-          conversationId = convId;
-          
-          await admin.from('ai_outreach_queue')
-            .update({ conversation_id: conversationId })
-            .eq('id', row.id);
-        }
-
-        // Process based on channel
-        if (row.channel === 'sms') {
-          const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
-          
-          const text = generateAiMessage({
-            contactName,
-            contactPhone: to,
-            companyName: tenant?.name,
-            lastInboundText: lastMsg?.body,
-            touchNumber: row.attempts + 1,
-          });
-
-          // If empty (STOP detected), mark done without sending
-          if (!text) {
-            console.log(`Queue item ${row.id}: Detected opt-out, marking done`);
-            await admin.from('ai_outreach_queue').update({ state: 'done' }).eq('id', row.id);
-            processed++;
-            continue;
-          }
-
-          // Send SMS
-          const telnyxResp = await sendTelnyxMessage({
-            from,
-            to,
-            text,
-          });
-
-          console.log(`AI SMS sent: ${telnyxResp.id}`);
-
-          // Log message
-          await admin.from('sms_messages').insert({
-            tenant_id: row.tenant_id,
-            contact_id: row.contact_id,
-            conversation_id: conversationId,
-            location_id: locationId,
-            direction: 'outbound',
-            from_number: from,
-            to_number: to,
-            body: text,
-            status: 'sent',
-            provider: 'telnyx',
-            provider_message_id: telnyxResp.id,
-            sent_at: new Date().toISOString(),
-          });
-
-          // Update conversation
-          if (conversationId) {
-            await admin.from('conversations')
-              .update({ last_activity_at: new Date().toISOString() })
-              .eq('id', conversationId);
-          }
-
-          await admin.from('ai_outreach_queue').update({ state: 'done' }).eq('id', row.id);
-          processed++;
-        } else if (row.channel === 'call') {
-          if (!connectionId) {
-            throw new Error('No Telnyx connection ID configured for AI calling');
-          }
-
-          // Create call record
-          const { data: callRow } = await admin
-            .from('calls')
-            .insert({
-              tenant_id: row.tenant_id,
-              contact_id: row.contact_id,
-              conversation_id: conversationId,
-              location_id: locationId,
-              direction: 'outbound',
-              from_number: from,
-              to_number: to,
-              status: 'initiated',
-              call_type: 'ai_followup',
-            })
-            .select('id')
-            .single();
-
-          const clientState = btoa(JSON.stringify({
-            tenant_id: row.tenant_id,
-            contact_id: row.contact_id,
-            conversation_id: conversationId,
-            call_id: callRow?.id,
-            ai: true,
-          }));
-
-          const telnyxResp = await initiateCall({
-            connection_id: connectionId,
-            from,
-            to,
-            client_state: clientState,
-          });
-
-          console.log(`AI call initiated: ${telnyxResp.call_control_id}`);
-
-          // Update call record
-          if (callRow?.id) {
-            await admin.from('calls').update({
-              telnyx_call_control_id: telnyxResp.call_control_id,
-              telnyx_call_leg_id: telnyxResp.call_leg_id,
-              raw_payload: telnyxResp,
-            }).eq('id', callRow.id);
-          }
-
-          // Update conversation
-          if (conversationId) {
-            await admin.from('conversations')
-              .update({ last_activity_at: new Date().toISOString() })
-              .eq('id', conversationId);
-          }
-
-          await admin.from('ai_outreach_queue').update({ state: 'done' }).eq('id', row.id);
-          processed++;
-        } else {
-          throw new Error(`Unsupported channel: ${row.channel}`);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Queue item ${row.id} failed:`, msg);
-        
-        await admin.from('ai_outreach_queue').update({
-          state: 'failed',
-          last_error: msg,
-        }).eq('id', row.id);
-        
-        failed++;
-      }
+    const { tenant_id, contact_id, from_phone, to_phone, body } = await req.json();
+    if (!tenant_id || !from_phone || !body) {
+      return new Response(JSON.stringify({ error: 'missing fields' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    return json({ 
-      ok: true, 
-      processed, 
-      failed,
-      message: `Processed ${processed} items, ${failed} failed`,
+    // 1. Find the most recent blast this phone was on, and confirm AI follow-up is enabled
+    const { data: lastItem } = await supabase
+      .from('sms_blast_items')
+      .select('id, blast_id, sms_blasts!inner(id, ai_followup_enabled, goal, tenant_id, created_by)')
+      .eq('tenant_id', tenant_id)
+      .eq('phone', from_phone)
+      .order('sent_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const blast: any = (lastItem as any)?.sms_blasts;
+    if (!blast || !blast.ai_followup_enabled) {
+      return new Response(JSON.stringify({ skipped: 'ai_followup_disabled_or_no_blast' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 2. Classify
+    const intent = await classifyIntent(apiKey, body);
+    console.log('[ai-followup] intent', intent, 'for', from_phone);
+
+    // STOP / not_interested → never reply
+    const SILENT = new Set(['stop', 'not_interested', 'other']);
+    if (SILENT.has(intent)) {
+      return new Response(JSON.stringify({ intent, replied: false }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 3. Generate reply with contact context
+    let contact: any = null;
+    if (contact_id) {
+      const { data: c } = await supabase
+        .from('contacts')
+        .select('first_name, last_name, address_street, address_city, address_state')
+        .eq('id', contact_id).maybeSingle();
+      contact = c;
+    }
+
+    const reply = await generateReply(apiKey, body, intent, contact || {});
+    if (!reply) {
+      return new Response(JSON.stringify({ intent, replied: false, error: 'generation_failed' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 4. Send via telnyx-send-sms (returns to the SAME number they messaged)
+    const sendRes = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({
+        to: from_phone,
+        from: to_phone, // route reply back through the same Telnyx number
+        message: reply,
+        contactId: contact_id,
+        tenant_id,
+        sent_by: blast.created_by,
+        ai_generated: true,
+      }),
     });
-  } catch (err) {
-    return serverError(err);
+    const sendJson = await sendRes.json().catch(() => ({}));
+
+    return new Response(
+      JSON.stringify({ intent, replied: !!sendJson?.success, reply, telnyx: sendJson }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  } catch (e: any) {
+    console.error('[ai-followup] fatal', e);
+    return new Response(JSON.stringify({ error: String(e?.message || e) }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
