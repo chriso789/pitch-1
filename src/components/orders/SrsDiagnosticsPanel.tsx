@@ -114,7 +114,7 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
       if (peIds.length) {
         const { data: pes } = await supabase
           .from('pipeline_entries')
-          .select('id, contact_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, company_name, address, city, state, zip)')
+          .select('id, contact_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, company_name, address_street, address_city, address_state, address_zip)')
           .eq('tenant_id', tenantId as any)
           .in('id', peIds as any);
         for (const pe of (pes || []) as any[]) peMap.set(pe.id, pe);
@@ -126,7 +126,7 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
           ? (c.company_name || [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || null)
           : null;
         const addr = c
-          ? [c.address, [c.city, c.state].filter(Boolean).join(', '), c.zip].filter(Boolean).join(' · ')
+          ? [c.address_street, [c.address_city, c.address_state].filter(Boolean).join(', '), c.address_zip].filter(Boolean).join(' · ')
           : null;
         jobById.set(p.id, { job_number: p.job_number, customer_name: name, address: addr || null });
       }
