@@ -230,7 +230,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
       </CardHeader>
       <CardContent className="space-y-4">
         {orders.map(o => {
-          const activeIdx = stageIndex(o.status);
+          const activeIdx = stageIndex(o.status, !!o.externalId);
           return (
             <div key={o.id} className="rounded-md border p-3">
               <div className="flex items-start justify-between gap-2">
@@ -242,7 +242,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
                       <span className="text-xs text-muted-foreground">→ {o.externalId}</span>
                     )}
                     {o.onHold && <Badge variant="outline" className="text-amber-600 border-amber-600">On Hold</Badge>}
-                    {activeIdx === 4 && <Badge className="bg-green-600 text-white">Delivered</Badge>}
+                    {activeIdx === 3 && <Badge className="bg-green-600 text-white">Delivered</Badge>}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {o.branch && <>Branch {o.branch} · </>}
@@ -260,6 +260,21 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
                     : <RefreshCw className="h-4 w-4" />}
                 </Button>
               </div>
+
+              {/* Supplier confirmation banner */}
+              {o.externalId && (
+                <div className="mt-3 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900 p-2.5">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs">
+                    <div className="font-medium text-green-900 dark:text-green-200">
+                      Confirmed received by {o.supplier}
+                    </div>
+                    <div className="text-green-700 dark:text-green-300 mt-0.5 break-all">
+                      Order ID: <span className="font-mono">{o.externalId}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-3 flex items-start justify-between gap-1">
                 {STAGES.map((s, idx) => {
