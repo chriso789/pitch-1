@@ -824,7 +824,9 @@ Deno.serve(async (req) => {
           customerContact: derivedContact,
           notes: order.notes,
           items: (order.srs_order_items || []).map((item: any) => ({
-            productId: item.srs_product_id,
+            // Unmapped items go with productId 0 so SRS can ingest them as "needs SKU assignment".
+            // The product name + customerItem make it clear what the rep should map.
+            productId: item.srs_product_id ?? 0,
             productName: item.product_name || item.product_description || "",
             option: item.product_option || "",
             quantity: item.quantity,
