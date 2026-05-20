@@ -136,13 +136,23 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
             {blast.status}
           </Badge>
         </div>
-        {blast.status === 'sending' && (
-          <Button variant="destructive" size="sm" onClick={handleCancel}>
-            <Ban className="h-4 w-4 mr-2" />
-            Cancel Blast
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {(blast.status === 'draft' || blast.status === 'paused') && (
+            <Button variant="outline" size="sm" onClick={handleGeneratePersonalized} disabled={generating}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              {generating ? 'Generating…' : 'Generate Personalized Messages'}
+            </Button>
+          )}
+          {blast.status === 'sending' && (
+            <Button variant="destructive" size="sm" onClick={handleCancel}>
+              <Ban className="h-4 w-4 mr-2" />
+              Cancel Blast
+            </Button>
+          )}
+        </div>
       </div>
+
+
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 shrink-0">
