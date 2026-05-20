@@ -124,11 +124,29 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 shrink-0">
+        <Card>
+          <CardContent className="py-3 text-center">
+            <p className="text-2xl font-bold">{blast.total_recipients}</p>
+            <p className="text-xs text-muted-foreground">Total</p>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="py-3 text-center">
             <p className="text-2xl font-bold text-green-600">{blast.sent_count}</p>
             <p className="text-xs text-muted-foreground">Sent</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 text-center">
+            <p className="text-2xl font-bold text-blue-600">{blast.delivered_count || 0}</p>
+            <p className="text-xs text-muted-foreground">Delivered</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 text-center">
+            <p className="text-2xl font-bold text-violet-600">{blast.replied_count || 0}</p>
+            <p className="text-xs text-muted-foreground">Replied</p>
           </CardContent>
         </Card>
         <Card>
@@ -143,13 +161,36 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
             <p className="text-xs text-muted-foreground">Opted Out</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold">{blast.total_recipients}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Verification Agents */}
+      <Card className="shrink-0">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            Verification Agents
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-2 gap-3 text-xs">
+          <div className="p-3 rounded-md border border-border bg-muted/30">
+            <p className="font-medium mb-1">Delivery Verifier</p>
+            <p className="text-muted-foreground">
+              {blast.sent_count} sent · {blast.delivered_count || 0} confirmed delivered · {blast.replied_count || 0} replied.
+              {blast.daily_send_limit && (
+                <> Throttled to {blast.daily_send_limit}/day ({blast.sent_today_count || 0} sent in current window).</>
+              )}
+            </p>
+          </div>
+          <div className="p-3 rounded-md border border-border bg-muted/30">
+            <p className="font-medium mb-1">Routing Verifier</p>
+            <p className="text-muted-foreground">
+              {(items || []).filter((i: any) => i.routing_verified).length} of {items?.length || 0} numbers verified to correct contact.
+              Inbound replies are auto-attached to each contact's timeline.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {blast.status === 'sending' && (
         <div className="shrink-0">
@@ -185,8 +226,11 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
                     <span className="truncate">{item.contact_name || item.phone}</span>
                     <span className="text-muted-foreground text-xs">{item.phone}</span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant="outline" className="text-xs">{item.status}</Badge>
+                    {item.delivered_at && <Badge variant="outline" className="text-xs border-blue-500/40 text-blue-600">delivered</Badge>}
+                    {item.replied_at && <Badge variant="outline" className="text-xs border-violet-500/40 text-violet-600">replied</Badge>}
+                    {item.routing_verified && <Badge variant="outline" className="text-xs border-green-500/40 text-green-600">routed</Badge>}
                     {item.status === 'sent' && (
                       <Button
                         variant="ghost"

@@ -41334,6 +41334,10 @@ export type Database = {
           last_error: string | null
           phone: string
           replied_at: string | null
+          routed_contact_id: string | null
+          routing_confidence: string | null
+          routing_verified: boolean | null
+          routing_verified_at: string | null
           sent_at: string | null
           status: string
           telnyx_message_id: string | null
@@ -41352,6 +41356,10 @@ export type Database = {
           last_error?: string | null
           phone: string
           replied_at?: string | null
+          routed_contact_id?: string | null
+          routing_confidence?: string | null
+          routing_verified?: boolean | null
+          routing_verified_at?: string | null
           sent_at?: string | null
           status?: string
           telnyx_message_id?: string | null
@@ -41370,6 +41378,10 @@ export type Database = {
           last_error?: string | null
           phone?: string
           replied_at?: string | null
+          routed_contact_id?: string | null
+          routing_confidence?: string | null
+          routing_verified?: boolean | null
+          routing_verified_at?: string | null
           sent_at?: string | null
           status?: string
           telnyx_message_id?: string | null
@@ -41414,6 +41426,8 @@ export type Database = {
           completed_at: string | null
           created_at: string
           created_by: string | null
+          daily_send_limit: number | null
+          daily_window_started_at: string | null
           delivered_count: number | null
           delivery_rate: number | null
           failed_count: number
@@ -41430,6 +41444,7 @@ export type Database = {
           required_messages_per_second: number | null
           script: string
           sent_count: number
+          sent_today_count: number | null
           started_at: string | null
           status: string
           target_window_minutes: number | null
@@ -41443,6 +41458,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          daily_send_limit?: number | null
+          daily_window_started_at?: string | null
           delivered_count?: number | null
           delivery_rate?: number | null
           failed_count?: number
@@ -41459,6 +41476,7 @@ export type Database = {
           required_messages_per_second?: number | null
           script: string
           sent_count?: number
+          sent_today_count?: number | null
           started_at?: string | null
           status?: string
           target_window_minutes?: number | null
@@ -41472,6 +41490,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          daily_send_limit?: number | null
+          daily_window_started_at?: string | null
           delivered_count?: number | null
           delivery_rate?: number | null
           failed_count?: number
@@ -41488,6 +41508,7 @@ export type Database = {
           required_messages_per_second?: number | null
           script?: string
           sent_count?: number
+          sent_today_count?: number | null
           started_at?: string | null
           status?: string
           target_window_minutes?: number | null
@@ -50600,6 +50621,10 @@ export type Database = {
           last_error: string | null
           phone: string
           replied_at: string | null
+          routed_contact_id: string | null
+          routing_confidence: string | null
+          routing_verified: boolean | null
+          routing_verified_at: string | null
           sent_at: string | null
           status: string
           telnyx_message_id: string | null

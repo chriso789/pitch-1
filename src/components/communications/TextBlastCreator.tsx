@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone } from 'lucide-react';
+import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle } from 'lucide-react';
 import { TextBlastListBuilder } from './TextBlastListBuilder';
 
 interface TextBlastCreatorProps {
@@ -29,6 +29,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
   const [script, setScript] = useState('');
+  const [dailyLimit, setDailyLimit] = useState<number>(100);
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showListBuilder, setShowListBuilder] = useState(false);
@@ -94,6 +95,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: script.trim(),
             list_id: null,
             total_recipients: 1,
+            daily_send_limit: dailyLimit,
             status: 'draft',
           })
           .select()
@@ -135,6 +137,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: script.trim(),
             list_id: selectedListId,
             total_recipients: listItems!.length,
+            daily_send_limit: dailyLimit,
             status: 'draft',
           })
           .select()
@@ -322,7 +325,58 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Throttle & Verification Agents
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="daily-limit">Max Sends Per Day</Label>
+                <Input
+                  id="daily-limit"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={dailyLimit}
+                  onChange={(e) => setDailyLimit(Math.max(1, Number(e.target.value) || 0))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The processor will pause after {dailyLimit} sends in a rolling 24-hour window.
+                  {recipientCount > dailyLimit && (
+                    <> Will take ~{Math.ceil(recipientCount / dailyLimit)} day(s) to complete.</>
+                  )}
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-border">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Active Agents
+                </p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-medium">Delivery Verifier</span>
+                      <span className="text-muted-foreground"> — tracks which numbers received, delivered, and replied (via Telnyx status webhook).</span>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-medium">Routing Verifier</span>
+                      <span className="text-muted-foreground"> — confirms each number maps to the intended contact, and routes inbound replies back to that contact's timeline.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="flex gap-2">
+
             <Button
               onClick={handleSend}
               disabled={sending || !isValid}
