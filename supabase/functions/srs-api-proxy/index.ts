@@ -190,9 +190,18 @@ function normalizeCustomerBranchLocations(branchData: any): any[] {
 }
 
 function extractJobAccountNumber(branch: any): number | null {
-  const raw = branch?.jobAccountNumber ?? branch?.jobAccounts?.[0]?.jobAccountNumber;
-  const value = Number(raw);
-  return value && Number.isFinite(value) ? value : null;
+  const direct = Number(branch?.jobAccountNumber);
+  if (Number.isFinite(direct) && direct > 1) return direct;
+
+  const accounts = Array.isArray(branch?.jobAccounts) ? branch.jobAccounts : [];
+  for (const account of accounts) {
+    const value = Number(account?.jobAccountNumber);
+    if (Number.isFinite(value) && value > 1) return value;
+  }
+
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const firstRaw = Number(accounts[0]?.jobAccountNumber);
+  return Number.isFinite(firstRaw) && firstRaw > 0 ? firstRaw : null;
 }
 
 /** Best-effort parse of a freeform single-line address into structured shipTo. */
