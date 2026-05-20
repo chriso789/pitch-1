@@ -76,13 +76,65 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
   const load = useCallback(async () => {
     if (!tenantId) return;
     setLoading(true);
+    const relatedIds = new Set<string>();
+    if (projectId) {
+      relatedIds.add(projectId);
+      try {
+        let contactId: string | null = null;
+        const { data: pe } = await supabase
+          .from('pipeline_entries')
+          .select('id, contact_id')
+          .eq('id', projectId)
+          .eq('tenant_id', tenantId as any)
+          .maybeSingle();
+        if ((pe as any)?.contact_id) contactId = (pe as any).contact_id;
+
+        if (!contactId) {
+          const { data: prjSelf } = await supabase
+            .from('projects')
+            .select('id, contact_id, pipeline_entry_id')
+            .eq('id', projectId)
+            .eq('tenant_id', tenantId as any)
+            .maybeSingle();
+          if (prjSelf) {
+            relatedIds.add((prjSelf as any).id);
+            if ((prjSelf as any).pipeline_entry_id) relatedIds.add((prjSelf as any).pipeline_entry_id);
+            if ((prjSelf as any).contact_id) contactId = (prjSelf as any).contact_id;
+          }
+        }
+
+        const { data: prjByPe } = await supabase
+          .from('projects')
+          .select('id, contact_id')
+          .eq('pipeline_entry_id', projectId)
+          .eq('tenant_id', tenantId as any);
+        (prjByPe || []).forEach((r: any) => {
+          if (r.id) relatedIds.add(r.id);
+          if (!contactId && r.contact_id) contactId = r.contact_id;
+        });
+
+        if (contactId) {
+          const [{ data: peList }, { data: prjList }] = await Promise.all([
+            (supabase.from('pipeline_entries') as any).select('id').eq('contact_id', contactId).eq('tenant_id', tenantId),
+            (supabase.from('projects') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
+          ]);
+          (peList || []).forEach((r: any) => r.id && relatedIds.add(r.id));
+          (prjList || []).forEach((r: any) => {
+            if (r.id) relatedIds.add(r.id);
+            if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
+          });
+        }
+      } catch (e) {
+        console.warn('[SrsDiagnosticsPanel] related id resolution failed', e);
+      }
+    }
     let q = supabase
       .from('srs_orders')
       .select('id, project_id, order_number, srs_order_id, srs_transaction_id, branch_code, branch_name, status, total_amount, submitted_at, updated_at, srs_response, delivery_address')
       .eq('tenant_id', tenantId as any)
       .order('created_at', { ascending: false })
       .limit(5);
-    if (projectId) q = q.eq('project_id', projectId);
+    if (projectId) q = q.in('project_id', Array.from(relatedIds) as any);
     const { data: orders } = await q;
     const ids = (orders || []).map((o: any) => o.id);
     const projectIds = Array.from(new Set((orders || []).map((o: any) => o.project_id).filter(Boolean)));
