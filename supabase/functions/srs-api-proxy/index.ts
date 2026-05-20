@@ -26,6 +26,7 @@ const SRS_SOURCE_SYSTEM = "PITCH";
  */
 
 type SrsShipTo = {
+  name?: string;
   addressLine1?: string; addressLine2?: string; addressLine3?: string;
   city?: string; state?: string; zipCode?: string;
 };
