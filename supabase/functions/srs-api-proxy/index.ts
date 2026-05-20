@@ -452,6 +452,36 @@ Deno.serve(async (req) => {
       return resp.json();
     }
 
+    const productArrayFromCatalog = (catalogResp: any): any[] =>
+      Array.isArray(catalogResp) ? catalogResp : (catalogResp?.products || catalogResp?.data || []);
+
+    const firstCatalogVariant = (product: any, hint = "") => {
+      const variants = Array.isArray(product?.productVariant) ? product.productVariant : [];
+      const normalizedHint = String(hint || "").toLowerCase();
+      return variants.find((v: any) => {
+        const optionText = `${v?.selectedOption || ""} ${v?.colorName || ""} ${v?.sizeName || ""}`.toLowerCase();
+        return normalizedHint && optionText && normalizedHint.includes(optionText.trim());
+      }) || variants[0] || null;
+    };
+
+    const buildCatalogSubmitItem = (item: any, product: any, customerItemFallback: string) => {
+      const variant = firstCatalogVariant(product, `${item.product_name || ""} ${item.product_description || ""} ${item.product_option || ""}`);
+      const allowedUoms = Array.isArray(variant?.uoMs) ? variant.uoMs.map((u: any) => String(u).toUpperCase()) : [];
+      const requestedUom = normalizeUom(item.uom);
+      const catalogUom = allowedUoms.includes(requestedUom)
+        ? requestedUom
+        : String(variant?.defaultUOM || allowedUoms[0] || requestedUom || "EA").toUpperCase();
+      const option = String(item.product_option || variant?.selectedOption || product?.productOptions?.[0] || "").trim();
+      return {
+        productId: Number(item.srs_product_id),
+        productName: product?.productName || item.product_name || item.product_description || "",
+        option,
+        quantity: Number(item.quantity),
+        uom: catalogUom,
+        customerItem: (item.customer_item && String(item.customer_item).trim()) || customerItemFallback,
+      };
+    };
+
     let result: any;
 
     switch (action) {
