@@ -1,0 +1,1 @@
+ALTER TABLE public.srs_connections ADD COLUMN IF NOT EXISTS integration_key text;
