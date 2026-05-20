@@ -35,7 +35,7 @@ export default function AIAgentDashboardPage() {
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -51,6 +51,10 @@ export default function AIAgentDashboardPage() {
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
               Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="text-blast" className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4" />
+              Text Blast
             </TabsTrigger>
           </TabsList>
 
