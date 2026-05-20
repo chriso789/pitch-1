@@ -598,13 +598,35 @@ export function SRSConnectionSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button
-              onClick={handleSubmitTestOrder}
-              disabled={submittingTestOrder || !canSubmitTestOrder}
-            >
-              {submittingTestOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
-              Send Test Order to SRS
-            </Button>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Branch override (this test only)</Label>
+                <Select value={branchOverride || '__default__'} onValueChange={(v) => setBranchOverride(v === '__default__' ? '' : v)}>
+                  <SelectTrigger className="h-9 w-[260px]">
+                    <SelectValue placeholder="Use default branch" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    <SelectItem value="__default__">
+                      Default ({connection?.default_branch_code || '—'})
+                    </SelectItem>
+                    {branches.map((b) => (
+                      <SelectItem key={b.branch_code} value={b.branch_code}>
+                        <span className="font-mono mr-2">{b.branch_code}</span>
+                        <span className="text-muted-foreground">{b.branch_name || ''}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleSubmitTestOrder}
+                disabled={submittingTestOrder || !canSubmitTestOrder}
+              >
+                {submittingTestOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
+                Send Test Order to SRS
+              </Button>
+            </div>
+
             {!canSubmitTestOrder && (
               <p className="text-xs text-muted-foreground">
                 Validate the customer connection first so the test order can use the SRS customer code.
