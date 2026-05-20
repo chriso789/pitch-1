@@ -282,6 +282,30 @@ export function SRSConnectionSettings() {
     }
   };
 
+  const handleSaveBranch = async (newBranch: string) => {
+    if (!activeCompanyId || !newBranch) return;
+    setSavingBranch(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: {
+          action: 'update_connection_settings',
+          tenant_id: activeCompanyId,
+          default_branch_code: newBranch,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast({ title: 'Default branch updated', description: `Now ordering from ${newBranch}.` });
+      await loadConnection();
+      await loadAudit();
+    } catch (e: any) {
+      toast({ title: 'Failed to update branch', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSavingBranch(false);
+    }
+  };
+
+
   if (loading) {
     return (
       <Card>
