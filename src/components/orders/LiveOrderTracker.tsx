@@ -209,11 +209,29 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Truck className="h-4 w-4" /> Live Order Tracking
+            <Badge variant="outline" className="ml-auto">Awaiting order</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            No active supplier orders for this project. Use "Push to Supplier" to create one.
+          <div className="rounded-md border border-dashed p-4">
+            <div className="flex items-start justify-between gap-1">
+              {STAGES.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <div key={s.key} className="flex flex-1 flex-col items-center text-center">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <Icon className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                      {s.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 text-center text-xs text-muted-foreground">
+              No active supplier orders yet. Use "Push to Supplier" to create one — the tracker will populate automatically.
+            </div>
           </div>
         </CardContent>
       </Card>
