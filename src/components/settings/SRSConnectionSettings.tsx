@@ -250,9 +250,15 @@ export function SRSConnectionSettings() {
     setSubmittingTestOrder(true);
     setTestOrderResult(null);
     try {
+      const overrideBranch = branchOverride.trim();
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
-        body: { action: 'submit_test_order', tenant_id: activeCompanyId },
+        body: {
+          action: 'submit_test_order',
+          tenant_id: activeCompanyId,
+          ...(overrideBranch ? { branch_code: overrideBranch } : {}),
+        },
       });
+
       if (error) throw error;
       setTestOrderResult(data);
       if (data?.success) {
