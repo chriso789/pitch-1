@@ -143,18 +143,19 @@ function normalizeUom(raw: string | null | undefined): string {
   const map: Record<string, string> = {
     "EACH": "EA",
     "EA.": "EA",
-    "PC": "EA",
-    "PCS": "EA",
+    "PC": "PC",
+    "PCS": "PC",
     "PIECE": "EA",
     "PIECES": "EA",
     "UNIT": "EA",
     "UNITS": "EA",
     "BOX": "BX",
     "BOXES": "BX",
-    "BUNDLE": "BDL",
-    "BUNDLES": "BDL",
-    "BDLS": "BDL",
-    "BD": "BDL",
+    "BUNDLE": "BD",
+    "BUNDLES": "BD",
+    "BDLS": "BD",
+    "BDL": "BD",
+    "BD": "BD",
     "ROLL": "RL",
     "ROLLS": "RL",
     "SQUARE": "SQ",
@@ -450,6 +451,36 @@ Deno.serve(async (req) => {
       }
       return resp.json();
     }
+
+    const productArrayFromCatalog = (catalogResp: any): any[] =>
+      Array.isArray(catalogResp) ? catalogResp : (catalogResp?.products || catalogResp?.data || []);
+
+    const firstCatalogVariant = (product: any, hint = "") => {
+      const variants = Array.isArray(product?.productVariant) ? product.productVariant : [];
+      const normalizedHint = String(hint || "").toLowerCase();
+      return variants.find((v: any) => {
+        const optionText = `${v?.selectedOption || ""} ${v?.colorName || ""} ${v?.sizeName || ""}`.toLowerCase();
+        return normalizedHint && optionText && normalizedHint.includes(optionText.trim());
+      }) || variants[0] || null;
+    };
+
+    const buildCatalogSubmitItem = (item: any, product: any, customerItemFallback: string) => {
+      const variant = firstCatalogVariant(product, `${item.product_name || ""} ${item.product_description || ""} ${item.product_option || ""}`);
+      const allowedUoms = Array.isArray(variant?.uoMs) ? variant.uoMs.map((u: any) => String(u).toUpperCase()) : [];
+      const requestedUom = normalizeUom(item.uom);
+      const catalogUom = allowedUoms.includes(requestedUom)
+        ? requestedUom
+        : String(variant?.defaultUOM || allowedUoms[0] || requestedUom || "EA").toUpperCase();
+      const option = String(item.product_option || variant?.selectedOption || product?.productOptions?.[0] || "").trim();
+      return {
+        productId: Number(item.srs_product_id),
+        productName: product?.productName || item.product_name || item.product_description || "",
+        option,
+        quantity: Number(item.quantity),
+        uom: catalogUom,
+        customerItem: (item.customer_item && String(item.customer_item).trim()) || customerItemFallback,
+      };
+    };
 
     let result: any;
 
@@ -923,6 +954,23 @@ Deno.serve(async (req) => {
         }
 
         const customerItemFallback = (derivedJobNumber || order.order_number || "PITCH").toString().slice(0, 32);
+        const orderItems = Array.isArray(order.srs_order_items) ? order.srs_order_items : [];
+        const missingSkuItems = orderItems.filter((item: any) => !Number(item.srs_product_id));
+        if (missingSkuItems.length) {
+          throw new Error(
+            `SRS requires real branch catalog productIds before it will place the order. Map SKUs for: ${missingSkuItems.map((i: any) => i.product_name || i.product_description).join(", ")}.`
+          );
+        }
+
+        const branchCode = String(order.branch_code || connection.default_branch_code || "").trim();
+        const catalogResp = await srsApiCall(`/branches/v2/activeBranchProducts/${encodeURIComponent(branchCode)}`);
+        const productMap = new Map(productArrayFromCatalog(catalogResp).map((p: any) => [Number(p.productId), p]));
+        const invalidCatalogItems = orderItems.filter((item: any) => !productMap.has(Number(item.srs_product_id)));
+        if (invalidCatalogItems.length) {
+          throw new Error(
+            `These SRS productIds are not active for branch ${branchCode}: ${invalidCatalogItems.map((i: any) => `${i.product_name || i.product_description} (${i.srs_product_id})`).join(", ")}.`
+          );
+        }
 
         const orderPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
@@ -930,7 +978,7 @@ Deno.serve(async (req) => {
           accountNumber: String(connection.customer_code || "").trim(),
           jobAccountNumber: jan,
           shipToSequenceNumber: Number((order as any).ship_to_sequence_number ?? 1),
-          branchCode: String(order.branch_code || connection.default_branch_code || "").trim(),
+          branchCode,
           // Prefix `job:` so RoofHub webhooks echo back a unique parseable PO.
           poNumber: `job:${order.order_number}`,
           reference: (order as any).reference || "",
@@ -942,16 +990,9 @@ Deno.serve(async (req) => {
           shipTo: derivedShipTo,
           customerContact: derivedContact,
           notes: order.notes,
-          items: (order.srs_order_items || []).map((item: any) => ({
-            // Unmapped items go with productId 0 so SRS can ingest them as "needs SKU assignment".
-            // The product name + customerItem make it clear what the rep should map.
-            productId: item.srs_product_id ?? 0,
-            productName: item.product_name || item.product_description || "",
-            option: item.product_option || "",
-            quantity: item.quantity,
-            uom: item.uom,
-            customerItem: (item.customer_item && String(item.customer_item).trim()) || customerItemFallback,
-          })),
+          items: orderItems.map((item: any) =>
+            buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
+          ),
         });
 
         let orderResult: any;

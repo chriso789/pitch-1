@@ -416,6 +416,14 @@ export function PushToSupplierDialog({
           if (estRow?.id) resolvedEstimateId = estRow.id;
         }
 
+        const allItems = catalogResolvedItems.filter(i => Number(i.quantity) > 0);
+        const unmappedItems = allItems.filter(i => !i.srs_item_code);
+        if (unmappedItems.length) {
+          throw new Error(
+            `SRS requires a valid productId on every line before it will place the order. Add SKUs for: ${unmappedItems.map(i => i.item_name).join(', ')}.`
+          );
+        }
+
         // 1. Create the srs_orders draft + items linked to the project
         const orderNumber = `PITCH-${jobNumber || 'JOB'}-${Date.now()}`;
         const { data: orderRow, error: orderErr } = await supabase
@@ -449,14 +457,9 @@ export function PushToSupplierDialog({
             .map(i => persistSku(i, i.srs_item_code!.trim())),
         );
 
-        // Send ALL items (mapped + unmapped). Unmapped lines go in with srs_product_id=null
-        // so the SRS rep sees the product name/qty and assigns a SKU on their end.
-        const allItems = catalogResolvedItems.filter(i => Number(i.quantity) > 0);
-        const unmappedItems = allItems.filter(i => !i.srs_item_code);
-
         const itemsPayload = allItems.map(i => ({
           order_id: orderRow.id,
-          srs_product_id: i.srs_item_code ? Number(i.srs_item_code) : null,
+          srs_product_id: Number(i.srs_item_code),
           product_name: i.item_name,
           product_description: i.description || i.item_name,
           quantity: Number(i.quantity),
@@ -468,17 +471,6 @@ export function PushToSupplierDialog({
         if (itemsPayload.length) {
           const { error: itemsErr } = await supabase.from('srs_order_items').insert(itemsPayload);
           if (itemsErr) throw itemsErr;
-        }
-
-        // Append unmapped item names to notes as an explicit callout for the SRS rep.
-        if (unmappedItems.length) {
-          const unmappedNote =
-            'Items pending SKU mapping (please assign SRS productId):\n' +
-            unmappedItems
-              .map(i => `- ${i.item_name} — ${i.quantity} ${(i.unit || 'EA').toUpperCase()}`)
-              .join('\n');
-          const mergedNotes = [notes?.trim(), unmappedNote].filter(Boolean).join('\n\n');
-          await supabase.from('srs_orders').update({ notes: mergedNotes }).eq('id', orderRow.id);
         }
 
         // 2. Submit through the proxy
@@ -788,7 +780,7 @@ export function PushToSupplierDialog({
                   )}
                   {selected && editableItems.some(i => !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
-                      Items without a {selected.toUpperCase()} SKU will still be sent — the rep will see the product name & quantity and assign the SKU on their end. Map a SKU on the product to auto-fill next time.
+                      Items without a {selected.toUpperCase()} SKU cannot be placed automatically. Add a valid supplier SKU/productId to every line before pushing.
                     </p>
                   )}
                 </div>
