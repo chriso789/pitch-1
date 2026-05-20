@@ -1,0 +1,1 @@
+DELETE FROM sms_messages WHERE id='caffd6f1-faf8-4ddd-b699-be29695b47d6';
