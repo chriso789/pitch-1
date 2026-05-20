@@ -954,6 +954,23 @@ Deno.serve(async (req) => {
         }
 
         const customerItemFallback = (derivedJobNumber || order.order_number || "PITCH").toString().slice(0, 32);
+        const orderItems = Array.isArray(order.srs_order_items) ? order.srs_order_items : [];
+        const missingSkuItems = orderItems.filter((item: any) => !Number(item.srs_product_id));
+        if (missingSkuItems.length) {
+          throw new Error(
+            `SRS requires real branch catalog productIds before it will place the order. Map SKUs for: ${missingSkuItems.map((i: any) => i.product_name || i.product_description).join(", ")}.`
+          );
+        }
+
+        const branchCode = String(order.branch_code || connection.default_branch_code || "").trim();
+        const catalogResp = await srsApiCall(`/branches/v2/activeBranchProducts/${encodeURIComponent(branchCode)}`);
+        const productMap = new Map(productArrayFromCatalog(catalogResp).map((p: any) => [Number(p.productId), p]));
+        const invalidCatalogItems = orderItems.filter((item: any) => !productMap.has(Number(item.srs_product_id)));
+        if (invalidCatalogItems.length) {
+          throw new Error(
+            `These SRS productIds are not active for branch ${branchCode}: ${invalidCatalogItems.map((i: any) => `${i.product_name || i.product_description} (${i.srs_product_id})`).join(", ")}.`
+          );
+        }
 
         const orderPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
@@ -961,7 +978,7 @@ Deno.serve(async (req) => {
           accountNumber: String(connection.customer_code || "").trim(),
           jobAccountNumber: jan,
           shipToSequenceNumber: Number((order as any).ship_to_sequence_number ?? 1),
-          branchCode: String(order.branch_code || connection.default_branch_code || "").trim(),
+          branchCode,
           // Prefix `job:` so RoofHub webhooks echo back a unique parseable PO.
           poNumber: `job:${order.order_number}`,
           reference: (order as any).reference || "",
@@ -973,16 +990,9 @@ Deno.serve(async (req) => {
           shipTo: derivedShipTo,
           customerContact: derivedContact,
           notes: order.notes,
-          items: (order.srs_order_items || []).map((item: any) => ({
-            // Unmapped items go with productId 0 so SRS can ingest them as "needs SKU assignment".
-            // The product name + customerItem make it clear what the rep should map.
-            productId: item.srs_product_id ?? 0,
-            productName: item.product_name || item.product_description || "",
-            option: item.product_option || "",
-            quantity: item.quantity,
-            uom: item.uom,
-            customerItem: (item.customer_item && String(item.customer_item).trim()) || customerItemFallback,
-          })),
+          items: orderItems.map((item: any) =>
+            buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
+          ),
         });
 
         let orderResult: any;
