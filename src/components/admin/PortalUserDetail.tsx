@@ -47,6 +47,7 @@ import { PortalUser, usePortalActivity, useRevokePortalAccess } from "@/hooks/us
 import { PortalPermissionsEditor } from "./PortalPermissionsEditor";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { safeStorageUpload } from "@/lib/storage/safeUpload";
 import { RequestSignatureDialog } from "@/components/signatures/RequestSignatureDialog";
 import { SmartDocPickerDialog } from "./SmartDocPickerDialog";
 

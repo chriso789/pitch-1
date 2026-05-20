@@ -11,6 +11,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
+import { safeStorageUpload } from '@/lib/storage/safeUpload';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useToast } from '@/hooks/use-toast';
 import {
