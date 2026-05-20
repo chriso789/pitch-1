@@ -23,9 +23,11 @@ interface SRSConnection {
   last_error: string | null;
   job_account_number: number | null;
   default_branch_code: string | null;
+  integration_key: string | null;
   valid_indicator: boolean;
   environment: string;
 }
+
 
 interface AuditRow {
   id: string;
@@ -53,6 +55,9 @@ export function SRSConnectionSettings() {
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [submittingTestOrder, setSubmittingTestOrder] = useState(false);
   const [testOrderResult, setTestOrderResult] = useState<any>(null);
+  const [savingBranch, setSavingBranch] = useState(false);
+  const [branchOverride, setBranchOverride] = useState<string>('');
+
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -93,7 +98,7 @@ export function SRSConnectionSettings() {
     try {
       const { data, error } = await (supabase as any)
         .from('srs_connections')
-        .select('id, tenant_id, customer_code, client_id, client_secret_last_four, client_secret_rotated_at, connection_status, last_validated_at, last_error, job_account_number, default_branch_code, valid_indicator, environment')
+        .select('id, tenant_id, customer_code, client_id, client_secret_last_four, client_secret_rotated_at, connection_status, last_validated_at, last_error, job_account_number, default_branch_code, integration_key, valid_indicator, environment')
         .eq('tenant_id', activeCompanyId)
         .maybeSingle();
 
@@ -104,6 +109,7 @@ export function SRSConnectionSettings() {
         setClientSecret('');
         setCustomerCode(data.customer_code || '');
         setEnvironment(data.environment || 'staging');
+        setIntegrationKey(data.integration_key || '');
       }
     } catch (error) {
       console.error('Failed to load SRS connection:', error);
@@ -111,6 +117,7 @@ export function SRSConnectionSettings() {
       setLoading(false);
     }
   };
+
 
   const loadAudit = async () => {
     try {
@@ -142,8 +149,10 @@ export function SRSConnectionSettings() {
           client_secret: clientSecret.trim(),
           customer_code: customerCode.trim(),
           environment,
+          integration_key: integrationKey.trim() || undefined,
         },
       });
+
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Save failed');
 
@@ -241,9 +250,15 @@ export function SRSConnectionSettings() {
     setSubmittingTestOrder(true);
     setTestOrderResult(null);
     try {
+      const overrideBranch = branchOverride.trim();
       const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
-        body: { action: 'submit_test_order', tenant_id: activeCompanyId },
+        body: {
+          action: 'submit_test_order',
+          tenant_id: activeCompanyId,
+          ...(overrideBranch ? { branch_code: overrideBranch } : {}),
+        },
       });
+
       if (error) throw error;
       setTestOrderResult(data);
       if (data?.success) {
@@ -266,6 +281,30 @@ export function SRSConnectionSettings() {
       setSubmittingTestOrder(false);
     }
   };
+
+  const handleSaveBranch = async (newBranch: string) => {
+    if (!activeCompanyId || !newBranch) return;
+    setSavingBranch(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: {
+          action: 'update_connection_settings',
+          tenant_id: activeCompanyId,
+          default_branch_code: newBranch,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast({ title: 'Default branch updated', description: `Now ordering from ${newBranch}.` });
+      await loadConnection();
+      await loadAudit();
+    } catch (e: any) {
+      toast({ title: 'Failed to update branch', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSavingBranch(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -465,9 +504,35 @@ export function SRSConnectionSettings() {
                 <p className="font-medium">{connection.job_account_number || '—'}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Default Branch</span>
-                <p className="font-medium">{connection.default_branch_code || '—'}</p>
+                <span className="text-muted-foreground flex items-center gap-1">
+                  Default Branch {savingBranch && <Loader2 className="h-3 w-3 animate-spin" />}
+                </span>
+                {branches.length > 0 ? (
+                  <Select
+                    value={connection.default_branch_code || ''}
+                    onValueChange={(v) => handleSaveBranch(v)}
+                    disabled={savingBranch}
+                  >
+                    <SelectTrigger className="h-8 mt-1">
+                      <SelectValue placeholder="Select branch" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-80">
+                      {branches.map((b) => (
+                        <SelectItem key={b.branch_code} value={b.branch_code}>
+                          <span className="font-mono mr-2">{b.branch_code}</span>
+                          <span className="text-muted-foreground">{b.branch_name || ''}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="font-medium">
+                    {connection.default_branch_code || '—'}{' '}
+                    <span className="text-xs text-muted-foreground">(sync branches to edit)</span>
+                  </p>
+                )}
               </div>
+
               <div>
                 <span className="text-muted-foreground">Last Validated</span>
                 <p className="font-medium">
@@ -533,13 +598,35 @@ export function SRSConnectionSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button
-              onClick={handleSubmitTestOrder}
-              disabled={submittingTestOrder || !canSubmitTestOrder}
-            >
-              {submittingTestOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
-              Send Test Order to SRS
-            </Button>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Branch override (this test only)</Label>
+                <Select value={branchOverride || '__default__'} onValueChange={(v) => setBranchOverride(v === '__default__' ? '' : v)}>
+                  <SelectTrigger className="h-9 w-[260px]">
+                    <SelectValue placeholder="Use default branch" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    <SelectItem value="__default__">
+                      Default ({connection?.default_branch_code || '—'})
+                    </SelectItem>
+                    {branches.map((b) => (
+                      <SelectItem key={b.branch_code} value={b.branch_code}>
+                        <span className="font-mono mr-2">{b.branch_code}</span>
+                        <span className="text-muted-foreground">{b.branch_name || ''}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleSubmitTestOrder}
+                disabled={submittingTestOrder || !canSubmitTestOrder}
+              >
+                {submittingTestOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
+                Send Test Order to SRS
+              </Button>
+            </div>
+
             {!canSubmitTestOrder && (
               <p className="text-xs text-muted-foreground">
                 Validate the customer connection first so the test order can use the SRS customer code.

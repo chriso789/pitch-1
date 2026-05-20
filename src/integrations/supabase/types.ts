@@ -41978,6 +41978,7 @@ export type Database = {
           default_branch_code: string | null
           environment: string
           id: string
+          integration_key: string | null
           job_account_number: number | null
           last_error: string | null
           last_validated_at: string | null
@@ -41998,6 +41999,7 @@ export type Database = {
           default_branch_code?: string | null
           environment?: string
           id?: string
+          integration_key?: string | null
           job_account_number?: number | null
           last_error?: string | null
           last_validated_at?: string | null
@@ -42018,6 +42020,7 @@ export type Database = {
           default_branch_code?: string | null
           environment?: string
           id?: string
+          integration_key?: string | null
           job_account_number?: number | null
           last_error?: string | null
           last_validated_at?: string | null
