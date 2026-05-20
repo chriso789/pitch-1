@@ -82,7 +82,6 @@ function buildSubmitOrderPayload(args: {
     transactionDate: new Date().toISOString(),
     notes: args.notes ?? "",
     shipTo: args.shipTo ?? {
-      name: args.customerContact?.customerContactName ?? "Customer",
       addressLine1: "", addressLine2: "", addressLine3: "",
       city: "", state: "", zipCode: "",
     },
@@ -96,9 +95,12 @@ function buildSubmitOrderPayload(args: {
       orderType: args.orderType ?? "WHSE",
       shippingMethod: args.shippingMethod,
     },
+    // Per SRS spec (Jessica Zapata sample 2026-05-18): submit payload does
+    // NOT include `price` on line items. SRS prices server-side from their
+    // catalog; sending price triggers price-mismatch rejection.
     orderLineItemDetails: args.items.map((i) => {
       const numericId = Number(i.productId);
-      const line: Record<string, unknown> = {
+      return {
         productId: Number.isFinite(numericId) ? numericId : i.productId,
         productName: i.productName ?? "",
         option: i.option ?? "N/A",
@@ -106,21 +108,12 @@ function buildSubmitOrderPayload(args: {
         uom: normalizeUom(i.uom),
         customerItem: i.customerItem ?? "",
       };
-      // Include price only when we have a real SRS-returned price from the
-      // pricing API. SRS public docs include `price` in submit; sending a
-      // bad/guessed value triggers price-mismatch rejection, so omit when 0.
-      if (i.price != null && Number(i.price) > 0) {
-        line.price = Number(i.price);
-      }
-      return line;
     }),
 
     customerContactInfo: args.customerContact ?? {},
   };
-  // jobAccountNumber kept only when present — some SRS flows still echo it.
-  if (args.jobAccountNumber != null && !Number.isNaN(Number(args.jobAccountNumber))) {
-    payload.jobAccountNumber = Number(args.jobAccountNumber);
-  }
+  // NOTE: top-level `jobAccountNumber` removed — not in current SRS spec.
+  // SRS resolves the job account from customerCode + shipToSequenceNumber.
   return payload;
 }
 
@@ -996,54 +989,20 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Ensure the freeform-parsed shipTo carries a name (SRS public example requires it).
-        if (derivedShipTo && !derivedShipTo.name) {
-          derivedShipTo.name = derivedContact?.customerContactName || "Customer";
+        // Strip any legacy shipTo.name — SRS public spec does not include it
+        // and silently rejects unknown fields in some validator versions.
+        if (derivedShipTo && (derivedShipTo as any).name) {
+          delete (derivedShipTo as any).name;
         }
 
-        // Build line items from the branch catalog first
-        const baseItems = orderItems.map((item: any) =>
+        // Build line items from the branch catalog.
+        // Per SRS spec (2026-05-18): submit payload does NOT include `price`.
+        // SRS prices the order from their catalog server-side. We skip the
+        // pricing probe entirely on submit to avoid price-mismatch drops.
+        const pricedItems = orderItems.map((item: any) =>
           buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
         );
 
-        // Price probe — SRS public docs include `price` on each line and
-        // explicitly flag price mismatch as a submit-rejection cause. Pull
-        // authoritative prices from /products/v2/price for this branch/JAN
-        // and inject them. If pricing fails, log and submit without price
-        // (server still computes it on their end).
-        const pricedItems = [...baseItems];
-        try {
-          const priceProbe = await srsApiCall("/products/v2/price", "POST", {
-            sourceSystem: SRS_SOURCE_SYSTEM,
-            transactionId: crypto.randomUUID(),
-            customerCode: String(connection.customer_code || "").trim(),
-            jobAccountNumber: jan,
-            branchCode,
-            productList: baseItems.map((i: any) => ({
-              productNumber: String(i.productId),
-              quantity: Number(i.quantity),
-              uom: i.uom,
-            })),
-          });
-          const priceArr: any[] = Array.isArray(priceProbe)
-            ? priceProbe
-            : (priceProbe?.products || priceProbe?.priceList || priceProbe?.data || []);
-          const priceByProduct = new Map<string, number>();
-          for (const p of priceArr) {
-            const pid = String(p?.productId ?? p?.productNumber ?? "");
-            const px = Number(p?.price ?? p?.unitPrice ?? p?.netPrice ?? 0);
-            if (pid && px > 0) priceByProduct.set(pid, px);
-          }
-          for (const li of pricedItems) {
-            const px = priceByProduct.get(String(li.productId));
-            if (px && px > 0) (li as any).price = px;
-          }
-        } catch (priceErr) {
-          console.warn(
-            "SRS price probe failed; submitting without explicit prices:",
-            (priceErr as any)?.message || priceErr
-          );
-        }
 
         const orderPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
