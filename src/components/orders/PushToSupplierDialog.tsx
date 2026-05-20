@@ -1024,7 +1024,9 @@ function CatalogSearchPopover({
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el) return;
+    event.preventDefault();
     el.scrollTop += event.deltaY;
+    el.scrollLeft += event.deltaX;
     event.stopPropagation();
   };
 
@@ -1065,7 +1067,7 @@ function CatalogSearchPopover({
         </div>
         <div
           ref={scrollRef}
-          onWheel={handleWheel}
+          onWheelCapture={handleWheel}
           className="max-h-80 overflow-y-scroll overscroll-contain touch-pan-y [scrollbar-gutter:stable]"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
