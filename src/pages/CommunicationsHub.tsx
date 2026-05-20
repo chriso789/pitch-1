@@ -135,10 +135,6 @@ const CommunicationsHub = () => {
                 <Mail className="h-4 w-4" />
                 Email Activity
               </TabsTrigger>
-              <TabsTrigger value="text-blast" className="gap-2">
-                <Megaphone className="h-4 w-4" />
-                Text Blast
-              </TabsTrigger>
             </TabsList>
           </div>
 
