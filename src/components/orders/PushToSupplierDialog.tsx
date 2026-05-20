@@ -416,6 +416,14 @@ export function PushToSupplierDialog({
           if (estRow?.id) resolvedEstimateId = estRow.id;
         }
 
+        const allItems = catalogResolvedItems.filter(i => Number(i.quantity) > 0);
+        const unmappedItems = allItems.filter(i => !i.srs_item_code);
+        if (unmappedItems.length) {
+          throw new Error(
+            `SRS requires a valid productId on every line before it will place the order. Add SKUs for: ${unmappedItems.map(i => i.item_name).join(', ')}.`
+          );
+        }
+
         // 1. Create the srs_orders draft + items linked to the project
         const orderNumber = `PITCH-${jobNumber || 'JOB'}-${Date.now()}`;
         const { data: orderRow, error: orderErr } = await supabase
@@ -448,14 +456,6 @@ export function PushToSupplierDialog({
             .filter(i => i.srs_item_code && Number(i.quantity) > 0)
             .map(i => persistSku(i, i.srs_item_code!.trim())),
         );
-
-        const allItems = catalogResolvedItems.filter(i => Number(i.quantity) > 0);
-        const unmappedItems = allItems.filter(i => !i.srs_item_code);
-        if (unmappedItems.length) {
-          throw new Error(
-            `SRS requires a valid productId on every line before it will place the order. Add SKUs for: ${unmappedItems.map(i => i.item_name).join(', ')}.`
-          );
-        }
 
         const itemsPayload = allItems.map(i => ({
           order_id: orderRow.id,
