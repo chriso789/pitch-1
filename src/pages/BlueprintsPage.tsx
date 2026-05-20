@@ -82,7 +82,11 @@ export default function BlueprintsPage() {
     try {
       const docId = crypto.randomUUID();
       const path = `${tenantId}/${docId}/${file.name}`;
-      const { error: upErr } = await supabase.storage.from("blueprints").upload(path, file, {
+      const { error: upErr } = await safeStorageUpload({
+        bucket: "blueprints",
+        path,
+        file,
+        tenantId,
         contentType: "application/pdf",
         upsert: false,
       });

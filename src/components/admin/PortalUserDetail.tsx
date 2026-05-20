@@ -143,7 +143,11 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
 
       const safeName = file.name.replace(/[^\w.\-]/g, "_");
       const path = `${tenantId}/${user.contact_id}/${Date.now()}_${safeName}`;
-      const { error: upErr } = await supabase.storage.from("documents").upload(path, file, {
+      const { error: upErr } = await safeStorageUpload({
+        bucket: "documents",
+        path,
+        file,
+        tenantId,
         cacheControl: "3600",
         upsert: false,
       });

@@ -117,7 +117,13 @@ export function BulkInvoiceImportDialog({ open, onOpenChange, onComplete }: Prop
       // 1. Upload to storage
       updateRow(row.id, { status: "uploading" });
       const path = `${tenantId}/bulk-invoices/${Date.now()}-${row.file.name.replace(/[^\w.\-]/g, "_")}`;
-      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, row.file, { upsert: false });
+      const { error: upErr } = await safeStorageUpload({
+        bucket: BUCKET,
+        path,
+        file: row.file,
+        tenantId,
+        upsert: false,
+      });
       if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
       const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 30);
