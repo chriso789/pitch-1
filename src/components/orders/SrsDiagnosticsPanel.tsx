@@ -78,13 +78,15 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
     setLoading(true);
     let q = supabase
       .from('srs_orders')
-      .select('id, order_number, srs_order_id, srs_transaction_id, branch_code, status, total_amount, submitted_at, updated_at, srs_response')
+      .select('id, project_id, order_number, srs_order_id, srs_transaction_id, branch_code, branch_name, status, total_amount, submitted_at, updated_at, srs_response, delivery_address')
       .eq('tenant_id', tenantId as any)
       .order('created_at', { ascending: false })
       .limit(5);
     if (projectId) q = q.eq('project_id', projectId);
     const { data: orders } = await q;
     const ids = (orders || []).map((o: any) => o.id);
+    const projectIds = Array.from(new Set((orders || []).map((o: any) => o.project_id).filter(Boolean)));
+
     const historyById = new Map<string, StatusEvent[]>();
     if (ids.length) {
       const { data: hist } = await supabase
@@ -98,7 +100,43 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
         historyById.set(h.order_id, arr);
       }
     }
-    setAttempts((orders || []).map((o: any) => ({ ...o, history: historyById.get(o.id) || [] })));
+
+    // Fetch job info — tenant-scoped explicitly so cross-tenant leakage is impossible
+    const jobById = new Map<string, JobInfo>();
+    if (projectIds.length) {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id, job_number, pipeline_entry_id')
+        .eq('tenant_id', tenantId as any)
+        .in('id', projectIds as any);
+      const peIds = Array.from(new Set((projects || []).map((p: any) => p.pipeline_entry_id).filter(Boolean)));
+      const peMap = new Map<string, any>();
+      if (peIds.length) {
+        const { data: pes } = await supabase
+          .from('pipeline_entries')
+          .select('id, contact_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, company_name, address, city, state, zip)')
+          .eq('tenant_id', tenantId as any)
+          .in('id', peIds as any);
+        for (const pe of (pes || []) as any[]) peMap.set(pe.id, pe);
+      }
+      for (const p of (projects || []) as any[]) {
+        const pe = p.pipeline_entry_id ? peMap.get(p.pipeline_entry_id) : null;
+        const c = pe?.contacts;
+        const name = c
+          ? (c.company_name || [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || null)
+          : null;
+        const addr = c
+          ? [c.address, [c.city, c.state].filter(Boolean).join(', '), c.zip].filter(Boolean).join(' · ')
+          : null;
+        jobById.set(p.id, { job_number: p.job_number, customer_name: name, address: addr || null });
+      }
+    }
+
+    setAttempts((orders || []).map((o: any) => ({
+      ...o,
+      history: historyById.get(o.id) || [],
+      job: o.project_id ? jobById.get(o.project_id) : undefined,
+    })));
     setLoading(false);
   }, [tenantId, projectId]);
 
