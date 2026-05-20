@@ -55,6 +55,9 @@ export function SRSConnectionSettings() {
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [submittingTestOrder, setSubmittingTestOrder] = useState(false);
   const [testOrderResult, setTestOrderResult] = useState<any>(null);
+  const [savingBranch, setSavingBranch] = useState(false);
+  const [branchOverride, setBranchOverride] = useState<string>('');
+
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
