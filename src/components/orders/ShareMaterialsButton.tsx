@@ -225,7 +225,7 @@ export function ShareMaterialsButton(props: Props) {
             <div
               className="rounded-md border bg-white p-4 max-h-[480px] overflow-auto"
               // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: html }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
             />
           </div>
         </div>
