@@ -46,24 +46,33 @@ interface SrsAttempt {
 }
 
 function extractError(resp: any, history: StatusEvent[]): string | null {
-  if (!resp && !history.length) return null;
+  // Prefer the most recent failure/rejection event from status history —
+  // the original submit response often says "Order Queued" even when the
+  // order was later dropped/rejected by SRS.
+  const errEvt = [...history]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .find(h =>
+      /fail|reject|error|invalid|cancel|drop|404|timeout/i.test(
+        `${h.new_status || ''} ${h.status_message || ''}`
+      )
+    );
+  if (errEvt?.status_message) return errEvt.status_message;
+
+  if (!resp) return null;
   const candidates = [
     resp?.error,
-    resp?.message,
     resp?.errorMessage,
     resp?.validationErrors,
     resp?.errors,
     resp?.body?.error,
     resp?.body?.message,
+    resp?.message,
   ].filter(Boolean);
   if (candidates.length) {
     const c = candidates[0];
     return typeof c === 'string' ? c : JSON.stringify(c);
   }
-  const errEvt = history.find(h =>
-    /fail|reject|error|invalid|cancel/i.test(`${h.new_status || ''} ${h.status_message || ''}`)
-  );
-  return errEvt?.status_message || null;
+  return null;
 }
 
 export function SrsDiagnosticsPanel({ projectId }: Props) {
