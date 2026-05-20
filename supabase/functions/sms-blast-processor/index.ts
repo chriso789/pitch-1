@@ -175,13 +175,26 @@ async function processBlast(
     .in('phone', phones);
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
+  // Pre-fetch personalized messages for claimed items (set by generate-campaign-messages)
+  const claimedIds = (claimed as any[]).map((c: any) => c.id);
+  const personalizedMap = new Map<string, string>();
+  if (claimedIds.length > 0) {
+    const { data: pers } = await supabase
+      .from('sms_blast_items')
+      .select('id, personalized_message')
+      .in('id', claimedIds);
+    (pers || []).forEach((p: any) => {
+      if (p.personalized_message) personalizedMap.set(p.id, p.personalized_message);
+    });
+  }
+
   let sent = 0;
   let failed = 0;
   let opted = 0;
 
   const sleepMs = Math.max(50, Math.floor(1000 / Math.max(totalMps, 0.5)));
 
-  // Round-robin from-number assignment
+  // Cursor used as fallback for from-number rotation
   let cursor = 0;
   for (const item of claimed) {
     // Honor cancel flag mid-tick
@@ -219,18 +232,18 @@ async function processBlast(
       continue;
     }
 
-    // Template tokens
+    // Prefer personalized_message (smart-tag resolved) over raw script
     const firstName = (item.contact_name || '').split(' ')[0] || '';
     const lastName = (item.contact_name || '').split(' ').slice(1).join(' ') || '';
-    let body = String(blast.script || '')
+    let body = personalizedMap.get(item.id) || String(blast.script || '')
       .replace(/\{\{first_name\}\}/gi, firstName)
       .replace(/\{\{last_name\}\}/gi, lastName)
       .replace(/\{\{full_name\}\}/gi, item.contact_name || '')
       .replace(/\{\{phone\}\}/gi, toE164);
     if (!/stop/i.test(body)) body += '\n\nReply STOP to opt out.';
 
-    // Pick a from-number (round-robin among active locations)
-    const loc = activeNumbers[cursor % activeNumbers.length];
+    // Pick a from-number — prefer area-code / FL-coast match, fallback round-robin
+    const loc = pickFromNumber(toE164, activeNumbers, cursor);
     cursor++;
 
     try {
