@@ -344,10 +344,19 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   onChange={(e) => setDailyLimit(Math.max(1, Number(e.target.value) || 0))}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  The processor will pause after {dailyLimit} sends in a rolling 24-hour window.
+                  Processor pauses after {dailyLimit} sends in a rolling 24-hour window.
                   {recipientCount > dailyLimit && (
                     <> Will take ~{Math.ceil(recipientCount / dailyLimit)} day(s) to complete.</>
                   )}
+                </p>
+              </div>
+
+              <div className="rounded-md border border-border bg-muted/40 p-3 space-y-1.5">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Per-Number Cadence Rule
+                </p>
+                <p className="text-xs text-foreground">
+                  <span className="font-medium">One message per phone number per 24h.</span> Each contact is retried on subsequent days until they reply or send <span className="font-mono">NO / STOP</span>. The system rotates across tenant numbers to find the right match before moving on.
                 </p>
               </div>
 
@@ -360,14 +369,14 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                     <CheckCircle className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
                     <div>
                       <span className="font-medium">Delivery Verifier</span>
-                      <span className="text-muted-foreground"> — tracks which numbers received, delivered, and replied (via Telnyx status webhook).</span>
+                      <span className="text-muted-foreground"> — tracks which numbers received, delivered, and replied (via Telnyx status webhook). Enforces the 1-per-number-per-day cap.</span>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
                     <CheckCircle className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
                     <div>
                       <span className="font-medium">Routing Verifier</span>
-                      <span className="text-muted-foreground"> — confirms each number maps to the intended contact, and routes inbound replies back to that contact's timeline.</span>
+                      <span className="text-muted-foreground"> — confirms each number maps to the intended contact across the tenant's number pool; routes inbound replies back to that contact and stops the cadence on reply / NO / STOP.</span>
                     </div>
                   </div>
                 </div>
