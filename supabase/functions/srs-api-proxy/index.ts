@@ -82,6 +82,7 @@ function buildSubmitOrderPayload(args: {
     transactionDate: new Date().toISOString(),
     notes: args.notes ?? "",
     shipTo: args.shipTo ?? {
+      name: args.customerContact?.customerContactName ?? "Customer",
       addressLine1: "", addressLine2: "", addressLine3: "",
       city: "", state: "", zipCode: "",
     },
@@ -92,19 +93,26 @@ function buildSubmitOrderPayload(args: {
       orderDate: args.orderDate ?? today,
       expectedDeliveryDate: args.expectedDeliveryDate ?? today,
       expectedDeliveryTime: args.expectedDeliveryTime ?? "Anytime",
-      orderType: "WHSE",
+      orderType: args.orderType ?? "WHSE",
       shippingMethod: args.shippingMethod,
     },
     orderLineItemDetails: args.items.map((i) => {
       const numericId = Number(i.productId);
-      return {
+      const line: Record<string, unknown> = {
         productId: Number.isFinite(numericId) ? numericId : i.productId,
         productName: i.productName ?? "",
-        option: i.option ?? "",
+        option: i.option ?? "N/A",
         quantity: Number(i.quantity),
         uom: normalizeUom(i.uom),
         customerItem: i.customerItem ?? "",
       };
+      // Include price only when we have a real SRS-returned price from the
+      // pricing API. SRS public docs include `price` in submit; sending a
+      // bad/guessed value triggers price-mismatch rejection, so omit when 0.
+      if (i.price != null && Number(i.price) > 0) {
+        line.price = Number(i.price);
+      }
+      return line;
     }),
 
     customerContactInfo: args.customerContact ?? {},
@@ -114,6 +122,12 @@ function buildSubmitOrderPayload(args: {
     payload.jobAccountNumber = Number(args.jobAccountNumber);
   }
   return payload;
+}
+
+/** Map internal delivery_method to SRS orderType. Pickup → WILLCALL, all delivery → WHSE. */
+function srsOrderType(internal: string | null | undefined): "WHSE" | "WILLCALL" {
+  const v = (internal || "").toLowerCase();
+  return v === "pickup" || v === "wc" || v === "will_call" ? "WILLCALL" : "WHSE";
 }
 
 /** Map our internal delivery_method codes to SRS shipping-method labels. */
