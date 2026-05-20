@@ -81,12 +81,54 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
 
   const fetchOrders = useCallback(async () => {
     if (!tenantId || !projectId) return;
+
+    // Resolve all sibling project ids tied to the same customer so orders
+    // placed under a previous pipeline entry / job for the same contact
+    // still surface on the current lead page.
+    const relatedIds = new Set<string>([projectId]);
+    try {
+      // Try pipeline_entries first
+      const { data: pe } = await supabase
+        .from('pipeline_entries')
+        .select('id, contact_id')
+        .eq('id', projectId)
+        .maybeSingle();
+      let contactId: string | null = (pe as any)?.contact_id || null;
+
+      if (!contactId) {
+        const { data: jb } = await supabase
+          .from('jobs')
+          .select('id, contact_id, pipeline_entry_id')
+          .eq('id', projectId)
+          .maybeSingle();
+        contactId = (jb as any)?.contact_id || null;
+        if ((jb as any)?.pipeline_entry_id) relatedIds.add((jb as any).pipeline_entry_id);
+      }
+
+      if (contactId) {
+        const [{ data: peList }, { data: jobList }] = await Promise.all([
+          supabase.from('pipeline_entries').select('id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
+          supabase.from('jobs').select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
+        ]);
+        (peList || []).forEach((r: any) => r.id && relatedIds.add(r.id));
+        (jobList || []).forEach((r: any) => {
+          if (r.id) relatedIds.add(r.id);
+          if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
+        });
+      }
+    } catch (e) {
+      // Non-fatal — fall back to direct projectId match
+      console.warn('[LiveOrderTracker] sibling id resolution failed', e);
+    }
+
+    const idList = Array.from(relatedIds);
+
     const [srsRes, qxoRes] = await Promise.all([
       supabase
         .from('srs_orders')
-        .select('id, order_number, srs_order_id, branch_code, status, total_amount, delivery_address, delivery_date, submitted_at, updated_at')
+        .select('id, order_number, srs_order_id, branch_code, status, total_amount, delivery_address, delivery_date, submitted_at, updated_at, project_id')
         .eq('tenant_id', tenantId as any)
-        .eq('project_id', projectId)
+        .in('project_id', idList)
         .order('created_at', { ascending: false }),
       supabase
         .from('qxo_orders')
@@ -166,7 +208,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     if (!tenantId || !projectId) return;
     const channel = supabase
       .channel(`orders-${projectId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_orders', filter: `project_id=eq.${projectId}` }, () => fetchOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_orders' }, () => fetchOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_order_status_history' }, () => fetchOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'srs_order_documents' }, () => fetchOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'qxo_orders' }, () => fetchOrders())
