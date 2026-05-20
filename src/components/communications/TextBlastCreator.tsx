@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle, Sparkles, FileText } from 'lucide-react';
 import { TextBlastListBuilder } from './TextBlastListBuilder';
+import { resolveSmsTags, SAMPLE_TAG_CONTEXT, SMS_AVAILABLE_TAGS } from '@/lib/smartTags/smsTagResolver';
 
 interface TextBlastCreatorProps {
   onBack: () => void;
