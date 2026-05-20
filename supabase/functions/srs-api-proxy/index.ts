@@ -26,6 +26,7 @@ const SRS_SOURCE_SYSTEM = "PITCH";
  */
 
 type SrsShipTo = {
+  name?: string;
   addressLine1?: string; addressLine2?: string; addressLine3?: string;
   city?: string; state?: string; zipCode?: string;
 };
@@ -45,6 +46,7 @@ type SrsLineItem = {
   productName?: string;
   option?: string;
   quantity: number;
+  price?: number;
   uom: string;
   customerItem?: string;
 };
@@ -62,7 +64,8 @@ function buildSubmitOrderPayload(args: {
   orderDate?: string | null;              // YYYY-MM-DD
   expectedDeliveryDate?: string | null;   // YYYY-MM-DD
   expectedDeliveryTime?: string | null;   // e.g. "Anytime"
-  shippingMethod: string;                 // label e.g. "Ground Drop", "Will Call", "Delivery"
+  orderType?: "WHSE" | "WILLCALL";        // defaults to WHSE
+  shippingMethod: string;                 // label e.g. "Ground Drop", "Will Call"
   shipTo?: SrsShipTo | null;
   customerContact?: SrsCustomerContact | null;
   notes?: string | null;
@@ -79,6 +82,7 @@ function buildSubmitOrderPayload(args: {
     transactionDate: new Date().toISOString(),
     notes: args.notes ?? "",
     shipTo: args.shipTo ?? {
+      name: args.customerContact?.customerContactName ?? "Customer",
       addressLine1: "", addressLine2: "", addressLine3: "",
       city: "", state: "", zipCode: "",
     },
@@ -89,19 +93,26 @@ function buildSubmitOrderPayload(args: {
       orderDate: args.orderDate ?? today,
       expectedDeliveryDate: args.expectedDeliveryDate ?? today,
       expectedDeliveryTime: args.expectedDeliveryTime ?? "Anytime",
-      orderType: "WHSE",
+      orderType: args.orderType ?? "WHSE",
       shippingMethod: args.shippingMethod,
     },
     orderLineItemDetails: args.items.map((i) => {
       const numericId = Number(i.productId);
-      return {
+      const line: Record<string, unknown> = {
         productId: Number.isFinite(numericId) ? numericId : i.productId,
         productName: i.productName ?? "",
-        option: i.option ?? "",
+        option: i.option ?? "N/A",
         quantity: Number(i.quantity),
         uom: normalizeUom(i.uom),
         customerItem: i.customerItem ?? "",
       };
+      // Include price only when we have a real SRS-returned price from the
+      // pricing API. SRS public docs include `price` in submit; sending a
+      // bad/guessed value triggers price-mismatch rejection, so omit when 0.
+      if (i.price != null && Number(i.price) > 0) {
+        line.price = Number(i.price);
+      }
+      return line;
     }),
 
     customerContactInfo: args.customerContact ?? {},
@@ -111,6 +122,12 @@ function buildSubmitOrderPayload(args: {
     payload.jobAccountNumber = Number(args.jobAccountNumber);
   }
   return payload;
+}
+
+/** Map internal delivery_method to SRS orderType. Pickup → WILLCALL, all delivery → WHSE. */
+function srsOrderType(internal: string | null | undefined): "WHSE" | "WILLCALL" {
+  const v = (internal || "").toLowerCase();
+  return v === "pickup" || v === "wc" || v === "will_call" ? "WILLCALL" : "WHSE";
 }
 
 /** Map our internal delivery_method codes to SRS shipping-method labels. */
@@ -128,8 +145,12 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
       return "Roof Load";
     case "delivery":
     case "del":
+      throw new Error(
+        "Generic 'delivery' is not a valid SRS shippingMethod. " +
+        "Choose Roof Load, Ground Drop, or Will Call before submit."
+      );
     default:
-      return "Delivery";
+      throw new Error(`Unknown SRS shipping method: ${internal}`);
   }
 }
 
@@ -771,6 +792,7 @@ Deno.serve(async (req) => {
         ];
 
         const testShipTo = (params as any).ship_to || {
+          name: "PITCH Integration Test",
           addressLine1: "4063 Fonsica Ave",
           addressLine2: "",
           addressLine3: "",
@@ -804,6 +826,7 @@ Deno.serve(async (req) => {
           orderDate: new Date().toISOString().slice(0, 10),
           expectedDeliveryDate: tomorrow,
           expectedDeliveryTime: (params as any).expected_delivery_time ?? "Anytime",
+          orderType: srsOrderType((params as any).shipping_method || "will_call"),
           shippingMethod: srsShippingMethodLabel((params as any).shipping_method || "will_call"),
           shipTo: testShipTo,
           customerContact: testContact,
@@ -931,6 +954,7 @@ Deno.serve(async (req) => {
                   }
                   if (!derivedShipTo && contact.address_street) {
                     derivedShipTo = {
+                      name,
                       addressLine1: contact.address_street,
                       addressLine2: "", addressLine3: "",
                       city: contact.address_city || "",
@@ -972,6 +996,55 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Ensure the freeform-parsed shipTo carries a name (SRS public example requires it).
+        if (derivedShipTo && !derivedShipTo.name) {
+          derivedShipTo.name = derivedContact?.customerContactName || "Customer";
+        }
+
+        // Build line items from the branch catalog first
+        const baseItems = orderItems.map((item: any) =>
+          buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
+        );
+
+        // Price probe — SRS public docs include `price` on each line and
+        // explicitly flag price mismatch as a submit-rejection cause. Pull
+        // authoritative prices from /products/v2/price for this branch/JAN
+        // and inject them. If pricing fails, log and submit without price
+        // (server still computes it on their end).
+        const pricedItems = [...baseItems];
+        try {
+          const priceProbe = await srsApiCall("/products/v2/price", "POST", {
+            sourceSystem: SRS_SOURCE_SYSTEM,
+            transactionId: crypto.randomUUID(),
+            customerCode: String(connection.customer_code || "").trim(),
+            jobAccountNumber: jan,
+            branchCode,
+            productList: baseItems.map((i: any) => ({
+              productNumber: String(i.productId),
+              quantity: Number(i.quantity),
+              uom: i.uom,
+            })),
+          });
+          const priceArr: any[] = Array.isArray(priceProbe)
+            ? priceProbe
+            : (priceProbe?.products || priceProbe?.priceList || priceProbe?.data || []);
+          const priceByProduct = new Map<string, number>();
+          for (const p of priceArr) {
+            const pid = String(p?.productId ?? p?.productNumber ?? "");
+            const px = Number(p?.price ?? p?.unitPrice ?? p?.netPrice ?? 0);
+            if (pid && px > 0) priceByProduct.set(pid, px);
+          }
+          for (const li of pricedItems) {
+            const px = priceByProduct.get(String(li.productId));
+            if (px && px > 0) (li as any).price = px;
+          }
+        } catch (priceErr) {
+          console.warn(
+            "SRS price probe failed; submitting without explicit prices:",
+            (priceErr as any)?.message || priceErr
+          );
+        }
+
         const orderPayload = buildSubmitOrderPayload({
           sourceSystem: SRS_SOURCE_SYSTEM,
           customerCode: String(connection.customer_code || "").trim(),
@@ -986,14 +1059,34 @@ Deno.serve(async (req) => {
           orderDate: new Date().toISOString().slice(0, 10),
           expectedDeliveryDate: order.delivery_date,
           expectedDeliveryTime: (order as any).delivery_time_window || "Anytime",
+          orderType: srsOrderType(order.delivery_method),
           shippingMethod: srsShippingMethodLabel(order.delivery_method),
           shipTo: derivedShipTo,
           customerContact: derivedContact,
           notes: order.notes,
-          items: orderItems.map((item: any) =>
-            buildCatalogSubmitItem(item, productMap.get(Number(item.srs_product_id)), customerItemFallback)
-          ),
+          items: pricedItems,
         });
+
+        // Persist a pre-submit audit row so we always have the exact JSON
+        // that was sent to SRS, even when the submit "succeeds" but is later
+        // silently dropped by their queue.
+        let auditId: string | null = null;
+        try {
+          const { data: auditRow } = await supabase
+            .from("srs_submit_audit")
+            .insert({
+              order_id,
+              tenant_id,
+              transaction_id: (orderPayload as any).transactionID,
+              request_json: orderPayload,
+              success: false,
+            })
+            .select("id")
+            .single();
+          auditId = (auditRow as any)?.id ?? null;
+        } catch (auditErr) {
+          console.warn("srs_submit_audit insert failed:", (auditErr as any)?.message || auditErr);
+        }
 
         let orderResult: any;
         try {
@@ -1013,8 +1106,23 @@ Deno.serve(async (req) => {
             order_id, old_status: "draft", new_status: "failed",
             status_message: `SRS submit failed: ${errMsg}`,
           });
+          if (auditId) {
+            await supabase
+              .from("srs_submit_audit")
+              .update({ success: false, error_message: errMsg, updated_at: new Date().toISOString() })
+              .eq("id", auditId);
+          }
           throw new Error(`SRS submit failed (transactionID=${(orderPayload as any).transactionID}): ${errMsg}`);
         }
+
+        // Update audit with the SRS response on success
+        if (auditId) {
+          await supabase
+            .from("srs_submit_audit")
+            .update({ response_json: orderResult, success: true, updated_at: new Date().toISOString() })
+            .eq("id", auditId);
+        }
+
 
         // SRS's /orders/v2/submit always returns 200 even when the order has only
         // been accepted into their ingestion *queue*. The queue entry can later be
