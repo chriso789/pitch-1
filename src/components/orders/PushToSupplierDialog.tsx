@@ -71,6 +71,9 @@ export function PushToSupplierDialog({
   const [notes, setNotes] = useState('');
   const [editableItems, setEditableItems] = useState<MaterialItem[]>(items);
   const [submitting, setSubmitting] = useState(false);
+  const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
+  const [srsCatalogLoading, setSrsCatalogLoading] = useState(false);
+  const [srsCatalogBranch, setSrsCatalogBranch] = useState<string>('');
 
   useEffect(() => {
     setEditableItems(items);
