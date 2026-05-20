@@ -184,19 +184,7 @@ Deno.serve(async (req) => {
     }
 
 
-    // 2. Classify
-    const intent = await classifyIntent(apiKey, body);
-    console.log('[ai-followup] intent', intent, 'for', from_phone);
-
-    // STOP / not_interested → never reply
-    const SILENT = new Set(['stop', 'not_interested', 'other']);
-    if (SILENT.has(intent)) {
-      return new Response(JSON.stringify({ intent, replied: false }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 3. Generate reply with contact context
+    // 3. Generate reply with contact context + recent message history (multi-turn)
     let contact: any = null;
     if (contact_id) {
       const { data: c } = await supabase
@@ -206,8 +194,20 @@ Deno.serve(async (req) => {
       contact = c;
     }
 
-    const reply = await generateReply(apiKey, body, intent, contact || {});
+    const { data: recentMsgs } = await supabase
+      .from('sms_messages')
+      .select('direction, body, created_at')
+      .eq('tenant_id', tenant_id)
+      .or(`to_number.eq.${from_phone},from_number.eq.${from_phone}`)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    const history = (recentMsgs || [])
+      .reverse()
+      .map((m: any) => ({ direction: m.direction, body: String(m.body || '').slice(0, 240) }));
+
+    const reply = await generateReply(apiKey, body, intent, contact || {}, history);
     if (!reply) {
+
       return new Response(JSON.stringify({ intent, replied: false, error: 'generation_failed' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
