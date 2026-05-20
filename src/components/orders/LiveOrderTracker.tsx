@@ -87,14 +87,20 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     // still surface on the current lead page.
     const relatedIds = new Set<string>([projectId]);
     try {
-      // Try pipeline_entries first
+      // The incoming projectId may be a pipeline_entries.id, jobs.id, OR projects.id.
+      // SRS orders are stored against projects.id (see PushToSupplierDialog), so we
+      // must resolve across all three tables and union every related id.
+      let contactId: string | null = null;
+
+      // 1) pipeline_entries lookup
       const { data: pe } = await supabase
         .from('pipeline_entries')
         .select('id, contact_id')
         .eq('id', projectId)
         .maybeSingle();
-      let contactId: string | null = (pe as any)?.contact_id || null;
+      if ((pe as any)?.contact_id) contactId = (pe as any).contact_id;
 
+      // 2) jobs lookup
       if (!contactId) {
         const { data: jb } = await supabase
           .from('jobs')
@@ -105,13 +111,42 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
         if ((jb as any)?.pipeline_entry_id) relatedIds.add((jb as any).pipeline_entry_id);
       }
 
+      // 3) projects lookup (projectId could itself be a projects.id)
+      const { data: prjSelf } = await supabase
+        .from('projects')
+        .select('id, contact_id, pipeline_entry_id')
+        .eq('id', projectId)
+        .maybeSingle();
+      if (prjSelf) {
+        relatedIds.add((prjSelf as any).id);
+        if ((prjSelf as any).pipeline_entry_id) relatedIds.add((prjSelf as any).pipeline_entry_id);
+        if (!contactId && (prjSelf as any).contact_id) contactId = (prjSelf as any).contact_id;
+      }
+
+      // 4) projects linked to this pipeline_entry directly
+      const { data: prjByPe } = await supabase
+        .from('projects')
+        .select('id, contact_id')
+        .eq('pipeline_entry_id', projectId)
+        .eq('tenant_id', tenantId as any);
+      (prjByPe || []).forEach((r: any) => {
+        if (r.id) relatedIds.add(r.id);
+        if (!contactId && r.contact_id) contactId = r.contact_id;
+      });
+
+      // 5) fan out across every sibling for the same contact
       if (contactId) {
-        const [{ data: peList }, { data: jobList }] = await Promise.all([
-          supabase.from('pipeline_entries').select('id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
-          supabase.from('jobs').select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId as any),
+        const [{ data: peList }, { data: jobList }, { data: prjList }] = await Promise.all([
+          (supabase.from('pipeline_entries') as any).select('id').eq('contact_id', contactId).eq('tenant_id', tenantId),
+          (supabase.from('jobs') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
+          (supabase.from('projects') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
         ]);
         (peList || []).forEach((r: any) => r.id && relatedIds.add(r.id));
         (jobList || []).forEach((r: any) => {
+          if (r.id) relatedIds.add(r.id);
+          if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
+        });
+        (prjList || []).forEach((r: any) => {
           if (r.id) relatedIds.add(r.id);
           if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
         });
@@ -124,16 +159,16 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     const idList = Array.from(relatedIds);
 
     const [srsRes, qxoRes] = await Promise.all([
-      supabase
-        .from('srs_orders')
+      (supabase
+        .from('srs_orders') as any)
         .select('id, order_number, srs_order_id, branch_code, status, total_amount, delivery_address, delivery_date, submitted_at, updated_at, project_id')
-        .eq('tenant_id', tenantId as any)
+        .eq('tenant_id', tenantId)
         .in('project_id', idList)
         .order('created_at', { ascending: false }),
-      supabase
-        .from('qxo_orders')
+      (supabase
+        .from('qxo_orders') as any)
         .select('id, po_number, beacon_order_id, status_code, status_value, on_hold, total, ship_address, order_placed_date, last_synced_at, selling_branch')
-        .eq('tenant_id', tenantId as any)
+        .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false }),
     ]);
 
