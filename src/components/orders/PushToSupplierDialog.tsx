@@ -1033,7 +1033,7 @@ function CatalogSearchPopover({
           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[28rem] p-0" align="start">
+      <PopoverContent className="w-[min(28rem,calc(100vw-2rem))] p-0" align="start" onOpenAutoFocus={(event) => event.preventDefault()}>
         <div className="flex items-center border-b px-3 py-2 gap-2">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
           <input
@@ -1049,7 +1049,12 @@ function CatalogSearchPopover({
             ? 'Loading catalog…'
             : `${filtered.length}${filtered.length >= 200 ? '+' : ''} of ${catalog.length} products`}
         </div>
-        <div className="max-h-80 overflow-y-auto overscroll-contain">
+        <div
+          ref={scrollRef}
+          onWheel={handleWheel}
+          className="max-h-80 overflow-y-scroll overscroll-contain touch-pan-y [scrollbar-gutter:stable]"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {!loading && catalog.length === 0 && (
             <div className="p-4 text-xs text-muted-foreground">Catalog not loaded.</div>
           )}
