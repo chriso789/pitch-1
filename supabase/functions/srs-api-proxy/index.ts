@@ -443,7 +443,7 @@ Deno.serve(async (req) => {
 
           if (isValid && connection.customer_code) {
             // Try customerBranchLocations with branchCode (required by SRS) to pull JAN.
-            const branchCodeForQuery = defaultBranch || "SRORL";
+            const branchCodeForQuery = defaultBranch || "SRFTL";
             try {
               const branchData = await srsApiCall(
                 `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(branchCodeForQuery)}`
@@ -506,7 +506,7 @@ Deno.serve(async (req) => {
         if (!connection.customer_code) {
           throw new Error("Missing customer_code on connection. Run Test Connection / validate first.");
         }
-        const requestedBranchCode = String((params as any).branch_code || connection.default_branch_code || "SRORL").trim();
+        const requestedBranchCode = String((params as any).branch_code || connection.default_branch_code || "SRFTL").trim();
         const branchData = await srsApiCall(
           `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(requestedBranchCode)}`
         );
@@ -614,7 +614,7 @@ Deno.serve(async (req) => {
         const branch = String(
           (params as any).branch_code
             || connection.default_branch_code
-            || "SRORL",
+            || "SRFTL",
         ).trim();
         const janRaw = (params as any).job_account_number ?? connection.job_account_number;
         const jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
@@ -703,7 +703,7 @@ Deno.serve(async (req) => {
         let jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
         if (!jan || Number.isNaN(jan)) {
           // Auto-recover: fetch JAN from customerBranchLocations using the order's branch.
-          const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRORL").trim();
+          const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRFTL").trim();
           try {
             const branchData = await srsApiCall(
               `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(branchForLookup)}`
@@ -923,7 +923,7 @@ Deno.serve(async (req) => {
           const b = await srsApiCall("/branches/v2/branchLocations");
           return { count: Array.isArray(b) ? b.length : (b?.branchLocations?.length ?? 0) };
         });
-        const probeBranch = String((params as any).branch_code || connection.default_branch_code || "SRORL");
+        const probeBranch = String((params as any).branch_code || connection.default_branch_code || "SRFTL");
         const cbl = await safe("4_customerBranchLocations", async () => {
           // SRS requires BranchCode (or lat/lng) as a query parameter on this endpoint.
           const b = await srsApiCall(
