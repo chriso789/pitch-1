@@ -202,6 +202,23 @@ Deno.serve(async (req) => {
         .from('sms_blast_items')
         .update({ status: 'replied', replied_at: new Date().toISOString() })
         .eq('id', lastBlastItem.id);
+
+      // Fire-and-forget AI consultative follow-up (no STOP word, blast must have AI enabled)
+      if (!STOP_WORDS.has(upper)) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        fetch(`${supabaseUrl}/functions/v1/ai-followup-worker`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            contact_id: contactId,
+            from_phone: fromE164,
+            to_phone: toE164,
+            body,
+          }),
+        }).catch((e) => console.error('[inbound] ai-followup dispatch failed', e));
+      }
     }
   } else {
     await supabase.from('unmatched_inbound').insert({
