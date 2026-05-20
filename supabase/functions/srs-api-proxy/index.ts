@@ -854,23 +854,46 @@ Deno.serve(async (req) => {
           throw new Error(`SRS submit failed (transactionID=${(orderPayload as any).transactionID}): ${errMsg}`);
         }
 
+        // SRS's /orders/v2/submit always returns 200 even when the order has only
+        // been accepted into their ingestion *queue*. The queue entry can later be
+        // silently rejected (bad item code, JAN mismatch, etc.) and never become a
+        // real PO. Detect that state and mark the order `queued`, not `submitted`.
+        // A real accepted order has orderID !== queueID and message !~ "Queued".
+        const queueId = (orderResult as any)?.queueID || (orderResult as any)?.queueId || null;
+        const orderId = (orderResult as any)?.orderID || (orderResult as any)?.orderId || null;
+        const message = String((orderResult as any)?.message || "");
+        const isQueuedOnly =
+          (queueId && orderId && queueId === orderId) ||
+          /queued/i.test(message);
+        const nextStatus = isQueuedOnly ? "queued" : "submitted";
+
         await supabase
           .from("srs_orders")
           .update({
-            srs_order_id: orderResult.orderID,
+            srs_order_id: orderId,
             srs_transaction_id: orderResult.transactionID,
-            status: "submitted",
+            status: nextStatus,
             submitted_at: new Date().toISOString(),
             srs_response: orderResult,
           })
           .eq("id", order_id);
 
         await supabase.from("srs_order_status_history").insert({
-          order_id, old_status: "draft", new_status: "submitted",
-          status_message: `Order submitted. SRS Order ID: ${orderResult.orderID}`,
+          order_id, old_status: "draft", new_status: nextStatus,
+          status_message: isQueuedOnly
+            ? `SRS accepted into intake queue (queueID=${queueId}). Awaiting confirmation.`
+            : `Order submitted. SRS Order ID: ${orderId}`,
+          raw_webhook_data: orderResult,
         });
 
-        result = { success: true, srsOrderId: orderResult.orderID, request: orderPayload };
+        result = {
+          success: true,
+          queued: isQueuedOnly,
+          srsOrderId: orderId,
+          queueId,
+          request: orderPayload,
+          response: orderResult,
+        };
         break;
       }
 
@@ -1023,17 +1046,55 @@ Deno.serve(async (req) => {
         const path = srs_order_id
           ? `/orders/v2/status/${encodeURIComponent(srs_order_id)}`
           : `/orders/v2/status?transactionID=${encodeURIComponent(transaction_id)}`;
-        const statusData = await srsApiCall(path);
 
         // Mirror status into our orders table if we recognize the order
         const matchKey = srs_order_id ? "srs_order_id" : "srs_transaction_id";
         const matchVal = srs_order_id || transaction_id;
         const { data: order } = await supabase
           .from("srs_orders")
-          .select("id, status")
+          .select("id, status, submitted_at")
           .eq("tenant_id", tenant_id)
           .eq(matchKey, matchVal)
           .maybeSingle();
+
+        let statusData: any = null;
+        let notFound = false;
+        try {
+          statusData = await srsApiCall(path);
+        } catch (e: any) {
+          const msg = e?.message || String(e);
+          if (/\[404\]/.test(msg) || /not found/i.test(msg)) {
+            notFound = true;
+          } else {
+            throw e;
+          }
+        }
+
+        if (notFound) {
+          // SRS has no record of this order. If it was queued long enough that
+          // their pipeline should have surfaced it, treat as silently rejected.
+          if (order && order.status === "queued") {
+            const ageMs = Date.now() - new Date(order.submitted_at).getTime();
+            if (ageMs > 10 * 60 * 1000) {
+              await supabase
+                .from("srs_orders")
+                .update({ status: "rejected_by_srs" })
+                .eq("id", order.id);
+              await supabase.from("srs_order_status_history").insert({
+                order_id: order.id,
+                old_status: "queued",
+                new_status: "rejected_by_srs",
+                status_message:
+                  "SRS returned 404 on status check. The queue entry was dropped and no PO exists. Resubmit required.",
+              });
+            }
+          }
+          result = {
+            success: true,
+            status: { status: "not_found", message: "SRS has no record of this order yet." },
+          };
+          break;
+        }
 
         if (order && statusData?.status && statusData.status !== order.status) {
           await supabase.from("srs_orders").update({ status: statusData.status }).eq("id", order.id);
@@ -1049,6 +1110,74 @@ Deno.serve(async (req) => {
         result = { success: true, status: statusData };
         break;
       }
+
+      case "poll_queued_orders": {
+        // Called by cron. Polls all queued orders for this tenant whose submit
+        // was >= 90s ago and < 24h ago. Promotes confirmed orders, marks 404s
+        // older than 10min as rejected_by_srs.
+        const { data: queued } = await supabase
+          .from("srs_orders")
+          .select("id, srs_order_id, srs_transaction_id, status, submitted_at")
+          .eq("tenant_id", tenant_id)
+          .eq("status", "queued")
+          .lt("submitted_at", new Date(Date.now() - 90 * 1000).toISOString())
+          .gt("submitted_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+          .limit(50);
+
+        const polled: any[] = [];
+        for (const o of queued || []) {
+          const lookupPath = o.srs_order_id
+            ? `/orders/v2/status/${encodeURIComponent(o.srs_order_id)}`
+            : o.srs_transaction_id
+            ? `/orders/v2/status?transactionID=${encodeURIComponent(o.srs_transaction_id)}`
+            : null;
+          if (!lookupPath) continue;
+
+          try {
+            const sd = await srsApiCall(lookupPath);
+            const newStatus = sd?.status || "accepted";
+            if (newStatus !== o.status) {
+              await supabase.from("srs_orders").update({ status: newStatus }).eq("id", o.id);
+              await supabase.from("srs_order_status_history").insert({
+                order_id: o.id,
+                old_status: o.status,
+                new_status: newStatus,
+                status_message: sd?.statusMessage || `Confirmed by SRS via poll: ${newStatus}`,
+                raw_webhook_data: sd,
+              });
+            }
+            polled.push({ id: o.id, outcome: "confirmed", status: newStatus });
+          } catch (e: any) {
+            const msg = e?.message || String(e);
+            const is404 = /\[404\]/.test(msg) || /not found/i.test(msg);
+            if (!is404) {
+              polled.push({ id: o.id, outcome: "error", error: msg });
+              continue;
+            }
+            const ageMs = Date.now() - new Date(o.submitted_at).getTime();
+            if (ageMs > 10 * 60 * 1000) {
+              await supabase
+                .from("srs_orders")
+                .update({ status: "rejected_by_srs" })
+                .eq("id", o.id);
+              await supabase.from("srs_order_status_history").insert({
+                order_id: o.id,
+                old_status: "queued",
+                new_status: "rejected_by_srs",
+                status_message:
+                  "SRS returned 404 on status check (>10min after queue). Queue entry dropped — resubmit required.",
+              });
+              polled.push({ id: o.id, outcome: "rejected_by_srs" });
+            } else {
+              polled.push({ id: o.id, outcome: "still_queued_no_record_yet" });
+            }
+          }
+        }
+
+        result = { success: true, polled_count: polled.length, polled };
+        break;
+      }
+
 
       case "list_orders": {
         // List recent orders for this tenant (DB-backed; SRS does not expose a
