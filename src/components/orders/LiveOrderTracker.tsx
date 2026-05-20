@@ -255,9 +255,11 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     setRefreshingId(o.id);
     try {
       if (o.supplier === 'SRS') {
-        await supabase.functions.invoke('srs-api-proxy', {
+        const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
           body: { action: 'get_order_status', tenant_id: tenantId, order_id: o.rawId },
         });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
       }
       await fetchOrders();
       toast({ title: 'Refreshed', description: `${o.supplier} ${o.poNumber} status updated.` });

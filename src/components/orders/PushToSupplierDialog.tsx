@@ -503,7 +503,9 @@ export function PushToSupplierDialog({
 
         toast({
           title: 'Pushed to SRS',
-          description: `Order ${orderNumber} submitted (SRS ID ${data.srsOrderId || 'pending'}).`,
+          description: data.srsOrderId
+            ? `Order ${orderNumber} submitted (SRS ID ${data.srsOrderId}).`
+            : `Order ${orderNumber} queued by SRS${data.queueId ? ` (queue ${data.queueId})` : ''}; awaiting real order ID.`,
         });
       } else if (selected === 'qxo') {
         const addr = shipAddress ? parseAddress(shipAddress) : null;
