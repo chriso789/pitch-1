@@ -997,8 +997,12 @@ function CatalogSearchPopover({
         const hay = normalizeSkuText(productText(p));
         const hayTokens = new Set(skuTokens(hay));
         const exactId = pid === q || pid.includes(q);
-        const allTokensMatch = tokens.every((t) => hay.includes(t) || tokenMatches(t, hayTokens));
-        const score = exactId ? 2 : tokens.reduce((sum, token) => sum + (hay.includes(token) || tokenMatches(token, hayTokens) ? 1 : 0), 0) / Math.max(tokens.length, 1);
+        const matchesToken = (token: string) =>
+          token.length <= 2
+            ? hayTokens.has(token) || tokenMatches(token, hayTokens)
+            : hay.includes(token) || tokenMatches(token, hayTokens);
+        const allTokensMatch = tokens.every(matchesToken);
+        const score = exactId ? 2 : tokens.reduce((sum, token) => sum + (matchesToken(token) ? 1 : 0), 0) / Math.max(tokens.length, 1);
         return { p, score, allTokensMatch };
       })
       .filter((entry) => entry.allTokensMatch || entry.score >= 0.75)
