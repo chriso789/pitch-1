@@ -149,8 +149,10 @@ export function SRSConnectionSettings() {
           client_secret: clientSecret.trim(),
           customer_code: customerCode.trim(),
           environment,
+          integration_key: integrationKey.trim() || undefined,
         },
       });
+
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Save failed');
 
