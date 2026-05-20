@@ -122,14 +122,26 @@ Deno.serve(async (req) => {
       );
   }
 
-  // Try to match contact
+  // Try to match contact across all common phone number storage formats
   let contactId: string | null = null;
   if (tenantId && fromE164) {
+    const digits = fromE164.replace(/\D/g, ''); // e.g. 17708420812
+    const last10 = digits.slice(-10);            // e.g. 7708420812
+    const variants = Array.from(new Set([
+      fromE164,            // +17708420812
+      digits,              // 17708420812
+      last10,              // 7708420812
+      `+${digits}`,        // +17708420812
+      `1${last10}`,        // 17708420812
+    ]));
+    const quoted = variants.map((v) => `"${v}"`).join(',');
     const { data: contact } = await supabase
       .from('contacts')
       .select('id')
       .eq('tenant_id', tenantId)
-      .or(`phone.eq.${fromE164},mobile_phone.eq.${fromE164},secondary_phone.eq.${fromE164}`)
+      .or(
+        `phone.in.(${quoted}),secondary_phone.in.(${quoted})`,
+      )
       .limit(1)
       .maybeSingle();
     if (contact) contactId = contact.id;

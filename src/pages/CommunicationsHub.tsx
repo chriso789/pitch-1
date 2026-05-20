@@ -20,6 +20,7 @@ import { GlobalSoftphone } from '@/components/communications/GlobalSoftphone';
 import { SoftphonePanel } from '@/components/telephony/SoftphonePanel';
 import { EmailActivityDashboard } from '@/components/communications/EmailActivityDashboard';
 import { TextBlastManager } from '@/components/communications/TextBlastManager';
+import { CallDetailPanel } from '@/components/communications/CallDetailPanel';
 import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommunications';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
@@ -163,11 +164,19 @@ const CommunicationsHub = () => {
                           : undefined
                         )}
                       />
+                    ) : selectedInboxItem.channel === 'call' ? (
+                      <CallDetailPanel
+                        item={selectedInboxItem}
+                        onCall={(phone) => handleCallContact(phone, selectedInboxItem.contact 
+                          ? `${selectedInboxItem.contact.first_name} ${selectedInboxItem.contact.last_name}`
+                          : undefined
+                        )}
+                      />
                     ) : (
                       <div className="h-full flex items-center justify-center text-muted-foreground">
                         <div className="text-center">
                           <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>Call details coming soon</p>
+                          <p>No details available for this item</p>
                         </div>
                       </div>
                     )}
