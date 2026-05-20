@@ -449,14 +449,17 @@ export function PushToSupplierDialog({
             .map(i => persistSku(i, i.srs_item_code!.trim())),
         );
 
-        // Send ALL items (mapped + unmapped). Unmapped lines go in with srs_product_id=null
-        // so the SRS rep sees the product name/qty and assigns a SKU on their end.
         const allItems = catalogResolvedItems.filter(i => Number(i.quantity) > 0);
         const unmappedItems = allItems.filter(i => !i.srs_item_code);
+        if (unmappedItems.length) {
+          throw new Error(
+            `SRS requires a valid productId on every line before it will place the order. Add SKUs for: ${unmappedItems.map(i => i.item_name).join(', ')}.`
+          );
+        }
 
         const itemsPayload = allItems.map(i => ({
           order_id: orderRow.id,
-          srs_product_id: i.srs_item_code ? Number(i.srs_item_code) : null,
+          srs_product_id: Number(i.srs_item_code),
           product_name: i.item_name,
           product_description: i.description || i.item_name,
           quantity: Number(i.quantity),
@@ -468,17 +471,6 @@ export function PushToSupplierDialog({
         if (itemsPayload.length) {
           const { error: itemsErr } = await supabase.from('srs_order_items').insert(itemsPayload);
           if (itemsErr) throw itemsErr;
-        }
-
-        // Append unmapped item names to notes as an explicit callout for the SRS rep.
-        if (unmappedItems.length) {
-          const unmappedNote =
-            'Items pending SKU mapping (please assign SRS productId):\n' +
-            unmappedItems
-              .map(i => `- ${i.item_name} — ${i.quantity} ${(i.unit || 'EA').toUpperCase()}`)
-              .join('\n');
-          const mergedNotes = [notes?.trim(), unmappedNote].filter(Boolean).join('\n\n');
-          await supabase.from('srs_orders').update({ notes: mergedNotes }).eq('id', orderRow.id);
         }
 
         // 2. Submit through the proxy
