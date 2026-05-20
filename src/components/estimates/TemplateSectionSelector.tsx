@@ -756,7 +756,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                       customerName={customerName}
                       projectAddress={projectAddress}
                       jobNumber={jobNumber}
-                      companyName={companyInfo?.company_name}
+                      companyName={companyInfo?.name}
                     />
                   </>
                 )}
