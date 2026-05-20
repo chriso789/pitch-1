@@ -100,6 +100,12 @@ const skuTokens = (value: string | null | undefined) =>
     .map(singularSkuToken)
     .filter((token) => token && !SKU_STOP_WORDS.has(token));
 
+const skuAcronym = (value: string | null | undefined) =>
+  skuTokens(value)
+    .filter((token) => token.length > 2)
+    .map((token) => token[0])
+    .join('');
+
 const tokenMatches = (needle: string, haystack: Set<string>) => {
   if (haystack.has(needle)) return true;
   const aliases = SKU_SYNONYMS[needle] || [];
@@ -1006,10 +1012,11 @@ function CatalogSearchPopover({
         const pid = String(p.productId ?? p.productNumber ?? '');
         const hay = normalizeSkuText(productText(p));
         const hayTokens = new Set(skuTokens(hay));
+        const acronym = skuAcronym(productText(p));
         const exactId = pid === q || pid.includes(q);
         const matchesToken = (token: string) =>
           token.length <= 2
-            ? hayTokens.has(token) || tokenMatches(token, hayTokens)
+            ? hayTokens.has(token) || acronym.includes(token) || tokenMatches(token, hayTokens)
             : hay.includes(token) || tokenMatches(token, hayTokens);
         const allTokensMatch = tokens.every(matchesToken);
         const score = exactId ? 2 : tokens.reduce((sum, token) => sum + (matchesToken(token) ? 1 : 0), 0) / Math.max(tokens.length, 1);
