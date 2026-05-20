@@ -101,6 +101,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     }
   };
 
+  if (!blast) return null;
 
   const progress = blast.total_recipients > 0
     ? Math.round(((blast.sent_count + blast.failed_count + blast.opted_out_count) / blast.total_recipients) * 100)
