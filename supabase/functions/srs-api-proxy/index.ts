@@ -518,7 +518,7 @@ Deno.serve(async (req) => {
             last_error: isValid ? null : validationDetail,
             default_branch_code: defaultBranch,
           };
-          if (jobAccountNumber) connectionUpdate.job_account_number = jobAccountNumber;
+          if (jobAccountNumber && jobAccountNumber > 1) connectionUpdate.job_account_number = jobAccountNumber;
 
           // Update connection status without wiping an existing JAN when SRS omits it.
           await supabase
