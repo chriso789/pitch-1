@@ -148,16 +148,37 @@ Deno.serve(async (req) => {
   }
 
   if (tenantId && contactId) {
-    // Upsert thread
+    // Upsert thread and resolve pipeline_entry_id for routing replies to the right lead
     let threadId: string | null = null;
+    let pipelineEntryId: string | null = null;
+
     const { data: thread } = await supabase
       .from('sms_threads')
-      .select('id')
+      .select('id, pipeline_entry_id')
       .eq('tenant_id', tenantId)
       .eq('phone_number', fromE164)
       .maybeSingle();
+
     if (thread) {
       threadId = thread.id;
+      pipelineEntryId = thread.pipeline_entry_id ?? null;
+
+      // If the thread has no lead yet, try to inherit from the most recent
+      // outbound message we sent to this number.
+      if (!pipelineEntryId) {
+        const { data: lastOutbound } = await supabase
+          .from('sms_messages')
+          .select('pipeline_entry_id')
+          .eq('tenant_id', tenantId)
+          .eq('to_number', fromE164)
+          .eq('direction', 'outbound')
+          .not('pipeline_entry_id', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        pipelineEntryId = lastOutbound?.pipeline_entry_id ?? null;
+      }
+
       await supabase
         .from('sms_threads')
         .update({
@@ -165,15 +186,30 @@ Deno.serve(async (req) => {
           last_message_preview: body.slice(0, 100),
           contact_id: contactId,
           location_id: locationId,
+          ...(pipelineEntryId ? { pipeline_entry_id: pipelineEntryId } : {}),
         })
         .eq('id', threadId);
     } else {
+      // No thread yet — try to inherit from the latest outbound to this phone
+      const { data: lastOutbound } = await supabase
+        .from('sms_messages')
+        .select('pipeline_entry_id')
+        .eq('tenant_id', tenantId)
+        .eq('to_number', fromE164)
+        .eq('direction', 'outbound')
+        .not('pipeline_entry_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      pipelineEntryId = lastOutbound?.pipeline_entry_id ?? null;
+
       const { data: t } = await supabase
         .from('sms_threads')
         .insert({
           tenant_id: tenantId,
           phone_number: fromE164,
           contact_id: contactId,
+          pipeline_entry_id: pipelineEntryId,
           location_id: locationId,
           last_message_at: new Date().toISOString(),
           last_message_preview: body.slice(0, 100),
@@ -186,6 +222,7 @@ Deno.serve(async (req) => {
     await supabase.from('sms_messages').insert({
       tenant_id: tenantId,
       contact_id: contactId,
+      pipeline_entry_id: pipelineEntryId,
       thread_id: threadId,
       location_id: locationId,
       direction: 'inbound',
