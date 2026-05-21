@@ -81,6 +81,36 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
   const [loading, setLoading] = useState(true);
   const [attempts, setAttempts] = useState<SrsAttempt[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sweeping, setSweeping] = useState<string | null>(null);
+  const [sweepResult, setSweepResult] = useState<Record<string, any>>({});
+
+  const runVarianceSweep = async (orderId: string) => {
+    if (!tenantId) return;
+    setSweeping(orderId);
+    setSweepResult(prev => ({ ...prev, [orderId]: null }));
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: { action: 'submit_order_variances', tenant_id: tenantId, order_id: orderId, max_attempts: 16 },
+      });
+      if (error) throw error;
+      setSweepResult(prev => ({ ...prev, [orderId]: data }));
+      if (data?.success) {
+        toast({ title: 'SRS orderID accepted', description: `orderID ${data.winner?.response?.orderID || data.winner?.response?.orderId} on attempt ${data.winner?.attempt}` });
+      } else {
+        toast({
+          title: 'No orderID after sweep',
+          description: `Tried ${data?.totalVariantsTried}/${data?.totalVariantsAvailable} variants — all queued/rejected.`,
+          variant: 'destructive',
+        });
+      }
+    } catch (e: any) {
+      toast({ title: 'Variance sweep failed', description: e?.message || String(e), variant: 'destructive' });
+    } finally {
+      setSweeping(null);
+    }
+  };
+
+
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -303,10 +333,40 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                         )}
                       </div>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setExpanded(isExpanded ? null : a.id)}>
-                      {isExpanded ? 'Hide' : 'Inspect'}
-                    </Button>
+                    <div className="flex flex-col items-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setExpanded(isExpanded ? null : a.id)}>
+                        {isExpanded ? 'Hide' : 'Inspect'}
+                      </Button>
+                      {failed && !a.srs_order_id && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => runVarianceSweep(a.id)}
+                          disabled={sweeping === a.id}
+                        >
+                          {sweeping === a.id ? (
+                            <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Sweeping…</>
+                          ) : (
+                            'Sweep variants → orderID'
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
+
+                  {sweepResult[a.id] && (
+                    <div className="mt-2 rounded border bg-muted/40 p-2 text-xs space-y-1">
+                      <div className="font-medium">
+                        Variance sweep: {sweepResult[a.id].success ? '✅ orderID accepted' : `❌ no orderID (${sweepResult[a.id].totalVariantsTried}/${sweepResult[a.id].totalVariantsAvailable} tried)`}
+                      </div>
+                      <details>
+                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">attempts</summary>
+                        <pre className="mt-1 max-h-60 overflow-auto rounded bg-muted p-2 text-[10px]">
+{JSON.stringify(sweepResult[a.id].attempts, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
 
                   {errMsg && (
                     <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
@@ -314,6 +374,7 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                       <div className="whitespace-pre-wrap break-words">{errMsg}</div>
                     </div>
                   )}
+
 
                   {isExpanded && (
                     <div className="mt-3 space-y-3 border-t pt-3">
