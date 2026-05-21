@@ -56,8 +56,30 @@ function stageIndex(status?: string | null, hasExternalId?: boolean): number {
   if (s.includes('deliver') || s === 'iu') return 3;
   if (s.includes('ship') || s === 'du' || s.includes('out_for')) return 2;
   if (s.includes('confirm') || s.includes('process') || s.includes('received') || s === 'oc' || s === 'acknowledged') return 1;
-  if (s.includes('submit') || s === 'ou' || hasExternalId) return 0;
+  if (s.includes('submit') || s === 'ou' || s === 'queued' || hasExternalId) return 0;
   return 0;
+}
+
+const SRS_STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  queued: 'Queued at SRS',
+  submitted: 'Submitted',
+  accepted: 'Accepted',
+  rejected_by_srs: 'Rejected by SRS',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+  canceled: 'Cancelled',
+  ou: 'Submitted',
+  oc: 'Confirmed by SRS',
+  du: 'Out for Delivery',
+  iu: 'Invoiced / Delivered',
+};
+
+function prettyStatus(raw?: string | null): string {
+  const s = (raw || '').toLowerCase();
+  if (!s) return 'Unknown';
+  if (SRS_STATUS_LABELS[s]) return SRS_STATUS_LABELS[s];
+  return raw!.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function LiveOrderTracker({ projectId, compact = false }: Props) {
@@ -205,7 +227,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
         poNumber: o.order_number,
         externalId: o.srs_order_id,
         status: o.status,
-        statusLabel: o.status,
+        statusLabel: prettyStatus(o.status),
         branch: o.branch_code,
         total: Number(o.total_amount || 0),
         shipAddress: o.delivery_address,
@@ -223,7 +245,7 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
         poNumber: o.po_number,
         externalId: o.beacon_order_id,
         status: o.status_code || o.status_value || 'submitted',
-        statusLabel: o.status_value || o.status_code || 'Submitted',
+        statusLabel: o.status_value || prettyStatus(o.status_code) || 'Submitted',
         branch: o.selling_branch,
         total: Number(o.total || 0),
         shipAddress: o.ship_address?.freeForm || o.ship_address?.address1,
@@ -338,14 +360,28 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
                     {o.externalId && (
                       <span className="text-xs text-muted-foreground">→ {o.externalId}</span>
                     )}
+                    <Badge
+                      variant="outline"
+                      className={
+                        o.status?.toLowerCase().includes('reject') ? 'text-destructive border-destructive' :
+                        o.status?.toLowerCase() === 'queued' ? 'text-amber-600 border-amber-600' :
+                        activeIdx === 3 ? 'text-emerald-700 border-emerald-500' :
+                        'text-foreground'
+                      }
+                    >
+                      {o.status?.toLowerCase() === 'queued' && (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      )}
+                      {o.statusLabel}
+                    </Badge>
                     {o.onHold && <Badge variant="outline" className="text-amber-600 border-amber-600">On Hold</Badge>}
-                    {activeIdx === 3 && <Badge className="bg-green-600 text-white">Delivered</Badge>}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {o.branch && <>Branch {o.branch} · </>}
                     {o.total ? `$${o.total.toLocaleString()}` : ''}
                     {o.submittedAt && <> · Sent {format(new Date(o.submittedAt), 'MMM d, h:mm a')}</>}
                     {o.deliveryDate && <> · Delivery {format(new Date(o.deliveryDate), 'MMM d, yyyy')}</>}
+                    {o.lastSyncedAt && <> · Synced {formatDistanceToNow(new Date(o.lastSyncedAt), { addSuffix: true })}</>}
                   </div>
                   {!compact && o.shipAddress && (
                     <div className="mt-1 text-xs text-muted-foreground">Ship to: {o.shipAddress}</div>

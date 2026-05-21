@@ -43097,6 +43097,51 @@ export type Database = {
           },
         ]
       }
+      srs_reconciliation_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          errors_count: number
+          id: string
+          mismatches_found: number
+          orders_checked: number
+          results: Json | null
+          run_type: string
+          started_at: string
+          status: string
+          tenant_id: string | null
+          updates_applied: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          errors_count?: number
+          id?: string
+          mismatches_found?: number
+          orders_checked?: number
+          results?: Json | null
+          run_type?: string
+          started_at?: string
+          status?: string
+          tenant_id?: string | null
+          updates_applied?: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          errors_count?: number
+          id?: string
+          mismatches_found?: number
+          orders_checked?: number
+          results?: Json | null
+          run_type?: string
+          started_at?: string
+          status?: string
+          tenant_id?: string | null
+          updates_applied?: number
+        }
+        Relationships: []
+      }
       srs_submit_audit: {
         Row: {
           created_at: string
