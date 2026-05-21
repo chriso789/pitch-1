@@ -52371,6 +52371,32 @@ export type Database = {
         | "other"
         | "business"
         | "renter"
+      crm_credit_transaction_type:
+        | "credit_earned"
+        | "credit_redeemed"
+        | "credit_expired"
+        | "adjustment"
+      crm_flag_reason:
+        | "duplicate_company"
+        | "self_referral"
+        | "suspicious_velocity"
+        | "fraudulent_company"
+        | "chargeback"
+        | "other"
+      crm_partner_status: "pending" | "active" | "suspended" | "terminated"
+      crm_partner_tier: "standard" | "silver" | "gold" | "platinum"
+      crm_payout_type:
+        | "fixed_fee"
+        | "percentage_of_first_year"
+        | "percentage_of_first_invoice"
+        | "account_credit"
+      crm_signup_status:
+        | "pending"
+        | "trial"
+        | "active_paid"
+        | "churned"
+        | "duplicate"
+        | "rejected"
       estimate_status:
         | "draft"
         | "preview"
@@ -52733,6 +52759,36 @@ export const Constants = {
         "other",
         "business",
         "renter",
+      ],
+      crm_credit_transaction_type: [
+        "credit_earned",
+        "credit_redeemed",
+        "credit_expired",
+        "adjustment",
+      ],
+      crm_flag_reason: [
+        "duplicate_company",
+        "self_referral",
+        "suspicious_velocity",
+        "fraudulent_company",
+        "chargeback",
+        "other",
+      ],
+      crm_partner_status: ["pending", "active", "suspended", "terminated"],
+      crm_partner_tier: ["standard", "silver", "gold", "platinum"],
+      crm_payout_type: [
+        "fixed_fee",
+        "percentage_of_first_year",
+        "percentage_of_first_invoice",
+        "account_credit",
+      ],
+      crm_signup_status: [
+        "pending",
+        "trial",
+        "active_paid",
+        "churned",
+        "duplicate",
+        "rejected",
       ],
       estimate_status: [
         "draft",
