@@ -124,3 +124,54 @@ Known limitations (carried over, not regressions):
 - `docs/SUPPLEMENT_BACKEND_AUDIT.md` (new — this file)
 
 No source files, edge functions, or migrations were modified. The backend was already in the target state described by phases 1–13 of the prompt. The next recommended hardening step is an HTTP-level integration test that invokes `compare-scope-documents` end-to-end against seeded `insurance_scope_documents` rows.
+
+---
+
+## Phase Completion Verification (2026-05-21)
+
+### Required items
+- scope-document-ingest, generate-supplement, compare-scope-documents — **FOUND**
+- _shared/scope-types, scope-normalizer, xactimate-line-parser, scope-reconciler, scope-assembly-rules, supplement-justification-builder — **FOUND**
+- Tables insurance_scope_documents/headers/line_items, scope_compare_runs/results/overrides, scope_parse_debug_rows — **FOUND**
+- Line item cols (remove_price, replace_price, effective_unit_price, parser_layout, page_number, raw_line) — **FOUND**
+- Line item cols (normalized_key, canonical_group, trade_group, action_type, parse_confidence, match_fingerprint) — **REPAIRED IN THIS PASS** (added via migration)
+- scope_compare_results cols (match_score_breakdown, evidence, group_id, parent_result_id, grouped_children) — **FOUND**
+- scope_compare_results cols (included_in_supplement, reviewer_status, reviewer_note) — **REPAIRED IN THIS PASS**
+- UI files SupplementEngine, SupplementWorkflow, useScopeIntelligence, ScopeUploader, ScopeDocumentBrowser — **FOUND**
+
+## Final Report Generation Phase
+
+### Tables created / extended
+- `supplement_reports` extended with `compare_run_id`, `report_status`, totals (carrier/contractor/supplement/included/excluded/missing/quantity/price/tax), `report_json`, `report_markdown`, `report_html`, `report_pdf_storage_path`. Legacy `comparison_id`/`version`/`pdf_url` columns left intact — old `generate-supplement-report` (xact path) still works.
+- `supplement_report_items` — one row per finding on a generated report, RLS scoped to tenant.
+- `supplement_report_exports` — tracks each JSON/CSV/Markdown/HTML/PDF export, RLS scoped to tenant.
+
+### Shared modules
+- `supabase/functions/_shared/supplement-report-builder.ts` — pure builder, no IO. Filters excluded/children, applies justification, totals, warnings, returns `{ summary, items, markdown, html, json }` with the 11 canonical sections + disclaimer.
+
+### Edge functions
+- `generate-supplement-report-v2` — auth + tenant gate, loads run/results/docs/headers, blocks on `DOCUMENT_NOT_FOUND`, `COMPARE_NO_RESULTS`, `RECONCILIATION_REVIEW_REQUIRED`, `POSSIBLE_MATCHES_REVIEW_REQUIRED`, persists report + items, returns markdown/html/items.
+- `export-supplement-report` — JSON/CSV/Markdown/HTML to `documents/{tenant_id}/supplement-reports/{report_id}/{type}-{ts}.{ext}`, logs `supplement_report_exports`, returns 7-day signed URL. CSV columns per spec.
+- `update-scope-compare-review` — include/exclude, mark reviewed/unreviewed, add note, override_match (writes `scope_compare_overrides`), clear_override.
+
+### UI hook methods (`src/hooks/useScopeIntelligence.ts`)
+- `useRunScopeComparison()`
+- `useUpdateCompareReview()`
+- `useGenerateSupplementReportV2()`
+- `useExportSupplementReport()`
+
+### Naming note
+The new flow ships as `generate-supplement-report-v2` deliberately, because the existing `generate-supplement-report` is bound to the legacy `scope_comparisons` / `scope_comparison_lines` xact-compare pipeline still used by `useGenerateSupplementReport` in `useXactComparison.ts`. Per the "do not remove existing functions" rule, both coexist.
+
+### Remaining work for next pass
+- `SupplementWorkflow.tsx` filter chips + bulk-action toolbar + final-report preview pane are not yet wired to the new hooks. Hooks are in place; UI integration is the next surface task.
+- PDF export is intentionally not implemented in `export-supplement-report` (spec said "do not generate PDF unless reliable PDF generator exists"). PDF stays on the legacy `generate-supplement-report` function.
+- Gaymon acceptance test for v2 (`tests/generate-supplement-report-gaymon.test.ts`) was scoped out of this pass — builder is unit-pure and can be tested directly against the existing fixture in a follow-up.
+
+### Files added in this pass
+- `supabase/migrations/<ts>_supplement_report_generation.sql`
+- `supabase/functions/_shared/supplement-report-builder.ts`
+- `supabase/functions/generate-supplement-report-v2/index.ts`
+- `supabase/functions/export-supplement-report/index.ts`
+- `supabase/functions/update-scope-compare-review/index.ts`
+- appended hooks to `src/hooks/useScopeIntelligence.ts`
