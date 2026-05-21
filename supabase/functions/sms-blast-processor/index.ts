@@ -203,24 +203,52 @@ async function processBlast(
     .in('phone', phones);
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
-  // Pre-fetch personalized messages for claimed items (set by generate-campaign-messages)
+  // 3b. Per-phone 24h cooldown — block resends to the same number within window.
+  const cooldownSet = new Set<string>();
+  if (phones.length > 0) {
+    const since = new Date(Date.now() - PER_PHONE_COOLDOWN_HOURS * 3600 * 1000).toISOString();
+    const { data: recent } = await supabase
+      .from('sms_messages')
+      .select('to_number')
+      .eq('tenant_id', blast.tenant_id)
+      .eq('direction', 'outbound')
+      .in('to_number', phones)
+      .gte('created_at', since);
+    (recent || []).forEach((r: any) => { if (r.to_number) cooldownSet.add(r.to_number); });
+  }
+
+  // 3c. In-blast phone dedupe — only allow first occurrence per phone in this run.
+  const seenInBlast = new Set<string>();
+
+  // Pre-fetch personalized messages + address snapshots for claimed items (set by generate-campaign-messages)
   const claimedIds = (claimed as any[]).map((c: any) => c.id);
   const personalizedMap = new Map<string, string>();
+  const addrSnapMap = new Map<string, string | null>();
   if (claimedIds.length > 0) {
     const { data: pers } = await supabase
       .from('sms_blast_items')
-      .select('id, personalized_message')
+      .select('id, personalized_message, address_street_snapshot')
       .in('id', claimedIds);
     (pers || []).forEach((p: any) => {
       if (p.personalized_message) personalizedMap.set(p.id, p.personalized_message);
+      addrSnapMap.set(p.id, p.address_street_snapshot || null);
     });
   }
+
+  const isEmailCaptureGoal = String(blast.goal || '') === 'collect_homeowner_email_for_roof_estimate';
 
   let sent = 0;
   let failed = 0;
   let opted = 0;
+  let blockedByGuard = 0;
+  let blockedByCooldown = 0;
+  let blockedByDedupe = 0;
 
-  const sleepMs = Math.max(50, Math.floor(1000 / Math.max(totalMps, 0.5)));
+  // Safe pacing window — 800–1500ms between messages regardless of MPS capacity.
+  const sleepMs = Math.max(
+    MIN_PACING_MS,
+    Math.min(MAX_PACING_MS, Math.floor(1000 / Math.max(totalMps, 0.5))),
+  );
 
   // Cursor used as fallback for from-number rotation
   let cursor = 0;
