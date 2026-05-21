@@ -483,6 +483,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const specificBlastId: string | null = body?.blast_id || null;
+    const reqLimit: number | undefined = typeof body?.limit === 'number' ? body.limit : undefined;
+    const reqDryRun: boolean = body?.dry_run === true;
 
     // If a single blast was requested and it's still in 'draft', flip to 'sending'
     if (specificBlastId) {
