@@ -35,6 +35,7 @@ const FALLBACKS: Record<string, string> = {
   'contact.first_name': 'there',
   'contact.last_name': '',
   'contact.address1': 'your property',
+  'contact.full_address': 'your property',
   'contact.city': 'your area',
   'contact.state': 'FL',
   'contact.zip': '',
@@ -43,11 +44,23 @@ const FALLBACKS: Record<string, string> = {
   'assigned_user.first_name': 'a teammate',
 };
 
+function buildFullAddress(c: SmsTagContext['contact']): string | null {
+  if (!c) return null;
+  const street = (c.address1 || c.address || '').toString().trim();
+  const city = (c.city || '').toString().trim();
+  const state = (c.state || '').toString().trim();
+  const zip = (c.zip || c.zip_code || '').toString().trim();
+  const cityStateZip = [city, [state, zip].filter(Boolean).join(' ').trim()].filter(Boolean).join(', ');
+  const full = [street, cityStateZip].filter(Boolean).join(', ');
+  return full || null;
+}
+
 function pick(ctx: SmsTagContext, key: string): string | null | undefined {
   switch (key) {
     case 'contact.first_name': return ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
     case 'contact.address1': return ctx.contact?.address1 || ctx.contact?.address;
+    case 'contact.full_address': return buildFullAddress(ctx.contact);
     case 'contact.city': return ctx.contact?.city;
     case 'contact.state': return ctx.contact?.state;
     case 'contact.zip': return ctx.contact?.zip || ctx.contact?.zip_code;
