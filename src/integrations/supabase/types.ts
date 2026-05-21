@@ -42570,6 +42570,8 @@ export type Database = {
           created_by: string | null
           goal: string | null
           id: string
+          normalized_template_body: string | null
+          normalized_template_name: string | null
           template_body: string
           template_name: string
           tenant_id: string
@@ -42582,6 +42584,8 @@ export type Database = {
           created_by?: string | null
           goal?: string | null
           id?: string
+          normalized_template_body?: string | null
+          normalized_template_name?: string | null
           template_body: string
           template_name: string
           tenant_id: string
@@ -42594,6 +42598,8 @@ export type Database = {
           created_by?: string | null
           goal?: string | null
           id?: string
+          normalized_template_body?: string | null
+          normalized_template_name?: string | null
           template_body?: string
           template_name?: string
           tenant_id?: string
@@ -53463,6 +53469,16 @@ export type Database = {
           new_srid_in: number
           schema_name: string
           table_name: string
+        }
+        Returns: string
+      }
+      upsert_sms_template: {
+        Args: {
+          p_category: string
+          p_goal: string
+          p_template_body: string
+          p_template_name: string
+          p_tenant_id: string
         }
         Returns: string
       }
