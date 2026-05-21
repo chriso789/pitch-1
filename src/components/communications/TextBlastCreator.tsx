@@ -316,10 +316,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
           }
         } else {
+          setDryRunCompleted(true);
+          setDryRunBlastId(blast.id);
           toast({ title: 'Dry run complete', description: `Rendered ${listItems!.length} messages. Nothing was sent.` });
         }
 
-        onCreated(blast.id);
+        if (!dryRun) onCreated(blast.id);
       }
     } catch (error: any) {
       console.error('Error creating blast:', error);
