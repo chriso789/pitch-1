@@ -60,6 +60,7 @@ export default function ReferralDashboard() {
           <TabsContent value="payouts" className="mt-4"><ReferralPayoutsTable canManage={canManage} /></TabsContent>
           <TabsContent value="credits" className="mt-4"><ReferralCreditsTable canManage={canManage} /></TabsContent>
           <TabsContent value="flags" className="mt-4"><ReferralFlagsTable canManage={canManage} /></TabsContent>
+          <TabsContent value="crm-program" className="mt-4"><CrmReferralProgramTab /></TabsContent>
           <TabsContent value="settings" className="mt-4"><ReferralSettingsPanel canManage={canEditSettings} /></TabsContent>
         </Tabs>
 
