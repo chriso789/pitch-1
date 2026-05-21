@@ -66,6 +66,9 @@ const Security = React.lazy(() => import("@/pages/legal/Security"));
 const HomeownerProtectedRoute = React.lazy(() => import("@/components/auth/HomeownerProtectedRoute").then(m => ({ default: m.HomeownerProtectedRoute })));
 const Unsubscribe = React.lazy(() => import("@/pages/Unsubscribe"));
 const PublicChangeOrderView = React.lazy(() => import("@/pages/PublicChangeOrderView"));
+const PublicReferralLanding = React.lazy(() => import("@/pages/PublicReferralLanding"));
+const PublicReferralReward = React.lazy(() => import("@/pages/PublicReferralReward"));
+const PublicCrmReferralSignup = React.lazy(() => import("@/pages/PublicCrmReferralSignup"));
 
 // Route-level loading fallback
 const PageLoader = () => (
@@ -192,6 +195,9 @@ const AppContent = () => {
         <Route path="/pay/:token" element={<Suspense fallback={<PageLoader />}><ZellePaymentPage /></Suspense>} />
         <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><Unsubscribe /></Suspense>} />
         <Route path="/co/:token" element={<Suspense fallback={<PageLoader />}><PublicChangeOrderView /></Suspense>} />
+        <Route path="/ref/:referralCode/reward" element={<Suspense fallback={<PageLoader />}><PublicReferralReward /></Suspense>} />
+        <Route path="/ref/:referralCode" element={<Suspense fallback={<PageLoader />}><PublicReferralLanding /></Suspense>} />
+        <Route path="/signup-ref/:partnerCode" element={<Suspense fallback={<PageLoader />}><PublicCrmReferralSignup /></Suspense>} />
 
         {/* All other paths → protected app routes */}
         <Route path="/*" element={<ProtectedRoutes />} />

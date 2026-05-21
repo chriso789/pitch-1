@@ -13,6 +13,7 @@ import { ReferralFlagsTable } from "@/components/referrals/admin/ReferralFlagsTa
 import { ReferralSettingsPanel } from "@/components/referrals/admin/ReferralSettingsPanel";
 import { ReferralDetailDrawer } from "@/components/referrals/admin/ReferralDetailDrawer";
 import { ReferralAnalyticsTab } from "@/components/referrals/analytics/ReferralAnalyticsTab";
+import { CrmReferralProgramTab } from "@/components/referrals/crm-program/CrmReferralProgramTab";
 
 export default function ReferralDashboard() {
   const { profile } = useUserProfile();
@@ -46,6 +47,7 @@ export default function ReferralDashboard() {
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
             <TabsTrigger value="credits">Stored Credits</TabsTrigger>
             <TabsTrigger value="flags">Flags / Review</TabsTrigger>
+            <TabsTrigger value="crm-program">CRM Signup Program</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -58,6 +60,7 @@ export default function ReferralDashboard() {
           <TabsContent value="payouts" className="mt-4"><ReferralPayoutsTable canManage={canManage} /></TabsContent>
           <TabsContent value="credits" className="mt-4"><ReferralCreditsTable canManage={canManage} /></TabsContent>
           <TabsContent value="flags" className="mt-4"><ReferralFlagsTable canManage={canManage} /></TabsContent>
+          <TabsContent value="crm-program" className="mt-4"><CrmReferralProgramTab /></TabsContent>
           <TabsContent value="settings" className="mt-4"><ReferralSettingsPanel canManage={canEditSettings} /></TabsContent>
         </Tabs>
 
