@@ -23,8 +23,7 @@ const ABC_CONFIG = {
     sandbox: 'https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/token',
     production: 'https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token',
   },
-  scopes: 'pricing.read order.read order.write product.read offline_access',
-  redirectUri: 'https://pitch-crm.ai/api/abc/callback',
+  scopes: 'pricing.read order.read order.write product.read account.read location.read offline_access',
   apiBase: {
     sandbox: 'https://partners-sb.abcsupply.com/api',
     production: 'https://partners.abcsupply.com/api',
@@ -37,9 +36,11 @@ function normalizeABCEnvironment(value?: string | null): ABCEnvironment {
   return value === 'sandbox' || value === 'staging' ? 'sandbox' : 'production';
 }
 
-// Server-side OAuth callback URL — register THIS with ABC IT.
-const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
-const SERVER_REDIRECT_URI = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/abc-oauth-callback`;
+// Canonical server-side OAuth callback URL — must be registered EXACTLY with ABC.
+// Hardcoded to avoid drift from preview URLs or undefined env values.
+const SERVER_REDIRECT_URI =
+  'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-oauth-callback';
+
 
 // PKCE helpers
 // PKCE generation now happens server-side in the abc-oauth-start edge function.
