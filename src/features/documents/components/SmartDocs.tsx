@@ -292,14 +292,16 @@ const SmartDocs = () => {
 
   const handleDownload = async (doc: CompanyDoc) => {
     try {
-      // Use public URL to bypass RLS issues
-      const { data: urlData } = supabase.storage
+      // smartdoc-assets is a PRIVATE bucket — must use a signed URL.
+      // getPublicUrl returns a URL that 404s with "Bucket not found".
+      const { data: signed, error: signErr } = await supabase.storage
         .from('smartdoc-assets')
-        .getPublicUrl(doc.file_path);
+        .createSignedUrl(doc.file_path, 60 * 10);
+      if (signErr || !signed?.signedUrl) throw signErr || new Error('No signed URL');
 
-      const response = await fetch(urlData.publicUrl);
+      const response = await fetch(signed.signedUrl);
       if (!response.ok) throw new Error('Failed to fetch file');
-      
+
       const data = await response.blob();
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
@@ -317,10 +319,12 @@ const SmartDocs = () => {
 
   const handlePrint = async (doc: CompanyDoc) => {
     try {
-      const { data: urlData } = supabase.storage
+      const { data: signed, error: signErr } = await supabase.storage
         .from('smartdoc-assets')
-        .getPublicUrl(doc.file_path);
-      const win = window.open(urlData.publicUrl, '_blank');
+        .createSignedUrl(doc.file_path, 60 * 10);
+      if (signErr || !signed?.signedUrl) throw signErr || new Error('No signed URL');
+
+      const win = window.open(signed.signedUrl, '_blank');
       if (!win) {
         toast.error('Popup blocked. Allow popups to print.');
         return;
