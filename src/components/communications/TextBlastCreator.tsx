@@ -197,6 +197,16 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const handleSend = async () => {
     if (!isValid || !activeTenantId) return;
 
+    // Production gate: email-capture goal must complete a dry-run first
+    if (!dryRun && isEmailCaptureGoal && !dryRunCompleted) {
+      toast({
+        title: 'Dry-run required',
+        description: 'Run a dry-run first so we can verify every address and message before sending.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSending(true);
     try {
       if (sendMode === 'single') {
