@@ -194,6 +194,59 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!activeTenantId,
   });
 
+  // Dedupe templates (tenant + goal + normalized name + normalized body).
+  const dedupedTemplates = useMemo(() => {
+    const seen = new Set<string>();
+    return (templates || []).filter((t: any) => {
+      const key = [
+        t.tenant_id || activeTenantId || '',
+        t.goal || '',
+        normalizeTemplateText(t.template_name),
+        normalizeTemplateText(t.template_body),
+      ].join('|');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [templates, activeTenantId]);
+
+  const goalMatches = (t: any) => {
+    if (goal === 'general_outreach') return !t.goal || t.goal === 'general_outreach';
+    return t.goal === goal;
+  };
+
+  const visibleTemplates = useMemo(
+    () => dedupedTemplates.filter(goalMatches),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dedupedTemplates, goal]
+  );
+
+  // When Campaign Goal changes: clear selection, auto-pick top templates, reset preview.
+  useEffect(() => {
+    if (lastGoalRef.current === goal) return;
+    lastGoalRef.current = goal;
+
+    setDryRunCompleted(false);
+    setDryRunBlastId(null);
+    setPreviewTemplateIndex(0);
+
+    const matches = dedupedTemplates.filter(goalMatches);
+    if (matches.length > 0) {
+      const top = matches.slice(0, 3);
+      setSelectedTemplateIds(top.map((t: any) => t.id));
+      setScript(top[0].template_body || '');
+    } else {
+      setSelectedTemplateIds([]);
+      setScript(getDefaultScriptForGoal(goal));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goal, dedupedTemplates]);
+
+  // Reset preview index when selected templates change
+  useEffect(() => {
+    setPreviewTemplateIndex(0);
+  }, [selectedTemplateIds.join('|')]);
+
   const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
 
   // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
@@ -209,9 +262,20 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       }
     : SAMPLE_TAG_CONTEXT;
 
-  const previewMessage = resolveSmsTags(script, sampleCtx);
+  const selectedTemplates = useMemo(
+    () => dedupedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id)),
+    [dedupedTemplates, selectedTemplateIds]
+  );
 
-  const hasStopClause = /stop/i.test(script);
+  const activePreviewTemplate = selectedTemplates.length
+    ? selectedTemplates[previewTemplateIndex % selectedTemplates.length]
+    : null;
+
+  const previewSourceScript = activePreviewTemplate?.template_body || script;
+
+  const previewMessage = resolveSmsTags(previewSourceScript, sampleCtx);
+
+  const hasStopClause = /stop/i.test(previewSourceScript);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
   const isValid = sendMode === 'single'
