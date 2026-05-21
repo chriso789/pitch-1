@@ -288,6 +288,46 @@ async function processBlast(
       continue;
     }
 
+    // 24h per-phone cooldown — block re-sending to same number.
+    if (cooldownSet.has(toE164)) {
+      await supabase.from('sms_blast_items').update({
+        status: 'skipped_cooldown',
+        last_error: 'per_phone_24h_cooldown',
+        error_message: 'Skipped: already messaged this phone in last 24h',
+      }).eq('id', item.id);
+      blockedByCooldown++;
+      continue;
+    }
+
+    // In-blast dedupe — only first occurrence per phone in this run.
+    if (seenInBlast.has(toE164)) {
+      await supabase.from('sms_blast_items').update({
+        status: 'skipped_duplicate',
+        last_error: 'duplicate_phone_in_blast',
+        error_message: 'Skipped: duplicate phone in this blast',
+      }).eq('id', item.id);
+      blockedByDedupe++;
+      continue;
+    }
+    seenInBlast.add(toE164);
+
+    // Production guard: email-capture campaigns require locked message + address snapshot
+    if (isEmailCaptureGoal) {
+      const lockedMsg = personalizedMap.get(item.id);
+      const addrSnap = addrSnapMap.get(item.id);
+      if (!lockedMsg || !lockedMsg.trim() || !addrSnap || !String(addrSnap).trim()) {
+        await supabase.from('sms_blast_items').update({
+          status: 'failed',
+          last_error: 'production_guard_blocked',
+          error_message: 'Production guard blocked send: missing locked address/message',
+        }).eq('id', item.id);
+        blockedByGuard++;
+        failed++;
+        continue;
+      }
+    }
+
+
     // Prefer personalized_message (smart-tag resolved) over raw script
     const firstName = (item.contact_name || '').split(' ')[0] || '';
     const lastName = (item.contact_name || '').split(' ').slice(1).join(' ') || '';
