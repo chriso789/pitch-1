@@ -92,6 +92,7 @@ async function processBlast(
   blast: any,
   serviceKey: string,
   supabaseUrl: string,
+  opts: { limit?: number; dryRun?: boolean } = {},
 ) {
   // 0. Quiet-hours gate — skip this tick if outside configured send window
   if (!isWithinSendWindow(blast)) {
