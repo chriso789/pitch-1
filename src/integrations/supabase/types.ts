@@ -41452,6 +41452,7 @@ export type Database = {
           is_test_mode: boolean | null
           last_processor_run_at: string | null
           list_id: string | null
+          max_attempts_per_contact: number
           name: string
           opted_out_count: number
           replied_count: number | null
@@ -41490,6 +41491,7 @@ export type Database = {
           is_test_mode?: boolean | null
           last_processor_run_at?: string | null
           list_id?: string | null
+          max_attempts_per_contact?: number
           name: string
           opted_out_count?: number
           replied_count?: number | null
@@ -41528,6 +41530,7 @@ export type Database = {
           is_test_mode?: boolean | null
           last_processor_run_at?: string | null
           list_id?: string | null
+          max_attempts_per_contact?: number
           name?: string
           opted_out_count?: number
           replied_count?: number | null

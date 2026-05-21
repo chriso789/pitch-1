@@ -1,0 +1,2 @@
+ALTER TABLE public.sms_blasts ADD COLUMN IF NOT EXISTS max_attempts_per_contact integer NOT NULL DEFAULT 1;
+COMMENT ON COLUMN public.sms_blasts.max_attempts_per_contact IS 'Maximum number of SMS attempts to make to each contact across the life of the campaign (retry cadence cap, not daily volume).';
