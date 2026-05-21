@@ -41580,6 +41580,7 @@ export type Database = {
           is_read: boolean | null
           location_id: string | null
           media_urls: string[] | null
+          pipeline_entry_id: string | null
           provider: string | null
           provider_message_id: string | null
           sent_at: string | null
@@ -41605,6 +41606,7 @@ export type Database = {
           is_read?: boolean | null
           location_id?: string | null
           media_urls?: string[] | null
+          pipeline_entry_id?: string | null
           provider?: string | null
           provider_message_id?: string | null
           sent_at?: string | null
@@ -41630,6 +41632,7 @@ export type Database = {
           is_read?: boolean | null
           location_id?: string | null
           media_urls?: string[] | null
+          pipeline_entry_id?: string | null
           provider?: string | null
           provider_message_id?: string | null
           sent_at?: string | null
@@ -41755,6 +41758,7 @@ export type Database = {
           last_message_preview: string | null
           location_id: string | null
           phone_number: string
+          pipeline_entry_id: string | null
           tenant_id: string
           unread_count: number | null
           updated_at: string | null
@@ -41769,6 +41773,7 @@ export type Database = {
           last_message_preview?: string | null
           location_id?: string | null
           phone_number: string
+          pipeline_entry_id?: string | null
           tenant_id: string
           unread_count?: number | null
           updated_at?: string | null
@@ -41783,6 +41788,7 @@ export type Database = {
           last_message_preview?: string | null
           location_id?: string | null
           phone_number?: string
+          pipeline_entry_id?: string | null
           tenant_id?: string
           unread_count?: number | null
           updated_at?: string | null
