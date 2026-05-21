@@ -10154,6 +10154,237 @@ export type Database = {
           },
         ]
       }
+      crm_referral_links: {
+        Row: {
+          click_count: number
+          created_at: string
+          id: string
+          is_active: boolean
+          landing_page: string | null
+          link_code: string
+          partner_id: string
+          signup_count: number
+          tenant_id: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          click_count?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          landing_page?: string | null
+          link_code: string
+          partner_id: string
+          signup_count?: number
+          tenant_id: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          click_count?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          landing_page?: string | null
+          link_code?: string
+          partner_id?: string
+          signup_count?: number
+          tenant_id?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_links_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_referral_partners: {
+        Row: {
+          company_name: string | null
+          created_at: string
+          id: string
+          internal_user_id: string | null
+          is_internal_user: boolean
+          notes: string | null
+          partner_code: string
+          partner_email: string | null
+          partner_name: string
+          partner_phone: string | null
+          partner_type: string | null
+          payment_details: Json | null
+          payment_method: string | null
+          payout_schedule: string | null
+          payout_threshold: number | null
+          payout_type: Database["public"]["Enums"]["crm_payout_type"]
+          payout_value: number
+          status: Database["public"]["Enums"]["crm_partner_status"]
+          tax_id: string | null
+          tenant_id: string
+          tier: Database["public"]["Enums"]["crm_partner_tier"]
+          total_clicks: number
+          total_earned: number
+          total_paid_out: number
+          total_signups: number
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string
+          id?: string
+          internal_user_id?: string | null
+          is_internal_user?: boolean
+          notes?: string | null
+          partner_code: string
+          partner_email?: string | null
+          partner_name: string
+          partner_phone?: string | null
+          partner_type?: string | null
+          payment_details?: Json | null
+          payment_method?: string | null
+          payout_schedule?: string | null
+          payout_threshold?: number | null
+          payout_type?: Database["public"]["Enums"]["crm_payout_type"]
+          payout_value?: number
+          status?: Database["public"]["Enums"]["crm_partner_status"]
+          tax_id?: string | null
+          tenant_id: string
+          tier?: Database["public"]["Enums"]["crm_partner_tier"]
+          total_clicks?: number
+          total_earned?: number
+          total_paid_out?: number
+          total_signups?: number
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string
+          id?: string
+          internal_user_id?: string | null
+          is_internal_user?: boolean
+          notes?: string | null
+          partner_code?: string
+          partner_email?: string | null
+          partner_name?: string
+          partner_phone?: string | null
+          partner_type?: string | null
+          payment_details?: Json | null
+          payment_method?: string | null
+          payout_schedule?: string | null
+          payout_threshold?: number | null
+          payout_type?: Database["public"]["Enums"]["crm_payout_type"]
+          payout_value?: number
+          status?: Database["public"]["Enums"]["crm_partner_status"]
+          tax_id?: string | null
+          tenant_id?: string
+          tier?: Database["public"]["Enums"]["crm_partner_tier"]
+          total_clicks?: number
+          total_earned?: number
+          total_paid_out?: number
+          total_signups?: number
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_partners_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_referral_signup_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          ip_hash: string | null
+          link_id: string | null
+          partner_id: string | null
+          referrer_url: string | null
+          session_id: string | null
+          tenant_id: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          visitor_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          ip_hash?: string | null
+          link_id?: string | null
+          partner_id?: string | null
+          referrer_url?: string | null
+          session_id?: string | null
+          tenant_id: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visitor_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          ip_hash?: string | null
+          link_id?: string | null
+          partner_id?: string | null
+          referrer_url?: string | null
+          session_id?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visitor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_signup_events_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_signup_events_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_signup_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_dashboards: {
         Row: {
           created_at: string | null
