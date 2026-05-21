@@ -339,6 +339,9 @@ Deno.serve(async (req) => {
             last_message_at: new Date().toISOString(),
             last_message_preview: message.substring(0, 100),
             location_id: resolvedLocationId || null,
+            // Always re-pin to the most recent lead so future replies route here
+            ...(jobId ? { pipeline_entry_id: jobId } : {}),
+            ...(contactId ? { contact_id: contactId } : {}),
           })
           .eq('id', existingThread.id);
       } else {
@@ -349,6 +352,7 @@ Deno.serve(async (req) => {
             tenant_id: tenantId,
             phone_number: formattedTo,
             contact_id: contactId || null,
+            pipeline_entry_id: jobId || null,
             last_message_at: new Date().toISOString(),
             last_message_preview: message.substring(0, 100),
             location_id: resolvedLocationId || null,
@@ -372,6 +376,7 @@ Deno.serve(async (req) => {
             thread_id: threadId,
             tenant_id: tenantId,
             contact_id: contactId || null,
+            pipeline_entry_id: jobId || null,
             body: message,
             direction: 'outbound',
             from_number: finalFromNumber,
