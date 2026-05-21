@@ -35,6 +35,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [batchSize, setBatchSize] = useState<number>(10);
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
+  const [singleContactId, setSingleContactId] = useState<string | null>(null);
+  const [contactSearch, setContactSearch] = useState('');
+  const [showContactResults, setShowContactResults] = useState(false);
   const [script, setScript] = useState('');
   const [dailyLimit, setDailyLimit] = useState<number>(100);
   const [sending, setSending] = useState(false);
