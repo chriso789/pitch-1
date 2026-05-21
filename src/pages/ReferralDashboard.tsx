@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -11,13 +12,22 @@ import { ReferralCreditsTable } from "@/components/referrals/admin/ReferralCredi
 import { ReferralFlagsTable } from "@/components/referrals/admin/ReferralFlagsTable";
 import { ReferralSettingsPanel } from "@/components/referrals/admin/ReferralSettingsPanel";
 import { ReferralDetailDrawer } from "@/components/referrals/admin/ReferralDetailDrawer";
+import { ReferralAnalyticsTab } from "@/components/referrals/analytics/ReferralAnalyticsTab";
 
 export default function ReferralDashboard() {
   const { profile } = useUserProfile();
+  const [searchParams, setSearchParams] = useSearchParams();
   // owner/admin/manager-tier (level <= 6) can perform mutating actions
   const canManage = getRoleLevel(profile?.role || "") <= 6;
   const canEditSettings = getRoleLevel(profile?.role || "") <= 4;
   const [drawerLinkId, setDrawerLinkId] = useState<string | null>(null);
+
+  const activeTab = searchParams.get("tab") || "overview";
+  const setTab = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", value);
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <GlobalLayout>
@@ -27,11 +37,12 @@ export default function ReferralDashboard() {
           <p className="text-sm text-muted-foreground">Manage referral links, leads, payouts, and stored credits.</p>
         </div>
 
-        <Tabs defaultValue="overview">
+        <Tabs value={activeTab} onValueChange={setTab}>
           <TabsList className="flex flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="links">Referral Links</TabsTrigger>
             <TabsTrigger value="leads">Referred Leads</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
             <TabsTrigger value="credits">Stored Credits</TabsTrigger>
             <TabsTrigger value="flags">Flags / Review</TabsTrigger>
@@ -43,6 +54,7 @@ export default function ReferralDashboard() {
             <ReferralLinksTable canManage={canManage} onView={(id) => setDrawerLinkId(id)} />
           </TabsContent>
           <TabsContent value="leads" className="mt-4"><ReferredLeadsTable canManage={canManage} /></TabsContent>
+          <TabsContent value="analytics" className="mt-4"><ReferralAnalyticsTab /></TabsContent>
           <TabsContent value="payouts" className="mt-4"><ReferralPayoutsTable canManage={canManage} /></TabsContent>
           <TabsContent value="credits" className="mt-4"><ReferralCreditsTable canManage={canManage} /></TabsContent>
           <TabsContent value="flags" className="mt-4"><ReferralFlagsTable canManage={canManage} /></TabsContent>
