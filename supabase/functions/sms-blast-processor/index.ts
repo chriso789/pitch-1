@@ -18,6 +18,11 @@ const corsHeaders = {
 
 const FAILURE_CIRCUIT_BREAKER = 0.10; // 10%
 const MIN_ATTEMPTS_FOR_BREAKER = 20;
+const HARD_LIMIT_PER_INVOCATION = 100;
+const DEFAULT_LIMIT_PER_INVOCATION = 50;
+const MIN_PACING_MS = 800;
+const MAX_PACING_MS = 1500;
+const PER_PHONE_COOLDOWN_HOURS = 24;
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null;
