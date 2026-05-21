@@ -18,6 +18,11 @@ const corsHeaders = {
 
 const FAILURE_CIRCUIT_BREAKER = 0.10; // 10%
 const MIN_ATTEMPTS_FOR_BREAKER = 20;
+const HARD_LIMIT_PER_INVOCATION = 100;
+const DEFAULT_LIMIT_PER_INVOCATION = 50;
+const MIN_PACING_MS = 800;
+const MAX_PACING_MS = 1500;
+const PER_PHONE_COOLDOWN_HOURS = 24;
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null;
@@ -87,6 +92,7 @@ async function processBlast(
   blast: any,
   serviceKey: string,
   supabaseUrl: string,
+  opts: { limit?: number; dryRun?: boolean } = {},
 ) {
   // 0. Quiet-hours gate — skip this tick if outside configured send window
   if (!isWithinSendWindow(blast)) {
@@ -127,14 +133,36 @@ async function processBlast(
     return { blast_id: blast.id, error: 'no_active_numbers' };
   }
 
-  // Cap per-tick batch by minute capacity AND daily room
-  const minuteCapacity = Math.max(1, Math.floor(totalMps * 60));
+  // Cap per-tick batch by minute capacity AND launch-control hard limit
+  const requestedLimit = Math.min(
+    Math.max(1, opts.limit ?? DEFAULT_LIMIT_PER_INVOCATION),
+    HARD_LIMIT_PER_INVOCATION,
+  );
+  const minuteCapacity = Math.min(requestedLimit, Math.max(1, Math.floor(totalMps * 60)));
+
+  // Dry-run mode short-circuits: do not claim or send, just report state.
+  if (opts.dryRun) {
+    const { count: pendingCount } = await supabase
+      .from('sms_blast_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('blast_id', blast.id)
+      .in('status', ['pending', 'rendered']);
+    await supabase
+      .from('sms_blasts')
+      .update({ last_processor_run_at: new Date().toISOString() })
+      .eq('id', blast.id);
+    return { blast_id: blast.id, dry_run: true, remaining: pendingCount ?? 0 };
+  }
 
   // 2. Atomic claim
   const { data: claimed, error: claimError } = await supabase.rpc('claim_sms_blast_items', {
     p_blast_id: blast.id,
     p_limit: minuteCapacity,
   });
+  if (claimError) {
+    console.error('[blast-worker] claim error', claimError);
+    return { blast_id: blast.id, error: claimError.message };
+  }
   if (claimError) {
     console.error('[blast-worker] claim error', claimError);
     return { blast_id: blast.id, error: claimError.message };
@@ -175,24 +203,52 @@ async function processBlast(
     .in('phone', phones);
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
-  // Pre-fetch personalized messages for claimed items (set by generate-campaign-messages)
+  // 3b. Per-phone 24h cooldown — block resends to the same number within window.
+  const cooldownSet = new Set<string>();
+  if (phones.length > 0) {
+    const since = new Date(Date.now() - PER_PHONE_COOLDOWN_HOURS * 3600 * 1000).toISOString();
+    const { data: recent } = await supabase
+      .from('sms_messages')
+      .select('to_number')
+      .eq('tenant_id', blast.tenant_id)
+      .eq('direction', 'outbound')
+      .in('to_number', phones)
+      .gte('created_at', since);
+    (recent || []).forEach((r: any) => { if (r.to_number) cooldownSet.add(r.to_number); });
+  }
+
+  // 3c. In-blast phone dedupe — only allow first occurrence per phone in this run.
+  const seenInBlast = new Set<string>();
+
+  // Pre-fetch personalized messages + address snapshots for claimed items (set by generate-campaign-messages)
   const claimedIds = (claimed as any[]).map((c: any) => c.id);
   const personalizedMap = new Map<string, string>();
+  const addrSnapMap = new Map<string, string | null>();
   if (claimedIds.length > 0) {
     const { data: pers } = await supabase
       .from('sms_blast_items')
-      .select('id, personalized_message')
+      .select('id, personalized_message, address_street_snapshot')
       .in('id', claimedIds);
     (pers || []).forEach((p: any) => {
       if (p.personalized_message) personalizedMap.set(p.id, p.personalized_message);
+      addrSnapMap.set(p.id, p.address_street_snapshot || null);
     });
   }
+
+  const isEmailCaptureGoal = String(blast.goal || '') === 'collect_homeowner_email_for_roof_estimate';
 
   let sent = 0;
   let failed = 0;
   let opted = 0;
+  let blockedByGuard = 0;
+  let blockedByCooldown = 0;
+  let blockedByDedupe = 0;
 
-  const sleepMs = Math.max(50, Math.floor(1000 / Math.max(totalMps, 0.5)));
+  // Safe pacing window — 800–1500ms between messages regardless of MPS capacity.
+  const sleepMs = Math.max(
+    MIN_PACING_MS,
+    Math.min(MAX_PACING_MS, Math.floor(1000 / Math.max(totalMps, 0.5))),
+  );
 
   // Cursor used as fallback for from-number rotation
   let cursor = 0;
@@ -231,6 +287,46 @@ async function processBlast(
       opted++;
       continue;
     }
+
+    // 24h per-phone cooldown — block re-sending to same number.
+    if (cooldownSet.has(toE164)) {
+      await supabase.from('sms_blast_items').update({
+        status: 'skipped_cooldown',
+        last_error: 'per_phone_24h_cooldown',
+        error_message: 'Skipped: already messaged this phone in last 24h',
+      }).eq('id', item.id);
+      blockedByCooldown++;
+      continue;
+    }
+
+    // In-blast dedupe — only first occurrence per phone in this run.
+    if (seenInBlast.has(toE164)) {
+      await supabase.from('sms_blast_items').update({
+        status: 'skipped_duplicate',
+        last_error: 'duplicate_phone_in_blast',
+        error_message: 'Skipped: duplicate phone in this blast',
+      }).eq('id', item.id);
+      blockedByDedupe++;
+      continue;
+    }
+    seenInBlast.add(toE164);
+
+    // Production guard: email-capture campaigns require locked message + address snapshot
+    if (isEmailCaptureGoal) {
+      const lockedMsg = personalizedMap.get(item.id);
+      const addrSnap = addrSnapMap.get(item.id);
+      if (!lockedMsg || !lockedMsg.trim() || !addrSnap || !String(addrSnap).trim()) {
+        await supabase.from('sms_blast_items').update({
+          status: 'failed',
+          last_error: 'production_guard_blocked',
+          error_message: 'Production guard blocked send: missing locked address/message',
+        }).eq('id', item.id);
+        blockedByGuard++;
+        failed++;
+        continue;
+      }
+    }
+
 
     // Prefer personalized_message (smart-tag resolved) over raw script
     const firstName = (item.contact_name || '').split(' ')[0] || '';
@@ -368,7 +464,13 @@ async function processBlast(
     })
     .eq('id', blast.id);
 
-  return { blast_id: blast.id, sent, failed, opted, claimed: claimed.length, totalMps, minuteCapacity, remaining };
+  return {
+    blast_id: blast.id,
+    sent, failed, opted, blockedByGuard, blockedByCooldown, blockedByDedupe,
+    claimed: claimed.length, totalMps, minuteCapacity, remaining,
+    partial: remaining > 0,
+    message: remaining > 0 ? 'Batch processed. Run processor again for remaining rendered items.' : undefined,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -381,6 +483,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const specificBlastId: string | null = body?.blast_id || null;
+    const reqLimit: number | undefined = typeof body?.limit === 'number' ? body.limit : undefined;
+    const reqDryRun: boolean = body?.dry_run === true;
 
     // If a single blast was requested and it's still in 'draft', flip to 'sending'
     if (specificBlastId) {
@@ -406,7 +510,7 @@ Deno.serve(async (req) => {
     const results: any[] = [];
     for (const b of blasts || []) {
       try {
-        results.push(await processBlast(supabase, b, serviceKey, supabaseUrl));
+        results.push(await processBlast(supabase, b, serviceKey, supabaseUrl, { limit: reqLimit, dryRun: reqDryRun }));
       } catch (e: any) {
         console.error('[blast-worker] processBlast error', b.id, e);
         results.push({ blast_id: b.id, error: String(e?.message || e) });

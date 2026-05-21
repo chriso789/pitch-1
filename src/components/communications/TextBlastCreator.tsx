@@ -15,6 +15,9 @@ import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, 
 import { TextBlastListBuilder } from './TextBlastListBuilder';
 import { resolveSmsTags, SAMPLE_TAG_CONTEXT, SMS_AVAILABLE_TAGS } from '@/lib/smartTags/smsTagResolver';
 import { useContactStatuses } from '@/hooks/useContactStatuses';
+import { SmsBlastLaunchChecklist } from './SmsBlastLaunchChecklist';
+import { LockedSmsPreviewTable } from './LockedSmsPreviewTable';
+import { useSmsBlastMetrics } from '@/hooks/useSmsBlastMetrics';
 
 const BATCH_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100, 250, 500];
 
@@ -47,6 +50,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
   const [goal, setGoal] = useState<string>('');
   const [dryRun, setDryRun] = useState<boolean>(false);
+  const [dryRunCompleted, setDryRunCompleted] = useState<boolean>(false);
+  const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
+  const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
@@ -191,6 +197,16 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const handleSend = async () => {
     if (!isValid || !activeTenantId) return;
 
+    // Production gate: email-capture goal must complete a dry-run first
+    if (!dryRun && isEmailCaptureGoal && !dryRunCompleted) {
+      toast({
+        title: 'Dry-run required',
+        description: 'Run a dry-run first so we can verify every address and message before sending.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSending(true);
     try {
       if (sendMode === 'single') {
@@ -242,10 +258,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             toast({ title: 'Text Blast Started!', description: `Sending to 1 recipient...` });
           }
         } else {
+          setDryRunCompleted(true);
+          setDryRunBlastId(blast.id);
           toast({ title: 'Dry run complete', description: 'Messages rendered. Nothing was sent.' });
         }
 
-        onCreated(blast.id);
+        if (!dryRun) onCreated(blast.id);
       } else {
         // List mode (existing logic)
         const { data: blast, error: blastError } = await supabase
@@ -298,10 +316,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
           }
         } else {
+          setDryRunCompleted(true);
+          setDryRunBlastId(blast.id);
           toast({ title: 'Dry run complete', description: `Rendered ${listItems!.length} messages. Nothing was sent.` });
         }
 
-        onCreated(blast.id);
+        if (!dryRun) onCreated(blast.id);
       }
     } catch (error: any) {
       console.error('Error creating blast:', error);
@@ -696,19 +716,54 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </div>
           )}
 
+          {/* Launch checklist + locked preview appear after a dry-run */}
+          {dryRunBlastId && (
+            <>
+              <SmsBlastLaunchChecklist
+                blastId={dryRunBlastId}
+                tenantId={activeTenantId || ''}
+                goal={goal}
+                recipientCount={recipientCount}
+                eligibleCount={preflight?.eligible ?? metrics.rendered}
+                skippedMissingAddress={preflight?.missingAddress ?? metrics.skippedMissingAddress}
+                skippedOptOut={preflight?.optedOut ?? metrics.skippedOptOut}
+                dryRunCompleted={dryRunCompleted}
+                aiFollowupEnabled={aiFollowupEnabled}
+                hasStopLanguage={hasStopClause}
+                allRenderedHavePersonalizedMessage={metrics.allRenderedHavePersonalizedMessage}
+                allRenderedHaveAddressSnapshot={metrics.allRenderedHaveAddressSnapshot}
+                batchSize={batchSize}
+                onConfirmReady={async () => {
+                  setSending(true);
+                  try {
+                    const { error } = await supabase.functions.invoke('sms-blast-processor', {
+                      body: { blast_id: dryRunBlastId },
+                    });
+                    if (error) throw error;
+                    toast({ title: 'Live send launched', description: `Processor invoked for ${metrics.rendered} rendered recipient(s).` });
+                    onCreated(dryRunBlastId);
+                  } catch (e: any) {
+                    toast({ title: 'Launch failed', description: e.message, variant: 'destructive' });
+                  } finally {
+                    setSending(false);
+                  }
+                }}
+              />
+              <LockedSmsPreviewTable blastId={dryRunBlastId} tenantId={activeTenantId || ''} />
+            </>
+          )}
+
           <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
+              onChange={(e) => { setDryRun(e.target.checked); if (e.target.checked) { setDryRunCompleted(false); setDryRunBlastId(null); } }}
               className="h-4 w-4"
             />
             Dry run — render and store messages, do NOT send via Telnyx
           </label>
 
           <div className="flex gap-2">
-
-
             <Button
               onClick={handleSend}
               disabled={sending || !isValid}

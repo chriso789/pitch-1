@@ -153,6 +153,68 @@ if (existsSync(creatorPath)) {
   }
 }
 
+// ---- 7. Launch control layer ----------------------------------------
+{
+  const launch = join(process.cwd(), 'src/components/communications/SmsBlastLaunchChecklist.tsx');
+  push({ name: 'launch:SmsBlastLaunchChecklist', ok: existsSync(launch) });
+  const locked = join(process.cwd(), 'src/components/communications/LockedSmsPreviewTable.tsx');
+  push({ name: 'launch:LockedSmsPreviewTable', ok: existsSync(locked) });
+  const metrics = join(process.cwd(), 'src/hooks/useSmsBlastMetrics.ts');
+  push({ name: 'launch:useSmsBlastMetrics', ok: existsSync(metrics) });
+
+  if (existsSync(creatorPath)) {
+    const src = readFileSync(creatorPath, 'utf8');
+    push({
+      name: 'creator:requires-dry-run-for-email-capture',
+      ok: src.includes('dryRunCompleted') && src.includes('collect_homeowner_email_for_roof_estimate'),
+    });
+    push({
+      name: 'creator:mounts-launch-checklist',
+      ok: src.includes('SmsBlastLaunchChecklist'),
+    });
+    push({
+      name: 'creator:mounts-locked-preview',
+      ok: src.includes('LockedSmsPreviewTable'),
+    });
+  }
+
+  if (existsSync(locked)) {
+    const src = readFileSync(locked, 'utf8');
+    push({
+      name: 'locked-preview:reads-personalized_message',
+      ok: src.includes('personalized_message') && src.includes("from('sms_blast_items')") ||
+          src.includes('personalized_message') && src.includes("'sms_blast_items'"),
+    });
+  }
+
+  const proc = join(fnDir, 'sms-blast-processor', 'index.ts');
+  if (existsSync(proc)) {
+    const src = readFileSync(proc, 'utf8');
+    push({
+      name: 'processor:production-guard',
+      ok: src.includes('production_guard_blocked') &&
+          src.includes('address_street_snapshot') &&
+          src.includes('personalized_message'),
+    });
+    push({
+      name: 'processor:hard-limit-le-100',
+      ok: src.includes('HARD_LIMIT_PER_INVOCATION = 100'),
+    });
+    push({
+      name: 'processor:per-phone-cooldown',
+      ok: src.includes('PER_PHONE_COOLDOWN_HOURS') && src.includes('skipped_cooldown'),
+    });
+    push({
+      name: 'processor:in-blast-dedupe',
+      ok: src.includes('seenInBlast') && src.includes('skipped_duplicate'),
+    });
+    push({
+      name: 'processor:dry-run-body-flag',
+      ok: src.includes('opts.dryRun') || src.includes('reqDryRun'),
+    });
+  }
+}
+
 // ---- Report --------------------------------------------------------
 const failed = checks.filter((c) => !c.ok);
 for (const c of checks) {
