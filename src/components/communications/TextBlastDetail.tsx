@@ -206,9 +206,9 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           <div className="p-3 rounded-md border border-border bg-muted/30">
             <p className="font-medium mb-1">Delivery Verifier</p>
             <p className="text-muted-foreground">
-              {blast.sent_count} sent · {blast.delivered_count || 0} confirmed delivered · {blast.replied_count || 0} replied.
-              {blast.daily_send_limit && (
-                <> Throttled to {blast.daily_send_limit}/day ({blast.sent_today_count || 0} sent in current window).</>
+              {blast.sent_count} sent · {blast.delivered_count || 0} confirmed delivered · {blast.replied_count || 0} replied · {blast.opted_out_count || 0} opted out (STOP).
+              {(blast as any).max_attempts_per_contact && (
+                <> Capped at {(blast as any).max_attempts_per_contact} attempt{(blast as any).max_attempts_per_contact !== 1 ? 's' : ''} per contact (24h apart, stops on reply / NO / STOP).</>
               )}
             </p>
           </div>

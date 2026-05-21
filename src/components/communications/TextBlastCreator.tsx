@@ -39,7 +39,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [contactSearch, setContactSearch] = useState('');
   const [showContactResults, setShowContactResults] = useState(false);
   const [script, setScript] = useState('');
-  const [dailyLimit, setDailyLimit] = useState<number>(100);
+  const [maxAttemptsPerContact, setMaxAttemptsPerContact] = useState<number>(1);
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showListBuilder, setShowListBuilder] = useState(false);
@@ -203,7 +203,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: script.trim(),
             list_id: null,
             total_recipients: 1,
-            daily_send_limit: dailyLimit,
+            max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
             ai_followup_enabled: aiFollowupEnabled,
@@ -256,7 +256,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: script.trim(),
             list_id: null,
             total_recipients: listItems!.length,
-            daily_send_limit: dailyLimit,
+            max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
             ai_followup_enabled: aiFollowupEnabled,
@@ -633,29 +633,26 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="daily-limit">Max Sends Per Day</Label>
+                <Label htmlFor="max-attempts">Repeat Attempts Per Contact</Label>
                 <Input
-                  id="daily-limit"
+                  id="max-attempts"
                   type="number"
                   min={1}
-                  max={10000}
-                  value={dailyLimit}
-                  onChange={(e) => setDailyLimit(Math.max(1, Number(e.target.value) || 0))}
+                  max={10}
+                  value={maxAttemptsPerContact}
+                  onChange={(e) => setMaxAttemptsPerContact(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Processor pauses after {dailyLimit} sends in a rolling 24-hour window.
-                  {recipientCount > dailyLimit && (
-                    <> Will take ~{Math.ceil(recipientCount / dailyLimit)} day(s) to complete.</>
-                  )}
+                  Each contact will be messaged up to <span className="font-medium">{maxAttemptsPerContact}</span> time{maxAttemptsPerContact !== 1 ? 's' : ''} total. Retries stop immediately on reply, <span className="font-mono">NO</span>, or <span className="font-mono">STOP</span>. Throughput scales with the number of contacts in the run — it is not a daily volume cap.
                 </p>
               </div>
 
               <div className="rounded-md border border-border bg-muted/40 p-3 space-y-1.5">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Per-Number Cadence Rule
+                  Per-Contact Cadence Rule
                 </p>
                 <p className="text-xs text-foreground">
-                  <span className="font-medium">One message per phone number per 24h.</span> Each contact is retried on subsequent days until they reply or send <span className="font-mono">NO / STOP</span>. The system rotates across tenant numbers to find the right match before moving on.
+                  <span className="font-medium">One message per contact per 24h, up to {maxAttemptsPerContact} attempt{maxAttemptsPerContact !== 1 ? 's' : ''} total.</span> Subsequent attempts are spaced 24h apart and stop the moment the contact replies or sends <span className="font-mono">NO / STOP</span>. The system rotates across tenant numbers to find the right match before counting an attempt as exhausted.
                 </p>
               </div>
 
