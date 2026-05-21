@@ -46,8 +46,8 @@ export function SRSReconciliationPanel() {
   const runNow = async () => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke('srs-reconciliation-report', {
-        body: { tenant_id: tenantId, run_type: 'manual' },
+      const { data, error } = await supabase.functions.invoke('srs-order-status-poller', {
+        body: { mode: 'reconcile', tenant_id: tenantId, run_type: 'manual' },
       });
       if (error) throw error;
       const summary = data?.runs?.[0];
