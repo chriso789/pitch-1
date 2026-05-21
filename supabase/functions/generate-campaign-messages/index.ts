@@ -132,13 +132,27 @@ Deno.serve(async (req) => {
       (prior || []).forEach((p: any) => p.contact_id && priorSet.add(p.contact_id));
     }
 
+    const requireAddress = (blast as any).goal === 'collect_homeowner_email_for_roof_estimate';
     let updated = 0;
+    let skippedMissingAddress = 0;
     for (let i = 0; i < (items || []).length; i++) {
       const item = items![i];
       const contact = item.contact_id ? contactsMap.get(item.contact_id) : null;
 
       // Skip if already personalized (idempotent re-runs)
       if (item.personalized_message && item.personalized_message.length > 0) continue;
+
+      // Address-required gate for email-capture campaigns: NEVER send a homeowner
+      // an SMS that asks about "your property" with no real street address attached.
+      if (requireAddress && !contact?.address_street) {
+        await supabase.from('sms_blast_items').update({
+          status: 'failed',
+          last_error: 'skipped_missing_address',
+          error_message: 'skipped_missing_address',
+        }).eq('id', item.id);
+        skippedMissingAddress++;
+        continue;
+      }
 
       // Rotate template across the pool
       const tpl = templates[i % templates.length];
@@ -162,7 +176,12 @@ Deno.serve(async (req) => {
       updated++;
     }
 
-    return new Response(JSON.stringify({ success: true, updated, total: items?.length || 0 }), {
+    return new Response(JSON.stringify({
+      success: true,
+      updated,
+      skipped_missing_address: skippedMissingAddress,
+      total: items?.length || 0,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e: any) {

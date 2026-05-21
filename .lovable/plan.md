@@ -1,28 +1,61 @@
-## MSFH Campaign Engine — Phases 2–5 Build Plan
+## Scope
 
-Phase 1 already shipped: `sms_templates` table, seeded MSFH templates, smart-tag resolver, template-pool + AI toggle UI in `TextBlastCreator`, live preview. We're extending the existing `sms_blasts` system (not creating a parallel `campaigns` schema) so O'Brien's live blast tool keeps working.
+Add the **Roof Estimate Email Capture — MSFH** campaign on top of the existing `sms_blasts` / `sms_blast_items` / `ai-followup-worker` system. Do not fork the texting stack.
 
-### Phase 2 — Send Engine
-- **Edge function `generate-campaign-messages`**: pulls `sms_blast_items` for a blast, rotates across `template_pool_ids`, resolves smart tags per contact (loading contact + company + assigned_user), writes `personalized_message` per row. Adds "prior interaction" lookup → injects "We had spoken briefly in the past…" prefix when previous `sms_messages` exist for that contact.
-- **Upgrade send worker**: stagger waves of 50 with 5–30s random delay; hard-block sends outside `send_window_start/end` in blast `timezone`; rotate `from_number` by contact area code (West FL=941, East FL=561); preserve existing "1/number/24h" cadence and STOP/HELP handling.
-- **Lead filter UI** in `TextBlastCreator`: `last_contacted > N days`, `property_type`, `state`, `opted_out=false`. Saves filter into blast and resolves audience at queue time.
+## What's already enforced (no changes needed)
 
-### Phase 3 — Inbound + AI Follow-up
-- **`classify-sms-intent` edge function** (Lovable AI, `google/gemini-3-flash-preview`): returns `positive_interest | not_interested | stop | already_applied | call_me | inspection_question | roof_issue | financing_question`.
-- **`ai-followup-worker` edge function**: consultative MSFH system prompt, only fires when `ai_followup_enabled=true` and intent is conversational. Replies via existing `telnyx-send-sms`, marks message `ai_generated=true`. STOP/opt-out always wins.
-- Hook both into existing `sms-inbound-webhook`. All messages continue landing in the unified inbox + contact timeline.
+- Per-item `personalized_message` is rendered once, stored on `sms_blast_items`, and `sms-blast-processor` sends that exact stored body (`personalizedMap.get(item.id)`). Address can't bleed across contacts.
+- Opt-out check pre-claim and per-item.
+- Send-window + circuit breaker + area-code from-number routing.
+- AI follow-up worker already classifies intent, refuses on human takeover/opt-out, sends through `telnyx-send-sms`, and creates MSFH pipeline entries + 4 tasks.
+- Inbound webhook already attaches replies to the correct lead (last work).
 
-### Phase 4 — Automation + Pipeline
-- Seed MSFH pipeline stages: `MSFH Contacted → Interested → Inspection Scheduled → Inspection Complete → Grant Submitted → Approved → Roof Closed`.
-- New automation event `SMS_POSITIVE_REPLY` wired into `automation-processor`. On positive intent: create pipeline entry at "MSFH Interested", spawn 4 tasks (Call within 15 min / Check wind mitigation / Verify roof age / Schedule inspection), notify assigned rep.
+## 1. Seed templates (per tenant)
 
-### Phase 5 — Analytics
-- Analytics card on `TextBlastDetail`: Delivered %, Response %, Positive Response %, Opt-out %, Appointments Booked, Grant Interest Rate, Conversions to MSFH pipeline. Queries existing `sms_blast_items` + new intent column.
+Insert two `sms_templates` rows for every tenant, both with `goal = 'collect_homeowner_email_for_roof_estimate'`, `category = 'msfh_email_capture'`:
 
-### Technical notes
-- All new tables/columns RLS-scoped via `tenant_id`. No `service_role_key` on client.
-- Edge functions: `npm:` specifiers, explicit `Deno.serve(handler)`, CORS, JWT validation in-code.
-- Cost guard: AI follow-up uses `gemini-3-flash-preview` (cheap), intent classifier uses `gemini-2.5-flash-lite`.
+- **Roof Estimate Email Capture — MSFH** (primary)
+- **Roof Estimate Email Capture — MSFH (Short)** (rotating variant)
 
-### Recommendation
-This is ~8 hours of careful work across migrations + 3 edge functions + UI. **Approve Phase 2 first** so we can validate generation + sending against a small live audience before wiring AI replies and pipeline automation on top. Reply "go phase 2" (or "go all phases") and I'll start.
+Use existing `{{contact.first_name}}`, `{{contact.address1}}`, `{{contact.city}}` smart tags (resolver already maps these to `contacts.address_street` / `address_city`).
+
+## 2. Seed pipeline stage (per tenant)
+
+Insert `pipeline_stages` row keyed `roof_estimate_email_captured` (idempotent — skip if exists). Color/order placed after `msfh_interested`.
+
+## 3. Tighten `generate-campaign-messages`
+
+When `blast.goal === 'collect_homeowner_email_for_roof_estimate'`:
+- If contact is missing `address_street`, mark the `sms_blast_items` row `status='failed'`, `last_error='skipped_missing_address'` instead of producing a stripped message. Guarantees no address-less email-capture send.
+- Surface a count of skipped-missing-address rows in the response.
+
+## 4. Add email-capture branch to `ai-followup-worker`
+
+Before intent classification, regex-extract an email from the inbound body. If found AND the originating blast goal is `collect_homeowner_email_for_roof_estimate`:
+- Update `contacts.email` if empty; otherwise append `{ secondary_emails: [...] }` into `contacts.metadata`.
+- Upsert a `pipeline_entries` row with `status='roof_estimate_email_captured'`, source `sms_campaign`.
+- Spawn one task: "Send roof replacement estimate and MSFH info" — due in 15 min, priority `urgent`, assigned to `blast.created_by`.
+- Reply with the captured-email follow-up message ("Perfect, I'll get the estimate for {address} sent over…") via `telnyx-send-sms`.
+- Skip the normal MSFH intent / hot-pipeline branch for this turn.
+
+## 5. UI — `TextBlastCreator`
+
+Minimal additions to the existing preview pane:
+- Show count of recipients skipped for `missing_address` and `opted_out` in the launch confirmation.
+- Show 3 sample rendered messages (already present — verify it's rendering personalized_message vs raw script).
+- Dry-run toggle: passes `{ dry_run: true }` to `generate-campaign-messages` so messages are rendered and stored, but `sms-blast-processor` is NOT kicked. (Implemented by leaving blast in `draft` and not calling the processor.)
+
+## 6. Out of scope (will NOT do)
+
+- New SMS sending pipeline, new contact table, new Telnyx wiring.
+- Touching `telnyx-send-sms` or `telnyx-inbound-webhook` behavior.
+- Replacing the existing template pool / rotation logic.
+
+## Technical files
+
+- Migration: seed templates per tenant (loop), seed pipeline stage, idempotent.
+- `supabase/functions/generate-campaign-messages/index.ts` — add goal-aware address-required gate + skip counts.
+- `supabase/functions/ai-followup-worker/index.ts` — add email-capture branch ahead of classifier.
+- `src/components/communications/TextBlastCreator.tsx` — preview counts + dry-run toggle.
+
+Reply "go" and I'll ship it. Reply with edits if you want to change scope (e.g. skip the dry-run toggle, or change the rotating variant copy).

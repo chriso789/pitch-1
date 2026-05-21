@@ -37,6 +37,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
   const [goal, setGoal] = useState<string>('');
+  const [dryRun, setDryRun] = useState<boolean>(false);
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
@@ -69,6 +70,44 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!selectedListId,
   });
 
+  // Pre-flight: for the email-capture campaign, count contacts missing address_street
+  // and contacts that are already opted-out, BEFORE the user clicks Send. This is what
+  // protects against blasting the wrong address to a homeowner.
+  const isEmailCaptureGoal = goal === 'collect_homeowner_email_for_roof_estimate';
+  const { data: preflight } = useQuery({
+    queryKey: ['blast-preflight', activeTenantId, selectedListId, sendMode, isEmailCaptureGoal, listItems?.length],
+    queryFn: async () => {
+      if (!activeTenantId || sendMode !== 'list' || !selectedListId || !listItems?.length) {
+        return { missingAddress: 0, optedOut: 0, eligible: 0 };
+      }
+      const contactIds = listItems.map((li: any) => li.contact_id).filter(Boolean);
+      const phones = listItems.map((li: any) => li.phone_number).filter(Boolean);
+
+      let missingAddress = 0;
+      if (isEmailCaptureGoal && contactIds.length) {
+        const { data: cs } = await supabase
+          .from('contacts')
+          .select('id, address_street')
+          .in('id', contactIds);
+        const withAddr = new Set((cs || []).filter(c => c.address_street && String(c.address_street).trim()).map(c => c.id));
+        missingAddress = listItems.filter((li: any) => !li.contact_id || !withAddr.has(li.contact_id)).length;
+      }
+
+      let optedOut = 0;
+      if (phones.length) {
+        const { data: oo } = await supabase
+          .from('opt_outs')
+          .select('phone')
+          .eq('tenant_id', activeTenantId)
+          .eq('channel', 'sms')
+          .in('phone', phones);
+        optedOut = (oo || []).length;
+      }
+      const eligible = Math.max(0, listItems.length - missingAddress - optedOut);
+      return { missingAddress, optedOut, eligible };
+    },
+    enabled: !!activeTenantId && sendMode === 'list' && !!selectedListId && !!listItems?.length,
+  });
   // Fetch SMS templates (smart-tag enabled, used for MSFH-style rotation pools)
   const { data: templates } = useQuery({
     queryKey: ['sms-templates', activeTenantId],
@@ -149,14 +188,22 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
         if (itemsError) throw itemsError;
 
-        const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+        // Personalize messages first (locks `personalized_message` per item before any send)
+        await supabase.functions.invoke('generate-campaign-messages', {
           body: { blast_id: blast.id },
         });
 
-        if (processorError) {
-          toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+        if (!dryRun) {
+          const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+            body: { blast_id: blast.id },
+          });
+          if (processorError) {
+            toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+          } else {
+            toast({ title: 'Text Blast Started!', description: `Sending to 1 recipient...` });
+          }
         } else {
-          toast({ title: 'Text Blast Started!', description: `Sending to 1 recipient...` });
+          toast({ title: 'Dry run complete', description: 'Messages rendered. Nothing was sent.' });
         }
 
         onCreated(blast.id);
@@ -196,14 +243,23 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
         if (itemsError) throw itemsError;
 
-        const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+        // Personalize messages first (locks `personalized_message` per item before any send).
+        // This is the safety gate that prevents address-cross-contamination on email-capture campaigns.
+        await supabase.functions.invoke('generate-campaign-messages', {
           body: { blast_id: blast.id },
         });
 
-        if (processorError) {
-          toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+        if (!dryRun) {
+          const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+            body: { blast_id: blast.id },
+          });
+          if (processorError) {
+            toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+          } else {
+            toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+          }
         } else {
-          toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+          toast({ title: 'Dry run complete', description: `Rendered ${listItems!.length} messages. Nothing was sent.` });
         }
 
         onCreated(blast.id);
@@ -346,6 +402,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   <SelectContent>
                     <SelectItem value="none">General outreach</SelectItem>
                     <SelectItem value="msfh_grant">My Safe Florida Home (MSFH) Grant</SelectItem>
+                    <SelectItem value="collect_homeowner_email_for_roof_estimate">Roof Estimate Email Capture — MSFH</SelectItem>
                     <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
                     <SelectItem value="dormant_reactivation">Dormant Lead Reactivation</SelectItem>
                   </SelectContent>
@@ -516,7 +573,34 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardContent>
           </Card>
 
+          {sendMode === 'list' && preflight && (preflight.missingAddress > 0 || preflight.optedOut > 0 || isEmailCaptureGoal) && (
+            <div className="rounded-md border border-border bg-muted/40 p-3 space-y-1.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pre-flight summary</p>
+              <div className="text-xs grid grid-cols-3 gap-2">
+                <div><span className="font-semibold text-foreground">{preflight.eligible}</span> <span className="text-muted-foreground">eligible</span></div>
+                <div><span className="font-semibold text-amber-600">{preflight.missingAddress}</span> <span className="text-muted-foreground">missing address</span></div>
+                <div><span className="font-semibold text-destructive">{preflight.optedOut}</span> <span className="text-muted-foreground">opted out</span></div>
+              </div>
+              {isEmailCaptureGoal && preflight.missingAddress > 0 && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Email-capture campaigns auto-skip contacts without a street address — these {preflight.missingAddress} will not be sent.
+                </p>
+              )}
+            </div>
+          )}
+
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Dry run — render and store messages, do NOT send via Telnyx
+          </label>
+
           <div className="flex gap-2">
+
 
             <Button
               onClick={handleSend}
@@ -524,7 +608,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               className="flex-1"
             >
               <Send className="h-4 w-4 mr-2" />
-              {sending ? 'Creating...' : `Send to ${recipientCount} Recipient${recipientCount !== 1 ? 's' : ''}`}
+              {sending ? 'Creating...' : dryRun ? `Dry-run render for ${recipientCount}` : `Send to ${recipientCount} Recipient${recipientCount !== 1 ? 's' : ''}`}
             </Button>
             <Button variant="outline" onClick={() => setShowPreview(!showPreview)}>
               <Eye className="h-4 w-4 mr-2" />

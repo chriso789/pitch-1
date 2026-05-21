@@ -171,6 +171,141 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 1c. EMAIL-CAPTURE branch — runs BEFORE intent classification.
+    // If this blast's goal is collect_homeowner_email_for_roof_estimate AND the inbound
+    // body contains an email, capture it, update the contact, drop into the
+    // roof_estimate_email_captured pipeline stage, spawn a 15-min rep task, and reply
+    // with the confirmation message. Skip the normal MSFH hot-intent branch.
+    const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
+    const emailMatch = String(body || '').match(EMAIL_RE);
+    if (blast.goal === 'collect_homeowner_email_for_roof_estimate' && emailMatch && contact_id) {
+      const capturedEmail = emailMatch[0].toLowerCase();
+
+      // Load contact for address echo + existing email
+      const { data: capContact } = await supabase
+        .from('contacts')
+        .select('id, first_name, email, address_street, address_city, metadata')
+        .eq('id', contact_id)
+        .maybeSingle();
+
+      // Update contacts.email if empty, else append to metadata.secondary_emails
+      if (capContact) {
+        if (!capContact.email) {
+          await supabase.from('contacts').update({ email: capturedEmail }).eq('id', contact_id);
+        } else if (capContact.email.toLowerCase() !== capturedEmail) {
+          const meta = (capContact.metadata as any) || {};
+          const secondary: string[] = Array.isArray(meta.secondary_emails) ? meta.secondary_emails : [];
+          if (!secondary.includes(capturedEmail)) {
+            secondary.push(capturedEmail);
+            await supabase.from('contacts').update({
+              metadata: { ...meta, secondary_emails: secondary },
+            }).eq('id', contact_id);
+          }
+        }
+      }
+
+      // Find or create the roof_estimate_email_captured pipeline entry
+      let pipelineEntryId: string | null = null;
+      const { data: stage } = await supabase
+        .from('pipeline_stages')
+        .select('key')
+        .eq('tenant_id', tenant_id)
+        .eq('key', 'roof_estimate_email_captured')
+        .maybeSingle();
+
+      if (stage) {
+        const { data: existing } = await supabase
+          .from('pipeline_entries')
+          .select('id, status')
+          .eq('tenant_id', tenant_id)
+          .eq('contact_id', contact_id)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existing) {
+          pipelineEntryId = existing.id;
+          if (existing.status !== 'roof_estimate_email_captured') {
+            await supabase.from('pipeline_entries').update({
+              status: 'roof_estimate_email_captured',
+              status_entered_at: new Date().toISOString(),
+              last_status_change_reason: `Homeowner provided email via SMS reply (${capturedEmail})`,
+            }).eq('id', existing.id);
+          }
+        } else {
+          const { data: inserted } = await supabase.from('pipeline_entries').insert({
+            tenant_id,
+            contact_id,
+            status: 'roof_estimate_email_captured',
+            source: 'sms_campaign',
+            priority: 'high',
+            assigned_to: blast.created_by,
+            notes: `Email captured from MSFH email-capture SMS reply: ${capturedEmail}\nReply: "${String(body).slice(0, 200)}"`,
+            metadata: { msfh_campaign: true, source_blast_id: blast.id, captured_email: capturedEmail },
+            created_by: blast.created_by,
+          }).select('id').single();
+          pipelineEntryId = inserted?.id ?? null;
+        }
+
+        // Spawn the rep task (idempotent — skip if same pending task already exists)
+        if (pipelineEntryId) {
+          const taskTitle = 'Send roof replacement estimate and MSFH info';
+          const { data: existingTasks } = await supabase
+            .from('tasks')
+            .select('title')
+            .eq('pipeline_entry_id', pipelineEntryId)
+            .eq('status', 'pending');
+          const have = new Set((existingTasks || []).map((t: any) => t.title));
+          if (!have.has(taskTitle)) {
+            await supabase.from('tasks').insert({
+              tenant_id,
+              contact_id,
+              pipeline_entry_id: pipelineEntryId,
+              assigned_to: blast.created_by,
+              status: 'pending',
+              priority: 'urgent',
+              title: taskTitle,
+              due_date: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+              ai_generated: true,
+              ai_context: {
+                source: 'msfh_email_capture',
+                blast_id: blast.id,
+                captured_email: capturedEmail,
+              },
+            });
+          }
+        }
+      }
+
+      // Send the captured-email confirmation reply via telnyx-send-sms
+      const addressEcho = capContact?.address_street || 'your property';
+      const reply = `Perfect, I'll get the estimate for ${addressEcho} sent over. We'll also include how the My Safe Florida Home Program works and how we help homeowners through the process.`;
+      const sendRes = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({
+          to: from_phone,
+          from: to_phone,
+          message: reply,
+          contactId: contact_id,
+          tenant_id,
+          sent_by: blast.created_by,
+          ai_generated: true,
+        }),
+      });
+      const sendJson = await sendRes.json().catch(() => ({}));
+
+      return new Response(JSON.stringify({
+        branch: 'email_capture',
+        captured_email: capturedEmail,
+        pipeline_entry_id: pipelineEntryId,
+        replied: !!sendJson?.success,
+        telnyx: sendJson,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+
     // 2. Classify
     const intent = await classifyIntent(apiKey, body);
     console.log('[ai-followup] intent', intent, 'for', from_phone);
