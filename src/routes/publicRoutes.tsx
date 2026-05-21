@@ -27,7 +27,7 @@ const PublicDocumentView = React.lazy(() => import("@/pages/PublicDocumentView")
 const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
 const PublicReferralLanding = React.lazy(() => import("@/pages/PublicReferralLanding"));
 const PublicReferralReward = React.lazy(() => import("@/pages/PublicReferralReward"));
-const PublicCrmReferralSignup = React.lazy(() => import("@/pages/PublicCrmReferralSignup"));
+const PublicCompanySignupReferralPage = React.lazy(() => import("@/pages/PublicCompanySignupReferralPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
