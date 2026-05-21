@@ -224,10 +224,6 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             contact_name: manualName.trim() || null,
             status: 'pending',
           });
-            phone: manualPhone.trim(),
-            contact_name: manualName.trim() || null,
-            status: 'pending',
-          });
 
         if (itemsError) throw itemsError;
 
