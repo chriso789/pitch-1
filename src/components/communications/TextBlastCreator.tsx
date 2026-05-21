@@ -347,6 +347,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   <SelectContent>
                     <SelectItem value="none">General outreach</SelectItem>
                     <SelectItem value="msfh_grant">My Safe Florida Home (MSFH) Grant</SelectItem>
+                    <SelectItem value="collect_homeowner_email_for_roof_estimate">Roof Estimate Email Capture — MSFH</SelectItem>
                     <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
                     <SelectItem value="dormant_reactivation">Dormant Lead Reactivation</SelectItem>
                   </SelectContent>
