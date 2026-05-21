@@ -50,6 +50,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
   const [goal, setGoal] = useState<string>('');
   const [dryRun, setDryRun] = useState<boolean>(false);
+  const [dryRunCompleted, setDryRunCompleted] = useState<boolean>(false);
+  const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
+  const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
