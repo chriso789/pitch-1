@@ -18,6 +18,7 @@ const FALLBACKS: Record<string, string> = {
   'contact.first_name': 'there',
   'contact.last_name': '',
   'contact.address1': 'your property',
+  'contact.full_address': 'your property',
   'contact.city': 'your area',
   'contact.state': 'FL',
   'contact.zip': '',
@@ -26,11 +27,23 @@ const FALLBACKS: Record<string, string> = {
   'assigned_user.first_name': 'a teammate',
 };
 
+function buildFullAddress(c: any): string | null {
+  if (!c) return null;
+  const street = (c.address_street || '').toString().trim();
+  const city = (c.address_city || '').toString().trim();
+  const state = (c.address_state || '').toString().trim();
+  const zip = (c.address_zip || '').toString().trim();
+  const cityStateZip = [city, [state, zip].filter(Boolean).join(' ').trim()].filter(Boolean).join(', ');
+  const full = [street, cityStateZip].filter(Boolean).join(', ');
+  return full || null;
+}
+
 function pick(ctx: any, key: string): string | null | undefined {
   switch (key) {
     case 'contact.first_name': return ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
     case 'contact.address1': return ctx.contact?.address_street;
+    case 'contact.full_address': return buildFullAddress(ctx.contact);
     case 'contact.city': return ctx.contact?.address_city;
     case 'contact.state': return ctx.contact?.address_state;
     case 'contact.zip': return ctx.contact?.address_zip;
