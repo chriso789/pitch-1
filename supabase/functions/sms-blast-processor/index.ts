@@ -464,7 +464,13 @@ async function processBlast(
     })
     .eq('id', blast.id);
 
-  return { blast_id: blast.id, sent, failed, opted, claimed: claimed.length, totalMps, minuteCapacity, remaining };
+  return {
+    blast_id: blast.id,
+    sent, failed, opted, blockedByGuard, blockedByCooldown, blockedByDedupe,
+    claimed: claimed.length, totalMps, minuteCapacity, remaining,
+    partial: remaining > 0,
+    message: remaining > 0 ? 'Batch processed. Run processor again for remaining rendered items.' : undefined,
+  };
 }
 
 Deno.serve(async (req) => {
