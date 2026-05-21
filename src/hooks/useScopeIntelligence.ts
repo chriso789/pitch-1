@@ -432,3 +432,85 @@ export function useCreateSupplementPacket() {
     },
   });
 }
+
+// ============================================================
+// Phase 6: Supplement report generation, review, export
+// ============================================================
+
+export function useRunScopeComparison() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (input: { carrier_document_id: string; contractor_document_id: string; job_id?: string; claim_id?: string }) => {
+      const { data, error } = await supabase.functions.invoke('compare-scope-documents', { body: input });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scope-compare-runs'] });
+      toast({ title: 'Comparison started' });
+    },
+    onError: (e) => toast({ title: 'Comparison failed', description: (e as Error).message, variant: 'destructive' }),
+  });
+}
+
+export function useUpdateCompareReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      compare_result_id: string;
+      action: 'include' | 'exclude' | 'mark_reviewed' | 'mark_unreviewed' | 'add_note' | 'override_match' | 'clear_override';
+      reviewer_note?: string;
+      carrier_line_item_id?: string;
+      contractor_line_item_id?: string;
+    }) => {
+      const { data, error } = await supabase.functions.invoke('update-scope-compare-review', { body: input });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scope-compare-results'] });
+    },
+  });
+}
+
+export function useGenerateSupplementReportV2() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (input: {
+      compare_run_id: string;
+      options?: {
+        include_reviewed_only?: boolean;
+        include_excluded?: boolean;
+        group_by_section?: boolean;
+        group_by_issue_type?: boolean;
+      };
+    }) => {
+      const { data, error } = await supabase.functions.invoke('generate-supplement-report-v2', { body: input });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['supplement-reports'] });
+      toast({ title: 'Supplement report generated' });
+    },
+    onError: (e) => toast({ title: 'Report generation blocked', description: (e as Error).message, variant: 'destructive' }),
+  });
+}
+
+export function useExportSupplementReport() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (input: { supplement_report_id: string; export_type: 'json' | 'csv' | 'markdown' | 'html' }) => {
+      const { data, error } = await supabase.functions.invoke('export-supplement-report', { body: input });
+      if (error) throw error;
+      return data as { success: boolean; export_type: string; storage_path: string; download_url: string | null };
+    },
+    onSuccess: (data) => {
+      if (data?.download_url) window.open(data.download_url, '_blank');
+      toast({ title: `Exported ${data?.export_type?.toUpperCase()}` });
+    },
+    onError: (e) => toast({ title: 'Export failed', description: (e as Error).message, variant: 'destructive' }),
+  });
+}
