@@ -557,6 +557,16 @@ export function ABCConnectionSettings() {
               Submit Test Order ({environment})
             </Button>
 
+            <Button variant="outline" onClick={fetchOAuthDebug} disabled={oauthDebugBusy}>
+              {oauthDebugBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+              Inspect OAuth URL
+            </Button>
+
+            <Button variant="outline" onClick={copyOAuthUrl} disabled={oauthDebugBusy}>
+              <Copy className="h-4 w-4 mr-2" />
+              Copy OAuth URL
+            </Button>
+
             {hasSecret && (
               <Button variant="ghost" onClick={handleRevoke} className="text-destructive">
                 <Unlink className="h-4 w-4 mr-2" />
@@ -564,6 +574,43 @@ export function ABCConnectionSettings() {
               </Button>
             )}
           </div>
+
+          {oauthDebug && (
+            <div className={`rounded-md border p-3 text-xs space-y-2 ${oauthDebug.success === false ? 'border-destructive/30 bg-destructive/5' : 'border-blue-500/30 bg-blue-500/5'}`}>
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ShieldCheck className="h-4 w-4" /> OAuth Debug Panel
+                {oauthDebug.error_code && <Badge variant="destructive">{oauthDebug.error_code}</Badge>}
+              </div>
+              {oauthDebug.human_message && <p className="text-muted-foreground">{oauthDebug.human_message}</p>}
+              <div className="grid gap-1 md:grid-cols-2">
+                <EndpointRow label="authorization_url" value={oauthDebug.authorization_url ?? ''} />
+                <EndpointRow label="authorize_base_url" value={oauthDebug.authorize_base_url ?? ''} />
+                <EndpointRow label="client_id" value={oauthDebug.client_id ?? ''} />
+                <EndpointRow label="redirect_uri" value={oauthDebug.redirect_uri ?? ''} hint="Must match ABC app registration EXACTLY" />
+                <EndpointRow label="scopes" value={oauthDebug.scopes ?? ''} />
+                <EndpointRow label="state" value={oauthDebug.state ?? ''} />
+                <EndpointRow label="environment" value={oauthDebug.environment ?? environment} />
+                <EndpointRow label="tenant_id" value={oauthDebug.tenant_id ?? ''} />
+                <EndpointRow label="pkce" value={oauthDebug.pkce_enabled ? `enabled (${oauthDebug.code_challenge_method})` : 'disabled'} />
+                <EndpointRow label="user authenticated" value={oauthDebug._authed ? `yes — ${oauthDebug._user_email ?? ''}` : 'no'} />
+                <EndpointRow label="expected callback" value={SERVER_REDIRECT_URI} />
+              </div>
+              {oauthDebug.missing_env && (
+                <div className="text-destructive">Missing secret: <code>{oauthDebug.missing_env}</code>{oauthDebug.expected_value && <> · expected <code>{oauthDebug.expected_value}</code></>}</div>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1">
+            <div className="flex items-center gap-2 font-medium text-sm">
+              <AlertTriangle className="h-4 w-4 text-amber-600" /> Troubleshooting: stuck on the ABC developer dashboard?
+            </div>
+            <p className="text-muted-foreground">
+              If clicking <strong>Begin OAuth Authorization</strong> sends you to ABC login but you land on the ABC developer app dashboard instead of being redirected back here, ABC did not complete the OAuth redirect. Confirm: (1) the app has the redirect URI <code className="font-mono">{SERVER_REDIRECT_URI}</code> registered exactly, (2) the test user is assigned to the app, and (3) the login is performed with the customer test account <code className="font-mono">connect_user@test.com</code> rather than the developer portal account.
+            </p>
+          </div>
+
+
 
           {(testResult || orderResult) && (
             <div className="space-y-3 pt-2">
