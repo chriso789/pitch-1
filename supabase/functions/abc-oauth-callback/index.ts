@@ -43,6 +43,63 @@ Deno.serve(async (req) => {
 
   const returnTo = `${APP_BASE}/settings?tab=integrations&abc=`;
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // ---- Always log the callback hit BEFORE branching ----
+  const fullQuery: Record<string, string> = {};
+  for (const [k, v] of url.searchParams.entries()) fullQuery[k] = v;
+  const userAgent = req.headers.get("user-agent") ?? null;
+  const ipAddress =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("cf-connecting-ip") ??
+    null;
+
+  // Resolve tenant_id / environment from the state row if present (best-effort).
+  let preTenantId: string | null = null;
+  let preEnvironment: string | null = null;
+  if (state) {
+    try {
+      const { data: sRow } = await supabase
+        .from("abc_oauth_states")
+        .select("tenant_id, integration_id")
+        .eq("state", state)
+        .maybeSingle();
+      if (sRow) {
+        preTenantId = (sRow as any).tenant_id ?? null;
+        if ((sRow as any).integration_id) {
+          const { data: iRow } = await supabase
+            .from("abc_integrations")
+            .select("environment")
+            .eq("id", (sRow as any).integration_id)
+            .maybeSingle();
+          preEnvironment = (iRow as any)?.environment ?? null;
+        }
+      }
+    } catch (e) {
+      console.error("callback log: state lookup failed", e);
+    }
+  }
+
+  try {
+    await supabase.from("abc_oauth_callback_logs").insert({
+      tenant_id: preTenantId,
+      environment: preEnvironment,
+      state,
+      has_code: !!code,
+      has_error: !!errParam,
+      error: errParam,
+      error_description: errDesc,
+      full_query: fullQuery,
+      user_agent: userAgent,
+      ip_address: ipAddress,
+    });
+  } catch (e) {
+    console.error("abc_oauth_callback_logs insert failed", e);
+  }
+
   if (errParam) {
     return htmlRedirect(
       returnTo + "error&msg=" + encodeURIComponent(errDesc || errParam),
@@ -53,10 +110,7 @@ Deno.serve(async (req) => {
     return htmlRedirect(returnTo + "error&msg=missing_code_or_state", "Missing code or state.");
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+
 
   try {
     const { data: stateRow, error: stateErr } = await supabase

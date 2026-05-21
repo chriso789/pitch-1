@@ -547,6 +547,51 @@ export type Database = {
         }
         Relationships: []
       }
+      abc_oauth_callback_logs: {
+        Row: {
+          created_at: string
+          environment: string | null
+          error: string | null
+          error_description: string | null
+          full_query: Json | null
+          has_code: boolean
+          has_error: boolean
+          id: string
+          ip_address: string | null
+          state: string | null
+          tenant_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          environment?: string | null
+          error?: string | null
+          error_description?: string | null
+          full_query?: Json | null
+          has_code?: boolean
+          has_error?: boolean
+          id?: string
+          ip_address?: string | null
+          state?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          environment?: string | null
+          error?: string | null
+          error_description?: string | null
+          full_query?: Json | null
+          has_code?: boolean
+          has_error?: boolean
+          id?: string
+          ip_address?: string | null
+          state?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       abc_oauth_states: {
         Row: {
           code_verifier: string

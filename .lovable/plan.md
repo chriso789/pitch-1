@@ -1,61 +1,94 @@
-## Scope
 
-Add the **Roof Estimate Email Capture — MSFH** campaign on top of the existing `sms_blasts` / `sms_blast_items` / `ai-followup-worker` system. Do not fork the texting stack.
+# ABC Supply OAuth Repair + Test Console Hardening
 
-## What's already enforced (no changes needed)
+## Goal
+Diagnose why ABC login redirects to the developer dashboard instead of our callback, and harden the OAuth + test console end-to-end so we can prove (a) whether ABC ever hits our callback, and (b) that all downstream API calls use the documented endpoints and payloads.
 
-- Per-item `personalized_message` is rendered once, stored on `sms_blast_items`, and `sms-blast-processor` sends that exact stored body (`personalizedMap.get(item.id)`). Address can't bleed across contacts.
-- Opt-out check pre-claim and per-item.
-- Send-window + circuit breaker + area-code from-number routing.
-- AI follow-up worker already classifies intent, refuses on human takeover/opt-out, sends through `telnyx-send-sms`, and creates MSFH pipeline entries + 4 tasks.
-- Inbound webhook already attaches replies to the correct lead (last work).
+## Scope (what changes)
 
-## 1. Seed templates (per tenant)
+### 1. Frontend: `src/components/settings/ABCConnectionSettings.tsx`
+- Add **"Copy OAuth URL"** button that copies the exact `authorization_url` returned by `abc-api-proxy` `action=start_oauth`.
+- Add an **OAuth Debug Panel** showing: `authorization_url`, `client_id`, `redirect_uri`, `scopes`, `state`, `environment`, `tenant_id` present, current Supabase user authenticated, expected callback URL.
+- Update displayed/requested scopes to:
+  `pricing.read order.read order.write product.read account.read location.read offline_access`
+- Add user-facing troubleshooting card: "If you land on the ABC developer dashboard after login, the redirect URI is not registered, the test user is not assigned, or you're logging in with the developer/admin account instead of `connect_user@test.com`."
+- Test console: render raw request URL, request payload, HTTP status, ABC response body, and mapped error for each call.
 
-Insert two `sms_templates` rows for every tenant, both with `goal = 'collect_homeowner_email_for_roof_estimate'`, `category = 'msfh_email_capture'`:
+### 2. Edge function: `abc-api-proxy` (`action=start_oauth`)
+- Pre-flight validation, returns structured JSON error if any of these are missing/wrong:
+  - `ABC_CLIENT_ID_PRODUCTION` or `ABC_CLIENT_ID_SANDBOX`
+  - `ABC_CLIENT_SECRET_PRODUCTION` or `ABC_CLIENT_SECRET_SANDBOX`
+  - `ABC_REDIRECT_URI` must equal `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-oauth-callback`
+  - `tenant_id` present
+  - Authenticated Supabase user present
+- Error shape: `{ success:false, error_code, human_message, missing_env, expected_value }`
+- Success shape:
+  ```
+  { success:true, authorization_url, authorize_base_url, client_id, redirect_uri,
+    scopes, state, environment, tenant_id, pkce_enabled:true,
+    code_challenge_method:"S256", instructions }
+  ```
+- Hardcode redirect URI to the Supabase callback (no `pitch-crm.ai/api/abc/callback`, no preview URLs).
 
-- **Roof Estimate Email Capture — MSFH** (primary)
-- **Roof Estimate Email Capture — MSFH (Short)** (rotating variant)
+### 3. Edge function: `abc-oauth-callback`
+- **Always** insert a row into `abc_oauth_callback_logs` before any branching — proves whether ABC ever hits us.
+- On success, upsert `abc_connections` and set `abc_integrations.status='connected'`.
+- On missing `code`/`state`, log first, then render error HTML.
 
-Use existing `{{contact.first_name}}`, `{{contact.address1}}`, `{{contact.city}}` smart tags (resolver already maps these to `contacts.address_street` / `address_city`).
+### 4. Edge function: `abc-api-proxy` (test API actions)
+Add/correct these actions with documented ABC paths (base already includes `/api`):
+- `get_branches` → `GET /location/v1/branches` (and `/{branchNumber}`)
+- `search_products` → `POST /product/v1/search/items`
+- `price_items` → `POST /pricing/v2/prices` (documented payload below)
+- `get_order_status` → `GET /order/v2/orders?confirmationNumber=...` and `/order/v2/orders/{orderNumber}`
+- `place_order` → `POST /order/v2/orders` (documented payload below)
 
-## 2. Seed pipeline stage (per tenant)
+Production base: `https://partners.abcsupply.com/api`
+Sandbox base: `https://partners-sb.abcsupply.com/api`
 
-Insert `pipeline_stages` row keyed `roof_estimate_email_captured` (idempotent — skip if exists). Color/order placed after `msfh_interested`.
+**Order payload** (sandbox test order):
+```
+[{ requestId, purchaseOrder, branchNumber, deliveryService:"CPU",
+   typeCode:"SO", currency:"USD",
+   shipTo:{ name:"ABC Sandbox Test", number, address:{...} },
+   lines:[{ id:1, itemNumber, itemDescription, orderedQty:{ value:1, uom:"EA" } }] }]
+```
 
-## 3. Tighten `generate-campaign-messages`
+**Pricing payload**:
+```
+{ requestId, shipToNumber, branchNumber, purpose:"estimating",
+  lines:[{ id:"1", itemNumber, quantity:1, uom:"EA" }] }
+```
 
-When `blast.goal === 'collect_homeowner_email_for_roof_estimate'`:
-- If contact is missing `address_street`, mark the `sms_blast_items` row `status='failed'`, `last_error='skipped_missing_address'` instead of producing a stripped message. Guarantees no address-less email-capture send.
-- Surface a count of skipped-missing-address rows in the response.
+Remove any subscription key (`Ocp-Apim-Subscription-Key`) — auth is OAuth Bearer only.
 
-## 4. Add email-capture branch to `ai-followup-worker`
+### 5. Database migration
+Two new tables (RLS enabled, master/tenant read; service role write from edge fn):
 
-Before intent classification, regex-extract an email from the inbound body. If found AND the originating blast goal is `collect_homeowner_email_for_roof_estimate`:
-- Update `contacts.email` if empty; otherwise append `{ secondary_emails: [...] }` into `contacts.metadata`.
-- Upsert a `pipeline_entries` row with `status='roof_estimate_email_captured'`, source `sms_campaign`.
-- Spawn one task: "Send roof replacement estimate and MSFH info" — due in 15 min, priority `urgent`, assigned to `blast.created_by`.
-- Reply with the captured-email follow-up message ("Perfect, I'll get the estimate for {address} sent over…") via `telnyx-send-sms`.
-- Skip the normal MSFH intent / hot-pipeline branch for this turn.
+**`abc_oauth_callback_logs`**
+`id, tenant_id, environment, state, has_code, has_error, error, error_description, full_query jsonb, user_agent, ip_address, created_at`
 
-## 5. UI — `TextBlastCreator`
+**`abc_api_call_logs`**
+`id, tenant_id, environment, action, method, url, request_payload jsonb, response_status, response_body jsonb, error_message, created_at`
 
-Minimal additions to the existing preview pane:
-- Show count of recipients skipped for `missing_address` and `opted_out` in the launch confirmation.
-- Show 3 sample rendered messages (already present — verify it's rendering personalized_message vs raw script).
-- Dry-run toggle: passes `{ dry_run: true }` to `generate-campaign-messages` so messages are rendered and stored, but `sms-blast-processor` is NOT kicked. (Implemented by leaving blast in `draft` and not calling the processor.)
+### 6. Audit logging
+Wrap all outbound ABC calls in `abc-api-proxy` with a helper that inserts into `abc_api_call_logs` (request + response) before returning to the client.
 
-## 6. Out of scope (will NOT do)
+## Technical details
 
-- New SMS sending pipeline, new contact table, new Telnyx wiring.
-- Touching `telnyx-send-sms` or `telnyx-inbound-webhook` behavior.
-- Replacing the existing template pool / rotation logic.
+- PKCE: keep S256 code_challenge; persist `code_verifier` keyed by `state` (existing behavior).
+- Scopes list is the single source of truth in `abc-api-proxy`; frontend just renders what the function returns.
+- Redirect URI constant lives in the edge function; frontend never builds it.
+- All new logs respect tenant_id; `useEffectiveTenantId()` on the UI side.
+- No changes to `pipeline-*`, SMS blast, measurement, or PDF systems.
 
-## Technical files
+## Out of scope
+- Changing ABC portal config (user must register the redirect URI and assign `connect_user@test.com` to the app).
+- Production order submission flow beyond the sandbox test action.
+- QXO / SRS code paths.
 
-- Migration: seed templates per tenant (loop), seed pipeline stage, idempotent.
-- `supabase/functions/generate-campaign-messages/index.ts` — add goal-aware address-required gate + skip counts.
-- `supabase/functions/ai-followup-worker/index.ts` — add email-capture branch ahead of classifier.
-- `src/components/communications/TextBlastCreator.tsx` — preview counts + dry-run toggle.
-
-Reply "go" and I'll ship it. Reply with edits if you want to change scope (e.g. skip the dry-run toggle, or change the rotating variant copy).
+## Verification
+1. Open Integrations → ABC, click **Begin OAuth**, copy URL from new debug panel, confirm it matches the documented `auth.partners.abcsupply.com/oauth2/.../v1/authorize` and contains all 7 scopes.
+2. Complete login with `connect_user@test.com`. Query `abc_oauth_callback_logs` — a row MUST exist. If `has_code=false`, the issue is ABC-side (redirect URI or user assignment), and the UI troubleshooting card explains next steps.
+3. After successful callback, `abc_connections` row exists and `abc_integrations.status='connected'`.
+4. Run Get Branches, Search Products, Price Items, Submit Sandbox Order from test console; confirm each call appears in `abc_api_call_logs` with correct URL/payload and ABC response body is rendered in the UI.
