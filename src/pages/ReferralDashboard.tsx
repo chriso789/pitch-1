@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -11,6 +12,7 @@ import { ReferralCreditsTable } from "@/components/referrals/admin/ReferralCredi
 import { ReferralFlagsTable } from "@/components/referrals/admin/ReferralFlagsTable";
 import { ReferralSettingsPanel } from "@/components/referrals/admin/ReferralSettingsPanel";
 import { ReferralDetailDrawer } from "@/components/referrals/admin/ReferralDetailDrawer";
+import { ReferralAnalyticsTab } from "@/components/referrals/analytics/ReferralAnalyticsTab";
 
 export default function ReferralDashboard() {
   const { profile } = useUserProfile();
