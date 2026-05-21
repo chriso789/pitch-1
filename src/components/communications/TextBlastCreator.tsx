@@ -61,19 +61,29 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!activeTenantId,
   });
 
-  // Fetch items count for selected list
+  // Fetch contacts by selected status (test batch capped by batchSize)
   const { data: listItems } = useQuery({
-    queryKey: ['dialer-list-items-count', selectedListId],
+    queryKey: ['blast-contacts-by-status', activeTenantId, selectedStatusKey, batchSize],
     queryFn: async () => {
-      if (!selectedListId) return [];
+      if (!activeTenantId || !selectedStatusKey) return [];
       const { data, error } = await supabase
-        .from('dialer_list_items')
-        .select('id, first_name, last_name, phone_number, contact_id')
-        .eq('list_id', selectedListId);
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .eq('tenant_id', activeTenantId)
+        .eq('qualification_status', selectedStatusKey)
+        .eq('is_deleted', false)
+        .not('phone', 'is', null)
+        .limit(batchSize);
       if (error) throw error;
-      return data || [];
+      return (data || []).map((c: any) => ({
+        id: c.id,
+        contact_id: c.id,
+        first_name: c.first_name,
+        last_name: c.last_name,
+        phone_number: c.phone,
+      }));
     },
-    enabled: !!selectedListId,
+    enabled: !!activeTenantId && !!selectedStatusKey,
   });
 
   // Pre-flight: for the email-capture campaign, count contacts missing address_street
