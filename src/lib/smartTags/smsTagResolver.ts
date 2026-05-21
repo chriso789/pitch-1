@@ -35,6 +35,7 @@ const FALLBACKS: Record<string, string> = {
   'contact.first_name': 'there',
   'contact.last_name': '',
   'contact.address1': 'your property',
+  'contact.full_address': 'your property',
   'contact.city': 'your area',
   'contact.state': 'FL',
   'contact.zip': '',
@@ -43,11 +44,23 @@ const FALLBACKS: Record<string, string> = {
   'assigned_user.first_name': 'a teammate',
 };
 
+function buildFullAddress(c: SmsTagContext['contact']): string | null {
+  if (!c) return null;
+  const street = (c.address1 || c.address || '').toString().trim();
+  const city = (c.city || '').toString().trim();
+  const state = (c.state || '').toString().trim();
+  const zip = (c.zip || c.zip_code || '').toString().trim();
+  const cityStateZip = [city, [state, zip].filter(Boolean).join(' ').trim()].filter(Boolean).join(', ');
+  const full = [street, cityStateZip].filter(Boolean).join(', ');
+  return full || null;
+}
+
 function pick(ctx: SmsTagContext, key: string): string | null | undefined {
   switch (key) {
     case 'contact.first_name': return ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
     case 'contact.address1': return ctx.contact?.address1 || ctx.contact?.address;
+    case 'contact.full_address': return buildFullAddress(ctx.contact);
     case 'contact.city': return ctx.contact?.city;
     case 'contact.state': return ctx.contact?.state;
     case 'contact.zip': return ctx.contact?.zip || ctx.contact?.zip_code;
@@ -79,10 +92,7 @@ export function resolveSmsTags(template: string, ctx: SmsTagContext): string {
 export const SMS_AVAILABLE_TAGS: { tag: string; label: string }[] = [
   { tag: '{{contact.first_name}}', label: 'Contact first name' },
   { tag: '{{contact.last_name}}', label: 'Contact last name' },
-  { tag: '{{contact.address1}}', label: 'Property address' },
-  { tag: '{{contact.city}}', label: 'City' },
-  { tag: '{{contact.state}}', label: 'State' },
-  { tag: '{{contact.zip}}', label: 'Zip code' },
+  { tag: '{{contact.full_address}}', label: 'Full property address' },
   { tag: '{{company.name}}', label: 'Company name' },
   { tag: '{{company.phone}}', label: 'Company phone' },
   { tag: '{{assigned_user.first_name}}', label: 'Assigned rep first name' },
