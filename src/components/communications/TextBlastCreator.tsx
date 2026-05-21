@@ -14,6 +14,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle, Sparkles, FileText } from 'lucide-react';
 import { TextBlastListBuilder } from './TextBlastListBuilder';
 import { resolveSmsTags, SAMPLE_TAG_CONTEXT, SMS_AVAILABLE_TAGS } from '@/lib/smartTags/smsTagResolver';
+import { useContactStatuses } from '@/hooks/useContactStatuses';
+
+const BATCH_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100, 250, 500];
 
 interface TextBlastCreatorProps {
   onBack: () => void;
