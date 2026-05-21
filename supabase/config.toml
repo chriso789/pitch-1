@@ -1296,3 +1296,27 @@ verify_jwt = true
 
 [functions.roofhub-webhook]
 verify_jwt = false
+
+[functions.crm-referral-track-click]
+verify_jwt = false
+
+[functions.crm-referral-register-signup]
+verify_jwt = false
+
+[functions.crm-referral-create-link]
+verify_jwt = false
+
+[functions.crm-referral-evaluate-payout]
+verify_jwt = false
+
+[functions.crm-referral-approve-payout]
+verify_jwt = false
+
+[functions.crm-referral-mark-paid]
+verify_jwt = false
+
+[functions.crm-referral-resolve-flag]
+verify_jwt = false
+
+[functions.crm-referral-export-csv]
+verify_jwt = false
