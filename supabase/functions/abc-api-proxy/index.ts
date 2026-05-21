@@ -641,17 +641,17 @@ Deno.serve(async (req) => {
     if (action === "price_items") {
       const endpoint = `${cfg.apiBase}/pricing/v2/prices`;
       const lines = (body.lines || []).map((l, i) => ({
-        lineNumber: i + 1,
+        id: String(i + 1),
         itemNumber: l.itemNumber,
         quantity: Number(l.quantity) || 1,
-        unitOfMeasure: (l.unitOfMeasure || "EA").toUpperCase(),
+        uom: (l.unitOfMeasure || "EA").toUpperCase(),
       }));
       if (!lines.length) return json({ success: false, error: "lines required" }, 400);
       const payload = {
         requestId: body.requestId || `PITCH-PRICE-${Date.now()}`,
         shipToNumber: body.shipToNumber,
         branchNumber: body.branchNumber,
-        purpose: body.purpose || "QUOTE",
+        purpose: body.purpose || "estimating",
         lines,
       };
       const r = await callAbc(tok.token, "POST", endpoint, payload);
@@ -664,6 +664,7 @@ Deno.serve(async (req) => {
       });
       return json({ success: r.ok, environment: env, endpoint, request: payload, status: r.status, body: r.json ?? r.text, error_code });
     }
+
 
     // ---------------- get_order_status ----------------
     if (action === "get_order_status") {
