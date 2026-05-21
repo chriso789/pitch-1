@@ -70,6 +70,44 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!selectedListId,
   });
 
+  // Pre-flight: for the email-capture campaign, count contacts missing address_street
+  // and contacts that are already opted-out, BEFORE the user clicks Send. This is what
+  // protects against blasting the wrong address to a homeowner.
+  const isEmailCaptureGoal = goal === 'collect_homeowner_email_for_roof_estimate';
+  const { data: preflight } = useQuery({
+    queryKey: ['blast-preflight', activeTenantId, selectedListId, sendMode, isEmailCaptureGoal, listItems?.length],
+    queryFn: async () => {
+      if (!activeTenantId || sendMode !== 'list' || !selectedListId || !listItems?.length) {
+        return { missingAddress: 0, optedOut: 0, eligible: 0 };
+      }
+      const contactIds = listItems.map((li: any) => li.contact_id).filter(Boolean);
+      const phones = listItems.map((li: any) => li.phone_number).filter(Boolean);
+
+      let missingAddress = 0;
+      if (isEmailCaptureGoal && contactIds.length) {
+        const { data: cs } = await supabase
+          .from('contacts')
+          .select('id, address_street')
+          .in('id', contactIds);
+        const withAddr = new Set((cs || []).filter(c => c.address_street && String(c.address_street).trim()).map(c => c.id));
+        missingAddress = listItems.filter((li: any) => !li.contact_id || !withAddr.has(li.contact_id)).length;
+      }
+
+      let optedOut = 0;
+      if (phones.length) {
+        const { data: oo } = await supabase
+          .from('opt_outs')
+          .select('phone')
+          .eq('tenant_id', activeTenantId)
+          .eq('channel', 'sms')
+          .in('phone', phones);
+        optedOut = (oo || []).length;
+      }
+      const eligible = Math.max(0, listItems.length - missingAddress - optedOut);
+      return { missingAddress, optedOut, eligible };
+    },
+    enabled: !!activeTenantId && sendMode === 'list' && !!selectedListId && !!listItems?.length,
+  });
   // Fetch SMS templates (smart-tag enabled, used for MSFH-style rotation pools)
   const { data: templates } = useQuery({
     queryKey: ['sms-templates', activeTenantId],
