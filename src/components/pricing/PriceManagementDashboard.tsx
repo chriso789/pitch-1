@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PriceSyncControls } from "./PriceSyncControls";
 import { PriceSyncHistory } from "./PriceSyncHistory";
 import { PriceAnalytics } from "./PriceAnalytics";
-import { DollarSign, History, TrendingUp } from "lucide-react";
+import { SRSPricelistBackfill } from "./SRSPricelistBackfill";
+import { DollarSign, History, TrendingUp, ShieldCheck } from "lucide-react";
 
 export const PriceManagementDashboard = () => {
   const [activeTab, setActiveTab] = useState("sync");
@@ -19,10 +19,14 @@ export const PriceManagementDashboard = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
           <TabsTrigger value="sync" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
             Sync Controls
+          </TabsTrigger>
+          <TabsTrigger value="backfill" className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            SRS Backfill
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="h-4 w-4" />
@@ -36,6 +40,10 @@ export const PriceManagementDashboard = () => {
 
         <TabsContent value="sync" className="space-y-6">
           <PriceSyncControls />
+        </TabsContent>
+
+        <TabsContent value="backfill" className="space-y-6">
+          <SRSPricelistBackfill />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-6">

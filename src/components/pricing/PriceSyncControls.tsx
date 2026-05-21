@@ -142,25 +142,21 @@ export const PriceSyncControls = () => {
         <CardHeader>
           <CardTitle>Sync Configuration</CardTitle>
           <CardDescription>
-            Configure automatic price refresh schedule (coming soon)
+            SRS prices are auto-refreshed by a Supabase cron job. Use Manual Sync above to force an immediate refresh.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Auto-Refresh Schedule</Label>
-            <Select disabled>
-              <SelectTrigger>
-                <SelectValue placeholder="Manual Only (Scheduled sync not configured)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">Manual Only</SelectItem>
-                <SelectItem value="hourly">Every Hour</SelectItem>
-                <SelectItem value="daily">Daily at 2 AM</SelectItem>
-                <SelectItem value="weekly">Weekly on Monday</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="font-medium">Daily at 02:00 UTC</span>
+              <span className="text-muted-foreground">— srs-price-refresh-scheduler (pg_cron)</span>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Automatic scheduling requires cron configuration in Supabase
+              Schedule is enforced by pg_cron in Supabase. To change cadence, update the
+              <code className="mx-1 rounded bg-muted px-1">srs-price-refresh-daily</code>
+              job in the SQL editor.
             </p>
           </div>
         </CardContent>
