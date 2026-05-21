@@ -510,7 +510,7 @@ Deno.serve(async (req) => {
     const results: any[] = [];
     for (const b of blasts || []) {
       try {
-        results.push(await processBlast(supabase, b, serviceKey, supabaseUrl));
+        results.push(await processBlast(supabase, b, serviceKey, supabaseUrl, { limit: reqLimit, dryRun: reqDryRun }));
       } catch (e: any) {
         console.error('[blast-worker] processBlast error', b.id, e);
         results.push({ blast_id: b.id, error: String(e?.message || e) });
