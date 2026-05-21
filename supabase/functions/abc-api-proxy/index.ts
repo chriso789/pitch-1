@@ -360,20 +360,63 @@ Deno.serve(async (req) => {
 
     // ---------------- start_oauth ----------------
     if (action === "start_oauth") {
-      if (!auth || !userId) return json({ error: "unauthorized" }, 401);
-      if (!tenant_id) return json({ error: "tenant_id required" }, 400);
-
       const envSuffix = env === "production" ? "PRODUCTION" : "SANDBOX";
       const clientId = Deno.env.get(`ABC_CLIENT_ID_${envSuffix}`);
-      const authUrl = Deno.env.get(`ABC_AUTHORIZATION_URL_${envSuffix}`) || AUTH_URLS[env];
+      const clientSecret = Deno.env.get(`ABC_CLIENT_SECRET_${envSuffix}`);
+      const configuredRedirect = Deno.env.get("ABC_REDIRECT_URI");
+      const authorizeBaseUrl = Deno.env.get(`ABC_AUTHORIZATION_URL_${envSuffix}`) || AUTH_URLS[env];
       const redirectUri = CANONICAL_REDIRECT_URI;
       const scopes = Deno.env.get("ABC_SCOPES") || DEFAULT_SCOPES;
-      if (!clientId) {
-        return json({
+
+      // ---- Pre-flight validation ----
+      const fail = (
+        error_code: string,
+        human_message: string,
+        missing_env?: string,
+        expected_value?: string,
+      ) =>
+        json({
           success: false,
-          error: `ABC_CLIENT_ID_${envSuffix} not configured`,
-          interpretation: `No ${env} OAuth Client ID is configured on the server. Add the ABC_CLIENT_ID_${envSuffix} secret in Supabase, then retry.`,
+          error_code,
+          human_message,
+          missing_env: missing_env ?? null,
+          expected_value: expected_value ?? null,
+          environment: env,
         });
+
+      if (!auth || !userId) {
+        return fail(
+          "unauthenticated_user",
+          "You must be signed in to start the ABC OAuth flow.",
+        );
+      }
+      if (!tenant_id) {
+        return fail(
+          "missing_tenant_id",
+          "No tenant context for this request. Switch into a company and retry.",
+        );
+      }
+      if (!clientId) {
+        return fail(
+          "missing_client_id",
+          `ABC ${env} OAuth Client ID is not configured on the server.`,
+          `ABC_CLIENT_ID_${envSuffix}`,
+        );
+      }
+      if (!clientSecret) {
+        return fail(
+          "missing_client_secret",
+          `ABC ${env} OAuth Client Secret is not configured on the server.`,
+          `ABC_CLIENT_SECRET_${envSuffix}`,
+        );
+      }
+      if (configuredRedirect && configuredRedirect.trim() !== CANONICAL_REDIRECT_URI) {
+        return fail(
+          "redirect_uri_mismatch",
+          "ABC_REDIRECT_URI secret does not match the canonical callback URL used by abc-oauth-callback.",
+          "ABC_REDIRECT_URI",
+          CANONICAL_REDIRECT_URI,
+        );
       }
 
       let { data: integration } = await supabase
@@ -429,7 +472,7 @@ Deno.serve(async (req) => {
       });
       if (stateErr) throw stateErr;
 
-      const url = new URL(authUrl);
+      const url = new URL(authorizeBaseUrl);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("client_id", clientId);
       url.searchParams.set("redirect_uri", redirectUri);
@@ -439,14 +482,22 @@ Deno.serve(async (req) => {
       url.searchParams.set("code_challenge_method", "S256");
 
       return json({
+        success: true,
         authorization_url: url.toString(),
-        state,
+        authorize_base_url: authorizeBaseUrl,
+        client_id: clientId,
         redirect_uri: redirectUri,
         scopes,
-        client_id: clientId,
+        state,
         environment: env,
+        tenant_id,
+        pkce_enabled: true,
+        code_challenge_method: "S256",
+        instructions:
+          "Open authorization_url, log in with the ABC customer test account (e.g. connect_user@test.com), and confirm ABC redirects to abc-oauth-callback with code and state.",
       });
     }
+
 
     // ---------------- get_status ----------------
     if (action === "get_status") {
