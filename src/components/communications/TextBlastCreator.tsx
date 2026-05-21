@@ -258,10 +258,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             toast({ title: 'Text Blast Started!', description: `Sending to 1 recipient...` });
           }
         } else {
+          setDryRunCompleted(true);
+          setDryRunBlastId(blast.id);
           toast({ title: 'Dry run complete', description: 'Messages rendered. Nothing was sent.' });
         }
 
-        onCreated(blast.id);
+        if (!dryRun) onCreated(blast.id);
       } else {
         // List mode (existing logic)
         const { data: blast, error: blastError } = await supabase
