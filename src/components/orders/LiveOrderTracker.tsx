@@ -360,14 +360,28 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
                     {o.externalId && (
                       <span className="text-xs text-muted-foreground">→ {o.externalId}</span>
                     )}
+                    <Badge
+                      variant="outline"
+                      className={
+                        o.status?.toLowerCase().includes('reject') ? 'text-destructive border-destructive' :
+                        o.status?.toLowerCase() === 'queued' ? 'text-amber-600 border-amber-600' :
+                        activeIdx === 3 ? 'text-emerald-700 border-emerald-500' :
+                        'text-foreground'
+                      }
+                    >
+                      {o.status?.toLowerCase() === 'queued' && (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      )}
+                      {o.statusLabel}
+                    </Badge>
                     {o.onHold && <Badge variant="outline" className="text-amber-600 border-amber-600">On Hold</Badge>}
-                    {activeIdx === 3 && <Badge className="bg-green-600 text-white">Delivered</Badge>}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {o.branch && <>Branch {o.branch} · </>}
                     {o.total ? `$${o.total.toLocaleString()}` : ''}
                     {o.submittedAt && <> · Sent {format(new Date(o.submittedAt), 'MMM d, h:mm a')}</>}
                     {o.deliveryDate && <> · Delivery {format(new Date(o.deliveryDate), 'MMM d, yyyy')}</>}
+                    {o.lastSyncedAt && <> · Synced {formatDistanceToNow(new Date(o.lastSyncedAt), { addSuffix: true })}</>}
                   </div>
                   {!compact && o.shipAddress && (
                     <div className="mt-1 text-xs text-muted-foreground">Ship to: {o.shipAddress}</div>
