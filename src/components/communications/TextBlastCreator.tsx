@@ -649,10 +649,10 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
               <div className="rounded-md border border-border bg-muted/40 p-3 space-y-1.5">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Per-Number Cadence Rule
+                  Per-Contact Cadence Rule
                 </p>
                 <p className="text-xs text-foreground">
-                  <span className="font-medium">One message per phone number per 24h.</span> Each contact is retried on subsequent days until they reply or send <span className="font-mono">NO / STOP</span>. The system rotates across tenant numbers to find the right match before moving on.
+                  <span className="font-medium">One message per contact per 24h, up to {maxAttemptsPerContact} attempt{maxAttemptsPerContact !== 1 ? 's' : ''} total.</span> Subsequent attempts are spaced 24h apart and stop the moment the contact replies or sends <span className="font-mono">NO / STOP</span>. The system rotates across tenant numbers to find the right match before counting an attempt as exhausted.
                 </p>
               </div>
 
