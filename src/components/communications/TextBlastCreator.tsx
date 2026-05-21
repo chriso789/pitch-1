@@ -14,6 +14,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle, Sparkles, FileText } from 'lucide-react';
 import { TextBlastListBuilder } from './TextBlastListBuilder';
 import { resolveSmsTags, SAMPLE_TAG_CONTEXT, SMS_AVAILABLE_TAGS } from '@/lib/smartTags/smsTagResolver';
+import { useContactStatuses } from '@/hooks/useContactStatuses';
+
+const BATCH_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100, 250, 500];
 
 interface TextBlastCreatorProps {
   onBack: () => void;
@@ -24,9 +27,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const { activeTenantId } = useActiveTenantId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { statuses: contactStatuses } = useContactStatuses();
   const [name, setName] = useState('');
   const [sendMode, setSendMode] = useState<'single' | 'list'>('list');
   const [selectedListId, setSelectedListId] = useState('');
+  const [selectedStatusKey, setSelectedStatusKey] = useState<string>('');
+  const [batchSize, setBatchSize] = useState<number>(10);
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
   const [script, setScript] = useState('');
@@ -55,19 +61,29 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!activeTenantId,
   });
 
-  // Fetch items count for selected list
+  // Fetch contacts by selected status (test batch capped by batchSize)
   const { data: listItems } = useQuery({
-    queryKey: ['dialer-list-items-count', selectedListId],
+    queryKey: ['blast-contacts-by-status', activeTenantId, selectedStatusKey, batchSize],
     queryFn: async () => {
-      if (!selectedListId) return [];
+      if (!activeTenantId || !selectedStatusKey) return [];
       const { data, error } = await supabase
-        .from('dialer_list_items')
-        .select('id, first_name, last_name, phone_number, contact_id')
-        .eq('list_id', selectedListId);
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .eq('tenant_id', activeTenantId)
+        .eq('qualification_status', selectedStatusKey)
+        .eq('is_deleted', false)
+        .not('phone', 'is', null)
+        .limit(batchSize);
       if (error) throw error;
-      return data || [];
+      return (data || []).map((c: any) => ({
+        id: c.id,
+        contact_id: c.id,
+        first_name: c.first_name,
+        last_name: c.last_name,
+        phone_number: c.phone,
+      }));
     },
-    enabled: !!selectedListId,
+    enabled: !!activeTenantId && !!selectedStatusKey,
   });
 
   // Pre-flight: for the email-capture campaign, count contacts missing address_street
@@ -75,9 +91,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   // protects against blasting the wrong address to a homeowner.
   const isEmailCaptureGoal = goal === 'collect_homeowner_email_for_roof_estimate';
   const { data: preflight } = useQuery({
-    queryKey: ['blast-preflight', activeTenantId, selectedListId, sendMode, isEmailCaptureGoal, listItems?.length],
+    queryKey: ['blast-preflight', activeTenantId, selectedStatusKey, sendMode, isEmailCaptureGoal, listItems?.length],
     queryFn: async () => {
-      if (!activeTenantId || sendMode !== 'list' || !selectedListId || !listItems?.length) {
+      if (!activeTenantId || sendMode !== 'list' || !selectedStatusKey || !listItems?.length) {
         return { missingAddress: 0, optedOut: 0, eligible: 0 };
       }
       const contactIds = listItems.map((li: any) => li.contact_id).filter(Boolean);
@@ -106,7 +122,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       const eligible = Math.max(0, listItems.length - missingAddress - optedOut);
       return { missingAddress, optedOut, eligible };
     },
-    enabled: !!activeTenantId && sendMode === 'list' && !!selectedListId && !!listItems?.length,
+    enabled: !!activeTenantId && sendMode === 'list' && !!selectedStatusKey && !!listItems?.length,
   });
   // Fetch SMS templates (smart-tag enabled, used for MSFH-style rotation pools)
   const { data: templates } = useQuery({
@@ -147,7 +163,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
   const isValid = sendMode === 'single'
     ? name.trim() && manualPhone.trim() && script.trim()
-    : name.trim() && selectedListId && script.trim() && (listItems?.length || 0) > 0;
+    : name.trim() && selectedStatusKey && script.trim() && (listItems?.length || 0) > 0;
 
   const handleSend = async () => {
     if (!isValid || !activeTenantId) return;
@@ -215,7 +231,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             tenant_id: activeTenantId,
             name: name.trim(),
             script: script.trim(),
-            list_id: selectedListId,
+            list_id: null,
             total_recipients: listItems!.length,
             daily_send_limit: dailyLimit,
             status: 'draft',
@@ -352,32 +368,47 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <Label>Contact List</Label>
-                      <Select value={selectedListId} onValueChange={setSelectedListId}>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Contact Status</Label>
+                      <Select value={selectedStatusKey} onValueChange={setSelectedStatusKey}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a contact list" />
+                          <SelectValue placeholder="Select a status" />
                         </SelectTrigger>
                         <SelectContent>
-                          {lists?.map((list: any) => (
-                            <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
+                          {contactStatuses.map((s) => (
+                            <SelectItem key={s.key} value={s.key}>
+                              <span className="inline-flex items-center gap-2">
+                                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                {s.name}
+                              </span>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="pt-5">
-                      <Button variant="outline" size="sm" onClick={() => setShowListBuilder(true)}>
-                        <ListPlus className="h-4 w-4 mr-1" />
-                        Build List
-                      </Button>
+                    <div>
+                      <Label>Test Batch Size</Label>
+                      <Select value={String(batchSize)} onValueChange={(v) => setBatchSize(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BATCH_SIZE_OPTIONS.map((n) => (
+                            <SelectItem key={n} value={String(n)}>{n} contacts</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                  {selectedListId && (
+                  <p className="text-xs text-muted-foreground">
+                    Sends to the first {batchSize} contacts with this status — use small batches to test before scaling up.
+                  </p>
+                  {selectedStatusKey && (
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">{listItems?.length || 0} recipients</span>
+                      <span className="text-sm text-muted-foreground">{listItems?.length || 0} recipients (capped at {batchSize})</span>
                     </div>
                   )}
                 </div>
