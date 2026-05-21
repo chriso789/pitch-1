@@ -27,9 +27,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const { activeTenantId } = useActiveTenantId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { statuses: contactStatuses } = useContactStatuses();
   const [name, setName] = useState('');
   const [sendMode, setSendMode] = useState<'single' | 'list'>('list');
   const [selectedListId, setSelectedListId] = useState('');
+  const [selectedStatusKey, setSelectedStatusKey] = useState<string>('');
+  const [batchSize, setBatchSize] = useState<number>(10);
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
   const [script, setScript] = useState('');
