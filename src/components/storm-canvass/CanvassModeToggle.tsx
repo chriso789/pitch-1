@@ -16,7 +16,7 @@ export default function CanvassModeToggle({ mode, onModeChange }: CanvassModeTog
       onValueChange={(val) => {
         if (val) onModeChange(val as CanvassMapMode);
       }}
-      className="bg-background/90 backdrop-blur-sm rounded-lg p-0.5 shadow-lg border border-border/50"
+      className="bg-background/95 backdrop-blur-md rounded-lg p-0.5 shadow-xl border border-border ring-1 ring-black/10"
     >
       <ToggleGroupItem
         value="knock"
