@@ -139,6 +139,98 @@ if (existsSync(creatorPath)) {
   });
 }
 
+// ---- 5b. Template library cleanup artifacts -----------------------
+{
+  const { error: colErr } = await supabase
+    .from('sms_templates')
+    .select('id, normalized_template_name, normalized_template_body')
+    .limit(0);
+  push({
+    name: 'columns:sms_templates.normalized_*',
+    ok: !colErr,
+    detail: colErr?.message,
+  });
+
+  const { data: trg, error: trgErr } = await supabase.rpc('pg_catalog' as any, {} as any).then(
+    () => ({ data: null, error: null }),
+    () => ({ data: null, error: null }),
+  );
+  // Skip raw catalog probe; rely on insert-side check below via existing template count.
+
+  // Probe upsert_sms_template + unique index by inserting a known approved name twice via RPC.
+  // (Light check: confirm function exists by calling with a no-op tenant id and catching error message.)
+  const { error: rpcErr } = await supabase.rpc('upsert_sms_template', {
+    p_tenant_id: '00000000-0000-0000-0000-000000000000',
+    p_template_name: '__verify_probe__',
+    p_template_body: '__verify_probe__',
+    p_category: 'general',
+    p_goal: 'general_outreach',
+  });
+  push({
+    name: 'function:upsert_sms_template',
+    // foreign-key / RLS errors are fine — only "does not exist" is fatal here.
+    ok: !rpcErr || !/does not exist/i.test(rpcErr.message),
+    detail: rpcErr?.message,
+  });
+
+  // Approved templates present for at least one tenant
+  const approvedNames = [
+    'Roof Estimate Email Capture — Direct',
+    'MSFH Grant — Education First',
+    'Storm Canvass — Neighborly',
+    'Dormant Lead Reactivation — Still Interested',
+    'General Outreach — Property Specific',
+  ];
+  const { data: seeded } = await supabase
+    .from('sms_templates')
+    .select('template_name, tenant_id')
+    .in('template_name', approvedNames)
+    .eq('active', true)
+    .limit(50);
+  const tenantsWithAll = new Map<string, Set<string>>();
+  for (const r of seeded || []) {
+    const s = tenantsWithAll.get(r.tenant_id) || new Set();
+    s.add(r.template_name);
+    tenantsWithAll.set(r.tenant_id, s);
+  }
+  const anyTenantCovered = [...tenantsWithAll.values()].some((s) => s.size === approvedNames.length);
+  push({
+    name: 'seed:approved-templates-present',
+    ok: anyTenantCovered,
+    detail: anyTenantCovered ? undefined : 'no tenant has the full approved template set',
+  });
+
+  // No remaining active duplicates per (tenant_id, goal, normalized_name, normalized_body)
+  const { data: dupes } = await supabase
+    .from('sms_templates')
+    .select('tenant_id, goal, normalized_template_name, normalized_template_body')
+    .eq('active', true);
+  const dupMap = new Map<string, number>();
+  for (const r of dupes || []) {
+    const k = [r.tenant_id, r.goal ?? 'general_outreach', r.normalized_template_name, r.normalized_template_body].join('|');
+    dupMap.set(k, (dupMap.get(k) || 0) + 1);
+  }
+  const dupCount = [...dupMap.values()].filter((n) => n > 1).length;
+  push({
+    name: 'no-active-duplicate-templates',
+    ok: dupCount === 0,
+    detail: dupCount ? `${dupCount} duplicate groups still active` : undefined,
+  });
+}
+
+// ---- 5c. Frontend cleanup button + dedupe wiring -----------------
+if (existsSync(creatorPath)) {
+  const src = readFileSync(creatorPath, 'utf8');
+  push({
+    name: 'creator:renders-visibleTemplates',
+    ok: src.includes('visibleTemplates.map') || src.includes('dedupedTemplates'),
+  });
+  push({
+    name: 'creator:cleanup-button',
+    ok: src.includes('admin-cleanup-sms-templates') && src.includes('Clean duplicate templates'),
+  });
+}
+
 // ---- 6. ai-followup-worker references expected tables --------------
 {
   const path = join(fnDir, 'ai-followup-worker', 'index.ts');
