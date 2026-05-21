@@ -608,7 +608,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               className="flex-1"
             >
               <Send className="h-4 w-4 mr-2" />
-              {sending ? 'Creating...' : `Send to ${recipientCount} Recipient${recipientCount !== 1 ? 's' : ''}`}
+              {sending ? 'Creating...' : dryRun ? `Dry-run render for ${recipientCount}` : `Send to ${recipientCount} Recipient${recipientCount !== 1 ? 's' : ''}`}
             </Button>
             <Button variant="outline" onClick={() => setShowPreview(!showPreview)}>
               <Eye className="h-4 w-4 mr-2" />
