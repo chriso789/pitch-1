@@ -716,19 +716,54 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </div>
           )}
 
+          {/* Launch checklist + locked preview appear after a dry-run */}
+          {dryRunBlastId && (
+            <>
+              <SmsBlastLaunchChecklist
+                blastId={dryRunBlastId}
+                tenantId={activeTenantId || ''}
+                goal={goal}
+                recipientCount={recipientCount}
+                eligibleCount={preflight?.eligible ?? metrics.rendered}
+                skippedMissingAddress={preflight?.missingAddress ?? metrics.skippedMissingAddress}
+                skippedOptOut={preflight?.optedOut ?? metrics.skippedOptOut}
+                dryRunCompleted={dryRunCompleted}
+                aiFollowupEnabled={aiFollowupEnabled}
+                hasStopLanguage={hasStopClause}
+                allRenderedHavePersonalizedMessage={metrics.allRenderedHavePersonalizedMessage}
+                allRenderedHaveAddressSnapshot={metrics.allRenderedHaveAddressSnapshot}
+                batchSize={batchSize}
+                onConfirmReady={async () => {
+                  setSending(true);
+                  try {
+                    const { error } = await supabase.functions.invoke('sms-blast-processor', {
+                      body: { blast_id: dryRunBlastId },
+                    });
+                    if (error) throw error;
+                    toast({ title: 'Live send launched', description: `Processor invoked for ${metrics.rendered} rendered recipient(s).` });
+                    onCreated(dryRunBlastId);
+                  } catch (e: any) {
+                    toast({ title: 'Launch failed', description: e.message, variant: 'destructive' });
+                  } finally {
+                    setSending(false);
+                  }
+                }}
+              />
+              <LockedSmsPreviewTable blastId={dryRunBlastId} tenantId={activeTenantId || ''} />
+            </>
+          )}
+
           <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
+              onChange={(e) => { setDryRun(e.target.checked); if (e.target.checked) { setDryRunCompleted(false); setDryRunBlastId(null); } }}
               className="h-4 w-4"
             />
             Dry run — render and store messages, do NOT send via Telnyx
           </label>
 
           <div className="flex gap-2">
-
-
             <Button
               onClick={handleSend}
               disabled={sending || !isValid}
