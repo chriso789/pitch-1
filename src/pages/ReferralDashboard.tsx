@@ -13,6 +13,7 @@ import { ReferralFlagsTable } from "@/components/referrals/admin/ReferralFlagsTa
 import { ReferralSettingsPanel } from "@/components/referrals/admin/ReferralSettingsPanel";
 import { ReferralDetailDrawer } from "@/components/referrals/admin/ReferralDetailDrawer";
 import { ReferralAnalyticsTab } from "@/components/referrals/analytics/ReferralAnalyticsTab";
+import { CrmReferralProgramTab } from "@/components/referrals/crm-program/CrmReferralProgramTab";
 
 export default function ReferralDashboard() {
   const { profile } = useUserProfile();
