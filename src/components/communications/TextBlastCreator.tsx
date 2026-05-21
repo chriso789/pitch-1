@@ -613,12 +613,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             <CardContent className="space-y-3">
               <div>
                 <Label>Campaign Goal</Label>
-                <Select value={goal || 'none'} onValueChange={(v) => setGoal(v === 'none' ? '' : v)}>
+                <Select value={goal || 'general_outreach'} onValueChange={(v) => setGoal(v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a goal" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">General outreach</SelectItem>
+                    <SelectItem value="general_outreach">General outreach</SelectItem>
                     <SelectItem value="msfh_grant">My Safe Florida Home (MSFH) Grant</SelectItem>
                     <SelectItem value="collect_homeowner_email_for_roof_estimate">Roof Estimate Email Capture — MSFH</SelectItem>
                     <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
@@ -630,13 +630,13 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               <div>
                 <Label>Template Rotation Pool (optional)</Label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Pick 2+ templates to randomly rotate per recipient — reduces carrier spam flags. Leave empty to use the single Message Script below.
+                  Showing unique active templates for this campaign goal. Pick 2+ to rotate per recipient — reduces carrier spam flags.
                 </p>
                 <div className="space-y-1.5 max-h-44 overflow-y-auto rounded-md border border-border p-2">
-                  {!templates?.length && (
-                    <p className="text-xs text-muted-foreground italic px-1 py-2">No templates yet for this tenant.</p>
+                  {!visibleTemplates.length && (
+                    <p className="text-xs text-muted-foreground italic px-1 py-2">No templates for this goal yet — using default script.</p>
                   )}
-                  {templates?.filter((t: any) => !goal || !t.goal || t.goal === goal).map((t: any) => {
+                  {visibleTemplates.map((t: any) => {
                     const checked = selectedTemplateIds.includes(t.id);
                     return (
                       <label key={t.id} className="flex items-start gap-2 p-1.5 rounded hover:bg-muted/50 cursor-pointer">
@@ -645,10 +645,18 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                           className="mt-1"
                           checked={checked}
                           onChange={(e) => {
-                            setSelectedTemplateIds((prev) =>
-                              e.target.checked ? [...prev, t.id] : prev.filter((id) => id !== t.id)
-                            );
-                            if (e.target.checked && !script.trim()) setScript(t.template_body);
+                            if (e.target.checked) {
+                              setSelectedTemplateIds((prev) => [...prev, t.id]);
+                              setScript(t.template_body || '');
+                              setPreviewTemplateIndex(0);
+                            } else {
+                              const next = selectedTemplateIds.filter((id) => id !== t.id);
+                              setSelectedTemplateIds(next);
+                              if (script === t.template_body) {
+                                const fallback = visibleTemplates.find((vt: any) => next.includes(vt.id));
+                                if (fallback) setScript(fallback.template_body || '');
+                              }
+                            }
                           }}
                         />
                         <div className="flex-1 min-w-0">
@@ -663,7 +671,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                           variant="ghost"
                           size="sm"
                           className="text-[11px] h-6 px-2"
-                          onClick={(e) => { e.preventDefault(); setScript(t.template_body); }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setScript(t.template_body || '');
+                            setSelectedTemplateIds([t.id]);
+                            setPreviewTemplateIndex(0);
+                          }}
                         >
                           Use
                         </Button>
