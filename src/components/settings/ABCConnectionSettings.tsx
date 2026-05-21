@@ -310,6 +310,39 @@ export function ABCConnectionSettings() {
     }
   };
 
+  const fetchOAuthDebug = async () => {
+    if (!effectiveTenantId) {
+      toast({ title: 'No tenant context', variant: 'destructive' });
+      return;
+    }
+    setOauthDebugBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: { action: 'start_oauth', tenant_id: effectiveTenantId, environment },
+      });
+      if (error) throw error;
+      setOauthDebug({ ...data, _authed: !!session?.user, _user_email: session?.user?.email ?? null });
+    } catch (e: any) {
+      setOauthDebug({ success: false, error: formatErrorMessage(e) });
+    } finally {
+      setOauthDebugBusy(false);
+    }
+  };
+
+  const copyOAuthUrl = async () => {
+    if (!oauthDebug?.authorization_url) {
+      await fetchOAuthDebug();
+    }
+    const url = oauthDebug?.authorization_url;
+    if (url) {
+      await navigator.clipboard.writeText(url);
+      toast({ title: 'OAuth URL copied' });
+    }
+  };
+
+
+
   if (loading) {
     return (
       <Card>
