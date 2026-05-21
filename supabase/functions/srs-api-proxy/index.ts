@@ -1185,6 +1185,220 @@ Deno.serve(async (req) => {
       }
 
 
+      case "submit_order_variances": {
+        // Iteratively re-submit an SRS order with different payload shapes
+        // until SRS returns a real orderID (i.e. NOT queueID===orderID and
+        // message does not look like "Queued"). Every attempt is logged to
+        // srs_submit_audit so we can compare what SRS accepted vs dropped.
+        const { order_id, max_attempts } = params as { order_id?: string; max_attempts?: number };
+        if (!order_id) throw new Error("order_id required");
+        const cap = Math.min(Math.max(Number(max_attempts) || 12, 1), 40);
+
+        const { data: order } = await supabase
+          .from("srs_orders")
+          .select("*, srs_order_items(*)")
+          .eq("id", order_id)
+          .maybeSingle();
+        if (!order) throw new Error("Order not found");
+
+        // Resolve JAN (same path as submit_order)
+        const janRaw = connection.job_account_number;
+        let jan = typeof janRaw === "number" ? janRaw : Number(janRaw);
+        if (jan === 1) jan = NaN;
+        if (!jan || Number.isNaN(jan)) {
+          const branchForLookup = String(order.branch_code || connection.default_branch_code || "SRFTL").trim();
+          try {
+            const branchData = await srsApiCall(
+              `/branches/v2/customerBranchLocations/${encodeURIComponent(connection.customer_code)}?BranchCode=${encodeURIComponent(branchForLookup)}`
+            );
+            const branches = normalizeCustomerBranchLocations(branchData);
+            const first = branches.find((b: any) => String(b?.branchCode || b?.code || "").toUpperCase() === branchForLookup.toUpperCase()) || branches[0];
+            const fetched = extractJobAccountNumber(first);
+            if (fetched && !Number.isNaN(fetched)) jan = fetched;
+          } catch (_) { /* will throw below */ }
+          if (!jan || Number.isNaN(jan)) {
+            throw new Error("Missing jobAccountNumber. Validate SRS connection in Settings first.");
+          }
+        }
+
+        // Derive contact / shipTo / job number
+        let derivedContact: SrsCustomerContact | null = (order as any).customer_contact_info || null;
+        let derivedShipTo: SrsShipTo | null = order.delivery_address ? parseShipToFreeform(order.delivery_address) : null;
+        let derivedJobNumber: string = (order as any).job_number || order.order_number || "";
+        try {
+          if (order.project_id) {
+            const { data: proj } = await supabase.from("projects").select("job_number, pipeline_entry_id").eq("id", order.project_id).maybeSingle();
+            if (proj?.job_number) derivedJobNumber = proj.job_number;
+            if (proj?.pipeline_entry_id) {
+              const { data: pe } = await supabase.from("pipeline_entries").select("contact_id").eq("id", proj.pipeline_entry_id).maybeSingle();
+              const contactId = (pe as any)?.contact_id;
+              if (contactId) {
+                const { data: c } = await supabase.from("contacts")
+                  .select("first_name,last_name,company_name,phone,email,address_street,address_city,address_state,address_zip")
+                  .eq("id", contactId).maybeSingle();
+                if (c) {
+                  const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || c.company_name || "Customer";
+                  const addr = { addressLine1: c.address_street || "", city: c.address_city || "", state: c.address_state || "", zipCode: c.address_zip || "" };
+                  if (!derivedContact || !derivedContact.customerContactName) {
+                    derivedContact = { customerContactName: name, customerContactPhone: c.phone || "", customerContactEmail: c.email || "", customerContactAddress: addr };
+                  }
+                  if (!derivedShipTo && c.address_street) {
+                    derivedShipTo = { addressLine1: c.address_street, addressLine2: "", addressLine3: "", city: c.address_city || "", state: c.address_state || "", zipCode: c.address_zip || "" };
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
+        if (!derivedContact?.customerContactName || !derivedContact?.customerContactPhone || !derivedContact?.customerContactAddress?.addressLine1) {
+          throw new Error("Missing customer name/phone/street. Fix on linked lead, then retry.");
+        }
+        if (derivedShipTo && (derivedShipTo as any).name) delete (derivedShipTo as any).name;
+
+        // Build catalog items
+        const orderItems = Array.isArray(order.srs_order_items) ? order.srs_order_items : [];
+        const missingSku = orderItems.filter((i: any) => !Number(i.srs_product_id));
+        if (missingSku.length) throw new Error(`Missing SRS productIds for: ${missingSku.map((i: any) => i.product_name).join(", ")}`);
+        const branchCode = String(order.branch_code || connection.default_branch_code || "").trim();
+        const catalogResp = await srsApiCall(`/branches/v2/activeBranchProducts/${encodeURIComponent(branchCode)}`);
+        const productMap = new Map(productArrayFromCatalog(catalogResp).map((p: any) => [Number(p.productId), p]));
+        const invalid = orderItems.filter((i: any) => !productMap.has(Number(i.srs_product_id)));
+        if (invalid.length) throw new Error(`productIds not active on ${branchCode}: ${invalid.map((i: any) => i.srs_product_id).join(", ")}`);
+        const customerItemFallback = (derivedJobNumber || order.order_number || "PITCH").toString().slice(0, 32);
+        const basePricedItems = orderItems.map((i: any) => buildCatalogSubmitItem(i, productMap.get(Number(i.srs_product_id)), customerItemFallback));
+
+        // Variant matrix
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const plusDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+        const baseShip = (() => { try { return srsShippingMethodLabel(order.delivery_method); } catch { return "Ground Drop"; } })();
+        const baseType = srsOrderType(order.delivery_method);
+        const shippingMethods = Array.from(new Set([baseShip, "Ground Drop", "Roof Load", "Will Call"]));
+        const deliveryTimes = ["Anytime", "Morning", "Afternoon"];
+        const deliveryDates = [order.delivery_date || todayStr, plusDays(1), plusDays(2), plusDays(7)];
+        const shipToSeqs = Array.from(new Set([Number((order as any).ship_to_sequence_number ?? 1), 1, 2]));
+        const poVariants = [`job:${order.order_number}`, `${order.order_number}`, `PITCH-${order.order_number}`];
+
+        type Variant = {
+          shippingMethod: string;
+          orderType: "WHSE" | "WILLCALL";
+          expectedDeliveryTime: string;
+          expectedDeliveryDate: string;
+          shipToSequenceNumber: number;
+          poNumber: string;
+        };
+        const variants: Variant[] = [];
+        const seen = new Set<string>();
+        for (const sm of shippingMethods) {
+          const ot: "WHSE" | "WILLCALL" = sm === "Will Call" ? "WILLCALL" : "WHSE";
+          for (const dd of deliveryDates)
+            for (const dt of deliveryTimes)
+              for (const ss of shipToSeqs)
+                for (const po of poVariants) {
+                  const k = `${sm}|${ot}|${dd}|${dt}|${ss}|${po}`;
+                  if (seen.has(k)) continue; seen.add(k);
+                  variants.push({ shippingMethod: sm, orderType: ot, expectedDeliveryTime: dt, expectedDeliveryDate: dd, shipToSequenceNumber: ss, poNumber: po });
+                }
+        }
+        // Prefer variants closest to current configured order first
+        variants.sort((a, b) => {
+          const score = (v: Variant) =>
+            (v.shippingMethod === baseShip ? 0 : 1) +
+            (v.orderType === baseType ? 0 : 1) +
+            (v.expectedDeliveryDate === (order.delivery_date || todayStr) ? 0 : 1) +
+            (v.expectedDeliveryTime === "Anytime" ? 0 : 1) +
+            (v.shipToSequenceNumber === Number((order as any).ship_to_sequence_number ?? 1) ? 0 : 1) +
+            (v.poNumber === `job:${order.order_number}` ? 0 : 1);
+          return score(a) - score(b);
+        });
+
+        const attempts: Array<{
+          variant: Variant; transactionID: string;
+          queueId: string | null; orderId: string | null;
+          message: string; accepted: boolean; error?: string;
+        }> = [];
+        let winner: any = null;
+
+        for (const v of variants.slice(0, cap)) {
+          const payload = buildSubmitOrderPayload({
+            sourceSystem: SRS_SOURCE_SYSTEM,
+            customerCode: String(connection.customer_code || "").trim(),
+            accountNumber: String(connection.customer_code || "").trim(),
+            jobAccountNumber: jan,
+            shipToSequenceNumber: v.shipToSequenceNumber,
+            branchCode,
+            poNumber: v.poNumber,
+            reference: (order as any).reference || "",
+            jobNumber: derivedJobNumber,
+            orderDate: todayStr,
+            expectedDeliveryDate: v.expectedDeliveryDate,
+            expectedDeliveryTime: v.expectedDeliveryTime,
+            orderType: v.orderType,
+            shippingMethod: v.shippingMethod,
+            shipTo: derivedShipTo,
+            customerContact: derivedContact,
+            notes: order.notes,
+            items: basePricedItems,
+          });
+
+          let auditId: string | null = null;
+          try {
+            const { data: auditRow } = await supabase.from("srs_submit_audit")
+              .insert({ order_id, tenant_id, transaction_id: (payload as any).transactionID, request_json: payload, success: false })
+              .select("id").single();
+            auditId = (auditRow as any)?.id ?? null;
+          } catch (_) {}
+
+          let resp: any = null;
+          let errMsg: string | null = null;
+          try { resp = await srsApiCall("/orders/v2/submit", "POST", payload); }
+          catch (e: any) { errMsg = e?.message || String(e); }
+          const queueId = resp?.queueID || resp?.queueId || null;
+          const orderId = resp?.orderID || resp?.orderId || null;
+          const message = String(resp?.message || "");
+          const accepted = !errMsg && !!orderId && (!queueId || queueId !== orderId) && !/queued/i.test(message);
+
+          if (auditId) {
+            try {
+              await supabase.from("srs_submit_audit")
+                .update({ response_json: resp ?? { error: errMsg }, success: accepted, error_message: errMsg, updated_at: new Date().toISOString() })
+                .eq("id", auditId);
+            } catch (_) {}
+          }
+
+          attempts.push({
+            variant: v, transactionID: (payload as any).transactionID,
+            queueId, orderId, message, accepted, error: errMsg || undefined,
+          });
+
+          if (accepted) {
+            await supabase.from("srs_orders").update({
+              srs_order_id: orderId,
+              srs_transaction_id: resp?.transactionID || (payload as any).transactionID,
+              status: "submitted",
+              submitted_at: new Date().toISOString(),
+              srs_response: resp,
+            }).eq("id", order_id);
+            await supabase.from("srs_order_status_history").insert({
+              order_id, old_status: order.status || "draft", new_status: "submitted",
+              status_message: `Variance sweep accepted (orderID=${orderId}, attempt ${attempts.length}/${variants.length}).`,
+              raw_webhook_data: { winningVariant: v, response: resp },
+            });
+            winner = { variant: v, response: resp, attempt: attempts.length };
+            break;
+          }
+        }
+
+        result = {
+          success: !!winner,
+          winner,
+          attempts,
+          totalVariantsTried: attempts.length,
+          totalVariantsAvailable: variants.length,
+        };
+        break;
+      }
+
+
       case "qa_verify": {
         // Documented 7-step happy-path against the active environment.
         // Read-only unless params.include_submit === true.
