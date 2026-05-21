@@ -35,6 +35,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [batchSize, setBatchSize] = useState<number>(10);
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
+  const [singleContactId, setSingleContactId] = useState<string | null>(null);
+  const [contactSearch, setContactSearch] = useState('');
+  const [showContactResults, setShowContactResults] = useState(false);
   const [script, setScript] = useState('');
   const [dailyLimit, setDailyLimit] = useState<number>(100);
   const [sending, setSending] = useState(false);
@@ -84,6 +87,26 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       }));
     },
     enabled: !!activeTenantId && !!selectedStatusKey,
+  });
+
+  // Search contacts for single-number mode
+  const { data: contactSearchResults } = useQuery({
+    queryKey: ['blast-single-contact-search', activeTenantId, contactSearch],
+    queryFn: async () => {
+      if (!activeTenantId || contactSearch.trim().length < 2) return [];
+      const term = `%${contactSearch.trim()}%`;
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .eq('tenant_id', activeTenantId)
+        .eq('is_deleted', false)
+        .not('phone', 'is', null)
+        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
+        .limit(8);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeTenantId && sendMode === 'single' && contactSearch.trim().length >= 2,
   });
 
   // Pre-flight: for the email-capture campaign, count contacts missing address_street
@@ -196,7 +219,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           .insert({
             blast_id: blast.id,
             tenant_id: activeTenantId,
-            contact_id: null,
+            contact_id: singleContactId,
             phone: manualPhone.trim(),
             contact_name: manualName.trim() || null,
             status: 'pending',
@@ -348,6 +371,62 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
               {sendMode === 'single' ? (
                 <div className="space-y-3 p-3 rounded-md border border-border bg-muted/30">
+                  <div className="relative">
+                    <Label htmlFor="contact-search">Find Contact</Label>
+                    <Input
+                      id="contact-search"
+                      placeholder="Search by name or phone..."
+                      value={contactSearch}
+                      onChange={(e) => {
+                        setContactSearch(e.target.value);
+                        setShowContactResults(true);
+                        if (singleContactId) setSingleContactId(null);
+                      }}
+                      onFocus={() => setShowContactResults(true)}
+                      onBlur={() => setTimeout(() => setShowContactResults(false), 200)}
+                    />
+                    {showContactResults && (contactSearchResults?.length ?? 0) > 0 && !singleContactId && (
+                      <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-md border border-border bg-popover shadow-md">
+                        {contactSearchResults!.map((c: any) => {
+                          const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex justify-between gap-2"
+                              onClick={() => {
+                                setSingleContactId(c.id);
+                                setManualPhone(c.phone || '');
+                                setManualName(fullName);
+                                setContactSearch(fullName || c.phone || '');
+                                setShowContactResults(false);
+                              }}
+                            >
+                              <span className="font-medium">{fullName || '(no name)'}</span>
+                              <span className="text-muted-foreground">{c.phone}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {singleContactId && (
+                      <p className="text-xs text-primary mt-1 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" /> Linked to contact
+                        <button
+                          type="button"
+                          className="ml-2 underline text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setSingleContactId(null);
+                            setContactSearch('');
+                            setManualPhone('');
+                            setManualName('');
+                          }}
+                        >
+                          clear
+                        </button>
+                      </p>
+                    )}
+                  </div>
                   <div>
                     <Label htmlFor="manual-phone">Phone Number *</Label>
                     <Input
