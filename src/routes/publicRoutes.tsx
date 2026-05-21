@@ -65,7 +65,7 @@ export default function PublicRoutes() {
         <Route path="/pay/:token" element={<ZellePaymentPage />} />
         <Route path="/ref/:referralCode/reward" element={<PublicReferralReward />} />
         <Route path="/ref/:referralCode" element={<PublicReferralLanding />} />
-        <Route path="/signup-ref/:partnerCode" element={<PublicCrmReferralSignup />} />
+        <Route path="/signup-ref/:partnerCode" element={<PublicCompanySignupReferralPage />} />
       </Routes>
     </Suspense>
   );
