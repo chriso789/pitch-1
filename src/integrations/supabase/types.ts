@@ -42101,6 +42101,10 @@ export type Database = {
       }
       sms_blast_items: {
         Row: {
+          address_city_snapshot: string | null
+          address_state_snapshot: string | null
+          address_street_snapshot: string | null
+          address_zip_snapshot: string | null
           attempt_count: number | null
           blast_id: string
           claimed_at: string | null
@@ -42123,8 +42127,13 @@ export type Database = {
           telnyx_message_id: string | null
           template_id: string | null
           tenant_id: string
+          updated_at: string
         }
         Insert: {
+          address_city_snapshot?: string | null
+          address_state_snapshot?: string | null
+          address_street_snapshot?: string | null
+          address_zip_snapshot?: string | null
           attempt_count?: number | null
           blast_id: string
           claimed_at?: string | null
@@ -42147,8 +42156,13 @@ export type Database = {
           telnyx_message_id?: string | null
           template_id?: string | null
           tenant_id: string
+          updated_at?: string
         }
         Update: {
+          address_city_snapshot?: string | null
+          address_state_snapshot?: string | null
+          address_street_snapshot?: string | null
+          address_zip_snapshot?: string | null
           attempt_count?: number | null
           blast_id?: string
           claimed_at?: string | null
@@ -42171,6 +42185,7 @@ export type Database = {
           telnyx_message_id?: string | null
           template_id?: string | null
           tenant_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -42223,6 +42238,7 @@ export type Database = {
           daily_window_started_at: string | null
           delivered_count: number | null
           delivery_rate: number | null
+          dry_run: boolean
           failed_count: number
           failure_rate: number | null
           from_location_id: string | null
@@ -42249,6 +42265,7 @@ export type Database = {
           tenant_id: string
           timezone: string
           total_recipients: number
+          updated_at: string
         }
         Insert: {
           actual_messages_per_second?: number | null
@@ -42262,6 +42279,7 @@ export type Database = {
           daily_window_started_at?: string | null
           delivered_count?: number | null
           delivery_rate?: number | null
+          dry_run?: boolean
           failed_count?: number
           failure_rate?: number | null
           from_location_id?: string | null
@@ -42288,6 +42306,7 @@ export type Database = {
           tenant_id: string
           timezone?: string
           total_recipients?: number
+          updated_at?: string
         }
         Update: {
           actual_messages_per_second?: number | null
@@ -42301,6 +42320,7 @@ export type Database = {
           daily_window_started_at?: string | null
           delivered_count?: number | null
           delivery_rate?: number | null
+          dry_run?: boolean
           failed_count?: number
           failure_rate?: number | null
           from_location_id?: string | null
@@ -42327,6 +42347,7 @@ export type Database = {
           tenant_id?: string
           timezone?: string
           total_recipients?: number
+          updated_at?: string
         }
         Relationships: [
           {
@@ -42347,6 +42368,7 @@ export type Database = {
       }
       sms_messages: {
         Row: {
+          ai_generated: boolean
           blast_id: string | null
           blast_item_id: string | null
           body: string
@@ -42362,6 +42384,7 @@ export type Database = {
           is_read: boolean | null
           location_id: string | null
           media_urls: string[] | null
+          metadata: Json
           pipeline_entry_id: string | null
           provider: string | null
           provider_message_id: string | null
@@ -42373,6 +42396,7 @@ export type Database = {
           to_number: string
         }
         Insert: {
+          ai_generated?: boolean
           blast_id?: string | null
           blast_item_id?: string | null
           body: string
@@ -42388,6 +42412,7 @@ export type Database = {
           is_read?: boolean | null
           location_id?: string | null
           media_urls?: string[] | null
+          metadata?: Json
           pipeline_entry_id?: string | null
           provider?: string | null
           provider_message_id?: string | null
@@ -42399,6 +42424,7 @@ export type Database = {
           to_number: string
         }
         Update: {
+          ai_generated?: boolean
           blast_id?: string | null
           blast_item_id?: string | null
           body?: string
@@ -42414,6 +42440,7 @@ export type Database = {
           is_read?: boolean | null
           location_id?: string | null
           media_urls?: string[] | null
+          metadata?: Json
           pipeline_entry_id?: string | null
           provider?: string | null
           provider_message_id?: string | null
@@ -51793,6 +51820,10 @@ export type Database = {
       claim_sms_blast_items: {
         Args: { p_blast_id: string; p_limit: number }
         Returns: {
+          address_city_snapshot: string | null
+          address_state_snapshot: string | null
+          address_street_snapshot: string | null
+          address_zip_snapshot: string | null
           attempt_count: number | null
           blast_id: string
           claimed_at: string | null
@@ -51815,6 +51846,7 @@ export type Database = {
           telnyx_message_id: string | null
           template_id: string | null
           tenant_id: string
+          updated_at: string
         }[]
         SetofOptions: {
           from: "*"
