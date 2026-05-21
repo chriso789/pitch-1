@@ -333,13 +333,41 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                         )}
                       </div>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setExpanded(isExpanded ? null : a.id)}>
-                      {isExpanded ? 'Hide' : 'Inspect'}
-                    </Button>
+                    <div className="flex flex-col items-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setExpanded(isExpanded ? null : a.id)}>
+                        {isExpanded ? 'Hide' : 'Inspect'}
+                      </Button>
+                      {failed && !a.srs_order_id && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => runVarianceSweep(a.id)}
+                          disabled={sweeping === a.id}
+                        >
+                          {sweeping === a.id ? (
+                            <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Sweeping…</>
+                          ) : (
+                            'Sweep variants → orderID'
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
-                  {errMsg && (
-                    <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                  {sweepResult[a.id] && (
+                    <div className="mt-2 rounded border bg-muted/40 p-2 text-xs space-y-1">
+                      <div className="font-medium">
+                        Variance sweep: {sweepResult[a.id].success ? '✅ orderID accepted' : `❌ no orderID (${sweepResult[a.id].totalVariantsTried}/${sweepResult[a.id].totalVariantsAvailable} tried)`}
+                      </div>
+                      <details>
+                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">attempts</summary>
+                        <pre className="mt-1 max-h-60 overflow-auto rounded bg-muted p-2 text-[10px]">
+{JSON.stringify(sweepResult[a.id].attempts, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
+
                       <div className="font-medium mb-0.5">Rejection reason</div>
                       <div className="whitespace-pre-wrap break-words">{errMsg}</div>
                     </div>
