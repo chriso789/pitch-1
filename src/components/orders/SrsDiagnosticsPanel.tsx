@@ -368,10 +368,13 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                     </div>
                   )}
 
+                  {errMsg && (
+                    <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
                       <div className="font-medium mb-0.5">Rejection reason</div>
                       <div className="whitespace-pre-wrap break-words">{errMsg}</div>
                     </div>
                   )}
+
 
                   {isExpanded && (
                     <div className="mt-3 space-y-3 border-t pt-3">
