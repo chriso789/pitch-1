@@ -651,20 +651,20 @@ export default function LiveCanvassingPage() {
         )}
       </div>
 
-      {/* Overlaid Header Controls */}
-      <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        {/* Top row: Back + Title + Mode Toggle */}
+      {/* Overlaid Header Controls — fixed so they stay visible at any map zoom */}
+      <div className="fixed top-0 left-0 right-0 z-40 pointer-events-none" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        {/* Top row: Back + Title */}
         <div className="flex items-center justify-between px-2 pt-2 pointer-events-auto">
           <div className="flex items-center gap-1.5">
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 bg-background/80 backdrop-blur-sm shadow-md border border-border/50"
+              className="h-9 w-9 bg-background/95 backdrop-blur-md shadow-lg border border-border ring-1 ring-black/10"
               onClick={() => navigate('/storm-canvass')}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="text-sm font-semibold text-foreground bg-background/80 backdrop-blur-sm px-2.5 py-1.5 rounded-md shadow-md border border-border/50">
+            <span className="text-sm font-semibold text-foreground bg-background/95 backdrop-blur-md px-2.5 py-1.5 rounded-md shadow-lg border border-border ring-1 ring-black/10">
               Live Canvassing
             </span>
           </div>
@@ -682,7 +682,7 @@ export default function LiveCanvassingPage() {
         </div>
 
         {/* Map style toggle + Stats */}
-        <div className="flex items-center gap-2 px-2 pt-2 pointer-events-auto">
+        <div className="flex items-center gap-2 px-2 pt-2 pointer-events-auto overflow-x-auto no-scrollbar">
           <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
           {profile?.tenant_id && (
             <MapSymbolSettings
