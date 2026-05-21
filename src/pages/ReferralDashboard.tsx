@@ -47,6 +47,7 @@ export default function ReferralDashboard() {
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
             <TabsTrigger value="credits">Stored Credits</TabsTrigger>
             <TabsTrigger value="flags">Flags / Review</TabsTrigger>
+            <TabsTrigger value="crm-program">CRM Signup Program</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
