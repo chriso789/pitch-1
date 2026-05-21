@@ -887,7 +887,35 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Message Preview</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
+                {selectedTemplates.length > 1 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() =>
+                        setPreviewTemplateIndex((i) => (i - 1 + selectedTemplates.length) % selectedTemplates.length)
+                      }
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-muted-foreground">
+                      Previewing template {(previewTemplateIndex % selectedTemplates.length) + 1} of {selectedTemplates.length}
+                      {activePreviewTemplate?.template_name ? `: ${activePreviewTemplate.template_name}` : ''}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => setPreviewTemplateIndex((i) => (i + 1) % selectedTemplates.length)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
                 <div className="bg-muted rounded-lg p-4">
                   <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-sm p-3 max-w-[280px] ml-auto">
                     <p className="text-sm whitespace-pre-wrap">{finalPreview || 'Start typing your message...'}</p>
