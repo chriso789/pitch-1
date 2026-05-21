@@ -175,3 +175,60 @@ The new flow ships as `generate-supplement-report-v2` deliberately, because the 
 - `supabase/functions/export-supplement-report/index.ts`
 - `supabase/functions/update-scope-compare-review/index.ts`
 - appended hooks to `src/hooks/useScopeIntelligence.ts`
+
+---
+
+## Final Report Phase Verification (2026-05-21 pass)
+
+Re-audited after a user-side GitHub code search returned only documentation hits. Every artifact below was verified by `ls`, `wc -l`, `supabase--read_query` (information_schema), and `rg`.
+
+| Artifact | Status | Proof |
+|---|---|---|
+| `supabase/functions/generate-supplement-report/index.ts` | FOUND | 444 lines |
+| `supabase/functions/export-supplement-report/index.ts` | FOUND | 203 lines |
+| `supabase/functions/update-scope-compare-review/index.ts` | FOUND | 150 lines |
+| `supabase/functions/_shared/supplement-report-builder.ts` | FOUND | 449 lines |
+| Table `public.supplement_reports` | FOUND | information_schema |
+| Table `public.supplement_report_items` | FOUND | information_schema |
+| Table `public.supplement_report_exports` | FOUND | information_schema |
+| Migrations creating the three tables | FOUND | `supabase/migrations/20260515223232_*.sql`, `20260521144825_*.sql` |
+| Hook `useRunScopeComparison` | FOUND | `src/hooks/useScopeIntelligence.ts:440` |
+| Hook `useUpdateCompareReview` | FOUND | `src/hooks/useScopeIntelligence.ts:457` |
+| Hook `useGenerateSupplementReportV2` (calls `generate-supplement-report`) | FOUND | `src/hooks/useScopeIntelligence.ts:477` |
+| Hook `useExportSupplementReport` | FOUND | `src/hooks/useScopeIntelligence.ts:502` |
+| Deno test `generate-supplement-report-gaymon.test.ts` | CREATED THIS PASS | 7 tests, all green |
+| Deno test `export-supplement-report.test.ts` | CREATED THIS PASS | 4 tests, all green |
+| Deno test `update-scope-compare-review.test.ts` | CREATED THIS PASS | 9 tests, all green |
+| `SupplementReportPanel` (drop-in UI) | CREATED THIS PASS | `src/features/supplement/components/SupplementReportPanel.tsx` |
+
+**Conclusion:** the final-report phase is fully present. The earlier GitHub-search miss was a false negative caused by code-search not indexing `_shared/` subfolders and v2-suffixed function names.
+
+## Final Report Phase Completed
+
+- [x] Upload two scopes (existing scope-document-ingest flow)
+- [x] Parse carrier (`scope-document-ingest` + `xactimate-line-parser`)
+- [x] Parse contractor (same path)
+- [x] Reconcile totals (`scope-reconciler.ts`, surfaced as warnings)
+- [x] Compare documents (`compare-scope-documents` + `useRunScopeComparison`)
+- [x] Review findings (`update-scope-compare-review` + `useUpdateCompareReview`)
+- [x] Generate report (`generate-supplement-report` + `useGenerateSupplementReportV2`)
+- [x] Export JSON (`export-supplement-report`, type=`json`)
+- [x] Export CSV (`export-supplement-report`, type=`csv`)
+- [x] Export Markdown (`export-supplement-report`, type=`markdown`)
+- [x] Export HTML (`export-supplement-report`, type=`html`)
+
+### Test results
+```
+running 4 tests from supabase/functions/tests/export-supplement-report.test.ts        ok | 4 passed
+running 7 tests from supabase/functions/tests/generate-supplement-report-gaymon.test.ts ok | 7 passed
+running 9 tests from supabase/functions/tests/update-scope-compare-review.test.ts      ok | 9 passed
+```
+
+### Known limitations (deferred to next phase)
+- No PDF export yet — spec explicitly deferred until a reliable Deno-side PDF tool is in place.
+- No email/share packet wrapper around the export URL.
+- No claim-submission tracker (state machine, adjuster threading).
+- `SupplementReportPanel` is a drop-in panel; full integration into `ScopeIntelligence.tsx` workflow (compare-run selector, findings table with bulk include/exclude, evidence drawer) is still next-pass work.
+
+### Recommended next phase
+PDF generation + email/share packet + claim submission tracker, in that order.
