@@ -21,6 +21,28 @@ import { useSmsBlastMetrics } from '@/hooks/useSmsBlastMetrics';
 
 const BATCH_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100, 250, 500];
 
+const normalizeTemplateText = (value: string | null | undefined) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const getDefaultScriptForGoal = (goal: string) => {
+  switch (goal) {
+    case 'collect_homeowner_email_for_roof_estimate':
+      return `Hi {{contact.first_name}}, we have a roof replacement estimate ready for {{contact.address_street}}. What's the best email to send it to?\n\nWe can also help walk you through the My Safe Florida Home Program, which may provide up to $10,000 toward a qualifying roof replacement.`;
+    case 'msfh_grant':
+      return `Hi {{contact.first_name}}, Florida homeowners may qualify for help through the My Safe Florida Home Program. We help walk people through the roof grant process from inspection to paperwork.\n\nWould you like us to check {{contact.address_street}}?`;
+    case 'storm_canvass':
+      return `Hi {{contact.first_name}}, we're checking roofs near {{contact.address_street}} after recent storms. If you'd like, we can do a quick roof review and let you know if there are issues before they turn into leaks.`;
+    case 'dormant_reactivation':
+      return `Hi {{contact.first_name}}, we had your property at {{contact.address_street}} in our system and wanted to follow up. Are you still considering roof repair or replacement options this year?`;
+    case 'general_outreach':
+    default:
+      return `Hi {{contact.first_name}}, this is {{company.name}}. We're following up about {{contact.address_street}}. Would you like us to send over more information?`;
+  }
+};
+
 interface TextBlastCreatorProps {
   onBack: () => void;
   onCreated: (blastId: string) => void;
