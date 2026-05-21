@@ -368,32 +368,47 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <Label>Contact List</Label>
-                      <Select value={selectedListId} onValueChange={setSelectedListId}>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Contact Status</Label>
+                      <Select value={selectedStatusKey} onValueChange={setSelectedStatusKey}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a contact list" />
+                          <SelectValue placeholder="Select a status" />
                         </SelectTrigger>
                         <SelectContent>
-                          {lists?.map((list: any) => (
-                            <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
+                          {contactStatuses.map((s) => (
+                            <SelectItem key={s.key} value={s.key}>
+                              <span className="inline-flex items-center gap-2">
+                                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                {s.name}
+                              </span>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="pt-5">
-                      <Button variant="outline" size="sm" onClick={() => setShowListBuilder(true)}>
-                        <ListPlus className="h-4 w-4 mr-1" />
-                        Build List
-                      </Button>
+                    <div>
+                      <Label>Test Batch Size</Label>
+                      <Select value={String(batchSize)} onValueChange={(v) => setBatchSize(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BATCH_SIZE_OPTIONS.map((n) => (
+                            <SelectItem key={n} value={String(n)}>{n} contacts</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                  {selectedListId && (
+                  <p className="text-xs text-muted-foreground">
+                    Sends to the first {batchSize} contacts with this status — use small batches to test before scaling up.
+                  </p>
+                  {selectedStatusKey && (
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">{listItems?.length || 0} recipients</span>
+                      <span className="text-sm text-muted-foreground">{listItems?.length || 0} recipients (capped at {batchSize})</span>
                     </div>
                   )}
                 </div>
