@@ -52040,6 +52040,20 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_public_crm_referral_link: {
+        Args: { _code: string }
+        Returns: {
+          is_active: boolean
+          landing_page: string
+          link_id: string
+          partner_code: string
+          partner_display_name: string
+          partner_id: string
+          utm_campaign: string
+          utm_medium: string
+          utm_source: string
+        }[]
+      }
       get_public_referral_link: {
         Args: { _code: string }
         Returns: {
@@ -52197,6 +52211,11 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      is_crm_referral_admin: { Args: { _tenant_id: string }; Returns: boolean }
+      is_crm_referral_manager: {
+        Args: { _tenant_id: string }
+        Returns: boolean
       }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
       is_profile_visible: {
