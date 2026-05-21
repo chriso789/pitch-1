@@ -219,7 +219,11 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           .insert({
             blast_id: blast.id,
             tenant_id: activeTenantId,
-            contact_id: null,
+            contact_id: singleContactId,
+            phone: manualPhone.trim(),
+            contact_name: manualName.trim() || null,
+            status: 'pending',
+          });
             phone: manualPhone.trim(),
             contact_name: manualName.trim() || null,
             status: 'pending',
