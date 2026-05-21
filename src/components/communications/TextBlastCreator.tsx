@@ -231,7 +231,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             tenant_id: activeTenantId,
             name: name.trim(),
             script: script.trim(),
-            list_id: selectedListId,
+            list_id: null,
             total_recipients: listItems!.length,
             daily_send_limit: dailyLimit,
             status: 'draft',
