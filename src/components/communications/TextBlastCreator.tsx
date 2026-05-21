@@ -91,9 +91,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   // protects against blasting the wrong address to a homeowner.
   const isEmailCaptureGoal = goal === 'collect_homeowner_email_for_roof_estimate';
   const { data: preflight } = useQuery({
-    queryKey: ['blast-preflight', activeTenantId, selectedListId, sendMode, isEmailCaptureGoal, listItems?.length],
+    queryKey: ['blast-preflight', activeTenantId, selectedStatusKey, sendMode, isEmailCaptureGoal, listItems?.length],
     queryFn: async () => {
-      if (!activeTenantId || sendMode !== 'list' || !selectedListId || !listItems?.length) {
+      if (!activeTenantId || sendMode !== 'list' || !selectedStatusKey || !listItems?.length) {
         return { missingAddress: 0, optedOut: 0, eligible: 0 };
       }
       const contactIds = listItems.map((li: any) => li.contact_id).filter(Boolean);
@@ -122,7 +122,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       const eligible = Math.max(0, listItems.length - missingAddress - optedOut);
       return { missingAddress, optedOut, eligible };
     },
-    enabled: !!activeTenantId && sendMode === 'list' && !!selectedListId && !!listItems?.length,
+    enabled: !!activeTenantId && sendMode === 'list' && !!selectedStatusKey && !!listItems?.length,
   });
   // Fetch SMS templates (smart-tag enabled, used for MSFH-style rotation pools)
   const { data: templates } = useQuery({
