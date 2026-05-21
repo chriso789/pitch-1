@@ -1181,6 +1181,33 @@ Deno.serve(async (req) => {
           request: orderPayload,
           response: orderResult,
         };
+
+        // Auto-sweep: if SRS only queued the order, keep submitting variants
+        // until a real orderID is returned (or the variant matrix is exhausted).
+        if (isQueuedOnly) {
+          try {
+            const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+            const SR_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+            const sweepResp = await fetch(`${SUPABASE_URL}/functions/v1/srs-api-proxy`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${SR_KEY}` },
+              body: JSON.stringify({
+                action: "submit_order_variances",
+                tenant_id,
+                params: { order_id, max_attempts: 40 },
+              }),
+            });
+            const sweepJson = await sweepResp.json().catch(() => ({}));
+            (result as any).autoSweep = sweepJson;
+            const wId = sweepJson?.winner?.response?.orderID || sweepJson?.winner?.response?.orderId;
+            if (wId) {
+              (result as any).queued = false;
+              (result as any).srsOrderId = wId;
+            }
+          } catch (e) {
+            (result as any).autoSweepError = (e as any)?.message || String(e);
+          }
+        }
         break;
       }
 
