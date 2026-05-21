@@ -203,7 +203,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: script.trim(),
             list_id: null,
             total_recipients: 1,
-            daily_send_limit: dailyLimit,
+            max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
             ai_followup_enabled: aiFollowupEnabled,
