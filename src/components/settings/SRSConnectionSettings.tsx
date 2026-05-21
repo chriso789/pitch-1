@@ -694,6 +694,8 @@ export function SRSConnectionSettings() {
           </CardContent>
         </Card>
       )}
+
+      <SRSReconciliationPanel />
     </div>
   );
 }
