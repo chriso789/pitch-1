@@ -81,6 +81,36 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
   const [loading, setLoading] = useState(true);
   const [attempts, setAttempts] = useState<SrsAttempt[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sweeping, setSweeping] = useState<string | null>(null);
+  const [sweepResult, setSweepResult] = useState<Record<string, any>>({});
+
+  const runVarianceSweep = async (orderId: string) => {
+    if (!tenantId) return;
+    setSweeping(orderId);
+    setSweepResult(prev => ({ ...prev, [orderId]: null }));
+    try {
+      const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+        body: { action: 'submit_order_variances', tenant_id: tenantId, order_id: orderId, max_attempts: 16 },
+      });
+      if (error) throw error;
+      setSweepResult(prev => ({ ...prev, [orderId]: data }));
+      if (data?.success) {
+        toast({ title: 'SRS orderID accepted', description: `orderID ${data.winner?.response?.orderID || data.winner?.response?.orderId} on attempt ${data.winner?.attempt}` });
+      } else {
+        toast({
+          title: 'No orderID after sweep',
+          description: `Tried ${data?.totalVariantsTried}/${data?.totalVariantsAvailable} variants — all queued/rejected.`,
+          variant: 'destructive',
+        });
+      }
+    } catch (e: any) {
+      toast({ title: 'Variance sweep failed', description: e?.message || String(e), variant: 'destructive' });
+    } finally {
+      setSweeping(null);
+    }
+  };
+
+
 
   const load = useCallback(async () => {
     if (!tenantId) return;
