@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
@@ -20,6 +20,28 @@ import { LockedSmsPreviewTable } from './LockedSmsPreviewTable';
 import { useSmsBlastMetrics } from '@/hooks/useSmsBlastMetrics';
 
 const BATCH_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100, 250, 500];
+
+const normalizeTemplateText = (value: string | null | undefined) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const getDefaultScriptForGoal = (goal: string) => {
+  switch (goal) {
+    case 'collect_homeowner_email_for_roof_estimate':
+      return `Hi {{contact.first_name}}, we have a roof replacement estimate ready for {{contact.address_street}}. What's the best email to send it to?\n\nWe can also help walk you through the My Safe Florida Home Program, which may provide up to $10,000 toward a qualifying roof replacement.`;
+    case 'msfh_grant':
+      return `Hi {{contact.first_name}}, Florida homeowners may qualify for help through the My Safe Florida Home Program. We help walk people through the roof grant process from inspection to paperwork.\n\nWould you like us to check {{contact.address_street}}?`;
+    case 'storm_canvass':
+      return `Hi {{contact.first_name}}, we're checking roofs near {{contact.address_street}} after recent storms. If you'd like, we can do a quick roof review and let you know if there are issues before they turn into leaks.`;
+    case 'dormant_reactivation':
+      return `Hi {{contact.first_name}}, we had your property at {{contact.address_street}} in our system and wanted to follow up. Are you still considering roof repair or replacement options this year?`;
+    case 'general_outreach':
+    default:
+      return `Hi {{contact.first_name}}, this is {{company.name}}. We're following up about {{contact.address_street}}. Would you like us to send over more information?`;
+  }
+};
 
 interface TextBlastCreatorProps {
   onBack: () => void;
@@ -48,10 +70,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [showListBuilder, setShowListBuilder] = useState(false);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
-  const [goal, setGoal] = useState<string>('');
+  const [goal, setGoal] = useState<string>('general_outreach');
   const [dryRun, setDryRun] = useState<boolean>(false);
   const [dryRunCompleted, setDryRunCompleted] = useState<boolean>(false);
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
+  const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
+  const lastGoalRef = useRef<string>('');
   const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
 
   // Fetch dialer lists
@@ -170,6 +194,59 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!activeTenantId,
   });
 
+  // Dedupe templates (tenant + goal + normalized name + normalized body).
+  const dedupedTemplates = useMemo(() => {
+    const seen = new Set<string>();
+    return (templates || []).filter((t: any) => {
+      const key = [
+        t.tenant_id || activeTenantId || '',
+        t.goal || '',
+        normalizeTemplateText(t.template_name),
+        normalizeTemplateText(t.template_body),
+      ].join('|');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [templates, activeTenantId]);
+
+  const goalMatches = (t: any) => {
+    if (goal === 'general_outreach') return !t.goal || t.goal === 'general_outreach';
+    return t.goal === goal;
+  };
+
+  const visibleTemplates = useMemo(
+    () => dedupedTemplates.filter(goalMatches),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dedupedTemplates, goal]
+  );
+
+  // When Campaign Goal changes: clear selection, auto-pick top templates, reset preview.
+  useEffect(() => {
+    if (lastGoalRef.current === goal) return;
+    lastGoalRef.current = goal;
+
+    setDryRunCompleted(false);
+    setDryRunBlastId(null);
+    setPreviewTemplateIndex(0);
+
+    const matches = dedupedTemplates.filter(goalMatches);
+    if (matches.length > 0) {
+      const top = matches.slice(0, 3);
+      setSelectedTemplateIds(top.map((t: any) => t.id));
+      setScript(top[0].template_body || '');
+    } else {
+      setSelectedTemplateIds([]);
+      setScript(getDefaultScriptForGoal(goal));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goal, dedupedTemplates]);
+
+  // Reset preview index when selected templates change
+  useEffect(() => {
+    setPreviewTemplateIndex(0);
+  }, [selectedTemplateIds.join('|')]);
+
   const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
 
   // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
@@ -185,9 +262,20 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       }
     : SAMPLE_TAG_CONTEXT;
 
-  const previewMessage = resolveSmsTags(script, sampleCtx);
+  const selectedTemplates = useMemo(
+    () => dedupedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id)),
+    [dedupedTemplates, selectedTemplateIds]
+  );
 
-  const hasStopClause = /stop/i.test(script);
+  const activePreviewTemplate = selectedTemplates.length
+    ? selectedTemplates[previewTemplateIndex % selectedTemplates.length]
+    : null;
+
+  const previewSourceScript = activePreviewTemplate?.template_body || script;
+
+  const previewMessage = resolveSmsTags(previewSourceScript, sampleCtx);
+
+  const hasStopClause = /stop/i.test(previewSourceScript);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
   const isValid = sendMode === 'single'
@@ -525,12 +613,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             <CardContent className="space-y-3">
               <div>
                 <Label>Campaign Goal</Label>
-                <Select value={goal || 'none'} onValueChange={(v) => setGoal(v === 'none' ? '' : v)}>
+                <Select value={goal || 'general_outreach'} onValueChange={(v) => setGoal(v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a goal" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">General outreach</SelectItem>
+                    <SelectItem value="general_outreach">General outreach</SelectItem>
                     <SelectItem value="msfh_grant">My Safe Florida Home (MSFH) Grant</SelectItem>
                     <SelectItem value="collect_homeowner_email_for_roof_estimate">Roof Estimate Email Capture — MSFH</SelectItem>
                     <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
@@ -542,13 +630,13 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               <div>
                 <Label>Template Rotation Pool (optional)</Label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Pick 2+ templates to randomly rotate per recipient — reduces carrier spam flags. Leave empty to use the single Message Script below.
+                  Showing unique active templates for this campaign goal. Pick 2+ to rotate per recipient — reduces carrier spam flags.
                 </p>
                 <div className="space-y-1.5 max-h-44 overflow-y-auto rounded-md border border-border p-2">
-                  {!templates?.length && (
-                    <p className="text-xs text-muted-foreground italic px-1 py-2">No templates yet for this tenant.</p>
+                  {!visibleTemplates.length && (
+                    <p className="text-xs text-muted-foreground italic px-1 py-2">No templates for this goal yet — using default script.</p>
                   )}
-                  {templates?.filter((t: any) => !goal || !t.goal || t.goal === goal).map((t: any) => {
+                  {visibleTemplates.map((t: any) => {
                     const checked = selectedTemplateIds.includes(t.id);
                     return (
                       <label key={t.id} className="flex items-start gap-2 p-1.5 rounded hover:bg-muted/50 cursor-pointer">
@@ -557,10 +645,18 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                           className="mt-1"
                           checked={checked}
                           onChange={(e) => {
-                            setSelectedTemplateIds((prev) =>
-                              e.target.checked ? [...prev, t.id] : prev.filter((id) => id !== t.id)
-                            );
-                            if (e.target.checked && !script.trim()) setScript(t.template_body);
+                            if (e.target.checked) {
+                              setSelectedTemplateIds((prev) => [...prev, t.id]);
+                              setScript(t.template_body || '');
+                              setPreviewTemplateIndex(0);
+                            } else {
+                              const next = selectedTemplateIds.filter((id) => id !== t.id);
+                              setSelectedTemplateIds(next);
+                              if (script === t.template_body) {
+                                const fallback = visibleTemplates.find((vt: any) => next.includes(vt.id));
+                                if (fallback) setScript(fallback.template_body || '');
+                              }
+                            }
                           }}
                         />
                         <div className="flex-1 min-w-0">
@@ -575,7 +671,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                           variant="ghost"
                           size="sm"
                           className="text-[11px] h-6 px-2"
-                          onClick={(e) => { e.preventDefault(); setScript(t.template_body); }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setScript(t.template_body || '');
+                            setSelectedTemplateIds([t.id]);
+                            setPreviewTemplateIndex(0);
+                          }}
                         >
                           Use
                         </Button>
@@ -786,7 +887,35 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Message Preview</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
+                {selectedTemplates.length > 1 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() =>
+                        setPreviewTemplateIndex((i) => (i - 1 + selectedTemplates.length) % selectedTemplates.length)
+                      }
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-muted-foreground">
+                      Previewing template {(previewTemplateIndex % selectedTemplates.length) + 1} of {selectedTemplates.length}
+                      {activePreviewTemplate?.template_name ? `: ${activePreviewTemplate.template_name}` : ''}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => setPreviewTemplateIndex((i) => (i + 1) % selectedTemplates.length)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
                 <div className="bg-muted rounded-lg p-4">
                   <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-sm p-3 max-w-[280px] ml-auto">
                     <p className="text-sm whitespace-pre-wrap">{finalPreview || 'Start typing your message...'}</p>
