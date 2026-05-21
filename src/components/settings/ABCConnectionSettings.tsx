@@ -122,12 +122,15 @@ export function ABCConnectionSettings() {
   const [priceShipTo, setPriceShipTo] = useState('');
   const [priceBranch, setPriceBranch] = useState('');
   const [orderStatusNumber, setOrderStatusNumber] = useState('');
+  const [oauthDebug, setOauthDebug] = useState<any | null>(null);
+  const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
   const [environment, setEnvironment] = useState<ABCEnvironment>('production');
+
 
   useEffect(() => {
     if (effectiveTenantId) loadConnection();
