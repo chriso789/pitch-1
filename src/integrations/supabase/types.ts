@@ -19255,7 +19255,9 @@ export type Database = {
       }
       insurance_scope_line_items: {
         Row: {
+          action_type: string | null
           age_years: number | null
+          canonical_group: string | null
           canonical_item_id: string | null
           created_at: string | null
           depreciation_amount: number | null
@@ -19272,9 +19274,12 @@ export type Database = {
           line_order: number | null
           mapping_confidence: number | null
           mapping_method: string | null
+          match_fingerprint: string | null
           material_amount: number | null
           next_line: string | null
+          normalized_key: string | null
           page_number: number | null
+          parse_confidence: number | null
           parser_layout: string | null
           previous_line: string | null
           quantity: number | null
@@ -19289,12 +19294,15 @@ export type Database = {
           tax_amount: number | null
           total_acv: number | null
           total_rcv: number | null
+          trade_group: string | null
           unit: string | null
           unit_price: number | null
           updated_at: string | null
         }
         Insert: {
+          action_type?: string | null
           age_years?: number | null
+          canonical_group?: string | null
           canonical_item_id?: string | null
           created_at?: string | null
           depreciation_amount?: number | null
@@ -19311,9 +19319,12 @@ export type Database = {
           line_order?: number | null
           mapping_confidence?: number | null
           mapping_method?: string | null
+          match_fingerprint?: string | null
           material_amount?: number | null
           next_line?: string | null
+          normalized_key?: string | null
           page_number?: number | null
+          parse_confidence?: number | null
           parser_layout?: string | null
           previous_line?: string | null
           quantity?: number | null
@@ -19328,12 +19339,15 @@ export type Database = {
           tax_amount?: number | null
           total_acv?: number | null
           total_rcv?: number | null
+          trade_group?: string | null
           unit?: string | null
           unit_price?: number | null
           updated_at?: string | null
         }
         Update: {
+          action_type?: string | null
           age_years?: number | null
+          canonical_group?: string | null
           canonical_item_id?: string | null
           created_at?: string | null
           depreciation_amount?: number | null
@@ -19350,9 +19364,12 @@ export type Database = {
           line_order?: number | null
           mapping_confidence?: number | null
           mapping_method?: string | null
+          match_fingerprint?: string | null
           material_amount?: number | null
           next_line?: string | null
+          normalized_key?: string | null
           page_number?: number | null
+          parse_confidence?: number | null
           parser_layout?: string | null
           previous_line?: string | null
           quantity?: number | null
@@ -19367,6 +19384,7 @@ export type Database = {
           tax_amount?: number | null
           total_acv?: number | null
           total_rcv?: number | null
+          trade_group?: string | null
           unit?: string | null
           unit_price?: number | null
           updated_at?: string | null
@@ -39611,6 +39629,7 @@ export type Database = {
           group_id: string | null
           grouped_children: Json
           id: string
+          included_in_supplement: boolean | null
           justification: Json | null
           match_confidence: number | null
           match_method: string | null
@@ -39619,6 +39638,8 @@ export type Database = {
           parent_result_id: string | null
           quantity_delta: number | null
           result_type: string
+          reviewer_note: string | null
+          reviewer_status: string | null
           severity: string
           tax_delta: number | null
           tenant_id: string
@@ -39651,6 +39672,7 @@ export type Database = {
           group_id?: string | null
           grouped_children?: Json
           id?: string
+          included_in_supplement?: boolean | null
           justification?: Json | null
           match_confidence?: number | null
           match_method?: string | null
@@ -39659,6 +39681,8 @@ export type Database = {
           parent_result_id?: string | null
           quantity_delta?: number | null
           result_type: string
+          reviewer_note?: string | null
+          reviewer_status?: string | null
           severity?: string
           tax_delta?: number | null
           tenant_id: string
@@ -39691,6 +39715,7 @@ export type Database = {
           group_id?: string | null
           grouped_children?: Json
           id?: string
+          included_in_supplement?: boolean | null
           justification?: Json | null
           match_confidence?: number | null
           match_method?: string | null
@@ -39699,6 +39724,8 @@ export type Database = {
           parent_result_id?: string | null
           quantity_delta?: number | null
           result_type?: string
+          reviewer_note?: string | null
+          reviewer_status?: string | null
           severity?: string
           tax_delta?: number | null
           tenant_id?: string
@@ -45094,59 +45121,290 @@ export type Database = {
           },
         ]
       }
+      supplement_report_exports: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          export_json: Json | null
+          export_type: string
+          id: string
+          storage_path: string | null
+          supplement_report_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          export_json?: Json | null
+          export_type: string
+          id?: string
+          storage_path?: string | null
+          supplement_report_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          export_json?: Json | null
+          export_type?: string
+          id?: string
+          storage_path?: string | null
+          supplement_report_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_report_exports_supplement_report_id_fkey"
+            columns: ["supplement_report_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplement_report_items: {
+        Row: {
+          carrier_description: string | null
+          carrier_quantity: number | null
+          carrier_total_rcv: number | null
+          carrier_unit_price: number | null
+          compare_result_id: string | null
+          contractor_description: string | null
+          contractor_quantity: number | null
+          contractor_total_rcv: number | null
+          contractor_unit_price: number | null
+          created_at: string | null
+          description_for_report: string | null
+          evidence: Json | null
+          id: string
+          included: boolean | null
+          issue_type: string
+          item_order: number | null
+          justification_adjuster: string | null
+          justification_contractor: string | null
+          justification_plain: string | null
+          quantity: number | null
+          quantity_delta: number | null
+          reviewer_note: string | null
+          section: string | null
+          severity: string | null
+          supplement_report_id: string
+          tax_delta: number | null
+          tenant_id: string
+          total_rcv_delta: number | null
+          unit: string | null
+          unit_price_delta: number | null
+        }
+        Insert: {
+          carrier_description?: string | null
+          carrier_quantity?: number | null
+          carrier_total_rcv?: number | null
+          carrier_unit_price?: number | null
+          compare_result_id?: string | null
+          contractor_description?: string | null
+          contractor_quantity?: number | null
+          contractor_total_rcv?: number | null
+          contractor_unit_price?: number | null
+          created_at?: string | null
+          description_for_report?: string | null
+          evidence?: Json | null
+          id?: string
+          included?: boolean | null
+          issue_type: string
+          item_order?: number | null
+          justification_adjuster?: string | null
+          justification_contractor?: string | null
+          justification_plain?: string | null
+          quantity?: number | null
+          quantity_delta?: number | null
+          reviewer_note?: string | null
+          section?: string | null
+          severity?: string | null
+          supplement_report_id: string
+          tax_delta?: number | null
+          tenant_id: string
+          total_rcv_delta?: number | null
+          unit?: string | null
+          unit_price_delta?: number | null
+        }
+        Update: {
+          carrier_description?: string | null
+          carrier_quantity?: number | null
+          carrier_total_rcv?: number | null
+          carrier_unit_price?: number | null
+          compare_result_id?: string | null
+          contractor_description?: string | null
+          contractor_quantity?: number | null
+          contractor_total_rcv?: number | null
+          contractor_unit_price?: number | null
+          created_at?: string | null
+          description_for_report?: string | null
+          evidence?: Json | null
+          id?: string
+          included?: boolean | null
+          issue_type?: string
+          item_order?: number | null
+          justification_adjuster?: string | null
+          justification_contractor?: string | null
+          justification_plain?: string | null
+          quantity?: number | null
+          quantity_delta?: number | null
+          reviewer_note?: string | null
+          section?: string | null
+          severity?: string | null
+          supplement_report_id?: string
+          tax_delta?: number | null
+          tenant_id?: string
+          total_rcv_delta?: number | null
+          unit?: string | null
+          unit_price_delta?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_report_items_compare_result_id_fkey"
+            columns: ["compare_result_id"]
+            isOneToOne: false
+            referencedRelation: "scope_compare_results"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplement_report_items_supplement_report_id_fkey"
+            columns: ["supplement_report_id"]
+            isOneToOne: false
+            referencedRelation: "supplement_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplement_reports: {
         Row: {
+          carrier_document_id: string | null
+          carrier_name: string | null
+          carrier_total_rcv: number | null
+          claim_number: string | null
+          compare_run_id: string | null
           comparison_id: string
+          contractor_document_id: string | null
+          contractor_name: string | null
+          contractor_total_rcv: number | null
           created_at: string
           created_by: string | null
           esx_storage_path: string | null
           esx_url: string | null
+          excluded_items_total: number | null
           id: string
+          included_items_total: number | null
+          insured_name: string | null
+          missing_items_total: number | null
           notes: string | null
           pdf_storage_path: string | null
           pdf_url: string | null
+          price_delta_total: number | null
+          property_address: string | null
+          quantity_delta_total: number | null
+          report_html: string | null
+          report_json: Json | null
+          report_markdown: string | null
+          report_pdf_storage_path: string | null
+          report_status: string | null
+          report_title: string | null
           sent_at: string | null
           sent_to: string | null
           status: string
+          supplement_difference_rcv: number | null
+          tax_delta_total: number | null
           tenant_id: string
           updated_at: string
           version: number
         }
         Insert: {
+          carrier_document_id?: string | null
+          carrier_name?: string | null
+          carrier_total_rcv?: number | null
+          claim_number?: string | null
+          compare_run_id?: string | null
           comparison_id: string
+          contractor_document_id?: string | null
+          contractor_name?: string | null
+          contractor_total_rcv?: number | null
           created_at?: string
           created_by?: string | null
           esx_storage_path?: string | null
           esx_url?: string | null
+          excluded_items_total?: number | null
           id?: string
+          included_items_total?: number | null
+          insured_name?: string | null
+          missing_items_total?: number | null
           notes?: string | null
           pdf_storage_path?: string | null
           pdf_url?: string | null
+          price_delta_total?: number | null
+          property_address?: string | null
+          quantity_delta_total?: number | null
+          report_html?: string | null
+          report_json?: Json | null
+          report_markdown?: string | null
+          report_pdf_storage_path?: string | null
+          report_status?: string | null
+          report_title?: string | null
           sent_at?: string | null
           sent_to?: string | null
           status?: string
+          supplement_difference_rcv?: number | null
+          tax_delta_total?: number | null
           tenant_id: string
           updated_at?: string
           version?: number
         }
         Update: {
+          carrier_document_id?: string | null
+          carrier_name?: string | null
+          carrier_total_rcv?: number | null
+          claim_number?: string | null
+          compare_run_id?: string | null
           comparison_id?: string
+          contractor_document_id?: string | null
+          contractor_name?: string | null
+          contractor_total_rcv?: number | null
           created_at?: string
           created_by?: string | null
           esx_storage_path?: string | null
           esx_url?: string | null
+          excluded_items_total?: number | null
           id?: string
+          included_items_total?: number | null
+          insured_name?: string | null
+          missing_items_total?: number | null
           notes?: string | null
           pdf_storage_path?: string | null
           pdf_url?: string | null
+          price_delta_total?: number | null
+          property_address?: string | null
+          quantity_delta_total?: number | null
+          report_html?: string | null
+          report_json?: Json | null
+          report_markdown?: string | null
+          report_pdf_storage_path?: string | null
+          report_status?: string | null
+          report_title?: string | null
           sent_at?: string | null
           sent_to?: string | null
           status?: string
+          supplement_difference_rcv?: number | null
+          tax_delta_total?: number | null
           tenant_id?: string
           updated_at?: string
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "supplement_reports_compare_run_id_fkey"
+            columns: ["compare_run_id"]
+            isOneToOne: false
+            referencedRelation: "scope_compare_runs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "supplement_reports_comparison_id_fkey"
             columns: ["comparison_id"]
