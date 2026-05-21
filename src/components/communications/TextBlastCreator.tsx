@@ -70,10 +70,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [showListBuilder, setShowListBuilder] = useState(false);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [aiFollowupEnabled, setAiFollowupEnabled] = useState<boolean>(false);
-  const [goal, setGoal] = useState<string>('');
+  const [goal, setGoal] = useState<string>('general_outreach');
   const [dryRun, setDryRun] = useState<boolean>(false);
   const [dryRunCompleted, setDryRunCompleted] = useState<boolean>(false);
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
+  const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
+  const lastGoalRef = useRef<string>('');
   const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
 
   // Fetch dialer lists
