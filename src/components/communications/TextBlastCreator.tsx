@@ -633,20 +633,17 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="daily-limit">Max Sends Per Day</Label>
+                <Label htmlFor="max-attempts">Repeat Attempts Per Contact</Label>
                 <Input
-                  id="daily-limit"
+                  id="max-attempts"
                   type="number"
                   min={1}
-                  max={10000}
-                  value={dailyLimit}
-                  onChange={(e) => setDailyLimit(Math.max(1, Number(e.target.value) || 0))}
+                  max={10}
+                  value={maxAttemptsPerContact}
+                  onChange={(e) => setMaxAttemptsPerContact(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Processor pauses after {dailyLimit} sends in a rolling 24-hour window.
-                  {recipientCount > dailyLimit && (
-                    <> Will take ~{Math.ceil(recipientCount / dailyLimit)} day(s) to complete.</>
-                  )}
+                  Each contact will be messaged up to <span className="font-medium">{maxAttemptsPerContact}</span> time{maxAttemptsPerContact !== 1 ? 's' : ''} total. Retries stop immediately on reply, <span className="font-mono">NO</span>, or <span className="font-mono">STOP</span>. Throughput scales with the number of contacts in the run — it is not a daily volume cap.
                 </p>
               </div>
 
