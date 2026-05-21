@@ -92,10 +92,7 @@ export function resolveSmsTags(template: string, ctx: SmsTagContext): string {
 export const SMS_AVAILABLE_TAGS: { tag: string; label: string }[] = [
   { tag: '{{contact.first_name}}', label: 'Contact first name' },
   { tag: '{{contact.last_name}}', label: 'Contact last name' },
-  { tag: '{{contact.address1}}', label: 'Property address' },
-  { tag: '{{contact.city}}', label: 'City' },
-  { tag: '{{contact.state}}', label: 'State' },
-  { tag: '{{contact.zip}}', label: 'Zip code' },
+  { tag: '{{contact.full_address}}', label: 'Full property address' },
   { tag: '{{company.name}}', label: 'Company name' },
   { tag: '{{company.phone}}', label: 'Company phone' },
   { tag: '{{assigned_user.first_name}}', label: 'Assigned rep first name' },
