@@ -39,7 +39,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [contactSearch, setContactSearch] = useState('');
   const [showContactResults, setShowContactResults] = useState(false);
   const [script, setScript] = useState('');
-  const [dailyLimit, setDailyLimit] = useState<number>(100);
+  const [maxAttemptsPerContact, setMaxAttemptsPerContact] = useState<number>(1);
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showListBuilder, setShowListBuilder] = useState(false);
