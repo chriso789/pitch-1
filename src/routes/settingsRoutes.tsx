@@ -20,6 +20,7 @@ export default function SettingsRoutes() {
         <Route index element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
         <Route path="ai-admin" element={<ProtectedRoute><AIAdminPage /></ProtectedRoute>} />
+        <Route path="company-referrals" element={<ProtectedRoute><CompanyReferralSettingsPage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
