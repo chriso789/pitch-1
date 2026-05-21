@@ -163,7 +163,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
   const isValid = sendMode === 'single'
     ? name.trim() && manualPhone.trim() && script.trim()
-    : name.trim() && selectedListId && script.trim() && (listItems?.length || 0) > 0;
+    : name.trim() && selectedStatusKey && script.trim() && (listItems?.length || 0) > 0;
 
   const handleSend = async () => {
     if (!isValid || !activeTenantId) return;
