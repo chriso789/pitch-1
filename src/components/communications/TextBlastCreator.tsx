@@ -573,7 +573,34 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             </CardContent>
           </Card>
 
+          {sendMode === 'list' && preflight && (preflight.missingAddress > 0 || preflight.optedOut > 0 || isEmailCaptureGoal) && (
+            <div className="rounded-md border border-border bg-muted/40 p-3 space-y-1.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pre-flight summary</p>
+              <div className="text-xs grid grid-cols-3 gap-2">
+                <div><span className="font-semibold text-foreground">{preflight.eligible}</span> <span className="text-muted-foreground">eligible</span></div>
+                <div><span className="font-semibold text-amber-600">{preflight.missingAddress}</span> <span className="text-muted-foreground">missing address</span></div>
+                <div><span className="font-semibold text-destructive">{preflight.optedOut}</span> <span className="text-muted-foreground">opted out</span></div>
+              </div>
+              {isEmailCaptureGoal && preflight.missingAddress > 0 && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Email-capture campaigns auto-skip contacts without a street address — these {preflight.missingAddress} will not be sent.
+                </p>
+              )}
+            </div>
+          )}
+
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Dry run — render and store messages, do NOT send via Telnyx
+          </label>
+
           <div className="flex gap-2">
+
 
             <Button
               onClick={handleSend}
