@@ -243,14 +243,23 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
         if (itemsError) throw itemsError;
 
-        const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+        // Personalize messages first (locks `personalized_message` per item before any send).
+        // This is the safety gate that prevents address-cross-contamination on email-capture campaigns.
+        await supabase.functions.invoke('generate-campaign-messages', {
           body: { blast_id: blast.id },
         });
 
-        if (processorError) {
-          toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+        if (!dryRun) {
+          const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+            body: { blast_id: blast.id },
+          });
+          if (processorError) {
+            toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+          } else {
+            toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+          }
         } else {
-          toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+          toast({ title: 'Dry run complete', description: `Rendered ${listItems!.length} messages. Nothing was sent.` });
         }
 
         onCreated(blast.id);
