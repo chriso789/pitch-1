@@ -56,8 +56,30 @@ function stageIndex(status?: string | null, hasExternalId?: boolean): number {
   if (s.includes('deliver') || s === 'iu') return 3;
   if (s.includes('ship') || s === 'du' || s.includes('out_for')) return 2;
   if (s.includes('confirm') || s.includes('process') || s.includes('received') || s === 'oc' || s === 'acknowledged') return 1;
-  if (s.includes('submit') || s === 'ou' || hasExternalId) return 0;
+  if (s.includes('submit') || s === 'ou' || s === 'queued' || hasExternalId) return 0;
   return 0;
+}
+
+const SRS_STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  queued: 'Queued at SRS',
+  submitted: 'Submitted',
+  accepted: 'Accepted',
+  rejected_by_srs: 'Rejected by SRS',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+  canceled: 'Cancelled',
+  ou: 'Submitted',
+  oc: 'Confirmed by SRS',
+  du: 'Out for Delivery',
+  iu: 'Invoiced / Delivered',
+};
+
+function prettyStatus(raw?: string | null): string {
+  const s = (raw || '').toLowerCase();
+  if (!s) return 'Unknown';
+  if (SRS_STATUS_LABELS[s]) return SRS_STATUS_LABELS[s];
+  return raw!.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function LiveOrderTracker({ projectId, compact = false }: Props) {
