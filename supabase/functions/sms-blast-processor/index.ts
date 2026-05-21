@@ -133,14 +133,36 @@ async function processBlast(
     return { blast_id: blast.id, error: 'no_active_numbers' };
   }
 
-  // Cap per-tick batch by minute capacity AND daily room
-  const minuteCapacity = Math.max(1, Math.floor(totalMps * 60));
+  // Cap per-tick batch by minute capacity AND launch-control hard limit
+  const requestedLimit = Math.min(
+    Math.max(1, opts.limit ?? DEFAULT_LIMIT_PER_INVOCATION),
+    HARD_LIMIT_PER_INVOCATION,
+  );
+  const minuteCapacity = Math.min(requestedLimit, Math.max(1, Math.floor(totalMps * 60)));
+
+  // Dry-run mode short-circuits: do not claim or send, just report state.
+  if (opts.dryRun) {
+    const { count: pendingCount } = await supabase
+      .from('sms_blast_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('blast_id', blast.id)
+      .in('status', ['pending', 'rendered']);
+    await supabase
+      .from('sms_blasts')
+      .update({ last_processor_run_at: new Date().toISOString() })
+      .eq('id', blast.id);
+    return { blast_id: blast.id, dry_run: true, remaining: pendingCount ?? 0 };
+  }
 
   // 2. Atomic claim
   const { data: claimed, error: claimError } = await supabase.rpc('claim_sms_blast_items', {
     p_blast_id: blast.id,
     p_limit: minuteCapacity,
   });
+  if (claimError) {
+    console.error('[blast-worker] claim error', claimError);
+    return { blast_id: blast.id, error: claimError.message };
+  }
   if (claimError) {
     console.error('[blast-worker] claim error', claimError);
     return { blast_id: blast.id, error: claimError.message };
