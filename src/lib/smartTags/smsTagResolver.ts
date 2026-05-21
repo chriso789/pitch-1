@@ -35,6 +35,9 @@ const FALLBACKS: Record<string, string> = {
   'contact.first_name': 'there',
   'contact.last_name': '',
   'contact.address1': 'your property',
+  'contact.address_street': 'your property',
+  'contact.street': 'your property',
+  'contact.address': 'your property',
   'contact.full_address': 'your property',
   'contact.city': 'your area',
   'contact.state': 'FL',
@@ -59,7 +62,10 @@ function pick(ctx: SmsTagContext, key: string): string | null | undefined {
   switch (key) {
     case 'contact.first_name': return ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
-    case 'contact.address1': return ctx.contact?.address1 || ctx.contact?.address;
+    case 'contact.address1':
+    case 'contact.address':
+    case 'contact.address_street':
+    case 'contact.street': return ctx.contact?.address1 || ctx.contact?.address;
     case 'contact.full_address': return buildFullAddress(ctx.contact);
     case 'contact.city': return ctx.contact?.city;
     case 'contact.state': return ctx.contact?.state;
