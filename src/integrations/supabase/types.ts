@@ -10154,6 +10154,113 @@ export type Database = {
           },
         ]
       }
+      crm_referral_company_signups: {
+        Row: {
+          admin_user_id: string | null
+          churned_at: string | null
+          company_email: string
+          company_id: string | null
+          company_name: string
+          company_phone: string | null
+          created_at: string
+          first_invoice_amount: number | null
+          first_year_value: number | null
+          fraud_flag: boolean
+          id: string
+          link_id: string | null
+          metadata: Json | null
+          notes: string | null
+          paid_at: string | null
+          partner_id: string
+          payout_eligible: boolean
+          payout_eligible_at: string | null
+          payout_id: string | null
+          signup_status: Database["public"]["Enums"]["crm_signup_status"]
+          subscription_plan: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          admin_user_id?: string | null
+          churned_at?: string | null
+          company_email: string
+          company_id?: string | null
+          company_name: string
+          company_phone?: string | null
+          created_at?: string
+          first_invoice_amount?: number | null
+          first_year_value?: number | null
+          fraud_flag?: boolean
+          id?: string
+          link_id?: string | null
+          metadata?: Json | null
+          notes?: string | null
+          paid_at?: string | null
+          partner_id: string
+          payout_eligible?: boolean
+          payout_eligible_at?: string | null
+          payout_id?: string | null
+          signup_status?: Database["public"]["Enums"]["crm_signup_status"]
+          subscription_plan?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          admin_user_id?: string | null
+          churned_at?: string | null
+          company_email?: string
+          company_id?: string | null
+          company_name?: string
+          company_phone?: string | null
+          created_at?: string
+          first_invoice_amount?: number | null
+          first_year_value?: number | null
+          fraud_flag?: boolean
+          id?: string
+          link_id?: string | null
+          metadata?: Json | null
+          notes?: string | null
+          paid_at?: string | null
+          partner_id?: string
+          payout_eligible?: boolean
+          payout_eligible_at?: string | null
+          payout_id?: string | null
+          signup_status?: Database["public"]["Enums"]["crm_signup_status"]
+          subscription_plan?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_company_signups_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_company_signups_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_company_signups_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_company_signups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_referral_links: {
         Row: {
           click_count: number
@@ -10307,6 +10414,152 @@ export type Database = {
             foreignKeyName: "crm_referral_partners_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_referral_payout_profiles: {
+        Row: {
+          account_name: string | null
+          account_number_last4: string | null
+          bank_name: string | null
+          created_at: string
+          id: string
+          is_verified: boolean
+          partner_id: string
+          payment_method: string
+          paypal_email: string | null
+          routing_number: string | null
+          tenant_id: string
+          updated_at: string
+          venmo_handle: string | null
+          verification_method: string | null
+        }
+        Insert: {
+          account_name?: string | null
+          account_number_last4?: string | null
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean
+          partner_id: string
+          payment_method: string
+          paypal_email?: string | null
+          routing_number?: string | null
+          tenant_id: string
+          updated_at?: string
+          venmo_handle?: string | null
+          verification_method?: string | null
+        }
+        Update: {
+          account_name?: string | null
+          account_number_last4?: string | null
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean
+          partner_id?: string
+          payment_method?: string
+          paypal_email?: string | null
+          routing_number?: string | null
+          tenant_id?: string
+          updated_at?: string
+          venmo_handle?: string | null
+          verification_method?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_payout_profiles_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_payout_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_referral_program_settings: {
+        Row: {
+          auto_approve_partners: boolean
+          created_at: string
+          custom_terms: string | null
+          default_partner_tier: Database["public"]["Enums"]["crm_partner_tier"]
+          default_payout_type: Database["public"]["Enums"]["crm_payout_type"]
+          default_payout_value: number
+          duplicate_company_check: boolean
+          email_notifications: boolean
+          first_invoice_percentage: number | null
+          first_year_percentage: number | null
+          fraud_checks_enabled: boolean
+          id: string
+          max_velocity_per_hour: number | null
+          min_payout_threshold: number | null
+          payout_schedule: string | null
+          program_enabled: boolean
+          self_referral_block: boolean
+          signup_bonus_amount: number | null
+          signup_bonus_enabled: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_approve_partners?: boolean
+          created_at?: string
+          custom_terms?: string | null
+          default_partner_tier?: Database["public"]["Enums"]["crm_partner_tier"]
+          default_payout_type?: Database["public"]["Enums"]["crm_payout_type"]
+          default_payout_value?: number
+          duplicate_company_check?: boolean
+          email_notifications?: boolean
+          first_invoice_percentage?: number | null
+          first_year_percentage?: number | null
+          fraud_checks_enabled?: boolean
+          id?: string
+          max_velocity_per_hour?: number | null
+          min_payout_threshold?: number | null
+          payout_schedule?: string | null
+          program_enabled?: boolean
+          self_referral_block?: boolean
+          signup_bonus_amount?: number | null
+          signup_bonus_enabled?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_approve_partners?: boolean
+          created_at?: string
+          custom_terms?: string | null
+          default_partner_tier?: Database["public"]["Enums"]["crm_partner_tier"]
+          default_payout_type?: Database["public"]["Enums"]["crm_payout_type"]
+          default_payout_value?: number
+          duplicate_company_check?: boolean
+          email_notifications?: boolean
+          first_invoice_percentage?: number | null
+          first_year_percentage?: number | null
+          fraud_checks_enabled?: boolean
+          id?: string
+          max_velocity_per_hour?: number | null
+          min_payout_threshold?: number | null
+          payout_schedule?: string | null
+          program_enabled?: boolean
+          self_referral_block?: boolean
+          signup_bonus_amount?: number | null
+          signup_bonus_enabled?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_program_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
