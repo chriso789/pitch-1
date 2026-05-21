@@ -195,6 +195,9 @@ const AppContent = () => {
         <Route path="/pay/:token" element={<Suspense fallback={<PageLoader />}><ZellePaymentPage /></Suspense>} />
         <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><Unsubscribe /></Suspense>} />
         <Route path="/co/:token" element={<Suspense fallback={<PageLoader />}><PublicChangeOrderView /></Suspense>} />
+        <Route path="/ref/:referralCode/reward" element={<Suspense fallback={<PageLoader />}><PublicReferralReward /></Suspense>} />
+        <Route path="/ref/:referralCode" element={<Suspense fallback={<PageLoader />}><PublicReferralLanding /></Suspense>} />
+        <Route path="/signup-ref/:partnerCode" element={<Suspense fallback={<PageLoader />}><PublicCrmReferralSignup /></Suspense>} />
 
         {/* All other paths → protected app routes */}
         <Route path="/*" element={<ProtectedRoutes />} />
