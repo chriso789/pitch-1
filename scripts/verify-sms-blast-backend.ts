@@ -85,6 +85,7 @@ const REQUIRED_FUNCTIONS = [
   'telnyx-send-sms',
   'telnyx-inbound-webhook',
   'ai-followup-worker',
+  'admin-cleanup-sms-templates',
 ];
 const fnDir = join(process.cwd(), 'supabase', 'functions');
 for (const fn of REQUIRED_FUNCTIONS) {
