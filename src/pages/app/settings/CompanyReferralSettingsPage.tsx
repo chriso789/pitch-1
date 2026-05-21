@@ -10,7 +10,7 @@ import { CompanyReferralFlagsTable } from "@/components/company-referrals/settin
 import { CompanyReferralAnalytics } from "@/components/company-referrals/settings/CompanyReferralAnalytics";
 
 export default function CompanyReferralSettingsPage() {
-  const { effectiveTenantId } = useEffectiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
 
   if (!effectiveTenantId) {
     return <div className="p-6 text-muted-foreground">Select a company to manage referrals.</div>;

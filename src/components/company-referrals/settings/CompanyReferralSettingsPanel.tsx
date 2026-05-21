@@ -35,10 +35,10 @@ const DEFAULTS = {
 export function CompanyReferralSettingsPanel({ tenantId }: { tenantId: string }) {
   const { data, isLoading } = useCompanyReferralSettings(tenantId);
   const save = useSaveCompanyReferralSettings(tenantId);
-  const [form, setForm] = useState<any>(null);
+  const [form, setForm] = useState<Record<string, any> | null>(null);
 
-  const value = form ?? { ...DEFAULTS, ...(data ?? {}) };
-  const set = (k: string, v: any) => setForm({ ...(value as any), [k]: v });
+  const value: Record<string, any> = form ?? { ...DEFAULTS, ...((data as Record<string, any>) ?? {}) };
+  const set = (k: string, v: any) => setForm({ ...value, [k]: v });
 
   if (isLoading) return <div className="p-6 text-muted-foreground">Loading settings…</div>;
 
