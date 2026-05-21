@@ -692,19 +692,31 @@ Deno.serve(async (req) => {
       const branchNumber = (body.branchNumber || body.branch_code || Deno.env.get("ABC_DEFAULT_BRANCH") || "0001").toString();
       const shipToNumber = (body.shipToNumber || Deno.env.get("ABC_ACCOUNT_NUMBER") || "TEST-ACCOUNT").toString();
       const itemNumber = (body.itemNumber || "TEST-SHINGLE-001").toString();
+      const ts = Date.now();
 
       const orderObj = body.order ?? {
-        sourceSystem: "PITCH",
-        purchaseOrderNumber: `PITCH-TEST-${Date.now()}`,
+        requestId: `PITCH-TEST-${ts}`,
+        purchaseOrder: `PITCH-TEST-${ts}`,
         branchNumber,
-        shipToNumber,
-        deliveryType: "PICKUP",
-        notes: "PITCH integration sandbox smoke test — please ignore",
+        deliveryService: "CPU",
+        typeCode: "SO",
+        currency: "USD",
+        shipTo: {
+          name: "ABC Sandbox Test",
+          number: shipToNumber,
+          address: {
+            line1: "123 Test Street",
+            city: "North Port",
+            state: "FL",
+            postal: "34286",
+            country: "USA",
+          },
+        },
         lines: [{
-          lineNumber: 1,
+          id: 1,
           itemNumber,
-          quantity: 1,
-          unitOfMeasure: "EA",
+          itemDescription: "Sandbox test item",
+          orderedQty: { value: 1, uom: "EA" },
         }],
       };
 
@@ -729,6 +741,7 @@ Deno.serve(async (req) => {
         timestamp: new Date().toISOString(),
       });
     }
+
 
     // ---------------- place_order / submit_order (legacy) ----------------
     if (action === "place_order" || action === "submit_order") {
