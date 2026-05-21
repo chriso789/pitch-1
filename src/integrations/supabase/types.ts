@@ -10154,6 +10154,64 @@ export type Database = {
           },
         ]
       }
+      crm_referral_account_credit_ledger: {
+        Row: {
+          amount: number
+          balance_after: number
+          created_at: string
+          description: string | null
+          id: string
+          partner_id: string
+          signup_id: string | null
+          tenant_id: string
+          transaction_type: Database["public"]["Enums"]["crm_credit_transaction_type"]
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          partner_id: string
+          signup_id?: string | null
+          tenant_id: string
+          transaction_type: Database["public"]["Enums"]["crm_credit_transaction_type"]
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          partner_id?: string
+          signup_id?: string | null
+          tenant_id?: string
+          transaction_type?: Database["public"]["Enums"]["crm_credit_transaction_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_account_credit_ledger_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_account_credit_ledger_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_company_signups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_account_credit_ledger_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_referral_company_signups: {
         Row: {
           admin_user_id: string | null
@@ -10254,6 +10312,73 @@ export type Database = {
           },
           {
             foreignKeyName: "crm_referral_company_signups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_referral_flags: {
+        Row: {
+          created_at: string
+          flag_details: string | null
+          flag_reason: Database["public"]["Enums"]["crm_flag_reason"]
+          id: string
+          partner_id: string | null
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string | null
+          signup_id: string | null
+          status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          flag_details?: string | null
+          flag_reason: Database["public"]["Enums"]["crm_flag_reason"]
+          id?: string
+          partner_id?: string | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string | null
+          signup_id?: string | null
+          status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          flag_details?: string | null
+          flag_reason?: Database["public"]["Enums"]["crm_flag_reason"]
+          id?: string
+          partner_id?: string | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string | null
+          signup_id?: string | null
+          status?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_flags_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_flags_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_company_signups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_flags_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -10485,6 +10610,88 @@ export type Database = {
           },
         ]
       }
+      crm_referral_payouts: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          calculation_basis: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          notes: string | null
+          paid_at: string | null
+          partner_id: string
+          payment_method: string | null
+          payment_reference: string | null
+          payout_amount: number
+          payout_status: string
+          payout_type: Database["public"]["Enums"]["crm_payout_type"]
+          signup_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          calculation_basis?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          paid_at?: string | null
+          partner_id: string
+          payment_method?: string | null
+          payment_reference?: string | null
+          payout_amount: number
+          payout_status?: string
+          payout_type: Database["public"]["Enums"]["crm_payout_type"]
+          signup_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          calculation_basis?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          paid_at?: string | null
+          partner_id?: string
+          payment_method?: string | null
+          payment_reference?: string | null
+          payout_amount?: number
+          payout_status?: string
+          payout_type?: Database["public"]["Enums"]["crm_payout_type"]
+          signup_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_payouts_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_payouts_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_company_signups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_payouts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_referral_program_settings: {
         Row: {
           auto_approve_partners: boolean
@@ -10631,6 +10838,67 @@ export type Database = {
           },
           {
             foreignKeyName: "crm_referral_signup_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_referral_status_history: {
+        Row: {
+          change_reason: string | null
+          changed_by: string | null
+          created_at: string
+          entity_type: string
+          id: string
+          new_status: string
+          old_status: string | null
+          partner_id: string | null
+          signup_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          change_reason?: string | null
+          changed_by?: string | null
+          created_at?: string
+          entity_type: string
+          id?: string
+          new_status: string
+          old_status?: string | null
+          partner_id?: string | null
+          signup_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          change_reason?: string | null
+          changed_by?: string | null
+          created_at?: string
+          entity_type?: string
+          id?: string
+          new_status?: string
+          old_status?: string | null
+          partner_id?: string | null
+          signup_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_status_history_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_status_history_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_company_signups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_referral_status_history_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
