@@ -101,6 +101,32 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     }
   };
 
+  const [launching, setLaunching] = useState(false);
+  const handleSendNow = async () => {
+    setLaunching(true);
+    try {
+      const { error } = await supabase
+        .from('sms_blasts')
+        .update({
+          status: 'sending',
+          send_window_start: '00:00:00',
+          send_window_end: '23:59:00',
+          started_at: new Date().toISOString(),
+        })
+        .eq('id', blastId);
+      if (error) throw error;
+      toast({ title: 'Blast launched', description: 'Sending now — the processor will pick it up within ~60s.' });
+      // Kick the processor immediately so we don't wait for cron
+      supabase.functions.invoke('sms-blast-processor', { body: {} }).catch(() => {});
+      refetch();
+      refetchItems();
+    } catch (e: any) {
+      toast({ title: 'Launch failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setLaunching(false);
+    }
+  };
+
   if (!blast) return null;
 
   const progress = blast.total_recipients > 0
