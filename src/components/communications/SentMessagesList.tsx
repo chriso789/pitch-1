@@ -41,6 +41,17 @@ const getContactDisplayName = (contact: any, fallback: string) => {
   return junkFirstName ? fallback : fullName || fallback;
 };
 
+const stripJunkGreetingName = (body: string, contact: any) => {
+  const firstName = String(contact?.first_name || '').trim();
+  if (!firstName) return body;
+  const street = String(contact?.address_street || '').trim().toLowerCase();
+  const fullName = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+  const junkFirstName = /^\d/.test(firstName) || ADDRESS_TOKEN_RE.test(firstName) || (street && (street.includes(firstName.toLowerCase()) || fullName === street));
+  if (!junkFirstName) return body;
+  const escaped = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return body.replace(new RegExp(`\\b(Hi|Hello|Hey)\\s+${escaped}\\s*,`, 'gi'), '$1,').replace(/[ \t]{2,}/g, ' ');
+};
+
 interface Props {
   onSelect?: (row: { contact_id: string | null; phone: string; name: string }) => void;
   selectedKey?: string;
@@ -77,7 +88,7 @@ export const SentMessagesList = ({ onSelect, selectedKey }: Props) => {
             contact_id: m.contact_id,
             phone: m.to_number,
             name,
-            body: m.body || '',
+            body: stripJunkGreetingName(m.body || '', m.contacts),
             sent_at: m.sent_at || m.created_at,
             status: m.status || 'sent',
             count: 1,
