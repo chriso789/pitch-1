@@ -56,26 +56,62 @@ async function enqueueReview(svc: ReturnType<typeof serviceClient>, tenantId: st
   });
 }
 
-// POST /parse/roof-report  { document_id }
+// POST /parse/roof-report
+//   Accepted payloads:
+//     { document_id }                          → load from documents row, persist
+//     { bucket, path }                         → direct storage read, transient (no persist)
+//     { storage_path: "<bucket>/<path>" }      → convenience direct form, transient
 app.post("/parse/roof-report", async (c) => {
   const tenantId = c.get("tenantId")!;
   const userId = c.get("userId") ?? null;
-  const { document_id } = await c.req.json().catch(() => ({}));
-  if (!document_id) return jsonErr(c, "bad_request", "document_id required", 400);
+  const body = await c.req.json().catch(() => ({}));
   const svc = serviceClient();
   const t0 = Date.now();
 
+  // ---- Resolve text source ----
+  let document_id: string | null = typeof body.document_id === "string" ? body.document_id : null;
+  let bucket: string | null = typeof body.bucket === "string" ? body.bucket : null;
+  let path: string | null = typeof body.path === "string" ? body.path : null;
+
+  if (!document_id && !bucket && typeof body.storage_path === "string") {
+    const [b, ...rest] = body.storage_path.split("/");
+    bucket = b;
+    path = rest.join("/");
+  }
+
+  if (!document_id && (!bucket || !path)) {
+    return jsonErr(c, "bad_request", "Provide document_id OR {bucket,path} OR storage_path", 400);
+  }
+
+  // Tenant scoping for direct storage reads: enforce {tenant_id}/... convention.
+  if (!document_id && path) {
+    const firstSeg = path.split("/")[0];
+    if (firstSeg !== tenantId) {
+      return jsonErr(c, "forbidden", "storage path must start with active tenant_id", 403);
+    }
+  }
+
   try {
-    const { text } = await loadDocText(svc, tenantId, document_id);
+    let text: Awaited<ReturnType<typeof extractPdfText>>;
+    if (document_id) {
+      const r = await loadDocText(svc, tenantId, document_id);
+      text = r.text;
+    } else {
+      const bytes = await downloadStorageObject(svc, bucket!, path!);
+      text = await extractPdfText(bytes);
+    }
 
     if (!text.has_selectable_text) {
-      const runId = await persistRun(svc, tenantId, document_id, {
-        parser_name: "roof-report-router", parser_version: "v1", parser_tier: "deterministic",
-        document_type: "roof_report", status: "failed", confidence_score: 0, duration_ms: Date.now() - t0,
-        page_count: text.page_count, extracted_field_count: 0, missing_fields: [],
-        validation_errors: null, error_message: "no_selectable_text", triggered_by: userId,
-      });
-      await enqueueReview(svc, tenantId, document_id, runId, "no_text_extracted", "PDF has no selectable text; OCR tier required.");
+      let runId: string | null = null;
+      if (document_id) {
+        runId = await persistRun(svc, tenantId, document_id, {
+          parser_name: "roof-report-router", parser_version: "v1", parser_tier: "deterministic",
+          document_type: "roof_report", status: "failed", confidence_score: 0, duration_ms: Date.now() - t0,
+          page_count: text.page_count, extracted_field_count: 0, missing_fields: [],
+          validation_errors: null, error_message: "no_selectable_text", triggered_by: userId,
+        });
+        await enqueueReview(svc, tenantId, document_id, runId, "no_text_extracted", "PDF has no selectable text; OCR tier required.");
+      }
       return jsonErr(c, "no_selectable_text", "PDF appears image-based; OCR tier not enabled in this slice.", 422);
     }
 
@@ -83,31 +119,37 @@ app.post("/parse/roof-report", async (c) => {
     const rf = parseRoofrRoofReport(text.full_text);
     const winner = ev.overall_confidence >= rf.overall_confidence ? ev : rf;
 
-    const runId = await persistRun(svc, tenantId, document_id, {
-      parser_name: winner.parser_name, parser_version: winner.parser_version, parser_tier: "deterministic",
-      vendor_type: winner.vendor_type, document_type: "roof_report",
-      status: winner.requires_review ? "low_confidence" : "succeeded",
-      confidence_score: Number(winner.overall_confidence.toFixed(4)),
-      duration_ms: Date.now() - t0, page_count: text.page_count,
-      extracted_field_count: Object.keys(winner.field_confidences).length,
-      missing_fields: winner.missing_fields, validation_errors: winner.validation_errors, triggered_by: userId,
-    });
+    let runId: string | null = null;
+    let extractionId: string | null = null;
+    if (document_id) {
+      runId = await persistRun(svc, tenantId, document_id, {
+        parser_name: winner.parser_name, parser_version: winner.parser_version, parser_tier: "deterministic",
+        vendor_type: winner.vendor_type, document_type: "roof_report",
+        status: winner.requires_review ? "low_confidence" : "succeeded",
+        confidence_score: Number(winner.overall_confidence.toFixed(4)),
+        duration_ms: Date.now() - t0, page_count: text.page_count,
+        extracted_field_count: Object.keys(winner.field_confidences).length,
+        missing_fields: winner.missing_fields, validation_errors: winner.validation_errors, triggered_by: userId,
+      });
 
-    const up = await upsertExtraction(svc, tenantId, document_id, {
-      document_type: "roof_report", vendor_type: winner.vendor_type,
-      parser_name: winner.parser_name, parser_version: winner.parser_version, parser_tier: "deterministic",
-      extracted_json: winner.data, field_confidences: winner.field_confidences,
-      overall_confidence: Number(winner.overall_confidence.toFixed(4)),
-      requires_review: winner.requires_review,
-    });
+      const up = await upsertExtraction(svc, tenantId, document_id, {
+        document_type: "roof_report", vendor_type: winner.vendor_type,
+        parser_name: winner.parser_name, parser_version: winner.parser_version, parser_tier: "deterministic",
+        extracted_json: winner.data, field_confidences: winner.field_confidences,
+        overall_confidence: Number(winner.overall_confidence.toFixed(4)),
+        requires_review: winner.requires_review,
+      });
+      extractionId = up.id ?? null;
 
-    if (winner.requires_review) {
-      await enqueueReview(svc, tenantId, document_id, runId, "low_confidence",
-        `overall=${winner.overall_confidence.toFixed(3)} missing=[${winner.missing_fields.join(",")}]`);
+      if (winner.requires_review) {
+        await enqueueReview(svc, tenantId, document_id, runId, "low_confidence",
+          `overall=${winner.overall_confidence.toFixed(3)} missing=[${winner.missing_fields.join(",")}]`);
+      }
     }
 
     return jsonOk(c, {
-      extraction_id: up.id, parser_run_id: runId,
+      mode: document_id ? "persisted" : "transient",
+      extraction_id: extractionId, parser_run_id: runId,
       vendor_type: winner.vendor_type, confidence_score: winner.overall_confidence,
       requires_review: winner.requires_review, missing_fields: winner.missing_fields,
       validation_errors: winner.validation_errors, extracted: winner.data,
