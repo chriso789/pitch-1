@@ -404,6 +404,19 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const hasStopClause = /stop/i.test(previewSourceScript);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
+  // Source of truth for what actually gets sent:
+  // - Rotation OFF (default): only the previewed template is sent to every recipient.
+  // - Rotation ON: rotate across all selected templates.
+  const effectiveTemplatePoolIds =
+    rotateTemplates && selectedTemplateIds.length > 1
+      ? selectedTemplateIds
+      : activePreviewTemplate
+        ? [activePreviewTemplate.id]
+        : selectedTemplateIds.length
+          ? [selectedTemplateIds[0]]
+          : null;
+  const effectiveScript = activePreviewTemplate?.template_body?.trim() || script.trim();
+
   const isValid = sendMode === 'single'
     ? !!(name.trim() && manualPhone.trim() && script.trim())
     : sendMode === 'custom'
