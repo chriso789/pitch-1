@@ -1,13 +1,14 @@
 /**
- * Unified Inbox Component
- * Displays all communications in a single list with filtering
+ * Unified Inbox Component — Grouped by Client
+ * One row per contact (or phone number) with latest message preview and aggregated unread count.
+ * Clicking a row opens the full back-and-forth thread for that client in the detail panel.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { 
-  Phone, MessageSquare, Mail, Voicemail, Star, Archive, 
-  PhoneIncoming, PhoneOutgoing, Check, MoreHorizontal 
+import {
+  Phone, MessageSquare, Mail, Voicemail, Star, Archive,
+  PhoneIncoming, PhoneOutgoing, Check, MoreHorizontal
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,33 +30,89 @@ interface UnifiedInboxProps {
   selectedItemId?: string;
 }
 
-export const UnifiedInbox = ({ 
-  onSelectItem, 
+interface ContactGroup {
+  key: string;
+  contactId: string | null;
+  phoneNumber: string | null;
+  contactName: string;
+  latest: UnifiedInboxItem;
+  unreadCount: number;
+  channels: Set<string>;
+  items: UnifiedInboxItem[];
+}
+
+export const UnifiedInbox = ({
+  onSelectItem,
   onCallContact,
-  selectedItemId 
+  selectedItemId,
 }: UnifiedInboxProps) => {
   const [filter, setFilter] = useState<'all' | 'sms' | 'call' | 'voicemail'>('all');
-  const { 
-    inboxItems, 
-    inboxLoading, 
+  const {
+    inboxItems,
+    inboxLoading,
     unreadCounts,
     markAsRead,
     toggleStarred,
-    archiveItem 
+    archiveItem,
   } = useCommunications();
 
-  const filteredItems = inboxItems.filter(item => {
-    if (filter === 'all') return true;
-    return item.channel === filter;
-  });
+  // Group items by contact (fallback to phone number) so each client shows once
+  const groupedContacts = useMemo<ContactGroup[]>(() => {
+    const filtered = inboxItems.filter(item =>
+      filter === 'all' ? true : item.channel === filter
+    );
+
+    const groups = new Map<string, ContactGroup>();
+
+    for (const item of filtered) {
+      const key =
+        item.contact_id ||
+        item.phone_number ||
+        `unknown-${item.id}`;
+
+      const name = item.contact
+        ? `${item.contact.first_name} ${item.contact.last_name}`.trim()
+        : item.phone_number || 'Unknown';
+
+      const existing = groups.get(key);
+      if (!existing) {
+        groups.set(key, {
+          key,
+          contactId: item.contact_id,
+          phoneNumber: item.phone_number,
+          contactName: name,
+          latest: item,
+          unreadCount: item.is_read ? 0 : 1,
+          channels: new Set([item.channel]),
+          items: [item],
+        });
+      } else {
+        existing.items.push(item);
+        existing.channels.add(item.channel);
+        if (!item.is_read) existing.unreadCount += 1;
+        if (new Date(item.created_at) > new Date(existing.latest.created_at)) {
+          existing.latest = item;
+        }
+        if (!existing.phoneNumber && item.phone_number) {
+          existing.phoneNumber = item.phone_number;
+        }
+      }
+    }
+
+    return Array.from(groups.values()).sort(
+      (a, b) =>
+        new Date(b.latest.created_at).getTime() -
+        new Date(a.latest.created_at).getTime()
+    );
+  }, [inboxItems, filter]);
 
   const getChannelIcon = (channel: string, direction: string) => {
     switch (channel) {
       case 'sms':
         return <MessageSquare className="h-4 w-4" />;
       case 'call':
-        return direction === 'inbound' 
-          ? <PhoneIncoming className="h-4 w-4" /> 
+        return direction === 'inbound'
+          ? <PhoneIncoming className="h-4 w-4" />
           : <PhoneOutgoing className="h-4 w-4" />;
       case 'voicemail':
         return <Voicemail className="h-4 w-4" />;
@@ -81,12 +138,18 @@ export const UnifiedInbox = ({
     }
   };
 
-  const handleItemClick = (item: UnifiedInboxItem) => {
-    if (!item.is_read) {
-      markAsRead(item.id);
-    }
-    onSelectItem?.(item);
+  const handleGroupClick = (group: ContactGroup) => {
+    // Mark all unread items for this client as read
+    group.items
+      .filter(i => !i.is_read)
+      .forEach(i => markAsRead(i.id));
+    // Open the conversation by selecting the latest item (detail panel
+    // loads full back-and-forth by phone number).
+    onSelectItem?.(group.latest);
   };
+
+  const isGroupSelected = (group: ContactGroup) =>
+    !!selectedItemId && group.items.some(i => i.id === selectedItemId);
 
   return (
     <Card className="h-full flex flex-col">
@@ -138,106 +201,123 @@ export const UnifiedInbox = ({
           </TabsList>
         </Tabs>
       </CardHeader>
-      
+
       <CardContent className="flex-1 p-0 overflow-hidden">
         <ScrollArea className="h-full">
           {inboxLoading ? (
             <div className="p-4 text-center text-muted-foreground">
               Loading...
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : groupedContacts.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No messages</p>
             </div>
           ) : (
             <div className="divide-y">
-              {filteredItems.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => handleItemClick(item)}
-                  className={cn(
-                    'p-3 cursor-pointer hover:bg-muted/50 transition-colors',
-                    !item.is_read && 'bg-primary/5',
-                    selectedItemId === item.id && 'bg-primary/10'
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Channel Icon */}
-                    <div className={cn('p-2 rounded-full shrink-0', getChannelColor(item.channel))}>
-                      {getChannelIcon(item.channel, item.direction)}
-                    </div>
-                    
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={cn(
-                            'font-medium truncate',
-                            !item.is_read && 'font-semibold'
-                          )}>
-                            {item.contact 
-                              ? `${item.contact.first_name} ${item.contact.last_name}`
-                              : item.phone_number || 'Unknown'
-                            }
-                          </span>
-                          {!item.is_read && (
-                            <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {format(new Date(item.created_at), 'MMM d, h:mm a')}
-                        </span>
+              {groupedContacts.map((group) => {
+                const latest = group.latest;
+                const isUnread = group.unreadCount > 0;
+                const selected = isGroupSelected(group);
+                return (
+                  <div
+                    key={group.key}
+                    onClick={() => handleGroupClick(group)}
+                    className={cn(
+                      'p-3 cursor-pointer hover:bg-muted/50 transition-colors',
+                      isUnread && 'bg-primary/5',
+                      selected && 'bg-primary/10'
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Channel icon (latest channel) */}
+                      <div className={cn('p-2 rounded-full shrink-0', getChannelColor(latest.channel))}>
+                        {getChannelIcon(latest.channel, latest.direction)}
                       </div>
-                      
-                      <p className="text-sm text-muted-foreground truncate mt-0.5">
-                        {item.direction === 'outbound' && (
-                          <Check className="h-3 w-3 inline mr-1" />
-                        )}
-                        {item.content || `${item.channel} ${item.direction}`}
-                      </p>
-                    </div>
-                    
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStarred({ id: item.id, isStarred: item.is_starred });
-                        }}
-                      >
-                        <Star className={cn(
-                          'h-4 w-4',
-                          item.is_starred && 'fill-yellow-400 text-yellow-400'
-                        )} />
-                      </Button>
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {item.phone_number && (
-                            <DropdownMenuItem onClick={() => onCallContact?.(item.phone_number!)}>
-                              <Phone className="h-4 w-4 mr-2" />
-                              Call
-                            </DropdownMenuItem>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn(
+                              'font-medium truncate',
+                              isUnread && 'font-semibold'
+                            )}>
+                              {group.contactName}
+                            </span>
+                            {isUnread && (
+                              <Badge variant="destructive" className="h-4 px-1.5 text-[10px] shrink-0">
+                                {group.unreadCount}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {format(new Date(latest.created_at), 'MMM d, h:mm a')}
+                          </span>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground truncate mt-0.5">
+                          {latest.direction === 'outbound' && (
+                            <Check className="h-3 w-3 inline mr-1" />
                           )}
-                          <DropdownMenuItem onClick={() => archiveItem(item.id)}>
-                            <Archive className="h-4 w-4 mr-2" />
-                            Archive
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          {latest.content || `${latest.channel} ${latest.direction}`}
+                        </p>
+
+                        {/* Channel mix indicator */}
+                        {group.channels.size > 1 && (
+                          <div className="flex items-center gap-1 mt-1 text-muted-foreground">
+                            {Array.from(group.channels).map((ch) => (
+                              <span key={ch} className={cn('p-0.5 rounded', getChannelColor(ch))}>
+                                {getChannelIcon(ch, 'inbound')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStarred({ id: latest.id, isStarred: latest.is_starred });
+                          }}
+                        >
+                          <Star className={cn(
+                            'h-4 w-4',
+                            latest.is_starred && 'fill-yellow-400 text-yellow-400'
+                          )} />
+                        </Button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {group.phoneNumber && (
+                              <DropdownMenuItem onClick={() => onCallContact?.(group.phoneNumber!)}>
+                                <Phone className="h-4 w-4 mr-2" />
+                                Call
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => group.items.forEach(i => archiveItem(i.id))}
+                            >
+                              <Archive className="h-4 w-4 mr-2" />
+                              Archive conversation
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </ScrollArea>
