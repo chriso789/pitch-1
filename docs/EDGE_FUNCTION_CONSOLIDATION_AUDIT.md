@@ -1,23 +1,23 @@
 # Edge Function Consolidation Audit
 
-Generated: 2026-05-22T03:14:59.621Z
-Total functions: **456**
+Generated: 2026-05-22T14:13:02.684Z
+Total functions: **457**
 
 ## By status
-- DELETE_CANDIDATE: 8
+- DELETE_CANDIDATE: 63
 - KEEP: 26
 - MIGRATE: 291
-- SHIM: 131
+- SHIM: 77
 
 ## By risk
 - HIGH: 53
 - LOW: 313
-- MEDIUM: 90
+- MEDIUM: 91
 
 ## By category (target consolidation domain)
 - other: 154
 - supplier: 35
-- measurement: 30
+- measurement: 31
 - email: 23
 - document: 21
 - ai: 20
@@ -79,13 +79,68 @@ Total functions: **456**
 - `webhook-manager` → webhook-api/manager
 
 ## Delete candidates (zero references)
-- `labor-order-send-email`
-- `material-order-send-email`
-- `report-packet-send-resend`
-- `resend-user-invitation`
-- `send-password-reset`
-- `send-quote-email`
-- `sync-user-email`
-- `verify-email-domain`
+- `ai-context-builder`
+- `ai-project-status-answer`
+- `ai-sales-advisor`
+- `ai-sales-coach`
+- `apply-referral-credit-to-job`
+- `approve-referral-payout`
+- `automation-dispatcher`
+- `backfill-email-statuses`
+- `batch-update-contact-statuses`
+- `canvass-auth`
+- `canvass-document-sync`
+- `canvass-estimate-sync`
+- `canvass-pin-sync`
+- `canvass-route-plan`
+- `canvassiq-add-property`
+- `canvassiq-auto-detect`
+- `canvassiq-enrichment`
+- `canvassiq-properties-geojson`
+- `canvassiq-snap-to-buildings`
+- `compare-ai-measurement-to-vendor`
+- `create-referral-link`
+- `crm-referral-approve-payout`
+- `crm-referral-create-link`
+- `crm-referral-evaluate-payout`
+- `crm-referral-mark-paid`
+- `crm-referral-register-signup`
+- `crm-referral-resolve-flag`
+- `crm-referral-track-click`
+- `document-generator-engine`
+- `document-template-manager`
+- `email-sequence-engine`
+- `email-sequence-manager`
+- `financing-status-tracker`
+- `generate-training-pair`
+- `handle-email-suppression`
+- `homeowner-magic-link-verify`
+- `inventory-audit-processor`
+- `inventory-manager`
+- `mark-referral-payout-paid`
+- `material-fulfillment-tracker`
+- `material-order-processor`
+- `notify-signature-opened`
+- `pdf-compile`
+- `pdf-extract-text`
+- `pdf-parse`
+- `pdf-render-page`
+- `preview-transactional-email`
+- `qxo-push-order`
+- `qxo-submit-quote-order`
+- `referral-track-event`
+- `register-mobile-device`
+- `report-packet-sign`
+- `report-packet-view-event`
+- `run-measurement-benchmark`
+- `save-referral-payout-preference`
+- `send-transactional-email`
+- `storm-intel-score`
+- `submit-referral-lead`
+- `sunniland-importer`
+- `telnyx-ai-agent-enhanced`
+- `telnyx-dial`
+- `validate-measurement`
+- `validate-perimeter`
 
 Full per-function breakdown: `docs/edge-function-consolidation-audit.csv`

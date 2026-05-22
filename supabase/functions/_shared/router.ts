@@ -35,7 +35,9 @@ export type RouterEnv = {
 export function createRouter(functionName: string) {
   const app = new Hono<RouterEnv>();
 
-  // CORS preflight + headers
+  // CORS preflight + headers. Note: `supabase.functions.invoke(fn, { body })` hits the function
+  // root path (`/`), so frontend callers must use the `edgeApi` helper which constructs a full
+  // `/functions/v1/<fn><route>` URL via fetch. Legacy shims also use that full-URL path.
   app.use("*", async (c, next) => {
     if (c.req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
@@ -67,6 +69,7 @@ export function createRouter(functionName: string) {
       });
     } catch {/* swallow */}
   });
+
 
   // Default 404 → not_migrated envelope so scaffolded routes are obvious
   app.notFound((c) => jsonErr(c, "route_not_found", "Route not registered on this function.", 404));

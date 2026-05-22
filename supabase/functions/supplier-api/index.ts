@@ -1,36 +1,38 @@
 // supplier-api — routed Edge Function.
-// Scaffolded 2026-05-22. Routes return 501 until logic is migrated from legacy one-off functions.
-// See docs/EDGE_FUNCTION_RULES.md for the consolidation policy.
+// Legacy ABC/QXO/SRS/Billtrust supplier functions forward here.
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant } from "../_shared/router.ts";
+import { handle as abcProxyHandle } from "../abc-api-proxy/handler.ts";
+import { handle as billtrustAuthHandle } from "../billtrust-auth/handler.ts";
+import { handle as billtrustPricingHandle } from "../billtrust-pricing/handler.ts";
 
 const app = createRouter("supplier-api");
 
-// Health probe (always public)
 app.get("/__health", (c) => jsonOk(c, { fn: "supplier-api", ok: true }));
 
-// Apply auth + tenant guard to everything else unless explicitly public.
+// Migrated routes — legacy handlers manage auth/role checks themselves.
+app.all("/abc/proxy", (c) => abcProxyHandle(c.req.raw));
+app.post("/billtrust/auth", (c) => billtrustAuthHandle(c.req.raw));
+app.post("/billtrust/pricing", (c) => billtrustPricingHandle(c.req.raw));
+
 app.use("/*", requireAuth);
 app.use("/*", requireTenant);
 
-app.post("/qxo/proxy", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/credentials/save", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/pricing", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/orders", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/quotes", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/order/push", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/order/submit", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/quote-order/submit", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/qxo/invoices", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/srs/proxy", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/srs/pricing", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/abc/proxy", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/abc/oauth/callback", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/billtrust/auth", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/billtrust/pricing", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/pricing", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/quote/parse", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/material-order/create", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
-app.post("/material-order/fulfillment", async (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/proxy", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/credentials/save", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/pricing", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/orders", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/quotes", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/order/push", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/order/submit", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/quote-order/submit", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/qxo/invoices", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/srs/proxy", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/srs/pricing", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/abc/oauth/callback", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/pricing", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/quote/parse", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/material-order/create", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
+app.post("/material-order/fulfillment", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
 
 Deno.serve(app.fetch);
