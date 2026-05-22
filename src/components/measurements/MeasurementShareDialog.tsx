@@ -62,8 +62,9 @@ export const MeasurementShareDialog: React.FC<MeasurementShareDialogProps> = ({
 
     setIsSending(true);
     try {
-      const { error } = await supabase.functions.invoke('send-email', {
+      const { error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/send',
           to: emailTo,
           subject: emailSubject,
           text: emailMessage,

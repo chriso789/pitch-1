@@ -50,8 +50,9 @@ export function SendModal({
       if (!packetId) throw new Error('No packet ID');
       if (toEmails.length === 0) throw new Error('At least one recipient is required');
 
-      const { data, error } = await supabase.functions.invoke('report-packet-send-resend', {
+      const { data, error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/report-packet/send',
           packet_id: packetId,
           to: toEmails,
           cc: ccEmails.length > 0 ? ccEmails : undefined,

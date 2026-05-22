@@ -63,8 +63,9 @@ export function useReportPacket() {
   // Send packet mutation
   const sendPacketMutation = useMutation({
     mutationFn: async (params: SendPacketParams) => {
-      const { data, error } = await supabase.functions.invoke('report-packet-send-resend', {
+      const { data, error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/report-packet/send',
           packet_id: params.packetId,
           to: params.to,
           cc: params.cc,

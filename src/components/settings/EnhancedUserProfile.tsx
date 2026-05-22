@@ -301,8 +301,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       // Sync email to auth.users if email was updated
       if (user.email) {
         console.log("Syncing email to auth.users for user:", userId);
-        const { error: syncError } = await supabase.functions.invoke('sync-user-email', {
-          body: { userId }
+        const { error: syncError } = await supabase.functions.invoke('email-api', { body: { __route: '/user/sync', userId }
         });
         if (syncError) {
           console.error("Email sync error (non-blocking):", syncError);
@@ -360,8 +359,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       setSendingReset(true);
       
       // Use custom edge function (Resend) instead of broken Supabase SMTP
-      const { data, error } = await supabase.functions.invoke('send-password-reset', {
-        body: { email: user.email },
+      const { data, error } = await supabase.functions.invoke('email-api', { body: { __route: '/password-reset', email: user.email },
       });
 
       if (error) throw error;

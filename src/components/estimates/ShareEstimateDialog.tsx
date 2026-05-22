@@ -156,8 +156,9 @@ export function ShareEstimateDialog({
         });
       } else {
         // Regular quote email (no signature)
-        const { data, error } = await supabase.functions.invoke('send-quote-email', {
+        const { data, error } = await supabase.functions.invoke('email-api', {
           body: {
+            __route: '/quote/send',
             estimate_id: estimateId || undefined,
             pipeline_entry_id: pipelineEntryId || undefined,
             tenant_id: effectiveTenantId || undefined,

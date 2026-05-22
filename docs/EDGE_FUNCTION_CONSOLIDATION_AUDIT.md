@@ -1,13 +1,13 @@
 # Edge Function Consolidation Audit
 
-Generated: 2026-05-22T03:04:29.824Z
+Generated: 2026-05-22T03:14:59.621Z
 Total functions: **456**
 
 ## By status
-- DELETE_CANDIDATE: 69
+- DELETE_CANDIDATE: 8
 - KEEP: 26
-- MIGRATE: 300
-- SHIM: 61
+- MIGRATE: 291
+- SHIM: 131
 
 ## By risk
 - HIGH: 53
@@ -79,74 +79,13 @@ Total functions: **456**
 - `webhook-manager` → webhook-api/manager
 
 ## Delete candidates (zero references)
-- `ai-context-builder`
-- `ai-project-status-answer`
-- `ai-sales-advisor`
-- `ai-sales-coach`
-- `apply-referral-credit-to-job`
-- `approve-referral-payout`
-- `auto-generate-measurements`
-- `automation-dispatcher`
-- `batch-update-contact-statuses`
-- `canvass-auth`
-- `canvass-document-sync`
-- `canvass-estimate-sync`
-- `canvass-pin-sync`
-- `canvass-route-plan`
-- `canvassiq-add-property`
-- `canvassiq-auto-detect`
-- `canvassiq-enrichment`
-- `canvassiq-properties-geojson`
-- `canvassiq-snap-to-buildings`
-- `communication-router`
-- `communication-template-engine`
-- `compare-ai-measurement-to-vendor`
-- `create-referral-link`
-- `crm-referral-approve-payout`
-- `crm-referral-create-link`
-- `crm-referral-evaluate-payout`
-- `crm-referral-mark-paid`
-- `crm-referral-register-signup`
-- `crm-referral-resolve-flag`
-- `crm-referral-track-click`
-- `document-generator-engine`
-- `document-template-manager`
-- `email-sequence-engine`
-- `email-sequence-manager`
-- `financing-status-tracker`
-- `generate-training-pair`
-- `handle-email-suppression`
-- `homeowner-magic-link-verify`
-- `inventory-audit-processor`
-- `inventory-manager`
-- `mark-referral-payout-paid`
-- `material-fulfillment-tracker`
-- `material-order-processor`
-- `measure-roof`
-- `notify-signature-opened`
-- `pdf-compile`
-- `pdf-extract-text`
-- `pdf-parse`
-- `pdf-render-page`
-- `preview-transactional-email`
-- `qxo-push-order`
-- `qxo-submit-quote-order`
-- `referral-track-event`
-- `register-mobile-device`
-- `report-packet-sign`
-- `report-packet-view-event`
-- `run-measurement-benchmark`
-- `save-referral-payout-preference`
-- `send-communication`
-- `send-transactional-email`
-- `sms-blast-processor`
-- `sms-conversation-ai`
-- `storm-intel-score`
-- `submit-referral-lead`
-- `sunniland-importer`
-- `telnyx-ai-agent-enhanced`
-- `telnyx-dial`
-- `validate-measurement`
-- `validate-perimeter`
+- `labor-order-send-email`
+- `material-order-send-email`
+- `report-packet-send-resend`
+- `resend-user-invitation`
+- `send-password-reset`
+- `send-quote-email`
+- `sync-user-email`
+- `verify-email-domain`
 
 Full per-function breakdown: `docs/edge-function-consolidation-audit.csv`

@@ -40,8 +40,9 @@ export function VendorBulkActions({ selectedVendors, onActionComplete, onClearSe
         throw new Error('No vendors with email addresses selected');
       }
 
-      const { error } = await supabase.functions.invoke('material-order-send-email', {
+      const { error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/material-order/send',
           action: 'bulk_vendor_notification',
           vendors: vendorsWithEmail.map(v => ({
             id: v.id,

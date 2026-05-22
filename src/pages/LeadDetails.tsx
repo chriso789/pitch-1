@@ -385,8 +385,9 @@ const LeadDetails = () => {
     document_ids?: string[];
   }) => {
     try {
-      const { error } = await supabase.functions.invoke('send-email', {
+      const { error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/send',
           to: emailData.to,
           cc: emailData.cc,
           bcc: emailData.bcc,

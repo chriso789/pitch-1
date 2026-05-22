@@ -35,8 +35,9 @@ export const EmailHealthCheck = () => {
     setIsSending(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('send-email', {
+      const { data, error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/send',
           to: [testEmail],
           subject: "PITCH CRM - Email Configuration Test",
           body: `
