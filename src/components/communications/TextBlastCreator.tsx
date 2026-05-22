@@ -306,8 +306,10 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
   const isValid = sendMode === 'single'
-    ? name.trim() && manualPhone.trim() && script.trim()
-    : name.trim() && selectedStatusKey && script.trim() && (listItems?.length || 0) > 0;
+    ? !!(name.trim() && manualPhone.trim() && script.trim())
+    : sendMode === 'custom'
+      ? !!(name.trim() && script.trim() && customContacts.length > 0)
+      : !!(name.trim() && selectedStatusKey && script.trim() && (listItems?.length || 0) > 0);
 
   const handleSend = async () => {
     if (!isValid || !activeTenantId) return;
