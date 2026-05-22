@@ -168,4 +168,4 @@ app.post("/ai/sms-response", async (c) => {
   return delegate(c.req.raw, "sms-conversation-ai", "messaging-api", { body });
 });
 
-Deno.serve(app.fetch);
+serveRouter(app);
