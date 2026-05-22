@@ -24,6 +24,7 @@ const MIN_PACING_MS = 800;
 const MAX_PACING_MS = 1500;
 const PER_PHONE_COOLDOWN_HOURS = 24;
 const LINE_TYPE_CACHE_TTL_DAYS = 90;
+const ADDRESS_TOKEN_RE = /\b(drive|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|dr|pkwy|parkway|terrace|ter|trail|trl|hwy|highway|ne|nw|se|sw)\b/i;
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null;
@@ -32,6 +33,15 @@ function normalizePhone(raw: string): string | null {
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   return null;
+}
+
+function suppressAddressFirstNameArtifacts(text: string, item: any): string {
+  const firstName = String(item?.contact_name || '').trim().split(/\s+/)[0] || '';
+  if (!firstName || !/^\d/.test(firstName) && !ADDRESS_TOKEN_RE.test(firstName)) return text;
+  const escaped = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text
+    .replace(new RegExp(`\\b(Hi|Hello|Hey)\\s+${escaped}\\s*,`, 'gi'), '$1,')
+    .replace(/[ \t]{2,}/g, ' ');
 }
 
 // Returns 'mobile' | 'landline' | 'voip' | 'unknown'. Cached in phone_line_types.
