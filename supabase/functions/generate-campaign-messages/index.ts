@@ -42,11 +42,17 @@ function pick(ctx: any, key: string): string | null | undefined {
   switch (key) {
     case 'contact.first_name': return ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
-    case 'contact.address1': return ctx.contact?.address_street;
+    // Accept both the friendly alias ({{contact.address1}}) and the DB-style
+    // tag ({{contact.address_street}}) that the template editor surfaces.
+    case 'contact.address1':
+    case 'contact.address_street': return ctx.contact?.address_street;
     case 'contact.full_address': return buildFullAddress(ctx.contact);
-    case 'contact.city': return ctx.contact?.address_city;
-    case 'contact.state': return ctx.contact?.address_state;
-    case 'contact.zip': return ctx.contact?.address_zip;
+    case 'contact.city':
+    case 'contact.address_city': return ctx.contact?.address_city;
+    case 'contact.state':
+    case 'contact.address_state': return ctx.contact?.address_state;
+    case 'contact.zip':
+    case 'contact.address_zip': return ctx.contact?.address_zip;
     case 'contact.phone': return ctx.contact?.phone;
     case 'company.name': return ctx.company?.name;
     case 'company.phone': return ctx.company?.phone;
