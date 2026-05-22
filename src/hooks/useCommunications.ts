@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useLocation } from '@/contexts/LocationContext';
 
 export interface UnifiedInboxItem {
   id: string;
@@ -89,39 +90,43 @@ export interface CallRecording {
 export const useCommunications = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { currentLocationId } = useLocation();
 
-  // Fetch unified inbox
+  // Fetch unified inbox (scoped by current location via contact)
   const {
     data: inboxItems = [],
     isLoading: inboxLoading,
     refetch: refetchInbox
   } = useQuery({
-    queryKey: ['unified-inbox'],
+    queryKey: ['unified-inbox', currentLocationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const select = currentLocationId
+        ? `*, contact:contacts!inner(id, first_name, last_name, phone, location_id)`
+        : `*, contact:contacts(id, first_name, last_name, phone)`;
+      let q = supabase
         .from('unified_inbox')
-        .select(`
-          *,
-          contact:contacts(id, first_name, last_name, phone)
-        `)
+        .select(select)
         .eq('is_archived', false)
         .order('created_at', { ascending: false })
         .limit(100);
-
+      if (currentLocationId) {
+        q = q.eq('contact.location_id', currentLocationId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data as UnifiedInboxItem[];
     }
   });
 
-  // Fetch SMS threads
+  // Fetch SMS threads (scoped by location_id directly)
   const {
     data: smsThreads = [],
     isLoading: threadsLoading,
     refetch: refetchThreads
   } = useQuery({
-    queryKey: ['sms-threads'],
+    queryKey: ['sms-threads', currentLocationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('sms_threads')
         .select(`
           *,
@@ -130,34 +135,35 @@ export const useCommunications = () => {
         .eq('is_archived', false)
         .order('last_message_at', { ascending: false })
         .limit(50);
-
+      if (currentLocationId) {
+        q = q.eq('location_id', currentLocationId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data as SMSThread[];
     }
   });
 
-  // Fetch call recordings
+  // Fetch call recordings (scoped by location via call_logs → contact)
   const {
     data: recordings = [],
     isLoading: recordingsLoading,
     refetch: refetchRecordings
   } = useQuery({
-    queryKey: ['call-recordings'],
+    queryKey: ['call-recordings', currentLocationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const callLogSelect = currentLocationId
+        ? `caller_id, callee_number, direction, contact:contacts!inner(first_name, last_name, location_id)`
+        : `caller_id, callee_number, direction, contact:contacts(first_name, last_name)`;
+      let q = supabase
         .from('call_recordings')
-        .select(`
-          *,
-          call_log:call_logs(
-            caller_id,
-            callee_number,
-            direction,
-            contact:contacts(first_name, last_name)
-          )
-        `)
+        .select(`*, call_log:call_logs!inner(${callLogSelect})`)
         .order('created_at', { ascending: false })
         .limit(50);
-
+      if (currentLocationId) {
+        q = q.eq('call_log.contact.location_id', currentLocationId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data as CallRecording[];
     }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useLocation } from '@/contexts/LocationContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +51,7 @@ interface TextBlastCreatorProps {
 
 export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) => {
   const { activeTenantId } = useActiveTenantId();
+  const { currentLocationId } = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { statuses: contactStatuses } = useContactStatuses();
@@ -304,6 +306,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           .from('sms_blasts')
           .insert({
             tenant_id: activeTenantId,
+            from_location_id: currentLocationId,
             name: name.trim(),
             script: script.trim(),
             list_id: null,
@@ -361,6 +364,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           .from('sms_blasts')
           .insert({
             tenant_id: activeTenantId,
+            from_location_id: currentLocationId,
             name: name.trim(),
             script: script.trim(),
             list_id: null,

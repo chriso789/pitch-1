@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useLocation } from '@/contexts/LocationContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,20 +24,25 @@ import { toast } from 'sonner';
 
 export const TextBlastManager = () => {
   const { activeTenantId } = useActiveTenantId();
+  const { currentLocationId, currentLocation } = useLocation();
   const [view, setView] = useState<'list' | 'create' | 'detail'>('list');
   const [selectedBlastId, setSelectedBlastId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const { data: blasts, isLoading, refetch } = useQuery({
-    queryKey: ['sms-blasts', activeTenantId],
+    queryKey: ['sms-blasts', activeTenantId, currentLocationId],
     queryFn: async () => {
       if (!activeTenantId) return [];
-      const { data, error } = await supabase
+      let q = supabase
         .from('sms_blasts')
         .select('*')
         .eq('tenant_id', activeTenantId)
         .order('created_at', { ascending: false });
+      if (currentLocationId) {
+        q = q.eq('from_location_id', currentLocationId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data || [];
     },
@@ -94,7 +100,10 @@ export const TextBlastManager = () => {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-lg font-semibold">Text Blasts</h2>
-          <p className="text-sm text-muted-foreground">Send bulk SMS campaigns to your contact lists</p>
+          <p className="text-sm text-muted-foreground">
+            Send bulk SMS campaigns to your contact lists
+            {currentLocation ? ` — ${currentLocation.name}` : ' — All locations'}
+          </p>
         </div>
         <Button onClick={() => setView('create')}>
           <Plus className="h-4 w-4 mr-2" />
