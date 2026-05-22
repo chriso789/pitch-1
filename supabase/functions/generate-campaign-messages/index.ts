@@ -139,17 +139,8 @@ Deno.serve(async (req) => {
       (contacts || []).forEach((c: any) => contactsMap.set(c.id, c));
     }
 
-    // Prior interaction lookup — check sms_messages for any previous outbound to this contact
-    const priorSet = new Set<string>();
-    if (contactIds.length > 0) {
-      const { data: prior } = await supabase
-        .from('sms_messages')
-        .select('contact_id')
-        .in('contact_id', contactIds)
-        .eq('tenant_id', blast.tenant_id)
-        .limit(1000);
-      (prior || []).forEach((p: any) => p.contact_id && priorSet.add(p.contact_id));
-    }
+
+
 
     let updated = 0;
     let skippedMissingAddress = 0;
