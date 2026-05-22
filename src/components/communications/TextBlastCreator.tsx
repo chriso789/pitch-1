@@ -580,7 +580,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                             setContactSearch('');
                             setManualPhone('');
                             setManualName('');
+                            setSelectedContactAddress(null);
                           }}
+
                         >
                           clear
                         </button>
