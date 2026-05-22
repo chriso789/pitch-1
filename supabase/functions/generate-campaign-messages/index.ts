@@ -42,11 +42,17 @@ function pick(ctx: any, key: string): string | null | undefined {
   switch (key) {
     case 'contact.first_name': return ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
-    case 'contact.address1': return ctx.contact?.address_street;
+    // Accept both the friendly alias ({{contact.address1}}) and the DB-style
+    // tag ({{contact.address_street}}) that the template editor surfaces.
+    case 'contact.address1':
+    case 'contact.address_street': return ctx.contact?.address_street;
     case 'contact.full_address': return buildFullAddress(ctx.contact);
-    case 'contact.city': return ctx.contact?.address_city;
-    case 'contact.state': return ctx.contact?.address_state;
-    case 'contact.zip': return ctx.contact?.address_zip;
+    case 'contact.city':
+    case 'contact.address_city': return ctx.contact?.address_city;
+    case 'contact.state':
+    case 'contact.address_state': return ctx.contact?.address_state;
+    case 'contact.zip':
+    case 'contact.address_zip': return ctx.contact?.address_zip;
     case 'contact.phone': return ctx.contact?.phone;
     case 'company.name': return ctx.company?.name;
     case 'company.phone': return ctx.company?.phone;
@@ -133,19 +139,9 @@ Deno.serve(async (req) => {
       (contacts || []).forEach((c: any) => contactsMap.set(c.id, c));
     }
 
-    // Prior interaction lookup — check sms_messages for any previous outbound to this contact
-    const priorSet = new Set<string>();
-    if (contactIds.length > 0) {
-      const { data: prior } = await supabase
-        .from('sms_messages')
-        .select('contact_id')
-        .in('contact_id', contactIds)
-        .eq('tenant_id', blast.tenant_id)
-        .limit(1000);
-      (prior || []).forEach((p: any) => p.contact_id && priorSet.add(p.contact_id));
-    }
 
-    const requireAddress = (blast as any).goal === 'collect_homeowner_email_for_roof_estimate';
+
+
     let updated = 0;
     let skippedMissingAddress = 0;
     for (let i = 0; i < (items || []).length; i++) {
@@ -156,9 +152,15 @@ Deno.serve(async (req) => {
       // If snapshot is missing on a previously-rendered row, fall through to backfill it.
       if (item.personalized_message && item.personalized_message.length > 0 && (item as any).address_street_snapshot) continue;
 
-      // Address-required gate for email-capture campaigns: NEVER send a homeowner
-      // an SMS that asks about "your property" with no real street address attached.
-      if (requireAddress && !contact?.address_street) {
+      // Rotate template across the pool
+      const tpl = templates[i % templates.length];
+      const tplBody = tpl.template_body || '';
+
+      // Address-required gate: if the template references ANY address tag and
+      // the contact has no street address on file, skip the row. We will NEVER
+      // ship a message that renders "for ." or "around ." to a homeowner.
+      const referencesAddress = /\{\{\s*contact\.(address1|address_street|full_address|city|address_city|state|address_state|zip|address_zip)\s*\}\}/i.test(tplBody);
+      if (referencesAddress && !contact?.address_street) {
         await supabase.from('sms_blast_items').update({
           status: 'failed',
           last_error: 'skipped_missing_address',
@@ -168,20 +170,12 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Rotate template across the pool
-      const tpl = templates[i % templates.length];
       const ctx = { contact, company, assigned_user };
-      let body = resolveTags(tpl.template_body || '', ctx);
+      const body = resolveTags(tplBody, ctx);
 
-      // Conditional: prior interaction prefix
-      if (item.contact_id && priorSet.has(item.contact_id)) {
-        body = `We had spoken briefly in the past regarding your property — ${body}`;
-      }
-
-      // Conditional: if no address, strip the "around {{contact.address1}}" sentence remnant
-      if (!contact?.address_street) {
-        body = body.replace(/(?:around|near|at) your property[^.?!]*[.?!]\s*/gi, '');
-      }
+      // NOTE: We intentionally do NOT inject any extra prefix (e.g. "we spoke
+      // briefly in the past...") here. The script the user sees in the UI is
+      // the script we send. What you see is what gets delivered.
 
       await supabase.from('sms_blast_items').update({
         personalized_message: body,
