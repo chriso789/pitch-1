@@ -986,8 +986,43 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           </Card>
 
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Message Script</CardTitle>
+              <div className="flex items-center gap-1">
+                {selectedTemplateIds.length === 1 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-[11px] h-7"
+                    onClick={() => {
+                      const t = (templates || []).find((tt: any) => tt.id === selectedTemplateIds[0]);
+                      if (!t) return;
+                      // Open the editor pre-filled with the CURRENT script (so edits flow in)
+                      setTplEditor({
+                        open: true,
+                        mode: 'edit',
+                        id: t.id,
+                        name: t.template_name || '',
+                        body: script || t.template_body || '',
+                        goal: t.goal || goal || 'general_outreach',
+                        category: t.category || 'general',
+                      });
+                    }}
+                  >
+                    <Save className="h-3 w-3 mr-1" /> Update template
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-[11px] h-7"
+                  onClick={openCreateTemplate}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Save as new template
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
