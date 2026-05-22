@@ -47,6 +47,18 @@ const FALLBACKS: Record<string, string> = {
   'assigned_user.first_name': 'a teammate',
 };
 
+const ADDRESS_TOKEN_RE = /\b(drive|dr|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|pkwy|parkway|terrace|ter|trail|trl|hwy|highway|ne|nw|se|sw)\b/i;
+
+function isJunkFirstName(c: SmsTagContext['contact']): boolean {
+  const firstName = String(c?.first_name || '').trim();
+  if (!firstName) return false;
+  const street = String(c?.address1 || c?.address || '').trim().toLowerCase();
+  const fullName = [c?.first_name, c?.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+  if (/^\d/.test(firstName)) return true;
+  if (street && (street.includes(firstName.toLowerCase()) || fullName === street)) return true;
+  return ADDRESS_TOKEN_RE.test(firstName);
+}
+
 function buildFullAddress(c: SmsTagContext['contact']): string | null {
   if (!c) return null;
   const street = (c.address1 || c.address || '').toString().trim();
@@ -60,7 +72,7 @@ function buildFullAddress(c: SmsTagContext['contact']): string | null {
 
 function pick(ctx: SmsTagContext, key: string): string | null | undefined {
   switch (key) {
-    case 'contact.first_name': return ctx.contact?.first_name;
+    case 'contact.first_name': return isJunkFirstName(ctx.contact) ? null : ctx.contact?.first_name;
     case 'contact.last_name': return ctx.contact?.last_name;
     case 'contact.address1':
     case 'contact.address':
@@ -85,13 +97,17 @@ function pick(ctx: SmsTagContext, key: string): string | null | undefined {
  */
 export function resolveSmsTags(template: string, ctx: SmsTagContext): string {
   if (!template) return '';
+  const suppressFirstName = isJunkFirstName(ctx.contact);
   return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_match, rawKey) => {
     const key = String(rawKey).trim();
+    if (key === 'contact.first_name' && suppressFirstName) return '';
     const val = pick(ctx, key);
     if (val && String(val).trim().length > 0) return String(val).trim();
     if (key in FALLBACKS) return FALLBACKS[key];
     return '';
-  });
+  })
+    .replace(/\b(Hi|Hello|Hey)\s+,/gi, '$1,')
+    .replace(/[ \t]{2,}/g, ' ');
 }
 
 /** Available tags for the UI helper / picker. */

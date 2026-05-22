@@ -27,6 +27,21 @@ function formatToE164(phone: string): string {
   return cleaned;
 }
 
+const ADDRESS_TOKEN_RE = /\b(drive|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|dr|pkwy|parkway|terrace|ter|trail|trl|hwy|highway|ne|nw|se|sw)\b/i;
+
+function stripJunkGreetingName(message: string, contact: any): string {
+  const firstName = String(contact?.first_name || '').trim();
+  if (!firstName) return message;
+  const street = String(contact?.address_street || '').trim().toLowerCase();
+  const fullName = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+  const isJunk = /^\d/.test(firstName) || ADDRESS_TOKEN_RE.test(firstName) || (street && (street.includes(firstName.toLowerCase()) || fullName === street));
+  if (!isJunk) return message;
+  const escaped = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return message
+    .replace(new RegExp(`\\b(Hi|Hello|Hey)\\s+${escaped}\\s*,`, 'gi'), '$1,')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -99,10 +114,21 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body - now accepts locationId + blast linkage
-    const { to, message, contactId, jobId, fromNumber, locationId, blast_id, blast_item_id } = await req.json();
+    const { to, message: rawMessage, contactId, jobId, fromNumber, locationId, blast_id, blast_item_id } = await req.json();
+    let message = rawMessage;
 
     if (!to || !message) {
       throw new Error('Missing required fields: to, message');
+    }
+
+    if (contactId && tenantId) {
+      const { data: contactForGreeting } = await supabaseAdmin
+        .from('contacts')
+        .select('first_name, last_name, address_street')
+        .eq('id', contactId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      message = stripJunkGreetingName(message, contactForGreeting);
     }
 
     // Format and validate recipient number
