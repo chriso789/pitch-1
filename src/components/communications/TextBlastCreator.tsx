@@ -492,8 +492,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 <Label>Send To</Label>
                 <RadioGroup
                   value={sendMode}
-                  onValueChange={(v) => setSendMode(v as 'single' | 'list')}
-                  className="flex gap-4"
+                  onValueChange={(v) => setSendMode(v as 'single' | 'list' | 'custom')}
+                  className="flex flex-wrap gap-4"
                 >
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="single" id="mode-single" />
@@ -506,7 +506,14 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                     <RadioGroupItem value="list" id="mode-list" />
                     <Label htmlFor="mode-list" className="cursor-pointer flex items-center gap-1.5 font-normal">
                       <Users className="h-3.5 w-3.5" />
-                      Contact List
+                      By Status
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="custom" id="mode-custom" />
+                    <Label htmlFor="mode-custom" className="cursor-pointer flex items-center gap-1.5 font-normal">
+                      <ListPlus className="h-3.5 w-3.5" />
+                      Custom List
                     </Label>
                   </div>
                 </RadioGroup>
