@@ -376,9 +376,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         });
 
         if (!dryRun) {
-          const { error: processorError } = await supabase.functions.invoke('messaging-api', {
-            body: { __route: '/sms/blast/start', blast_id: blast.id },
-            headers: { 'x-route': '/sms/blast/start' }
+          const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+            body: { blast_id: blast.id },
           });
           if (processorError) {
             toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
@@ -437,9 +436,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         });
 
         if (!dryRun) {
-          const { error: processorError } = await supabase.functions.invoke('messaging-api', {
-            body: { __route: '/sms/blast/start', blast_id: blast.id },
-            headers: { 'x-route': '/sms/blast/start' }
+          const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+            body: { blast_id: blast.id },
           });
           if (processorError) {
             toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
