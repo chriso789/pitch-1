@@ -364,6 +364,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           .from('sms_blasts')
           .insert({
             tenant_id: activeTenantId,
+            from_location_id: currentLocationId,
             name: name.trim(),
             script: script.trim(),
             list_id: null,
