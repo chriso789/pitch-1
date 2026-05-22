@@ -65,6 +65,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [batchSize, setBatchSize] = useState<number>(10);
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
+  const [selectedContactAddress, setSelectedContactAddress] = useState<{ street?: string; city?: string; state?: string; zip?: string } | null>(null);
+
   const [singleContactId, setSingleContactId] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState('');
   const [showContactResults, setShowContactResults] = useState(false);
@@ -133,7 +135,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       const term = `%${contactSearch.trim()}%`;
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name, phone')
+        .select('id, first_name, last_name, phone, address_street, address_city, address_state, address_zip')
         .eq('tenant_id', activeTenantId)
         .eq('is_deleted', false)
         .not('phone', 'is', null)
@@ -144,6 +146,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     },
     enabled: !!activeTenantId && sendMode === 'single' && contactSearch.trim().length >= 2,
   });
+
 
   // Search contacts for custom-list mode (multi-select)
   const { data: customSearchResults } = useQuery({
@@ -285,9 +288,14 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           first_name: manualName.split(' ')[0] || SAMPLE_TAG_CONTEXT.contact?.first_name,
           last_name: manualName.split(' ').slice(1).join(' ') || SAMPLE_TAG_CONTEXT.contact?.last_name,
           phone: manualPhone || SAMPLE_TAG_CONTEXT.contact?.phone,
+          address1: selectedContactAddress?.street || SAMPLE_TAG_CONTEXT.contact?.address1,
+          city: selectedContactAddress?.city || SAMPLE_TAG_CONTEXT.contact?.city,
+          state: selectedContactAddress?.state || SAMPLE_TAG_CONTEXT.contact?.state,
+          zip: selectedContactAddress?.zip || SAMPLE_TAG_CONTEXT.contact?.zip,
         },
       }
     : SAMPLE_TAG_CONTEXT;
+
 
   const selectedTemplates = useMemo(
     () => dedupedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id)),
@@ -549,8 +557,15 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                                 setManualPhone(c.phone || '');
                                 setManualName(fullName);
                                 setContactSearch(fullName || c.phone || '');
+                                setSelectedContactAddress({
+                                  street: c.address_street || '',
+                                  city: c.address_city || '',
+                                  state: c.address_state || '',
+                                  zip: c.address_zip || '',
+                                });
                                 setShowContactResults(false);
                               }}
+
                             >
                               <span className="font-medium">{fullName || '(no name)'}</span>
                               <span className="text-muted-foreground">{c.phone}</span>
@@ -570,7 +585,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                             setContactSearch('');
                             setManualPhone('');
                             setManualName('');
+                            setSelectedContactAddress(null);
                           }}
+
                         >
                           clear
                         </button>
