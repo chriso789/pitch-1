@@ -51,6 +51,7 @@ interface TextBlastCreatorProps {
 
 export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) => {
   const { activeTenantId } = useActiveTenantId();
+  const { currentLocationId } = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { statuses: contactStatuses } = useContactStatuses();
