@@ -596,6 +596,85 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                     />
                   </div>
                 </div>
+              ) : sendMode === 'custom' ? (
+                <div className="space-y-3 p-3 rounded-md border border-border bg-muted/30">
+                  <div className="relative">
+                    <Label htmlFor="custom-contact-search">Search Contacts</Label>
+                    <Input
+                      id="custom-contact-search"
+                      placeholder="Search by name or phone, then click to add..."
+                      value={customSearch}
+                      onChange={(e) => { setCustomSearch(e.target.value); setShowCustomResults(true); }}
+                      onFocus={() => setShowCustomResults(true)}
+                      onBlur={() => setTimeout(() => setShowCustomResults(false), 200)}
+                    />
+                    {showCustomResults && (customSearchResults?.length ?? 0) > 0 && (
+                      <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-md border border-border bg-popover shadow-md">
+                        {customSearchResults!
+                          .filter((c: any) => !customContacts.some(cc => cc.contact_id === c.id))
+                          .map((c: any) => {
+                            const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex justify-between gap-2"
+                                onClick={() => {
+                                  setCustomContacts(prev => [...prev, {
+                                    id: c.id,
+                                    contact_id: c.id,
+                                    first_name: c.first_name,
+                                    last_name: c.last_name,
+                                    phone_number: c.phone,
+                                  }]);
+                                  setCustomSearch('');
+                                  setShowCustomResults(false);
+                                }}
+                              >
+                                <span className="font-medium">{fullName || '(no name)'}</span>
+                                <span className="text-muted-foreground">{c.phone}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <Users className="h-4 w-4" />
+                      {customContacts.length} recipient{customContacts.length === 1 ? '' : 's'} selected
+                    </span>
+                    {customContacts.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-xs underline text-muted-foreground hover:text-foreground"
+                        onClick={() => setCustomContacts([])}
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  {customContacts.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 max-h-40 overflow-auto p-2 rounded border border-border bg-background">
+                      {customContacts.map((c) => {
+                        const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
+                        return (
+                          <Badge key={c.contact_id} variant="secondary" className="gap-1.5">
+                            <span>{fullName || c.phone_number}</span>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => setCustomContacts(prev => prev.filter(p => p.contact_id !== c.contact_id))}
+                              aria-label={`Remove ${fullName}`}
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2">
