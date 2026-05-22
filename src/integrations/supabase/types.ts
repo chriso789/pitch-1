@@ -13468,6 +13468,48 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_function_audit: {
+        Row: {
+          created_at: string
+          function_name: string
+          id: string
+          latency_ms: number
+          method: string
+          request_id: string | null
+          route: string
+          shim_from: string | null
+          status: number
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          function_name: string
+          id?: string
+          latency_ms: number
+          method: string
+          request_id?: string | null
+          route: string
+          shim_from?: string | null
+          status: number
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          function_name?: string
+          id?: string
+          latency_ms?: number
+          method?: string
+          request_id?: string | null
+          route?: string
+          shim_from?: string | null
+          status?: number
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       email_engagement_events: {
         Row: {
           created_at: string | null
