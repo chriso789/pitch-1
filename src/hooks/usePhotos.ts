@@ -111,18 +111,26 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
     setUploadProgress(10);
 
     try {
-      // Get user and tenant
+      // Get user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id, active_tenant_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile) throw new Error('Profile not found');
-      const tenantId = profile.active_tenant_id || profile.tenant_id;
+      // Resolve tenant: prefer the effective (impersonated) tenant from context,
+      // fall back to the user's own profile. This keeps master/COB uploads aligned
+      // with the tenant of the lead/contact they are currently viewing and
+      // satisfies the enforce_child_tenant_matches_parent trigger.
+      let tenantId = effectiveTenantId ?? null;
+      if (!tenantId) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('tenant_id, active_tenant_id')
+          .eq('id', user.id)
+          .single();
+        if (profileError) throw new Error(`Profile lookup failed: ${profileError.message}`);
+        if (!profile) throw new Error('Profile not found');
+        tenantId = profile.active_tenant_id || profile.tenant_id;
+      }
+      if (!tenantId) throw new Error('No tenant_id available for upload');
 
       setUploadProgress(20);
 
@@ -136,10 +144,12 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
       const timestamp = Date.now();
       const randomId = Math.random().toString(36).substring(7);
       const fileExt = compressedFile.name.split('.').pop() || 'jpg';
-      const entityFolder = entityLeadId ? `leads/${entityLeadId}` : 
+      const entityFolder = entityLeadId ? `leads/${entityLeadId}` :
                            entityContactId ? `contacts/${entityContactId}` :
                            `projects/${entityProjectId}`;
       const storagePath = `${tenantId}/${entityFolder}/${timestamp}_${randomId}.${fileExt}`;
+
+      console.log('[usePhotos] Uploading', { tenantId, storagePath, entityLeadId, entityContactId, entityProjectId });
 
       // Upload directly to storage bucket (bypasses edge function memory limits)
       const { error: uploadError } = await supabase.storage
@@ -149,7 +159,10 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
           upsert: false,
         });
 
-      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+      if (uploadError) {
+        console.error('[usePhotos] Storage upload error:', uploadError, { tenantId, storagePath });
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
 
       setUploadProgress(70);
 
