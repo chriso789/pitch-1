@@ -195,12 +195,192 @@ app.post("/classify", async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Blueprint pipeline (legacy plan_documents/plan_pages tables)
+// Slice 2B: deterministic only. No AI. Replaces parse-blueprint-document
+// and classify-blueprint-pages.
+// ---------------------------------------------------------------------------
+
+async function loadPlanDocument(svc: ReturnType<typeof serviceClient>, tenantId: string, document_id: string) {
+  const { data: doc, error } = await svc.from("plan_documents")
+    .select("id,tenant_id,file_path,page_count").eq("id", document_id).maybeSingle();
+  if (error || !doc) throw new Error("document_not_found");
+  if (doc.tenant_id !== tenantId) throw new Error("cross_tenant_forbidden");
+  return doc;
+}
+
+function chainGeometry(document_id: string) {
+  // Fire-and-forget chain to the existing geometry extractor. Preserves prior
+  // legacy behavior; geometry consolidation belongs to a later slice.
+  const baseUrl = Deno.env.get("SUPABASE_URL")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  fetch(`${baseUrl}/functions/v1/extract-roof-plan-geometry`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    body: JSON.stringify({ document_id }),
+  }).catch((e) => console.error("[document-worker] geometry chain failed", e));
+}
+
+// POST /parse/blueprint { document_id }
+// Full deterministic pipeline: download → per-page text → classify each →
+// upsert plan_pages → update plan_documents → chain to geometry extractor.
+app.post("/parse/blueprint", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const { document_id } = await c.req.json().catch(() => ({}));
+  if (!document_id || typeof document_id !== "string") {
+    return jsonErr(c, "bad_request", "document_id required", 400);
+  }
+  const svc = serviceClient();
+  const t0 = Date.now();
+  try {
+    const doc = await loadPlanDocument(svc, tenantId, document_id);
+
+    await svc.from("plan_documents")
+      .update({ status: "classifying", status_message: "extracting page text" })
+      .eq("id", document_id).eq("tenant_id", tenantId);
+
+    const bytes = await downloadStorageObject(svc, "blueprints", doc.file_path);
+    const text = await extractPdfText(bytes);
+
+    const classifications = text.pages.map((p, i) => classifyBlueprintPage(i + 1, p));
+    const avg = classifications.reduce((a, b) => a + b.confidence, 0) / Math.max(classifications.length, 1);
+    const needsReview = classifications.some((c) => c.requires_review);
+
+    const rows = classifications.map((cls, i) => ({
+      tenant_id: tenantId,
+      document_id,
+      page_number: cls.page_number,
+      raw_text: (text.pages[i] || "").slice(0, 8000),
+      page_type: cls.page_type,
+      page_type_confidence: cls.confidence,
+      sheet_name: cls.sheet_name,
+      sheet_number: cls.sheet_number,
+      scale_text: cls.scale_text,
+    }));
+    const { error: upErr } = await svc.from("plan_pages")
+      .upsert(rows, { onConflict: "document_id,page_number" });
+    if (upErr) throw new Error(`plan_pages_upsert_failed: ${upErr.message}`);
+
+    await svc.from("plan_documents").update({
+      page_count: text.page_count,
+      status: needsReview ? "ready_for_review" : "extracting_geometry",
+      status_message: `classified ${classifications.length} pages (deterministic, avg=${avg.toFixed(2)})`,
+    }).eq("id", document_id).eq("tenant_id", tenantId);
+
+    const runId = await persistRun(svc, tenantId, document_id, {
+      parser_name: "blueprint-classifier", parser_version: "v1.0.0", parser_tier: "deterministic",
+      vendor_type: null, document_type: "blueprint",
+      status: needsReview ? "low_confidence" : "succeeded",
+      confidence_score: Number(avg.toFixed(4)), duration_ms: Date.now() - t0,
+      page_count: text.page_count, extracted_field_count: classifications.length,
+      missing_fields: [], validation_errors: null, triggered_by: userId,
+    }).catch(() => null);
+
+    if (needsReview && runId) {
+      await enqueueReview(svc, tenantId, document_id, runId, "low_confidence",
+        `blueprint avg_page_confidence=${avg.toFixed(3)}`).catch(() => {});
+    }
+
+    if (!needsReview) chainGeometry(document_id);
+
+    return jsonOk(c, {
+      document_id,
+      page_count: text.page_count,
+      classified_pages: classifications.map((c) => ({
+        page_number: c.page_number,
+        page_type: c.page_type,
+        confidence: c.confidence,
+        sheet_number: c.sheet_number,
+        sheet_name: c.sheet_name,
+        scale_text: c.scale_text,
+        requires_review: c.requires_review,
+      })),
+      confidence_score: avg,
+      requires_review: needsReview,
+      ai_fallback: "deferred",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "document_not_found") return jsonErr(c, "not_found", "Document not found", 404);
+    if (msg === "cross_tenant_forbidden") return jsonErr(c, "forbidden", "Cross-tenant access denied", 403);
+    await svc.from("plan_documents").update({
+      status: "failed", status_message: `parse failed: ${msg}`.slice(0, 240),
+    }).eq("id", document_id).eq("tenant_id", tenantId).catch(() => {});
+    return jsonErr(c, "parse_failed", msg, 500);
+  }
+});
+
+// POST /classify-pages { document_id }
+// Re-classify existing plan_pages rows deterministically (no re-extract).
+app.post("/classify-pages", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const { document_id } = await c.req.json().catch(() => ({}));
+  if (!document_id || typeof document_id !== "string") {
+    return jsonErr(c, "bad_request", "document_id required", 400);
+  }
+  const svc = serviceClient();
+  const t0 = Date.now();
+  try {
+    await loadPlanDocument(svc, tenantId, document_id);
+
+    const { data: pages, error } = await svc.from("plan_pages")
+      .select("id,raw_text,page_number")
+      .eq("document_id", document_id).eq("tenant_id", tenantId)
+      .order("page_number");
+    if (error) throw new Error(error.message);
+
+    const results: Array<{ page_number: number; page_type: string; confidence: number; requires_review: boolean }> = [];
+    let needsReview = false;
+    let sum = 0;
+    for (const p of pages || []) {
+      const cls = classifyBlueprintPage(p.page_number, p.raw_text || "");
+      await svc.from("plan_pages").update({
+        page_type: cls.page_type,
+        page_type_confidence: cls.confidence,
+        sheet_name: cls.sheet_name,
+        sheet_number: cls.sheet_number,
+        scale_text: cls.scale_text,
+      }).eq("id", p.id).eq("tenant_id", tenantId);
+      results.push({ page_number: cls.page_number, page_type: cls.page_type, confidence: cls.confidence, requires_review: cls.requires_review });
+      sum += cls.confidence;
+      if (cls.requires_review) needsReview = true;
+    }
+    const avg = results.length ? sum / results.length : 0;
+
+    await svc.from("plan_documents").update({
+      status: needsReview ? "ready_for_review" : "extracting_geometry",
+      status_message: `re-classified ${results.length} pages (deterministic)`,
+    }).eq("id", document_id).eq("tenant_id", tenantId);
+
+    await persistRun(svc, tenantId, document_id, {
+      parser_name: "blueprint-classifier", parser_version: "v1.0.0", parser_tier: "deterministic",
+      vendor_type: null, document_type: "blueprint",
+      status: needsReview ? "low_confidence" : "succeeded",
+      confidence_score: Number(avg.toFixed(4)), duration_ms: Date.now() - t0,
+      page_count: results.length, extracted_field_count: results.length,
+      missing_fields: [], validation_errors: null, triggered_by: userId,
+    }).catch(() => null);
+
+    if (!needsReview) chainGeometry(document_id);
+
+    return jsonOk(c, { document_id, results, confidence_score: avg, requires_review: needsReview, ai_fallback: "deferred" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "document_not_found") return jsonErr(c, "not_found", "Document not found", 404);
+    if (msg === "cross_tenant_forbidden") return jsonErr(c, "forbidden", "Cross-tenant access denied", 403);
+    return jsonErr(c, "classify_pages_failed", msg, 500);
+  }
+});
+
 // Generic dispatcher
 app.post("/parse", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const doctype = body?.document_type ?? "roof_report";
-  if (doctype === "roof_report") return app.fetch(new Request("http://x/parse/roof-report", { method: "POST", headers: c.req.raw.headers, body: JSON.stringify(body) }));
-  if (doctype === "blueprint") return app.fetch(new Request("http://x/classify", { method: "POST", headers: c.req.raw.headers, body: JSON.stringify(body) }));
+  const headers = c.req.raw.headers;
+  if (doctype === "roof_report") return app.fetch(new Request("http://x/parse/roof-report", { method: "POST", headers, body: JSON.stringify(body) }));
+  if (doctype === "blueprint") return app.fetch(new Request("http://x/parse/blueprint", { method: "POST", headers, body: JSON.stringify(body) }));
   return jsonErr(c, "unsupported_document_type", `document_type=${doctype} not supported in this slice`, 400);
 });
 
