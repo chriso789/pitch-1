@@ -195,6 +195,7 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
       if (dbError) {
         // Clean up orphaned storage file
         await supabase.storage.from('customer-photos').remove([storagePath]);
+        console.error('[usePhotos] DB insert error:', dbError, { tenantId, entityLeadId, entityContactId });
         throw new Error(`Database insert failed: ${dbError.message}`);
       }
 
