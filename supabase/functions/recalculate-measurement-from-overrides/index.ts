@@ -322,9 +322,8 @@ const handler = async (req: Request): Promise<Response> => {
     verified_at: new Date().toISOString(),
     verified_by: uid,
     result_state: newResultState,
-    last_recalculated_by_function: "recalculate-measurement-from-overrides",
-    last_recalculated_at: new Date().toISOString(),
   };
+
   const { error: uErr } = await supabase
     .from("roof_measurements")
     .update(update)
