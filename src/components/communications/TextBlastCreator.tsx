@@ -503,7 +503,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             tenant_id: activeTenantId,
             from_location_id: currentLocationId,
             name: name.trim(),
-            script: script.trim(),
+            script: effectiveScript,
             list_id: null,
             total_recipients: effectiveListItems.length,
             max_attempts_per_contact: maxAttemptsPerContact,
