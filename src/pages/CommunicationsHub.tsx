@@ -113,6 +113,10 @@ const CommunicationsHub = () => {
                   </Badge>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="sent" className="gap-2">
+                <Send className="h-4 w-4" />
+                Sent
+              </TabsTrigger>
               <TabsTrigger value="sms" className="gap-2">
                 <MessageSquare className="h-4 w-4" />
                 SMS
