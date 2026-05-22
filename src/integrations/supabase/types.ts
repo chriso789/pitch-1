@@ -9151,6 +9151,7 @@ export type Database = {
           qualification_status: string | null
           referral_source: string | null
           scoring_details: Json | null
+          scrubbed_landline_phones: string[] | null
           secondary_email: string | null
           secondary_phone: string | null
           tags: string[] | null
@@ -9215,6 +9216,7 @@ export type Database = {
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
+          scrubbed_landline_phones?: string[] | null
           secondary_email?: string | null
           secondary_phone?: string | null
           tags?: string[] | null
@@ -9279,6 +9281,7 @@ export type Database = {
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
+          scrubbed_landline_phones?: string[] | null
           secondary_email?: string | null
           secondary_phone?: string | null
           tags?: string[] | null
@@ -28499,6 +28502,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      phone_line_types: {
+        Row: {
+          carrier_name: string | null
+          checked_at: string
+          line_type: string
+          phone: string
+          raw: Json | null
+        }
+        Insert: {
+          carrier_name?: string | null
+          checked_at?: string
+          line_type: string
+          phone: string
+          raw?: Json | null
+        }
+        Update: {
+          carrier_name?: string | null
+          checked_at?: string
+          line_type?: string
+          phone?: string
+          raw?: Json | null
+        }
+        Relationships: []
       }
       phone_number_routing: {
         Row: {

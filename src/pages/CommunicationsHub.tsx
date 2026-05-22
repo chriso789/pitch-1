@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
-  Inbox, Settings, RefreshCw, Mail, Megaphone
+  Inbox, Settings, RefreshCw, Mail, Megaphone, Send
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { GlobalSoftphone } from '@/components/communications/GlobalSoftphone';
 import { SoftphonePanel } from '@/components/telephony/SoftphonePanel';
 import { EmailActivityDashboard } from '@/components/communications/EmailActivityDashboard';
 import { TextBlastManager } from '@/components/communications/TextBlastManager';
+import { SentMessagesList } from '@/components/communications/SentMessagesList';
 import { CallDetailPanel } from '@/components/communications/CallDetailPanel';
 import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommunications';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
@@ -29,6 +30,7 @@ const CommunicationsHub = () => {
   const [activeTab, setActiveTab] = useState('inbox');
   const [selectedThread, setSelectedThread] = useState<SMSThread | null>(null);
   const [selectedInboxItem, setSelectedInboxItem] = useState<UnifiedInboxItem | null>(null);
+  const [selectedSent, setSelectedSent] = useState<{ contact_id: string | null; phone: string; name: string } | null>(null);
   const [softphoneOpen, setSoftphoneOpen] = useState(false);
   const [callNumber, setCallNumber] = useState('');
   const [callContactName, setCallContactName] = useState('');
@@ -111,6 +113,10 @@ const CommunicationsHub = () => {
                   </Badge>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="sent" className="gap-2">
+                <Send className="h-4 w-4" />
+                Sent
+              </TabsTrigger>
               <TabsTrigger value="sms" className="gap-2">
                 <MessageSquare className="h-4 w-4" />
                 SMS
@@ -184,6 +190,38 @@ const CommunicationsHub = () => {
                     <div className="text-center">
                       <Inbox className="h-12 w-12 mx-auto mb-4 opacity-50" />
                       <p>Select a message to view details</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Sent Tab */}
+          <TabsContent value="sent" className="flex-1 m-0 overflow-hidden">
+            <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
+              <div className="h-full overflow-hidden">
+                <SentMessagesList
+                  onSelect={(r) => setSelectedSent(r)}
+                  selectedKey={selectedSent?.contact_id || selectedSent?.phone || undefined}
+                />
+              </div>
+              <div className="h-full hidden lg:block">
+                {selectedSent ? (
+                  <div className="h-full p-4">
+                    <SMSConversationThread
+                      key={selectedSent.contact_id || selectedSent.phone}
+                      contactId={selectedSent.contact_id || undefined}
+                      phoneNumber={selectedSent.phone || undefined}
+                      contactName={selectedSent.name}
+                      onCall={(phone) => handleCallContact(phone, selectedSent.name)}
+                    />
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Send className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Select a recipient to view the conversation</p>
                     </div>
                   </div>
                 )}
