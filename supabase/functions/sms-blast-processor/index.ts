@@ -435,7 +435,8 @@ async function processBlast(
     ]);
 
   const skippedTotal = cooldownTotal + duplicateTotal;
-  const attempted = sentTotal + failedTotal + deliveredTotal + repliedTotal + skippedTotal;
+  const successfulTotal = sentTotal + deliveredTotal + repliedTotal;
+  const attempted = successfulTotal + failedTotal + skippedTotal;
   const failureRate = attempted > 0 ? (failedTotal + skippedTotal) / attempted : 0;
   const deliveryRate = attempted > 0 ? (deliveredTotal + repliedTotal) / attempted : 0;
   const replyRate = attempted > 0 ? repliedTotal / attempted : 0;
@@ -453,15 +454,17 @@ async function processBlast(
       .eq('blast_id', blast.id)
       .in('status', ['pending', 'claimed']);
   } else if (remaining === 0 && blast.status === 'sending') {
-    newStatus = 'completed';
-    extra = { completed_at: new Date().toISOString() };
+    newStatus = successfulTotal > 0 || attempted === 0 ? 'completed' : 'failed';
+    extra = successfulTotal > 0 || attempted === 0
+      ? { completed_at: new Date().toISOString() }
+      : { cancel_reason: 'No text messages were sent; all recipients were blocked or failed.', cancelled_at: new Date().toISOString() };
   }
 
   await supabase
     .from('sms_blasts')
     .update({
       status: newStatus,
-      sent_count: sentTotal + deliveredTotal + repliedTotal,
+      sent_count: successfulTotal,
       failed_count: failedTotal + skippedTotal,
       opted_out_count: optedTotal,
       delivered_count: deliveredTotal,
