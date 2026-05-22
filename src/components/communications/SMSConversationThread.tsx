@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface SMSConversationThreadProps {
   thread?: SMSThread;
   phoneNumber?: string;
+  contactId?: string;
   contactName?: string;
   onBack?: () => void;
   onCall?: (phoneNumber: string) => void;
