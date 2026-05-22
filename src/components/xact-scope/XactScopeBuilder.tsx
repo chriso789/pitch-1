@@ -508,7 +508,9 @@ const ManualReportEntry: React.FC<{
 
       if (measurements.roof_area <= 0) throw new Error('Roof area is required');
 
-      const { data, error } = await supabase.functions.invoke('parse-roof-report', {
+      // Manual measurement entry path migrated off parse-roof-report shim.
+      // parse-roof-report is now strictly for PDF parsing via document-worker.
+      const { data, error } = await supabase.functions.invoke('generate-estimate-from-measurement', {
         body: { measurements, scope_project_id: scopeProjectId }
       });
       if (error) throw error;
