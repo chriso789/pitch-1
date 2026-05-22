@@ -2916,8 +2916,10 @@ async function processJob(input: any) {
           needs_review: true,
           report_blocked: true,
           result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
-          source_context: { gate_reason: failReason, debug: debugPayload },
+          hard_fail_reason: failReason,
+          source_context: { gate_reason: failReason, hard_fail_reason: failReason, debug: debugPayload },
         }).eq("id", input.ai_measurement_job_id);
+
         return;
       }
 
@@ -8218,10 +8220,12 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     gate_reason: persistedFailureReason,
     customer_report_ready: false,
     result_state: persistedResultState,
+    hard_fail_reason: persistedFailureReason,
     diagram_render_intent: phase3Debug.diagram_render_intent,
     ...getPhase3DbColumns(),
     block_customer_report_reason: persistedFailureReason,
     internal_debug_report_ready: true,
+
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
     engine_used: "autonomous_dsm_graph_solver",
