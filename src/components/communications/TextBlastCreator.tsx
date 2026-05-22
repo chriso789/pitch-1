@@ -1249,6 +1249,71 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         onOpenChange={setShowListBuilder}
         onListCreated={handleListCreated}
       />
+
+      <Dialog open={tplEditor.open} onOpenChange={(open) => setTplEditor((s) => ({ ...s, open }))}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{tplEditor.mode === 'edit' ? 'Edit template' : 'Save new template'}</DialogTitle>
+            <DialogDescription>
+              Templates are saved to this workspace's library and reused across campaigns.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Name</Label>
+              <Input
+                value={tplEditor.name}
+                onChange={(e) => setTplEditor((s) => ({ ...s, name: e.target.value }))}
+                placeholder="e.g. General Outreach — Local Roofing Help"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Campaign Goal</Label>
+                <Select value={tplEditor.goal} onValueChange={(v) => setTplEditor((s) => ({ ...s, goal: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general_outreach">General outreach</SelectItem>
+                    <SelectItem value="collect_homeowner_email_for_roof_estimate">Collect email for estimate</SelectItem>
+                    <SelectItem value="msfh_grant">My Safe FL Home grant</SelectItem>
+                    <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
+                    <SelectItem value="dormant_reactivation">Dormant Lead Reactivation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Category</Label>
+                <Input
+                  value={tplEditor.category}
+                  onChange={(e) => setTplEditor((s) => ({ ...s, category: e.target.value }))}
+                  placeholder="e.g. general"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Message body</Label>
+              <Textarea
+                rows={6}
+                value={tplEditor.body}
+                onChange={(e) => setTplEditor((s) => ({ ...s, body: e.target.value }))}
+                placeholder="Hi {{contact.first_name}}, ..."
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Smart tags like <code className="font-mono">{'{{contact.first_name}}'}</code> and <code className="font-mono">{'{{contact.address_street}}'}</code> are auto-filled per recipient.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTplEditor((s) => ({ ...s, open: false }))} disabled={savingTpl}>
+              Cancel
+            </Button>
+            <Button onClick={saveTemplate} disabled={savingTpl}>
+              <Save className="h-4 w-4 mr-1" />
+              {savingTpl ? 'Saving…' : tplEditor.mode === 'edit' ? 'Save changes' : 'Save template'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
