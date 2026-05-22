@@ -8,6 +8,8 @@ import { CallAnalyticsDashboard } from '@/components/ai-agent/CallAnalyticsDashb
 import { LiveCallTranscript } from '@/components/ai-agent/LiveCallTranscript';
 import { CallTranscriptViewer } from '@/components/ai-agent/CallTranscriptViewer';
 import { CampaignsHub } from '@/components/campaigns/CampaignsHub';
+import { MessageTemplates } from '@/features/communication/components/MessageTemplates';
+import { LayoutTemplate } from 'lucide-react';
 
 export default function AIAgentDashboardPage() {
   const navigate = useNavigate();
