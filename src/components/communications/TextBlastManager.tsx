@@ -100,8 +100,10 @@ export const TextBlastManager = () => {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-lg font-semibold">Text Blasts</h2>
-          <p className="text-sm text-muted-foreground">Send bulk SMS campaigns to your contact lists</p>
-        </div>
+          <p className="text-sm text-muted-foreground">
+            Send bulk SMS campaigns to your contact lists
+            {currentLocation ? ` — ${currentLocation.name}` : ' — All locations'}
+          </p>
         <Button onClick={() => setView('create')}>
           <Plus className="h-4 w-4 mr-2" />
           New Text Blast
