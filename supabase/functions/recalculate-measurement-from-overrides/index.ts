@@ -296,7 +296,11 @@ const handler = async (req: Request): Promise<Response> => {
     overrideForensics,
   );
 
-  // Write totals back to roof_measurements + verification stamps
+  // Write totals back to roof_measurements + verification stamps.
+  // This is a SANCTIONED override-recalc path (Patent Rule 5) — it does not
+  // re-run the solver, so we do NOT flip canonical_measurement_route. We do
+  // stamp last_recalculated_by_function so debug-measurement-runtime can
+  // surface that the visible row was last touched by the override pipeline.
   const update: Record<string, unknown> = {
     total_ridge_length: typed.ridges_lf,
     total_hip_length: typed.hips_lf,
@@ -318,11 +322,14 @@ const handler = async (req: Request): Promise<Response> => {
     verified_at: new Date().toISOString(),
     verified_by: uid,
     result_state: newResultState,
+    last_recalculated_by_function: "recalculate-measurement-from-overrides",
+    last_recalculated_at: new Date().toISOString(),
   };
   const { error: uErr } = await supabase
     .from("roof_measurements")
     .update(update)
     .eq("id", measurementId);
+
 
   return new Response(
     JSON.stringify({
