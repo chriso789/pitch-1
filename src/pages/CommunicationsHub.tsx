@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
-  Inbox, Settings, RefreshCw, Mail, Megaphone
+  Inbox, Settings, RefreshCw, Mail, Megaphone, Send
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
