@@ -5,15 +5,28 @@ import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Megaphone, Send, CheckCircle, XCircle, Ban } from 'lucide-react';
+import { Plus, Megaphone, Send, CheckCircle, XCircle, Ban, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { TextBlastCreator } from './TextBlastCreator';
 import { TextBlastDetail } from './TextBlastDetail';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 
 export const TextBlastManager = () => {
   const { activeTenantId } = useActiveTenantId();
   const [view, setView] = useState<'list' | 'create' | 'detail'>('list');
   const [selectedBlastId, setSelectedBlastId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: blasts, isLoading, refetch } = useQuery({
     queryKey: ['sms-blasts', activeTenantId],
@@ -29,6 +42,27 @@ export const TextBlastManager = () => {
     },
     enabled: !!activeTenantId,
   });
+
+  const handleDelete = async () => {
+    if (!deleteTarget || !activeTenantId) return;
+    setDeleting(true);
+    try {
+      await supabase.from('sms_blast_items').delete().eq('blast_id', deleteTarget.id);
+      const { error } = await supabase
+        .from('sms_blasts')
+        .delete()
+        .eq('id', deleteTarget.id)
+        .eq('tenant_id', activeTenantId);
+      if (error) throw error;
+      toast.success(`Deleted "${deleteTarget.name}"`);
+      setDeleteTarget(null);
+      refetch();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete blast');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: any }> = {
     draft: { label: 'Draft', variant: 'secondary', icon: Megaphone },
@@ -109,6 +143,18 @@ export const TextBlastManager = () => {
                       </p>
                     </div>
                     <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget({ id: blast.id, name: blast.name });
+                      }}
+                      aria-label={`Delete ${blast.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -116,6 +162,27 @@ export const TextBlastManager = () => {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this text blast?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove "{deleteTarget?.name}" and all its recipient records. Sent messages already delivered to contacts cannot be recalled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</>) : (<><Trash2 className="h-4 w-4 mr-2" /> Delete</>)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
