@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle, Sparkles, FileText } from 'lucide-react';
+import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone, CheckCircle, Sparkles, FileText, Pencil, Save, Plus } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { TextBlastListBuilder } from './TextBlastListBuilder';
 import { resolveSmsTags, SAMPLE_TAG_CONTEXT, SMS_AVAILABLE_TAGS } from '@/lib/smartTags/smsTagResolver';
 import { useContactStatuses } from '@/hooks/useContactStatuses';
@@ -83,6 +84,95 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
   const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
   const lastGoalRef = useRef<string>('');
+
+  // Template editor state — save/edit sms_templates for this tenant
+  const [tplEditor, setTplEditor] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit';
+    id?: string;
+    name: string;
+    body: string;
+    goal: string;
+    category: string;
+  }>({ open: false, mode: 'create', name: '', body: '', goal: 'general_outreach', category: 'general' });
+  const [savingTpl, setSavingTpl] = useState(false);
+
+  const openCreateTemplate = () => {
+    setTplEditor({
+      open: true,
+      mode: 'create',
+      name: '',
+      body: script || '',
+      goal: goal || 'general_outreach',
+      category: 'general',
+    });
+  };
+
+  const openEditTemplate = (t: any) => {
+    setTplEditor({
+      open: true,
+      mode: 'edit',
+      id: t.id,
+      name: t.template_name || '',
+      body: t.template_body || '',
+      goal: t.goal || 'general_outreach',
+      category: t.category || 'general',
+    });
+  };
+
+  const saveTemplate = async () => {
+    if (!activeTenantId) {
+      toast({ title: 'No active workspace', variant: 'destructive' });
+      return;
+    }
+    const trimmedName = tplEditor.name.trim();
+    const trimmedBody = tplEditor.body.trim();
+    if (!trimmedName || !trimmedBody) {
+      toast({ title: 'Name and message body are required', variant: 'destructive' });
+      return;
+    }
+    setSavingTpl(true);
+    try {
+      if (tplEditor.mode === 'edit' && tplEditor.id) {
+        const { error } = await supabase
+          .from('sms_templates')
+          .update({
+            template_name: trimmedName,
+            template_body: trimmedBody,
+            goal: tplEditor.goal,
+            category: tplEditor.category || null,
+            active: true,
+          })
+          .eq('id', tplEditor.id)
+          .eq('tenant_id', activeTenantId);
+        if (error) throw error;
+        toast({ title: 'Template updated' });
+      } else {
+        const { data, error } = await supabase
+          .from('sms_templates')
+          .insert({
+            tenant_id: activeTenantId,
+            template_name: trimmedName,
+            template_body: trimmedBody,
+            goal: tplEditor.goal,
+            category: tplEditor.category || null,
+            active: true,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        toast({ title: 'Template saved' });
+        if (data?.id) setSelectedTemplateIds((prev) => Array.from(new Set([...prev, data.id])));
+      }
+      queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
+      setTplEditor((s) => ({ ...s, open: false }));
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSavingTpl(false);
+    }
+  };
+
   const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
   const isTestBlast = /\btest\b/i.test(name.trim()) || sendMode === 'single' || batchSize <= 10;
 
@@ -766,30 +856,41 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label>Template Rotation Pool (optional)</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-[11px] h-6 px-2"
-                    onClick={async () => {
-                      if (!activeTenantId) return;
-                      try {
-                        const { data, error } = await supabase.functions.invoke('admin-cleanup-sms-templates', {
-                          body: { tenant_id: activeTenantId, dry_run: false },
-                        });
-                        if (error) throw error;
-                        toast({
-                          title: 'Template library cleaned',
-                          description: `Inactivated ${data?.duplicates_to_inactivate ?? 0} duplicates · updated ${data?.templates_updated ?? 0} · inserted ${data?.templates_inserted ?? 0}.`,
-                        });
-                        queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
-                      } catch (err: any) {
-                        toast({ title: 'Cleanup failed', description: err?.message || 'Unknown error', variant: 'destructive' });
-                      }
-                    }}
-                  >
-                    Clean duplicate templates
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-[11px] h-6 px-2"
+                      onClick={openCreateTemplate}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> New template
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-[11px] h-6 px-2"
+                      onClick={async () => {
+                        if (!activeTenantId) return;
+                        try {
+                          const { data, error } = await supabase.functions.invoke('admin-cleanup-sms-templates', {
+                            body: { tenant_id: activeTenantId, dry_run: false },
+                          });
+                          if (error) throw error;
+                          toast({
+                            title: 'Template library cleaned',
+                            description: `Inactivated ${data?.duplicates_to_inactivate ?? 0} duplicates · updated ${data?.templates_updated ?? 0} · inserted ${data?.templates_inserted ?? 0}.`,
+                          });
+                          queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
+                        } catch (err: any) {
+                          toast({ title: 'Cleanup failed', description: err?.message || 'Unknown error', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      Clean duplicates
+                    </Button>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground mb-1">
                   Showing unique active templates for this campaign goal. Pick 2+ to rotate per recipient — reduces carrier spam flags.
@@ -831,20 +932,35 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                           </div>
                           <p className="text-[11px] text-muted-foreground line-clamp-2">{t.template_body}</p>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-[11px] h-6 px-2"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setScript(t.template_body || '');
-                            setSelectedTemplateIds([t.id]);
-                            setPreviewTemplateIndex(0);
-                          }}
-                        >
-                          Use
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            title="Edit template"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openEditTemplate(t);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-[11px] h-6 px-2"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setScript(t.template_body || '');
+                              setSelectedTemplateIds([t.id]);
+                              setPreviewTemplateIndex(0);
+                            }}
+                          >
+                            Use
+                          </Button>
+                        </div>
                       </label>
                     );
                   })}
@@ -870,8 +986,43 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           </Card>
 
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Message Script</CardTitle>
+              <div className="flex items-center gap-1">
+                {selectedTemplateIds.length === 1 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-[11px] h-7"
+                    onClick={() => {
+                      const t = (templates || []).find((tt: any) => tt.id === selectedTemplateIds[0]);
+                      if (!t) return;
+                      // Open the editor pre-filled with the CURRENT script (so edits flow in)
+                      setTplEditor({
+                        open: true,
+                        mode: 'edit',
+                        id: t.id,
+                        name: t.template_name || '',
+                        body: script || t.template_body || '',
+                        goal: t.goal || goal || 'general_outreach',
+                        category: t.category || 'general',
+                      });
+                    }}
+                  >
+                    <Save className="h-3 w-3 mr-1" /> Update template
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-[11px] h-7"
+                  onClick={openCreateTemplate}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Save as new template
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
@@ -1098,6 +1249,71 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         onOpenChange={setShowListBuilder}
         onListCreated={handleListCreated}
       />
+
+      <Dialog open={tplEditor.open} onOpenChange={(open) => setTplEditor((s) => ({ ...s, open }))}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{tplEditor.mode === 'edit' ? 'Edit template' : 'Save new template'}</DialogTitle>
+            <DialogDescription>
+              Templates are saved to this workspace's library and reused across campaigns.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Name</Label>
+              <Input
+                value={tplEditor.name}
+                onChange={(e) => setTplEditor((s) => ({ ...s, name: e.target.value }))}
+                placeholder="e.g. General Outreach — Local Roofing Help"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Campaign Goal</Label>
+                <Select value={tplEditor.goal} onValueChange={(v) => setTplEditor((s) => ({ ...s, goal: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general_outreach">General outreach</SelectItem>
+                    <SelectItem value="collect_homeowner_email_for_roof_estimate">Collect email for estimate</SelectItem>
+                    <SelectItem value="msfh_grant">My Safe FL Home grant</SelectItem>
+                    <SelectItem value="storm_canvass">Storm Canvass Follow-up</SelectItem>
+                    <SelectItem value="dormant_reactivation">Dormant Lead Reactivation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Category</Label>
+                <Input
+                  value={tplEditor.category}
+                  onChange={(e) => setTplEditor((s) => ({ ...s, category: e.target.value }))}
+                  placeholder="e.g. general"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Message body</Label>
+              <Textarea
+                rows={6}
+                value={tplEditor.body}
+                onChange={(e) => setTplEditor((s) => ({ ...s, body: e.target.value }))}
+                placeholder="Hi {{contact.first_name}}, ..."
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Smart tags like <code className="font-mono">{'{{contact.first_name}}'}</code> and <code className="font-mono">{'{{contact.address_street}}'}</code> are auto-filled per recipient.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTplEditor((s) => ({ ...s, open: false }))} disabled={savingTpl}>
+              Cancel
+            </Button>
+            <Button onClick={saveTemplate} disabled={savingTpl}>
+              <Save className="h-4 w-4 mr-1" />
+              {savingTpl ? 'Saving…' : tplEditor.mode === 'edit' ? 'Save changes' : 'Save template'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
