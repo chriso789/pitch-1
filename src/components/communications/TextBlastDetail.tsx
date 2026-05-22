@@ -165,8 +165,9 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           </Button>
           <h2 className="text-lg font-semibold">{blast.name}</h2>
           <Badge variant={blast.status === 'sending' ? 'default' : 'secondary'}>
-            {blast.status}
+            {noTextsSent ? 'no texts sent' : blast.status}
           </Badge>
+          {blast.is_test_mode && <Badge variant="outline">test mode</Badge>}
         </div>
         <div className="flex items-center gap-2">
           {(blast.status === 'draft' || blast.status === 'paused') && (
@@ -189,6 +190,14 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           )}
         </div>
       </div>
+
+      {noTextsSent && (
+        <Card className="border-amber-500/40 bg-amber-500/10 shrink-0">
+          <CardContent className="py-3 text-sm text-amber-700">
+            No message was sent for this blast. The recipient was blocked by a safety guard, such as the 24-hour cooldown.
+          </CardContent>
+        </Card>
+      )}
 
 
 
