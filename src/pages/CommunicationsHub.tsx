@@ -197,6 +197,38 @@ const CommunicationsHub = () => {
             </div>
           </TabsContent>
 
+          {/* Sent Tab */}
+          <TabsContent value="sent" className="flex-1 m-0 overflow-hidden">
+            <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
+              <div className="h-full overflow-hidden">
+                <SentMessagesList
+                  onSelect={(r) => setSelectedSent(r)}
+                  selectedKey={selectedSent?.contact_id || selectedSent?.phone || undefined}
+                />
+              </div>
+              <div className="h-full hidden lg:block">
+                {selectedSent ? (
+                  <div className="h-full p-4">
+                    <SMSConversationThread
+                      key={selectedSent.contact_id || selectedSent.phone}
+                      contactId={selectedSent.contact_id || undefined}
+                      phoneNumber={selectedSent.phone || undefined}
+                      contactName={selectedSent.name}
+                      onCall={(phone) => handleCallContact(phone, selectedSent.name)}
+                    />
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Send className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Select a recipient to view the conversation</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
           {/* SMS Tab */}
           <TabsContent value="sms" className="flex-1 m-0 overflow-hidden">
             <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
