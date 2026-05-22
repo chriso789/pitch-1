@@ -83,6 +83,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [dryRunCompleted, setDryRunCompleted] = useState<boolean>(false);
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
   const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
+  const [rotateTemplates, setRotateTemplates] = useState<boolean>(false);
   const lastGoalRef = useRef<string>('');
 
   // Template editor state — save/edit sms_templates for this tenant
@@ -403,6 +404,19 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const hasStopClause = /stop/i.test(previewSourceScript);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
+  // Source of truth for what actually gets sent:
+  // - Rotation OFF (default): only the previewed template is sent to every recipient.
+  // - Rotation ON: rotate across all selected templates.
+  const effectiveTemplatePoolIds =
+    rotateTemplates && selectedTemplateIds.length > 1
+      ? selectedTemplateIds
+      : activePreviewTemplate
+        ? [activePreviewTemplate.id]
+        : selectedTemplateIds.length
+          ? [selectedTemplateIds[0]]
+          : null;
+  const effectiveScript = activePreviewTemplate?.template_body?.trim() || script.trim();
+
   const isValid = sendMode === 'single'
     ? !!(name.trim() && manualPhone.trim() && script.trim())
     : sendMode === 'custom'
@@ -432,13 +446,13 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             tenant_id: activeTenantId,
             from_location_id: currentLocationId,
             name: name.trim(),
-            script: script.trim(),
+            script: effectiveScript,
             list_id: null,
             total_recipients: 1,
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             is_test_mode: isTestBlast,
-            template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
+            template_pool_ids: effectiveTemplatePoolIds,
             ai_followup_enabled: aiFollowupEnabled,
             goal: goal || null,
           })
@@ -489,13 +503,13 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             tenant_id: activeTenantId,
             from_location_id: currentLocationId,
             name: name.trim(),
-            script: script.trim(),
+            script: effectiveScript,
             list_id: null,
             total_recipients: effectiveListItems.length,
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             is_test_mode: isTestBlast,
-            template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
+            template_pool_ids: effectiveTemplatePoolIds,
             ai_followup_enabled: aiFollowupEnabled,
             goal: goal || null,
           })
@@ -966,6 +980,27 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   })}
                 </div>
               </div>
+
+              <div className="rounded-md border border-border p-2.5 space-y-1.5">
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <div>
+                    <p className="text-xs font-medium">Rotate across selected templates</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {rotateTemplates && selectedTemplateIds.length > 1
+                        ? `Rotating across ${selectedTemplateIds.length} templates — each recipient gets one.`
+                        : 'Off — every recipient gets the template shown in the preview.'}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={rotateTemplates}
+                    disabled={selectedTemplateIds.length < 2}
+                    onChange={(e) => setRotateTemplates(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                </label>
+              </div>
+
 
               <div className="flex items-center justify-between rounded-md border border-border p-2.5">
                 <div className="flex items-start gap-2">
