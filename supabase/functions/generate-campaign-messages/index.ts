@@ -38,6 +38,8 @@ function buildFullAddress(c: any): string | null {
   return full || null;
 }
 
+const ADDRESS_TOKEN_RE = /\b(drive|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|dr|pkwy|parkway|terrace|ter|trail|trl|hwy|highway|ne|nw|se|sw)\b/i;
+
 // Detects when a contact's first_name field is actually just a chunk of the
 // street address (e.g. first_name="4773", last_name="Pine Harrier Drive").
 // In that case we suppress the {{contact.first_name}} tag so the message
@@ -48,8 +50,10 @@ function isJunkFirstName(contact: any): boolean {
   if (!fn) return true;
   if (/^\d/.test(fn)) return true; // starts with a digit (house number)
   const street = String(contact.address_street || '').toLowerCase();
+  const fullName = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+  if (street && fullName === street) return true;
   if (street && street.includes(fn.toLowerCase())) return true;
-  if (/\b(drive|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|dr)\b/i.test(fn)) return true;
+  if (ADDRESS_TOKEN_RE.test(fn)) return true;
   return false;
 }
 
