@@ -2628,6 +2628,7 @@ export type Database = {
           geocode_location_type: string | null
           geometry_quality_score: number | null
           git_commit_sha: string | null
+          hard_fail_reason: string | null
           id: string
           latitude: number | null
           lead_id: string | null
@@ -2690,6 +2691,7 @@ export type Database = {
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
           git_commit_sha?: string | null
+          hard_fail_reason?: string | null
           id?: string
           latitude?: number | null
           lead_id?: string | null
@@ -2752,6 +2754,7 @@ export type Database = {
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
           git_commit_sha?: string | null
+          hard_fail_reason?: string | null
           id?: string
           latitude?: number | null
           lead_id?: string | null
@@ -24085,6 +24088,7 @@ export type Database = {
           error: string | null
           geocode_location_type: string | null
           git_commit_sha: string | null
+          hard_fail_reason: string | null
           id: string
           lat: number | null
           lead_id: string | null
@@ -24123,6 +24127,7 @@ export type Database = {
           error?: string | null
           geocode_location_type?: string | null
           git_commit_sha?: string | null
+          hard_fail_reason?: string | null
           id?: string
           lat?: number | null
           lead_id?: string | null
@@ -24161,6 +24166,7 @@ export type Database = {
           error?: string | null
           geocode_location_type?: string | null
           git_commit_sha?: string | null
+          hard_fail_reason?: string | null
           id?: string
           lat?: number | null
           lead_id?: string | null
@@ -37831,6 +37837,7 @@ export type Database = {
           gps_accuracy_meters: number | null
           gps_analysis: Json | null
           gps_coordinates: Json
+          hard_fail_reason: string | null
           hip_corner_count: number | null
           id: string
           image_bounds: Json | null
@@ -38045,6 +38052,7 @@ export type Database = {
           gps_accuracy_meters?: number | null
           gps_analysis?: Json | null
           gps_coordinates: Json
+          hard_fail_reason?: string | null
           hip_corner_count?: number | null
           id?: string
           image_bounds?: Json | null
@@ -38259,6 +38267,7 @@ export type Database = {
           gps_accuracy_meters?: number | null
           gps_analysis?: Json | null
           gps_coordinates?: Json
+          hard_fail_reason?: string | null
           hip_corner_count?: number | null
           id?: string
           image_bounds?: Json | null

@@ -9,6 +9,19 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const PYTHON_INFERENCE_URL = Deno.env.get('PYTHON_INFERENCE_URL')
 
+// Legacy route provenance. This function is NOT the canonical AI measurement
+// route — `start-ai-measurement` is. Every roof_measurements write here is
+// stamped non-canonical so debug-measurement-runtime / MeasurementReportDialog
+// can detect stale rows and refuse to treat them as customer-grade output.
+const LEGACY_MEASURE_ROOF_PROVENANCE = {
+  created_by_function: 'measure-roof',
+  created_by_component: 'legacy.measure-roof',
+  solver_entrypoint: 'legacy.measure-roof',
+  canonical_measurement_route: false,
+  route_audit_version: 'measurement-route-audit-v1',
+} as const
+
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -198,11 +211,24 @@ async function saveMeasurement(supabase: any, params: SaveParams) {
     verification_status: isStub ? 'pending' : 'auto-verified',
   }
 
+  // Stamp legacy provenance + warn on geometry_report_json before insert.
+  const legacyGeometryReport = {
+    ...((row as any).geometry_report_json ?? {}),
+    route_warning: 'legacy_noncanonical_measurement_path',
+    route_provenance: { ...LEGACY_MEASURE_ROOF_PROVENANCE },
+  }
+  const insertRow = {
+    ...LEGACY_MEASURE_ROOF_PROVENANCE,
+    ...row,
+    geometry_report_json: legacyGeometryReport,
+  }
+
   const { data, error } = await supabase
     .from('roof_measurements')
-    .insert(row)
+    .insert(insertRow)
     .select('id')
     .single()
+
 
   if (error) {
     console.error('DB insert error:', error)
