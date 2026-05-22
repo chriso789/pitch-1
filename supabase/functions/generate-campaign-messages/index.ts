@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     // Load items needing personalization (process all if force=true)
     const { data: items, error: itemsErr } = await supabase
       .from('sms_blast_items')
-      .select('id, contact_id, contact_name, phone, personalized_message')
+      .select('id, contact_id, contact_name, phone, personalized_message, address_street_snapshot')
       .eq('blast_id', blast_id)
       .in('status', ['pending', 'claimed']);
     if (itemsErr) throw itemsErr;
@@ -152,8 +152,9 @@ Deno.serve(async (req) => {
       const item = items![i];
       const contact = item.contact_id ? contactsMap.get(item.contact_id) : null;
 
-      // Skip if already personalized (idempotent re-runs)
-      if (item.personalized_message && item.personalized_message.length > 0) continue;
+      // Skip if already personalized AND snapshot already captured (idempotent re-runs).
+      // If snapshot is missing on a previously-rendered row, fall through to backfill it.
+      if (item.personalized_message && item.personalized_message.length > 0 && (item as any).address_street_snapshot) continue;
 
       // Address-required gate for email-capture campaigns: NEVER send a homeowner
       // an SMS that asks about "your property" with no real street address attached.
@@ -185,6 +186,10 @@ Deno.serve(async (req) => {
       await supabase.from('sms_blast_items').update({
         personalized_message: body,
         template_id: tpl.id,
+        address_street_snapshot: contact?.address_street || null,
+        address_city_snapshot: contact?.address_city || null,
+        address_state_snapshot: contact?.address_state || null,
+        address_zip_snapshot: contact?.address_zip || null,
       }).eq('id', item.id);
       updated++;
     }

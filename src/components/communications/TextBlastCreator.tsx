@@ -859,7 +859,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 skippedOptOut={preflight?.optedOut ?? metrics.skippedOptOut}
                 dryRunCompleted={dryRunCompleted}
                 aiFollowupEnabled={aiFollowupEnabled}
-                hasStopLanguage={hasStopClause}
+                hasStopLanguage={true}
                 allRenderedHavePersonalizedMessage={metrics.allRenderedHavePersonalizedMessage}
                 allRenderedHaveAddressSnapshot={metrics.allRenderedHaveAddressSnapshot}
                 batchSize={batchSize}
