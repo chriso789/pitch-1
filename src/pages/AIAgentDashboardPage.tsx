@@ -64,7 +64,7 @@ export default function AIAgentDashboardPage() {
           </TabsContent>
 
           <TabsContent value="templates">
-            <MessageTemplates />
+            <TemplatesLibrary />
           </TabsContent>
 
           <TabsContent value="analytics">
