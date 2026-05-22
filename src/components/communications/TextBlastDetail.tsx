@@ -164,10 +164,16 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
         </div>
         <div className="flex items-center gap-2">
           {(blast.status === 'draft' || blast.status === 'paused') && (
-            <Button variant="outline" size="sm" onClick={handleGeneratePersonalized} disabled={generating}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              {generating ? 'Generating…' : 'Generate Personalized Messages'}
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={handleGeneratePersonalized} disabled={generating}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                {generating ? 'Generating…' : 'Generate Personalized Messages'}
+              </Button>
+              <Button size="sm" onClick={handleSendNow} disabled={launching || !blast.total_recipients}>
+                <Send className="h-4 w-4 mr-2" />
+                {launching ? 'Launching…' : 'Send Now'}
+              </Button>
+            </>
           )}
           {blast.status === 'sending' && (
             <Button variant="destructive" size="sm" onClick={handleCancel}>
