@@ -84,6 +84,95 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
   const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
   const lastGoalRef = useRef<string>('');
+
+  // Template editor state — save/edit sms_templates for this tenant
+  const [tplEditor, setTplEditor] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit';
+    id?: string;
+    name: string;
+    body: string;
+    goal: string;
+    category: string;
+  }>({ open: false, mode: 'create', name: '', body: '', goal: 'general_outreach', category: 'general' });
+  const [savingTpl, setSavingTpl] = useState(false);
+
+  const openCreateTemplate = () => {
+    setTplEditor({
+      open: true,
+      mode: 'create',
+      name: '',
+      body: script || '',
+      goal: goal || 'general_outreach',
+      category: 'general',
+    });
+  };
+
+  const openEditTemplate = (t: any) => {
+    setTplEditor({
+      open: true,
+      mode: 'edit',
+      id: t.id,
+      name: t.template_name || '',
+      body: t.template_body || '',
+      goal: t.goal || 'general_outreach',
+      category: t.category || 'general',
+    });
+  };
+
+  const saveTemplate = async () => {
+    if (!activeTenantId) {
+      toast({ title: 'No active workspace', variant: 'destructive' });
+      return;
+    }
+    const trimmedName = tplEditor.name.trim();
+    const trimmedBody = tplEditor.body.trim();
+    if (!trimmedName || !trimmedBody) {
+      toast({ title: 'Name and message body are required', variant: 'destructive' });
+      return;
+    }
+    setSavingTpl(true);
+    try {
+      if (tplEditor.mode === 'edit' && tplEditor.id) {
+        const { error } = await supabase
+          .from('sms_templates')
+          .update({
+            template_name: trimmedName,
+            template_body: trimmedBody,
+            goal: tplEditor.goal,
+            category: tplEditor.category || null,
+            active: true,
+          })
+          .eq('id', tplEditor.id)
+          .eq('tenant_id', activeTenantId);
+        if (error) throw error;
+        toast({ title: 'Template updated' });
+      } else {
+        const { data, error } = await supabase
+          .from('sms_templates')
+          .insert({
+            tenant_id: activeTenantId,
+            template_name: trimmedName,
+            template_body: trimmedBody,
+            goal: tplEditor.goal,
+            category: tplEditor.category || null,
+            active: true,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        toast({ title: 'Template saved' });
+        if (data?.id) setSelectedTemplateIds((prev) => Array.from(new Set([...prev, data.id])));
+      }
+      queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
+      setTplEditor((s) => ({ ...s, open: false }));
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSavingTpl(false);
+    }
+  };
+
   const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
   const isTestBlast = /\btest\b/i.test(name.trim()) || sendMode === 'single' || batchSize <= 10;
 
