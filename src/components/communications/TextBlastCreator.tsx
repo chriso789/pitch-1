@@ -56,7 +56,10 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const queryClient = useQueryClient();
   const { statuses: contactStatuses } = useContactStatuses();
   const [name, setName] = useState('');
-  const [sendMode, setSendMode] = useState<'single' | 'list'>('list');
+  const [sendMode, setSendMode] = useState<'single' | 'list' | 'custom'>('list');
+  const [customContacts, setCustomContacts] = useState<any[]>([]);
+  const [customSearch, setCustomSearch] = useState('');
+  const [showCustomResults, setShowCustomResults] = useState(false);
   const [selectedListId, setSelectedListId] = useState('');
   const [selectedStatusKey, setSelectedStatusKey] = useState<string>('');
   const [batchSize, setBatchSize] = useState<number>(10);
@@ -140,6 +143,26 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       return data || [];
     },
     enabled: !!activeTenantId && sendMode === 'single' && contactSearch.trim().length >= 2,
+  });
+
+  // Search contacts for custom-list mode (multi-select)
+  const { data: customSearchResults } = useQuery({
+    queryKey: ['blast-custom-contact-search', activeTenantId, customSearch],
+    queryFn: async () => {
+      if (!activeTenantId || customSearch.trim().length < 2) return [];
+      const term = `%${customSearch.trim()}%`;
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .eq('tenant_id', activeTenantId)
+        .eq('is_deleted', false)
+        .not('phone', 'is', null)
+        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
+        .limit(15);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeTenantId && sendMode === 'custom' && customSearch.trim().length >= 2,
   });
 
   // Pre-flight: for the email-capture campaign, count contacts missing address_street
@@ -250,7 +273,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     setPreviewTemplateIndex(0);
   }, [selectedTemplateIds.join('|')]);
 
-  const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
+  const effectiveListItems = sendMode === 'custom' ? customContacts : (listItems || []);
+  const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : effectiveListItems.length;
 
   // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
   const sampleCtx = sendMode === 'single' && (manualName || manualPhone)
@@ -282,8 +306,10 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
   const isValid = sendMode === 'single'
-    ? name.trim() && manualPhone.trim() && script.trim()
-    : name.trim() && selectedStatusKey && script.trim() && (listItems?.length || 0) > 0;
+    ? !!(name.trim() && manualPhone.trim() && script.trim())
+    : sendMode === 'custom'
+      ? !!(name.trim() && script.trim() && customContacts.length > 0)
+      : !!(name.trim() && selectedStatusKey && script.trim() && (listItems?.length || 0) > 0);
 
   const handleSend = async () => {
     if (!isValid || !activeTenantId) return;
@@ -368,7 +394,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             name: name.trim(),
             script: script.trim(),
             list_id: null,
-            total_recipients: listItems!.length,
+            total_recipients: effectiveListItems.length,
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             is_test_mode: isTestBlast,
@@ -381,7 +407,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
         if (blastError) throw blastError;
 
-        const items = listItems!.map((li: any) => ({
+        const items = effectiveListItems.map((li: any) => ({
           blast_id: blast.id,
           tenant_id: activeTenantId,
           contact_id: li.contact_id || null,
@@ -410,12 +436,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           if (processorError) {
             toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
           } else {
-            toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+            toast({ title: 'Text Blast Started!', description: `Sending to ${effectiveListItems.length} recipients...` });
           }
         } else {
           setDryRunCompleted(true);
           setDryRunBlastId(blast.id);
-          toast({ title: 'Dry run complete', description: `Rendered ${listItems!.length} messages. Nothing was sent.` });
+          toast({ title: 'Dry run complete', description: `Rendered ${effectiveListItems.length} messages. Nothing was sent.` });
         }
 
         if (!dryRun) onCreated(blast.id);
@@ -466,8 +492,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 <Label>Send To</Label>
                 <RadioGroup
                   value={sendMode}
-                  onValueChange={(v) => setSendMode(v as 'single' | 'list')}
-                  className="flex gap-4"
+                  onValueChange={(v) => setSendMode(v as 'single' | 'list' | 'custom')}
+                  className="flex flex-wrap gap-4"
                 >
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="single" id="mode-single" />
@@ -480,7 +506,14 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                     <RadioGroupItem value="list" id="mode-list" />
                     <Label htmlFor="mode-list" className="cursor-pointer flex items-center gap-1.5 font-normal">
                       <Users className="h-3.5 w-3.5" />
-                      Contact List
+                      By Status
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="custom" id="mode-custom" />
+                    <Label htmlFor="mode-custom" className="cursor-pointer flex items-center gap-1.5 font-normal">
+                      <ListPlus className="h-3.5 w-3.5" />
+                      Custom List
                     </Label>
                   </div>
                 </RadioGroup>
@@ -562,6 +595,85 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                       onChange={(e) => setManualName(e.target.value)}
                     />
                   </div>
+                </div>
+              ) : sendMode === 'custom' ? (
+                <div className="space-y-3 p-3 rounded-md border border-border bg-muted/30">
+                  <div className="relative">
+                    <Label htmlFor="custom-contact-search">Search Contacts</Label>
+                    <Input
+                      id="custom-contact-search"
+                      placeholder="Search by name or phone, then click to add..."
+                      value={customSearch}
+                      onChange={(e) => { setCustomSearch(e.target.value); setShowCustomResults(true); }}
+                      onFocus={() => setShowCustomResults(true)}
+                      onBlur={() => setTimeout(() => setShowCustomResults(false), 200)}
+                    />
+                    {showCustomResults && (customSearchResults?.length ?? 0) > 0 && (
+                      <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-md border border-border bg-popover shadow-md">
+                        {customSearchResults!
+                          .filter((c: any) => !customContacts.some(cc => cc.contact_id === c.id))
+                          .map((c: any) => {
+                            const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex justify-between gap-2"
+                                onClick={() => {
+                                  setCustomContacts(prev => [...prev, {
+                                    id: c.id,
+                                    contact_id: c.id,
+                                    first_name: c.first_name,
+                                    last_name: c.last_name,
+                                    phone_number: c.phone,
+                                  }]);
+                                  setCustomSearch('');
+                                  setShowCustomResults(false);
+                                }}
+                              >
+                                <span className="font-medium">{fullName || '(no name)'}</span>
+                                <span className="text-muted-foreground">{c.phone}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <Users className="h-4 w-4" />
+                      {customContacts.length} recipient{customContacts.length === 1 ? '' : 's'} selected
+                    </span>
+                    {customContacts.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-xs underline text-muted-foreground hover:text-foreground"
+                        onClick={() => setCustomContacts([])}
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  {customContacts.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 max-h-40 overflow-auto p-2 rounded border border-border bg-background">
+                      {customContacts.map((c) => {
+                        const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
+                        return (
+                          <Badge key={c.contact_id} variant="secondary" className="gap-1.5">
+                            <span>{fullName || c.phone_number}</span>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => setCustomContacts(prev => prev.filter(p => p.contact_id !== c.contact_id))}
+                              aria-label={`Remove ${fullName}`}
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
