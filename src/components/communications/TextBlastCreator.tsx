@@ -65,6 +65,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [batchSize, setBatchSize] = useState<number>(10);
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
+  const [selectedContactAddress, setSelectedContactAddress] = useState<{ street?: string; city?: string; state?: string; zip?: string } | null>(null);
+
   const [singleContactId, setSingleContactId] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState('');
   const [showContactResults, setShowContactResults] = useState(false);
