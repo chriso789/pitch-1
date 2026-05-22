@@ -150,6 +150,8 @@ const CommunicationsHub = () => {
                   <div className="h-full p-4">
                     {selectedInboxItem.channel === 'sms' ? (
                       <SMSConversationThread
+                        key={selectedInboxItem.contact_id || selectedInboxItem.phone_number || selectedInboxItem.id}
+                        contactId={selectedInboxItem.contact_id || undefined}
                         phoneNumber={selectedInboxItem.phone_number || undefined}
                         contactName={selectedInboxItem.contact 
                           ? `${selectedInboxItem.contact.first_name} ${selectedInboxItem.contact.last_name}`
