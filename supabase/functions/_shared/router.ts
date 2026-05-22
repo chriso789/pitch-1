@@ -82,6 +82,55 @@ export function createRouter(functionName: string) {
   return app;
 }
 
+/**
+ * Start a routed Edge Function with x-route / __route dispatching.
+ *
+ * Frontend `edgeApi(fn, route, body)` and `supabase.functions.invoke(fn, { body })`
+ * always POST to the function root. This wrapper inspects the `x-route` header
+ * (or `__route` body field) and rewrites the URL so Hono routes like
+ * `app.post("/ingest/upload", ...)` actually match. Direct HTTP calls with a real
+ * pathname (legacy shims, provider webhooks) pass through unchanged.
+ */
+export function serveRouter(app: Hono<RouterEnv>) {
+  Deno.serve(async (req) => {
+    if (req.method === "OPTIONS") return app.fetch(req);
+
+    const url = new URL(req.url);
+    // Supabase Edge Runtime delivers either "/" or "/<function-name>" for root invokes.
+    const isRoot = url.pathname === "/" || url.pathname === "" || /^\/[^/]+\/?$/.test(url.pathname);
+
+    if (!isRoot) return app.fetch(req);
+
+    let route = req.headers.get("x-route") ?? "";
+    let bodyBytes: Uint8Array | null = null;
+
+    if (!route && req.method !== "GET" && req.method !== "HEAD") {
+      bodyBytes = new Uint8Array(await req.arrayBuffer());
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(bodyBytes));
+        if (parsed && typeof parsed.__route === "string") route = parsed.__route;
+      } catch { /* non-JSON body, leave route blank */ }
+    }
+
+    if (!route) {
+      if (bodyBytes) {
+        return app.fetch(new Request(req.url, { method: req.method, headers: req.headers, body: bodyBytes }));
+      }
+      return app.fetch(req);
+    }
+
+    const normalized = route.startsWith("/") ? route : `/${route}`;
+    const newUrl = new URL(req.url);
+    newUrl.pathname = normalized;
+    const newReq = new Request(newUrl.toString(), {
+      method: req.method,
+      headers: req.headers,
+      body: bodyBytes ?? undefined,
+    });
+    return app.fetch(newReq);
+  });
+}
+
 // ---- response helpers ----
 export function jsonOk<T>(c: Context<RouterEnv>, data: T, status = 200) {
   return c.json({ ok: true, data, requestId: c.get("requestId") }, status);

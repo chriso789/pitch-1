@@ -1,5 +1,5 @@
 // pdf-api — routed Edge Function. Deterministic PDF operations only (no AI).
-import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient } from "../_shared/router.ts";
+import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient, serveRouter } from "../_shared/router.ts";
 import { extractPdfText, downloadStorageObject } from "../_shared/parsers/pdf-text.ts";
 
 const app = createRouter("pdf-api");
@@ -45,4 +45,4 @@ app.post("/ocr", async (c) => jsonErr(c, "ocr_deferred", "OCR tier deferred. Use
 app.post("/parse", handleText);   // legacy shim target
 app.post("/compile", async (c) => jsonErr(c, "not_implemented", "PDF compile route deferred.", 501));
 
-Deno.serve(app.fetch);
+serveRouter(app);
