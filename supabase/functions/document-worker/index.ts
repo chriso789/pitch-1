@@ -214,4 +214,4 @@ for (const route of ["/parse/invoice", "/parse/supplier-quote", "/parse/permit",
   app.post(route, (c) => jsonErr(c, "not_implemented", `${route} deferred to next slice`, 501));
 }
 
-Deno.serve(app.fetch);
+serveRouter(app);
