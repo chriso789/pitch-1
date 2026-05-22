@@ -552,8 +552,15 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                                 setManualPhone(c.phone || '');
                                 setManualName(fullName);
                                 setContactSearch(fullName || c.phone || '');
+                                setSelectedContactAddress({
+                                  street: c.address_street || '',
+                                  city: c.address_city || '',
+                                  state: c.address_state || '',
+                                  zip: c.address_zip || '',
+                                });
                                 setShowContactResults(false);
                               }}
+
                             >
                               <span className="font-medium">{fullName || '(no name)'}</span>
                               <span className="text-muted-foreground">{c.phone}</span>
