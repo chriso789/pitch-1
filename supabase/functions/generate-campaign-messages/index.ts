@@ -152,8 +152,9 @@ Deno.serve(async (req) => {
       const item = items![i];
       const contact = item.contact_id ? contactsMap.get(item.contact_id) : null;
 
-      // Skip if already personalized (idempotent re-runs)
-      if (item.personalized_message && item.personalized_message.length > 0) continue;
+      // Skip if already personalized AND snapshot already captured (idempotent re-runs).
+      // If snapshot is missing on a previously-rendered row, fall through to backfill it.
+      if (item.personalized_message && item.personalized_message.length > 0 && (item as any).address_street_snapshot) continue;
 
       // Address-required gate for email-capture campaigns: NEVER send a homeowner
       // an SMS that asks about "your property" with no real street address attached.
