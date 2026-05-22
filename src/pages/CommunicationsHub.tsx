@@ -54,11 +54,7 @@ const CommunicationsHub = () => {
 
   const handleSelectInboxItem = (item: UnifiedInboxItem) => {
     setSelectedInboxItem(item);
-    
-    // If it's an SMS, switch to SMS tab and find/select the thread
-    if (item.channel === 'sms' && item.phone_number) {
-      setActiveTab('sms');
-    }
+    // Stay on the Inbox tab — render the contact's conversation strictly in the right panel.
   };
 
   const handleSelectThread = (thread: SMSThread) => {
@@ -154,6 +150,8 @@ const CommunicationsHub = () => {
                   <div className="h-full p-4">
                     {selectedInboxItem.channel === 'sms' ? (
                       <SMSConversationThread
+                        key={selectedInboxItem.contact_id || selectedInboxItem.phone_number || selectedInboxItem.id}
+                        contactId={selectedInboxItem.contact_id || undefined}
                         phoneNumber={selectedInboxItem.phone_number || undefined}
                         contactName={selectedInboxItem.contact 
                           ? `${selectedInboxItem.contact.first_name} ${selectedInboxItem.contact.last_name}`

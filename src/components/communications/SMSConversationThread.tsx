@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface SMSConversationThreadProps {
   thread?: SMSThread;
   phoneNumber?: string;
+  contactId?: string;
   contactName?: string;
   onBack?: () => void;
   onCall?: (phoneNumber: string) => void;
@@ -97,6 +98,7 @@ const FailedMessageAlert = ({ count }: { count: number }) => {
 export const SMSConversationThread = ({
   thread,
   phoneNumber,
+  contactId,
   contactName,
   onBack,
   onCall
@@ -110,24 +112,55 @@ export const SMSConversationThread = ({
   const { fetchThreadMessages, sendSMS, markThreadAsRead } = useCommunications();
 
   const targetPhone = thread?.phone_number || phoneNumber;
+  const targetContactId = thread?.contact_id || contactId;
   const displayName = thread?.contact 
     ? `${thread.contact.first_name} ${thread.contact.last_name}`
     : contactName || targetPhone;
 
-  // Load messages when thread changes
+  // Load messages — strictly scoped to a single contact/thread
   useEffect(() => {
-    if (thread?.id) {
-      setLoading(true);
-      fetchThreadMessages(thread.id)
-        .then(setMessages)
-        .finally(() => setLoading(false));
-      
-      // Mark as read
-      markThreadAsRead(thread.id);
-    } else {
+    let cancelled = false;
+    const load = async () => {
+      if (thread?.id) {
+        setLoading(true);
+        try {
+          const msgs = await fetchThreadMessages(thread.id);
+          if (!cancelled) setMessages(msgs);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+        markThreadAsRead(thread.id);
+        return;
+      }
+      // No thread — scope by contact_id (preferred) or phone_number to avoid leaking other clients
+      if (targetContactId || targetPhone) {
+        setLoading(true);
+        try {
+          let q = supabase
+            .from('sms_messages')
+            .select('*')
+            .order('created_at', { ascending: true })
+            .limit(200);
+          if (targetContactId) {
+            q = q.eq('contact_id', targetContactId);
+          } else if (targetPhone) {
+            // Fallback: only when no contact is known
+            q = q.or(`from_number.eq.${targetPhone},to_number.eq.${targetPhone}`)
+                 .is('contact_id', null);
+          }
+          const { data, error } = await q;
+          if (error) throw error;
+          if (!cancelled) setMessages((data as SMSMessage[]) || []);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+        return;
+      }
       setMessages([]);
-    }
-  }, [thread?.id, fetchThreadMessages, markThreadAsRead]);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [thread?.id, targetContactId, targetPhone, fetchThreadMessages, markThreadAsRead]);
 
   // Real-time subscription for delivery status updates
   useEffect(() => {
