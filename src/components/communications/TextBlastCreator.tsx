@@ -56,7 +56,10 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const queryClient = useQueryClient();
   const { statuses: contactStatuses } = useContactStatuses();
   const [name, setName] = useState('');
-  const [sendMode, setSendMode] = useState<'single' | 'list'>('list');
+  const [sendMode, setSendMode] = useState<'single' | 'list' | 'custom'>('list');
+  const [customContacts, setCustomContacts] = useState<any[]>([]);
+  const [customSearch, setCustomSearch] = useState('');
+  const [showCustomResults, setShowCustomResults] = useState(false);
   const [selectedListId, setSelectedListId] = useState('');
   const [selectedStatusKey, setSelectedStatusKey] = useState<string>('');
   const [batchSize, setBatchSize] = useState<number>(10);
