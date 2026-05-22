@@ -249,8 +249,9 @@ export const useCommunications = () => {
   // Send SMS
   const sendSMS = useMutation({
     mutationFn: async ({ to, message, threadId }: { to: string; message: string; threadId?: string }) => {
-      const { data, error } = await supabase.functions.invoke('sms-send-reply', {
-        body: { to, message, threadId }
+      const { data, error } = await supabase.functions.invoke('messaging-api', {
+        body: { __route: '/sms/reply', to, message, threadId },
+        headers: { 'x-route': '/sms/reply' }
       });
 
       if (error) throw error;

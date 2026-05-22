@@ -19,13 +19,16 @@ export const useSendSMS = () => {
     
     try {
       console.log('🔵 useSendSMS: Invoking telnyx-send-sms function...');
-      const { data, error } = await supabase.functions.invoke('telnyx-send-sms', {
+      // Routed via messaging-api (Edge Function consolidation Phase 1).
+      const { data, error } = await supabase.functions.invoke('messaging-api', {
         body: {
+          __route: '/sms/send',
           to: params.to,
           message: params.message,
           contactId: params.contactId,
           jobId: params.jobId
-        }
+        },
+        headers: { 'x-route': '/sms/send' }
       });
       
       console.log('🔵 useSendSMS: Response received:', { data, error });
