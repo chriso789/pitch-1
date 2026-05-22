@@ -145,6 +145,26 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!activeTenantId && sendMode === 'single' && contactSearch.trim().length >= 2,
   });
 
+  // Search contacts for custom-list mode (multi-select)
+  const { data: customSearchResults } = useQuery({
+    queryKey: ['blast-custom-contact-search', activeTenantId, customSearch],
+    queryFn: async () => {
+      if (!activeTenantId || customSearch.trim().length < 2) return [];
+      const term = `%${customSearch.trim()}%`;
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .eq('tenant_id', activeTenantId)
+        .eq('is_deleted', false)
+        .not('phone', 'is', null)
+        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
+        .limit(15);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeTenantId && sendMode === 'custom' && customSearch.trim().length >= 2,
+  });
+
   // Pre-flight: for the email-capture campaign, count contacts missing address_street
   // and contacts that are already opted-out, BEFORE the user clicks Send. This is what
   // protects against blasting the wrong address to a homeowner.
