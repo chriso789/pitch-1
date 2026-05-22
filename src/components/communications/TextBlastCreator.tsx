@@ -133,7 +133,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       const term = `%${contactSearch.trim()}%`;
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name, phone')
+        .select('id, first_name, last_name, phone, address_street, address_city, address_state, address_zip')
         .eq('tenant_id', activeTenantId)
         .eq('is_deleted', false)
         .not('phone', 'is', null)
@@ -144,6 +144,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     },
     enabled: !!activeTenantId && sendMode === 'single' && contactSearch.trim().length >= 2,
   });
+
 
   // Search contacts for custom-list mode (multi-select)
   const { data: customSearchResults } = useQuery({
