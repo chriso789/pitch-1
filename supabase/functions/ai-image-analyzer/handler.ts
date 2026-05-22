@@ -7,7 +7,7 @@ interface ImageAnalysisRequest {
   step_title: string;
 }
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -217,4 +217,4 @@ Deno.serve(async (req) => {
       }
     );
   }
-});
+};

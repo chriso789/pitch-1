@@ -14,7 +14,7 @@ interface ProcessCommandRequest {
   conversation_history?: any[];
 }
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -217,4 +217,4 @@ Be conversational and helpful. Extract specific information from commands.`;
       }
     );
   }
-});
+};

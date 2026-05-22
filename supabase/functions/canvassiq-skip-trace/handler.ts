@@ -42,7 +42,7 @@ function parseFormattedAddress(formatted: string | undefined): { street: string;
   return { street: formatted, city: '', state: '', zip: '' };
 }
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -245,4 +245,4 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
-});
+};

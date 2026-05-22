@@ -22,7 +22,7 @@ const RATE_LIMITS = {
 // Allowed roles for managing supplier integrations
 const ALLOWED_ROLES = ['master', 'corporate', 'office_admin'];
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -358,7 +358,7 @@ async function logAuditEvent(
         table_name: 'supplier_accounts',
         record_id: entityId || 'none',
         new_values: details
-      });
+      };
   } catch (error) {
     console.error('Failed to log audit event:', error);
   }

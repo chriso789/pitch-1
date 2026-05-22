@@ -23,7 +23,7 @@ interface DiagnosisResult {
   autoFixAction?: string;
 }
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -153,7 +153,7 @@ Provide your diagnosis in the JSON format specified.`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+};
 
 function getDefaultDiagnosis(errorDetails: ErrorDetails, aiHint?: string): DiagnosisResult {
   const message = errorDetails.message.toLowerCase();

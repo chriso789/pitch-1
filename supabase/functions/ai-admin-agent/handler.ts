@@ -771,7 +771,7 @@ async function callAnthropic(
 
 // ── main handler ─────────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -1011,4 +1011,4 @@ RULES:
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+};

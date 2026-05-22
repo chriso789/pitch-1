@@ -439,4 +439,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-Deno.serve(handler);
+export const handle = handler;

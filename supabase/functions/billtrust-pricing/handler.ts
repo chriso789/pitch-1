@@ -12,7 +12,7 @@ interface PricingSyncRequest {
   branchCode?: string;
 }
 
-Deno.serve(async (req) => {
+export const handle = async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -217,4 +217,4 @@ Deno.serve(async (req) => {
       }
     );
   }
-});
+};
