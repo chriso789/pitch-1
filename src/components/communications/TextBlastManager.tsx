@@ -43,6 +43,27 @@ export const TextBlastManager = () => {
     enabled: !!activeTenantId,
   });
 
+  const handleDelete = async () => {
+    if (!deleteTarget || !activeTenantId) return;
+    setDeleting(true);
+    try {
+      await supabase.from('sms_blast_recipients').delete().eq('blast_id', deleteTarget.id);
+      const { error } = await supabase
+        .from('sms_blasts')
+        .delete()
+        .eq('id', deleteTarget.id)
+        .eq('tenant_id', activeTenantId);
+      if (error) throw error;
+      toast.success(`Deleted "${deleteTarget.name}"`);
+      setDeleteTarget(null);
+      refetch();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete blast');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: any }> = {
     draft: { label: 'Draft', variant: 'secondary', icon: Megaphone },
     sending: { label: 'Sending...', variant: 'default', icon: Send },
