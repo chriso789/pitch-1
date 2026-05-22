@@ -38,12 +38,28 @@ function buildFullAddress(c: any): string | null {
   return full || null;
 }
 
+// Detects when a contact's first_name field is actually just a chunk of the
+// street address (e.g. first_name="4773", last_name="Pine Harrier Drive").
+// In that case we suppress the {{contact.first_name}} tag so the message
+// doesn't read "Hi 4773," which screams spam.
+function isJunkFirstName(contact: any): boolean {
+  if (!contact) return true;
+  const fn = String(contact.first_name || '').trim();
+  if (!fn) return true;
+  if (/^\d/.test(fn)) return true; // starts with a digit (house number)
+  const street = String(contact.address_street || '').toLowerCase();
+  if (street && street.includes(fn.toLowerCase())) return true;
+  if (/\b(drive|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|dr)\b/i.test(fn)) return true;
+  return false;
+}
+
 function pick(ctx: any, key: string): string | null | undefined {
   switch (key) {
-    case 'contact.first_name': return ctx.contact?.first_name;
+    case 'contact.first_name': {
+      if (isJunkFirstName(ctx.contact)) return null;
+      return ctx.contact?.first_name;
+    }
     case 'contact.last_name': return ctx.contact?.last_name;
-    // Accept both the friendly alias ({{contact.address1}}) and the DB-style
-    // tag ({{contact.address_street}}) that the template editor surfaces.
     case 'contact.address1':
     case 'contact.address_street': return ctx.contact?.address_street;
     case 'contact.full_address': return buildFullAddress(ctx.contact);
@@ -62,16 +78,30 @@ function pick(ctx: any, key: string): string | null | undefined {
   }
 }
 
+// After tag substitution, clean up empty greeting artifacts so we don't ship
+// "Hi , we put..." when first_name was suppressed.
+function tidyEmptyGreetings(text: string): string {
+  return text
+    .replace(/\b(Hi|Hello|Hey)\s+,/gi, '$1,')
+    .replace(/\b(Hi|Hello|Hey)\s+there\s*,/gi, '$1,')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
+
 function resolveTags(template: string, ctx: any): string {
   if (!template) return '';
+  const suppressFirstName = isJunkFirstName(ctx.contact);
   return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_m, rawKey) => {
     const key = String(rawKey).trim();
+    // When first name is junk, swallow the tag entirely (no "there" fallback)
+    if (key === 'contact.first_name' && suppressFirstName) return '';
     const val = pick(ctx, key);
     if (val && String(val).trim().length > 0) return String(val).trim();
     if (key in FALLBACKS) return FALLBACKS[key];
     return '';
   });
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -171,7 +201,7 @@ Deno.serve(async (req) => {
       }
 
       const ctx = { contact, company, assigned_user };
-      const body = resolveTags(tplBody, ctx);
+      const body = tidyEmptyGreetings(resolveTags(tplBody, ctx));
 
       // NOTE: We intentionally do NOT inject any extra prefix (e.g. "we spoke
       // briefly in the past...") here. The script the user sees in the UI is
