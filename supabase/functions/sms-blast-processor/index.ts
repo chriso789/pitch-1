@@ -112,9 +112,39 @@ async function processBlast(
     .eq('supports_sms', true)
     .not('telnyx_phone_number', 'is', null);
 
-  const activeNumbers = (numbers || []).filter(
+  let activeNumbers = (numbers || []).filter(
     (n: any) => n.telnyx_phone_number && String(n.telnyx_phone_number).trim() !== '',
   );
+
+  // Lock sends to the blast's originating location number, if specified.
+  // West coast blasts must use the 941 number, east coast must use the 561, etc.
+  if (blast.from_location_id) {
+    let lockedLoc = activeNumbers.find((n: any) => n.id === blast.from_location_id);
+    if (!lockedLoc) {
+      const { data: locRow } = await supabase
+        .from('locations')
+        .select('id, telnyx_phone_number, messages_per_second, supports_sms, is_active, daily_limit, current_day_sent, current_day_reset_at')
+        .eq('id', blast.from_location_id)
+        .eq('tenant_id', blast.tenant_id)
+        .maybeSingle();
+      if (locRow && locRow.telnyx_phone_number && String(locRow.telnyx_phone_number).trim() !== '') {
+        lockedLoc = locRow as any;
+      }
+    }
+    if (lockedLoc) {
+      activeNumbers = [lockedLoc];
+    } else {
+      await supabase
+        .from('sms_blasts')
+        .update({
+          status: 'failed',
+          cancel_reason: 'Originating location has no active SMS number assigned',
+          last_processor_run_at: new Date().toISOString(),
+        })
+        .eq('id', blast.id);
+      return { blast_id: blast.id, error: 'from_location_has_no_number' };
+    }
+  }
 
   const totalMps = activeNumbers.reduce(
     (sum: number, n: any) => sum + Number(n.messages_per_second || 1),
