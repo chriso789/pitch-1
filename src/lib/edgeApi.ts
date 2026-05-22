@@ -24,6 +24,6 @@ export async function edgeApi<T = unknown>(
   });
   if (error) return { data: null, error: error.message ?? "invoke_failed" };
   if (!data) return { data: null, error: "empty_response" };
-  if (!data.ok) return { data: null, error: data.error, raw: data };
-  return { data: data.data, error: null, raw: data };
+  if (data.ok === false) return { data: null, error: data.error, raw: data };
+  return { data: (data as EdgeOk<T>).data, error: null, raw: data };
 }
