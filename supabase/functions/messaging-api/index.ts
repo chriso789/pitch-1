@@ -7,7 +7,7 @@
 //
 // See docs/messaging-consolidation-report.md for the migration map.
 
-import { createRouter, jsonOk, jsonErr, userClient, serviceClient } from "../_shared/router.ts";
+import { createRouter, jsonOk, jsonErr, userClient, serviceClient, serveRouter } from "../_shared/router.ts";
 import { requireAuth, requireTenant } from "../_shared/auth.ts";
 import { delegate } from "../_shared/delegate.ts";
 import { logAuditAsync } from "../_shared/audit.ts";
@@ -168,4 +168,4 @@ app.post("/ai/sms-response", async (c) => {
   return delegate(c.req.raw, "sms-conversation-ai", "messaging-api", { body });
 });
 
-Deno.serve(app.fetch);
+serveRouter(app);
