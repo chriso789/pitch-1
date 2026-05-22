@@ -153,12 +153,14 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
 
   const handleSendSMS = async (message: string) => {
     try {
-      const { error } = await supabase.functions.invoke('send-sms', {
+      const { error } = await supabase.functions.invoke('messaging-api', {
         body: {
+          __route: '/sms/send',
           to: contact.phone,
           message,
           contactId: contact.id,
-        }
+        },
+        headers: { 'x-route': '/sms/send' }
       });
 
       if (error) throw error;

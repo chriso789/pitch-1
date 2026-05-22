@@ -165,11 +165,13 @@ export function TelnyxIntegrationPanel() {
     setTestResults(prev => ({ ...prev, sms: undefined }));
 
     try {
-      const { data, error } = await supabase.functions.invoke('telnyx-send-sms', {
+      const { data, error } = await supabase.functions.invoke('messaging-api', {
         body: {
+          __route: '/sms/send',
           to: testSmsTo,
           message: testSmsMessage,
         },
+        headers: { 'x-route': '/sms/send' }
       });
 
       if (error) throw error;

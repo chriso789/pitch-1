@@ -106,11 +106,13 @@ export const MeasurementShareDialog: React.FC<MeasurementShareDialogProps> = ({
 
     setIsSending(true);
     try {
-      const { error } = await supabase.functions.invoke('send-sms', {
+      const { error } = await supabase.functions.invoke('messaging-api', {
         body: {
+          __route: '/sms/send',
           to: smsTo,
           message: smsMessage,
         },
+        headers: { 'x-route': '/sms/send' }
       });
 
       if (error) throw error;
