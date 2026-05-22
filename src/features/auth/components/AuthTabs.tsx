@@ -371,8 +371,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
                 setLoading(true);
                 try {
                   // Use custom edge function (Resend) instead of broken Supabase SMTP
-                  const { data, error } = await supabase.functions.invoke('send-password-reset', {
-                    body: { email: loginForm.email },
+                  const { data, error } = await supabase.functions.invoke('email-api', { body: { __route: '/password-reset', email: loginForm.email },
                   });
                   
                   if (error) throw error;

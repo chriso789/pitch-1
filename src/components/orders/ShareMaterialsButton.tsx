@@ -143,8 +143,9 @@ export function ShareMaterialsButton(props: Props) {
     }
     setSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke('email-send', {
+      const { data, error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/send/raw',
           to: recipients,
           subject,
           html,

@@ -445,8 +445,7 @@ export const UserManagement = () => {
   const resendInvite = async (user: User) => {
     setResendingInvite(user.id);
     try {
-      const { data, error } = await supabase.functions.invoke('resend-user-invitation', {
-        body: { userId: user.id }
+      const { data, error } = await supabase.functions.invoke('email-api', { body: { __route: '/user/invite', userId: user.id }
       });
 
       if (error) {

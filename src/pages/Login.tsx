@@ -532,8 +532,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
 
     try {
       // Send password reset email using custom edge function (uses Resend for reliable delivery)
-      const { data, error } = await supabase.functions.invoke('send-password-reset', {
+      const { data, error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/password-reset',
           email: resetEmail,
           redirectUrl: `${window.location.origin}/reset-password`
         }

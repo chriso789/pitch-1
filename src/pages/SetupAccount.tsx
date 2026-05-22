@@ -329,8 +329,7 @@ export default function SetupAccount() {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('resend-user-invitation', {
-        body: { userId: profile.id }
+      const { data, error } = await supabase.functions.invoke('email-api', { body: { __route: '/user/invite', userId: profile.id }
       });
 
       if (error) {

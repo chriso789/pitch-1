@@ -102,7 +102,7 @@ export function EmailActivityDashboard() {
 
   // Silently backfill Resend statuses + link to leads on mount
   useEffect(() => {
-    supabase.functions.invoke('backfill-email-statuses')
+    supabase.functions.invoke('email-api', { body: { __route: '/statuses/backfill' } })
       .then(({ data }) => {
         if (data?.updated > 0) refetch();
       })

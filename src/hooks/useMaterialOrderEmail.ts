@@ -16,8 +16,9 @@ export const useMaterialOrderEmail = () => {
     setSending(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('material-order-send-email', {
+      const { data, error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/material-order/send',
           orderId: params.orderId,
           action: params.action
         }

@@ -129,8 +129,9 @@ export function SignatureStatusDashboard() {
           console.warn(`No access_token for recipient ${recipient.id}, skipping reminder`);
           continue;
         }
-        await supabase.functions.invoke('email-signature-request', {
+        await supabase.functions.invoke('email-api', {
           body: {
+            __route: '/signature/send',
             envelope_id: envelopeId,
             recipient_id: recipient.id,
             recipient_name: recipient.recipient_name,

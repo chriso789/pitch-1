@@ -220,8 +220,9 @@ export function LaborOrderExport({
     }
     setSending(true);
     try {
-      const { error } = await supabase.functions.invoke('labor-order-send-email', {
+      const { error } = await supabase.functions.invoke('email-api', {
         body: {
+          __route: '/labor-order/send',
           estimateId,
           laborItems: laborItems.map(i => ({
             item_name: i.item_name,

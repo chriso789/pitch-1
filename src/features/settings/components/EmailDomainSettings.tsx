@@ -53,8 +53,7 @@ export function EmailDomainSettings() {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session) return;
 
-      const response = await supabase.functions.invoke("verify-email-domain", {
-        body: { action: "check_status" }
+      const response = await supabase.functions.invoke("email-api", { body: { __route: "/domain/verify", action: "check_status" }
       });
 
       if (response.data?.success) {
@@ -72,8 +71,9 @@ export function EmailDomainSettings() {
     setSaving(true);
 
     try {
-      const response = await supabase.functions.invoke("verify-email-domain", {
+      const response = await supabase.functions.invoke("email-api", {
         body: {
+          __route: "/domain/verify",
           action: "generate_token",
           domain: formData.domain,
           from_name: formData.from_name,
@@ -108,8 +108,7 @@ export function EmailDomainSettings() {
     setVerifying(true);
 
     try {
-      const response = await supabase.functions.invoke("verify-email-domain", {
-        body: { action: "verify", domain_id: domainId }
+      const response = await supabase.functions.invoke("email-api", { body: { __route: "/domain/verify", action: "verify", domain_id: domainId }
       });
 
       if (response.data?.verified) {

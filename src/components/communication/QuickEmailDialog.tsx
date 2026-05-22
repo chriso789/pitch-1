@@ -54,8 +54,9 @@ export function QuickEmailDialog({ open, onOpenChange, contact }: QuickEmailDial
 
     setSending(true);
     try {
-      const { error } = await supabase.functions.invoke("send-email", {
+      const { error } = await supabase.functions.invoke("email-api", {
         body: {
+          __route: "/send",
           to: contact.email,
           subject: subject.trim(),
           body: body.trim(),
