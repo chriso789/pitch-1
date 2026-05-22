@@ -25,6 +25,8 @@ export const TextBlastManager = () => {
   const { activeTenantId } = useActiveTenantId();
   const [view, setView] = useState<'list' | 'create' | 'detail'>('list');
   const [selectedBlastId, setSelectedBlastId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: blasts, isLoading, refetch } = useQuery({
     queryKey: ['sms-blasts', activeTenantId],
