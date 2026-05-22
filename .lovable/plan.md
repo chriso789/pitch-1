@@ -1,118 +1,116 @@
-## Current state (verified against repo)
 
-- **457** function folders in `supabase/functions/` (down from ~499)
-- Audit CSV exists with **410** legacy entries: 300 MIGRATE, 69 DELETE_CANDIDATE, 21 SHIM, 20 KEEP — but **109 MIGRATE rows still have target `TBD`**
-- **31 grouped functions exist as ~20-line shells** — every route returns `501 not_migrated`. No logic actually moved yet.
-- Shared helpers present: `router.ts`, `shim.ts`, `env.ts`, `tenant.ts`, `rateLimit.ts`
-- **Missing helpers**: `auth.ts`, `errors.ts`, `audit.ts`
-- `scripts/audit-edge-functions.ts` exists (299 lines) but `docs/edge-function-current-status.md` does not
+## Goal
 
-So scaffolding is in place, real consolidation work has not started.
+Stop planning. Prove what is actually wired in the canonical measurement route, fill the documented runtime gaps (debug endpoint, legacy fencing, DB columns, hard-fail names), and produce a route-audit response we can cite before re-running Fonsica.
 
-## Plan
+## 1. Repo audit (output as `docs/measurement-runtime-audit.md`)
 
-### Phase 0 — Finalize audit (1 pass, no code)
+For each module, exists / exports / imported-by / active-in-canonical-route:
 
-1. Resolve the **109 TBD targets** in `docs/edge-function-consolidation-audit.csv` by classifying each by domain (messaging, measurement, supplier, etc.). Anything that genuinely doesn't fit → flip to `DELETE_CANDIDATE`.
-2. Re-tally so every MIGRATE row has a concrete `recommended_new_function` + `recommended_new_route`.
+| Module | Exists | Imported by `start-ai-measurement/index.ts` | Notes |
+|---|---|---|---|
+| `_shared/autonomous-graph-solver.ts` (`solveAutonomousGraph`) | yes | yes — called L2956 | active |
+| `_shared/perimeter-refinement.ts` (`refineTrueOuterRoofPerimeter`) | yes | yes — called L2822 inside Phase 3A.5 block | active |
+| `_shared/deferred-structural-edges.ts` | yes | via `autonomous-graph-solver` only | active inside solver |
+| `_shared/backbone-seed.ts` (`SeedBackboneResult`) | yes | via solver L2415–2446 | active |
+| `_shared/backbone-network.ts` (`buildBackboneNetwork`) | yes | via solver L2389 | active |
+| `_shared/constraint-roof-solver.ts` | yes | yes | active |
+| `_shared/constraint-solver-repair.ts` (`attemptRepairPass`) | yes | via `constraint-roof-solver` L1691 | active |
+| `_shared/roof-lines.ts` (`buildRoofLine`, `aggregateLineTotalsByAttribute`) | yes | yes — L41 | active |
+| `_shared/result-state.ts` | yes | yes | active |
+| `debug-measurement-runtime` function | **NO** | n/a | **must create** |
+| `render-measurement-pdf` | yes | n/a (separate render path) | confirm `report_renderer_version` stamp |
 
-### Phase 1 — Complete shared helpers
+Legacy fences currently stamped:
+- `measure` ✅, `analyze-roof-aerial` ✅
+- `measure-roof`, `generate-roof-overlay`, `generate-roof-report`, `calculate-roof-measurements`, `ai-measurement`, `ai-measurement-analyzer`, `auto-generate-measurements`, `recalculate-measurement-from-overrides` — **need fencing review** (no `canonical_measurement_route=false` stamp found).
 
-Add the three missing files (the router already does most of the work, these split responsibilities cleanly):
+## 2. Database migration
 
-- `_shared/auth.ts` — `requireAuth`, `requireServiceRole`, `requireInternalSecret(WORKER_SECRET)`, `requireWebhookSignature(provider)`
-- `_shared/errors.ts` — typed error codes + `httpFromCode()` mapper; `{ok:false,error,code,details}` envelope
-- `_shared/audit.ts` — `logAuditAsync()` + `logShimCall()` writing to `edge_function_audit_log` (new table, see Phase 2)
+`roof_measurements` already has `canonical_measurement_route`, `created_by_function`, `created_by_component`, `solver_entrypoint`, `route_audit_version`, `report_renderer_version`, `block_customer_report_reason`. Missing:
 
-Extend `router.ts` to expose `app.publicWebhook(path, handler)` and `app.workerRoute(path, handler)` shortcuts that bypass auth but enforce signature/service-role.
+- Add `hard_fail_reason TEXT` (currently only `last_failure_reason`/`last_failure_stage`).
+- Backfill index: `CREATE INDEX IF NOT EXISTS roof_measurements_canonical_route_idx ON roof_measurements (canonical_measurement_route, created_at DESC);`
+- Confirm `roof_lines` table exists (read currently returns it). If not present, create with `roof_measurement_id`, `attribute`, `length_ft`, `pitch`, `geometry_geo`, `source_phase`, `confidence`, RLS by `tenant_id`.
 
-### Phase 2 — Audit table + RLS
+(Single migration, requires user approval.)
 
-Migration: create `edge_function_audit_log` (function_name, route, method, status, latency_ms, user_id, tenant_id, shim_from, request_id, created_at). Service-role-only writes; admins read.
+## 3. `start-ai-measurement` — close the route-stamp gaps
 
-### Phase 3 — Wire routes into the 31 grouped functions
+Already done: route_provenance + CANONICAL_ROUTE_PROVENANCE written on success path (L440) and one failure path (L6536). Pending:
 
-Driven by the audit CSV's `recommended_new_function`/`recommended_new_route`. For each grouped function:
+- Audit every `insert/upsert` into `roof_measurements` / `ai_measurement_jobs` / `measurement_jobs` in `start-ai-measurement/index.ts` and ensure each spreads `CANONICAL_ROUTE_PROVENANCE` + sets the 5 columns BEFORE early returns. Estimated 6–8 additional insert sites in the 8 308-line file.
+- Ensure `geometry_report_json` always includes the four phase blocks (`phase3_5`, `phase3C`, `phase3D`, `phase3E`) even on early failure. Builders exist (`buildPhase3A5Block` etc.) but are only invoked in `assembleGeometryReport`. Wrap early-failure inserts to call the same assembler with `{executed:false, skipped_reason}`.
+- Map new hard-fail names: `perimeter_refinement_failed`, `backbone_not_applied`, `topology_undersegmented_after_backbone_repair` → extend `result-state.ts` `normalizeResultStateForWrite` and write to new `hard_fail_reason` column.
 
-1. Replace `501 not_migrated` stub with real handler.
-2. Copy logic from the legacy function (don't rewrite — port verbatim, then refactor minimally for the router context).
-3. Reuse existing `_shared/*` helpers (telnyx.ts, lovable-ai.ts, supabase.ts, etc.).
-4. Tenant-scoped routes verify `tenant_id` against authenticated user (never trust client-supplied IDs).
+## 4. Phase wiring gaps to actually close
 
-Priority order by MIGRATE volume:
-- `supplier-api` (19), `measurement-api` (18), `document-api` (16), `email-api` (15), `signature-api` (13), `telnyx-api` (11), `payment-api` (8), `ai-api` (8), `map-api` (6), `qbo-api` (5), `canvass-api` (5), `ai-worker` (5), and the long tail.
+3A.5 — already called (L2822) but verify:
+- Gate thresholds (`refinement_iou < 0.88`, `perimeter_to_target_mask_ratio > 1.10`, `refined_confidence < 0.85`) → emit `ai_failed_perimeter` + skip topology + set 3C/3D/3E `skipped_reason='blocked_by_perimeter_refinement'`.
+- Replace topology-input perimeter with `refined_perimeter_px` when passing.
 
-### Phase 4 — Shim every migrated legacy function
+3C — solver already defers; ensure `phase3C` diagnostics expose `connectivity_edges_deferred`, `connectivity_edges_deleted_pre_refinement`, `deferred_structural_candidates_count`, `deferred_edges_used_for_refinement`, `deferred_edge_table` to the report block. Acceptance check: Fonsica row must not show `edges_removed_before_face_build=13` with empty deferred list.
 
-For each migrated legacy `supabase/functions/<old>/index.ts`, replace with:
+3D — backbone seed inserted; need explicit `locked=true` propagation through planar pruning and persist `seed_backbone_edges_survived` + the "pre-solve chains existed but final ridge_lf+valley_lf=0 → `backbone_not_applied`" hard rule.
 
-```ts
-import { forward } from "../_shared/shim.ts";
-Deno.serve((req) => forward(req, "messaging-api", "/sms/send", "send-sms"));
+3E — repair pass exists; surface `repaired_ridge_chains_inserted`, `repaired_valley_chains_inserted`, `repair_iterations`, `repair_accepted`, `final_rejection_reason`. Hard fail with `topology_undersegmented_after_backbone_repair` when no candidate survives post-repair.
+
+## 5. Legacy fencing sweep
+
+Add the 3-line stamp to every legacy function that touches `roof_measurements`:
 ```
+created_by_function: "<name>"
+canonical_measurement_route: false
+geometry_report_json.route_warning: "legacy_noncanonical_measurement_path"
+```
+Targets: `measure-roof`, `generate-roof-overlay` (only if it writes), `generate-roof-report` (only if it writes), `calculate-roof-measurements`, `ai-measurement`, `ai-measurement-analyzer`, `auto-generate-measurements`, `batch-regenerate-measurements`, `batch-remeasure`, `recalculate-measurement-from-overrides`, `trace-roof`. For read-only ones, skip.
 
-`shim.ts` already exists — extend it to call `logShimCall()` so we see which legacy URLs are still being hit in production. **Do not delete the old folder yet** — the deployed function keeps serving traffic via the shim until logs show zero hits.
+## 6. Create `debug-measurement-runtime` edge function
 
-### Phase 5 — Frontend migration
+New `supabase/functions/debug-measurement-runtime/index.ts`. POST `{ lead_id? , contact_id?, address? }`. Returns latest N `roof_measurements` rows joined with `ai_measurement_jobs`:
 
-Update `src/lib/edgeApi.ts` consumers and any direct `supabase.functions.invoke("<old-name>")` call sites in `src/**` to call the grouped function + route. Keep old invokes working (the shim handles it) but migrate the hot paths.
+```json
+{
+  "rows": [{
+    "id", "created_at",
+    "created_by_function","canonical_measurement_route","solver_entrypoint",
+    "route_audit_version","report_renderer_version",
+    "result_state","hard_fail_reason","block_customer_report_reason",
+    "route_provenance":     <geometry_report_json.route_provenance>,
+    "phase3_5":             <geometry_report_json.phase3_5>,
+    "phase3C":              <geometry_report_json.phase3C>,
+    "phase3D":              <geometry_report_json.phase3D>,
+    "phase3E":              <geometry_report_json.phase3E>
+  }]
+}
+```
+Service-role read, master/admin-only via `auth-api`'s `requireMasterOrAdmin`. CORS, validate input with Zod.
 
-### Phase 6 — Delete-candidate triage
+## 7. Validation packet before Fonsica rerun
 
-For each of the 69 DELETE_CANDIDATE rows, run the audit script's reference scan. If 0 frontend / backend / docs hits → append to `docs/edge-function-delete-candidates.md` with last-modified date and recommended drop date (deletion happens in a later loop, not this one).
+Write `docs/fonsica-rerun-prereqs.md` containing:
+1. Migration timestamp + columns added.
+2. `debug-measurement-runtime` curl response for Fonsica's lead (canonical row count, phase versions).
+3. `start-ai-measurement` deploy timestamp.
+4. Verification snippet showing failure-path inserts include phase blocks.
+Then rerun Fonsica and capture the expected fields listed in the user's section 10.
 
-### Phase 7 — KEEP / public webhooks
+## Out of scope
 
-Document each of the 20 KEEP rows in `docs/edge-function-current-status.md` with: provider, dashboard URL where the webhook is registered, signature secret env var. These cannot be shimmed without breaking provider configuration.
+- No new solver math. No new UI. No work on non-measurement domains. No edge-function consolidation in this pass.
 
-### Phase 8 — Audit script + status doc
+## Technical notes
 
-1. Extend `scripts/audit-edge-functions.ts` to write structured output to `docs/edge-function-current-status.md` with the exact counts requested:
-   - folder count (excluding `_shared`)
-   - grouped routed functions
-   - legacy shim functions
-   - delete candidates (with reference-check results)
-   - public webhooks that must stay
-   - frontend call sites still pointing to old names
-   - remaining action plan to reach <150 deployed functions
-2. Run it once and commit the generated `current-status.md`.
+- File is 8 308 lines; insert-site sweep uses `rg -n "from\\('roof_measurements'\\)\\.(insert|upsert|update)"` to enumerate write sites.
+- `result-state.ts` normalizer is the only DB-safe gate for new buckets per project memory; do not widen the CHECK constraint.
+- All multi-tenant queries in `debug-measurement-runtime` must `.eq('tenant_id', effectiveTenantId)` per Core memory.
 
-### Phase 9 — `supabase/config.toml`
+## Deliverables
 
-Ensure every grouped function has `verify_jwt = false` (auth done in router via `getClaims`). Public webhooks: `verify_jwt = false` + signature validation. Worker routes: `verify_jwt = false` + `requireInternalSecret`.
-
-### Phase 10 — Rules doc
-
-Update `docs/EDGE_FUNCTION_RULES.md` with the "one domain = one edge function with internal routes" rule and a PR checklist: any new function PR that adds a folder under `supabase/functions/` (not matching `*-api|*-worker|*-webhook` + already approved list) must be rejected.
-
-## Technical details
-
-**Routing convention** — already implemented in `router.ts` via Hono. Routes use real URL pathnames (`POST /functions/v1/messaging-api/sms/send`), not `__route` body field. The `edgeApi.ts` client already sends `x-route` header and `__route` body; keep that for backward compat with the shim, but new clients should call the path directly via `supabase.functions.invoke("messaging-api/sms/send")`.
-
-**Tenant guard** — `requireTenant` middleware loads user → resolves `active_tenant_id` from `profiles` → sets `c.var.tenantId`. Routes must use `c.var.tenantId`, never read from body.
-
-**Worker routes** — internal-only, called from pg_cron or other edge functions via `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` or `x-internal-secret: <WORKER_SECRET>` (new secret).
-
-**Webhook signature validation** — Stripe, Telnyx, QBO, Resend, DocuSign each have HMAC verification. Use existing `_shared/telnyx.ts` patterns where present.
-
-**Phased function-count targets** (per user request):
-- After Phase 4 (shims in place, nothing deleted): still ~457
-- After Phase 6 deletes execute (next loop): 250–300
-- After legacy-function traffic confirmed zero and shims dropped: 120–160
-- Final: 75–100
-
-## Out of scope for this loop
-
-- **Actually deleting** legacy functions (only documenting candidates; deletes happen after production logs show zero shim traffic)
-- New backend features
-- PDF packet generation, email/share workflow, claim tracker (separate roadmap)
-
-## Deliverable check at end of loop
-
-The audit script must report, in `docs/edge-function-current-status.md`:
-- exact folder count
-- exact grouped count = 31 (or higher if new domains needed)
-- exact shim count = number of MIGRATE rows actually shimmed this loop
-- exact delete-candidate count with reference-scan results
-- exact public-webhook count = 20 (KEEP rows documented)
-- exact frontend-still-old count
+1. `docs/measurement-runtime-audit.md` (section 1 table, filled in with real line numbers).
+2. One migration: add `hard_fail_reason`, optional `roof_lines` table, route index.
+3. Edits to `start-ai-measurement/index.ts`: phase-block emission on all failure paths + write `hard_fail_reason`.
+4. Edits to `_shared/result-state.ts`: map new hard-fail names.
+5. Legacy-fence edits across the ~10 functions listed.
+6. New `supabase/functions/debug-measurement-runtime/index.ts`.
+7. `docs/fonsica-rerun-prereqs.md` populated after deploy.
