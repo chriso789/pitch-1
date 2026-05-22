@@ -132,6 +132,8 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
   const progress = blast.total_recipients > 0
     ? Math.round(((blast.sent_count + blast.failed_count + blast.opted_out_count) / blast.total_recipients) * 100)
     : 0;
+  const skippedCount = (items || []).filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
+  const noTextsSent = blast.status === 'completed' && blast.sent_count === 0 && skippedCount > 0;
 
   const statusIcons: Record<string, any> = {
     pending: Clock,
@@ -139,6 +141,8 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     failed: XCircle,
     opted_out: ShieldOff,
     cancelled: Ban,
+    skipped_cooldown: Clock,
+    skipped_duplicate: Ban,
   };
 
   const statusColors: Record<string, string> = {
@@ -147,6 +151,8 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     failed: 'text-destructive',
     opted_out: 'text-amber-500',
     cancelled: 'text-muted-foreground',
+    skipped_cooldown: 'text-amber-500',
+    skipped_duplicate: 'text-muted-foreground',
   };
 
   return (
