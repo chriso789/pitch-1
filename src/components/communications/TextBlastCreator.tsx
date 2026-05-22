@@ -989,16 +989,16 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Message Script</CardTitle>
               <div className="flex items-center gap-1">
-                {selectedTemplateIds.length === 1 && (
+                {activePreviewTemplate && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="text-[11px] h-7"
                     onClick={() => {
-                      const t = (templates || []).find((tt: any) => tt.id === selectedTemplateIds[0]);
+                      const t = activePreviewTemplate;
                       if (!t) return;
-                      // Open the editor pre-filled with the CURRENT script (so edits flow in)
+                      // Update the template currently shown in the preview/script area
                       setTplEditor({
                         open: true,
                         mode: 'edit',
