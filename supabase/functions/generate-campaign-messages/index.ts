@@ -185,6 +185,10 @@ Deno.serve(async (req) => {
       await supabase.from('sms_blast_items').update({
         personalized_message: body,
         template_id: tpl.id,
+        address_street_snapshot: contact?.address_street || null,
+        address_city_snapshot: contact?.address_city || null,
+        address_state_snapshot: contact?.address_state || null,
+        address_zip_snapshot: contact?.address_zip || null,
       }).eq('id', item.id);
       updated++;
     }
