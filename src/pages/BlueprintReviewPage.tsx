@@ -57,9 +57,12 @@ export default function BlueprintReviewPage() {
   const reparse = async () => {
     if (!id) return;
     await supabase.from("plan_documents").update({ status: "uploaded", status_message: null }).eq("id", id);
-    const { error } = await supabase.functions.invoke("parse-blueprint-document", { body: { document_id: id } });
-    if (error) toast({ title: "Failed", description: error.message, variant: "destructive" });
-    else toast({ title: "Re-parsing started" });
+    try {
+      await parseBlueprintDocument(id);
+      toast({ title: "Re-parsing started" });
+    } catch (e: any) {
+      toast({ title: "Failed", description: e?.message ?? String(e), variant: "destructive" });
+    }
   };
 
   const setStatus = async (status: "approved" | "rejected") => {
