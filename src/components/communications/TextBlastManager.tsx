@@ -5,10 +5,21 @@ import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Megaphone, Send, CheckCircle, XCircle, Ban } from 'lucide-react';
+import { Plus, Megaphone, Send, CheckCircle, XCircle, Ban, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { TextBlastCreator } from './TextBlastCreator';
 import { TextBlastDetail } from './TextBlastDetail';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 
 export const TextBlastManager = () => {
   const { activeTenantId } = useActiveTenantId();
