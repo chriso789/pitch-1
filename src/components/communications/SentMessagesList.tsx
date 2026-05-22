@@ -35,7 +35,7 @@ interface Props {
 
 export const SentMessagesList = ({ onSelect, selectedKey }: Props) => {
   const [search, setSearch] = useState('');
-  const { effectiveTenantId } = useEffectiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
   const { currentLocationId } = useLocation();
 
   const { data: rows = [], isLoading } = useQuery({
