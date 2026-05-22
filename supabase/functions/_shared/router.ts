@@ -35,18 +35,47 @@ export type RouterEnv = {
 export function createRouter(functionName: string) {
   const app = new Hono<RouterEnv>();
 
-  // CORS preflight + headers
+  // CORS + __route dispatch (lets `supabase.functions.invoke(fn, { body: { __route } })` map to a Hono path).
   app.use("*", async (c, next) => {
     if (c.req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
+    // Resolve effective route: explicit `x-route` header, then `__route` field in JSON body,
+    // then the URL path. When invoke() is used, URL path is "/" — so we need the override.
+    let effectivePath = new URL(c.req.url).pathname;
+    const headerRoute = c.req.header("x-route");
+    if (headerRoute && headerRoute.startsWith("/")) {
+      effectivePath = headerRoute;
+    } else if (effectivePath === "/" || effectivePath === "") {
+      try {
+        const ct = c.req.header("content-type") ?? "";
+        if (ct.includes("application/json")) {
+          const raw = await c.req.raw.clone().text();
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.__route === "string" && parsed.__route.startsWith("/")) {
+              effectivePath = parsed.__route;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    if (effectivePath !== new URL(c.req.url).pathname) {
+      // Rebuild request with the resolved path so Hono routes match.
+      const newUrl = new URL(c.req.url);
+      newUrl.pathname = effectivePath;
+      const rebuilt = new Request(newUrl.toString(), c.req.raw);
+      // Replace request on context for downstream handlers.
+      (c.req as unknown as { raw: Request }).raw = rebuilt;
+    }
     c.set("functionName", functionName);
     c.set("requestId", crypto.randomUUID());
     c.set("startedAt", Date.now());
-    c.set("routePath", new URL(c.req.url).pathname);
+    c.set("routePath", effectivePath);
     await next();
     for (const [k, v] of Object.entries(corsHeaders)) c.res.headers.set(k, v);
   });
+
 
   // After-response audit log (best-effort, never throws)
   app.use("*", async (c, next) => {
