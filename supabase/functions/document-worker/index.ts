@@ -1,7 +1,7 @@
 // document-worker — routed Edge Function. Deterministic-first document parsing.
 // AI fallback (Tier 4) is intentionally DEFERRED in this slice; low-confidence
 // runs return code "low_confidence" and enqueue a review item.
-import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient } from "../_shared/router.ts";
+import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient, serveRouter } from "../_shared/router.ts";
 import { extractPdfText, downloadStorageObject } from "../_shared/parsers/pdf-text.ts";
 import { parseEagleViewRoofReport } from "../_shared/parsers/eagleview-roof.ts";
 import { parseRoofrRoofReport } from "../_shared/parsers/roofr-roof.ts";
