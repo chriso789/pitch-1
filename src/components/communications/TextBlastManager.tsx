@@ -143,6 +143,18 @@ export const TextBlastManager = () => {
                       </p>
                     </div>
                     <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget({ id: blast.id, name: blast.name });
+                      }}
+                      aria-label={`Delete ${blast.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -150,6 +162,27 @@ export const TextBlastManager = () => {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this text blast?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove "{deleteTarget?.name}" and all its recipient records. Sent messages already delivered to contacts cannot be recalled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</>) : (<><Trash2 className="h-4 w-4 mr-2" /> Delete</>)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
