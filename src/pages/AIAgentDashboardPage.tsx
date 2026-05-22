@@ -8,6 +8,8 @@ import { CallAnalyticsDashboard } from '@/components/ai-agent/CallAnalyticsDashb
 import { LiveCallTranscript } from '@/components/ai-agent/LiveCallTranscript';
 import { CallTranscriptViewer } from '@/components/ai-agent/CallTranscriptViewer';
 import { CampaignsHub } from '@/components/campaigns/CampaignsHub';
+import { MessageTemplates } from '@/features/communication/components/MessageTemplates';
+import { LayoutTemplate } from 'lucide-react';
 
 export default function AIAgentDashboardPage() {
   const navigate = useNavigate();
@@ -34,10 +36,14 @@ export default function AIAgentDashboardPage() {
         </div>
 
         <Tabs defaultValue="campaigns" className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+          <TabsList className="grid w-full max-w-3xl grid-cols-5">
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
               Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="flex items-center gap-2">
+              <LayoutTemplate className="h-4 w-4" />
+              Templates
             </TabsTrigger>
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
@@ -55,6 +61,10 @@ export default function AIAgentDashboardPage() {
 
           <TabsContent value="campaigns">
             <CampaignsHub />
+          </TabsContent>
+
+          <TabsContent value="templates">
+            <MessageTemplates />
           </TabsContent>
 
           <TabsContent value="analytics">
