@@ -77,6 +77,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
   const lastGoalRef = useRef<string>('');
   const metrics = useSmsBlastMetrics(dryRunBlastId, activeTenantId || null);
+  const isTestBlast = /\btest\b/i.test(name.trim()) || sendMode === 'single' || batchSize <= 10;
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
@@ -309,6 +310,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             total_recipients: 1,
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
+            is_test_mode: isTestBlast,
             template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
             ai_followup_enabled: aiFollowupEnabled,
             goal: goal || null,
@@ -365,6 +367,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             total_recipients: listItems!.length,
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
+            is_test_mode: isTestBlast,
             template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
             ai_followup_enabled: aiFollowupEnabled,
             goal: goal || null,
