@@ -211,11 +211,24 @@ async function saveMeasurement(supabase: any, params: SaveParams) {
     verification_status: isStub ? 'pending' : 'auto-verified',
   }
 
+  // Stamp legacy provenance + warn on geometry_report_json before insert.
+  const legacyGeometryReport = {
+    ...((row as any).geometry_report_json ?? {}),
+    route_warning: 'legacy_noncanonical_measurement_path',
+    route_provenance: { ...LEGACY_MEASURE_ROOF_PROVENANCE },
+  }
+  const insertRow = {
+    ...LEGACY_MEASURE_ROOF_PROVENANCE,
+    ...row,
+    geometry_report_json: legacyGeometryReport,
+  }
+
   const { data, error } = await supabase
     .from('roof_measurements')
-    .insert(row)
+    .insert(insertRow)
     .select('id')
     .single()
+
 
   if (error) {
     console.error('DB insert error:', error)
