@@ -30,6 +30,7 @@ const CommunicationsHub = () => {
   const [activeTab, setActiveTab] = useState('inbox');
   const [selectedThread, setSelectedThread] = useState<SMSThread | null>(null);
   const [selectedInboxItem, setSelectedInboxItem] = useState<UnifiedInboxItem | null>(null);
+  const [selectedSent, setSelectedSent] = useState<{ contact_id: string | null; phone: string; name: string } | null>(null);
   const [softphoneOpen, setSoftphoneOpen] = useState(false);
   const [callNumber, setCallNumber] = useState('');
   const [callContactName, setCallContactName] = useState('');
