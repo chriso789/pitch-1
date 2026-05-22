@@ -24,20 +24,25 @@ import { toast } from 'sonner';
 
 export const TextBlastManager = () => {
   const { activeTenantId } = useActiveTenantId();
+  const { currentLocationId, currentLocation } = useLocation();
   const [view, setView] = useState<'list' | 'create' | 'detail'>('list');
   const [selectedBlastId, setSelectedBlastId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const { data: blasts, isLoading, refetch } = useQuery({
-    queryKey: ['sms-blasts', activeTenantId],
+    queryKey: ['sms-blasts', activeTenantId, currentLocationId],
     queryFn: async () => {
       if (!activeTenantId) return [];
-      const { data, error } = await supabase
+      let q = supabase
         .from('sms_blasts')
         .select('*')
         .eq('tenant_id', activeTenantId)
         .order('created_at', { ascending: false });
+      if (currentLocationId) {
+        q = q.eq('from_location_id', currentLocationId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data || [];
     },
