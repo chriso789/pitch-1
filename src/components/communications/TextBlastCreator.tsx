@@ -981,6 +981,27 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 </div>
               </div>
 
+              <div className="rounded-md border border-border p-2.5 space-y-1.5">
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <div>
+                    <p className="text-xs font-medium">Rotate across selected templates</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {rotateTemplates && selectedTemplateIds.length > 1
+                        ? `Rotating across ${selectedTemplateIds.length} templates — each recipient gets one.`
+                        : 'Off — every recipient gets the template shown in the preview.'}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={rotateTemplates}
+                    disabled={selectedTemplateIds.length < 2}
+                    onChange={(e) => setRotateTemplates(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                </label>
+              </div>
+
+
               <div className="flex items-center justify-between rounded-md border border-border p-2.5">
                 <div className="flex items-start gap-2">
                   <Sparkles className="h-4 w-4 text-primary mt-0.5" />
