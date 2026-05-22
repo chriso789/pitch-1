@@ -23,6 +23,7 @@ const DEFAULT_LIMIT_PER_INVOCATION = 50;
 const MIN_PACING_MS = 800;
 const MAX_PACING_MS = 1500;
 const PER_PHONE_COOLDOWN_HOURS = 24;
+const LINE_TYPE_CACHE_TTL_DAYS = 90;
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null;
@@ -32,6 +33,143 @@ function normalizePhone(raw: string): string | null {
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   return null;
 }
+
+// Returns 'mobile' | 'landline' | 'voip' | 'unknown'. Cached in phone_line_types.
+async function lookupLineType(
+  supabase: ReturnType<typeof createClient>,
+  phoneE164: string,
+): Promise<{ line_type: string; carrier_name: string | null }> {
+  // 1) cache check
+  const { data: cached } = await supabase
+    .from('phone_line_types')
+    .select('line_type, carrier_name, checked_at')
+    .eq('phone', phoneE164)
+    .maybeSingle();
+  if (cached) {
+    const age = Date.now() - new Date((cached as any).checked_at).getTime();
+    if (age < LINE_TYPE_CACHE_TTL_DAYS * 86400 * 1000) {
+      return { line_type: (cached as any).line_type, carrier_name: (cached as any).carrier_name || null };
+    }
+  }
+
+  // 2) Telnyx Number Lookup
+  const apiKey = Deno.env.get('TELNYX_API_KEY');
+  if (!apiKey) return { line_type: 'unknown', carrier_name: null };
+
+  try {
+    const url = `https://api.telnyx.com/v2/number_lookup/${encodeURIComponent(phoneE164)}?type=carrier`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+    const json = await res.json().catch(() => ({}));
+    const carrier = json?.data?.carrier || {};
+    // Telnyx returns carrier.type values like "mobile", "landline", "voip", "fixed_or_mobile"
+    const rawType = String(carrier.type || '').toLowerCase();
+    let line_type: string = 'unknown';
+    if (rawType.includes('landline') || rawType.includes('fixed')) line_type = 'landline';
+    else if (rawType.includes('mobile') || rawType.includes('wireless')) line_type = 'mobile';
+    else if (rawType.includes('voip')) line_type = 'voip';
+    const carrier_name = carrier.name || null;
+
+    await supabase.from('phone_line_types').upsert({
+      phone: phoneE164,
+      line_type,
+      carrier_name,
+      raw: json,
+      checked_at: new Date().toISOString(),
+    });
+    return { line_type, carrier_name };
+  } catch (e) {
+    console.error('[blast-worker] line type lookup failed', phoneE164, e);
+    return { line_type: 'unknown', carrier_name: null };
+  }
+}
+
+// Pull the contact's full phone list (primary + secondary + additional) in priority order,
+// minus any number already attempted in this blast.
+async function getNextPhoneForContact(
+  supabase: ReturnType<typeof createClient>,
+  contactId: string,
+  blastId: string,
+  excludePhone: string,
+): Promise<string | null> {
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('phone, secondary_phone, additional_phones')
+    .eq('id', contactId)
+    .maybeSingle();
+  if (!contact) return null;
+
+  const candidates: string[] = [];
+  const add = (p?: string | null) => {
+    const n = p ? normalizePhone(p) : null;
+    if (n && !candidates.includes(n)) candidates.push(n);
+  };
+  add((contact as any).phone);
+  add((contact as any).secondary_phone);
+  for (const p of ((contact as any).additional_phones || [])) add(p);
+
+  // Drop any already attempted on this blast (including the one we just landlined)
+  const { data: prior } = await supabase
+    .from('sms_blast_items')
+    .select('phone')
+    .eq('blast_id', blastId)
+    .eq('contact_id', contactId);
+  const attempted = new Set<string>([
+    excludePhone,
+    ...((prior || []).map((r: any) => normalizePhone(r.phone)).filter(Boolean) as string[]),
+  ]);
+
+  return candidates.find((c) => !attempted.has(c)) || null;
+}
+
+// Remove a landline number from a contact's phone fields and log it under
+// scrubbed_landline_phones so we never re-blast it.
+async function scrubLandlineFromContact(
+  supabase: ReturnType<typeof createClient>,
+  contactId: string,
+  badPhone: string,
+) {
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('phone, secondary_phone, additional_phones, scrubbed_landline_phones')
+    .eq('id', contactId)
+    .maybeSingle();
+  if (!contact) return;
+
+  const eq = (p?: string | null) => p ? normalizePhone(p) === badPhone : false;
+  const patch: Record<string, unknown> = {};
+  if (eq((contact as any).phone)) patch.phone = (contact as any).secondary_phone || null;
+  if (eq((contact as any).secondary_phone)) patch.secondary_phone = null;
+  const addl = ((contact as any).additional_phones || []) as string[];
+  const filteredAddl = addl.filter((p) => !eq(p));
+  if (filteredAddl.length !== addl.length) patch.additional_phones = filteredAddl;
+
+  // If the primary just got nulled out, promote the next available number.
+  if (patch.phone === null) {
+    const next =
+      (patch.secondary_phone === undefined ? (contact as any).secondary_phone : patch.secondary_phone) ||
+      (patch.additional_phones as string[] | undefined)?.[0] ||
+      filteredAddl[0] ||
+      null;
+    if (next) {
+      patch.phone = next;
+      if (patch.secondary_phone === undefined && (contact as any).secondary_phone === next) patch.secondary_phone = null;
+      if (Array.isArray(patch.additional_phones)) {
+        patch.additional_phones = (patch.additional_phones as string[]).filter((p) => normalizePhone(p) !== normalizePhone(next));
+      } else {
+        const trimmedAddl = filteredAddl.filter((p) => normalizePhone(p) !== normalizePhone(next));
+        if (trimmedAddl.length !== filteredAddl.length) patch.additional_phones = trimmedAddl;
+      }
+    }
+  }
+
+  const scrubbed = new Set<string>([...(((contact as any).scrubbed_landline_phones) || []), badPhone]);
+  patch.scrubbed_landline_phones = Array.from(scrubbed);
+
+  if (Object.keys(patch).length > 0) {
+    await supabase.from('contacts').update(patch).eq('id', contactId);
+  }
+}
+
 
 // Returns true if the current time is within the blast's send window.
 // Defaults: 09:00 - 18:00 in America/New_York.
