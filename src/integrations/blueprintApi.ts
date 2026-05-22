@@ -1,4 +1,16 @@
 import { supabase } from "@/integrations/supabase/client";
+import { edgeApi } from "@/lib/edgeApi";
+
+// NOTE (Slice 2B):
+// - parseBlueprintDocument + classifyBlueprintPages now route through the
+//   grouped `document-worker` function via edgeApi. Legacy folder names
+//   (parse-blueprint-document, classify-blueprint-pages) remain as forwarding
+//   shims and must not be invoked directly from new code.
+// - uploadBlueprintDocument still calls upload-blueprint-document because it
+//   writes to the legacy plan_documents/plan_parse_jobs tables, which are
+//   distinct from the documents table that `document-api /ingest/upload`
+//   manages. Migrating upload requires a table-merge migration and belongs
+//   to a later slice.
 
 export async function uploadBlueprintDocument(payload: {
   property_address?: string;
@@ -13,8 +25,8 @@ export async function uploadBlueprintDocument(payload: {
 }
 
 export async function classifyBlueprintPages(document_id: string) {
-  const { data, error } = await supabase.functions.invoke("classify-blueprint-pages", { body: { document_id } });
-  if (error) throw error;
+  const { data, error } = await edgeApi("document-worker", "/classify-pages", { document_id });
+  if (error) throw new Error(error);
   return data;
 }
 
@@ -51,7 +63,7 @@ export async function getBlueprintDocument(document_id: string) {
 }
 
 export async function parseBlueprintDocument(document_id: string) {
-  const { data, error } = await supabase.functions.invoke("parse-blueprint-document", { body: { document_id } });
-  if (error) throw error;
+  const { data, error } = await edgeApi("document-worker", "/parse/blueprint", { document_id });
+  if (error) throw new Error(error);
   return data;
 }
