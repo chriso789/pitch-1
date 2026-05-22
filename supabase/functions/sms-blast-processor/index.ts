@@ -206,8 +206,11 @@ async function processBlast(
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
   // 3b. Per-phone 24h cooldown — block resends to the same number within window.
-  // TEST MODE: set env SMS_BLAST_BYPASS_COOLDOWN=true to disable while QA'ing.
-  const bypassCooldown = String(Deno.env.get('SMS_BLAST_BYPASS_COOLDOWN') || '').toLowerCase() === 'true';
+  // TEST MODE: set env SMS_BLAST_BYPASS_COOLDOWN=true, mark the blast as test mode,
+  // or name the blast like "Test 3" while QA'ing.
+  const envBypassCooldown = String(Deno.env.get('SMS_BLAST_BYPASS_COOLDOWN') || '').trim().toLowerCase() === 'true';
+  const blastTestMode = blast.is_test_mode === true || /\btest\b/i.test(String(blast.name || ''));
+  const bypassCooldown = envBypassCooldown || blastTestMode;
   const cooldownSet = new Set<string>();
   if (!bypassCooldown && phones.length > 0) {
     const since = new Date(Date.now() - PER_PHONE_COOLDOWN_HOURS * 3600 * 1000).toISOString();
