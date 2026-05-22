@@ -104,6 +104,7 @@ export const TextBlastManager = () => {
             Send bulk SMS campaigns to your contact lists
             {currentLocation ? ` — ${currentLocation.name}` : ' — All locations'}
           </p>
+        </div>
         <Button onClick={() => setView('create')}>
           <Plus className="h-4 w-4 mr-2" />
           New Text Blast
