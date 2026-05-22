@@ -117,7 +117,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
       if (error) throw error;
       toast({ title: 'Blast launched', description: 'Sending now — the processor will pick it up within ~60s.' });
       // Kick the processor immediately so we don't wait for cron
-      supabase.functions.invoke('sms-blast-processor', { body: {} }).catch(() => {});
+      supabase.functions.invoke('messaging-api', { body: { __route: '/sms/blast/start' }, headers: { 'x-route': '/sms/blast/start' } }).catch(() => {});
       refetch();
       refetchItems();
     } catch (e: any) {
