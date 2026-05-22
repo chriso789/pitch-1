@@ -294,6 +294,111 @@ Full per-function breakdown: \`docs/edge-function-consolidation-audit.csv\`
 
 writeFileSync(join(ROOT, "docs/EDGE_FUNCTION_CONSOLIDATION_AUDIT.md"), md);
 
+// ---- emit current-status.md (live counts requested by the consolidation plan) ----
+const GROUPED_SUFFIX = /-(api|worker|webhook)$/;
+const groupedFns = fnNames.filter((n) => GROUPED_SUFFIX.test(n));
+
+// A "shim" is a legacy function whose index.ts imports _shared/shim.ts
+let shimmedFns: string[] = [];
+let realGroupedFns: string[] = [];
+let scaffoldOnlyGrouped: string[] = [];
+for (const fn of fnNames) {
+  const idx = join(FN_DIR, fn, "index.ts");
+  if (!existsSync(idx)) continue;
+  const src = fileCache.get(idx) ?? "";
+  if (/_shared\/shim\.ts/.test(src) && /forward\s*\(/.test(src)) {
+    shimmedFns.push(fn);
+  } else if (GROUPED_SUFFIX.test(fn)) {
+    if (/not_migrated/.test(src) && src.length < 4000) scaffoldOnlyGrouped.push(fn);
+    else realGroupedFns.push(fn);
+  }
+}
+
+const deleteCandidates = rows.filter((r) => r[11] === "DELETE_CANDIDATE").map((r) => r[0]);
+const publicWebhooks = rows.filter((r) => r[8] === "true").map((r) => r[0]);
+const migrateRows = rows.filter((r) => r[11] === "MIGRATE");
+const tbdMigrateRows = migrateRows.filter((r) => r[9] === "TBD");
+
+// Frontend call sites still pointing to OLD function names (anything not a grouped fn or KEEP webhook).
+const keepSet = new Set(publicWebhooks);
+const groupedSet = new Set(groupedFns);
+const oldRefsFromFE: { fn: string; files: string[] }[] = [];
+for (const fn of fnNames) {
+  if (groupedSet.has(fn) || keepSet.has(fn)) continue;
+  const r = refsByFn.get(fn)!;
+  if (r.fe.size > 0) oldRefsFromFE.push({ fn, files: [...r.fe] });
+}
+
+const statusMd = `# Edge Function Consolidation — Current Status
+
+Generated: ${new Date().toISOString()}
+
+## Live counts
+
+| Metric | Count |
+|---|---:|
+| Function folders (excluding \`_shared\`) | **${total}** |
+| Grouped routed functions (\`*-api\` / \`*-worker\` / \`*-webhook\`) | **${groupedFns.length}** |
+| ↳ with real routes wired | **${realGroupedFns.length}** |
+| ↳ scaffold-only (501 not_migrated) | **${scaffoldOnlyGrouped.length}** |
+| Legacy shim functions (index.ts forwards via \`_shared/shim.ts\`) | **${shimmedFns.length}** |
+| MIGRATE rows in audit CSV | **${migrateRows.length}** |
+| ↳ still classified \`TBD\` (need manual target) | **${tbdMigrateRows.length}** |
+| DELETE_CANDIDATE rows (zero references) | **${deleteCandidates.length}** |
+| Public webhook functions that MUST stay (KEEP) | **${publicWebhooks.length}** |
+| Frontend call sites still pointing to OLD function names | **${oldRefsFromFE.length}** |
+
+## Scaffold-only grouped functions (need logic ported in)
+
+${scaffoldOnlyGrouped.map((n) => `- \`${n}\``).join("\n") || "_none — every grouped function has real routes_"}
+
+## Grouped functions with real routes
+
+${realGroupedFns.map((n) => `- \`${n}\``).join("\n") || "_none yet_"}
+
+## Legacy shim functions (forwarding to grouped APIs)
+
+${shimmedFns.map((n) => `- \`${n}\``).join("\n") || "_none yet — no legacy function has been shimmed_"}
+
+## Public webhooks (do NOT delete — provider dashboard URLs depend on these)
+
+${publicWebhooks.map((n) => `- \`${n}\``).join("\n")}
+
+## Frontend call sites still pointing to old function names
+
+${oldRefsFromFE.length === 0 ? "_none — frontend is fully migrated_" :
+  oldRefsFromFE.slice(0, 50).map((o) => `- \`${o.fn}\` — ${o.files.slice(0, 3).join(", ")}${o.files.length > 3 ? ` (+${o.files.length - 3} more)` : ""}`).join("\n")}
+${oldRefsFromFE.length > 50 ? `\n_…and ${oldRefsFromFE.length - 50} more — see CSV._` : ""}
+
+## Remaining action plan to get below 150 deployed Supabase functions
+
+Current: **${total}**. Target: **<150**. Gap: **${total - 150}**.
+
+1. **Phase A — Wire routes** (${scaffoldOnlyGrouped.length} grouped functions still stubs). Port logic from the ${migrateRows.length - tbdMigrateRows.length} MIGRATE rows with concrete targets into the matching grouped function. _No change to function count yet._
+2. **Phase B — Resolve TBD** (${tbdMigrateRows.length} rows). Classify each into an existing domain or escalate to DELETE_CANDIDATE.
+3. **Phase C — Shim legacy** (replace ${migrateRows.length} legacy \`index.ts\` files with \`forward(...)\` calls to their grouped target). _No change to function count yet — shims still occupy folders._
+4. **Phase D — Frontend migration**: convert the ${oldRefsFromFE.length} old call sites to call the grouped function + route directly. Once 100% migrated, the shims have zero production traffic.
+5. **Phase E — First delete sweep**: delete the ${deleteCandidates.length} DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~${total - deleteCandidates.length}**.
+6. **Phase F — Drop shims**: after edge-function logs show zero shim traffic for 7 days, delete the legacy folders. Drops count by ~${shimmedFns.length || migrateRows.length}.
+7. **Phase G — Audit KEEP webhooks**: confirm with provider dashboards which can be consolidated under \`*-webhook\` grouped functions. Worst case all ${publicWebhooks.length} stay.
+
+**Projected end state:** \`${groupedFns.length}\` grouped functions + \`${publicWebhooks.length}\` standalone webhooks ≈ **${groupedFns.length + publicWebhooks.length}** deployed functions — well below 150.
+
+---
+
+Full per-function breakdown: \`docs/edge-function-consolidation-audit.csv\`.
+Policy: \`docs/EDGE_FUNCTION_RULES.md\` — **one domain = one edge function with internal routes**.
+`;
+
+writeFileSync(join(ROOT, "docs/edge-function-current-status.md"), statusMd);
+
 console.log(`Audit complete: ${total} functions analyzed.`);
-console.log(`  CSV: docs/edge-function-consolidation-audit.csv`);
-console.log(`  MD:  docs/EDGE_FUNCTION_CONSOLIDATION_AUDIT.md`);
+console.log(`  CSV:    docs/edge-function-consolidation-audit.csv`);
+console.log(`  MD:     docs/EDGE_FUNCTION_CONSOLIDATION_AUDIT.md`);
+console.log(`  STATUS: docs/edge-function-current-status.md`);
+console.log(`  Grouped: ${groupedFns.length} (real: ${realGroupedFns.length}, scaffold: ${scaffoldOnlyGrouped.length})`);
+console.log(`  Shimmed: ${shimmedFns.length}`);
+console.log(`  Delete candidates: ${deleteCandidates.length}`);
+console.log(`  Public webhooks (KEEP): ${publicWebhooks.length}`);
+console.log(`  Frontend still on old names: ${oldRefsFromFE.length}`);
+
