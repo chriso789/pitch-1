@@ -394,7 +394,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             name: name.trim(),
             script: script.trim(),
             list_id: null,
-            total_recipients: listItems!.length,
+            total_recipients: effectiveListItems.length,
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             is_test_mode: isTestBlast,
@@ -407,7 +407,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
         if (blastError) throw blastError;
 
-        const items = listItems!.map((li: any) => ({
+        const items = effectiveListItems.map((li: any) => ({
           blast_id: blast.id,
           tenant_id: activeTenantId,
           contact_id: li.contact_id || null,
@@ -436,12 +436,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           if (processorError) {
             toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
           } else {
-            toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+            toast({ title: 'Text Blast Started!', description: `Sending to ${effectiveListItems.length} recipients...` });
           }
         } else {
           setDryRunCompleted(true);
           setDryRunBlastId(blast.id);
-          toast({ title: 'Dry run complete', description: `Rendered ${listItems!.length} messages. Nothing was sent.` });
+          toast({ title: 'Dry run complete', description: `Rendered ${effectiveListItems.length} messages. Nothing was sent.` });
         }
 
         if (!dryRun) onCreated(blast.id);
