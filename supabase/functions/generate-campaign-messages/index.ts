@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
       }
 
       const ctx = { contact, company, assigned_user };
-      const body = resolveTags(tplBody, ctx);
+      const body = tidyEmptyGreetings(resolveTags(tplBody, ctx));
 
       // NOTE: We intentionally do NOT inject any extra prefix (e.g. "we spoke
       // briefly in the past...") here. The script the user sees in the UI is
