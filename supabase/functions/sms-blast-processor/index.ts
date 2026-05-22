@@ -206,8 +206,11 @@ async function processBlast(
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
   // 3b. Per-phone 24h cooldown — block resends to the same number within window.
-  // TEST MODE: set env SMS_BLAST_BYPASS_COOLDOWN=true to disable while QA'ing.
-  const bypassCooldown = String(Deno.env.get('SMS_BLAST_BYPASS_COOLDOWN') || '').toLowerCase() === 'true';
+  // TEST MODE: set env SMS_BLAST_BYPASS_COOLDOWN=true, mark the blast as test mode,
+  // or name the blast like "Test 3" while QA'ing.
+  const envBypassCooldown = String(Deno.env.get('SMS_BLAST_BYPASS_COOLDOWN') || '').trim().toLowerCase() === 'true';
+  const blastTestMode = blast.is_test_mode === true || /\btest\b/i.test(String(blast.name || ''));
+  const bypassCooldown = envBypassCooldown || blastTestMode;
   const cooldownSet = new Set<string>();
   if (!bypassCooldown && phones.length > 0) {
     const since = new Date(Date.now() - PER_PHONE_COOLDOWN_HOURS * 3600 * 1000).toISOString();
@@ -432,7 +435,8 @@ async function processBlast(
     ]);
 
   const skippedTotal = cooldownTotal + duplicateTotal;
-  const attempted = sentTotal + failedTotal + deliveredTotal + repliedTotal + skippedTotal;
+  const successfulTotal = sentTotal + deliveredTotal + repliedTotal;
+  const attempted = successfulTotal + failedTotal + skippedTotal;
   const failureRate = attempted > 0 ? (failedTotal + skippedTotal) / attempted : 0;
   const deliveryRate = attempted > 0 ? (deliveredTotal + repliedTotal) / attempted : 0;
   const replyRate = attempted > 0 ? repliedTotal / attempted : 0;
@@ -450,15 +454,17 @@ async function processBlast(
       .eq('blast_id', blast.id)
       .in('status', ['pending', 'claimed']);
   } else if (remaining === 0 && blast.status === 'sending') {
-    newStatus = 'completed';
-    extra = { completed_at: new Date().toISOString() };
+    newStatus = successfulTotal > 0 || attempted === 0 ? 'completed' : 'failed';
+    extra = successfulTotal > 0 || attempted === 0
+      ? { completed_at: new Date().toISOString() }
+      : { cancel_reason: 'No text messages were sent; all recipients were blocked or failed.', cancelled_at: new Date().toISOString() };
   }
 
   await supabase
     .from('sms_blasts')
     .update({
       status: newStatus,
-      sent_count: sentTotal + deliveredTotal + repliedTotal,
+      sent_count: successfulTotal,
       failed_count: failedTotal + skippedTotal,
       opted_out_count: optedTotal,
       delivered_count: deliveredTotal,

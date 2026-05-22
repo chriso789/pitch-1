@@ -132,6 +132,8 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
   const progress = blast.total_recipients > 0
     ? Math.round(((blast.sent_count + blast.failed_count + blast.opted_out_count) / blast.total_recipients) * 100)
     : 0;
+  const skippedCount = (items || []).filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
+  const noTextsSent = blast.status === 'completed' && blast.sent_count === 0 && skippedCount > 0;
 
   const statusIcons: Record<string, any> = {
     pending: Clock,
@@ -139,6 +141,8 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     failed: XCircle,
     opted_out: ShieldOff,
     cancelled: Ban,
+    skipped_cooldown: Clock,
+    skipped_duplicate: Ban,
   };
 
   const statusColors: Record<string, string> = {
@@ -147,6 +151,8 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     failed: 'text-destructive',
     opted_out: 'text-amber-500',
     cancelled: 'text-muted-foreground',
+    skipped_cooldown: 'text-amber-500',
+    skipped_duplicate: 'text-muted-foreground',
   };
 
   return (
@@ -159,8 +165,9 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           </Button>
           <h2 className="text-lg font-semibold">{blast.name}</h2>
           <Badge variant={blast.status === 'sending' ? 'default' : 'secondary'}>
-            {blast.status}
+            {noTextsSent ? 'no texts sent' : blast.status}
           </Badge>
+          {blast.is_test_mode && <Badge variant="outline">test mode</Badge>}
         </div>
         <div className="flex items-center gap-2">
           {(blast.status === 'draft' || blast.status === 'paused') && (
@@ -183,6 +190,14 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           )}
         </div>
       </div>
+
+      {noTextsSent && (
+        <Card className="border-amber-500/40 bg-amber-500/10 shrink-0">
+          <CardContent className="py-3 text-sm text-amber-700">
+            No message was sent for this blast. The recipient was blocked by a safety guard, such as the 24-hour cooldown.
+          </CardContent>
+        </Card>
+      )}
 
 
 
