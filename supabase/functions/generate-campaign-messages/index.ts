@@ -90,14 +90,18 @@ function tidyEmptyGreetings(text: string): string {
 
 function resolveTags(template: string, ctx: any): string {
   if (!template) return '';
+  const suppressFirstName = isJunkFirstName(ctx.contact);
   return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_m, rawKey) => {
     const key = String(rawKey).trim();
+    // When first name is junk, swallow the tag entirely (no "there" fallback)
+    if (key === 'contact.first_name' && suppressFirstName) return '';
     const val = pick(ctx, key);
     if (val && String(val).trim().length > 0) return String(val).trim();
     if (key in FALLBACKS) return FALLBACKS[key];
     return '';
   });
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
