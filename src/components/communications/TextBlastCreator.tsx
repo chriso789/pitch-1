@@ -273,7 +273,8 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     setPreviewTemplateIndex(0);
   }, [selectedTemplateIds.join('|')]);
 
-  const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
+  const effectiveListItems = sendMode === 'custom' ? customContacts : (listItems || []);
+  const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : effectiveListItems.length;
 
   // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
   const sampleCtx = sendMode === 'single' && (manualName || manualPhone)
