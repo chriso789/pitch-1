@@ -47,7 +47,7 @@ export const TextBlastManager = () => {
     if (!deleteTarget || !activeTenantId) return;
     setDeleting(true);
     try {
-      await supabase.from('sms_blast_recipients').delete().eq('blast_id', deleteTarget.id);
+      await supabase.from('sms_blast_items').delete().eq('blast_id', deleteTarget.id);
       const { error } = await supabase
         .from('sms_blasts')
         .delete()
