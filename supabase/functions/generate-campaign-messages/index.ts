@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     // Load items needing personalization (process all if force=true)
     const { data: items, error: itemsErr } = await supabase
       .from('sms_blast_items')
-      .select('id, contact_id, contact_name, phone, personalized_message')
+      .select('id, contact_id, contact_name, phone, personalized_message, address_street_snapshot')
       .eq('blast_id', blast_id)
       .in('status', ['pending', 'claimed']);
     if (itemsErr) throw itemsErr;
