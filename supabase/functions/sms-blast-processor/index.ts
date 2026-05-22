@@ -169,7 +169,9 @@ async function processBlast(
   }
 
   if (!claimed || claimed.length === 0) {
-    // Nothing to do — if no pending remain, mark completed
+    // Nothing to do — if no sendable items remain, mark completed.
+    // Skipped terminal states are intentionally excluded so cooldown/duplicate
+    // guards do not leave the parent blast stuck in "sending".
     const { count } = await supabase
       .from('sms_blast_items')
       .select('id', { count: 'exact', head: true })
@@ -413,7 +415,7 @@ async function processBlast(
       .eq('status', status);
     return count ?? 0;
   };
-  const [sentTotal, failedTotal, optedTotal, deliveredTotal, repliedTotal, pendingTotal, claimedTotal] =
+  const [sentTotal, failedTotal, optedTotal, deliveredTotal, repliedTotal, pendingTotal, claimedTotal, cooldownTotal, duplicateTotal] =
     await Promise.all([
       countBy('sent'),
       countBy('failed'),
@@ -422,10 +424,13 @@ async function processBlast(
       countBy('replied'),
       countBy('pending'),
       countBy('claimed'),
+      countBy('skipped_cooldown'),
+      countBy('skipped_duplicate'),
     ]);
 
-  const attempted = sentTotal + failedTotal + deliveredTotal + repliedTotal;
-  const failureRate = attempted > 0 ? failedTotal / attempted : 0;
+  const skippedTotal = cooldownTotal + duplicateTotal;
+  const attempted = sentTotal + failedTotal + deliveredTotal + repliedTotal + skippedTotal;
+  const failureRate = attempted > 0 ? (failedTotal + skippedTotal) / attempted : 0;
   const deliveryRate = attempted > 0 ? (deliveredTotal + repliedTotal) / attempted : 0;
   const replyRate = attempted > 0 ? repliedTotal / attempted : 0;
   const remaining = pendingTotal + claimedTotal;
@@ -451,7 +456,7 @@ async function processBlast(
     .update({
       status: newStatus,
       sent_count: sentTotal + deliveredTotal + repliedTotal,
-      failed_count: failedTotal,
+      failed_count: failedTotal + skippedTotal,
       opted_out_count: optedTotal,
       delivered_count: deliveredTotal,
       replied_count: repliedTotal,
