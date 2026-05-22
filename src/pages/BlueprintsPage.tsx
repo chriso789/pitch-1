@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { parseBlueprintDocument } from "@/integrations/blueprintApi";
 import { safeStorageUpload } from "@/lib/storage/safeUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,10 +106,9 @@ export default function BlueprintsPage() {
       }]);
       if (insErr) throw insErr;
 
-      const { error: fnErr } = await supabase.functions.invoke("parse-blueprint-document", {
-        body: { document_id: docId },
+      await parseBlueprintDocument(docId).catch((e) => {
+        console.warn("parseBlueprintDocument failed", e);
       });
-      if (fnErr) throw fnErr;
 
       toast({ title: "Uploaded", description: "Parsing started" });
       setAddress("");
