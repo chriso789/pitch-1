@@ -503,6 +503,39 @@ async function processBlast(
       }
     }
 
+    // Landline guard — never blast a landline. If detected, scrub it off the contact
+    // and queue the next phone number on that contact so the blast moves on automatically.
+    const lineInfo = await lookupLineType(supabase, toE164);
+    if (lineInfo.line_type === 'landline') {
+      if (item.contact_id) {
+        await scrubLandlineFromContact(supabase, item.contact_id, toE164);
+        const nextPhone = await getNextPhoneForContact(supabase, item.contact_id, blast.id, toE164);
+        if (nextPhone) {
+          // Queue a fresh item for the next number on this contact. The next
+          // processor tick will pick it up; personalization is re-run because
+          // the body doesn't depend on which phone we send to.
+          await supabase.from('sms_blast_items').insert({
+            blast_id: blast.id,
+            tenant_id: blast.tenant_id,
+            contact_id: item.contact_id,
+            contact_name: item.contact_name,
+            phone: nextPhone,
+            personalized_message: personalizedMap.get(item.id) || null,
+            address_street_snapshot: addrSnapMap.get(item.id) || null,
+            status: 'pending',
+          });
+        }
+      }
+      await supabase.from('sms_blast_items').update({
+        status: 'skipped_landline',
+        last_error: 'landline_detected',
+        error_message: `Skipped: ${toE164} is a landline (${lineInfo.carrier_name || 'unknown carrier'}). Removed from contact.`,
+      }).eq('id', item.id);
+      continue;
+    }
+
+
+
 
     // Prefer personalized_message (smart-tag resolved) over raw script
     const firstName = (item.contact_name || '').split(' ')[0] || '';
