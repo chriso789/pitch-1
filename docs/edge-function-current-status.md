@@ -1,6 +1,6 @@
 # Edge Function Consolidation — Current Status
 
-Generated: 2026-05-22T03:04:29.831Z
+Generated: 2026-05-22T03:14:59.627Z
 
 ## Live counts
 
@@ -8,14 +8,14 @@ Generated: 2026-05-22T03:04:29.831Z
 |---|---:|
 | Function folders (excluding `_shared`) | **456** |
 | Grouped routed functions (`*-api` / `*-worker` / `*-webhook`) | **62** |
-| ↳ with real routes wired | **17** |
-| ↳ scaffold-only (501 not_migrated) | **45** |
+| ↳ with real routes wired | **19** |
+| ↳ scaffold-only (501 not_migrated) | **43** |
 | Legacy shim functions (index.ts forwards via `_shared/shim.ts`) | **0** |
-| MIGRATE rows in audit CSV | **300** |
-| ↳ still classified `TBD` (need manual target) | **110** |
-| DELETE_CANDIDATE rows (zero references) | **69** |
+| MIGRATE rows in audit CSV | **291** |
+| ↳ still classified `TBD` (need manual target) | **109** |
+| DELETE_CANDIDATE rows (zero references) | **8** |
 | Public webhook functions that MUST stay (KEEP) | **26** |
-| Frontend call sites still pointing to OLD function names | **273** |
+| Frontend call sites still pointing to OLD function names | **261** |
 
 ## Scaffold-only grouped functions (need logic ported in)
 
@@ -30,8 +30,6 @@ Generated: 2026-05-22T03:04:29.831Z
 - `company-api`
 - `contact-api`
 - `document-api`
-- `email-api`
-- `email-worker`
 - `health-api`
 - `job-api`
 - `map-api`
@@ -70,6 +68,8 @@ Generated: 2026-05-22T03:04:29.831Z
 - `ai-followup-worker`
 - `automation-worker`
 - `docusign-webhook`
+- `email-api`
+- `email-worker`
 - `external-lead-webhook`
 - `material-pricing-api`
 - `messaging-api`
@@ -144,7 +144,6 @@ _none yet — no legacy function has been shimmed_
 - `audit-cost-invoice` — src/pages/MaterialAuditPage.tsx
 - `automation-processor` — src/lib/automations/triggerAutomation.ts
 - `backfill-ai-usage` — src/components/settings/AIUsageDashboard.tsx
-- `backfill-email-statuses` — src/components/communications/EmailActivityDashboard.tsx
 - `backfill-verification-addresses` — src/components/settings/VendorVerificationDashboard.tsx
 - `batch-regenerate-measurements` — src/components/measurements/BatchRegenerationPanel.tsx
 - `batch-remeasure` — src/components/measurements/BatchRemeasurementPanel.tsx
@@ -170,19 +169,20 @@ _none yet — no legacy function has been shimmed_
 - `compare-scope-documents` — src/hooks/useScopeIntelligence.ts
 - `create-company-user` — src/components/settings/CreateCompanyFromDemoDialog.tsx
 - `create-lead-with-contact` — src/components/EnhancedLeadCreationDialog.tsx
+- `create-material-order` — src/components/materials/MaterialCalculator.tsx
 
-_…and 223 more — see CSV._
+_…and 211 more — see CSV._
 
 ## Remaining action plan to get below 150 deployed Supabase functions
 
 Current: **456**. Target: **<150**. Gap: **306**.
 
-1. **Phase A — Wire routes** (45 grouped functions still stubs). Port logic from the 190 MIGRATE rows with concrete targets into the matching grouped function. _No change to function count yet._
-2. **Phase B — Resolve TBD** (110 rows). Classify each into an existing domain or escalate to DELETE_CANDIDATE.
-3. **Phase C — Shim legacy** (replace 300 legacy `index.ts` files with `forward(...)` calls to their grouped target). _No change to function count yet — shims still occupy folders._
-4. **Phase D — Frontend migration**: convert the 273 old call sites to call the grouped function + route directly. Once 100% migrated, the shims have zero production traffic.
-5. **Phase E — First delete sweep**: delete the 69 DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~387**.
-6. **Phase F — Drop shims**: after edge-function logs show zero shim traffic for 7 days, delete the legacy folders. Drops count by ~300.
+1. **Phase A — Wire routes** (43 grouped functions still stubs). Port logic from the 182 MIGRATE rows with concrete targets into the matching grouped function. _No change to function count yet._
+2. **Phase B — Resolve TBD** (109 rows). Classify each into an existing domain or escalate to DELETE_CANDIDATE.
+3. **Phase C — Shim legacy** (replace 291 legacy `index.ts` files with `forward(...)` calls to their grouped target). _No change to function count yet — shims still occupy folders._
+4. **Phase D — Frontend migration**: convert the 261 old call sites to call the grouped function + route directly. Once 100% migrated, the shims have zero production traffic.
+5. **Phase E — First delete sweep**: delete the 8 DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~448**.
+6. **Phase F — Drop shims**: after edge-function logs show zero shim traffic for 7 days, delete the legacy folders. Drops count by ~291.
 7. **Phase G — Audit KEEP webhooks**: confirm with provider dashboards which can be consolidated under `*-webhook` grouped functions. Worst case all 26 stay.
 
 **Projected end state:** `62` grouped functions + `26` standalone webhooks ≈ **88** deployed functions — well below 150.
