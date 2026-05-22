@@ -932,20 +932,35 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                           </div>
                           <p className="text-[11px] text-muted-foreground line-clamp-2">{t.template_body}</p>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-[11px] h-6 px-2"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setScript(t.template_body || '');
-                            setSelectedTemplateIds([t.id]);
-                            setPreviewTemplateIndex(0);
-                          }}
-                        >
-                          Use
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            title="Edit template"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openEditTemplate(t);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-[11px] h-6 px-2"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setScript(t.template_body || '');
+                              setSelectedTemplateIds([t.id]);
+                              setPreviewTemplateIndex(0);
+                            }}
+                          >
+                            Use
+                          </Button>
+                        </div>
                       </label>
                     );
                   })}
