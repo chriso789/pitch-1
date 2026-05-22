@@ -207,6 +207,12 @@ Deno.serve(async (req) => {
       const ctx = { contact, company, assigned_user };
       const body = tidyEmptyGreetings(resolveTags(tplBody, ctx));
 
+      const displayName = isJunkFirstName(contact)
+        ? [contact?.last_name && !ADDRESS_TOKEN_RE.test(String(contact.last_name)) ? contact.last_name : null]
+            .filter(Boolean)
+            .join(' ') || null
+        : [contact?.first_name, contact?.last_name].filter(Boolean).join(' ') || item.contact_name || null;
+
       // NOTE: We intentionally do NOT inject any extra prefix (e.g. "we spoke
       // briefly in the past...") here. The script the user sees in the UI is
       // the script we send. What you see is what gets delivered.
