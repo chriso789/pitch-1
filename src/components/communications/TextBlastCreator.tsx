@@ -856,30 +856,41 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label>Template Rotation Pool (optional)</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-[11px] h-6 px-2"
-                    onClick={async () => {
-                      if (!activeTenantId) return;
-                      try {
-                        const { data, error } = await supabase.functions.invoke('admin-cleanup-sms-templates', {
-                          body: { tenant_id: activeTenantId, dry_run: false },
-                        });
-                        if (error) throw error;
-                        toast({
-                          title: 'Template library cleaned',
-                          description: `Inactivated ${data?.duplicates_to_inactivate ?? 0} duplicates · updated ${data?.templates_updated ?? 0} · inserted ${data?.templates_inserted ?? 0}.`,
-                        });
-                        queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
-                      } catch (err: any) {
-                        toast({ title: 'Cleanup failed', description: err?.message || 'Unknown error', variant: 'destructive' });
-                      }
-                    }}
-                  >
-                    Clean duplicate templates
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-[11px] h-6 px-2"
+                      onClick={openCreateTemplate}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> New template
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-[11px] h-6 px-2"
+                      onClick={async () => {
+                        if (!activeTenantId) return;
+                        try {
+                          const { data, error } = await supabase.functions.invoke('admin-cleanup-sms-templates', {
+                            body: { tenant_id: activeTenantId, dry_run: false },
+                          });
+                          if (error) throw error;
+                          toast({
+                            title: 'Template library cleaned',
+                            description: `Inactivated ${data?.duplicates_to_inactivate ?? 0} duplicates · updated ${data?.templates_updated ?? 0} · inserted ${data?.templates_inserted ?? 0}.`,
+                          });
+                          queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
+                        } catch (err: any) {
+                          toast({ title: 'Cleanup failed', description: err?.message || 'Unknown error', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      Clean duplicates
+                    </Button>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground mb-1">
                   Showing unique active templates for this campaign goal. Pick 2+ to rotate per recipient — reduces carrier spam flags.
