@@ -452,7 +452,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             max_attempts_per_contact: maxAttemptsPerContact,
             status: 'draft',
             is_test_mode: isTestBlast,
-            template_pool_ids: selectedTemplateIds.length ? selectedTemplateIds : null,
+            template_pool_ids: effectiveTemplatePoolIds,
             ai_followup_enabled: aiFollowupEnabled,
             goal: goal || null,
           })
