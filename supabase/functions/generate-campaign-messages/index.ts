@@ -220,6 +220,7 @@ Deno.serve(async (req) => {
       await supabase.from('sms_blast_items').update({
         personalized_message: body,
         template_id: tpl.id,
+        contact_name: displayName,
         address_street_snapshot: contact?.address_street || null,
         address_city_snapshot: contact?.address_city || null,
         address_state_snapshot: contact?.address_state || null,
