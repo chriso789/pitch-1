@@ -206,8 +206,10 @@ async function processBlast(
   const optedOutSet = new Set((optedOut || []).map((o: any) => o.phone));
 
   // 3b. Per-phone 24h cooldown — block resends to the same number within window.
+  // TEST MODE: set env SMS_BLAST_BYPASS_COOLDOWN=true to disable while QA'ing.
+  const bypassCooldown = String(Deno.env.get('SMS_BLAST_BYPASS_COOLDOWN') || '').toLowerCase() === 'true';
   const cooldownSet = new Set<string>();
-  if (phones.length > 0) {
+  if (!bypassCooldown && phones.length > 0) {
     const since = new Date(Date.now() - PER_PHONE_COOLDOWN_HOURS * 3600 * 1000).toISOString();
     const { data: recent } = await supabase
       .from('sms_messages')
@@ -218,6 +220,7 @@ async function processBlast(
       .gte('created_at', since);
     (recent || []).forEach((r: any) => { if (r.to_number) cooldownSet.add(r.to_number); });
   }
+
 
   // 3c. In-blast phone dedupe — only allow first occurrence per phone in this run.
   const seenInBlast = new Set<string>();
