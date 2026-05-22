@@ -12757,6 +12757,153 @@ export type Database = {
           },
         ]
       }
+      document_extraction_versions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          change_note: string | null
+          created_at: string
+          document_id: string
+          extracted_json: Json
+          extraction_id: string
+          field_confidences: Json | null
+          id: string
+          overall_confidence: number | null
+          parser_name: string
+          parser_run_id: string | null
+          parser_version: string
+          tenant_id: string
+          version_number: number
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          change_note?: string | null
+          created_at?: string
+          document_id: string
+          extracted_json: Json
+          extraction_id: string
+          field_confidences?: Json | null
+          id?: string
+          overall_confidence?: number | null
+          parser_name: string
+          parser_run_id?: string | null
+          parser_version: string
+          tenant_id: string
+          version_number: number
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          change_note?: string | null
+          created_at?: string
+          document_id?: string
+          extracted_json?: Json
+          extraction_id?: string
+          field_confidences?: Json | null
+          id?: string
+          overall_confidence?: number | null
+          parser_name?: string
+          parser_run_id?: string | null
+          parser_version?: string
+          tenant_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_extraction_versions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_extraction_versions_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "document_extractions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_extraction_versions_parser_run_id_fkey"
+            columns: ["parser_run_id"]
+            isOneToOne: false
+            referencedRelation: "document_parser_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_extractions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          current_version: number
+          document_id: string
+          document_type: string
+          extracted_json: Json
+          field_confidences: Json | null
+          id: string
+          overall_confidence: number | null
+          page_map_json: Json | null
+          parser_name: string
+          parser_tier: string
+          parser_version: string
+          requires_review: boolean
+          tenant_id: string
+          updated_at: string
+          vendor_type: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          current_version?: number
+          document_id: string
+          document_type: string
+          extracted_json?: Json
+          field_confidences?: Json | null
+          id?: string
+          overall_confidence?: number | null
+          page_map_json?: Json | null
+          parser_name: string
+          parser_tier: string
+          parser_version: string
+          requires_review?: boolean
+          tenant_id: string
+          updated_at?: string
+          vendor_type?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          current_version?: number
+          document_id?: string
+          document_type?: string
+          extracted_json?: Json
+          field_confidences?: Json | null
+          id?: string
+          overall_confidence?: number | null
+          page_map_json?: Json | null
+          parser_name?: string
+          parser_tier?: string
+          parser_version?: string
+          requires_review?: boolean
+          tenant_id?: string
+          updated_at?: string
+          vendor_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_extractions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: true
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_field_submissions: {
         Row: {
           contact_id: string | null
@@ -12834,6 +12981,156 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_parser_runs: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          document_id: string
+          document_type: string | null
+          duration_ms: number | null
+          error_message: string | null
+          extracted_field_count: number | null
+          id: string
+          missing_fields: string[] | null
+          page_count: number | null
+          parser_name: string
+          parser_tier: string
+          parser_version: string
+          raw_text_path: string | null
+          status: string
+          tenant_id: string
+          triggered_by: string | null
+          validation_errors: Json | null
+          vendor_type: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          document_id: string
+          document_type?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          extracted_field_count?: number | null
+          id?: string
+          missing_fields?: string[] | null
+          page_count?: number | null
+          parser_name: string
+          parser_tier: string
+          parser_version: string
+          raw_text_path?: string | null
+          status: string
+          tenant_id: string
+          triggered_by?: string | null
+          validation_errors?: Json | null
+          vendor_type?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          document_id?: string
+          document_type?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          extracted_field_count?: number | null
+          id?: string
+          missing_fields?: string[] | null
+          page_count?: number | null
+          parser_name?: string
+          parser_tier?: string
+          parser_version?: string
+          raw_text_path?: string | null
+          status?: string
+          tenant_id?: string
+          triggered_by?: string | null
+          validation_errors?: Json | null
+          vendor_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_parser_runs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_review_queue: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          document_id: string
+          extraction_id: string | null
+          id: string
+          parser_run_id: string | null
+          priority: number
+          reason: string
+          reason_detail: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          document_id: string
+          extraction_id?: string | null
+          id?: string
+          parser_run_id?: string | null
+          priority?: number
+          reason: string
+          reason_detail?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          document_id?: string
+          extraction_id?: string | null
+          id?: string
+          parser_run_id?: string | null
+          priority?: number
+          reason?: string
+          reason_detail?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_review_queue_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_review_queue_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "document_extractions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_review_queue_parser_run_id_fkey"
+            columns: ["parser_run_id"]
+            isOneToOne: false
+            referencedRelation: "document_parser_runs"
             referencedColumns: ["id"]
           },
         ]
