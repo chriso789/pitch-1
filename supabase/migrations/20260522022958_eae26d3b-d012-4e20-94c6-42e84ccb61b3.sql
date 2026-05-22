@@ -1,0 +1,1 @@
+update public.sms_blasts set send_window_start='00:00:00', send_window_end='23:59:00' where id='bb0ed3d3-8d0c-466e-a43f-7081f36e1419';
