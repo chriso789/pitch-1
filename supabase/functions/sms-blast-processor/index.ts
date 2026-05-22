@@ -555,6 +555,7 @@ async function processBlast(
       .replace(/\{\{last_name\}\}/gi, lastName)
       .replace(/\{\{full_name\}\}/gi, item.contact_name || '')
       .replace(/\{\{phone\}\}/gi, toE164);
+    body = suppressAddressFirstNameArtifacts(body, item);
     if (!/stop/i.test(body)) body += '\n\nReply STOP to opt out.';
 
     // Pick a from-number — prefer area-code / FL-coast match, fallback round-robin
