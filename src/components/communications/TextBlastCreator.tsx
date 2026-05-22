@@ -288,9 +288,14 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           first_name: manualName.split(' ')[0] || SAMPLE_TAG_CONTEXT.contact?.first_name,
           last_name: manualName.split(' ').slice(1).join(' ') || SAMPLE_TAG_CONTEXT.contact?.last_name,
           phone: manualPhone || SAMPLE_TAG_CONTEXT.contact?.phone,
+          address1: selectedContactAddress?.street || SAMPLE_TAG_CONTEXT.contact?.address1,
+          city: selectedContactAddress?.city || SAMPLE_TAG_CONTEXT.contact?.city,
+          state: selectedContactAddress?.state || SAMPLE_TAG_CONTEXT.contact?.state,
+          zip: selectedContactAddress?.zip || SAMPLE_TAG_CONTEXT.contact?.zip,
         },
       }
     : SAMPLE_TAG_CONTEXT;
+
 
   const selectedTemplates = useMemo(
     () => dedupedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id)),
