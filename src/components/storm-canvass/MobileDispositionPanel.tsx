@@ -194,11 +194,11 @@ export default function MobileDispositionPanel({
 
 
           {/* Optional Notes Section */}
-          <div className="space-y-2">
+          <div className="space-y-2 mt-4">
             <Button
               variant="ghost"
               onClick={() => setShowNotes(!showNotes)}
-              className="w-full justify-between"
+              className="w-full justify-between h-11"
             >
               <span className="text-sm">Add Notes (Optional)</span>
               {showNotes ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -218,7 +218,7 @@ export default function MobileDispositionPanel({
           <Button
             variant="outline"
             onClick={() => navigate(`/contact/${contact.id}`)}
-            className="w-full"
+            className="w-full h-11 mt-4 mb-2"
           >
             View Full Profile
           </Button>
