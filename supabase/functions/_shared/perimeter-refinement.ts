@@ -45,6 +45,10 @@ export interface PerimeterRefinementInput {
   solar_segment_masks_px?: Uint8Array | null;
   /** Optional vendor benchmark area (sqft) for sanity comparison. */
   benchmark_area_sqft?: number | null;
+  /** Optional vendor benchmark facet count (used for expected_min_vertices). */
+  benchmark_facet_count?: number | null;
+  /** Solar segment count (used for expected_min_vertices on complex roofs). */
+  solar_segment_count?: number | null;
   /** Confirmed roof centroid in DSM pixels. */
   roof_centroid_px?: PxPt | null;
   /** Acceptance thresholds (override defaults). */
@@ -148,17 +152,22 @@ export interface PerimeterRefinementDiagnostics {
   // ── Benchmark-aware acceptance (v1.2) ─────────────────────────────────────
   benchmark_override_used: boolean;
   benchmark_override_reason: string | null;
+  /** v1.3 alias: benchmark match alone NEVER promotes perimeter to valid.
+   * It only demotes a low target_mask_iou from hard-fail to warning. */
+  benchmark_support_used: boolean;
   benchmark_area_delta_pct: number | null;
   target_mask_iou_demoted_to_warning: boolean;
   perimeter_acceptance_source:
     | 'target_mask_iou'
     | 'benchmark_area_sanity'
+    | 'shape_validated'
     | 'raw_fallback'
     | 'manual_override'
     | 'failed';
   confidence_source:
     | 'target_mask_iou'
     | 'benchmark_area_sanity'
+    | 'shape_validated'
     | 'raw_fallback'
     | null;
   confidence_warnings: string[];
@@ -170,7 +179,31 @@ export interface PerimeterRefinementDiagnostics {
   rejected_patio_exclusions_count: number;
   footprint_bbox_diagonal_px: number;
   snap_distance_cap_px: number;
+  // ── v1.3 Shape / visual edge validation ───────────────────────────────────
+  expected_min_vertices: number;
+  perimeter_status: 'valid' | 'provisional' | 'failed';
+  shape_validation: ShapeValidation;
   debug_perimeter_overlay_svg: string | null;
+}
+
+export interface ShapeValidation {
+  area_sanity_passed: boolean;
+  vertex_sanity_passed: boolean;
+  visual_edge_alignment_score: number;
+  aerial_edge_support_pct: number | null;
+  dsm_boundary_support_pct: number | null;
+  corner_snap_confidence: number;
+  long_segment_corner_cut_count: number;
+  non_roof_crossing_count: number;
+  centroid_shift_px: number;
+  centroid_shift_threshold_px: number;
+  target_overlap_with_perimeter: number | null;
+  expected_min_vertices: number;
+  actual_vertex_count: number;
+  shape_passed: boolean;
+  shape_uncertain: boolean;
+  shape_failure_reasons: string[];
+  warnings: string[];
 }
 
 
@@ -278,13 +311,11 @@ export function refineTrueOuterRoofPerimeter(
   const destructiveByVertexLoss = _verticesRemovedPctEarly > 40;
   const destructive = destructiveByRule || destructiveByCollapse || destructiveByVertexLoss;
 
-  // ── Benchmark-aware override (v1.2) ──────────────────────────────────────
-  // When a vendor benchmark exists and the refined polygon is area-accurate,
-  // shape-stable, and structurally valid, accept it even if target-mask IoU
-  // is low. The target mask is often noisier/smaller than the true outer
-  // roof perimeter (Solar mask vs DSM mask discrepancy) and must not outrank
-  // a strong benchmark area match.
-  let benchmarkOverrideUsed = false;
+  // ── Benchmark-aware demotion (v1.3) ──────────────────────────────────────
+  // Benchmark area MATCH alone does NOT promote a perimeter to "valid".
+  // It only demotes a low target_mask_iou from hard-fail to a warning.
+  // Final pass still requires shape/visual edge evidence (see shape gate below).
+  let benchmarkSupportUsed = false;
   let benchmarkOverrideReason: string | null = null;
   let targetMaskIoULowDemoted = false;
   const confidenceWarnings: string[] = [];
@@ -303,27 +334,45 @@ export function refineTrueOuterRoofPerimeter(
       ringClosed &&
       !ringSelfIntersecting;
     if (eligible) {
-      benchmarkOverrideUsed = true;
+      benchmarkSupportUsed = true;
       benchmarkOverrideReason =
-        `benchmark_area_within_8pct:delta=${deltaVsBenchmark.toFixed(2)}%,` +
+        `benchmark_area_support:delta=${deltaVsBenchmark.toFixed(2)}%,` +
         `raw_to_refined_ratio=${rawToRefinedAreaRatio.toFixed(3)},` +
         `vertices_removed_pct=${_verticesRemovedPctEarly.toFixed(0)},` +
-        `vertex_count=${refinedClosed.length},ring_closed=true,non_self_intersecting=true`;
+        `vertex_count=${refinedClosed.length}`;
       if (iou != null && iou < T.min_iou_vs_target_mask) {
         targetMaskIoULowDemoted = true;
         confidenceWarnings.push(
           `target_mask_iou_low_but_benchmark_area_passed:iou=${iou.toFixed(3)}<${T.min_iou_vs_target_mask}`,
         );
       }
-      if (!confidencePassed) {
-        confidenceWarnings.push(
-          `confidence_below_threshold_demoted_by_benchmark_override:confidence=${confidence.toFixed(3)}<${T.min_confidence}`,
-        );
-      }
     }
   }
 
-  const refinementPassed = refinementPassedNative || benchmarkOverrideUsed;
+  // ── Shape / visual edge validation (v1.3) — required gate ────────────────
+  // benchmark_support_used kept for back-compat with consumers.
+  const benchmarkOverrideUsed = benchmarkSupportUsed;
+  const expectedMinVertices = computeExpectedMinVertices(input, refinedClosed.length);
+  const shape = validatePerimeterShape({
+    ring: refinedClosed,
+    input,
+    bboxDiagPx,
+    rawAreaSqft,
+    refinedAreaSqft,
+    targetAreaSqft,
+    benchmarkAreaSqft: input.benchmark_area_sqft ?? null,
+    deltaVsBenchmark,
+    deltaVsTarget,
+    ringClosed,
+    ringSelfIntersecting,
+    expectedMinVertices,
+    benchmarkSupportUsed,
+  });
+
+  // Refinement-native pass is now contingent on shape gate too.
+  const refinementPassedNativeWithShape =
+    refinementPassedNative && shape.shape_passed;
+  const refinementPassed = (refinementPassedNativeWithShape || (benchmarkSupportUsed && shape.shape_passed));
 
   // Conservative raw gate: raw IoU >= 0.80 normally; relaxed to 0.65 when
   // raw area is shape-sane vs target/benchmark.
@@ -344,6 +393,7 @@ export function refineTrueOuterRoofPerimeter(
   let acceptanceSource: PerimeterRefinementDiagnostics['perimeter_acceptance_source'] = 'failed';
   let confidenceSource: PerimeterRefinementDiagnostics['confidence_source'] = null;
   let effectiveConfidence = confidence;
+  let perimeterStatus: 'valid' | 'provisional' | 'failed' = 'failed';
 
   if (destructive) {
     refinementRejected = true;
@@ -359,39 +409,60 @@ export function refineTrueOuterRoofPerimeter(
       passed = true;
       hardFail = null;
       provisionalReady = true;
+      perimeterStatus = 'provisional';
       acceptanceSource = 'raw_fallback';
       confidenceSource = 'raw_fallback';
       reason = `raw_fallback_after_destructive_refinement:rawIoU=${rawIoUvsTarget?.toFixed(2)}:triggers=${triggers.join('|')}`;
     } else {
       passed = false;
       hardFail = 'perimeter_shape_not_accurate';
+      perimeterStatus = 'failed';
       acceptanceSource = 'failed';
       reason = `destructive_refinement_collapse_and_raw_failed_conservative_gate:` +
         `rawIoU=${rawIoUvsTarget?.toFixed(2)},rawAreaOk=${rawAreaOk},triggers=${triggers.join('|')}`;
     }
-  } else if (benchmarkOverrideUsed) {
+  } else if (!shape.shape_passed) {
+    // Shape gate is authoritative: area-only matches are NOT accepted.
+    selected = 'refined_perimeter';
+    fallbackUsed = null;
+    returnedRing = refinedClosed; // keep for diagram
+    if (shape.shape_uncertain) {
+      passed = false;
+      hardFail = 'perimeter_shape_not_accurate';
+      perimeterStatus = 'provisional';
+      provisionalReady = true;
+      acceptanceSource = 'failed';
+      reason = `perimeter_shape_uncertain:${shape.shape_failure_reasons.join('|')}`;
+    } else {
+      passed = false;
+      hardFail = 'perimeter_shape_not_accurate';
+      perimeterStatus = 'failed';
+      acceptanceSource = 'failed';
+      reason = `visual_perimeter_alignment_failed:${shape.shape_failure_reasons.join('|')}`;
+    }
+  } else if (benchmarkSupportUsed) {
     passed = true;
     hardFail = null;
     selected = 'refined_perimeter';
     fallbackUsed = 'refined_perimeter';
     returnedRing = refinedClosed;
-    provisionalReady = true;
+    perimeterStatus = 'valid';
     acceptanceSource = 'benchmark_area_sanity';
     confidenceSource = 'benchmark_area_sanity';
-    // Boost confidence to >=0.85 when accepted via benchmark sanity.
     effectiveConfidence = Math.max(confidence, 0.85);
-    reason = `benchmark_area_override:delta=${deltaVsBenchmark!.toFixed(2)}%` +
+    reason = `benchmark_area_support_plus_shape_validated:delta=${deltaVsBenchmark!.toFixed(2)}%` +
       (targetMaskIoULowDemoted ? `:target_mask_iou_demoted=${iou?.toFixed(3)}` : '') +
-      `:vertices=${refinedClosed.length}`;
+      `:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}:vertices=${refinedClosed.length}`;
   } else if (refinementPassedNative) {
     passed = true;
     hardFail = null;
     selected = 'refined_perimeter';
     fallbackUsed = 'refined_perimeter';
     returnedRing = refinedClosed;
+    perimeterStatus = 'valid';
     acceptanceSource = 'target_mask_iou';
     confidenceSource = 'target_mask_iou';
-    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}`;
+    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}`;
   } else {
     // Refinement failed but not destructive — try raw fallback if conservative gate passes.
     if (conservativeRawPassed) {
@@ -401,6 +472,7 @@ export function refineTrueOuterRoofPerimeter(
       fallbackUsed = 'raw_perimeter';
       returnedRing = raw;
       provisionalReady = true;
+      perimeterStatus = 'provisional';
       acceptanceSource = 'raw_fallback';
       confidenceSource = 'raw_fallback';
       reason = `raw_fallback_after_refinement_failed_conservative_passed:rawIoU=${rawIoUvsTarget?.toFixed(2)}`;
@@ -409,7 +481,8 @@ export function refineTrueOuterRoofPerimeter(
       hardFail = 'perimeter_shape_not_accurate';
       selected = 'refined_perimeter';
       fallbackUsed = null;
-      returnedRing = raw; // still give downstream something for diagrams
+      returnedRing = raw;
+      perimeterStatus = 'failed';
       acceptanceSource = 'failed';
       const failReasons: string[] = [];
       if (!iouPassed) failReasons.push(`iou:${iou?.toFixed(3)}<${T.min_iou_vs_target_mask}`);
@@ -478,6 +551,7 @@ export function refineTrueOuterRoofPerimeter(
     },
     benchmark_override_used: benchmarkOverrideUsed,
     benchmark_override_reason: benchmarkOverrideReason,
+    benchmark_support_used: benchmarkSupportUsed,
     benchmark_area_delta_pct: deltaVsBenchmark != null ? round(deltaVsBenchmark, 2) : null,
     target_mask_iou_demoted_to_warning: targetMaskIoULowDemoted,
     perimeter_acceptance_source: acceptanceSource,
@@ -491,6 +565,9 @@ export function refineTrueOuterRoofPerimeter(
     rejected_patio_exclusions_count: rejectedPatio,
     footprint_bbox_diagonal_px: round(bboxDiagPx, 1),
     snap_distance_cap_px: snapCapPx,
+    expected_min_vertices: expectedMinVertices,
+    perimeter_status: perimeterStatus,
+    shape_validation: shape,
     debug_perimeter_overlay_svg: overlay,
   };
 
@@ -978,6 +1055,7 @@ function failResult(
       },
       benchmark_override_used: false,
       benchmark_override_reason: null,
+      benchmark_support_used: false,
       benchmark_area_delta_pct: null,
       target_mask_iou_demoted_to_warning: false,
       perimeter_acceptance_source: 'failed',
@@ -991,6 +1069,9 @@ function failResult(
       rejected_patio_exclusions_count: 0,
       footprint_bbox_diagonal_px: 0,
       snap_distance_cap_px: T.max_snap_distance_px,
+      expected_min_vertices: 0,
+      perimeter_status: 'failed',
+      shape_validation: EMPTY_SHAPE_VALIDATION(),
       debug_perimeter_overlay_svg: null,
     },
   };
@@ -1035,3 +1116,294 @@ function segmentsIntersect(p1: PxPt, p2: PxPt, p3: PxPt, p4: PxPt): boolean {
   return false;
 }
 
+
+// ────────────────────────────────────────────────────────────────────────────
+// v1.3 — Shape / visual edge validation
+// ────────────────────────────────────────────────────────────────────────────
+
+function EMPTY_SHAPE_VALIDATION(): ShapeValidation {
+  return {
+    area_sanity_passed: false,
+    vertex_sanity_passed: false,
+    visual_edge_alignment_score: 0,
+    aerial_edge_support_pct: null,
+    dsm_boundary_support_pct: null,
+    corner_snap_confidence: 0,
+    long_segment_corner_cut_count: 0,
+    non_roof_crossing_count: 0,
+    centroid_shift_px: 0,
+    centroid_shift_threshold_px: 0,
+    target_overlap_with_perimeter: null,
+    expected_min_vertices: 0,
+    actual_vertex_count: 0,
+    shape_passed: false,
+    shape_uncertain: false,
+    shape_failure_reasons: ['not_evaluated'],
+    warnings: [],
+  };
+}
+
+function computeExpectedMinVertices(input: PerimeterRefinementInput, actualVerts: number): number {
+  // Heuristic: complex roofs need ≥ (segments + 2) outer vertices.
+  // Benchmark facet count, if available, is the strongest prior.
+  const candidates: number[] = [6];
+  if (input.benchmark_facet_count && input.benchmark_facet_count > 0) {
+    candidates.push(Math.min(40, input.benchmark_facet_count + 2));
+  }
+  if (input.solar_segment_count && input.solar_segment_count > 0) {
+    // Solar over-segments by ~1.5×; ground truth perimeter has fewer outer corners.
+    candidates.push(Math.min(40, Math.round(input.solar_segment_count * 0.6) + 4));
+  }
+  void actualVerts;
+  return Math.max(...candidates);
+}
+
+interface ShapeValidationInput {
+  ring: PxPt[];
+  input: PerimeterRefinementInput;
+  bboxDiagPx: number;
+  rawAreaSqft: number;
+  refinedAreaSqft: number;
+  targetAreaSqft: number | null;
+  benchmarkAreaSqft: number | null;
+  deltaVsBenchmark: number | null;
+  deltaVsTarget: number | null;
+  ringClosed: boolean;
+  ringSelfIntersecting: boolean;
+  expectedMinVertices: number;
+  benchmarkSupportUsed: boolean;
+}
+
+function validatePerimeterShape(args: ShapeValidationInput): ShapeValidation {
+  const {
+    ring, input, bboxDiagPx, refinedAreaSqft,
+    targetAreaSqft, benchmarkAreaSqft, deltaVsBenchmark, deltaVsTarget,
+    ringClosed, ringSelfIntersecting, expectedMinVertices, benchmarkSupportUsed,
+  } = args;
+
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+
+  // A. Area sanity
+  let areaOk = false;
+  if (benchmarkAreaSqft != null && deltaVsBenchmark != null) {
+    areaOk = Math.abs(deltaVsBenchmark) <= 8;
+    if (!areaOk) reasons.push(`area_delta_vs_benchmark=${deltaVsBenchmark.toFixed(2)}%>8%`);
+  } else if (targetAreaSqft != null && deltaVsTarget != null) {
+    areaOk = Math.abs(deltaVsTarget) <= 12;
+    if (!areaOk) reasons.push(`area_delta_vs_target=${deltaVsTarget.toFixed(2)}%>12%`);
+  } else {
+    areaOk = refinedAreaSqft > 200;
+    if (!areaOk) reasons.push('no_area_reference_and_perimeter_too_small');
+  }
+
+  // B. Vertex / ring sanity
+  const actualVerts = Math.max(0, ring.length - 1); // drop closing dup
+  if (!ringClosed) reasons.push('ring_not_closed');
+  if (ringSelfIntersecting) reasons.push('ring_self_intersecting');
+  const vertexCountOk = actualVerts >= 5;
+  if (!vertexCountOk) reasons.push(`vertex_count=${actualVerts}<5`);
+  const underDetailed = actualVerts < expectedMinVertices;
+  if (underDetailed) {
+    warnings.push(`perimeter_under_detailed_for_complex_roof:actual=${actualVerts}<expected=${expectedMinVertices}`);
+  }
+  const vertexSanityOk = vertexCountOk && ringClosed && !ringSelfIntersecting;
+
+  // C. Visual edge alignment — sample N points along each segment
+  const W = input.width;
+  const H = input.height;
+  const dsm = input.dsm_grid ?? null;
+  const rgba = input.rgba ?? null;
+  let dsmSupported = 0, dsmTotal = 0;
+  let aerialSupported = 0, aerialTotal = 0;
+  let nonRoofCrossing = 0;
+  let longCornerCut = 0;
+
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i];
+    const b = ring[i + 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 2) continue;
+    const px = -dy / len;
+    const py = dx / len;
+    const samples = Math.max(2, Math.min(8, Math.round(len / 8)));
+
+    let segMaxPerp = 0;
+    for (let s = 1; s <= samples; s++) {
+      const t = s / (samples + 1);
+      const mx = a[0] + dx * t;
+      const my = a[1] + dy * t;
+
+      // DSM perpendicular gradient: max sobel in ±3 perpendicular band
+      if (dsm) {
+        dsmTotal++;
+        let bestMag = 0;
+        for (let k = -3; k <= 3; k++) {
+          const sx = Math.round(mx + px * k);
+          const sy = Math.round(my + py * k);
+          const m = sobelMagAt(dsm, sx, sy, W, H);
+          if (m > bestMag) bestMag = m;
+        }
+        if (bestMag > 8) dsmSupported++;
+        if (bestMag > segMaxPerp) segMaxPerp = bestMag;
+      }
+
+      // Aerial RGB gradient
+      if (rgba) {
+        aerialTotal++;
+        const supported = rgbEdgeStrengthAt(rgba, Math.round(mx), Math.round(my), W, H, px, py) > 18;
+        if (supported) aerialSupported++;
+      }
+
+      // Non-roof crossing: ~8px inward, check solar/dsm support
+      const inx = Math.round(mx - px * 8);
+      const iny = Math.round(my - py * 8);
+      if (inx >= 0 && iny >= 0 && inx < W && iny < H) {
+        const idx = iny * W + inx;
+        const noSolar = input.solar_segment_masks_px ? !input.solar_segment_masks_px[idx] : false;
+        const lowDsm = dsm ? (dsm[idx] ?? 0) < 1.5 : false;
+        if (noSolar && lowDsm) nonRoofCrossing++;
+      }
+    }
+
+    // Long segment corner-cut detector: long segment with a strong off-axis
+    // perpendicular edge mid-span suggests a missed corner.
+    if (len > 40 && dsm) {
+      const mx = a[0] + dx * 0.5;
+      const my = a[1] + dy * 0.5;
+      let perpStrong = 0;
+      for (let k = -5; k <= 5; k++) {
+        if (Math.abs(k) < 2) continue;
+        const sx = Math.round(mx + px * k);
+        const sy = Math.round(my + py * k);
+        const m = sobelMagAt(dsm, sx, sy, W, H);
+        if (m > perpStrong) perpStrong = m;
+      }
+      const baseline = sobelMagAt(dsm, Math.round(mx), Math.round(my), W, H);
+      if (perpStrong > Math.max(12, baseline * 1.8)) longCornerCut++;
+    }
+  }
+
+  const dsmPct = dsmTotal > 0 ? dsmSupported / dsmTotal : null;
+  const aerialPct = aerialTotal > 0 ? aerialSupported / aerialTotal : null;
+
+  // Composite visual edge alignment score (0..1).
+  let visualScore = 0;
+  let weight = 0;
+  if (aerialPct != null) { visualScore += aerialPct * 0.6; weight += 0.6; }
+  if (dsmPct != null)    { visualScore += dsmPct * 0.4;    weight += 0.4; }
+  visualScore = weight > 0 ? visualScore / weight : 0;
+
+  // D. Corner snap confidence — fraction of vertices on a strong DSM/RGB edge
+  let cornerOk = 0, cornerTotal = 0;
+  for (let i = 0; i < actualVerts; i++) {
+    cornerTotal++;
+    const [vx, vy] = ring[i];
+    const ix = Math.round(vx);
+    const iy = Math.round(vy);
+    let strong = false;
+    if (dsm) {
+      const m = sobelMagAt(dsm, ix, iy, W, H);
+      if (m > 10) strong = true;
+    }
+    if (!strong && rgba) {
+      const m = rgbEdgeStrengthAt(rgba, ix, iy, W, H, 1, 0);
+      if (m > 20) strong = true;
+    }
+    if (strong) cornerOk++;
+  }
+  const cornerConfidence = cornerTotal > 0 ? cornerOk / cornerTotal : 0;
+
+  // E. Coverage sanity — target_overlap_with_perimeter
+  let targetOverlap: number | null = null;
+  if (input.target_mask_grid) {
+    const poly = new Uint8Array(W * H);
+    rasterizePolygon(ring, W, H, poly);
+    let inter = 0, target = 0;
+    for (let i = 0; i < W * H; i++) {
+      const t = input.target_mask_grid[i] ? 1 : 0;
+      target += t;
+      if (t && poly[i]) inter++;
+    }
+    targetOverlap = target > 0 ? inter / target : null;
+  }
+
+  // F. Centroid shift vs confirmed roof centroid
+  const centroid = polygonCentroid(ring);
+  const ref = input.roof_centroid_px ?? centroid;
+  const centroidShift = Math.hypot(centroid[0] - ref[0], centroid[1] - ref[1]);
+  const centroidThreshold = Math.max(8, bboxDiagPx * 0.10);
+
+  // Gate evaluation
+  const edgeAlignOk = visualScore >= 0.75;
+  const aerialOk = aerialPct == null || aerialPct >= 0.70;
+  const dsmOk = dsmPct == null || dsmPct >= 0.60;
+  const cornerSnapOk = cornerConfidence >= 0.65;
+  const longCutOk = longCornerCut <= 1;
+  const nonRoofOk = nonRoofCrossing === 0;
+  const centroidOk = centroidShift <= centroidThreshold;
+  const overlapOk = targetOverlap == null ? true : targetOverlap >= 0.90 || (targetOverlap >= 0.85 && edgeAlignOk);
+
+  if (!edgeAlignOk) reasons.push(`visual_edge_alignment_score=${visualScore.toFixed(2)}<0.75`);
+  if (!aerialOk)    reasons.push(`aerial_edge_support_pct=${aerialPct?.toFixed(2)}<0.70`);
+  if (!dsmOk)       reasons.push(`dsm_boundary_support_pct=${dsmPct?.toFixed(2)}<0.60`);
+  if (!cornerSnapOk) reasons.push(`corner_snap_confidence=${cornerConfidence.toFixed(2)}<0.65`);
+  if (!longCutOk)   reasons.push(`long_segment_corner_cut_count=${longCornerCut}>1`);
+  if (!nonRoofOk)   reasons.push(`non_roof_crossing_count=${nonRoofCrossing}>0`);
+  if (!centroidOk)  reasons.push(`centroid_shift_px=${centroidShift.toFixed(1)}>${centroidThreshold.toFixed(1)}`);
+  if (!overlapOk)   reasons.push(`target_overlap_with_perimeter=${targetOverlap?.toFixed(2)}<0.90`);
+
+  // Vertex under-detail is a WARNING, not a failure, when visual alignment is strong.
+  if (underDetailed && !edgeAlignOk) {
+    reasons.push(`vertex_count=${actualVerts}<expected_min=${expectedMinVertices}_and_visual_align_weak`);
+  }
+
+  const hardChecks = [areaOk, vertexSanityOk, edgeAlignOk, aerialOk, dsmOk, cornerSnapOk, longCutOk, nonRoofOk, centroidOk, overlapOk];
+  const failCount = hardChecks.filter(v => !v).length;
+  const shapePassed = failCount === 0;
+  // Uncertain: 1–2 soft failures and core area+vertex+overlap still hold
+  const shapeUncertain = !shapePassed && failCount <= 2 && areaOk && vertexSanityOk && (overlapOk || (targetOverlap != null && targetOverlap >= 0.80));
+
+  if (benchmarkSupportUsed) {
+    warnings.push('benchmark_support_used_but_shape_gate_authoritative');
+  }
+
+  return {
+    area_sanity_passed: areaOk,
+    vertex_sanity_passed: vertexSanityOk,
+    visual_edge_alignment_score: round(visualScore, 3),
+    aerial_edge_support_pct: aerialPct != null ? round(aerialPct, 3) : null,
+    dsm_boundary_support_pct: dsmPct != null ? round(dsmPct, 3) : null,
+    corner_snap_confidence: round(cornerConfidence, 3),
+    long_segment_corner_cut_count: longCornerCut,
+    non_roof_crossing_count: nonRoofCrossing,
+    centroid_shift_px: round(centroidShift, 1),
+    centroid_shift_threshold_px: round(centroidThreshold, 1),
+    target_overlap_with_perimeter: targetOverlap != null ? round(targetOverlap, 3) : null,
+    expected_min_vertices: expectedMinVertices,
+    actual_vertex_count: actualVerts,
+    shape_passed: shapePassed,
+    shape_uncertain: shapeUncertain,
+    shape_failure_reasons: reasons,
+    warnings,
+  };
+}
+
+function rgbEdgeStrengthAt(
+  rgba: Uint8ClampedArray | Uint8Array,
+  x: number, y: number, W: number, H: number,
+  px: number, py: number,
+): number {
+  if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return 0;
+  const lum = (xx: number, yy: number) => {
+    const i = (yy * W + xx) * 4;
+    return 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+  };
+  // Sample perpendicular gradient
+  const x1 = Math.round(x - px * 2), y1 = Math.round(y - py * 2);
+  const x2 = Math.round(x + px * 2), y2 = Math.round(y + py * 2);
+  if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0 || x1 >= W || y1 >= H || x2 >= W || y2 >= H) return 0;
+  return Math.abs(lum(x2, y2) - lum(x1, y1));
+}
