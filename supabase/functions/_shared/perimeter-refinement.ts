@@ -712,18 +712,20 @@ export function refineTrueOuterRoofPerimeter(
     snap_distance_cap_px: snapCapPx,
     expected_min_vertices: expectedMinVertices,
     perimeter_status: perimeterStatus,
-    shape_validation: shape,
+    shape_validation: activeShape,
+    shape_validation_before_repair: shapeBeforeRepair,
+    corner_cut_repair: cornerCutRepair,
     debug_perimeter_overlay_svg: overlay,
     // ── v1.4 manual visual-QA gate ──────────────────────────────────────────
     perimeter_visual_review_required: false, // populated below
     visual_review_gate: {
       thresholds: { ...DEFAULT_VISUAL_REVIEW_THRESHOLDS, ...(input.visual_review_thresholds ?? {}) },
       metrics: {
-        visual_edge_alignment_score: shape.visual_edge_alignment_score,
-        aerial_edge_support_pct: shape.aerial_edge_support_pct,
-        corner_snap_confidence: shape.corner_snap_confidence,
-        long_segment_corner_cut_count: shape.long_segment_corner_cut_count,
-        non_roof_crossing_count: shape.non_roof_crossing_count,
+        visual_edge_alignment_score: activeShape.visual_edge_alignment_score,
+        aerial_edge_support_pct: activeShape.aerial_edge_support_pct,
+        corner_snap_confidence: activeShape.corner_snap_confidence,
+        long_segment_corner_cut_count: activeShape.long_segment_corner_cut_count,
+        non_roof_crossing_count: activeShape.non_roof_crossing_count,
       },
       passed: false,
       failed_metrics: [],
