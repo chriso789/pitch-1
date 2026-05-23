@@ -658,6 +658,50 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
       >
+        {/* Global mask (lowest z) */}
+        {layers.globalMask &&
+          globalMaskPolys.map((poly, i) =>
+            poly && poly.length > 2 ? (
+              <polygon
+                key={`gmask-${i}`}
+                points={poly.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                fill="rgba(148,163,184,0.25)"
+                stroke="#94a3b8"
+                strokeWidth={1}
+                strokeDasharray="4,3"
+              />
+            ) : null,
+          )}
+
+        {/* Target roof mask */}
+        {layers.targetMask &&
+          targetMaskPolys.map((poly, i) =>
+            poly && poly.length > 2 ? (
+              <polygon
+                key={`tmask-${i}`}
+                points={poly.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                fill="rgba(16,185,129,0.18)"
+                stroke="#10b981"
+                strokeWidth={2}
+              />
+            ) : null,
+          )}
+
+        {/* Missed roof regions */}
+        {layers.missed &&
+          missedRegions.map((poly, i) =>
+            poly && poly.length > 2 ? (
+              <polygon
+                key={`missed-${i}`}
+                points={poly.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                fill="rgba(249,115,22,0.25)"
+                stroke="#f97316"
+                strokeWidth={1.5}
+                strokeDasharray="3,3"
+              />
+            ) : null,
+          )}
+
         {/* Perimeter */}
         {layers.perimeter && perimeterPx && perimeterPx.length > 2 && (
           <polygon
