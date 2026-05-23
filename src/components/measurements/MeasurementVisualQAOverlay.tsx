@@ -554,6 +554,18 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {banner && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>{banner.title}</AlertTitle>
+            <AlertDescription>
+              {banner.description}
+              <div className="mt-1 text-[11px] font-mono opacity-80">
+                Failed: {banner.failedFlags.join(', ')}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         {!rasterUrl && (
           <Alert>
             <AlertTriangle className="h-4 w-4" />
