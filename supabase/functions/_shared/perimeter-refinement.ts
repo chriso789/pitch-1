@@ -439,7 +439,7 @@ export function refineTrueOuterRoofPerimeter(
     perimeter_area_delta_pct_vs_benchmark: deltaVsBenchmark != null ? round(deltaVsBenchmark, 2) : null,
     perimeter_to_target_mask_ratio: ratio != null ? round(ratio, 3) : null,
     perimeter_vs_mask_iou: iou != null ? round(iou, 3) : null,
-    perimeter_confidence: round(confidence, 3),
+    perimeter_confidence: round(effectiveConfidence, 3),
     tree_shadow_exclusion_regions: treeRegions,
     patio_screen_exclusion_regions: patioRegions,
     aerial_snap_vertices_added: added,
@@ -476,6 +476,15 @@ export function refineTrueOuterRoofPerimeter(
       area_ok: rawAreaOk,
       passed: conservativeRawPassed,
     },
+    benchmark_override_used: benchmarkOverrideUsed,
+    benchmark_override_reason: benchmarkOverrideReason,
+    benchmark_area_delta_pct: deltaVsBenchmark != null ? round(deltaVsBenchmark, 2) : null,
+    target_mask_iou_demoted_to_warning: targetMaskIoULowDemoted,
+    perimeter_acceptance_source: acceptanceSource,
+    confidence_source: confidenceSource,
+    confidence_warnings: confidenceWarnings,
+    ring_closed: ringClosed,
+    ring_self_intersecting: ringSelfIntersecting,
     applied_tree_exclusions_count: appliedTree,
     rejected_tree_exclusions_count: rejectedTree,
     applied_patio_exclusions_count: appliedPatio,
@@ -484,6 +493,7 @@ export function refineTrueOuterRoofPerimeter(
     snap_distance_cap_px: snapCapPx,
     debug_perimeter_overlay_svg: overlay,
   };
+
 
   return {
     refined_perimeter_px: returnedRing,
