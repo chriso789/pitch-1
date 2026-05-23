@@ -1777,7 +1777,40 @@ async function processJob(input: any) {
       console.log('[REGISTRATION_GATE_RESULTS]', JSON.stringify(regResults));
     }
 
+    // Registration Gate C (v2): per-candidate confirmed-roof-center containment.
+    // A footprint whose polygon does NOT contain the user-confirmed roof center
+    // is the wrong house (Fonsica failure mode). Reject before validity ranking.
+    const confirmedCenterPxForGateC = (input as any).confirmed_roof_center_px as
+      | [number, number]
+      | null
+      | undefined;
+    if (
+      confirmedCenterPxForGateC &&
+      Array.isArray(confirmedCenterPxForGateC) &&
+      confirmedCenterPxForGateC.length === 2 &&
+      Number.isFinite(confirmedCenterPxForGateC[0]) &&
+      Number.isFinite(confirmedCenterPxForGateC[1])
+    ) {
+      for (const cand of candidates) {
+        if (cand.rejected_reason) continue;
+        const polyPx = Array.isArray(cand.polygon)
+          ? cand.polygon.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number])
+          : null;
+        const evalResult = evaluateCandidate(polyPx, confirmedCenterPxForGateC);
+        (cand as any).confirmed_center_inside_candidate = evalResult.confirmed_center_inside_candidate;
+        (cand as any).candidate_centroid_offset_from_confirmed_center_px =
+          evalResult.candidate_centroid_offset_from_confirmed_center_px;
+        if (evalResult.rejected) {
+          cand.rejected_reason = evalResult.rejection_reason ?? "candidate_does_not_contain_confirmed_roof_center";
+          console.log(
+            `[REGISTRATION_GATE_C] REJECT ${cand.source}: confirmed roof center not inside candidate polygon`,
+          );
+        }
+      }
+    }
+
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
+
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
 
