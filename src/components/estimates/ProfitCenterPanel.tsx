@@ -194,6 +194,13 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const baseOverhead = salesRepData?.overhead_rate ?? 10;
   const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
   const commissionRate = salesRepData?.commission_rate ?? 50;
+  const commissionStructure = (salesRepData as any)?.commission_structure as string | null;
+  const commissionStructureLabel =
+    commissionStructure === 'percent_of_contract' ? 'Percent of Contract'
+    : commissionStructure === 'profit_split' ? 'Profit Split'
+    : commissionStructure
+      ? commissionStructure.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      : 'Profit Split';
   const repName = salesRepData 
     ? `${salesRepData.first_name || ''} ${salesRepData.last_name || ''}`.trim() 
     : 'Sales Rep';
