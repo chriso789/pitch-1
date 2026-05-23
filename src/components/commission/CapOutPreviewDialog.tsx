@@ -12,6 +12,7 @@ import {
   buildCapOutDataFromCommission,
   buildCapOutHtml,
   generateCapOutPdf,
+  generateCapOutPdfBlob,
   type CapOutPdfData,
   type CapOutFinancials,
 } from './CapOutPdfExport';
