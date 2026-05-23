@@ -380,7 +380,7 @@ export function refineTrueOuterRoofPerimeter(
     selected_perimeter_after_refinement: selected,
     provisional_perimeter_ready: provisionalReady,
     conservative_raw_gate: {
-      iou_threshold: 0.80,
+      iou_threshold: rawIoUThreshold,
       iou_actual: rawIoUvsTarget != null ? round(rawIoUvsTarget, 3) : null,
       iou_ok: rawIoUOk,
       area_ok: rawAreaOk,
