@@ -159,27 +159,23 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     }
   }, [formData, checkForChanges, open]);
 
+  // Debounced Google address autocomplete as user types
   useEffect(() => {
-    if (contact && formData.useSameInfo) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        name: `${contact.first_name} ${contact.last_name}`,
-        phone: contact.phone || "",
-        address: fullAddress 
-      }));
-      
-      if (fullAddress) {
-        handleAddressVerification(fullAddress);
-      }
+    if (!open) return;
+    const value = formData.address?.trim() ?? "";
+    if (value.length < 4) {
+      setAddressSuggestions([]);
+      setShowAddressPicker(false);
+      return;
     }
-  }, [formData.useSameInfo, contact]);
+    // Don't re-query if the input matches the already-selected verified address
+    if (selectedAddress && value === selectedAddress.formatted_address) return;
+
+    const t = setTimeout(() => {
+      handleAddressVerification(value);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [formData.address, open]);
 
   const loadSalesReps = async () => {
     try {
