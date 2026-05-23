@@ -1027,6 +1027,58 @@ function insertMissingCorners(
   return { withInserted: out, added };
 }
 
+/**
+ * v1.6 corner-cut repair: given a closed/open ring and a set of midpoint
+ * pixel coordinates flagged by validatePerimeterShape, insert each midpoint
+ * as a new vertex on the segment whose midpoint it is closest to (perpendicular
+ * distance under a small tolerance). Insertions are deduped and ordered along
+ * the segment so the ring stays simple.
+ */
+function insertCornerCutVertices(ring: PxPt[], midpoints: PxPt[]): PxPt[] {
+  if (!midpoints.length || ring.length < 3) return ring;
+  // For each segment, collect midpoints that lie close to it.
+  const segInserts: Array<Array<{ t: number; pt: PxPt }>> = ring.map(() => []);
+  for (const mp of midpoints) {
+    let bestSeg = -1;
+    let bestDist = Infinity;
+    let bestT = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const segLen2 = dx * dx + dy * dy;
+      if (segLen2 < 1) continue;
+      const t = ((mp[0] - a[0]) * dx + (mp[1] - a[1]) * dy) / segLen2;
+      if (t < 0.05 || t > 0.95) continue;
+      const projx = a[0] + dx * t;
+      const projy = a[1] + dy * t;
+      const d = Math.hypot(mp[0] - projx, mp[1] - projy);
+      if (d < bestDist) {
+        bestDist = d;
+        bestSeg = i;
+        bestT = t;
+      }
+    }
+    // Only insert when the midpoint genuinely lies on/very near the segment.
+    if (bestSeg >= 0 && bestDist <= 6) {
+      segInserts[bestSeg].push({ t: bestT, pt: mp });
+    }
+  }
+  const out: PxPt[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    out.push(ring[i]);
+    const inserts = segInserts[i];
+    if (!inserts.length) continue;
+    inserts.sort((a, b) => a.t - b.t);
+    for (const ins of inserts) {
+      out.push([Math.round(ins.pt[0]), Math.round(ins.pt[1])]);
+    }
+  }
+  return out;
+}
+
+
 // ────────────────────────────────────────────────────────────────────────────
 // Confidence scoring
 // ────────────────────────────────────────────────────────────────────────────
