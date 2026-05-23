@@ -33,13 +33,6 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, finan
       ? buildCapOutDataFromCommission(pipelineEntryId, financials)
       : buildCapOutDataForJob(pipelineEntryId);
     loader
-
-  useEffect(() => {
-    if (!open || !pipelineEntryId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    buildCapOutDataForJob(pipelineEntryId)
       .then((d) => {
         if (cancelled) return;
         setData(d);
@@ -54,7 +47,7 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, finan
     return () => {
       cancelled = true;
     };
-  }, [open, pipelineEntryId]);
+  }, [open, pipelineEntryId, financials]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
