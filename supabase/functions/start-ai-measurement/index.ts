@@ -31,7 +31,7 @@ import {
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
-import { evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
+import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics, pixelToGeo } from "../_shared/dsm-analyzer.ts";
@@ -691,39 +691,14 @@ Deno.serve(async (req) => {
       return json({ error: "Property address or latitude/longitude is required." }, 400);
     }
 
-    // Registration Gate A — target confirmation required.
-    // Refuse to start AI measurement when:
-    //   - user_confirmed_roof_target is false AND no admin override, OR
-    //   - confirmed_roof_center_lat/lng is missing/non-finite (no fallback
-    //     to the address geocode — that's the Fonsica failure mode).
-    if (!user_confirmed_roof_target && !roof_target_admin_override) {
-      console.log("[REGISTRATION_GATE_A] rejected: missing user_confirmed_roof_target", {
-        lead_id, project_id, latitude, longitude,
-      });
-      return json({
-        error: "user_confirmed_roof_target_required",
-        result_state: "ai_failed_target_unconfirmed",
-        hard_fail_reason: "target_roof_not_confirmed",
-        block_customer_report_reason: "target_roof_not_confirmed",
-        message: "AI Measurement requires a confirmed roof target before it can run. Open the structure-selection step and place the marker on the actual roof.",
-      }, 412);
-    }
-    if (
-      !roof_target_admin_override &&
-      (confirmed_roof_center_lat == null || confirmed_roof_center_lng == null)
-    ) {
-      console.log("[REGISTRATION_GATE_A] rejected: missing confirmed_roof_center", {
-        lead_id, project_id,
-        confirmed_roof_center_lat_raw, confirmed_roof_center_lng_raw,
-      });
-      return json({
-        error: "confirmed_roof_center_required",
-        result_state: "ai_failed_target_unconfirmed",
-        hard_fail_reason: "target_roof_not_confirmed",
-        block_customer_report_reason: "target_roof_not_confirmed",
-        message: "AI Measurement requires explicit confirmed_roof_center_lat/lng from the PIN placement step. The marker payload is missing or invalid — do not fall back to the address geocode.",
-      }, 412);
-    }
+    const targetConfirmation = evaluateTargetConfirmation({
+      user_confirmed_roof_target,
+      roof_target_admin_override,
+      confirmed_roof_center_lat_lng:
+        confirmed_roof_center_lat != null && confirmed_roof_center_lng != null
+          ? { lat: confirmed_roof_center_lat, lng: confirmed_roof_center_lng }
+          : null,
+    });
 
     const sourceRecord = await resolveSourceRecord({ lead_id, project_id });
     const tenant_id: string | null = sourceRecord?.tenant_id ?? tenant_id_hint;
