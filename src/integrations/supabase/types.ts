@@ -2643,6 +2643,8 @@ export type Database = {
           original_geocode_lat: number | null
           original_geocode_lng: number | null
           perimeter_contract_version: string | null
+          perimeter_source_locked: string | null
+          perimeter_visual_review_required: boolean
           phase0_control_flow_version: string | null
           project_id: string | null
           property_address: string
@@ -2670,6 +2672,9 @@ export type Database = {
           updated_at: string
           user_confirmed_roof_target: boolean
           user_id: string | null
+          user_verified_perimeter: boolean
+          user_verified_perimeter_at: string | null
+          user_verified_perimeter_by: string | null
           waste_factor_percent: number | null
         }
         Insert: {
@@ -2706,6 +2711,8 @@ export type Database = {
           original_geocode_lat?: number | null
           original_geocode_lng?: number | null
           perimeter_contract_version?: string | null
+          perimeter_source_locked?: string | null
+          perimeter_visual_review_required?: boolean
           phase0_control_flow_version?: string | null
           project_id?: string | null
           property_address: string
@@ -2733,6 +2740,9 @@ export type Database = {
           updated_at?: string
           user_confirmed_roof_target?: boolean
           user_id?: string | null
+          user_verified_perimeter?: boolean
+          user_verified_perimeter_at?: string | null
+          user_verified_perimeter_by?: string | null
           waste_factor_percent?: number | null
         }
         Update: {
@@ -2769,6 +2779,8 @@ export type Database = {
           original_geocode_lat?: number | null
           original_geocode_lng?: number | null
           perimeter_contract_version?: string | null
+          perimeter_source_locked?: string | null
+          perimeter_visual_review_required?: boolean
           phase0_control_flow_version?: string | null
           project_id?: string | null
           property_address?: string
@@ -2796,6 +2808,9 @@ export type Database = {
           updated_at?: string
           user_confirmed_roof_target?: boolean
           user_id?: string | null
+          user_verified_perimeter?: boolean
+          user_verified_perimeter_at?: string | null
+          user_verified_perimeter_by?: string | null
           waste_factor_percent?: number | null
         }
         Relationships: []
