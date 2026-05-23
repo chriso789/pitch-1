@@ -591,24 +591,22 @@ export default function LiveCanvassingPage() {
     await calculateRoute({ lat, lng, address });
   };
 
-  // Open device navigation
-  const openDeviceNavigation = () => {
+  // Open device navigation (routes through the native bridge so the iOS
+  // shell can intercept and open Apple Maps natively; falls back to web).
+  const openDeviceNavigation = async () => {
     if (!destination) return;
-
-    const destCoords = `${destination.lat},${destination.lng}`;
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const { nativeBridge } = await import('@/lib/native/bridge');
     const isAndroid = /Android/.test(navigator.userAgent);
-
-    let navigationUrl = '';
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     if (isIOS) {
-      navigationUrl = `maps://?daddr=${destCoords}&dirflg=d`;
-    } else if (isAndroid) {
-      navigationUrl = `google.navigation:q=${destCoords}&mode=d`;
-    } else {
-      navigationUrl = `https://www.google.com/maps/dir/?api=1&destination=${destCoords}&travelmode=driving`;
+      await nativeBridge.openAppleMaps(destination.lat, destination.lng, destination.address);
+      return;
     }
-
+    const destCoords = `${destination.lat},${destination.lng}`;
+    const navigationUrl = isAndroid
+      ? `google.navigation:q=${destCoords}&mode=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${destCoords}&travelmode=driving`;
     window.open(navigationUrl, '_blank');
   };
 
