@@ -588,16 +588,36 @@ Deno.serve(async (req) => {
     const user_id: string | null = body.user_id ?? body.userId ?? null;
     const tenant_id_hint: string | null = body.tenantId ?? body.tenant_id ?? null;
 
-    // Patent Rule 1: confirmed roof target. The user must have placed/accepted
-    // a marker on the actual roof structure before AI measurement may run.
+    // Patent Rule 1 + Registration Gate v2: confirmed roof target. The user
+    // must have placed/accepted a marker on the actual roof structure before
+    // AI measurement may run, AND the marker must carry explicit lat/lng
+    // (no silent fallback to the address geocode — that's how Fonsica ended
+    // up overlaying the neighboring house).
     const original_geocode_lat: number | null =
       body.original_geocode_lat ?? body.originalGeocodeLat ?? null;
     const original_geocode_lng: number | null =
       body.original_geocode_lng ?? body.originalGeocodeLng ?? null;
+    const confirmed_roof_center_lat_raw =
+      body.confirmed_roof_center_lat ?? body.confirmedRoofCenterLat ?? null;
+    const confirmed_roof_center_lng_raw =
+      body.confirmed_roof_center_lng ?? body.confirmedRoofCenterLng ?? null;
     const confirmed_roof_center_lat: number | null =
-      body.confirmed_roof_center_lat ?? body.confirmedRoofCenterLat ?? latitude;
+      typeof confirmed_roof_center_lat_raw === "number" && Number.isFinite(confirmed_roof_center_lat_raw)
+        ? confirmed_roof_center_lat_raw
+        : null;
     const confirmed_roof_center_lng: number | null =
-      body.confirmed_roof_center_lng ?? body.confirmedRoofCenterLng ?? longitude;
+      typeof confirmed_roof_center_lng_raw === "number" && Number.isFinite(confirmed_roof_center_lng_raw)
+        ? confirmed_roof_center_lng_raw
+        : null;
+    const confirmed_roof_center_px_raw =
+      body.confirmed_roof_center_px ?? body.confirmedRoofCenterPx ?? null;
+    const confirmed_roof_center_px: [number, number] | null =
+      Array.isArray(confirmed_roof_center_px_raw) &&
+      confirmed_roof_center_px_raw.length === 2 &&
+      Number.isFinite(Number(confirmed_roof_center_px_raw[0])) &&
+      Number.isFinite(Number(confirmed_roof_center_px_raw[1]))
+        ? [Number(confirmed_roof_center_px_raw[0]), Number(confirmed_roof_center_px_raw[1])]
+        : null;
     const user_confirmed_roof_target: boolean = Boolean(
       body.user_confirmed_roof_target ?? body.userConfirmedRoofTarget ?? false,
     );
@@ -619,16 +639,37 @@ Deno.serve(async (req) => {
       return json({ error: "Property address or latitude/longitude is required." }, 400);
     }
 
-    // Patent Rule 1 hard gate: refuse to start AI measurement without a
-    // confirmed roof target (admin override allowed for master/COB callers).
+    // Registration Gate A — target confirmation required.
+    // Refuse to start AI measurement when:
+    //   - user_confirmed_roof_target is false AND no admin override, OR
+    //   - confirmed_roof_center_lat/lng is missing/non-finite (no fallback
+    //     to the address geocode — that's the Fonsica failure mode).
     if (!user_confirmed_roof_target && !roof_target_admin_override) {
-      console.log("[PATENT_RULE_1] rejected: missing user_confirmed_roof_target", {
+      console.log("[REGISTRATION_GATE_A] rejected: missing user_confirmed_roof_target", {
         lead_id, project_id, latitude, longitude,
       });
       return json({
         error: "user_confirmed_roof_target_required",
         result_state: "ai_failed_target_unconfirmed",
+        hard_fail_reason: "target_roof_not_confirmed",
+        block_customer_report_reason: "target_roof_not_confirmed",
         message: "AI Measurement requires a confirmed roof target before it can run. Open the structure-selection step and place the marker on the actual roof.",
+      }, 412);
+    }
+    if (
+      !roof_target_admin_override &&
+      (confirmed_roof_center_lat == null || confirmed_roof_center_lng == null)
+    ) {
+      console.log("[REGISTRATION_GATE_A] rejected: missing confirmed_roof_center", {
+        lead_id, project_id,
+        confirmed_roof_center_lat_raw, confirmed_roof_center_lng_raw,
+      });
+      return json({
+        error: "confirmed_roof_center_required",
+        result_state: "ai_failed_target_unconfirmed",
+        hard_fail_reason: "target_roof_not_confirmed",
+        block_customer_report_reason: "target_roof_not_confirmed",
+        message: "AI Measurement requires explicit confirmed_roof_center_lat/lng from the PIN placement step. The marker payload is missing or invalid — do not fall back to the address geocode.",
       }, 412);
     }
 
@@ -715,6 +756,16 @@ Deno.serve(async (req) => {
       .update({ ai_measurement_job_id: aiJob.id })
       .eq("id", measurementJob.id);
 
+    // Registration Gate v2 recentering: when the user has confirmed a roof
+    // target, ALL downstream source acquisition (static map, DSM tile,
+    // solar lookup) MUST use the confirmed roof center, never the stale
+    // address geocode. This is the root-cause fix for the wrong-house
+    // overlay (Fonsica: address geocoded to neighbor, PIN on actual roof).
+    const effective_latitude =
+      confirmed_roof_center_lat != null ? confirmed_roof_center_lat : latitude;
+    const effective_longitude =
+      confirmed_roof_center_lng != null ? confirmed_roof_center_lng : longitude;
+
     const work = processJob({
       measurement_job_id: measurementJob.id,
       ai_measurement_job_id: aiJob.id,
@@ -723,8 +774,8 @@ Deno.serve(async (req) => {
       tenant_id,
       company_id,
       property_address: resolved_address ?? "Unknown Address",
-      latitude,
-      longitude,
+      latitude: effective_latitude,
+      longitude: effective_longitude,
       source_record_type: lead_id ? "lead" : "project",
       source_record_id: lead_id || project_id,
       source_button,
@@ -735,7 +786,16 @@ Deno.serve(async (req) => {
       logical_image_height,
       raster_scale,
       user_verified_perimeter,
-    });
+      // Registration Gate v2 context — surfaced to processJob for persistence
+      // in geometry_report_json.registration.
+      original_geocode_lat,
+      original_geocode_lng,
+      confirmed_roof_center_lat,
+      confirmed_roof_center_lng,
+      confirmed_roof_center_px,
+      user_confirmed_roof_target,
+      roof_target_admin_override,
+    } as any);
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
       (globalThis as any).EdgeRuntime.waitUntil(work);

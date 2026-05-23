@@ -35,6 +35,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  readRegistrationBlock,
+  canApproveManualPerimeter,
+  registrationBanner,
+} from '@/lib/measurement/registration-gate';
 
 type Pt = [number, number];
 
@@ -128,6 +133,12 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const grj = (measurement as any)?.geometry_report_json || {};
   const overlayDbg = grj.overlay_debug || {};
   const phase35: any = grj.phase3A_5 ?? grj.phase3_5 ?? {};
+
+  // Registration Gate v2 — disable manual approval when the displayed
+  // perimeter may be drawn on the wrong house / wrong coordinate frame.
+  const registration = readRegistrationBlock(measurement);
+  const approvalAllowed = canApproveManualPerimeter(registration);
+  const banner = registrationBanner(registration);
 
   const rasterUrl: string | null =
     overlayDbg?.raster_url ||
@@ -543,6 +554,18 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {banner && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>{banner.title}</AlertTitle>
+            <AlertDescription>
+              {banner.description}
+              <div className="mt-1 text-[11px] font-mono opacity-80">
+                Failed: {banner.failedFlags.join(', ')}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         {!rasterUrl && (
           <Alert>
             <AlertTriangle className="h-4 w-4" />
