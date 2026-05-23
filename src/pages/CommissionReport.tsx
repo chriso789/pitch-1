@@ -749,6 +749,11 @@ export default function CommissionReport() {
             onVerified={() => { setVerifyEntry(null); refetch(); }}
           />
         )}
+        <CapOutPreviewDialog
+          pipelineEntryId={previewEntryId}
+          open={!!previewEntryId}
+          onOpenChange={(open) => { if (!open) setPreviewEntryId(null); }}
+        />
       </div>
     </GlobalLayout>
   );
