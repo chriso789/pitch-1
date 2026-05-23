@@ -14,7 +14,8 @@
 // See plan: Target Roof Registration Gate v2.
 // ============================================================================
 
-export const REGISTRATION_GATE_VERSION = "registration-gate-v2.0";
+export const REGISTRATION_GATE_VERSION = "registration-gate-v2.1";
+export const REGISTRATION_SKIPPED_REASON = "blocked_by_registration_gate";
 
 export type LatLng = { lat: number; lng: number };
 export type Px = [number, number];
