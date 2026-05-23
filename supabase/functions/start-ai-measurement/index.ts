@@ -444,6 +444,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
     phase3A,
     phase3A_5: buildPhase3A5Block(payload),
+    phase3_5: buildPhase3A5Block(payload),
     phase3B: buildPhase3BBlock(phase3EdgeRows),
     phase3C: buildPhase3CBlock(payload),
     phase3D: buildPhase3DBlock(payload),
