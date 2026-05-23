@@ -4,7 +4,7 @@
 // inline in a later phase. Frontends migrate to this grouped function NOW via
 // `edgeApi("email-api", "/path", body)`.
 
-import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant } from "../_shared/router.ts";
+import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serveRouter } from "../_shared/router.ts";
 import { delegate } from "../_shared/delegate.ts";
 
 const app = createRouter("email-api");
@@ -53,4 +53,4 @@ app.post("/statuses/backfill", (c) => delegate(c.req.raw, "backfill-email-status
 
 app.notFound((c) => jsonErr(c, "route_not_found", "Route not registered on email-api.", 404));
 
-Deno.serve(app.fetch);
+serveRouter(app);
