@@ -71,7 +71,7 @@ export default function CommissionReport() {
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [verifyEntry, setVerifyEntry] = useState<ComputedCommission | null>(null);
-  const [previewEntryId, setPreviewEntryId] = useState<string | null>(null);
+  const [previewEntry, setPreviewEntry] = useState<ComputedCommission | null>(null);
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
   // Minimum stage_order for "project" level
