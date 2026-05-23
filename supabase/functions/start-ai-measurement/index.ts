@@ -193,6 +193,7 @@ export const MEASUREMENT_ROUTE_AUDIT_VERSION = "measurement-route-audit-v1";
 export const CANONICAL_CREATED_BY_FUNCTION = "start-ai-measurement";
 export const CANONICAL_CREATED_BY_COMPONENT = "PullMeasurementsButton/useMeasurementJob";
 export const CANONICAL_SOLVER_ENTRYPOINT = "_shared/autonomous-graph-solver.solveAutonomousGraph";
+export const CANONICAL_REPORT_RENDERER_VERSION = "measurement-report-renderer-v1";
 
 export const CANONICAL_ROUTE_PROVENANCE = {
   created_by_function: CANONICAL_CREATED_BY_FUNCTION,
@@ -200,6 +201,7 @@ export const CANONICAL_ROUTE_PROVENANCE = {
   solver_entrypoint: CANONICAL_SOLVER_ENTRYPOINT,
   canonical_measurement_route: true,
   route_audit_version: MEASUREMENT_ROUTE_AUDIT_VERSION,
+  report_renderer_version: CANONICAL_REPORT_RENDERER_VERSION,
 } as const;
 
 export function getCanonicalRouteDbColumns(): Record<string, unknown> {
@@ -209,8 +211,10 @@ export function getCanonicalRouteDbColumns(): Record<string, unknown> {
     solver_entrypoint: CANONICAL_SOLVER_ENTRYPOINT,
     canonical_measurement_route: true,
     route_audit_version: MEASUREMENT_ROUTE_AUDIT_VERSION,
+    report_renderer_version: CANONICAL_REPORT_RENDERER_VERSION,
   };
 }
+
 
 export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
   const eaveLf = Number(perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0);
@@ -440,6 +444,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
     phase3A,
     phase3A_5: buildPhase3A5Block(payload),
+    phase3_5: buildPhase3A5Block(payload),
     phase3B: buildPhase3BBlock(phase3EdgeRows),
     phase3C: buildPhase3CBlock(payload),
     phase3D: buildPhase3DBlock(payload),

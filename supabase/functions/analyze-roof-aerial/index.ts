@@ -8,6 +8,7 @@ const LEGACY_ANALYZE_PROVENANCE = {
   solver_entrypoint: "legacy.analyze-roof-aerial",
   canonical_measurement_route: false,
   route_audit_version: "measurement-route-audit-v1",
+  report_renderer_version: "legacy-analyze-roof-aerial-v0",
 } as const;
 
 // Import worksheet engine - single source of truth for calculations

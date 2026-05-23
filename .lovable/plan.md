@@ -1,156 +1,78 @@
-# Mobile Field Mode — Live Canvassing Refactor
 
-Builds on what's already shipped (`src/lib/native/appMode.ts`, `src/lib/native/bridge.ts`, basic safe-area on PropertyInfoPanel / MobileDispositionPanel, Apple Maps bridge wire-in in LiveCanvassingPage). This plan covers the full structural refactor requested.
+## Live audit result (Fonsica, latest row 2026-05-22)
 
-Frontend only. No schema, RLS, or edge-function changes. No business logic changes — only JSX reorganization and class tweaks.
+Queried `roof_measurements` directly. The most recent Fonsica row is already on the canonical route:
 
----
+| Field | Value | Status |
+|---|---|---|
+| `canonical_measurement_route` | `true` | ✅ |
+| `created_by_function` | `start-ai-measurement` | ✅ |
+| `created_by_component` | `PullMeasurementsButton/useMeasurementJob` | ✅ |
+| `solver_entrypoint` | `_shared/autonomous-graph-solver.solveAutonomousGraph` | ✅ |
+| `route_audit_version` | `measurement-route-audit-v1` | ✅ |
+| `geometry_report_json.route_provenance` | populated | ✅ |
+| `geometry_report_json.phase3C.version` | `v1` | ✅ |
+| `geometry_report_json.phase3D.version` | `v1` | ✅ |
+| `geometry_report_json.phase3E.version` | `v1` | ✅ |
+| `geometry_report_json.phase3_5.version` | **NULL** | ❌ |
+| `hard_fail_reason` (column) | **NULL** while `result_state=ai_failed_perimeter` | ❌ |
+| `report_renderer_version` | **NULL** | ❌ |
 
-## 1. Layout helper
+Older Fonsica rows (May 14) predate the fence and remain `canonical=false` with null provenance — that's historical, not a current bug. Legacy functions `measure`, `measure-roof`, `analyze-roof-aerial` already spread `LEGACY_*_PROVENANCE` on every `roof_measurements` insert/update, so the fence is in place going forward.
 
-**New:** `src/hooks/useFieldMobileMode.ts`
-- Re-exports / composes existing pieces:
-  - `isMobileViewport` from `useIsMobile()` (already exists at `src/hooks/use-mobile.tsx`)
-  - `isNativeApp` from `src/lib/native/appMode.ts` (already exists)
-- Exports `useFieldMobileMode(): { isMobileViewport, isNativeApp, isFieldMobileMode }`
-- `isFieldMobileMode = isMobileViewport || isNativeApp`
+So we don't need to re-wire the whole canonical route — just close 3 concrete gaps and re-run.
 
-**Alias:** `src/utils/nativeBridge.ts` — re-export wrapper around existing `src/lib/native/bridge.ts` exposing the exact function names the user asked for (`isPitchNativeApp`, `openNativeCamera`, `requestNativeLocation`, `openNativeMaps`, `storeNativeToken`, `requestPushPermission`, `haptic`). Thin shim so callers can use either path.
+## Gap 1 — `phase3_5` block alias
 
----
+`withPhase3Visibility` (start-ai-measurement/index.ts:437) emits `phase3A_5` only. Audit/contract requires `phase3_5`. The debug endpoint already falls back (`phase3_5 ?? phase3A_5`), but the live row has only `phase3A_5`, which is why `phase3_5.version` is null.
 
-## 2. PropertyInfoPanel — modular mobile layout
+Fix: in `withPhase3Visibility`, also emit `phase3_5: buildPhase3A5Block(payload)` (alias of `phase3A_5`). Apply the same alias in the two other places that build the autonomous debug object (lines ~3101 and ~6166 already emit both; line 437 is the only branch that doesn't). Result: every canonical row, success or failure, carries both `phase3_5` and `phase3A_5`.
 
-**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx` (1,496 lines)
+## Gap 2 — `hard_fail_reason` DB column on failure rows
 
-Approach: keep the existing component as the single source of state/handlers (all `useState`, `useRef`, `useCallback`, Supabase calls stay put). Extract presentational sections into co-located sub-components under `src/components/storm-canvass/property-panel/` that receive props. Then render either the desktop tree (existing) or the mobile tree (new composition) based on `isFieldMobileMode`.
+`insertFailedPreliminaryMeasurement` writes `geometry_report_json.hard_fail_reason` but does not set the top-level `roof_measurements.hard_fail_reason` column on the insert. Latest Fonsica row proves it: `result_state=ai_failed_perimeter`, `hard_fail_reason=null`.
 
-**New sub-components** (`src/components/storm-canvass/property-panel/`):
-- `MobilePanelHeader.tsx` — owner, age badge, address, distance verification badge, current disposition badge, small confidence badge. Sticky `top-0 z-10 bg-background border-b`.
-- `MobileQuickActions.tsx` — 4-icon row (Call / Navigate / Photo / Add Customer), `h-12` minimum, `+ More` overflow popover for less-common actions. Sticky under header.
-- `MobileDispositionStrip.tsx` — horizontal scroll chips, `h-11`, readable label, obvious selected state. Uses the same `DISPOSITIONS` array + `handleDisposition` handler from parent.
-- `MobileContactInfo.tsx` — first 2 phones + first 1 email visible; "Show all contact info" expander. DNC numbers disabled + marked. `tel:` / `mailto:` via existing handlers. If no contact: single "Get Contact Info" CTA (de-duplicated — removed from elsewhere on mobile).
-- `MobilePropertyIntel.tsx` — Accordion (collapsed default): APN, sqft, year built, homestead, assessed value, sources + confidence.
-- `MobileFieldTools.tsx` — Collapsible (collapsed default): 3-col icon grid, `h-16` cells — Storm, Google Sun, Directions, Fast Estimate, Add Photo, Strategy, Inspection.
-- `MobileAIPanels.tsx` — Collapsibles for AI Strategy (compact summary first, "View Details" expand), Storm Reports list, Score "Why" panel.
-- `MobileNotesSection.tsx` — collapsed when empty; full-width readable textarea when expanded; never pushes sticky actions off screen.
+Fix: add `hard_fail_reason: persistedFailureReason` and `block_customer_report_reason: persistedFailureReason` to the column set inside `insertFailedPreliminaryMeasurement` (start-ai-measurement/index.ts ~line 8050+). Use the existing `persistedFailureReason` value already computed at line 8052.
 
-**Wrapper composition:** in `PropertyInfoPanel.tsx` after all state/handlers, branch:
+## Gap 3 — `report_renderer_version` stamp
 
-```tsx
-if (isFieldMobileMode) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[92dvh] max-h-[92dvh] rounded-t-3xl overflow-hidden p-0 flex flex-col"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-      >
-        <MobilePanelHeader ... />
-        <MobileQuickActions ... />
-        <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-4"
-             style={{ WebkitOverflowScrolling: 'touch' }}>
-          <MobileDispositionStrip ... />
-          <MobileContactInfo ... />
-          <MobilePropertyIntel ... />
-          <MobileFieldTools ... />
-          <MobileAIPanels ... />
-          <MobileNotesSection ... />
-        </div>
-        {/* existing dialogs (FastEstimate, PhotoCapture, Inspection, StormScoreWhy) stay rendered below */}
-      </SheetContent>
-    </Sheet>
-  );
-}
-// existing desktop JSX unchanged below
-```
+No write path currently sets the `report_renderer_version` column. Audit requires it so we can tell which renderer produced the report/diagram on each row.
 
-Risk control: zero changes to handlers, refs, effects, or Supabase calls — only JSX rearrangement. Desktop tree is preserved 1:1.
+Fix:
+- Add a constant `CANONICAL_REPORT_RENDERER_VERSION = "measurement-report-renderer-v1"` in start-ai-measurement and include it in `getCanonicalRouteDbColumns()` so every canonical insert/update carries it.
+- Add `report_renderer_version: "legacy-<fn-name>-v0"` to each legacy provenance constant (`LEGACY_MEASURE_PROVENANCE`, `LEGACY_MEASURE_ROOF_PROVENANCE`, `LEGACY_ANALYZE_PROVENANCE`) so legacy rows are distinguishable from canonical ones.
 
----
+## Gap 4 — debug endpoint surface
 
-## 3. MobileDispositionPanel polish
+`debug-measurement-runtime/index.ts` already returns `created_by_function`, `solver_entrypoint`, `canonical_measurement_route`, `route_audit_version`, `route_provenance`, `phase3_5` (with `phase3A_5` fallback), `phase3C`, `phase3D`, `phase3E`. Add three small fields to the summary so a single call answers "is each phase executed, skipped, or missing, and which renderer ran":
+- `report_renderer_version`
+- `hard_fail_reason`
+- `phase_status: { phase3_5, phase3C, phase3D, phase3E }` where each is `"executed" | "skipped" | "missing"` derived from `executed` / `skipped_reason` / null block
 
-**File:** `src/components/storm-canvass/MobileDispositionPanel.tsx`
-- Switch container to `max-h-[90dvh]` (already at 70vh; widen).
-- Sticky `SheetHeader` with `top-0 bg-background z-10`.
-- Disposition buttons → `h-12` minimum.
-- Notes section collapsed by default (already toggles; keep).
-- "Navigate Here" routes through `nativeBridge.openNativeMaps(...)`.
-- `overflow-y-auto` + `WebkitOverflowScrolling: 'touch'` (partly there; harden).
-- Keep `paddingBottom: env(safe-area-inset-bottom, 0px)` already in place.
+## Gap 5 — rerun Fonsica and verify
 
----
+After Gaps 1–4 ship:
+1. Hit `debug-measurement-runtime?address=fonsica&limit=5` and confirm the existing canonical row already shows `phase3_5` via the fallback and the new `report_renderer_version`/`hard_fail_reason` columns surface.
+2. Trigger a fresh Fonsica measurement via PullMeasurementsButton.
+3. Re-query. Expect on the new row:
+   - `canonical_measurement_route=true`, full `route_provenance`
+   - `phase3_5.version=v1`, `phase3C.version=v1`, `phase3D.version=v1`, `phase3E.version=v1` (no nulls)
+   - `report_renderer_version` populated
+   - On failure: `hard_fail_reason` is stage-specific (`perimeter_refinement_failed`, `backbone_not_applied`, or `topology_undersegmented_after_backbone_repair`) on **both** the column and `geometry_report_json`.
 
-## 4. LiveCanvassingPage iOS-safe polish
+## Files to change
 
-**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
-- Replace any `h-screen`/`100vh` with `100dvh` (page root already uses `h-[100dvh]`; audit children).
-- Top control bar: ensure `paddingTop: env(safe-area-inset-top, 0px)` (already on root; verify FAB/search bar).
-- Bottom recenter / canvass-mode FAB cluster: add `paddingBottom: calc(env(safe-area-inset-bottom, 0px) + 12px)` to its container so it floats above the home indicator.
-- NavigationPanel: bottom offset bumped by safe-area so it doesn't sit under PropertyInfoPanel sheet drag handle.
-- No changes to: `GoogleLiveLocationMap`, GPS acquisition, route calculation, address search, drop pin, offline photo sync, map style toggle, panel open/close, disposition.
-
----
-
-## 5. Native bridge shim
-
-**New:** `src/utils/nativeBridge.ts` — re-exports from `src/lib/native/bridge.ts` with the exact names from the spec:
-
-```ts
-export { isNativeApp as isPitchNativeApp } from '@/lib/native/appMode';
-export const openNativeCamera = (p?) => nativeBridge.openCamera(p);
-export const requestNativeLocation = () => nativeBridge.getLocation();
-export const openNativeMaps = (lat, lng, label?) => nativeBridge.openAppleMaps(lat, lng, label);
-export const storeNativeToken = (t: string) => nativeBridge.storeToken('auth', t);
-export const requestPushPermission = () => nativeBridge.requestPushPermission();
-export const haptic = (t?) => nativeBridge.haptic(t ?? 'light');
-```
-
-All already implemented with safe web fallbacks in `bridge.ts`. Wire-in points:
-- `MobileQuickActions` Photo → `openNativeCamera()`; on failure/no native, fall through to existing `setShowPhotoCapture(true)`.
-- `MobileQuickActions` Navigate → `openNativeMaps(lat, lng, address)`; existing `onNavigate` prop still called for route-line state.
-- `handleDisposition` (parent) → `haptic('success')` after successful Supabase update (no-op in browser).
-
----
-
-## 6 / 7. Backend + business logic untouched
-
-No changes to schema, RLS, or edge functions. No changes to:
-`storm-public-lookup`, `canvassiq-skip-trace`, `noaa-storm-reports`, `door-knock-strategy`, public lookup auto-run, skip trace, owner enrichment, DNC protection, disposition update, visit logging, `canvass_activity_log` insert, auto-create contact on positive dispositions, add-customer merge, storm reports, fast estimate, inspection/photo, distance verification.
-
----
-
-## 8. QA doc
-
-**New:** `docs/mobile-field-mode-qa.md` — viewport checklist (iPhone SE / 15-17 Pro / iPad / desktop), Live Canvassing flow checklist (select pin → disposition → get contact → call → navigate → add customer → photo → tools → strategy), safe-area / home indicator / notch checks, no horizontal overflow check.
-
----
-
-## Files
-
-**New (9):**
-- `src/hooks/useFieldMobileMode.ts`
-- `src/utils/nativeBridge.ts`
-- `src/components/storm-canvass/property-panel/MobilePanelHeader.tsx`
-- `src/components/storm-canvass/property-panel/MobileQuickActions.tsx`
-- `src/components/storm-canvass/property-panel/MobileDispositionStrip.tsx`
-- `src/components/storm-canvass/property-panel/MobileContactInfo.tsx`
-- `src/components/storm-canvass/property-panel/MobilePropertyIntel.tsx`
-- `src/components/storm-canvass/property-panel/MobileFieldTools.tsx`
-- `src/components/storm-canvass/property-panel/MobileAIPanels.tsx`
-- `src/components/storm-canvass/property-panel/MobileNotesSection.tsx`
-- `docs/mobile-field-mode-qa.md`
-
-**Edited (3):**
-- `src/components/storm-canvass/PropertyInfoPanel.tsx` — add mobile branch; desktop tree untouched.
-- `src/components/storm-canvass/MobileDispositionPanel.tsx` — sticky header, `h-12` buttons, native maps wire-in.
-- `src/pages/storm-canvass/LiveCanvassingPage.tsx` — safe-area on FAB cluster + NavigationPanel; `100dvh` audit.
-
-## Acceptance
-
-Map-first canvass preserved · property details no longer cramped on iPhone · thumb-reachable actions · no duplicate "Get Contact Info" CTAs · no horizontal overflow · no Supabase regressions · no desktop regressions · native bridge safe in browser · build passes.
+- `supabase/functions/start-ai-measurement/index.ts`
+  - `withPhase3Visibility` → also emit `phase3_5`
+  - `insertFailedPreliminaryMeasurement` → set `hard_fail_reason`/`block_customer_report_reason` columns
+  - Add `CANONICAL_REPORT_RENDERER_VERSION` to canonical provenance / DB columns
+- `supabase/functions/measure/index.ts`, `measure-roof/index.ts`, `analyze-roof-aerial/index.ts`
+  - Add `report_renderer_version` to each `LEGACY_*_PROVENANCE` constant
+- `supabase/functions/debug-measurement-runtime/index.ts`
+  - Surface `report_renderer_version`, `hard_fail_reason`, and a derived `phase_status` map
 
 ## Out of scope
 
-Swift handlers (Xcode side). Lead detail page / estimate / job page polish — separate pass once canvass lands.
+- Not touching the autonomous solver, perimeter refiner, or backbone repair logic — the audit is a visibility/provenance contract, not a geometry fix.
+- Not back-filling old rows; legacy fence is forward-only by design.
+- Not removing the legacy functions yet — the fence + report_renderer_version stamp is enough to make every row attributable.

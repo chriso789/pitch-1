@@ -30,6 +30,7 @@ export const LEGACY_MEASURE_PROVENANCE = {
   solver_entrypoint: "legacy.measure",
   canonical_measurement_route: false,
   route_audit_version: "measurement-route-audit-v1",
+  report_renderer_version: "legacy-measure-v0",
 } as const;
 
 // Environment
