@@ -928,6 +928,13 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
         Active stage:{' '}
         <span className="font-medium text-foreground">{stage?.label}</span>
       </div>
+
+      {missingLayers.length > 0 && (
+        <div className="absolute top-2 left-2 max-w-[60%] bg-amber-500/15 border border-amber-500/40 text-amber-700 rounded px-2 py-1 text-[10px]">
+          <span className="font-semibold">No pixel data persisted for:</span>{' '}
+          {missingLayers.join(' · ')}
+        </div>
+      )}
     </div>
   );
 }
