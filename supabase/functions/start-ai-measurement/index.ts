@@ -7106,6 +7106,10 @@ async function processJob(input: any) {
       report_blocked: !_customerReadyFinal,
       needs_review: !_customerReadyFinal,
       result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
+      perimeter_visual_review_required: _perimeterVisualReviewRequired,
+      perimeter_source_locked: _userVerifiedPerimeter
+        ? (_phase3_5Block?.perimeter_source_locked ?? 'user_verified_perimeter')
+        : null,
     }).eq("id", input.ai_measurement_job_id);
 
     // Generate the customer-visible SVG report pages from the measured geometry.
