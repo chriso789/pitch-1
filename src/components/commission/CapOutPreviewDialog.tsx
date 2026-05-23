@@ -18,11 +18,21 @@ interface CapOutPreviewDialogProps {
   financials?: CapOutFinancials | null;
 }
 
-export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange }: CapOutPreviewDialogProps) {
+export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, financials }: CapOutPreviewDialogProps) {
   const [loading, setLoading] = useState(false);
   const [html, setHtml] = useState<string>('');
   const [data, setData] = useState<CapOutPdfData | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !pipelineEntryId) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const loader = financials
+      ? buildCapOutDataFromCommission(pipelineEntryId, financials)
+      : buildCapOutDataForJob(pipelineEntryId);
+    loader
 
   useEffect(() => {
     if (!open || !pipelineEntryId) return;
