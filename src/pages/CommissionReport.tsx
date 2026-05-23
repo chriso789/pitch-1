@@ -775,6 +775,7 @@ export default function CommissionReport() {
             materialCost: previewEntry.materialCost,
             laborCost: previewEntry.laborCost,
             overheadAmount: previewEntry.overheadAmount,
+            otherCharges: previewEntry.otherCharges,
             grossProfit: previewEntry.grossProfit,
             commissionAmount: previewEntry.commissionAmount,
             commissionRate: previewEntry.commissionRate,
