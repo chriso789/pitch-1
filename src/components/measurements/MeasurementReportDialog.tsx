@@ -21,6 +21,8 @@ import PatentRoofReport from './PatentRoofReport';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
 import { MeasurementOverrideEditor } from '@/components/measurement/MeasurementOverrideEditor';
 import AIMeasurement3DDebugViewer from './AIMeasurement3DDebugViewer';
+import MeasurementVisualQAOverlay from './MeasurementVisualQAOverlay';
+import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { Layers as LayersIcon } from 'lucide-react';
 
 interface MeasurementReportDialogProps {
@@ -1037,42 +1039,53 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const isDiagnosticOnly = !pdfGate.ok;
               const isBboxRescued = detectBboxRescue(effectiveMeasurement);
 
+              const visualQAOverlay = (
+                <MeasurementVisualQAOverlay
+                  measurement={effectiveMeasurement}
+                  aiMeasurementJobId={(effectiveMeasurement as any)?.ai_measurement_job_id ?? explicitJobId ?? jobId ?? null}
+                />
+              );
+
               const debugOverlay = showDebugOverlay ? (
-                <div className="measurement-report-page border rounded-lg overflow-hidden bg-background relative">
-                  <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-                    <div className="font-semibold text-sm">Roof Overlay</div>
-                    {isDiagnosticOnly ? (
-                      <Badge variant="destructive">diagnostic only</Badge>
-                    ) : (
-                      <Badge variant="secondary">preliminary</Badge>
-                    )}
-                  </div>
-                  {isDiagnosticOnly && (
-                    <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-destructive">
-                      ⚠ DIAGNOSTIC — NOT FOR CUSTOMER USE {isBboxRescued ? '— BBOX RESCUE ACTIVE' : ''}
+                <>
+                  {visualQAOverlay}
+                  <div className="measurement-report-page border rounded-lg overflow-hidden bg-background relative">
+                    <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                      <div className="font-semibold text-sm">Roof Overlay</div>
+                      {isDiagnosticOnly ? (
+                        <Badge variant="destructive">diagnostic only</Badge>
+                      ) : (
+                        <Badge variant="secondary">preliminary</Badge>
+                      )}
                     </div>
-                  )}
-                  <div className="p-2 bg-white relative">
-                    <RasterOverlayDebugView
-                      imageUrl={rasterUrl}
-                      rasterSize={rasterSize}
-                      planes_px={planes_px}
-                      edges_px={edges_px}
-                      footprint_px={footprint_px}
-                      overlayCalibration={grj?.overlay_calibration || null}
-                      roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
-                      geometryPxSpace={grj?.geometry_px_space || null}
-                    />
                     {isDiagnosticOnly && (
-                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                        <div className="text-destructive/15 font-black text-6xl -rotate-30 select-none whitespace-nowrap">
-                          DIAGNOSTIC ONLY
-                        </div>
+                      <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-destructive">
+                        ⚠ DIAGNOSTIC — NOT FOR CUSTOMER USE {isBboxRescued ? '— BBOX RESCUE ACTIVE' : ''}
                       </div>
                     )}
+                    <div className="p-2 bg-white relative">
+                      <RasterOverlayDebugView
+                        imageUrl={rasterUrl}
+                        rasterSize={rasterSize}
+                        planes_px={planes_px}
+                        edges_px={edges_px}
+                        footprint_px={footprint_px}
+                        overlayCalibration={grj?.overlay_calibration || null}
+                        roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
+                        geometryPxSpace={grj?.geometry_px_space || null}
+                      />
+                      {isDiagnosticOnly && (
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                          <div className="text-destructive/15 font-black text-6xl -rotate-30 select-none whitespace-nowrap">
+                            DIAGNOSTIC ONLY
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ) : null;
+                </>
+              ) : visualQAOverlay;
+
 
               if (reportCollapsed) {
                 return (

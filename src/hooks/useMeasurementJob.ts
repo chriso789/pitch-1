@@ -128,6 +128,10 @@ export function useMeasurementJob(pipelineEntryId: string) {
     userConfirmedRoofTarget?: boolean;
     roofTargetAdminOverride?: boolean;
     markerOffsetFt?: number | null;
+    /** Visual QA bypass: when true, the next run trusts the persisted perimeter. */
+    userVerifiedPerimeter?: boolean;
+    /** Optional id of a prior AI measurement job (for visual QA rerun continuity). */
+    priorAiMeasurementJobId?: string | null;
   }) => {
     // Canonical AI Measurement entrypoint: async job flow that writes to
     // measurement_jobs (polled below) and publishes to roof_measurements +
@@ -156,6 +160,9 @@ export function useMeasurementJob(pipelineEntryId: string) {
         marker_offset_ft: params.markerOffsetFt ?? null,
         user_confirmed_roof_target: params.userConfirmedRoofTarget ?? true,
         roof_target_admin_override: params.roofTargetAdminOverride ?? false,
+        // Visual QA bypass
+        user_verified_perimeter: params.userVerifiedPerimeter ?? false,
+        prior_ai_measurement_job_id: params.priorAiMeasurementJobId ?? null,
       }
     });
 
