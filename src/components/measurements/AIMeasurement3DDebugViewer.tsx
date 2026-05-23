@@ -34,8 +34,10 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   measurement: any;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Render inline (no Dialog wrapper) for embedding in the report. */
+  embedded?: boolean;
 }
 
 type StageStatus = 'pass' | 'fail' | 'warn' | 'skip' | 'unknown';
@@ -291,21 +293,23 @@ const LAYER_TOGGLES: LayerToggle[] = [
   { key: 'confirmed', label: 'Confirmed roof center', default: true },
   { key: 'solar', label: 'Solar segments', default: true },
   { key: 'targetMask', label: 'Target roof mask', default: true },
-  { key: 'globalMask', label: 'Global mask', default: false },
+  { key: 'globalMask', label: 'Global mask', default: true },
   { key: 'missed', label: 'Missed roof regions', default: true },
   { key: 'perimeter', label: 'Selected perimeter', default: true },
   { key: 'eaves', label: 'Eaves', default: true },
   { key: 'rakes', label: 'Rakes', default: true },
   { key: 'ridges', label: 'Ridges', default: true },
-  { key: 'hips', label: 'Hips', default: false },
-  { key: 'valleys', label: 'Valleys', default: false },
-  { key: 'rejected', label: 'Rejected edges', default: false },
+  { key: 'hips', label: 'Hips', default: true },
+  { key: 'valleys', label: 'Valleys', default: true },
+  { key: 'rejected', label: 'Rejected edges', default: true },
 ];
+
 
 export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
   measurement,
   open,
   onOpenChange,
+  embedded = false,
 }) => {
   const stages = useMemo(() => buildStages(measurement), [measurement]);
   const [activeStage, setActiveStage] = useState<string>(stages[0]?.id || 'target');
@@ -326,6 +330,38 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
     return ph?.status === 'fail' && tm && tm.status !== 'unknown';
   })();
 
+  const header = (
+    <div className={cn('flex items-center gap-2', embedded ? 'px-4 py-3 border-b' : '')}>
+      <Layers className="h-5 w-5 text-primary" />
+      <span className="font-semibold">AI Measurement Process Viewer</span>
+      <Badge variant="outline" className="ml-2">Diagnostic</Badge>
+      {embedded && (
+        <span className="ml-auto text-xs text-muted-foreground">
+          Internal use only — not for customers.
+        </span>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="border rounded-lg bg-card flex flex-col overflow-hidden h-[720px]">
+        {header}
+        <ViewerBody
+          stages={stages}
+          activeStage={activeStage}
+          setActiveStage={setActiveStage}
+          layers={layers}
+          setLayers={setLayers}
+          stage={stage}
+          measurement={measurement}
+          rasterUrl={rasterUrl}
+          phase0Bypassed={phase0Bypassed}
+        />
+      </div>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[1200px] w-[95vw] h-[90vh] flex flex-col p-0">
@@ -341,133 +377,19 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 grid grid-cols-[260px_1fr_320px] gap-0">
-          {/* LEFT: stage timeline */}
-          <div className="border-r overflow-y-auto">
-            <ScrollArea className="h-full">
-              <div className="p-3 space-y-1">
-                {stages.map((s, i) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setActiveStage(s.id)}
-                    className={cn(
-                      'w-full text-left px-3 py-2 rounded-md border text-sm transition-colors',
-                      'flex items-start gap-2',
-                      activeStage === s.id
-                        ? 'bg-primary/10 border-primary/40'
-                        : 'border-transparent hover:bg-muted',
-                    )}
-                  >
-                    <span className="text-xs text-muted-foreground w-5 mt-0.5">
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{s.label}</div>
-                      {s.source && (
-                        <div className="text-[11px] text-muted-foreground truncate">
-                          src: {s.source}
-                        </div>
-                      )}
-                      {s.reason && (
-                        <div className="text-[11px] text-destructive truncate">{s.reason}</div>
-                      )}
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn('text-[10px] px-1.5 py-0 gap-1', statusColor[s.status])}
-                    >
-                      {statusIcon[s.status]}
-                      {s.status}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
 
-          {/* CENTER: canvas */}
-          <div className="flex flex-col min-h-0">
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-              <div className="flex items-center gap-2 text-sm">
-                <Eye className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{stage?.label}</span>
-                <Badge
-                  variant="outline"
-                  className={cn('text-[10px] px-1.5 py-0 gap-1', statusColor[stage?.status || 'unknown'])}
-                >
-                  {statusIcon[stage?.status || 'unknown']}
-                  {stage?.status}
-                </Badge>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Run: {measurement?.id?.slice(0, 8)} · engine{' '}
-                {measurement?.ai_measurement_engine_version || '—'}
-              </div>
-            </div>
+        <ViewerBody
+          stages={stages}
+          activeStage={activeStage}
+          setActiveStage={setActiveStage}
+          layers={layers}
+          setLayers={setLayers}
+          stage={stage}
+          measurement={measurement}
+          rasterUrl={rasterUrl}
+          phase0Bypassed={phase0Bypassed}
+        />
 
-            {phase0Bypassed && (
-              <div className="mx-4 mt-3 p-3 rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-sm flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <div>
-                  <div className="font-semibold">BUG: Perimeter Phase 0 was bypassed</div>
-                  <div className="text-xs">
-                    Target-mask isolation has data but the perimeter gate didn't run.
-                    AI Measurement should not have proceeded.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex-1 min-h-0 p-4">
-              <DebugCanvas
-                measurement={measurement}
-                stage={stage}
-                layers={layers}
-                rasterUrl={rasterUrl}
-              />
-            </div>
-          </div>
-
-          {/* RIGHT: layers + payload */}
-          <div className="border-l overflow-y-auto">
-            <ScrollArea className="h-full">
-              <div className="p-4 space-y-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-                    Layers
-                  </div>
-                  <div className="space-y-2">
-                    {LAYER_TOGGLES.map((l) => (
-                      <div key={l.key} className="flex items-center justify-between">
-                        <Label htmlFor={`layer-${l.key}`} className="text-sm cursor-pointer">
-                          {l.label}
-                        </Label>
-                        <Switch
-                          id={`layer-${l.key}`}
-                          checked={layers[l.key]}
-                          onCheckedChange={(v) =>
-                            setLayers((prev) => ({ ...prev, [l.key]: v }))
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div>
-                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-                    Stage payload
-                  </div>
-                  <pre className="text-[10px] bg-muted/40 p-2 rounded border overflow-auto max-h-[400px]">
-                    {JSON.stringify(stage?.payload ?? {}, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            </ScrollArea>
-          </div>
-        </div>
 
         <div className="px-6 py-3 border-t flex justify-between items-center text-xs text-muted-foreground">
           <span>
@@ -476,16 +398,174 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
               {measurement?.result_state || '—'}
             </span>
           </span>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange?.(false)}>
             Close
           </Button>
+
         </div>
       </DialogContent>
     </Dialog>
   );
 };
 
+/* ---------------- Viewer Body ---------------- */
+
+interface ViewerBodyProps {
+  stages: StageDef[];
+  activeStage: string;
+  setActiveStage: (id: string) => void;
+  layers: Record<string, boolean>;
+  setLayers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  stage: StageDef | undefined;
+  measurement: any;
+  rasterUrl?: string;
+  phase0Bypassed: boolean;
+}
+
+function ViewerBody({
+  stages,
+  activeStage,
+  setActiveStage,
+  layers,
+  setLayers,
+  stage,
+  measurement,
+  rasterUrl,
+  phase0Bypassed,
+}: ViewerBodyProps) {
+  return (
+    <div className="flex-1 min-h-0 grid grid-cols-[240px_1fr_280px] gap-0">
+      {/* LEFT: stage timeline */}
+      <div className="border-r overflow-y-auto">
+        <ScrollArea className="h-full">
+          <div className="p-3 space-y-1">
+            {stages.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => setActiveStage(s.id)}
+                className={cn(
+                  'w-full text-left px-3 py-2 rounded-md border text-sm transition-colors',
+                  'flex items-start gap-2',
+                  activeStage === s.id
+                    ? 'bg-primary/10 border-primary/40'
+                    : 'border-transparent hover:bg-muted',
+                )}
+              >
+                <span className="text-xs text-muted-foreground w-5 mt-0.5">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{s.label}</div>
+                  {s.source && (
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      src: {s.source}
+                    </div>
+                  )}
+                  {s.reason && (
+                    <div className="text-[11px] text-destructive truncate">{s.reason}</div>
+                  )}
+                </div>
+                <Badge
+                  variant="outline"
+                  className={cn('text-[10px] px-1.5 py-0 gap-1', statusColor[s.status])}
+                >
+                  {statusIcon[s.status]}
+                  {s.status}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* CENTER: canvas */}
+      <div className="flex flex-col min-h-0">
+        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+          <div className="flex items-center gap-2 text-sm">
+            <Eye className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium">{stage?.label}</span>
+            <Badge
+              variant="outline"
+              className={cn('text-[10px] px-1.5 py-0 gap-1', statusColor[stage?.status || 'unknown'])}
+            >
+              {statusIcon[stage?.status || 'unknown']}
+              {stage?.status}
+            </Badge>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Run: {measurement?.id?.slice(0, 8)} · engine{' '}
+            {measurement?.ai_measurement_engine_version || '—'}
+          </div>
+        </div>
+
+        {phase0Bypassed && (
+          <div className="mx-4 mt-3 p-3 rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-sm flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5" />
+            <div>
+              <div className="font-semibold">BUG: Perimeter Phase 0 was bypassed</div>
+              <div className="text-xs">
+                Target-mask isolation has data but the perimeter gate didn't run.
+                AI Measurement should not have proceeded.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 p-4">
+          <DebugCanvas
+            measurement={measurement}
+            stage={stage}
+            layers={layers}
+            rasterUrl={rasterUrl}
+          />
+        </div>
+      </div>
+
+      {/* RIGHT: layers + payload */}
+      <div className="border-l overflow-y-auto">
+        <ScrollArea className="h-full">
+          <div className="p-4 space-y-4">
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                Layers
+              </div>
+              <div className="space-y-2">
+                {LAYER_TOGGLES.map((l) => (
+                  <div key={l.key} className="flex items-center justify-between">
+                    <Label htmlFor={`layer-${l.key}`} className="text-sm cursor-pointer">
+                      {l.label}
+                    </Label>
+                    <Switch
+                      id={`layer-${l.key}`}
+                      checked={layers[l.key]}
+                      onCheckedChange={(v) =>
+                        setLayers((prev) => ({ ...prev, [l.key]: v }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                Stage payload
+              </div>
+              <pre className="text-[10px] bg-muted/40 p-2 rounded border overflow-auto max-h-[400px]">
+                {JSON.stringify(stage?.payload ?? {}, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Canvas ---------------- */
+
 
 interface CanvasProps {
   measurement: any;
@@ -514,6 +594,51 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
   const valleys = roofLines.filter((l) => l.attribute === 'valley');
   const rejected = roofLines.filter((l) => l.rejected);
 
+  const targetMaskDbg = grj?.target_mask_isolation || {};
+  const targetMaskPolys: Array<Array<[number, number]>> = (() => {
+    const candidates = [
+      targetMaskDbg?.target_mask_polygons_px,
+      targetMaskDbg?.target_mask_polygon_px,
+      grj?.target_mask_polygons_px,
+      grj?.target_mask_polygon_px,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
+      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
+    }
+    return [];
+  })();
+  const globalMaskPolys: Array<Array<[number, number]>> = (() => {
+    const candidates = [
+      targetMaskDbg?.global_mask_polygons_px,
+      grj?.global_mask_polygons_px,
+      grj?.global_mask_polygon_px,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
+      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
+    }
+    return [];
+  })();
+  const missedRegions: Array<Array<[number, number]>> = (() => {
+    const candidates = [
+      targetMaskDbg?.missed_roof_regions_px,
+      grj?.missed_roof_regions_px,
+      grj?.missed_target_roof_regions_px,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
+      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
+    }
+    return [];
+  })();
+  const geocodePx: [number, number] | null =
+    overlayDbg?.original_geocode_px || grj?.original_geocode_px || null;
+
+
   return (
     <div className="relative w-full h-full rounded-lg border bg-muted/30 overflow-hidden">
       {rasterUrl && layers.raster ? (
@@ -533,6 +658,50 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
       >
+        {/* Global mask (lowest z) */}
+        {layers.globalMask &&
+          globalMaskPolys.map((poly, i) =>
+            poly && poly.length > 2 ? (
+              <polygon
+                key={`gmask-${i}`}
+                points={poly.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                fill="rgba(148,163,184,0.25)"
+                stroke="#94a3b8"
+                strokeWidth={1}
+                strokeDasharray="4,3"
+              />
+            ) : null,
+          )}
+
+        {/* Target roof mask */}
+        {layers.targetMask &&
+          targetMaskPolys.map((poly, i) =>
+            poly && poly.length > 2 ? (
+              <polygon
+                key={`tmask-${i}`}
+                points={poly.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                fill="rgba(16,185,129,0.18)"
+                stroke="#10b981"
+                strokeWidth={2}
+              />
+            ) : null,
+          )}
+
+        {/* Missed roof regions */}
+        {layers.missed &&
+          missedRegions.map((poly, i) =>
+            poly && poly.length > 2 ? (
+              <polygon
+                key={`missed-${i}`}
+                points={poly.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                fill="rgba(249,115,22,0.25)"
+                stroke="#f97316"
+                strokeWidth={1.5}
+                strokeDasharray="3,3"
+              />
+            ) : null,
+          )}
+
         {/* Perimeter */}
         {layers.perimeter && perimeterPx && perimeterPx.length > 2 && (
           <polygon
@@ -676,6 +845,15 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
             <circle cx={W / 2} cy={H / 2} r={10} fill="none" stroke="#22c55e" strokeWidth={2} />
             <line x1={W / 2 - 14} y1={H / 2} x2={W / 2 + 14} y2={H / 2} stroke="#22c55e" />
             <line x1={W / 2} y1={H / 2 - 14} x2={W / 2} y2={H / 2 + 14} stroke="#22c55e" />
+          </g>
+        )}
+
+        {/* Original geocode marker */}
+        {layers.geocode && geocodePx && (
+          <g>
+            <circle cx={geocodePx[0]} cy={geocodePx[1]} r={7} fill="none" stroke="#f59e0b" strokeWidth={2} />
+            <line x1={geocodePx[0] - 10} y1={geocodePx[1]} x2={geocodePx[0] + 10} y2={geocodePx[1]} stroke="#f59e0b" />
+            <line x1={geocodePx[0]} y1={geocodePx[1] - 10} x2={geocodePx[0]} y2={geocodePx[1] + 10} stroke="#f59e0b" />
           </g>
         )}
 

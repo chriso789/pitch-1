@@ -974,6 +974,15 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
         <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
           <div ref={reportContentRef}>
+          {effectiveMeasurement?.id && (
+            <div className="mb-6">
+              <AIMeasurement3DDebugViewer
+                measurement={effectiveMeasurement}
+                embedded
+              />
+            </div>
+          )}
+
           {!previewGate.ok ? (
             (() => {
               const { grj, rasterUrl, rasterSize, planes_px, edges_px, footprint_px, hasRasterOverlay } = getRasterOverlayData(effectiveMeasurement);
