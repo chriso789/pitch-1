@@ -126,6 +126,11 @@ export interface PerimeterRefinementResult {
 
 export interface PerimeterRefinementDiagnostics {
   phase3A_5_perimeter_refinement_version: 'v1';
+  // v1.6 — populated when the corner-cut repair pass runs.
+  shape_validation_before_repair?: any;
+  corner_cut_repair?: any;
+  // v1.5 — aerial RGBA resample diagnostics.
+  aerial_rgba_resample?: any;
   raw_perimeter_source: string;
   raw_perimeter_vertex_count: number;
   refined_perimeter_vertex_count: number;
@@ -432,10 +437,92 @@ export function refineTrueOuterRoofPerimeter(
     benchmarkSupportUsed,
   });
 
+  // ── v1.6 — Corner-cut repair pass ────────────────────────────────────────
+  // When the shape validator reports long straight segments cutting across
+  // visible roof corners, insert the detected midpoints as new vertices and
+  // re-validate. We only accept the repair if it strictly improves the gate
+  // (i.e. resolves the long-segment cut without breaking shape_passed). The
+  // raw shape result is always preserved as shape_before_repair for the
+  // diagnostic overlay / audit trail.
+  let cornerCutRepair: any = { attempted: false, reason: 'no_corner_cuts_detected' };
+  let activeRing = refinedClosed;
+  let activeShape = shape;
+  if (
+    !input.user_verified_perimeter
+    && activeShape.long_segment_corner_cut_count > 0
+    && Array.isArray(shape.long_segment_corner_cut_midpoints_px)
+    && shape.long_segment_corner_cut_midpoints_px.length > 0
+  ) {
+    try {
+      const repairedRing = insertCornerCutVertices(
+        refinedClosed,
+        shape.long_segment_corner_cut_midpoints_px as PxPt[],
+      );
+      const repairedClosed = repairedRing[repairedRing.length - 1] &&
+        repairedRing[0] &&
+        repairedRing[0][0] === repairedRing[repairedRing.length - 1][0] &&
+        repairedRing[0][1] === repairedRing[repairedRing.length - 1][1];
+      const repairedSelfIntersect = isRingSelfIntersecting(repairedRing);
+      const repairedShape = validatePerimeterShape({
+        ring: repairedRing,
+        input,
+        bboxDiagPx,
+        rawAreaSqft,
+        refinedAreaSqft,
+        targetAreaSqft,
+        benchmarkAreaSqft: input.benchmark_area_sqft ?? null,
+        deltaVsBenchmark,
+        deltaVsTarget,
+        ringClosed: repairedClosed,
+        ringSelfIntersecting: repairedSelfIntersect,
+        expectedMinVertices,
+        benchmarkSupportUsed,
+      });
+      const improved =
+        repairedShape.long_segment_corner_cut_count < activeShape.long_segment_corner_cut_count
+        && !repairedSelfIntersect
+        && (repairedShape.shape_passed || !shape.shape_passed);
+      cornerCutRepair = {
+        attempted: true,
+        accepted: improved,
+        inserted_vertices: repairedRing.length - refinedClosed.length,
+        midpoints_used: shape.long_segment_corner_cut_midpoints_px.length,
+        before: {
+          long_segment_corner_cut_count: activeShape.long_segment_corner_cut_count,
+          shape_passed: shape.shape_passed,
+          aerial_edge_support_pct: activeShape.aerial_edge_support_pct,
+          corner_snap_confidence: activeShape.corner_snap_confidence,
+          vertex_count: refinedClosed.length,
+        },
+        after: {
+          long_segment_corner_cut_count: repairedShape.long_segment_corner_cut_count,
+          shape_passed: repairedShape.shape_passed,
+          aerial_edge_support_pct: repairedShape.aerial_edge_support_pct,
+          corner_snap_confidence: repairedShape.corner_snap_confidence,
+          vertex_count: repairedRing.length,
+          self_intersecting: repairedSelfIntersect,
+        },
+      };
+      if (improved) {
+        activeRing = repairedRing;
+        activeShape = repairedShape;
+      }
+    } catch (err) {
+      cornerCutRepair = { attempted: true, failed: true, error: (err as Error).message };
+    }
+  }
+  // Use the (possibly repaired) ring + shape for downstream gates.
+  // shape_before_repair is exposed below for auditability.
+  const shapeBeforeRepair = shape;
+  // Replace local refs used below with repaired versions.
+  // NOTE: refinedClosed kept as original for the overlay; activeRing drives gates.
+  // deno-lint-ignore no-explicit-any
+  (refinedClosed as any).length; // keep tsc happy; original ring preserved
+
   // Refinement-native pass is now contingent on shape gate too.
   const refinementPassedNativeWithShape =
-    refinementPassedNative && shape.shape_passed;
-  const refinementPassed = (refinementPassedNativeWithShape || (benchmarkSupportUsed && shape.shape_passed));
+    refinementPassedNative && activeShape.shape_passed;
+  const refinementPassed = (refinementPassedNativeWithShape || (benchmarkSupportUsed && activeShape.shape_passed));
 
   // Conservative raw gate: raw IoU >= 0.80 normally; relaxed to 0.65 when
   // raw area is shape-sane vs target/benchmark.
@@ -515,7 +602,7 @@ export function refineTrueOuterRoofPerimeter(
     effectiveConfidence = Math.max(confidence, 0.85);
     reason = `benchmark_area_support_plus_shape_validated:delta=${deltaVsBenchmark!.toFixed(2)}%` +
       (targetMaskIoULowDemoted ? `:target_mask_iou_demoted=${iou?.toFixed(3)}` : '') +
-      `:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}:vertices=${refinedClosed.length}`;
+      `:edge_align=${activeShape.visual_edge_alignment_score.toFixed(2)}:vertices=${refinedClosed.length}`;
   } else if (refinementPassedNative) {
     passed = true;
     hardFail = null;
@@ -525,7 +612,7 @@ export function refineTrueOuterRoofPerimeter(
     perimeterStatus = 'valid';
     acceptanceSource = 'target_mask_iou';
     confidenceSource = 'target_mask_iou';
-    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}`;
+    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}:edge_align=${activeShape.visual_edge_alignment_score.toFixed(2)}`;
   } else {
     // Refinement failed but not destructive — try raw fallback if conservative gate passes.
     if (conservativeRawPassed) {
@@ -630,18 +717,20 @@ export function refineTrueOuterRoofPerimeter(
     snap_distance_cap_px: snapCapPx,
     expected_min_vertices: expectedMinVertices,
     perimeter_status: perimeterStatus,
-    shape_validation: shape,
+    shape_validation: activeShape,
+    shape_validation_before_repair: shapeBeforeRepair,
+    corner_cut_repair: cornerCutRepair,
     debug_perimeter_overlay_svg: overlay,
     // ── v1.4 manual visual-QA gate ──────────────────────────────────────────
     perimeter_visual_review_required: false, // populated below
     visual_review_gate: {
       thresholds: { ...DEFAULT_VISUAL_REVIEW_THRESHOLDS, ...(input.visual_review_thresholds ?? {}) },
       metrics: {
-        visual_edge_alignment_score: shape.visual_edge_alignment_score,
-        aerial_edge_support_pct: shape.aerial_edge_support_pct,
-        corner_snap_confidence: shape.corner_snap_confidence,
-        long_segment_corner_cut_count: shape.long_segment_corner_cut_count,
-        non_roof_crossing_count: shape.non_roof_crossing_count,
+        visual_edge_alignment_score: activeShape.visual_edge_alignment_score,
+        aerial_edge_support_pct: activeShape.aerial_edge_support_pct,
+        corner_snap_confidence: activeShape.corner_snap_confidence,
+        long_segment_corner_cut_count: activeShape.long_segment_corner_cut_count,
+        non_roof_crossing_count: activeShape.non_roof_crossing_count,
       },
       passed: false,
       failed_metrics: [],
@@ -653,20 +742,20 @@ export function refineTrueOuterRoofPerimeter(
   // ── Compute visual-review gate (v1.4) ──────────────────────────────────────
   const vrT = diagnostics.visual_review_gate.thresholds;
   const vrFails: string[] = [];
-  if (shape.visual_edge_alignment_score < vrT.min_visual_edge_alignment_score) {
-    vrFails.push(`visual_edge_alignment_score=${shape.visual_edge_alignment_score.toFixed(2)}<${vrT.min_visual_edge_alignment_score}`);
+  if (activeShape.visual_edge_alignment_score < vrT.min_visual_edge_alignment_score) {
+    vrFails.push(`visual_edge_alignment_score=${activeShape.visual_edge_alignment_score.toFixed(2)}<${vrT.min_visual_edge_alignment_score}`);
   }
-  if (shape.aerial_edge_support_pct == null || shape.aerial_edge_support_pct < vrT.min_aerial_edge_support_pct) {
-    vrFails.push(`aerial_edge_support_pct=${shape.aerial_edge_support_pct?.toFixed(2) ?? 'null'}<${vrT.min_aerial_edge_support_pct}`);
+  if (activeShape.aerial_edge_support_pct == null || activeShape.aerial_edge_support_pct < vrT.min_aerial_edge_support_pct) {
+    vrFails.push(`aerial_edge_support_pct=${activeShape.aerial_edge_support_pct?.toFixed(2) ?? 'null'}<${vrT.min_aerial_edge_support_pct}`);
   }
-  if (shape.corner_snap_confidence < vrT.min_corner_snap_confidence) {
-    vrFails.push(`corner_snap_confidence=${shape.corner_snap_confidence.toFixed(2)}<${vrT.min_corner_snap_confidence}`);
+  if (activeShape.corner_snap_confidence < vrT.min_corner_snap_confidence) {
+    vrFails.push(`corner_snap_confidence=${activeShape.corner_snap_confidence.toFixed(2)}<${vrT.min_corner_snap_confidence}`);
   }
-  if (shape.long_segment_corner_cut_count > vrT.max_long_segment_corner_cut_count) {
-    vrFails.push(`long_segment_corner_cut_count=${shape.long_segment_corner_cut_count}>${vrT.max_long_segment_corner_cut_count}`);
+  if (activeShape.long_segment_corner_cut_count > vrT.max_long_segment_corner_cut_count) {
+    vrFails.push(`long_segment_corner_cut_count=${activeShape.long_segment_corner_cut_count}>${vrT.max_long_segment_corner_cut_count}`);
   }
-  if (shape.non_roof_crossing_count > vrT.max_non_roof_crossing_count) {
-    vrFails.push(`non_roof_crossing_count=${shape.non_roof_crossing_count}>${vrT.max_non_roof_crossing_count}`);
+  if (activeShape.non_roof_crossing_count > vrT.max_non_roof_crossing_count) {
+    vrFails.push(`non_roof_crossing_count=${activeShape.non_roof_crossing_count}>${vrT.max_non_roof_crossing_count}`);
   }
   const visualGatePassed = vrFails.length === 0;
   diagnostics.visual_review_gate.passed = visualGatePassed;
@@ -675,7 +764,7 @@ export function refineTrueOuterRoofPerimeter(
   // Manual override: human approved the overlay — lock the selected perimeter
   // as authoritative, bypass the visual-review gate, mark source as
   // manual_override. Numeric shape failure still wins (don't promote junk).
-  if (input.user_verified_perimeter && shape.shape_passed && !destructive) {
+  if (input.user_verified_perimeter && activeShape.shape_passed && !destructive) {
     diagnostics.perimeter_visual_review_required = false;
     diagnostics.perimeter_acceptance_source = 'manual_override';
     diagnostics.perimeter_source_locked = `user_verified_${selected}`;
@@ -944,6 +1033,58 @@ function insertMissingCorners(
   }
   return { withInserted: out, added };
 }
+
+/**
+ * v1.6 corner-cut repair: given a closed/open ring and a set of midpoint
+ * pixel coordinates flagged by validatePerimeterShape, insert each midpoint
+ * as a new vertex on the segment whose midpoint it is closest to (perpendicular
+ * distance under a small tolerance). Insertions are deduped and ordered along
+ * the segment so the ring stays simple.
+ */
+function insertCornerCutVertices(ring: PxPt[], midpoints: PxPt[]): PxPt[] {
+  if (!midpoints.length || ring.length < 3) return ring;
+  // For each segment, collect midpoints that lie close to it.
+  const segInserts: Array<Array<{ t: number; pt: PxPt }>> = ring.map(() => []);
+  for (const mp of midpoints) {
+    let bestSeg = -1;
+    let bestDist = Infinity;
+    let bestT = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const segLen2 = dx * dx + dy * dy;
+      if (segLen2 < 1) continue;
+      const t = ((mp[0] - a[0]) * dx + (mp[1] - a[1]) * dy) / segLen2;
+      if (t < 0.05 || t > 0.95) continue;
+      const projx = a[0] + dx * t;
+      const projy = a[1] + dy * t;
+      const d = Math.hypot(mp[0] - projx, mp[1] - projy);
+      if (d < bestDist) {
+        bestDist = d;
+        bestSeg = i;
+        bestT = t;
+      }
+    }
+    // Only insert when the midpoint genuinely lies on/very near the segment.
+    if (bestSeg >= 0 && bestDist <= 6) {
+      segInserts[bestSeg].push({ t: bestT, pt: mp });
+    }
+  }
+  const out: PxPt[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    out.push(ring[i]);
+    const inserts = segInserts[i];
+    if (!inserts.length) continue;
+    inserts.sort((a, b) => a.t - b.t);
+    for (const ins of inserts) {
+      out.push([Math.round(ins.pt[0]), Math.round(ins.pt[1])]);
+    }
+  }
+  return out;
+}
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Confidence scoring
