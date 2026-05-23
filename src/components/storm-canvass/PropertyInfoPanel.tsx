@@ -1380,6 +1380,8 @@ export default function PropertyInfoPanel({
           {/* Bottom safe area padding for iOS */}
           <div className="h-6 flex-shrink-0" />
         </div>
+        )}
+
         <FastEstimateModal 
           open={showFastEstimate}
           onOpenChange={setShowFastEstimate}
