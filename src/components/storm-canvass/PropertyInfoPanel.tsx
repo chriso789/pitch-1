@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useIsAppFieldMode } from '@/lib/native/appMode';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
@@ -66,6 +67,7 @@ export default function PropertyInfoPanel({
   onNavigate,
 }: PropertyInfoPanelProps) {
   const { profile } = useUserProfile();
+  const isAppMode = useIsAppFieldMode();
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [activeTab, setActiveTab] = useState('tools');
@@ -855,9 +857,25 @@ export default function PropertyInfoPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-auto max-h-[85vh] rounded-t-2xl p-0 flex flex-col">
+      <SheetContent
+        side="bottom"
+        className={cn(
+          "rounded-t-2xl p-0 flex flex-col",
+          isAppMode
+            ? "h-[92vh] max-h-[92vh]"
+            : "h-auto max-h-[85vh]"
+        )}
+        style={isAppMode ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
+      >
         {/* Scrollable content wrapper for mobile */}
-        <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-safe-area-inset-bottom" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div
+          className={cn(
+            "flex-1 overflow-y-auto overscroll-contain",
+            isAppMode ? "p-3" : "p-4"
+          )}
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+
           <SheetHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex-1">
