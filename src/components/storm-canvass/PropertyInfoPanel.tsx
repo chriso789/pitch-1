@@ -16,6 +16,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useIsAppFieldMode } from '@/lib/native/appMode';
+import { useFieldMobileMode } from '@/hooks/useFieldMobileMode';
+import PropertyInfoPanelMobileBody from './property-panel/PropertyInfoPanelMobileBody';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
