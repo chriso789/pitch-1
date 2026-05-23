@@ -706,12 +706,14 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 </Button>
               </div>
               {!approvalAllowed && (
-                <p className="text-[10px] text-destructive leading-snug">
-                  Manual approval is disabled until the coordinate registration gate passes
-                  (confirm roof target + valid geo→DSM→raster transforms + candidate contains
-                  confirmed center).
+                <p className="text-[11px] text-destructive font-semibold leading-snug">
+                  Cannot approve perimeter: target roof registration failed.
                 </p>
               )}
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
+                <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
+              </p>
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
                 <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
