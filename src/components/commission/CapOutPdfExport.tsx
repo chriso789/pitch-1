@@ -328,6 +328,7 @@ export interface CapOutFinancials {
   materialCost: number;
   laborCost: number;
   overheadAmount: number;
+  otherCharges?: number;
   grossProfit: number;
   commissionAmount: number;
   commissionRate?: number;
@@ -345,7 +346,8 @@ export async function buildCapOutDataFromCommission(
   fin: CapOutFinancials,
 ): Promise<CapOutPdfData> {
   const { entry: _e, ...ctx } = await fetchCapOutContext(pipelineEntryId);
-  const totalCost = fin.materialCost + fin.laborCost + fin.overheadAmount;
+  const otherCharges = Number(fin.otherCharges || 0);
+  const totalCost = fin.materialCost + fin.laborCost + fin.overheadAmount + otherCharges;
   const marginPct = fin.contractValue > 0 ? (fin.grossProfit / fin.contractValue) * 100 : 0;
   return {
     ...ctx,
@@ -355,6 +357,7 @@ export async function buildCapOutDataFromCommission(
     materialsCost: fin.materialCost,
     laborCost: fin.laborCost,
     overheadAmount: fin.overheadAmount,
+    otherCharges,
     commissionAmount: fin.commissionAmount,
     miscCost: 0,
     totalCost,
