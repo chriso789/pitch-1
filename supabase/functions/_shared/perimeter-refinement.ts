@@ -1055,6 +1055,7 @@ function failResult(
       },
       benchmark_override_used: false,
       benchmark_override_reason: null,
+      benchmark_support_used: false,
       benchmark_area_delta_pct: null,
       target_mask_iou_demoted_to_warning: false,
       perimeter_acceptance_source: 'failed',
@@ -1068,6 +1069,9 @@ function failResult(
       rejected_patio_exclusions_count: 0,
       footprint_bbox_diagonal_px: 0,
       snap_distance_cap_px: T.max_snap_distance_px,
+      expected_min_vertices: 0,
+      perimeter_status: 'failed',
+      shape_validation: EMPTY_SHAPE_VALIDATION(),
       debug_perimeter_overlay_svg: null,
     },
   };
