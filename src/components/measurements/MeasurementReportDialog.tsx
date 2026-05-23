@@ -24,7 +24,6 @@ import AIMeasurement3DDebugViewer from './AIMeasurement3DDebugViewer';
 import MeasurementVisualQAOverlay from './MeasurementVisualQAOverlay';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { Layers as LayersIcon } from 'lucide-react';
-import { readRegistrationBlock } from '@/lib/measurement/registration-gate';
 
 interface MeasurementReportDialogProps {
   open: boolean;
