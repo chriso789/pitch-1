@@ -582,6 +582,20 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
   const W = Number(size.width) || 800;
   const H = Number(size.height) || 800;
 
+  // ----- geo → px transform (best-effort using overlay_debug) -----
+  const tileCenter = overlayDbg?.tile_center_lat_lng;
+  const extent = overlayDbg?.tile_ground_extent_m; // { width, height } meters
+  const mppX = extent?.width ? extent.width / W : overlayDbg?.actual_mpp;
+  const mppY = extent?.height ? extent.height / H : overlayDbg?.actual_mpp;
+  function geoToPx(lat?: number | null, lng?: number | null): [number, number] | null {
+    if (lat == null || lng == null || !tileCenter || !mppX || !mppY) return null;
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((tileCenter.lat * Math.PI) / 180);
+    const dxM = (lng - tileCenter.lng) * metersPerDegLng;
+    const dyM = (lat - tileCenter.lat) * metersPerDegLat;
+    return [W / 2 + dxM / mppX, H / 2 - dyM / mppY];
+  }
+
   const perimeterPx: Array<[number, number]> | undefined =
     grj?.true_outer_roof_perimeter_px || grj?.footprint_px;
   const solarSegments: any[] = Array.isArray(grj?.solar_segments) ? grj.solar_segments : [];
@@ -595,48 +609,60 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
   const rejected = roofLines.filter((l) => l.rejected);
 
   const targetMaskDbg = grj?.target_mask_isolation || {};
-  const targetMaskPolys: Array<Array<[number, number]>> = (() => {
-    const candidates = [
-      targetMaskDbg?.target_mask_polygons_px,
-      targetMaskDbg?.target_mask_polygon_px,
-      grj?.target_mask_polygons_px,
-      grj?.target_mask_polygon_px,
-    ];
+  function collectPolys(candidates: any[]): Array<Array<[number, number]>> {
     for (const c of candidates) {
       if (!c) continue;
       if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
       if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
     }
     return [];
-  })();
-  const globalMaskPolys: Array<Array<[number, number]>> = (() => {
-    const candidates = [
-      targetMaskDbg?.global_mask_polygons_px,
-      grj?.global_mask_polygons_px,
-      grj?.global_mask_polygon_px,
-    ];
-    for (const c of candidates) {
-      if (!c) continue;
-      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
-      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
-    }
-    return [];
-  })();
-  const missedRegions: Array<Array<[number, number]>> = (() => {
-    const candidates = [
-      targetMaskDbg?.missed_roof_regions_px,
-      grj?.missed_roof_regions_px,
-      grj?.missed_target_roof_regions_px,
-    ];
-    for (const c of candidates) {
-      if (!c) continue;
-      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
-      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
-    }
-    return [];
-  })();
+  }
+  const targetMaskPolys = collectPolys([
+    targetMaskDbg?.target_mask_polygons_px,
+    targetMaskDbg?.target_mask_polygon_px,
+    targetMaskDbg?.target_mask_contour_px,
+    grj?.target_mask_polygons_px,
+    grj?.target_mask_polygon_px,
+  ]);
+  const globalMaskPolys = collectPolys([
+    targetMaskDbg?.global_mask_polygons_px,
+    targetMaskDbg?.global_mask_contours_px,
+    grj?.global_mask_polygons_px,
+    grj?.global_mask_polygon_px,
+  ]);
+  const missedRegions = collectPolys([
+    targetMaskDbg?.missed_roof_regions_px,
+    targetMaskDbg?.missed_target_roof_regions_px,
+    grj?.missed_roof_regions_px,
+    grj?.missed_target_roof_regions_px,
+  ]);
+
+  const originalGeo = grj?.original_geocode_lat_lng;
   const geocodePx: [number, number] | null =
-    overlayDbg?.original_geocode_px || grj?.original_geocode_px || null;
+    overlayDbg?.original_geocode_px ||
+    grj?.original_geocode_px ||
+    geoToPx(originalGeo?.lat, originalGeo?.lng);
+
+  const confirmedGeo =
+    grj?.confirmed_roof_center_lat_lng ||
+    (measurement?.target_lat != null
+      ? { lat: measurement.target_lat, lng: measurement.target_lng }
+      : null);
+  const confirmedPx: [number, number] =
+    geoToPx(confirmedGeo?.lat, confirmedGeo?.lng) || [W / 2, H / 2];
+
+  // Layers with no underlying data so we can hint to the user
+  const missingLayers: string[] = [];
+  if (!targetMaskPolys.length) missingLayers.push('Target roof mask');
+  if (!globalMaskPolys.length) missingLayers.push('Global mask');
+  if (!missedRegions.length) missingLayers.push('Missed roof regions');
+  if (!solarSegments.length) missingLayers.push('Solar segments');
+  if (!perimeterPx || perimeterPx.length < 3) missingLayers.push('Selected perimeter');
+  if (!eaves.length) missingLayers.push('Eaves');
+  if (!rakes.length) missingLayers.push('Rakes');
+  if (!ridges.length) missingLayers.push('Ridges');
+  if (!hips.length) missingLayers.push('Hips');
+  if (!valleys.length) missingLayers.push('Valleys');
 
 
   return (
