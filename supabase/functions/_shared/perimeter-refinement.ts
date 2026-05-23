@@ -976,6 +976,15 @@ function failResult(
         area_ok: false,
         passed: false,
       },
+      benchmark_override_used: false,
+      benchmark_override_reason: null,
+      benchmark_area_delta_pct: null,
+      target_mask_iou_demoted_to_warning: false,
+      perimeter_acceptance_source: 'failed',
+      confidence_source: null,
+      confidence_warnings: [],
+      ring_closed: false,
+      ring_self_intersecting: false,
       applied_tree_exclusions_count: 0,
       rejected_tree_exclusions_count: 0,
       applied_patio_exclusions_count: 0,
@@ -986,3 +995,43 @@ function failResult(
     },
   };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Ring self-intersection check (O(n²) segment-vs-segment).
+// Adjacent (and wrap-adjacent) edges are excluded.
+// ────────────────────────────────────────────────────────────────────────────
+function isRingSelfIntersecting(ring: PxPt[]): boolean {
+  if (ring.length < 5) return false;
+  // Treat ring as closed; ignore duplicate closing vertex if present.
+  const n =
+    ring.length >= 2 &&
+    ring[0][0] === ring[ring.length - 1][0] &&
+    ring[0][1] === ring[ring.length - 1][1]
+      ? ring.length - 1
+      : ring.length;
+  if (n < 4) return false;
+  const segs: [PxPt, PxPt][] = [];
+  for (let i = 0; i < n; i++) segs.push([ring[i], ring[(i + 1) % n]]);
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      // Skip adjacent (and wrap-adjacent) segments.
+      if (j === i + 1) continue;
+      if (i === 0 && j === segs.length - 1) continue;
+      if (segmentsIntersect(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsIntersect(p1: PxPt, p2: PxPt, p3: PxPt, p4: PxPt): boolean {
+  const d = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
+    (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  const d1 = d(p3[0], p3[1], p4[0], p4[1], p1[0], p1[1]);
+  const d2 = d(p3[0], p3[1], p4[0], p4[1], p2[0], p2[1]);
+  const d3 = d(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]);
+  const d4 = d(p1[0], p1[1], p2[0], p2[1], p4[0], p4[1]);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  return false;
+}
+
