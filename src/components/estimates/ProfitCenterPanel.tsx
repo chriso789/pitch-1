@@ -429,19 +429,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             <TrendingUp className="h-5 w-5 text-primary" />
             <span>Profit Center</span>
           </CardTitle>
-          {hasValidData && (
-            <Badge 
-              variant="outline" 
-              className={cn(
-                "font-mono",
-                profitMargin >= 25 ? "bg-green-500/10 text-green-600 border-green-500/30" :
-                profitMargin >= 15 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" :
-                "bg-red-500/10 text-red-600 border-red-500/30"
-              )}
-            >
-              {formatPercent(profitMargin)} Margin
-            </Badge>
-          )}
         </div>
           {repName && (
           <p className="text-sm text-muted-foreground">
