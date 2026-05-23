@@ -53,7 +53,31 @@ export interface PerimeterRefinementInput {
   roof_centroid_px?: PxPt | null;
   /** Acceptance thresholds (override defaults). */
   thresholds?: Partial<RefinementThresholds>;
+  /**
+   * v1.4 — manual visual QA override. When true, the visual-review gate is
+   * bypassed and the selected perimeter is locked as `manual_override`.
+   * Caller is responsible for proving a human verified the overlay.
+   */
+  user_verified_perimeter?: boolean;
+  /** Optional override thresholds for the manual visual-review gate. */
+  visual_review_thresholds?: Partial<VisualReviewThresholds>;
 }
+
+export interface VisualReviewThresholds {
+  min_visual_edge_alignment_score: number;
+  min_aerial_edge_support_pct: number;
+  min_corner_snap_confidence: number;
+  max_long_segment_corner_cut_count: number;
+  max_non_roof_crossing_count: number;
+}
+
+const DEFAULT_VISUAL_REVIEW_THRESHOLDS: VisualReviewThresholds = {
+  min_visual_edge_alignment_score: 0.85,
+  min_aerial_edge_support_pct: 0.80,
+  min_corner_snap_confidence: 0.75,
+  max_long_segment_corner_cut_count: 0,
+  max_non_roof_crossing_count: 0,
+};
 
 export interface RefinementThresholds {
   min_iou_vs_target_mask: number;
