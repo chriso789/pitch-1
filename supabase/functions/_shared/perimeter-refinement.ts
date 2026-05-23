@@ -457,7 +457,7 @@ export function refineTrueOuterRoofPerimeter(
         repairedRing[0] &&
         repairedRing[0][0] === repairedRing[repairedRing.length - 1][0] &&
         repairedRing[0][1] === repairedRing[repairedRing.length - 1][1];
-      const repairedSelfIntersect = ringSelfIntersects(repairedRing);
+      const repairedSelfIntersect = isRingSelfIntersecting(repairedRing);
       const repairedShape = validatePerimeterShape({
         ring: repairedRing,
         input,
