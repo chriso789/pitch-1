@@ -6907,6 +6907,36 @@ async function processJob(input: any) {
         perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
       };
 
+    // Registration Gate v2 — attach gate input so prepareRoofMeasurementPayload
+    // can evaluate and persist geometry_report_json.registration at the
+    // single authoritative write site. See _shared/registration-gate.ts.
+    try {
+      const selectedFootprintPolygonPx = Array.isArray(footprint) && footprint.length >= 3
+        ? footprint.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number])
+        : null;
+      (roofMeasurementPayload as any)._registration_gate_input = {
+        user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
+        roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
+        original_geocode_lat_lng:
+          (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
+            ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
+            : null,
+        confirmed_roof_center_lat_lng:
+          (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+            ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+            : { lat: coords.lat, lng: coords.lng },
+        confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
+        geo_to_dsm_px_success: true,
+        dsm_pixel_transform_valid: Number.isFinite(actualMpp) && actualMpp > 0,
+        dsm_to_raster_transform: { meters_per_pixel: actualMpp },
+        raster_size_px: { width: raster.width, height: raster.height },
+        meters_per_pixel: actualMpp,
+        selected_candidate_polygon_px: selectedFootprintPolygonPx,
+      };
+    } catch (e) {
+      console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
+    }
+
     const { data: roofMeasurement, error: publishError } = await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
     if (publishError) throw publishError;
