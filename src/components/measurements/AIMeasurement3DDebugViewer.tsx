@@ -848,6 +848,15 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
           </g>
         )}
 
+        {/* Original geocode marker */}
+        {layers.geocode && geocodePx && (
+          <g>
+            <circle cx={geocodePx[0]} cy={geocodePx[1]} r={7} fill="none" stroke="#f59e0b" strokeWidth={2} />
+            <line x1={geocodePx[0] - 10} y1={geocodePx[1]} x2={geocodePx[0] + 10} y2={geocodePx[1]} stroke="#f59e0b" />
+            <line x1={geocodePx[0]} y1={geocodePx[1] - 10} x2={geocodePx[0]} y2={geocodePx[1] + 10} stroke="#f59e0b" />
+          </g>
+        )}
+
         <defs>
           <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
             <path d="M0,0 L0,6 L6,3 z" fill="#3b82f6" />
