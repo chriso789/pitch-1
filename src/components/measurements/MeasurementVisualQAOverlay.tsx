@@ -134,6 +134,12 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const overlayDbg = grj.overlay_debug || {};
   const phase35: any = grj.phase3A_5 ?? grj.phase3_5 ?? {};
 
+  // Registration Gate v2 — disable manual approval when the displayed
+  // perimeter may be drawn on the wrong house / wrong coordinate frame.
+  const registration = readRegistrationBlock(measurement);
+  const approvalAllowed = canApproveManualPerimeter(registration);
+  const banner = registrationBanner(registration);
+
   const rasterUrl: string | null =
     overlayDbg?.raster_url ||
     (measurement as any)?.satellite_overlay_url ||
