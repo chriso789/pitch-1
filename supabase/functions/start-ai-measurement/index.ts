@@ -510,6 +510,22 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     }
   }
 
+  // Registration Gate v2 — if the caller stashed a `_registration_gate_input`
+  // bag on the payload, evaluate the gate and persist the canonical
+  // `geometry.registration` block. This is the single, authoritative write
+  // site for the registration JSONB so we never persist drift.
+  // The temp field is stripped before insert/update.
+  const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
+  if (regInput && (!geometry.registration || typeof geometry.registration !== "object")) {
+    try {
+      const result = evaluateRegistrationGate(regInput);
+      geometry.registration = result.registration;
+    } catch (e) {
+      console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
+    }
+  }
+  delete (next as any)._registration_gate_input;
+
   next.geometry_report_json = geometry;
   return next;
 }
