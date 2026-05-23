@@ -19,6 +19,7 @@ const LEGACY_MEASURE_ROOF_PROVENANCE = {
   solver_entrypoint: 'legacy.measure-roof',
   canonical_measurement_route: false,
   route_audit_version: 'measurement-route-audit-v1',
+  report_renderer_version: 'legacy-measure-roof-v0',
 } as const
 
 
