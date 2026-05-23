@@ -1,10 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value);
 
-interface CapOutPdfData {
+export interface CapOutPdfData {
   projectName: string;
   customerName: string;
   address: string;
@@ -21,19 +20,39 @@ interface CapOutPdfData {
   marginPct: number;
   commissionRate: number;
   commissionType: string;
+  // Company branding
+  companyName?: string | null;
+  companyLogoUrl?: string | null;
+  companyPhone?: string | null;
+  companyAddress?: string | null;
+  companyEmail?: string | null;
 }
 
-export function generateCapOutPdf(data: CapOutPdfData) {
-  const html = `
+export function buildCapOutHtml(data: CapOutPdfData): string {
+  const brandColor = '#2563eb';
+  const logoBlock = data.companyLogoUrl
+    ? `<img src="${data.companyLogoUrl}" alt="${data.companyName || 'Company'} logo" style="max-height:64px;max-width:220px;object-fit:contain;" />`
+    : `<div style="font-size:20px;font-weight:700;color:${brandColor};">${data.companyName || 'PITCH CRM'}</div>`;
+
+  const companyMetaParts = [data.companyAddress, data.companyPhone, data.companyEmail].filter(Boolean);
+  const companyMeta = companyMetaParts.length
+    ? `<div style="font-size:10px;color:#64748b;text-align:right;line-height:1.4;">${companyMetaParts.join('<br/>')}</div>`
+    : '';
+
+  return `
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Cap Out Sheet - ${data.projectName}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; }
-    .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 12px; }
-    .header h1 { font-size: 22px; color: #2563eb; margin-bottom: 2px; }
+    body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; background: #fff; }
+    .brand-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 12px; }
+    .brand-left { display: flex; align-items: center; gap: 12px; }
+    .brand-company { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .header { text-align: center; border-bottom: 2px solid ${brandColor}; padding-bottom: 8px; margin-bottom: 12px; }
+    .header h1 { font-size: 22px; color: ${brandColor}; margin-bottom: 2px; }
     .header p { color: #666; font-size: 11px; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 12px; }
     .info-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -43,7 +62,7 @@ export function generateCapOutPdf(data: CapOutPdfData) {
     td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
     td.amount { text-align: right; font-family: 'Courier New', monospace; }
     tr.total { background: #f8fafc; font-weight: 700; }
-    tr.total td { border-top: 2px solid #2563eb; border-bottom: 2px solid #2563eb; font-size: 13px; }
+    tr.total td { border-top: 2px solid ${brandColor}; border-bottom: 2px solid ${brandColor}; font-size: 13px; }
     .profit-section { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
     .profit-section.negative { background: #fef2f2; border-color: #ef4444; }
     .profit-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
@@ -59,6 +78,14 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   </style>
 </head>
 <body>
+  <div class="brand-bar">
+    <div class="brand-left">
+      ${logoBlock}
+      ${data.companyName && data.companyLogoUrl ? `<div class="brand-company">${data.companyName}</div>` : ''}
+    </div>
+    ${companyMeta}
+  </div>
+
   <div class="header">
     <h1>CAP OUT SHEET</h1>
     <p>Job Financial Summary</p>
@@ -138,7 +165,7 @@ export function generateCapOutPdf(data: CapOutPdfData) {
     </div>
     <div class="profit-row">
       <span class="profit-label">Commission Amount</span>
-      <span class="profit-value" style="color:#2563eb;">${formatCurrency(data.commissionAmount)}</span>
+      <span class="profit-value" style="color:${brandColor};">${formatCurrency(data.commissionAmount)}</span>
     </div>
   </div>
 
@@ -152,11 +179,14 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   </div>
 
   <div class="footer">
-    Generated ${new Date().toLocaleDateString()} — PITCH CRM
+    Generated ${new Date().toLocaleDateString()} — ${data.companyName || 'PITCH CRM'}
   </div>
 </body>
 </html>`;
+}
 
+export function generateCapOutPdf(data: CapOutPdfData) {
+  const html = buildCapOutHtml(data);
   const printWindow = window.open('', '_blank');
   if (printWindow) {
     printWindow.document.write(html);
@@ -167,12 +197,12 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   }
 }
 
-export async function exportCapOutForJob(pipelineEntryId: string) {
+export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<CapOutPdfData> {
   // Get pipeline entry with contact and rep info
   const { data: entry } = await supabase
     .from('pipeline_entries')
     .select(`
-      id, lead_name, estimated_value, assigned_to, status,
+      id, lead_name, estimated_value, assigned_to, status, tenant_id,
       contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, address_city, address_state, address_zip)
     `)
     .eq('id', pipelineEntryId)
@@ -206,6 +236,30 @@ export async function exportCapOutForJob(pipelineEntryId: string) {
     .limit(1)
     .single();
 
+  // Get company branding from tenant settings
+  let companyName: string | null = null;
+  let companyLogoUrl: string | null = null;
+  let companyPhone: string | null = null;
+  let companyAddress: string | null = null;
+  let companyEmail: string | null = null;
+  if ((entry as any).tenant_id) {
+    const { data: branding } = await supabase
+      .from('company_template_settings')
+      .select('company_name, company_logo_url, company_phone, company_address, company_email')
+      .eq('tenant_id', (entry as any).tenant_id)
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (branding) {
+      companyName = branding.company_name;
+      companyLogoUrl = branding.company_logo_url;
+      companyPhone = branding.company_phone;
+      companyAddress = branding.company_address;
+      companyEmail = branding.company_email;
+    }
+  }
+
   const contact = entry.contacts as any;
   const customerName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : '';
   const address = contact
@@ -227,7 +281,7 @@ export async function exportCapOutForJob(pipelineEntryId: string) {
     commissionAmount = Math.max(0, profit * (commissionRate / 100));
   }
 
-  generateCapOutPdf({
+  return {
     projectName: entry.lead_name || customerName || 'N/A',
     customerName,
     address,
@@ -244,5 +298,15 @@ export async function exportCapOutForJob(pipelineEntryId: string) {
     marginPct,
     commissionRate,
     commissionType,
-  });
+    companyName,
+    companyLogoUrl,
+    companyPhone,
+    companyAddress,
+    companyEmail,
+  };
+}
+
+export async function exportCapOutForJob(pipelineEntryId: string) {
+  const data = await buildCapOutDataForJob(pipelineEntryId);
+  generateCapOutPdf(data);
 }
