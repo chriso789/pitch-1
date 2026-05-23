@@ -127,37 +127,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     useSameInfo: false,
   });
 
-  // Handle using same info as contact
+  // Handle using same info as contact (phone/email/name only — NOT address,
+  // since a contact can have multiple properties / lead addresses)
   useEffect(() => {
     if (contact && formData.useSameInfo) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        address: fullAddress,
+      setFormData(prev => ({
+        ...prev,
         phone: contact.phone || "",
         email: contact.email || "",
-        name: `${contact.first_name} ${contact.last_name} - Roofing Project`
+        name: prev.name || `${contact.first_name} ${contact.last_name} - Roofing Project`,
       }));
-      
-      if (fullAddress && contact.latitude && contact.longitude) {
-        setVerifiedAddress({
-          street: contact.address_street || '',
-          city: contact.address_city || '',
-          state: contact.address_state || '',
-          zip: contact.address_zip || '',
-          lat: contact.latitude,
-          lng: contact.longitude,
-          formatted_address: fullAddress,
-        });
-      }
     }
   }, [formData.useSameInfo, contact]);
+
 
   // Pipeline statuses from the database
   const pipelineStatuses = [
