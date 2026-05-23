@@ -52280,6 +52280,78 @@ export type Database = {
         }
         Returns: string
       }
+      audit_list_columns_by_name: {
+        Args: { _column_names: string[] }
+        Returns: {
+          column_name: string
+          table_name: string
+        }[]
+      }
+      audit_list_policies: {
+        Args: never
+        Returns: {
+          cmd: string
+          permissive: string
+          policy_name: string
+          qual: string
+          roles: string[]
+          table_name: string
+          with_check: string
+        }[]
+      }
+      audit_list_public_tables: {
+        Args: never
+        Returns: {
+          policy_count: number
+          rls_enabled: boolean
+          table_name: string
+        }[]
+      }
+      audit_orphan_storage_first_segment: {
+        Args: { _limit?: number }
+        Returns: {
+          bucket_id: string
+          first_segment: string
+          object_name: string
+        }[]
+      }
+      audit_pg_stat_statements: {
+        Args: { _limit?: number }
+        Returns: {
+          calls: number
+          mean_ms: number
+          query_excerpt: string
+          rows_per_call: number
+          total_s: number
+        }[]
+      }
+      audit_pg_stat_user_indexes: {
+        Args: never
+        Returns: {
+          idx_scan: number
+          index_name: string
+          size_bytes: number
+          table_name: string
+        }[]
+      }
+      audit_pg_stat_user_tables: {
+        Args: never
+        Returns: {
+          idx_scan: number
+          n_dead_tup: number
+          n_live_tup: number
+          seq_scan: number
+          table_name: string
+        }[]
+      }
+      audit_storage_buckets_public: {
+        Args: never
+        Returns: {
+          bucket_id: string
+          bucket_name: string
+          is_public: boolean
+        }[]
+      }
       calculate_enhanced_estimate: {
         Args: { estimate_id_param: string }
         Returns: Json
