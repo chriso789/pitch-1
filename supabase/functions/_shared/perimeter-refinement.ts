@@ -1580,9 +1580,15 @@ function validatePerimeterShape(args: ShapeValidationInput): ShapeValidation {
     vertex_sanity_passed: vertexSanityOk,
     visual_edge_alignment_score: round(visualScore, 3),
     aerial_edge_support_pct: aerialPct != null ? round(aerialPct, 3) : null,
+    aerial_edge_support_sample_count: aerialTotal,
+    aerial_edge_supported_sample_count: aerialSupported,
+    aerial_edge_unsupported_segments: unsupportedSegments,
     dsm_boundary_support_pct: dsmPct != null ? round(dsmPct, 3) : null,
     corner_snap_confidence: round(cornerConfidence, 3),
     long_segment_corner_cut_count: longCornerCut,
+    long_segment_corner_cut_midpoints_px: cornerCutMidpoints.map(
+      (p) => [round(p[0], 2), round(p[1], 2)] as [number, number],
+    ),
     non_roof_crossing_count: nonRoofCrossing,
     centroid_shift_px: round(centroidShift, 1),
     centroid_shift_threshold_px: round(centroidThreshold, 1),
@@ -1593,8 +1599,10 @@ function validatePerimeterShape(args: ShapeValidationInput): ShapeValidation {
     shape_uncertain: shapeUncertain,
     shape_failure_reasons: reasons,
     warnings,
+    segment_diagnostics: segDiags,
   };
 }
+
 
 function rgbEdgeStrengthAt(
   rgba: Uint8ClampedArray | Uint8Array,
