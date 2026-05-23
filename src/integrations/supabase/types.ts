@@ -46488,6 +46488,101 @@ export type Database = {
         }
         Relationships: []
       }
+      system_audit_findings: {
+        Row: {
+          category: string
+          company_id: string | null
+          created_at: string
+          detail: string | null
+          entity_id: string
+          entity_type: string
+          evidence: Json | null
+          finding_key: string
+          id: string
+          recommended_action: string | null
+          risk_explanation: string | null
+          run_id: string
+          severity: string
+          title: string
+        }
+        Insert: {
+          category: string
+          company_id?: string | null
+          created_at?: string
+          detail?: string | null
+          entity_id: string
+          entity_type: string
+          evidence?: Json | null
+          finding_key: string
+          id?: string
+          recommended_action?: string | null
+          risk_explanation?: string | null
+          run_id: string
+          severity: string
+          title: string
+        }
+        Update: {
+          category?: string
+          company_id?: string | null
+          created_at?: string
+          detail?: string | null
+          entity_id?: string
+          entity_type?: string
+          evidence?: Json | null
+          finding_key?: string
+          id?: string
+          recommended_action?: string | null
+          risk_explanation?: string | null
+          run_id?: string
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_audit_findings_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "system_audit_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_audit_runs: {
+        Row: {
+          duration_ms: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          module: string
+          started_at: string
+          status: string
+          summary: Json
+          triggered_by: string
+        }
+        Insert: {
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          module: string
+          started_at?: string
+          status?: string
+          summary?: Json
+          triggered_by: string
+        }
+        Update: {
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          module?: string
+          started_at?: string
+          status?: string
+          summary?: Json
+          triggered_by?: string
+        }
+        Relationships: []
+      }
       system_crashes: {
         Row: {
           auto_recovered: boolean | null
@@ -52184,6 +52279,78 @@ export type Database = {
           p_uom?: string
         }
         Returns: string
+      }
+      audit_list_columns_by_name: {
+        Args: { _column_names: string[] }
+        Returns: {
+          column_name: string
+          table_name: string
+        }[]
+      }
+      audit_list_policies: {
+        Args: never
+        Returns: {
+          cmd: string
+          permissive: string
+          policy_name: string
+          qual: string
+          roles: string[]
+          table_name: string
+          with_check: string
+        }[]
+      }
+      audit_list_public_tables: {
+        Args: never
+        Returns: {
+          policy_count: number
+          rls_enabled: boolean
+          table_name: string
+        }[]
+      }
+      audit_orphan_storage_first_segment: {
+        Args: { _limit?: number }
+        Returns: {
+          bucket_id: string
+          first_segment: string
+          object_name: string
+        }[]
+      }
+      audit_pg_stat_statements: {
+        Args: { _limit?: number }
+        Returns: {
+          calls: number
+          mean_ms: number
+          query_excerpt: string
+          rows_per_call: number
+          total_s: number
+        }[]
+      }
+      audit_pg_stat_user_indexes: {
+        Args: never
+        Returns: {
+          idx_scan: number
+          index_name: string
+          size_bytes: number
+          table_name: string
+        }[]
+      }
+      audit_pg_stat_user_tables: {
+        Args: never
+        Returns: {
+          idx_scan: number
+          n_dead_tup: number
+          n_live_tup: number
+          seq_scan: number
+          table_name: string
+        }[]
+      }
+      audit_storage_buckets_public: {
+        Args: never
+        Returns: {
+          bucket_id: string
+          bucket_name: string
+          is_public: boolean
+        }[]
       }
       calculate_enhanced_estimate: {
         Args: { estimate_id_param: string }
