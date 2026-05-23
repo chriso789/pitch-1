@@ -161,7 +161,7 @@ async function lookupRows(q: AuditQuery): Promise<any[]> {
   if (q.measurement_id) query = query.eq("id", q.measurement_id);
   else if (q.lead_id) query = query.eq("lead_id", q.lead_id);
   else if (q.contact_id) query = query.eq("contact_id", q.contact_id);
-  else if (q.address) query = query.ilike("address", `%${q.address}%`);
+  else if (q.address) query = query.ilike("property_address", `%${q.address}%`);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
