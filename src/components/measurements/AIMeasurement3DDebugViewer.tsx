@@ -34,8 +34,10 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   measurement: any;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Render inline (no Dialog wrapper) for embedding in the report. */
+  embedded?: boolean;
 }
 
 type StageStatus = 'pass' | 'fail' | 'warn' | 'skip' | 'unknown';
