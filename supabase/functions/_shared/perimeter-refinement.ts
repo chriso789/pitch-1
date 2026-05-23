@@ -388,75 +388,105 @@ function identifyExcludedRegions(
   ring: PxPt[],
   input: PerimeterRefinementInput,
   T: RefinementThresholds,
+  totalAreaPx: number,
 ): { keepFlags: boolean[]; treeRegions: ExcludedRegion[]; patioRegions: ExcludedRegion[] } {
   const keepFlags = new Array<boolean>(ring.length).fill(true);
   const treeRegions: ExcludedRegion[] = [];
   const patioRegions: ExcludedRegion[] = [];
 
-  // Compute centroid + median radius for outlier detection.
   const centroid = input.roof_centroid_px ?? polygonCentroid(ring);
   const radii = ring.map(([x, y]) => Math.hypot(x - centroid[0], y - centroid[1]));
   const sortedRadii = [...radii].sort((a, b) => a - b);
   const medianRadius = sortedRadii[Math.floor(sortedRadii.length / 2)] || 1;
+
+  // Helper — only apply (drop keep flag) if region passes the safety gate.
+  // Single-vertex / 1-px-area candidates are recorded with applied=false.
+  const MIN_REGION_AREA_PX = 25;
+  const MIN_REGION_UNIQUE_POINTS = 3;
+  const MAX_AREA_FRACTION_DROP = 0.15;
+
+  function pushCandidate(
+    bucket: ExcludedRegion[],
+    reason: ExcludedRegion['reason'],
+    vertexIndices: number[],
+    pts: PxPt[],
+    strongEvidence: boolean,
+  ): void {
+    const region = makeRegion(reason, vertexIndices, pts);
+    const uniquePts = new Set(pts.map(p => `${p[0]},${p[1]}`)).size;
+    const areaOk = region.area_px >= MIN_REGION_AREA_PX;
+    const polyOk = uniquePts >= MIN_REGION_UNIQUE_POINTS;
+    // Approximate area-drop guard: each vertex carries ~area/N share.
+    const sharePctDrop = ring.length > 0 ? (vertexIndices.length / ring.length) : 1;
+    const shareOk = sharePctDrop <= MAX_AREA_FRACTION_DROP || strongEvidence;
+
+    if (areaOk && polyOk && shareOk) {
+      region.applied = true;
+      for (const idx of vertexIndices) keepFlags[idx] = false;
+    } else {
+      region.applied = false;
+      const why: string[] = [];
+      if (!areaOk) why.push(`area_px<${MIN_REGION_AREA_PX}`);
+      if (!polyOk) why.push(`unique_pts<${MIN_REGION_UNIQUE_POINTS}`);
+      if (!shareOk) why.push(`share>${MAX_AREA_FRACTION_DROP}_without_strong_evidence`);
+      region.rejection_reason = why.join(',') || 'unspecified';
+    }
+    bucket.push(region);
+  }
 
   for (let i = 0; i < ring.length; i++) {
     const [x, y] = ring[i];
     const ix = Math.round(x);
     const iy = Math.round(y);
     if (ix < 0 || iy < 0 || ix >= input.width || iy >= input.height) {
+      // Out-of-bounds is always dropped (geometric necessity), not exclusion logic.
       keepFlags[i] = false;
       continue;
     }
     const idx = iy * input.width + ix;
 
-    // 1. Centroid outlier
+    // 1. Centroid outlier (single vertex flag — recorded but not applied)
     if (radii[i] > medianRadius * T.max_centroid_distance_factor) {
-      keepFlags[i] = false;
-      treeRegions.push(makeRegion('centroid_outlier', [i], [ring[i]]));
+      pushCandidate(treeRegions, 'centroid_outlier', [i], [ring[i]], false);
       continue;
     }
 
-    // 2. Solar support: vertex outside all solar segments → suspect
+    // 2. No solar support + low DSM
     if (input.solar_segment_masks_px && !input.solar_segment_masks_px[idx]) {
-      // Only exclude if also low DSM or vegetation in RGB
       const dsmHere = input.dsm_grid?.[idx] ?? null;
       const isLowDsm = dsmHere != null && dsmHere < T.dsm_min_roof_height_m;
       if (isLowDsm) {
-        keepFlags[i] = false;
-        treeRegions.push(makeRegion('no_solar_support', [i], [ring[i]]));
+        pushCandidate(treeRegions, 'no_solar_support', [i], [ring[i]], false);
         continue;
       }
     }
 
-    // 3. Vegetation in RGB (high green dominance)
+    // 3. Vegetation / shadow in RGB
     if (input.rgba) {
       const r = input.rgba[idx * 4];
       const g = input.rgba[idx * 4 + 1];
       const b = input.rgba[idx * 4 + 2];
-      const isVegetation =
-        g > 80 && g > r * 1.15 && g > b * 1.15;
+      const isVegetation = g > 80 && g > r * 1.15 && g > b * 1.15;
       const isShadow = r < 35 && g < 35 && b < 35;
       if (isVegetation) {
-        keepFlags[i] = false;
-        treeRegions.push(makeRegion('tree_canopy', [i], [ring[i]]));
+        pushCandidate(treeRegions, 'tree_canopy', [i], [ring[i]], false);
         continue;
       }
       if (isShadow) {
-        keepFlags[i] = false;
-        treeRegions.push(makeRegion('shadow', [i], [ring[i]]));
+        pushCandidate(treeRegions, 'shadow', [i], [ring[i]], false);
         continue;
       }
     }
 
-    // 4. Low DSM = ground / patio cage
+    // 4. Low DSM = patio / ground
     const dsmHere = input.dsm_grid?.[idx] ?? null;
     if (dsmHere != null && dsmHere < T.dsm_min_roof_height_m) {
-      keepFlags[i] = false;
-      patioRegions.push(makeRegion('low_dsm', [i], [ring[i]]));
+      pushCandidate(patioRegions, 'low_dsm', [i], [ring[i]], false);
       continue;
     }
   }
 
+  void totalAreaPx; // reserved for future region-area accounting
   return { keepFlags, treeRegions, patioRegions };
 }
 
@@ -477,6 +507,7 @@ function makeRegion(
     vertex_indices,
     bbox_px: { minX, minY, maxX, maxY },
     area_px: Math.max(1, (maxX - minX) * (maxY - minY)),
+    applied: false,
   };
 }
 
