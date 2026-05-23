@@ -42,7 +42,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   const brandColor = data.brandPrimaryColor || '#2563eb';
   const companyName = data.companyName || 'Company';
   const logoBlock = data.companyLogoUrl
-    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" style="max-height:72px;max-width:240px;object-fit:contain;display:block;" />`
+    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" style="height:auto;width:auto;max-height:64px;max-width:180px;object-fit:contain;display:block;" />`
     : `<div style="font-size:24px;font-weight:800;color:${brandColor};letter-spacing:-0.01em;">${companyName}</div>`;
 
   const companyTagParts = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean);
@@ -70,9 +70,9 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; background: #fff; }
-    .brand-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 14px; border-bottom: 3px solid ${brandColor}; margin-bottom: 16px; }
-    .brand-left { display: flex; flex-direction: column; gap: 4px; }
-    .brand-right { text-align: right; }
+    .brand-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 12px; border-bottom: 3px solid ${brandColor}; margin-bottom: 16px; }
+    .brand-left { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; min-width: 0; }
+    .brand-right { text-align: right; flex: 1 1 auto; min-width: 0; word-wrap: break-word; }
     .header { text-align: center; padding-bottom: 8px; margin-bottom: 14px; }
     .header h1 { font-size: 22px; color: ${brandColor}; margin-bottom: 2px; letter-spacing: 0.05em; }
     .header p { color: #666; font-size: 11px; }
