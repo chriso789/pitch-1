@@ -49,9 +49,10 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, finan
         if (cancelled) return;
         setData(d);
         setHtml(buildCapOutHtml(d));
+        setShareTo(d.repEmail || '');
         setShareSubject(`Cap Out Sheet - ${d.projectName || d.customerName || 'Job'}`);
         setShareMessage(
-          `Hi,\n\nPlease find the Cap Out Sheet for ${d.projectName || d.customerName || 'this job'} below.\n\nThank you.`
+          `Hi${d.repName && d.repName !== 'N/A' ? ` ${d.repName.split(' ')[0]}` : ''},\n\nPlease find the Cap Out Sheet for ${d.projectName || d.customerName || 'this job'} below.\n\nThank you.`
         );
       })
       .catch((err) => {
