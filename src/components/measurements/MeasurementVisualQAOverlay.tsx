@@ -198,13 +198,13 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
       .filter((e: any) => e.p1 && e.p2);
   }, [overlayDbg]);
 
-  const [layers, setLayersRaw] = useState<Record<LayerKey, boolean>>(DEFAULT_LAYERS);
-  // When registration failed, force the "selected (editable)" perimeter
-  // layer off so we never draw a manipulable polygon on the wrong house.
-  const effectiveLayers: Record<LayerKey, boolean> = registrationFailed
-    ? { ...layers, selected: false, refined: false }
-    : layers;
-  const setLayer = (k: LayerKey, v: boolean) => setLayersRaw((s) => ({ ...s, [k]: v }));
+  const [rawLayers, setRawLayers] = useState<Record<LayerKey, boolean>>(DEFAULT_LAYERS);
+  // When registration failed, force the editable / refined perimeter layers
+  // off so we never draw a manipulable polygon on the wrong house.
+  const layers: Record<LayerKey, boolean> = registrationFailed
+    ? { ...rawLayers, selected: false, refined: false }
+    : rawLayers;
+  const setLayer = (k: LayerKey, v: boolean) => setRawLayers((s) => ({ ...s, [k]: v }));
 
   // ---- Canvas rendering ---------------------------------------------------
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
