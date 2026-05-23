@@ -648,7 +648,22 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
                 {/* Gross Profit */}
                 <div className="flex justify-between items-center py-2 bg-accent/30 rounded-md px-3 -mx-3">
-                  <span className="font-medium">Gross Profit</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Gross Profit</span>
+                    {hasValidData && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "font-mono text-xs",
+                          profitMargin >= 25 ? "bg-green-500/10 text-green-600 border-green-500/30" :
+                          profitMargin >= 15 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" :
+                          "bg-red-500/10 text-red-600 border-red-500/30"
+                        )}
+                      >
+                        {formatPercent(profitMargin)} Margin
+                      </Badge>
+                    )}
+                  </div>
                   <span className={cn(
                     "font-semibold text-lg",
                     grossProfit >= 0 ? "text-green-600" : "text-red-600"
@@ -659,9 +674,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
                 {/* Rep Commission */}
                 <div className="flex justify-between items-center py-2 bg-primary/10 rounded-md px-3 -mx-3">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <DollarSign className="h-4 w-4 text-primary shrink-0" />
                     <span className="font-medium">Rep Commission</span>
+                    <Badge variant="secondary" className="text-xs font-normal">
+                      {commissionStructureLabel} · {commissionRate}%
+                    </Badge>
                   </div>
                   <span className="font-bold text-xl text-primary">
                     {formatCurrency(repCommission)}
