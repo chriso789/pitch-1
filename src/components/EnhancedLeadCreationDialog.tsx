@@ -127,37 +127,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     useSameInfo: false,
   });
 
-  // Handle using same info as contact
+  // Handle using same info as contact (phone/email/name only — NOT address,
+  // since a contact can have multiple properties / lead addresses)
   useEffect(() => {
     if (contact && formData.useSameInfo) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        address: fullAddress,
+      setFormData(prev => ({
+        ...prev,
         phone: contact.phone || "",
         email: contact.email || "",
-        name: `${contact.first_name} ${contact.last_name} - Roofing Project`
+        name: prev.name || `${contact.first_name} ${contact.last_name} - Roofing Project`,
       }));
-      
-      if (fullAddress && contact.latitude && contact.longitude) {
-        setVerifiedAddress({
-          street: contact.address_street || '',
-          city: contact.address_city || '',
-          state: contact.address_state || '',
-          zip: contact.address_zip || '',
-          lat: contact.latitude,
-          lng: contact.longitude,
-          formatted_address: fullAddress,
-        });
-      }
     }
   }, [formData.useSameInfo, contact]);
+
 
   // Pipeline statuses from the database
   const pipelineStatuses = [
@@ -237,45 +219,27 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   }, [open]);
 
+  // Sync contact info (phone/email/name) when toggle changes — address stays
+  // independent so users can add a lead for a different property than the
+  // contact's home address.
   useEffect(() => {
     if (contact && formData.useSameInfo) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        address: fullAddress,
+      setFormData(prev => ({
+        ...prev,
         phone: contact.phone || "",
         email: contact.email || "",
-        name: `${contact.first_name} ${contact.last_name} - Roofing Project`
+        name: prev.name || `${contact.first_name} ${contact.last_name} - Roofing Project`,
       }));
-      
-      if (fullAddress && contact.latitude && contact.longitude) {
-        setVerifiedAddress({
-          street: contact.address_street || '',
-          city: contact.address_city || '',
-          state: contact.address_state || '',
-          zip: contact.address_zip || '',
-          lat: contact.latitude,
-          lng: contact.longitude,
-          formatted_address: fullAddress,
-        });
-      }
     } else if (!formData.useSameInfo) {
-      setVerifiedAddress(null);
-      setFormData(prev => ({ 
-        ...prev, 
-        address: "",
+      setFormData(prev => ({
+        ...prev,
         phone: "",
         email: "",
-        name: ""
+        name: "",
       }));
     }
   }, [formData.useSameInfo, contact]);
+
 
   const loadUserProfile = async () => {
     try {
@@ -601,8 +565,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                 }
               />
               <Label htmlFor="useSameInfo" className="text-sm">
-                Use same info as contact ({contact.first_name} {contact.last_name})
+                Use contact's phone &amp; email ({contact.first_name} {contact.last_name})
               </Label>
+
             </div>
           )}
 
@@ -770,7 +735,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
             {/* Right Column */}
             <div className="space-y-4">
               <AddressVerification
-                label="Lead Address"
+                label="Lead Property Address"
                 required
                 initialAddress={verifiedAddress ? {
                   street: verifiedAddress.street,
@@ -784,9 +749,40 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                   if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
                 }}
               />
+              {contact && (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  A contact can have multiple properties. Enter the address for this specific lead — it does not have to match the contact's address.
+                  {contact.address_street && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="underline text-primary hover:opacity-80"
+                        onClick={() => {
+                          const fullAddress = [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(", ");
+                          setVerifiedAddress({
+                            street: contact.address_street || '',
+                            city: contact.address_city || '',
+                            state: contact.address_state || '',
+                            zip: contact.address_zip || '',
+                            lat: contact.latitude,
+                            lng: contact.longitude,
+                            formatted_address: fullAddress,
+                          });
+                          setFormData(prev => ({ ...prev, address: fullAddress }));
+                          if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
+                        }}
+                      >
+                        Use contact's address
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
               {fieldErrors.address && (
                 <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
               )}
+
 
               <div>
                 <Label>Sales Representatives</Label>
