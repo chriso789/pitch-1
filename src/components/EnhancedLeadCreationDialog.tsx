@@ -565,8 +565,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                 }
               />
               <Label htmlFor="useSameInfo" className="text-sm">
-                Use same info as contact ({contact.first_name} {contact.last_name})
+                Use contact's phone &amp; email ({contact.first_name} {contact.last_name})
               </Label>
+
             </div>
           )}
 
