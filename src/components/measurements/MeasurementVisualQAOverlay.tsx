@@ -39,6 +39,7 @@ import {
   readRegistrationBlock,
   canApproveManualPerimeter,
   registrationBanner,
+  isRegistrationFailure,
 } from '@/lib/measurement/registration-gate';
 
 type Pt = [number, number];
@@ -137,7 +138,8 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // Registration Gate v2 — disable manual approval when the displayed
   // perimeter may be drawn on the wrong house / wrong coordinate frame.
   const registration = readRegistrationBlock(measurement);
-  const approvalAllowed = canApproveManualPerimeter(registration);
+  const registrationFailed = isRegistrationFailure(measurement);
+  const approvalAllowed = !registrationFailed && canApproveManualPerimeter(registration);
   const banner = registrationBanner(registration);
 
   const rasterUrl: string | null =
