@@ -1169,6 +1169,21 @@ function failResult(
       perimeter_status: 'failed',
       shape_validation: EMPTY_SHAPE_VALIDATION(),
       debug_perimeter_overlay_svg: null,
+      perimeter_visual_review_required: false,
+      visual_review_gate: {
+        thresholds: DEFAULT_VISUAL_REVIEW_THRESHOLDS,
+        metrics: {
+          visual_edge_alignment_score: 0,
+          aerial_edge_support_pct: null,
+          corner_snap_confidence: 0,
+          long_segment_corner_cut_count: 0,
+          non_roof_crossing_count: 0,
+        },
+        passed: false,
+        failed_metrics: ['perimeter_refinement_short_circuit'],
+      },
+      user_verified_perimeter: false,
+      perimeter_source_locked: null,
     },
   };
 }
