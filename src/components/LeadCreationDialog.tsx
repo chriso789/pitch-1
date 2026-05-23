@@ -134,30 +134,19 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         notes: "",
       };
       
-      // If contact is provided, pre-fill the form
+      // If contact is provided, pre-fill name/phone only — leave address blank
+      // so the user verifies a fresh address via Google autocomplete.
       if (contact) {
-        const fullAddress = [
-          contact.address_street,
-          contact.address_city,
-          contact.address_state,
-          contact.address_zip
-        ].filter(Boolean).join(", ");
-        
         initialFormData = {
           ...initialFormData,
           name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
           phone: contact.phone || "",
-          address: fullAddress,
-          useSameInfo: true,
+          address: "",
+          useSameInfo: false,
           assignedTo: contact.assigned_to ? [contact.assigned_to] : []
         };
-        
-        // Trigger address verification if address exists
-        if (fullAddress) {
-          setTimeout(() => handleAddressVerification(fullAddress), 100);
-        }
       }
-      
+
       setFormData(initialFormData);
       initializeForm(initialFormData);
     }
