@@ -756,6 +756,16 @@ Deno.serve(async (req) => {
       .update({ ai_measurement_job_id: aiJob.id })
       .eq("id", measurementJob.id);
 
+    // Registration Gate v2 recentering: when the user has confirmed a roof
+    // target, ALL downstream source acquisition (static map, DSM tile,
+    // solar lookup) MUST use the confirmed roof center, never the stale
+    // address geocode. This is the root-cause fix for the wrong-house
+    // overlay (Fonsica: address geocoded to neighbor, PIN on actual roof).
+    const effective_latitude =
+      confirmed_roof_center_lat != null ? confirmed_roof_center_lat : latitude;
+    const effective_longitude =
+      confirmed_roof_center_lng != null ? confirmed_roof_center_lng : longitude;
+
     const work = processJob({
       measurement_job_id: measurementJob.id,
       ai_measurement_job_id: aiJob.id,
@@ -764,8 +774,8 @@ Deno.serve(async (req) => {
       tenant_id,
       company_id,
       property_address: resolved_address ?? "Unknown Address",
-      latitude,
-      longitude,
+      latitude: effective_latitude,
+      longitude: effective_longitude,
       source_record_type: lead_id ? "lead" : "project",
       source_record_id: lead_id || project_id,
       source_button,
@@ -776,7 +786,16 @@ Deno.serve(async (req) => {
       logical_image_height,
       raster_scale,
       user_verified_perimeter,
-    });
+      // Registration Gate v2 context — surfaced to processJob for persistence
+      // in geometry_report_json.registration.
+      original_geocode_lat,
+      original_geocode_lng,
+      confirmed_roof_center_lat,
+      confirmed_roof_center_lng,
+      confirmed_roof_center_px,
+      user_confirmed_roof_target,
+      roof_target_admin_override,
+    } as any);
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
       (globalThis as any).EdgeRuntime.waitUntil(work);
