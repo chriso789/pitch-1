@@ -2042,6 +2042,16 @@ async function processJob(input: any) {
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
             );
             const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
+            if (confirmedCenterPxForGateC) {
+              const candidateEval = evaluateCandidate(
+                maskCand.polygon.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number]),
+                confirmedCenterPxForGateC,
+              );
+              (maskCand as any).confirmed_center_inside_candidate = candidateEval.confirmed_center_inside_candidate;
+              (maskCand as any).candidate_centroid_offset_from_confirmed_center_px = candidateEval.candidate_centroid_offset_from_confirmed_center_px;
+              (maskCand as any).nearest_neighbor_structure_distance_px = candidateEval.nearest_neighbor_structure_distance_px;
+              if (candidateEval.rejected) maskCand.rejected_reason = candidateEval.rejection_reason;
+            }
             candidates.push(maskCand);
             if (!maskCand.rejected_reason) {
               footprint = maskCand.polygon;
@@ -3077,8 +3087,28 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if footprint does not overlap DSM grid, do NOT call solver.
       if (!dsmCoordinateMatch) {
-        const failReason = "footprint_coordinate_mismatch";
+        const failReason = "coordinate_registration_failed";
         console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
+        const registrationGate = evaluateRegistrationGate({
+          user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
+          roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
+          original_geocode_lat_lng:
+            (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
+              ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
+              : null,
+          confirmed_roof_center_lat_lng:
+            (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+              ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+              : null,
+          confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
+          geo_to_dsm_px_success: false,
+          dsm_pixel_transform_valid: false,
+          dsm_to_raster_transform: null,
+          raster_size_px: { width: raster.width, height: raster.height },
+          dsm_size_px: effectiveDSMForMatch ? { width: effectiveDSMForMatch.width, height: effectiveDSMForMatch.height } : null,
+          dsm_tile_bounds_lat_lng: effectiveDSMForMatch ? { sw: { lat: effectiveDSMForMatch.bounds.minLat, lng: effectiveDSMForMatch.bounds.minLng }, ne: { lat: effectiveDSMForMatch.bounds.maxLat, lng: effectiveDSMForMatch.bounds.maxLng } } : null,
+        });
+        const skippedByRegistration = { version: "v1", executed: false, skipped_reason: "blocked_by_registration_gate" };
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -3089,7 +3119,18 @@ async function processJob(input: any) {
           footprint_coordinate_space: "pixel",
           coordinate_space_match: false,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
+          registration: { ...registrationGate.registration, failure: registrationGate.failure, dsm_to_raster_transform_exists: false },
+          registration_gate: { ...registrationGate.registration, failure: registrationGate.failure, dsm_to_raster_transform_exists: false },
           hard_fail_reason: failReason,
+          block_customer_report_reason: failReason,
+          result_state: "ai_failed_source_acquisition",
+          diagram_render_intent: "coordinate_registration_debug_only",
+          failure_stage: "registration",
+          phase3A_5: skippedByRegistration,
+          phase3_5: skippedByRegistration,
+          phase3C: skippedByRegistration,
+          phase3D: skippedByRegistration,
+          phase3E: skippedByRegistration,
           footprint_px: footprint.map(p => [p.x, p.y]),
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },
