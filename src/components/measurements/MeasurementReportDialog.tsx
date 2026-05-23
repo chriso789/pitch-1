@@ -21,6 +21,8 @@ import PatentRoofReport from './PatentRoofReport';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
 import { MeasurementOverrideEditor } from '@/components/measurement/MeasurementOverrideEditor';
 import AIMeasurement3DDebugViewer from './AIMeasurement3DDebugViewer';
+import MeasurementVisualQAOverlay from './MeasurementVisualQAOverlay';
+import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { Layers as LayersIcon } from 'lucide-react';
 
 interface MeasurementReportDialogProps {
