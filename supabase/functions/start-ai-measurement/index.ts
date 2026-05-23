@@ -2844,6 +2844,7 @@ async function processJob(input: any) {
             benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft
               ?? (benchmarkForPerimeter as any)?.area_sqft
               ?? null,
+            user_verified_perimeter: !!input.user_verified_perimeter,
           });
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
