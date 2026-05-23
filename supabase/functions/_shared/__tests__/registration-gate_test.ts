@@ -10,6 +10,7 @@ import {
   canApproveManualPerimeter,
   polygonContainsPoint,
 } from "../registration-gate.ts";
+import { normalizeResultStateForWrite } from "../result-state.ts";
 
 const CONFIRMED = { lat: 33.7501, lng: -84.3920 };
 const SQUARE: Array<[number, number]> = [
@@ -117,6 +118,23 @@ Deno.test("evaluateCandidate — accepts and computes centroid offset", () => {
 
 Deno.test("canApproveManualPerimeter — requires all 5 flags", () => {
   assertEquals(canApproveManualPerimeter(null), false);
+  for (const missingFlag of [
+    "user_confirmed_roof_target",
+    "geo_to_dsm_px_success",
+    "dsm_pixel_transform_valid",
+    "confirmed_center_inside_candidate",
+    "coordinate_registration_gate_passed",
+  ] as const) {
+    const reg = {
+      user_confirmed_roof_target: true,
+      geo_to_dsm_px_success: true,
+      dsm_pixel_transform_valid: true,
+      confirmed_center_inside_candidate: true,
+      coordinate_registration_gate_passed: true,
+    };
+    reg[missingFlag] = false;
+    assertEquals(canApproveManualPerimeter(reg), false, `missing ${missingFlag} must disable approval`);
+  }
   assertEquals(
     canApproveManualPerimeter({
       user_confirmed_roof_target: true,
@@ -137,4 +155,10 @@ Deno.test("canApproveManualPerimeter — requires all 5 flags", () => {
     }),
     true,
   );
+});
+
+Deno.test("registration failures normalize away from perimeter state", () => {
+  assertEquals(normalizeResultStateForWrite("target_roof_not_confirmed", {}), "ai_failed_target_unconfirmed");
+  assertEquals(normalizeResultStateForWrite("coordinate_registration_failed", {}), "ai_failed_source_acquisition");
+  assertEquals(normalizeResultStateForWrite("candidate_does_not_contain_confirmed_roof_center", {}), "ai_failed_source_acquisition");
 });
