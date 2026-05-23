@@ -107,14 +107,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             last_name,
             overhead_rate,
             personal_overhead_rate,
-            commission_rate
+            commission_rate,
+            commission_structure
           )
         `)
         .eq('id', pipelineEntryId)
         .single();
       
       if (error) throw error;
-      return data?.profiles as SalesRepData | null;
+      return data?.profiles as (SalesRepData & { commission_structure: string | null }) | null;
     },
     enabled: !!pipelineEntryId,
   });
@@ -193,6 +194,13 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const baseOverhead = salesRepData?.overhead_rate ?? 10;
   const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
   const commissionRate = salesRepData?.commission_rate ?? 50;
+  const commissionStructure = (salesRepData as any)?.commission_structure as string | null;
+  const commissionStructureLabel =
+    commissionStructure === 'percent_of_contract' ? 'Percent of Contract'
+    : commissionStructure === 'profit_split' ? 'Profit Split'
+    : commissionStructure
+      ? commissionStructure.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      : 'Profit Split';
   const repName = salesRepData 
     ? `${salesRepData.first_name || ''} ${salesRepData.last_name || ''}`.trim() 
     : 'Sales Rep';
@@ -421,19 +429,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             <TrendingUp className="h-5 w-5 text-primary" />
             <span>Profit Center</span>
           </CardTitle>
-          {hasValidData && (
-            <Badge 
-              variant="outline" 
-              className={cn(
-                "font-mono",
-                profitMargin >= 25 ? "bg-green-500/10 text-green-600 border-green-500/30" :
-                profitMargin >= 15 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" :
-                "bg-red-500/10 text-red-600 border-red-500/30"
-              )}
-            >
-              {formatPercent(profitMargin)} Margin
-            </Badge>
-          )}
         </div>
           {repName && (
           <p className="text-sm text-muted-foreground">
@@ -653,7 +648,22 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
                 {/* Gross Profit */}
                 <div className="flex justify-between items-center py-2 bg-accent/30 rounded-md px-3 -mx-3">
-                  <span className="font-medium">Gross Profit</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Gross Profit</span>
+                    {hasValidData && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "font-mono text-xs",
+                          profitMargin >= 25 ? "bg-green-500/10 text-green-600 border-green-500/30" :
+                          profitMargin >= 15 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" :
+                          "bg-red-500/10 text-red-600 border-red-500/30"
+                        )}
+                      >
+                        {formatPercent(profitMargin)} Margin
+                      </Badge>
+                    )}
+                  </div>
                   <span className={cn(
                     "font-semibold text-lg",
                     grossProfit >= 0 ? "text-green-600" : "text-red-600"
@@ -664,9 +674,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
                 {/* Rep Commission */}
                 <div className="flex justify-between items-center py-2 bg-primary/10 rounded-md px-3 -mx-3">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <DollarSign className="h-4 w-4 text-primary shrink-0" />
                     <span className="font-medium">Rep Commission</span>
+                    <Badge variant="secondary" className="text-xs font-normal">
+                      {commissionStructureLabel} · {commissionRate}%
+                    </Badge>
                   </div>
                   <span className="font-bold text-xl text-primary">
                     {formatCurrency(repCommission)}
