@@ -125,7 +125,11 @@ export default function MobileDispositionPanel({
 
   return (
     <Sheet open={!!contact} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl">
+      <SheetContent
+        side="bottom"
+        className="h-[70vh] rounded-t-3xl overflow-y-auto"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+      >
         <SheetHeader>
           <SheetTitle className="text-left">
             {contact.first_name} {contact.last_name}
