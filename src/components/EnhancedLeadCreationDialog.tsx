@@ -735,7 +735,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
             {/* Right Column */}
             <div className="space-y-4">
               <AddressVerification
-                label="Lead Address"
+                label="Lead Property Address"
                 required
                 initialAddress={verifiedAddress ? {
                   street: verifiedAddress.street,
@@ -749,9 +749,40 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                   if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
                 }}
               />
+              {contact && (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  A contact can have multiple properties. Enter the address for this specific lead — it does not have to match the contact's address.
+                  {contact.address_street && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="underline text-primary hover:opacity-80"
+                        onClick={() => {
+                          const fullAddress = [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(", ");
+                          setVerifiedAddress({
+                            street: contact.address_street || '',
+                            city: contact.address_city || '',
+                            state: contact.address_state || '',
+                            zip: contact.address_zip || '',
+                            lat: contact.latitude,
+                            lng: contact.longitude,
+                            formatted_address: fullAddress,
+                          });
+                          setFormData(prev => ({ ...prev, address: fullAddress }));
+                          if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
+                        }}
+                      >
+                        Use contact's address
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
               {fieldErrors.address && (
                 <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
               )}
+
 
               <div>
                 <Label>Sales Representatives</Label>
