@@ -446,10 +446,10 @@ export default function CommissionReport() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Lead', 'Customer', 'Address', 'Stage', 'Rep', 'Contract Value', 'Materials', 'Labor', 'Overhead', 'Gross Profit', 'Commission Type', 'Commission Rate', 'Commission Amount', 'Date'];
+    const headers = ['Lead', 'Customer', 'Address', 'Stage', 'Rep', 'Contract Value', 'Materials', 'Labor', 'Overhead', 'Other Charges', 'Gross Profit', 'Commission Type', 'Commission Rate', 'Commission Amount', 'Date'];
     const rows = commissions.map(c => [
       c.leadName, c.customerName, c.address, c.stageName, c.repName,
-      c.contractValue, c.materialCost, c.laborCost, c.overheadAmount, c.grossProfit,
+      c.contractValue, c.materialCost, c.laborCost, c.overheadAmount, c.otherCharges, c.grossProfit,
       c.commissionType, c.commissionRate, c.commissionAmount, c.createdAt,
     ]);
     const csvContent = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
