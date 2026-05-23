@@ -1,59 +1,53 @@
-# Add Skill: Roof Measurement Vision QA & Geometry Contract
+# Fonsica Safe-Refinement Guard Verification Run
 
-## Goal
+No code changes unless Step 3 finds a UI gap. This plan executes the deployed guard against 4063 Fonsica and reports back the runtime evidence.
 
-Install a new Lovable Skill that forces the agent to reason as a computer vision + roof geometry QA engineer before writing any code that touches the AI Measurement pipeline. The skill encodes the "do no harm" perimeter rule, structural evidence preservation, typed roof_lines contract, customer-report gate, required diagnostics, and the Fonsica regression checklist.
+## Step 1 — Trigger fresh AI Measurement
 
-## Where it lives
+`POST /start-ai-measurement` for lead `0a38230e-57ad-4f22-9caa-ac7707a6962f` (4063 FONSICA AVE) with `user_confirmed_roof_target=true` and `roof_target_admin_override=true`. Poll `ai_measurement_jobs` until the new row reaches a terminal `result_state`.
 
-Draft at `.agents/skills/roof-measurement-vision-qa/` and apply via `skills--apply_draft`, which activates it under `.workspace/skills/` so it gets surfaced by retrieval on any measurement-pipeline task.
+## Step 2 — Pull runtime evidence
 
-## Files to create
+`POST /debug-measurement-runtime { "address": "fonsica", "limit": 5 }` and paste the full JSON of the newest row.
 
-```
-.agents/skills/roof-measurement-vision-qa/
-├── SKILL.md                                  # entry point + hard rules
-└── references/
-    ├── perimeter-do-no-harm.md               # Rules 1, 4, 5 + Fonsica example
-    ├── structural-evidence-and-topology.md   # Rules 6, 7, 8 (backbone/repair)
-    ├── roof-lines-and-pitch-contract.md      # Rules 3, 9, 10, 11
-    ├── required-diagnostics.md               # phase3_5 / 3C / 3D / 3E + route_provenance schema
-    ├── visual-qa-overlay.md                  # Diagnostic overlay spec when topology blocked
-    └── fonsica-regression-checklist.md       # 8 fail conditions + expected safe behavior
-```
+Pass/fail check each expected field:
 
-## SKILL.md shape
+- `phase3_5.executed === true`
+- `phase3_5.raw_to_refined_area_ratio` populated (~0.167)
+- `phase3_5.raw_iou_vs_target` populated
+- `phase3_5.destructive_refinement_detected === true`
+- `phase3_5.refinement_rejected === true`
+- `phase3_5.refinement_rejection_reason` contains `absolute_collapse_ratio` AND (`vertex_loss_pct` OR `refined_lost_gt15pct_of_sane_raw`)
+- `phase3_5.refinement_fallback_used === 'raw_perimeter'`
+- `phase3_5.selected_perimeter_after_refinement === 'raw_perimeter'`
+- `phase3_5.conservative_raw_gate.iou_threshold` populated (dynamic value)
+- `phase3_5.provisional_perimeter_ready` true/false reported
 
-- Frontmatter
-  - `name: roof-measurement-vision-qa`
-  - `description:` triggers on AI Measurement pipeline work, perimeter refinement, DSM/mask/Solar fusion, ridge/valley/hip topology, geometry contracts, Fonsica reruns, customer report gating
-- Body
-  - Role (CV + geospatial + roofing QA specialist)
-  - Primary Objective (the canonical workflow: confirmed target → mask → true perimeter → eave/rake → conservative refinement → DSM/Solar evidence → topology → typed roof_lines → pitch → customer report)
-  - Hard Rules 1–11 in condensed form (full detail lives in references)
-  - "Before writing code" checklist: read the relevant reference file, restate the rule being honored, identify which phase block + diagnostics will be written
-  - Pointers to each reference file with one-line descriptions
+Branch A — `provisional_perimeter_ready === true`:
+- `phase3C` executed, `connectivity_pruning_callsite_not_reached` absent
+- `phase3D` executed, `backbone_seed_not_inserted_before_face_extraction` absent
+- `phase3E` executed if all candidates rejected on `ridge_lf=0`
+- On topology failure: `result_state === 'ai_failed_topology'` (NOT `ai_failed_perimeter`)
 
-## Reference contents (concise)
+Branch B — raw fallback fails conservative gate:
+- `result_state === 'ai_failed_perimeter'`
+- `hard_fail_reason === 'perimeter_shape_not_accurate'`
+- `debug_perimeter_overlay_svg` present in `phase3_5`
 
-- **perimeter-do-no-harm.md** — destructive_refinement gate math, region-based exclusion gate (area_px ≥ 25, ≥3 unique pts, area loss ≤15% without DSM+RGB), bounded snap distance `max(6px, 3% bbox diag)`, raw-fallback conservative gate, Fonsica numbers as the canonical worked example.
-- **structural-evidence-and-topology.md** — deferred_structural_candidates, locked seed backbone, repair pass before rejection, `backbone_not_applied` and `topology_undersegmented_after_backbone_repair` failure modes.
-- **roof-lines-and-pitch-contract.md** — forbidden perimeter sources, typed roof_lines required fields + allowed attributes, pitch fallback to Solar `roofSegmentStats`, never emit collapsed-plane pitch like 0.11/12 or 1.67/12.
-- **required-diagnostics.md** — exact JSON shapes for `route_provenance`, `phase3_5`, `phase3C`, `phase3D`, `phase3E`. Every run must persist all fields; nulls only with explicit `skipped_reason`.
-- **visual-qa-overlay.md** — color spec (raw=gray, refined=green, fallback=blue, target mask translucent, rejected verts=red, exclusions=orange, DSM candidates, Solar outlines), rule that `diagram_render_intent=rejected_only` still renders the perimeter-refinement debug overlay (never blank).
-- **fonsica-regression-checklist.md** — 8 hard-fail conditions and the expected safe-behavior block for 4063 Fonsica Ave.
+## Step 3 — Verify UI overlay renders
 
-## Activation
+Open `MeasurementReportDialog` for the new job. Confirm the perimeter debug overlay panel shows: raw perimeter (gray), rejected refined perimeter (green), selected fallback (blue), target mask (translucent), rejected vertices (red/orange). If `debug_perimeter_overlay_svg` exists in the job row but the dialog shows a blank diagram, add a sanitized (`DOMPurify`) `<PerimeterDebugOverlayPane>` block in `MeasurementReportDialog.tsx` gated on `diagram_render_intent ∈ {'rejected_only','perimeter_debug_only'}`. UI-only change; no backend edits.
 
-After writing the draft files, call `skills--apply_draft` with path `.agents/skills/roof-measurement-vision-qa`. From then on, any measurement-pipeline request retrieval-matches this skill and the rules apply before code is written.
+## Step 4 — Report
+
+Reply with:
+1. Full `debug-measurement-runtime` JSON of the newest Fonsica row
+2. Pass/fail table for each expected field above
+3. Branch A or B verdict
+4. UI overlay screenshot or confirmation it rendered (or note the patch applied in Step 3)
 
 ## Out of scope
 
-- No edits to `perimeter-refinement.ts`, `start-ai-measurement`, or `MeasurementReportDialog.tsx` in this task — those live in the previous plan. This task only installs the skill.
-- No DB migration, no edge-function deploy.
-
-## Acceptance
-
-- `.workspace/skills/roof-measurement-vision-qa/SKILL.md` exists with frontmatter + hard rules.
-- All 6 reference files present and readable via `knowledge://skill/roof-measurement-vision-qa/references/<file>.md`.
-- Skill surfaces (by description match) when the user mentions: AI measurement, perimeter refinement, Phase 3A.5/3C/3D/3E, Fonsica, roof topology, ridge/valley/hip, customer report gate.
+- No changes to `perimeter-refinement.ts`, `start-ai-measurement`, or topology code
+- No widening of conservative-gate thresholds
+- No new diagnostics fields
