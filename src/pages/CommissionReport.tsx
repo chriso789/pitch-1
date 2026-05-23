@@ -718,6 +718,10 @@ export default function CommissionReport() {
                                       <div className="font-medium">{formatCurrency(c.overheadAmount)}</div>
                                     </div>
                                     <div>
+                                      <span className="text-muted-foreground">Other Charges:</span>
+                                      <div className="font-medium">{formatCurrency(c.otherCharges)}</div>
+                                    </div>
+                                    <div>
                                       <span className="text-muted-foreground">Commission Rate:</span>
                                       <div className="font-medium">{formatPercent(c.commissionRate)}</div>
                                     </div>
