@@ -290,10 +290,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         setAddressSuggestions(validSuggestions);
         setShowAddressPicker(true);
         
-        // Auto-select first suggestion when pre-filling from a contact
-        if (validSuggestions.length > 0 && contact) {
-          setSelectedAddress(validSuggestions[0]);
-        }
+        // User must explicitly pick a verified address — no auto-selection.
       }
     } catch (error) {
       console.error('Address verification error:', error);
