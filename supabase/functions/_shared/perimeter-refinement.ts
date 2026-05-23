@@ -444,7 +444,7 @@ export function refineTrueOuterRoofPerimeter(
   let activeShape = shape;
   if (
     !input.user_verified_perimeter
-    && shape.long_segment_corner_cut_count > 0
+    && activeShape.long_segment_corner_cut_count > 0
     && Array.isArray(shape.long_segment_corner_cut_midpoints_px)
     && shape.long_segment_corner_cut_midpoints_px.length > 0
   ) {
@@ -474,7 +474,7 @@ export function refineTrueOuterRoofPerimeter(
         benchmarkSupportUsed,
       });
       const improved =
-        repairedShape.long_segment_corner_cut_count < shape.long_segment_corner_cut_count
+        repairedShape.long_segment_corner_cut_count < activeShape.long_segment_corner_cut_count
         && !repairedSelfIntersect
         && (repairedShape.shape_passed || !shape.shape_passed);
       cornerCutRepair = {
@@ -483,10 +483,10 @@ export function refineTrueOuterRoofPerimeter(
         inserted_vertices: repairedRing.length - refinedClosed.length,
         midpoints_used: shape.long_segment_corner_cut_midpoints_px.length,
         before: {
-          long_segment_corner_cut_count: shape.long_segment_corner_cut_count,
+          long_segment_corner_cut_count: activeShape.long_segment_corner_cut_count,
           shape_passed: shape.shape_passed,
-          aerial_edge_support_pct: shape.aerial_edge_support_pct,
-          corner_snap_confidence: shape.corner_snap_confidence,
+          aerial_edge_support_pct: activeShape.aerial_edge_support_pct,
+          corner_snap_confidence: activeShape.corner_snap_confidence,
           vertex_count: refinedClosed.length,
         },
         after: {
@@ -597,7 +597,7 @@ export function refineTrueOuterRoofPerimeter(
     effectiveConfidence = Math.max(confidence, 0.85);
     reason = `benchmark_area_support_plus_shape_validated:delta=${deltaVsBenchmark!.toFixed(2)}%` +
       (targetMaskIoULowDemoted ? `:target_mask_iou_demoted=${iou?.toFixed(3)}` : '') +
-      `:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}:vertices=${refinedClosed.length}`;
+      `:edge_align=${activeShape.visual_edge_alignment_score.toFixed(2)}:vertices=${refinedClosed.length}`;
   } else if (refinementPassedNative) {
     passed = true;
     hardFail = null;
@@ -607,7 +607,7 @@ export function refineTrueOuterRoofPerimeter(
     perimeterStatus = 'valid';
     acceptanceSource = 'target_mask_iou';
     confidenceSource = 'target_mask_iou';
-    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}`;
+    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}:edge_align=${activeShape.visual_edge_alignment_score.toFixed(2)}`;
   } else {
     // Refinement failed but not destructive — try raw fallback if conservative gate passes.
     if (conservativeRawPassed) {
@@ -737,20 +737,20 @@ export function refineTrueOuterRoofPerimeter(
   // ── Compute visual-review gate (v1.4) ──────────────────────────────────────
   const vrT = diagnostics.visual_review_gate.thresholds;
   const vrFails: string[] = [];
-  if (shape.visual_edge_alignment_score < vrT.min_visual_edge_alignment_score) {
-    vrFails.push(`visual_edge_alignment_score=${shape.visual_edge_alignment_score.toFixed(2)}<${vrT.min_visual_edge_alignment_score}`);
+  if (activeShape.visual_edge_alignment_score < vrT.min_visual_edge_alignment_score) {
+    vrFails.push(`visual_edge_alignment_score=${activeShape.visual_edge_alignment_score.toFixed(2)}<${vrT.min_visual_edge_alignment_score}`);
   }
-  if (shape.aerial_edge_support_pct == null || shape.aerial_edge_support_pct < vrT.min_aerial_edge_support_pct) {
-    vrFails.push(`aerial_edge_support_pct=${shape.aerial_edge_support_pct?.toFixed(2) ?? 'null'}<${vrT.min_aerial_edge_support_pct}`);
+  if (activeShape.aerial_edge_support_pct == null || activeShape.aerial_edge_support_pct < vrT.min_aerial_edge_support_pct) {
+    vrFails.push(`aerial_edge_support_pct=${activeShape.aerial_edge_support_pct?.toFixed(2) ?? 'null'}<${vrT.min_aerial_edge_support_pct}`);
   }
-  if (shape.corner_snap_confidence < vrT.min_corner_snap_confidence) {
-    vrFails.push(`corner_snap_confidence=${shape.corner_snap_confidence.toFixed(2)}<${vrT.min_corner_snap_confidence}`);
+  if (activeShape.corner_snap_confidence < vrT.min_corner_snap_confidence) {
+    vrFails.push(`corner_snap_confidence=${activeShape.corner_snap_confidence.toFixed(2)}<${vrT.min_corner_snap_confidence}`);
   }
-  if (shape.long_segment_corner_cut_count > vrT.max_long_segment_corner_cut_count) {
-    vrFails.push(`long_segment_corner_cut_count=${shape.long_segment_corner_cut_count}>${vrT.max_long_segment_corner_cut_count}`);
+  if (activeShape.long_segment_corner_cut_count > vrT.max_long_segment_corner_cut_count) {
+    vrFails.push(`long_segment_corner_cut_count=${activeShape.long_segment_corner_cut_count}>${vrT.max_long_segment_corner_cut_count}`);
   }
-  if (shape.non_roof_crossing_count > vrT.max_non_roof_crossing_count) {
-    vrFails.push(`non_roof_crossing_count=${shape.non_roof_crossing_count}>${vrT.max_non_roof_crossing_count}`);
+  if (activeShape.non_roof_crossing_count > vrT.max_non_roof_crossing_count) {
+    vrFails.push(`non_roof_crossing_count=${activeShape.non_roof_crossing_count}>${vrT.max_non_roof_crossing_count}`);
   }
   const visualGatePassed = vrFails.length === 0;
   diagnostics.visual_review_gate.passed = visualGatePassed;
@@ -759,7 +759,7 @@ export function refineTrueOuterRoofPerimeter(
   // Manual override: human approved the overlay — lock the selected perimeter
   // as authoritative, bypass the visual-review gate, mark source as
   // manual_override. Numeric shape failure still wins (don't promote junk).
-  if (input.user_verified_perimeter && shape.shape_passed && !destructive) {
+  if (input.user_verified_perimeter && activeShape.shape_passed && !destructive) {
     diagnostics.perimeter_visual_review_required = false;
     diagnostics.perimeter_acceptance_source = 'manual_override';
     diagnostics.perimeter_source_locked = `user_verified_${selected}`;
