@@ -25,8 +25,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle, Wallet } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, Eye, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle, Wallet } from 'lucide-react';
 import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
+import { CapOutPreviewDialog } from '@/components/commission/CapOutPreviewDialog';
 import {
   Collapsible,
   CollapsibleContent,
