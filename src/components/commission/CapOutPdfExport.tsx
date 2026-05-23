@@ -13,6 +13,7 @@ export interface CapOutPdfData {
   materialsCost: number;
   laborCost: number;
   overheadAmount: number;
+  otherCharges: number;
   commissionAmount: number;
   miscCost: number;
   totalCost: number;
@@ -164,6 +165,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
         <td>Overhead</td>
         <td class="amount">${formatCurrency(data.overheadAmount)}</td>
       </tr>
+      ${data.otherCharges > 0 ? `<tr><td>Other Charges</td><td class="amount">${formatCurrency(data.otherCharges)}</td></tr>` : ''}
       ${data.miscCost > 0 ? `<tr><td>Misc</td><td class="amount">${formatCurrency(data.miscCost)}</td></tr>` : ''}
       <tr class="total">
         <td>Total Cost</td>
@@ -326,6 +328,7 @@ export interface CapOutFinancials {
   materialCost: number;
   laborCost: number;
   overheadAmount: number;
+  otherCharges?: number;
   grossProfit: number;
   commissionAmount: number;
   commissionRate?: number;
@@ -343,7 +346,8 @@ export async function buildCapOutDataFromCommission(
   fin: CapOutFinancials,
 ): Promise<CapOutPdfData> {
   const { entry: _e, ...ctx } = await fetchCapOutContext(pipelineEntryId);
-  const totalCost = fin.materialCost + fin.laborCost + fin.overheadAmount;
+  const otherCharges = Number(fin.otherCharges || 0);
+  const totalCost = fin.materialCost + fin.laborCost + fin.overheadAmount + otherCharges;
   const marginPct = fin.contractValue > 0 ? (fin.grossProfit / fin.contractValue) * 100 : 0;
   return {
     ...ctx,
@@ -353,6 +357,7 @@ export async function buildCapOutDataFromCommission(
     materialsCost: fin.materialCost,
     laborCost: fin.laborCost,
     overheadAmount: fin.overheadAmount,
+    otherCharges,
     commissionAmount: fin.commissionAmount,
     miscCost: 0,
     totalCost,
@@ -399,6 +404,7 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     materialsCost,
     laborCost,
     overheadAmount,
+    otherCharges: 0,
     commissionAmount,
     miscCost: 0,
     totalCost,

@@ -51,6 +51,7 @@ interface ComputedCommission {
   materialCost: number;
   laborCost: number;
   overheadAmount: number;
+  otherCharges: number;
   grossProfit: number;
   commissionRate: number;
   commissionType: string;
@@ -368,7 +369,8 @@ export default function CommissionReport() {
           contractValue: Number(contractValue),
           materialCost: Number(materialCost),
           laborCost: Number(laborCost),
-          overheadAmount: Number(overheadAmount + otherCharges), // shown as combined overhead bucket
+          overheadAmount: Number(overheadAmount),
+          otherCharges: Number(otherCharges),
           grossProfit: Number(grossProfit),
           commissionRate: Number(commissionRate),
           commissionType,
@@ -444,10 +446,10 @@ export default function CommissionReport() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Lead', 'Customer', 'Address', 'Stage', 'Rep', 'Contract Value', 'Materials', 'Labor', 'Overhead', 'Gross Profit', 'Commission Type', 'Commission Rate', 'Commission Amount', 'Date'];
+    const headers = ['Lead', 'Customer', 'Address', 'Stage', 'Rep', 'Contract Value', 'Materials', 'Labor', 'Overhead', 'Other Charges', 'Gross Profit', 'Commission Type', 'Commission Rate', 'Commission Amount', 'Date'];
     const rows = commissions.map(c => [
       c.leadName, c.customerName, c.address, c.stageName, c.repName,
-      c.contractValue, c.materialCost, c.laborCost, c.overheadAmount, c.grossProfit,
+      c.contractValue, c.materialCost, c.laborCost, c.overheadAmount, c.otherCharges, c.grossProfit,
       c.commissionType, c.commissionRate, c.commissionAmount, c.createdAt,
     ]);
     const csvContent = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
@@ -669,6 +671,7 @@ export default function CommissionReport() {
                                             materialCost: c.materialCost,
                                             laborCost: c.laborCost,
                                             overheadAmount: c.overheadAmount,
+                                            otherCharges: c.otherCharges,
                                             grossProfit: c.grossProfit,
                                             commissionAmount: c.commissionAmount,
                                             commissionRate: c.commissionRate,
@@ -714,6 +717,10 @@ export default function CommissionReport() {
                                     <div>
                                       <span className="text-muted-foreground">Overhead:</span>
                                       <div className="font-medium">{formatCurrency(c.overheadAmount)}</div>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Other Charges:</span>
+                                      <div className="font-medium">{formatCurrency(c.otherCharges)}</div>
                                     </div>
                                     <div>
                                       <span className="text-muted-foreground">Commission Rate:</span>
@@ -768,6 +775,7 @@ export default function CommissionReport() {
             materialCost: previewEntry.materialCost,
             laborCost: previewEntry.laborCost,
             overheadAmount: previewEntry.overheadAmount,
+            otherCharges: previewEntry.otherCharges,
             grossProfit: previewEntry.grossProfit,
             commissionAmount: previewEntry.commissionAmount,
             commissionRate: previewEntry.commissionRate,
