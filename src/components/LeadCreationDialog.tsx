@@ -452,8 +452,44 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       let contactId = contact?.id;
 
-      // Determine effective tenant
       const effectiveTenantId = userProfile.active_tenant_id || userProfile.tenant_id;
+
+      // --- DUPLICATE-LEAD-BY-ADDRESS GUARD ---
+      // Block creating a second active lead at the same verified street address.
+      {
+        const addrComponents = selectedAddress?.address_components || [];
+        const getC = (type: string) =>
+          addrComponents.find((c: any) => c.types.includes(type))?.long_name || '';
+        const dupStreet = (getC('street_number') + ' ' + getC('route')).trim();
+        const dupZip = getC('postal_code');
+        if (dupStreet) {
+          const { data: existingLeads } = await supabase
+            .from('pipeline_entries')
+            .select('id, contact:contacts!pipeline_entries_contact_id_fkey(id, first_name, last_name, address_street, address_zip, is_deleted)')
+            .eq('tenant_id', effectiveTenantId)
+            .neq('status', 'closed_lost')
+            .neq('status', 'closed_won')
+            .limit(50);
+          const conflict = (existingLeads || []).find((row: any) => {
+            const c = row.contact;
+            if (!c || c.is_deleted) return false;
+            const sameStreet = (c.address_street || '').trim().toLowerCase() === dupStreet.toLowerCase();
+            const sameZip = !dupZip || !c.address_zip || c.address_zip === dupZip;
+            return sameStreet && sameZip;
+          });
+          if (conflict) {
+            const c: any = conflict.contact;
+            toast({
+              title: "Duplicate Address",
+              description: `An active lead already exists at this address for ${c.first_name || ''} ${c.last_name || ''}.`,
+              variant: "destructive",
+            });
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
 
       // Create new contact if not provided
       if (!contactId) {
