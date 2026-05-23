@@ -594,6 +594,51 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
   const valleys = roofLines.filter((l) => l.attribute === 'valley');
   const rejected = roofLines.filter((l) => l.rejected);
 
+  const targetMaskDbg = grj?.target_mask_isolation || {};
+  const targetMaskPolys: Array<Array<[number, number]>> = (() => {
+    const candidates = [
+      targetMaskDbg?.target_mask_polygons_px,
+      targetMaskDbg?.target_mask_polygon_px,
+      grj?.target_mask_polygons_px,
+      grj?.target_mask_polygon_px,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
+      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
+    }
+    return [];
+  })();
+  const globalMaskPolys: Array<Array<[number, number]>> = (() => {
+    const candidates = [
+      targetMaskDbg?.global_mask_polygons_px,
+      grj?.global_mask_polygons_px,
+      grj?.global_mask_polygon_px,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
+      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
+    }
+    return [];
+  })();
+  const missedRegions: Array<Array<[number, number]>> = (() => {
+    const candidates = [
+      targetMaskDbg?.missed_roof_regions_px,
+      grj?.missed_roof_regions_px,
+      grj?.missed_target_roof_regions_px,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      if (Array.isArray(c) && Array.isArray(c[0]) && Array.isArray((c[0] as any)[0])) return c as any;
+      if (Array.isArray(c) && Array.isArray(c[0])) return [c as any];
+    }
+    return [];
+  })();
+  const geocodePx: [number, number] | null =
+    overlayDbg?.original_geocode_px || grj?.original_geocode_px || null;
+
+
   return (
     <div className="relative w-full h-full rounded-lg border bg-muted/30 overflow-hidden">
       {rasterUrl && layers.raster ? (
