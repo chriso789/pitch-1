@@ -83,16 +83,16 @@ export interface ExcludedRegion {
   vertex_indices: number[];
   bbox_px: { minX: number; minY: number; maxX: number; maxY: number };
   area_px: number;
+  /** Whether this candidate exclusion was actually applied (vertex dropped). */
+  applied: boolean;
+  /** When applied=false, why it was rejected. */
+  rejection_reason?: string;
 }
 
 export interface PerimeterRefinementResult {
-  /** Refined perimeter polygon (DSM pixel space). Empty if hard-failed. */
   refined_perimeter_px: PxPt[];
-  /** Whether the refinement passed the acceptance gate. */
   passed: boolean;
-  /** Hard fail reason when !passed. Persisted into hard_fail_reason. */
   hard_fail_reason: string | null;
-  /** Diagnostics bag — persist verbatim into geometry_report_json. */
   diagnostics: PerimeterRefinementDiagnostics;
 }
 
@@ -126,7 +126,31 @@ export interface PerimeterRefinementDiagnostics {
     confidence_actual: number;
     confidence_passed: boolean;
   };
-  /** Rendered SVG overlay (gray=raw, blue=target, green=refined, red=rejected). */
+  // ── Safe-refinement guard (v1.1) ──────────────────────────────────────────
+  raw_to_refined_area_ratio: number | null;
+  raw_iou_vs_target: number | null;
+  raw_area_vs_benchmark_delta_pct: number | null;
+  raw_area_vs_target_delta_pct: number | null;
+  vertices_removed_pct: number;
+  destructive_refinement_detected: boolean;
+  refinement_rejected: boolean;
+  refinement_rejection_reason: string | null;
+  refinement_fallback_used: 'raw_perimeter' | 'refined_perimeter' | null;
+  selected_perimeter_after_refinement: 'raw_perimeter' | 'refined_perimeter';
+  provisional_perimeter_ready: boolean;
+  conservative_raw_gate: {
+    iou_threshold: number;
+    iou_actual: number | null;
+    iou_ok: boolean;
+    area_ok: boolean;
+    passed: boolean;
+  };
+  applied_tree_exclusions_count: number;
+  rejected_tree_exclusions_count: number;
+  applied_patio_exclusions_count: number;
+  rejected_patio_exclusions_count: number;
+  footprint_bbox_diagonal_px: number;
+  snap_distance_cap_px: number;
   debug_perimeter_overlay_svg: string | null;
 }
 
