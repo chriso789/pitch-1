@@ -35,6 +35,7 @@ export interface CapOutPdfData {
   locationAddress?: string | null;
   locationPhone?: string | null;
   locationEmail?: string | null;
+  repEmail?: string | null;
 }
 
 export function buildCapOutHtml(data: CapOutPdfData): string {
