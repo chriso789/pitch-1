@@ -206,7 +206,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'DSM Tile Bounds', value: JSON.stringify(registrationGate.dsm_tile_bounds_lat_lng ?? null) },
     { label: 'geo_to_dsm_px_success', value: String(registrationGate.geo_to_dsm_px_success ?? grj.geo_to_dsm_px_success ?? '—') },
     { label: 'dsm_pixel_transform_valid', value: String(registrationGate.dsm_pixel_transform_valid ?? grj.dsm_pixel_transform_valid ?? '—') },
-    { label: 'dsm_to_raster_transform_exists', value: String((registrationGate.dsm_to_raster_transform_exists ?? registrationGate.dsm_to_raster_transform != null) ?? '—') },
+    { label: 'dsm_to_raster_transform_exists', value: String(registrationGate.dsm_to_raster_transform_exists ?? (registrationGate.dsm_to_raster_transform != null ? true : '—')) },
     { label: 'raster_bounds_contain_center', value: String(registrationGate.raster_bounds_contain_confirmed_center ?? '—') },
     { label: 'confirmed_center_inside_candidate', value: String(registrationGate.confirmed_center_inside_candidate ?? '—') },
     { label: 'coordinate_gate_passed', value: String(registrationGate.coordinate_registration_gate_passed ?? '—') },
