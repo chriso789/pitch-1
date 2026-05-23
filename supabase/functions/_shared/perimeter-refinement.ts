@@ -45,6 +45,10 @@ export interface PerimeterRefinementInput {
   solar_segment_masks_px?: Uint8Array | null;
   /** Optional vendor benchmark area (sqft) for sanity comparison. */
   benchmark_area_sqft?: number | null;
+  /** Optional vendor benchmark facet count (used for expected_min_vertices). */
+  benchmark_facet_count?: number | null;
+  /** Solar segment count (used for expected_min_vertices on complex roofs). */
+  solar_segment_count?: number | null;
   /** Confirmed roof centroid in DSM pixels. */
   roof_centroid_px?: PxPt | null;
   /** Acceptance thresholds (override defaults). */
