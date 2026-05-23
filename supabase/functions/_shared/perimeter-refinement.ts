@@ -145,6 +145,25 @@ export interface PerimeterRefinementDiagnostics {
     area_ok: boolean;
     passed: boolean;
   };
+  // ── Benchmark-aware acceptance (v1.2) ─────────────────────────────────────
+  benchmark_override_used: boolean;
+  benchmark_override_reason: string | null;
+  benchmark_area_delta_pct: number | null;
+  target_mask_iou_demoted_to_warning: boolean;
+  perimeter_acceptance_source:
+    | 'target_mask_iou'
+    | 'benchmark_area_sanity'
+    | 'raw_fallback'
+    | 'manual_override'
+    | 'failed';
+  confidence_source:
+    | 'target_mask_iou'
+    | 'benchmark_area_sanity'
+    | 'raw_fallback'
+    | null;
+  confidence_warnings: string[];
+  ring_closed: boolean;
+  ring_self_intersecting: boolean;
   applied_tree_exclusions_count: number;
   rejected_tree_exclusions_count: number;
   applied_patio_exclusions_count: number;
@@ -153,6 +172,7 @@ export interface PerimeterRefinementDiagnostics {
   snap_distance_cap_px: number;
   debug_perimeter_overlay_svg: string | null;
 }
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Public entry
