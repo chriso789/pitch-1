@@ -151,7 +151,7 @@ async function lookupRows(q: AuditQuery): Promise<any[]> {
         "report_blocked",
         "geometry_source",
         "validation_status",
-        "address",
+        "property_address",
         "geometry_report_json",
       ].join(","),
     )
