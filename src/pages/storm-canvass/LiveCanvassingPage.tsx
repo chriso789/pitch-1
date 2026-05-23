@@ -695,7 +695,7 @@ export default function LiveCanvassingPage() {
 
       {/* Navigation Panel */}
       {routeData && destination && (
-        <div className="absolute bottom-24 left-2 right-2 z-20">
+        <div className="absolute left-2 right-2 z-20" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
           <NavigationPanel
             routeData={routeData}
             destination={destination}
