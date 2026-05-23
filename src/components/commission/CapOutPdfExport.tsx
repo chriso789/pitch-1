@@ -227,7 +227,7 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
   const { data: entry } = await supabase
     .from('pipeline_entries')
     .select(`
-      id, lead_name, estimated_value, assigned_to, status, tenant_id,
+      id, lead_name, estimated_value, assigned_to, status, tenant_id, location_id,
       contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, address_city, address_state, address_zip)
     `)
     .eq('id', pipelineEntryId)
@@ -261,27 +261,53 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     .limit(1)
     .single();
 
-  // Get company branding from tenant settings
+  // Get company branding from tenant
   let companyName: string | null = null;
   let companyLogoUrl: string | null = null;
   let companyPhone: string | null = null;
   let companyAddress: string | null = null;
   let companyEmail: string | null = null;
-  if ((entry as any).tenant_id) {
-    const { data: branding } = await supabase
-      .from('company_template_settings')
-      .select('company_name, company_logo_url, company_phone, company_address, company_email')
-      .eq('tenant_id', (entry as any).tenant_id)
-      .eq('is_active', true)
-      .order('updated_at', { ascending: false })
-      .limit(1)
+  let companyWebsite: string | null = null;
+  let companyLicense: string | null = null;
+  let brandPrimaryColor: string | null = null;
+  const tenantId = (entry as any).tenant_id;
+  if (tenantId) {
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('name, logo_url, phone, email, website, license_number, address_street, address_city, address_state, address_zip, brand_primary_color, primary_color')
+      .eq('id', tenantId)
       .maybeSingle();
-    if (branding) {
-      companyName = branding.company_name;
-      companyLogoUrl = branding.company_logo_url;
-      companyPhone = branding.company_phone;
-      companyAddress = branding.company_address;
-      companyEmail = branding.company_email;
+    if (tenant) {
+      companyName = tenant.name;
+      companyLogoUrl = tenant.logo_url;
+      companyPhone = tenant.phone;
+      companyEmail = tenant.email;
+      companyWebsite = (tenant as any).website || null;
+      companyLicense = (tenant as any).license_number || null;
+      brandPrimaryColor = (tenant as any).brand_primary_color || (tenant as any).primary_color || null;
+      const parts = [tenant.address_street, tenant.address_city, tenant.address_state, tenant.address_zip].filter(Boolean);
+      companyAddress = parts.length ? parts.join(', ') : null;
+    }
+  }
+
+  // Get location info (if assigned)
+  let locationName: string | null = null;
+  let locationAddress: string | null = null;
+  let locationPhone: string | null = null;
+  let locationEmail: string | null = null;
+  const locationId = (entry as any).location_id;
+  if (locationId) {
+    const { data: location } = await supabase
+      .from('locations')
+      .select('name, address_street, address_city, address_state, address_zip, phone, email, formatted_address')
+      .eq('id', locationId)
+      .maybeSingle();
+    if (location) {
+      locationName = location.name;
+      locationPhone = location.phone;
+      locationEmail = location.email;
+      const parts = [location.address_street, location.address_city, location.address_state, location.address_zip].filter(Boolean);
+      locationAddress = location.formatted_address || (parts.length ? parts.join(', ') : null);
     }
   }
 
@@ -328,6 +354,13 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     companyPhone,
     companyAddress,
     companyEmail,
+    companyWebsite,
+    companyLicense,
+    brandPrimaryColor,
+    locationName,
+    locationAddress,
+    locationPhone,
+    locationEmail,
   };
 }
 
