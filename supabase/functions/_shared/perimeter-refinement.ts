@@ -226,14 +226,35 @@ export interface PerimeterRefinementDiagnostics {
   perimeter_source_locked: string | null;
 }
 
+export interface PerimeterSegmentDiagnostic {
+  edge_id: number;
+  p1_px: [number, number];
+  p2_px: [number, number];
+  length_px: number;
+  length_ft: number;
+  visual_edge_support_pct: number | null;
+  dsm_boundary_support_pct: number | null;
+  aerial_edge_support_pct: number | null;
+  crosses_non_roof: boolean;
+  corner_cut_detected: boolean;
+  corner_cut_midpoint_px: [number, number] | null;
+  nearest_visible_edge_distance_px_mean: number | null;
+  nearest_visible_edge_distance_px_max: number | null;
+  alignment_status: 'supported' | 'weak' | 'failed';
+}
+
 export interface ShapeValidation {
   area_sanity_passed: boolean;
   vertex_sanity_passed: boolean;
   visual_edge_alignment_score: number;
   aerial_edge_support_pct: number | null;
+  aerial_edge_support_sample_count: number;
+  aerial_edge_supported_sample_count: number;
+  aerial_edge_unsupported_segments: number[];
   dsm_boundary_support_pct: number | null;
   corner_snap_confidence: number;
   long_segment_corner_cut_count: number;
+  long_segment_corner_cut_midpoints_px: [number, number][];
   non_roof_crossing_count: number;
   centroid_shift_px: number;
   centroid_shift_threshold_px: number;
@@ -244,7 +265,9 @@ export interface ShapeValidation {
   shape_uncertain: boolean;
   shape_failure_reasons: string[];
   warnings: string[];
+  segment_diagnostics: PerimeterSegmentDiagnostic[];
 }
+
 
 
 // ────────────────────────────────────────────────────────────────────────────
