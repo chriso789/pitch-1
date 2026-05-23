@@ -329,6 +329,38 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
     return ph?.status === 'fail' && tm && tm.status !== 'unknown';
   })();
 
+  const header = (
+    <div className={cn('flex items-center gap-2', embedded ? 'px-4 py-3 border-b' : '')}>
+      <Layers className="h-5 w-5 text-primary" />
+      <span className="font-semibold">AI Measurement Process Viewer</span>
+      <Badge variant="outline" className="ml-2">Diagnostic</Badge>
+      {embedded && (
+        <span className="ml-auto text-xs text-muted-foreground">
+          Internal use only — not for customers.
+        </span>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="border rounded-lg bg-card flex flex-col overflow-hidden h-[720px]">
+        {header}
+        <ViewerBody
+          stages={stages}
+          activeStage={activeStage}
+          setActiveStage={setActiveStage}
+          layers={layers}
+          setLayers={setLayers}
+          stage={stage}
+          measurement={measurement}
+          rasterUrl={rasterUrl}
+          phase0Bypassed={phase0Bypassed}
+        />
+      </div>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[1200px] w-[95vw] h-[90vh] flex flex-col p-0">
@@ -343,6 +375,7 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
             not for customers.
           </DialogDescription>
         </DialogHeader>
+
 
         <div className="flex-1 min-h-0 grid grid-cols-[260px_1fr_320px] gap-0">
           {/* LEFT: stage timeline */}
