@@ -18466,6 +18466,82 @@ export type Database = {
         }
         Relationships: []
       }
+      import_budget_category_maps: {
+        Row: {
+          batch_id: string | null
+          created_at: string
+          id: string
+          pitch_category: string
+          source_category: string
+          source_system: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string
+          id?: string
+          pitch_category: string
+          source_category: string
+          source_system: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string
+          id?: string
+          pitch_category?: string
+          source_category?: string
+          source_system?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_budget_category_maps_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_document_category_maps: {
+        Row: {
+          batch_id: string | null
+          created_at: string
+          id: string
+          pitch_document_category: string
+          source_folder_or_type: string
+          source_system: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string
+          id?: string
+          pitch_document_category: string
+          source_folder_or_type: string
+          source_system: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string
+          id?: string
+          pitch_document_category?: string
+          source_folder_or_type?: string
+          source_system?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_document_category_maps_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_duplicate_reviews: {
         Row: {
           batch_id: string
@@ -18732,6 +18808,80 @@ export type Database = {
           },
         ]
       }
+      import_migration_plans: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          batch_id: string
+          confidence_band: string
+          confidence_score: number
+          created_at: string
+          created_by: string | null
+          entity_order: string[]
+          estimated_counts: Json
+          id: string
+          optional_mappings: Json
+          plan_status: string
+          recommended_actions: Json
+          required_mappings: Json
+          risk_flags: Json
+          source_system: string
+          tenant_id: string
+          unresolved_requirements: Json
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_id: string
+          confidence_band?: string
+          confidence_score?: number
+          created_at?: string
+          created_by?: string | null
+          entity_order?: string[]
+          estimated_counts?: Json
+          id?: string
+          optional_mappings?: Json
+          plan_status?: string
+          recommended_actions?: Json
+          required_mappings?: Json
+          risk_flags?: Json
+          source_system: string
+          tenant_id: string
+          unresolved_requirements?: Json
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_id?: string
+          confidence_band?: string
+          confidence_score?: number
+          created_at?: string
+          created_by?: string | null
+          entity_order?: string[]
+          estimated_counts?: Json
+          id?: string
+          optional_mappings?: Json
+          plan_status?: string
+          recommended_actions?: Json
+          required_mappings?: Json
+          risk_flags?: Json
+          source_system?: string
+          tenant_id?: string
+          unresolved_requirements?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_migration_plans_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_rollback_items: {
         Row: {
           batch_id: string
@@ -18775,6 +18925,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "import_rollback_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_source_manifests: {
+        Row: {
+          batch_id: string
+          created_at: string
+          detected_confidence: number
+          detected_entities: Json
+          files: Json
+          folder_structure: Json
+          id: string
+          source_system: string
+          tenant_id: string
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          detected_confidence?: number
+          detected_entities?: Json
+          files?: Json
+          folder_structure?: Json
+          id?: string
+          source_system: string
+          tenant_id: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          detected_confidence?: number
+          detected_entities?: Json
+          files?: Json
+          folder_structure?: Json
+          id?: string
+          source_system?: string
+          tenant_id?: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_source_manifests_batch_id_fkey"
             columns: ["batch_id"]
             isOneToOne: false
             referencedRelation: "import_batches"
@@ -18863,6 +19063,47 @@ export type Database = {
           },
         ]
       }
+      import_status_maps: {
+        Row: {
+          batch_id: string | null
+          created_at: string
+          entity_type: string
+          id: string
+          pitch_status: string
+          source_status: string
+          source_system: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string
+          entity_type: string
+          id?: string
+          pitch_status: string
+          source_status: string
+          source_system: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string
+          entity_type?: string
+          id?: string
+          pitch_status?: string
+          source_status?: string
+          source_system?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_status_maps_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_templates: {
         Row: {
           created_at: string | null
@@ -18904,6 +19145,50 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      import_user_maps: {
+        Row: {
+          batch_id: string | null
+          created_at: string
+          fallback_behavior: string
+          id: string
+          pitch_user_id: string | null
+          source_system: string
+          source_user_email: string | null
+          source_user_name: string | null
+          tenant_id: string
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string
+          fallback_behavior?: string
+          id?: string
+          pitch_user_id?: string | null
+          source_system: string
+          source_user_email?: string | null
+          source_user_name?: string | null
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string
+          fallback_behavior?: string
+          id?: string
+          pitch_user_id?: string | null
+          source_system?: string
+          source_user_email?: string | null
+          source_user_name?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_user_maps_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       import_validation_errors: {
         Row: {
@@ -18961,6 +19246,56 @@ export type Database = {
             columns: ["staging_record_id"]
             isOneToOne: false
             referencedRelation: "import_staging_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_vendor_record_links: {
+        Row: {
+          batch_id: string
+          created_at: string
+          id: string
+          pitch_entity_type: string
+          pitch_record_id: string
+          pitch_table: string
+          source_entity_type: string
+          source_payload: Json
+          source_record_id: string
+          source_system: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          id?: string
+          pitch_entity_type: string
+          pitch_record_id: string
+          pitch_table: string
+          source_entity_type: string
+          source_payload?: Json
+          source_record_id: string
+          source_system: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          id?: string
+          pitch_entity_type?: string
+          pitch_record_id?: string
+          pitch_table?: string
+          source_entity_type?: string
+          source_payload?: Json
+          source_record_id?: string
+          source_system?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_vendor_record_links_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
             referencedColumns: ["id"]
           },
         ]
@@ -49775,6 +50110,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      vendor_import_adapters: {
+        Row: {
+          adapter_version: string
+          created_at: string
+          display_name: string
+          id: string
+          is_active: boolean
+          notes: string | null
+          source_system: string
+          supported_entity_types: string[]
+          supported_file_types: string[]
+          updated_at: string
+        }
+        Insert: {
+          adapter_version?: string
+          created_at?: string
+          display_name: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          source_system: string
+          supported_entity_types?: string[]
+          supported_file_types?: string[]
+          updated_at?: string
+        }
+        Update: {
+          adapter_version?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          source_system?: string
+          supported_entity_types?: string[]
+          supported_file_types?: string[]
+          updated_at?: string
+        }
+        Relationships: []
       }
       vendor_order_items: {
         Row: {
