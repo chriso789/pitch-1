@@ -42,10 +42,12 @@ export function normalizeResultState(raw: unknown): ResultState {
   if (ALLOWED_SET.has(s)) return s as ResultState;
 
   // Order matters: most-specific rules first.
-  if (s.includes('target') && s.includes('unconfirm')) return 'ai_failed_target_unconfirmed';
+  if (s.includes('target') && (s.includes('unconfirm') || s.includes('not_confirmed') || s.includes('confirmation_required'))) return 'ai_failed_target_unconfirmed';
   if (s.includes('target_unconfirmed')) return 'ai_failed_target_unconfirmed';
 
   if (
+    s.includes('coordinate_registration_failed') ||
+    s.includes('candidate_does_not_contain_confirmed_roof_center') ||
     s.includes('source_acquisition') ||
     s.includes('acquisition') ||
     s.includes('dsm_fetch') ||

@@ -31,7 +31,7 @@ import {
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
-import { evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
+import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics, pixelToGeo } from "../_shared/dsm-analyzer.ts";
@@ -454,7 +454,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
     failure_stage: payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'),
-    diagram_render_intent: String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true),
+    diagram_render_intent: payload.diagram_render_intent ?? (String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true)),
     customer_report_ready: resultState === 'customer_report_ready',
   };
 }
@@ -691,39 +691,14 @@ Deno.serve(async (req) => {
       return json({ error: "Property address or latitude/longitude is required." }, 400);
     }
 
-    // Registration Gate A — target confirmation required.
-    // Refuse to start AI measurement when:
-    //   - user_confirmed_roof_target is false AND no admin override, OR
-    //   - confirmed_roof_center_lat/lng is missing/non-finite (no fallback
-    //     to the address geocode — that's the Fonsica failure mode).
-    if (!user_confirmed_roof_target && !roof_target_admin_override) {
-      console.log("[REGISTRATION_GATE_A] rejected: missing user_confirmed_roof_target", {
-        lead_id, project_id, latitude, longitude,
-      });
-      return json({
-        error: "user_confirmed_roof_target_required",
-        result_state: "ai_failed_target_unconfirmed",
-        hard_fail_reason: "target_roof_not_confirmed",
-        block_customer_report_reason: "target_roof_not_confirmed",
-        message: "AI Measurement requires a confirmed roof target before it can run. Open the structure-selection step and place the marker on the actual roof.",
-      }, 412);
-    }
-    if (
-      !roof_target_admin_override &&
-      (confirmed_roof_center_lat == null || confirmed_roof_center_lng == null)
-    ) {
-      console.log("[REGISTRATION_GATE_A] rejected: missing confirmed_roof_center", {
-        lead_id, project_id,
-        confirmed_roof_center_lat_raw, confirmed_roof_center_lng_raw,
-      });
-      return json({
-        error: "confirmed_roof_center_required",
-        result_state: "ai_failed_target_unconfirmed",
-        hard_fail_reason: "target_roof_not_confirmed",
-        block_customer_report_reason: "target_roof_not_confirmed",
-        message: "AI Measurement requires explicit confirmed_roof_center_lat/lng from the PIN placement step. The marker payload is missing or invalid — do not fall back to the address geocode.",
-      }, 412);
-    }
+    const targetConfirmation = evaluateTargetConfirmation({
+      user_confirmed_roof_target,
+      roof_target_admin_override,
+      confirmed_roof_center_lat_lng:
+        confirmed_roof_center_lat != null && confirmed_roof_center_lng != null
+          ? { lat: confirmed_roof_center_lat, lng: confirmed_roof_center_lng }
+          : null,
+    });
 
     const sourceRecord = await resolveSourceRecord({ lead_id, project_id });
     const tenant_id: string | null = sourceRecord?.tenant_id ?? tenant_id_hint;
@@ -807,6 +782,88 @@ Deno.serve(async (req) => {
       .from("measurement_jobs")
       .update({ ai_measurement_job_id: aiJob.id })
       .eq("id", measurementJob.id);
+
+    if (targetConfirmation.ok === false) {
+      const failReason = "target_roof_not_confirmed";
+      const fallbackCoords = {
+        lat: Number(latitude ?? sourceRecord?.verified_lat ?? sourceRecord?.contact_lat ?? original_geocode_lat ?? 0),
+        lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
+      };
+      const registrationBlock = {
+        version: "registration-gate-v2.0",
+        user_confirmed_roof_target: false,
+        roof_target_admin_override: false,
+        original_geocode_lat_lng:
+          original_geocode_lat != null && original_geocode_lng != null
+            ? { lat: original_geocode_lat, lng: original_geocode_lng }
+            : null,
+        confirmed_roof_center_lat_lng: null,
+        confirmed_roof_center_px: null,
+        geo_to_dsm_px_success: false,
+        dsm_pixel_transform_valid: false,
+        dsm_to_raster_transform_exists: false,
+        raster_bounds_contain_confirmed_center: false,
+        confirmed_center_inside_candidate: false,
+        coordinate_registration_gate_passed: false,
+        failure_reason: failReason,
+        blocked_before_source_acquisition: true,
+      };
+      const skippedByTarget = { version: "v1", executed: false, skipped_reason: "blocked_by_target_confirmation" };
+      const debugPayload = {
+        failure_stage: "registration",
+        hard_fail_reason: failReason,
+        block_customer_report_reason: failReason,
+        result_state: "ai_failed_target_unconfirmed",
+        diagram_render_intent: "target_confirmation_required",
+        customer_report_ready: false,
+        registration: registrationBlock,
+        registration_gate: registrationBlock,
+        source_acquisition_debug: {
+          source_acquisition_failed: false,
+          blocked_before_source_acquisition: true,
+          registration_failure_reason: failReason,
+        },
+        phase3A_5: skippedByTarget,
+        phase3_5: skippedByTarget,
+        phase3C: skippedByTarget,
+        phase3D: skippedByTarget,
+        phase3E: skippedByTarget,
+      };
+      const failedId = await insertFailedPreliminaryMeasurement({
+        measurement_job_id: measurementJob.id,
+        ai_measurement_job_id: aiJob.id,
+        lead_id,
+        project_id,
+        tenant_id,
+        company_id,
+        property_address: resolved_address ?? "Unknown Address",
+        source_record_type: lead_id ? "lead" : "project",
+        source_record_id: lead_id || project_id,
+        source_button,
+        logical_image_width,
+        logical_image_height,
+      }, fallbackCoords, failReason, debugPayload, null, 0);
+      await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
+      await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        result_state: normalizeResultStateForWrite("ai_failed_target_unconfirmed", debugPayload),
+        hard_fail_reason: failReason,
+        source_context: { gate_reason: failReason, hard_fail_reason: failReason, debug: debugPayload },
+      }).eq("id", aiJob.id);
+      return json({
+        success: false,
+        jobId: measurementJob.id,
+        aiMeasurementJobId: aiJob.id,
+        measurementId: failedId,
+        error: targetConfirmation.reason,
+        result_state: "ai_failed_target_unconfirmed",
+        hard_fail_reason: failReason,
+        block_customer_report_reason: failReason,
+        message: targetConfirmation.message,
+      }, 412);
+    }
 
     // Registration Gate v2 recentering: when the user has confirmed a roof
     // target, ALL downstream source acquisition (static map, DSM tile,
@@ -1985,6 +2042,16 @@ async function processJob(input: any) {
               lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
             );
             const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
+            if (confirmedCenterPxForGateC) {
+              const candidateEval = evaluateCandidate(
+                maskCand.polygon.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number]),
+                confirmedCenterPxForGateC,
+              );
+              (maskCand as any).confirmed_center_inside_candidate = candidateEval.confirmed_center_inside_candidate;
+              (maskCand as any).candidate_centroid_offset_from_confirmed_center_px = candidateEval.candidate_centroid_offset_from_confirmed_center_px;
+              (maskCand as any).nearest_neighbor_structure_distance_px = candidateEval.nearest_neighbor_structure_distance_px;
+              if (candidateEval.rejected) maskCand.rejected_reason = candidateEval.rejection_reason;
+            }
             candidates.push(maskCand);
             if (!maskCand.rejected_reason) {
               footprint = maskCand.polygon;
@@ -3020,8 +3087,28 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if footprint does not overlap DSM grid, do NOT call solver.
       if (!dsmCoordinateMatch) {
-        const failReason = "footprint_coordinate_mismatch";
+        const failReason = "coordinate_registration_failed";
         console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
+        const registrationGate = evaluateRegistrationGate({
+          user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
+          roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
+          original_geocode_lat_lng:
+            (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
+              ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
+              : null,
+          confirmed_roof_center_lat_lng:
+            (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+              ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+              : null,
+          confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
+          geo_to_dsm_px_success: false,
+          dsm_pixel_transform_valid: false,
+          dsm_to_raster_transform: null,
+          raster_size_px: { width: raster.width, height: raster.height },
+          dsm_size_px: effectiveDSMForMatch ? { width: effectiveDSMForMatch.width, height: effectiveDSMForMatch.height } : null,
+          dsm_tile_bounds_lat_lng: effectiveDSMForMatch ? { sw: { lat: effectiveDSMForMatch.bounds.minLat, lng: effectiveDSMForMatch.bounds.minLng }, ne: { lat: effectiveDSMForMatch.bounds.maxLat, lng: effectiveDSMForMatch.bounds.maxLng } } : null,
+        });
+        const skippedByRegistration = { version: "v1", executed: false, skipped_reason: "blocked_by_registration_gate" };
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -3032,7 +3119,18 @@ async function processJob(input: any) {
           footprint_coordinate_space: "pixel",
           coordinate_space_match: false,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
+          registration: { ...registrationGate.registration, failure: registrationGate.failure, dsm_to_raster_transform_exists: false },
+          registration_gate: { ...registrationGate.registration, failure: registrationGate.failure, dsm_to_raster_transform_exists: false },
           hard_fail_reason: failReason,
+          block_customer_report_reason: failReason,
+          result_state: "ai_failed_source_acquisition",
+          diagram_render_intent: "coordinate_registration_debug_only",
+          failure_stage: "registration",
+          phase3A_5: skippedByRegistration,
+          phase3_5: skippedByRegistration,
+          phase3C: skippedByRegistration,
+          phase3D: skippedByRegistration,
+          phase3E: skippedByRegistration,
           footprint_px: footprint.map(p => [p.x, p.y]),
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },

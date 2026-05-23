@@ -40,12 +40,13 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
   // Legacy fallback — synthesize a minimal block from overlay_debug flags so
   // historical rows still trigger the UI banner / disable approve.
   const ov = (grj as any).overlay_debug ?? {};
+  const sourceDebug = (grj as any).source_acquisition_debug ?? measurement?.source_context?.debug?.source_acquisition_debug ?? {};
   return {
-    user_confirmed_roof_target: null,
-    geo_to_dsm_px_success: ov.geo_to_dsm_px_success ?? null,
-    dsm_pixel_transform_valid: ov.dsm_pixel_transform_valid ?? null,
-    confirmed_center_inside_candidate: null,
-    coordinate_registration_gate_passed: null,
+    user_confirmed_roof_target: (grj as any).user_confirmed_roof_target ?? sourceDebug.user_confirmed_roof_target ?? null,
+    geo_to_dsm_px_success: (grj as any).geo_to_dsm_px_success ?? ov.geo_to_dsm_px_success ?? null,
+    dsm_pixel_transform_valid: (grj as any).dsm_pixel_transform_valid ?? ov.dsm_pixel_transform_valid ?? null,
+    confirmed_center_inside_candidate: (grj as any).confirmed_center_inside_candidate ?? null,
+    coordinate_registration_gate_passed: (grj as any).coordinate_registration_gate_passed ?? false,
   };
 }
 
@@ -67,7 +68,9 @@ export function isRegistrationFailure(measurement: any): boolean {
   if (
     hardFail === "target_roof_not_confirmed" ||
     hardFail === "coordinate_registration_failed" ||
-    hardFail === "candidate_does_not_contain_confirmed_roof_center"
+    hardFail === "candidate_does_not_contain_confirmed_roof_center" ||
+    grj?.geo_to_dsm_px_success === false ||
+    grj?.dsm_pixel_transform_valid === false
   ) return true;
   const reg = readRegistrationBlock(measurement);
   if (reg?.coordinate_registration_gate_passed === false) return true;
