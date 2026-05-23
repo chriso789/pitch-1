@@ -1908,10 +1908,61 @@ async function processJob(input: any) {
       }
     }
 
+    // Registration Gate C HARD FAIL: when a confirmed roof center was
+    // supplied but no candidate polygon contains it, every remaining
+    // candidate is the wrong building. Fail fast as a source-acquisition /
+    // candidate-containment failure — do NOT fall through to the mask
+    // contour fallback, because that's how Fonsica ended up painting a
+    // perimeter on the neighbor's roof.
+    const allCandidatesWrongHouse =
+      !!confirmedCenterPxForGateC &&
+      candidates.length > 0 &&
+      candidates.every((c) => c.rejected_reason !== null) &&
+      candidates.some((c) => c.rejected_reason === "candidate_does_not_contain_confirmed_roof_center");
+    if (allCandidatesWrongHouse) {
+      const failReason = "candidate_does_not_contain_confirmed_roof_center";
+      const debugPayload = {
+        failure_stage: "registration",
+        hard_fail_reason: failReason,
+        block_customer_report_reason: failReason,
+        result_state: "ai_failed_source_acquisition",
+        coordinate_space_solver: "dsm_px",
+        coordinate_space_renderer: "satellite_px",
+        geo_to_dsm_px_success: true,
+        dsm_pixel_transform_valid: true,
+        raster_size: { width: raster.width, height: raster.height },
+        source_acquisition_debug: {
+          source_acquisition_failed: true,
+          all_candidates_wrong_house: true,
+          candidates_tried: candidates.length,
+        },
+        candidates: candidates.map((c) => ({
+          source: c.source,
+          rejected_reason: c.rejected_reason,
+          confirmed_center_inside_candidate: (c as any).confirmed_center_inside_candidate,
+          candidate_centroid_offset_from_confirmed_center_px:
+            (c as any).candidate_centroid_offset_from_confirmed_center_px,
+        })),
+        acquisition_audit: acquisitionAudit,
+      };
+      console.log("[REGISTRATION_GATE_C] HARD FAIL — all candidates miss confirmed roof center");
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Registration gate C failed: ${failReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Registration gate C failed: ${failReason}`);
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+      }).eq("id", input.ai_measurement_job_id);
+      return;
+    }
+
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
 
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
+
+
 
     let footprint: Point[] = selected?.polygon ?? [];
     let footprintSource: string = selected?.source ?? "none";
