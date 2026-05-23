@@ -134,30 +134,19 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         notes: "",
       };
       
-      // If contact is provided, pre-fill the form
+      // If contact is provided, pre-fill name/phone only — leave address blank
+      // so the user verifies a fresh address via Google autocomplete.
       if (contact) {
-        const fullAddress = [
-          contact.address_street,
-          contact.address_city,
-          contact.address_state,
-          contact.address_zip
-        ].filter(Boolean).join(", ");
-        
         initialFormData = {
           ...initialFormData,
           name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
           phone: contact.phone || "",
-          address: fullAddress,
-          useSameInfo: true,
+          address: "",
+          useSameInfo: false,
           assignedTo: contact.assigned_to ? [contact.assigned_to] : []
         };
-        
-        // Trigger address verification if address exists
-        if (fullAddress) {
-          setTimeout(() => handleAddressVerification(fullAddress), 100);
-        }
       }
-      
+
       setFormData(initialFormData);
       initializeForm(initialFormData);
     }
@@ -170,27 +159,23 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     }
   }, [formData, checkForChanges, open]);
 
+  // Debounced Google address autocomplete as user types
   useEffect(() => {
-    if (contact && formData.useSameInfo) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        name: `${contact.first_name} ${contact.last_name}`,
-        phone: contact.phone || "",
-        address: fullAddress 
-      }));
-      
-      if (fullAddress) {
-        handleAddressVerification(fullAddress);
-      }
+    if (!open) return;
+    const value = formData.address?.trim() ?? "";
+    if (value.length < 4) {
+      setAddressSuggestions([]);
+      setShowAddressPicker(false);
+      return;
     }
-  }, [formData.useSameInfo, contact]);
+    // Don't re-query if the input matches the already-selected verified address
+    if (selectedAddress && value === selectedAddress.formatted_address) return;
+
+    const t = setTimeout(() => {
+      handleAddressVerification(value);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [formData.address, open]);
 
   const loadSalesReps = async () => {
     try {
@@ -305,10 +290,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         setAddressSuggestions(validSuggestions);
         setShowAddressPicker(true);
         
-        // Auto-select first suggestion when pre-filling from a contact
-        if (validSuggestions.length > 0 && contact) {
-          setSelectedAddress(validSuggestions[0]);
-        }
+        // User must explicitly pick a verified address — no auto-selection.
       }
     } catch (error) {
       console.error('Address verification error:', error);
@@ -470,8 +452,44 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       let contactId = contact?.id;
 
-      // Determine effective tenant
       const effectiveTenantId = userProfile.active_tenant_id || userProfile.tenant_id;
+
+      // --- DUPLICATE-LEAD-BY-ADDRESS GUARD ---
+      // Block creating a second active lead at the same verified street address.
+      {
+        const addrComponents = selectedAddress?.address_components || [];
+        const getC = (type: string) =>
+          addrComponents.find((c: any) => c.types.includes(type))?.long_name || '';
+        const dupStreet = (getC('street_number') + ' ' + getC('route')).trim();
+        const dupZip = getC('postal_code');
+        if (dupStreet) {
+          const { data: existingLeads } = await supabase
+            .from('pipeline_entries')
+            .select('id, contact:contacts!pipeline_entries_contact_id_fkey(id, first_name, last_name, address_street, address_zip, is_deleted)')
+            .eq('tenant_id', effectiveTenantId)
+            .neq('status', 'closed_lost')
+            .neq('status', 'closed_won')
+            .limit(50);
+          const conflict = (existingLeads || []).find((row: any) => {
+            const c = row.contact;
+            if (!c || c.is_deleted) return false;
+            const sameStreet = (c.address_street || '').trim().toLowerCase() === dupStreet.toLowerCase();
+            const sameZip = !dupZip || !c.address_zip || c.address_zip === dupZip;
+            return sameStreet && sameZip;
+          });
+          if (conflict) {
+            const c: any = conflict.contact;
+            toast({
+              title: "Duplicate Address",
+              description: `An active lead already exists at this address for ${c.first_name || ''} ${c.last_name || ''}.`,
+              variant: "destructive",
+            });
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
 
       // Create new contact if not provided
       if (!contactId) {
