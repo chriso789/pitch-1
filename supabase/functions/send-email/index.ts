@@ -44,7 +44,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Unauthorized");
     }
 
-    const { to, subject, body, contactId, cc, bcc, document_ids }: SendEmailRequest = await req.json();
+    const { to, subject, body, contactId, cc, bcc, document_ids, attachments: inlineAttachments }: SendEmailRequest = await req.json();
 
     if (!to || to.length === 0 || !subject || !body) {
       return new Response(
