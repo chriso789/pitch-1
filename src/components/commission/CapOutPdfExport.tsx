@@ -26,6 +26,14 @@ export interface CapOutPdfData {
   companyPhone?: string | null;
   companyAddress?: string | null;
   companyEmail?: string | null;
+  companyWebsite?: string | null;
+  companyLicense?: string | null;
+  brandPrimaryColor?: string | null;
+  // Location branding
+  locationName?: string | null;
+  locationAddress?: string | null;
+  locationPhone?: string | null;
+  locationEmail?: string | null;
 }
 
 export function buildCapOutHtml(data: CapOutPdfData): string {
