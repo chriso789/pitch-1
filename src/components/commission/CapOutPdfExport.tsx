@@ -241,16 +241,18 @@ async function fetchCapOutContext(pipelineEntryId: string) {
   if (!entry) throw new Error('Job not found');
 
   let repName = 'N/A';
+  let repEmail: string | null = null;
   let commissionRate = 0;
   let commissionType = 'profit_split';
   if (entry.assigned_to) {
     const { data: rep } = await supabase
       .from('profiles')
-      .select('first_name, last_name, commission_rate, commission_structure')
+      .select('first_name, last_name, email, commission_rate, commission_structure')
       .eq('id', entry.assigned_to)
       .single();
     if (rep) {
       repName = `${rep.first_name || ''} ${rep.last_name || ''}`.trim();
+      repEmail = (rep as any).email || null;
       commissionRate = Number(rep.commission_rate || 0);
       commissionType = rep.commission_structure || 'profit_split';
     }
