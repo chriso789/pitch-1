@@ -51,6 +51,7 @@ interface ComputedCommission {
   materialCost: number;
   laborCost: number;
   overheadAmount: number;
+  otherCharges: number;
   grossProfit: number;
   commissionRate: number;
   commissionType: string;
