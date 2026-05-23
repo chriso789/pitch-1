@@ -127,33 +127,33 @@ export default function MobileDispositionPanel({
     <Sheet open={!!contact} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         side="bottom"
-        className="h-[70vh] rounded-t-3xl overflow-y-auto"
+        className="max-h-[90dvh] h-auto rounded-t-3xl p-0 flex flex-col overflow-hidden"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
-        <SheetHeader>
-          <SheetTitle className="text-left">
+        <SheetHeader className="sticky top-0 z-10 bg-background border-b px-5 pt-5 pb-3">
+          <SheetTitle className="text-left text-base">
             {contact.first_name} {contact.last_name}
           </SheetTitle>
-        </SheetHeader>
-
-        <div className="space-y-6 mt-6">
-          {/* Contact Details */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <p className="text-sm text-muted-foreground">{fullAddress}</p>
             <div className="flex items-center gap-2 text-sm">
               <Navigation className="h-4 w-4 text-primary" />
               <span className="font-medium">{formattedDistance}</span>
+              {contact.qualification_status && (
+                <Badge variant="outline" className="ml-auto text-[10px]">
+                  {contact.qualification_status}
+                </Badge>
+              )}
             </div>
-            {contact.qualification_status && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Current Status:</span>
-                <Badge variant="outline">{contact.qualification_status}</Badge>
-              </div>
-            )}
           </div>
+        </SheetHeader>
 
+        <div
+          className="flex-1 overflow-y-auto overscroll-contain px-5 pt-4"
+          style={{ WebkitOverflowScrolling: 'touch' } as any}
+        >
           {/* Disposition Buttons */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <h3 className="text-sm font-medium">Update Disposition</h3>
             {dispositions.map((disposition) => {
               const Icon = getDispositionIcon(disposition);
@@ -163,7 +163,7 @@ export default function MobileDispositionPanel({
                   onClick={() => handleDispositionSelect(disposition.id, disposition.name)}
                   disabled={isUpdating}
                   variant={getDispositionColor(disposition)}
-                  className="w-full h-14 text-base justify-start gap-3"
+                  className="w-full h-12 text-base justify-start gap-3"
                   size="lg"
                 >
                   <Icon className="h-5 w-5" />
@@ -177,14 +177,21 @@ export default function MobileDispositionPanel({
           {onNavigate && (
             <Button
               variant="outline"
-              onClick={() => onNavigate(contact)}
-              className="w-full h-12 text-base justify-start gap-3"
+              onClick={async () => {
+                if (contact.latitude && contact.longitude) {
+                  const { openNativeMaps } = await import('@/utils/nativeBridge');
+                  void openNativeMaps(contact.latitude, contact.longitude, fullAddress);
+                }
+                onNavigate(contact);
+              }}
+              className="w-full h-12 text-base justify-start gap-3 mt-4"
               size="lg"
             >
               <Navigation className="h-5 w-5" />
               Navigate Here · {formattedDistance}
             </Button>
           )}
+
 
           {/* Optional Notes Section */}
           <div className="space-y-2">
