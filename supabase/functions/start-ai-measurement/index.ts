@@ -734,6 +734,7 @@ Deno.serve(async (req) => {
       logical_image_width,
       logical_image_height,
       raster_scale,
+      user_verified_perimeter,
     });
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
