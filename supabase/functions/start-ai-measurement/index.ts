@@ -516,10 +516,45 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  if (regInput && (!geometry.registration || typeof geometry.registration !== "object")) {
+  if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
+      // Always write under BOTH keys so legacy readers (`registration_gate`)
+      // and v2 readers (`registration`) both find the block.
       geometry.registration = result.registration;
+      geometry.registration_gate = result.registration;
+      // If registration failed, the failure must dominate any downstream
+      // perimeter/topology classification. Otherwise a wrong-house overlay
+      // can still be persisted as `ai_failed_perimeter` and present as a
+      // shape problem instead of a target problem.
+      if (result.failure) {
+        const failure = result.failure;
+        geometry.result_state = failure.result_state;
+        geometry.hard_fail_reason = failure.hard_fail_reason;
+        geometry.block_customer_report_reason = failure.block_customer_report_reason;
+        geometry.failure_stage = "registration";
+        geometry.diagram_render_intent =
+          failure.result_state === "ai_failed_target_unconfirmed"
+            ? "target_confirmation_required"
+            : "coordinate_registration_debug_only";
+        // Mirror to the top-level row so the UI / debug endpoints don't have
+        // to dig through nested JSON to decide what to render.
+        (next as any).result_state = failure.result_state;
+        (next as any).hard_fail_reason = failure.hard_fail_reason;
+        (next as any).block_customer_report_reason = failure.block_customer_report_reason;
+        (next as any).diagram_render_intent = geometry.diagram_render_intent;
+        (next as any).customer_report_ready = false;
+        (next as any).validation_status = "failed";
+        // Force every phase block to advertise the registration block so
+        // the UI never claims phase3_5/3C/3D/3E "didn't reach the callsite".
+        for (const k of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
+          const blk = (geometry as any)[k];
+          if (blk && typeof blk === "object") {
+            (blk as any).executed = false;
+            (blk as any).skipped_reason = "blocked_by_registration_gate";
+          }
+        }
+      }
     } catch (e) {
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
