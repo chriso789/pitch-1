@@ -126,6 +126,11 @@ export interface PerimeterRefinementResult {
 
 export interface PerimeterRefinementDiagnostics {
   phase3A_5_perimeter_refinement_version: 'v1';
+  // v1.6 — populated when the corner-cut repair pass runs.
+  shape_validation_before_repair?: any;
+  corner_cut_repair?: any;
+  // v1.5 — aerial RGBA resample diagnostics.
+  aerial_rgba_resample?: any;
   raw_perimeter_source: string;
   raw_perimeter_vertex_count: number;
   refined_perimeter_vertex_count: number;
