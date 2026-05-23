@@ -609,8 +609,64 @@ export function refineTrueOuterRoofPerimeter(
     perimeter_status: perimeterStatus,
     shape_validation: shape,
     debug_perimeter_overlay_svg: overlay,
+    // ── v1.4 manual visual-QA gate ──────────────────────────────────────────
+    perimeter_visual_review_required: false, // populated below
+    visual_review_gate: {
+      thresholds: { ...DEFAULT_VISUAL_REVIEW_THRESHOLDS, ...(input.visual_review_thresholds ?? {}) },
+      metrics: {
+        visual_edge_alignment_score: shape.visual_edge_alignment_score,
+        aerial_edge_support_pct: shape.aerial_edge_support_pct,
+        corner_snap_confidence: shape.corner_snap_confidence,
+        long_segment_corner_cut_count: shape.long_segment_corner_cut_count,
+        non_roof_crossing_count: shape.non_roof_crossing_count,
+      },
+      passed: false,
+      failed_metrics: [],
+    },
+    user_verified_perimeter: !!input.user_verified_perimeter,
+    perimeter_source_locked: null,
   };
 
+  // ── Compute visual-review gate (v1.4) ──────────────────────────────────────
+  const vrT = diagnostics.visual_review_gate.thresholds;
+  const vrFails: string[] = [];
+  if (shape.visual_edge_alignment_score < vrT.min_visual_edge_alignment_score) {
+    vrFails.push(`visual_edge_alignment_score=${shape.visual_edge_alignment_score.toFixed(2)}<${vrT.min_visual_edge_alignment_score}`);
+  }
+  if (shape.aerial_edge_support_pct == null || shape.aerial_edge_support_pct < vrT.min_aerial_edge_support_pct) {
+    vrFails.push(`aerial_edge_support_pct=${shape.aerial_edge_support_pct?.toFixed(2) ?? 'null'}<${vrT.min_aerial_edge_support_pct}`);
+  }
+  if (shape.corner_snap_confidence < vrT.min_corner_snap_confidence) {
+    vrFails.push(`corner_snap_confidence=${shape.corner_snap_confidence.toFixed(2)}<${vrT.min_corner_snap_confidence}`);
+  }
+  if (shape.long_segment_corner_cut_count > vrT.max_long_segment_corner_cut_count) {
+    vrFails.push(`long_segment_corner_cut_count=${shape.long_segment_corner_cut_count}>${vrT.max_long_segment_corner_cut_count}`);
+  }
+  if (shape.non_roof_crossing_count > vrT.max_non_roof_crossing_count) {
+    vrFails.push(`non_roof_crossing_count=${shape.non_roof_crossing_count}>${vrT.max_non_roof_crossing_count}`);
+  }
+  const visualGatePassed = vrFails.length === 0;
+  diagnostics.visual_review_gate.passed = visualGatePassed;
+  diagnostics.visual_review_gate.failed_metrics = vrFails;
+
+  // Manual override: human approved the overlay — lock the selected perimeter
+  // as authoritative, bypass the visual-review gate, mark source as
+  // manual_override. Numeric shape failure still wins (don't promote junk).
+  if (input.user_verified_perimeter && shape.shape_passed && !destructive) {
+    diagnostics.perimeter_visual_review_required = false;
+    diagnostics.perimeter_acceptance_source = 'manual_override';
+    diagnostics.perimeter_source_locked = `user_verified_${selected}`;
+    diagnostics.perimeter_status = 'valid';
+    diagnostics.perimeter_refinement_passed = true;
+    diagnostics.perimeter_refinement_reason =
+      `manual_override:user_verified_perimeter:${diagnostics.perimeter_refinement_reason}`;
+    // Caller is responsible for keeping customer_report_ready=false until
+    // downstream topology gates also pass.
+  } else {
+    // Visual review is required whenever the perimeter is accepted (numerically)
+    // but does not meet the stricter visual-QA thresholds.
+    diagnostics.perimeter_visual_review_required = passed && !visualGatePassed;
+  }
 
   return {
     refined_perimeter_px: returnedRing,
