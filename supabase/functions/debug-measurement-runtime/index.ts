@@ -72,8 +72,21 @@ function pickPhaseBlock(geometry: any, key: string) {
   return geometry[key] ?? null;
 }
 
+function derivePhaseStatus(block: any): "executed" | "skipped" | "missing" {
+  if (!block || typeof block !== "object") return "missing";
+  if (block.executed === true) return "executed";
+  if (block.executed === false) return "skipped";
+  if (block.skipped_reason) return "skipped";
+  if (block.version) return "executed";
+  return "missing";
+}
+
 function summarizeRow(row: any) {
   const g = (row?.geometry_report_json ?? null) as Record<string, any> | null;
+  const phase3_5 = pickPhaseBlock(g, "phase3_5") ?? pickPhaseBlock(g, "phase3A_5");
+  const phase3C = pickPhaseBlock(g, "phase3C");
+  const phase3D = pickPhaseBlock(g, "phase3D");
+  const phase3E = pickPhaseBlock(g, "phase3E");
   return {
     id: row.id,
     created_at: row.created_at,
@@ -94,17 +107,24 @@ function summarizeRow(row: any) {
     report_blocked: row.report_blocked ?? null,
     route_warning: g?.route_warning ?? null,
     route_provenance: pickPhaseBlock(g, "route_provenance"),
-    phase3_5: pickPhaseBlock(g, "phase3_5") ?? pickPhaseBlock(g, "phase3A_5"),
+    phase3_5,
     phase3A: pickPhaseBlock(g, "phase3A"),
     phase3B: pickPhaseBlock(g, "phase3B"),
-    phase3C: pickPhaseBlock(g, "phase3C"),
-    phase3D: pickPhaseBlock(g, "phase3D"),
-    phase3E: pickPhaseBlock(g, "phase3E"),
+    phase3C,
+    phase3D,
+    phase3E,
+    phase_status: {
+      phase3_5: derivePhaseStatus(phase3_5),
+      phase3C: derivePhaseStatus(phase3C),
+      phase3D: derivePhaseStatus(phase3D),
+      phase3E: derivePhaseStatus(phase3E),
+    },
     phase3_versions: g?.phase3 ?? null,
     geometry_source: row.geometry_source ?? null,
     validation_status: row.validation_status ?? null,
   };
 }
+
 
 async function lookupRows(q: AuditQuery): Promise<any[]> {
   const limit = Math.min(Math.max(q.limit ?? 10, 1), 50);
