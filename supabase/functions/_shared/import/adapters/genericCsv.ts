@@ -30,7 +30,12 @@ const adapter: VendorImportAdapter = {
   },
 
   async buildManifest(files) { return buildManifestFromFiles(this.sourceSystem, files, await this.detect(files)); },
-  async suggestFieldMap(entity, fields) { return suggestMapping(entity, fields); },
+  async suggestFieldMap(_entity, fields) {
+    const raw = suggestMapping(fields);
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw)) out[k] = v.pitch_field;
+    return out;
+  },
 
   async normalizeRecord(input: NormalizeInput): Promise<NormalizeOutput> {
     return {
