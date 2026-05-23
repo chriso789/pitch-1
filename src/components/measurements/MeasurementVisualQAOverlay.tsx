@@ -35,6 +35,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  readRegistrationBlock,
+  canApproveManualPerimeter,
+  registrationBanner,
+} from '@/lib/measurement/registration-gate';
 
 type Pt = [number, number];
 
