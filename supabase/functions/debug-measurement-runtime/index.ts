@@ -126,6 +126,16 @@ function summarizeRow(row: any) {
   const phase3C = pickPhaseBlock(g, "phase3C");
   const phase3D = pickPhaseBlock(g, "phase3D");
   const phase3E = pickPhaseBlock(g, "phase3E");
+  const registration = summarizeRegistration(g);
+  // Manual approval requires ALL 5 registration flags (mirrors
+  // canApproveManualPerimeter in _shared/registration-gate.ts).
+  const manual_approval_allowed =
+    registration.present === true &&
+    registration.user_confirmed_roof_target === true &&
+    registration.geo_to_dsm_px_success === true &&
+    registration.dsm_pixel_transform_valid === true &&
+    registration.confirmed_center_inside_candidate === true &&
+    registration.coordinate_registration_gate_passed === true;
   return {
     id: row.id,
     created_at: row.created_at,
@@ -146,8 +156,12 @@ function summarizeRow(row: any) {
     report_blocked: row.report_blocked ?? null,
     route_warning: g?.route_warning ?? null,
     route_provenance: pickPhaseBlock(g, "route_provenance"),
-    registration: summarizeRegistration(g),
+    registration,
+    diagram_render_intent: g?.diagram_render_intent ?? null,
+    manual_approval_allowed,
     phase3_5,
+    phase3_5_skipped_reason: phase3_5?.skipped_reason ?? null,
+    phase3_5_executed: phase3_5?.executed ?? null,
     phase3A: pickPhaseBlock(g, "phase3A"),
     phase3B: pickPhaseBlock(g, "phase3B"),
     phase3C,

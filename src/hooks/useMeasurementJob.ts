@@ -141,6 +141,21 @@ export function useMeasurementJob(pipelineEntryId: string) {
     /** Raster size used when computing confirmedRoofCenterPx, e.g. { width, height }. */
     confirmedRoofCenterRasterSize?: { width: number; height: number } | null;
   }) => {
+    // Target Roof Registration Gate v2 — frontend pre-flight.
+    // The hook MUST NOT silently default `user_confirmed_roof_target` to true.
+    // Either explicit `userConfirmedRoofTarget === true` (PIN placement in
+    // StructureSelectionMap) or `roofTargetAdminOverride === true` is required.
+    // Any other state is a developer bug — fail loudly instead of letting the
+    // backend silently start a wrong-house run.
+    const explicitlyConfirmed = params.userConfirmedRoofTarget === true;
+    const adminOverride = params.roofTargetAdminOverride === true;
+    if (!explicitlyConfirmed && !adminOverride) {
+      throw new Error(
+        "AI Measurement requires a confirmed roof target. " +
+          "Place the marker on the actual roof in the structure selector before starting the job.",
+      );
+    }
+
     // Canonical AI Measurement entrypoint: async job flow that writes to
     // measurement_jobs (polled below) and publishes to roof_measurements +
     // measurement_approvals so the lead/project page picks it up automatically.
@@ -168,8 +183,8 @@ export function useMeasurementJob(pipelineEntryId: string) {
         confirmed_roof_center_px: params.confirmedRoofCenterPx ?? null,
         confirmed_roof_center_raster_size: params.confirmedRoofCenterRasterSize ?? null,
         marker_offset_ft: params.markerOffsetFt ?? null,
-        user_confirmed_roof_target: params.userConfirmedRoofTarget ?? true,
-        roof_target_admin_override: params.roofTargetAdminOverride ?? false,
+        user_confirmed_roof_target: explicitlyConfirmed,
+        roof_target_admin_override: adminOverride,
         // Visual QA bypass
         user_verified_perimeter: params.userVerifiedPerimeter ?? false,
         prior_ai_measurement_job_id: params.priorAiMeasurementJobId ?? null,
