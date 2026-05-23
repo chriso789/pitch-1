@@ -197,14 +197,6 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
     </div>
   </div>
 
-  <div class="signature-section">
-    <div>
-      <div class="sig-line">Manager Signature / Date</div>
-    </div>
-    <div>
-      <div class="sig-line">Sales Rep Signature / Date</div>
-    </div>
-  </div>
 
   <div class="footer">
     Generated ${new Date().toLocaleDateString()} — ${data.companyName || 'Company'}
