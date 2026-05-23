@@ -75,17 +75,16 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, finan
     setSending(true);
     try {
       const wrappedHtml = `<div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
-        <p style="white-space:pre-wrap;color:#374151;">${shareMessage}</p>
+        <p style="white-space:pre-wrap;color:#374151;">${shareMessage.replace(/</g, '&lt;')}</p>
         <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;" />
         ${html}
       </div>`;
       const { error: fnError } = await supabase.functions.invoke('email-api', {
         body: {
           __route: '/send',
-          to: shareTo,
+          to: [shareTo],
           subject: shareSubject,
-          html: wrappedHtml,
-          text: shareMessage,
+          body: wrappedHtml,
         },
       });
       if (fnError) throw fnError;
