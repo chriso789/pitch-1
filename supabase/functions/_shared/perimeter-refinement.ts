@@ -167,45 +167,51 @@ export function refineTrueOuterRoofPerimeter(
   const sqftPerPx = (input.meters_per_pixel * input.meters_per_pixel) * 10.7639;
   const rawAreaSqft = rawAreaPx * sqftPerPx;
 
+  // Footprint bbox diagonal — used for snap-distance cap.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of raw) {
+    if (x < minX) minX = x; if (y < minY) minY = y;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  }
+  const bboxDiagPx = Number.isFinite(minX) ? Math.hypot(maxX - minX, maxY - minY) : 0;
+  const snapCapPx = Math.max(T.max_snap_distance_px, Math.round(0.03 * bboxDiagPx));
+  const effectiveT: RefinementThresholds = { ...T, max_snap_distance_px: snapCapPx };
+
   if (raw.length < 4) {
     return failResult(input.raw_perimeter_source, raw.length, rawAreaSqft, T,
       'perimeter_shape_not_accurate', 'raw perimeter has <4 vertices');
   }
 
-  // 1. Identify excluded regions (tree / patio / shadow / no-support / outlier).
-  const { keepFlags, treeRegions, patioRegions } = identifyExcludedRegions(raw, input, T);
+  // 1. Identify excluded regions (region-level gated — single-vertex flags are NOT applied).
+  const { keepFlags, treeRegions, patioRegions } =
+    identifyExcludedRegions(raw, input, T, rawAreaPx);
 
-  // 2. Snap surviving vertices to nearest strong DSM/RGB edge.
-  const { snapped, moved } = snapVerticesToEdges(raw, keepFlags, input, T);
+  // 2. Snap surviving vertices (snap distance capped by bbox diagonal).
+  const { snapped, moved } = snapVerticesToEdges(raw, keepFlags, input, effectiveT);
 
-  // 3. Insert missing corners where polygon segments cross strong perpendicular edges.
-  const { withInserted, added } = insertMissingCorners(snapped, input, T);
+  // 3. Insert missing corners.
+  const { withInserted, added } = insertMissingCorners(snapped, input, effectiveT);
 
-  // 4. Drop vertices flagged for exclusion.
+  // 4. Drop vertices flagged for exclusion (only those that survived the region gate).
   const filtered = withInserted.filter((_, i) => keepFlags[i] !== false);
   const removed = withInserted.length - filtered.length;
 
-  // 5. Re-simplify with Douglas-Peucker.
+  // 5. Re-simplify.
   const refined = filtered.length >= T.min_complex_vertex_count
     ? douglasPeucker(filtered, T.simplify_tolerance_px)
     : filtered;
   const refinedClosed = closeRing(refined);
 
-  // 6. Compute acceptance metrics.
+  // 6. Acceptance metrics (refined).
   const refinedAreaPx = polygonAreaPx(refinedClosed);
   const refinedAreaSqft = refinedAreaPx * sqftPerPx;
-  const targetAreaPx = input.target_mask_grid
-    ? maskAreaPx(input.target_mask_grid)
-    : null;
+  const targetAreaPx = input.target_mask_grid ? maskAreaPx(input.target_mask_grid) : null;
   const targetAreaSqft = targetAreaPx != null ? targetAreaPx * sqftPerPx : null;
 
-  const ratio = targetAreaSqft && targetAreaSqft > 0
-    ? refinedAreaSqft / targetAreaSqft
-    : null;
+  const ratio = targetAreaSqft && targetAreaSqft > 0 ? refinedAreaSqft / targetAreaSqft : null;
   const iou = input.target_mask_grid
     ? computePolygonMaskIoU(refinedClosed, input.target_mask_grid, input.width, input.height)
     : null;
-
   const confidence = computeConfidence(refinedClosed, input, T, iou, ratio);
 
   const deltaVsBenchmark = input.benchmark_area_sqft
@@ -218,18 +224,95 @@ export function refineTrueOuterRoofPerimeter(
   const iouPassed = iou == null ? true : iou >= T.min_iou_vs_target_mask;
   const ratioPassed = ratio == null ? true : ratio <= T.max_ratio_vs_target_mask;
   const confidencePassed = confidence >= T.min_confidence;
+  const refinementPassed = iouPassed && ratioPassed && confidencePassed;
 
-  const passed = iouPassed && ratioPassed && confidencePassed;
-  const failReasons: string[] = [];
-  if (!iouPassed) failReasons.push(`iou:${iou?.toFixed(3)}<${T.min_iou_vs_target_mask}`);
-  if (!ratioPassed) failReasons.push(`ratio:${ratio?.toFixed(3)}>${T.max_ratio_vs_target_mask}`);
-  if (!confidencePassed) failReasons.push(`confidence:${confidence.toFixed(3)}<${T.min_confidence}`);
+  // ── Safe-refinement guard ───────────────────────────────────────────────
+  const rawToRefinedAreaRatio = rawAreaSqft > 0 ? refinedAreaSqft / rawAreaSqft : 0;
+  const rawIoUvsTarget = input.target_mask_grid
+    ? computePolygonMaskIoU(raw, input.target_mask_grid, input.width, input.height)
+    : null;
+  const rawAreaVsBenchmarkPct = input.benchmark_area_sqft
+    ? (Math.abs(rawAreaSqft - input.benchmark_area_sqft) / input.benchmark_area_sqft) * 100
+    : null;
+  const rawAreaVsTargetPct = targetAreaSqft
+    ? (Math.abs(rawAreaSqft - targetAreaSqft) / targetAreaSqft) * 100
+    : null;
+  const rawNearReference =
+    (rawAreaVsBenchmarkPct != null && rawAreaVsBenchmarkPct <= 15) ||
+    (rawAreaVsTargetPct != null && rawAreaVsTargetPct <= 15);
 
-  const reason = passed
-    ? `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}`
-    : `perimeter_shape_not_accurate:${failReasons.join(',')}`;
+  const destructive = rawNearReference && rawToRefinedAreaRatio < 0.85;
 
-  const overlay = renderDebugOverlay(input, raw, refinedClosed, treeRegions, patioRegions);
+  // Conservative raw gate.
+  const rawIoUOk = rawIoUvsTarget == null ? false : rawIoUvsTarget >= 0.80;
+  const rawAreaOk = rawNearReference;
+  const conservativeRawPassed = rawIoUOk && rawAreaOk;
+
+  let selected: 'raw_perimeter' | 'refined_perimeter';
+  let fallbackUsed: 'raw_perimeter' | 'refined_perimeter' | null;
+  let refinementRejected = false;
+  let refinementRejectionReason: string | null = null;
+  let provisionalReady = false;
+  let passed: boolean;
+  let hardFail: string | null;
+  let returnedRing: PxPt[];
+  let reason: string;
+
+  if (destructive) {
+    refinementRejected = true;
+    refinementRejectionReason = 'destructive_refinement_collapse';
+    fallbackUsed = 'raw_perimeter';
+    selected = 'raw_perimeter';
+    returnedRing = raw;
+    if (conservativeRawPassed) {
+      passed = true;
+      hardFail = null;
+      provisionalReady = true;
+      reason = `raw_fallback_after_destructive_refinement:rawIoU=${rawIoUvsTarget?.toFixed(2)}`;
+    } else {
+      passed = false;
+      hardFail = 'perimeter_shape_not_accurate';
+      reason = `destructive_refinement_collapse_and_raw_failed_conservative_gate:` +
+        `rawIoU=${rawIoUvsTarget?.toFixed(2)},rawAreaOk=${rawAreaOk}`;
+    }
+  } else if (refinementPassed) {
+    passed = true;
+    hardFail = null;
+    selected = 'refined_perimeter';
+    fallbackUsed = 'refined_perimeter';
+    returnedRing = refinedClosed;
+    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}`;
+  } else {
+    // Refinement failed but not destructive — try raw fallback if conservative gate passes.
+    if (conservativeRawPassed) {
+      passed = true;
+      hardFail = null;
+      selected = 'raw_perimeter';
+      fallbackUsed = 'raw_perimeter';
+      returnedRing = raw;
+      provisionalReady = true;
+      reason = `raw_fallback_after_refinement_failed_conservative_passed:rawIoU=${rawIoUvsTarget?.toFixed(2)}`;
+    } else {
+      passed = false;
+      hardFail = 'perimeter_shape_not_accurate';
+      selected = 'refined_perimeter';
+      fallbackUsed = null;
+      returnedRing = raw; // still give downstream something for diagrams
+      const failReasons: string[] = [];
+      if (!iouPassed) failReasons.push(`iou:${iou?.toFixed(3)}<${T.min_iou_vs_target_mask}`);
+      if (!ratioPassed) failReasons.push(`ratio:${ratio?.toFixed(3)}>${T.max_ratio_vs_target_mask}`);
+      if (!confidencePassed) failReasons.push(`confidence:${confidence.toFixed(3)}<${T.min_confidence}`);
+      reason = `perimeter_shape_not_accurate:${failReasons.join(',')}`;
+    }
+  }
+
+  const appliedTree = treeRegions.filter(r => r.applied).length;
+  const appliedPatio = patioRegions.filter(r => r.applied).length;
+  const rejectedTree = treeRegions.length - appliedTree;
+  const rejectedPatio = patioRegions.length - appliedPatio;
+  const verticesRemovedPct = raw.length > 0 ? (removed / raw.length) * 100 : 0;
+
+  const overlay = renderDebugOverlay(input, raw, refinedClosed, returnedRing, treeRegions, patioRegions, selected);
 
   const diagnostics: PerimeterRefinementDiagnostics = {
     phase3A_5_perimeter_refinement_version: 'v1',
@@ -249,7 +332,7 @@ export function refineTrueOuterRoofPerimeter(
     aerial_snap_vertices_removed: removed,
     aerial_snap_vertices_moved: moved,
     perimeter_refinement_reason: reason,
-    perimeter_refinement_passed: passed,
+    perimeter_refinement_passed: refinementPassed,
     acceptance_gate: {
       iou_threshold: T.min_iou_vs_target_mask,
       iou_actual: iou != null ? round(iou, 3) : null,
@@ -261,16 +344,41 @@ export function refineTrueOuterRoofPerimeter(
       confidence_actual: round(confidence, 3),
       confidence_passed: confidencePassed,
     },
+    raw_to_refined_area_ratio: round(rawToRefinedAreaRatio, 3),
+    raw_iou_vs_target: rawIoUvsTarget != null ? round(rawIoUvsTarget, 3) : null,
+    raw_area_vs_benchmark_delta_pct: rawAreaVsBenchmarkPct != null ? round(rawAreaVsBenchmarkPct, 2) : null,
+    raw_area_vs_target_delta_pct: rawAreaVsTargetPct != null ? round(rawAreaVsTargetPct, 2) : null,
+    vertices_removed_pct: round(verticesRemovedPct, 2),
+    destructive_refinement_detected: destructive,
+    refinement_rejected: refinementRejected,
+    refinement_rejection_reason: refinementRejectionReason,
+    refinement_fallback_used: fallbackUsed,
+    selected_perimeter_after_refinement: selected,
+    provisional_perimeter_ready: provisionalReady,
+    conservative_raw_gate: {
+      iou_threshold: 0.80,
+      iou_actual: rawIoUvsTarget != null ? round(rawIoUvsTarget, 3) : null,
+      iou_ok: rawIoUOk,
+      area_ok: rawAreaOk,
+      passed: conservativeRawPassed,
+    },
+    applied_tree_exclusions_count: appliedTree,
+    rejected_tree_exclusions_count: rejectedTree,
+    applied_patio_exclusions_count: appliedPatio,
+    rejected_patio_exclusions_count: rejectedPatio,
+    footprint_bbox_diagonal_px: round(bboxDiagPx, 1),
+    snap_distance_cap_px: snapCapPx,
     debug_perimeter_overlay_svg: overlay,
   };
 
   return {
-    refined_perimeter_px: passed ? refinedClosed : raw, // keep raw on fail so downstream still has SOMETHING
+    refined_perimeter_px: returnedRing,
     passed,
-    hard_fail_reason: passed ? null : 'perimeter_shape_not_accurate',
+    hard_fail_reason: hardFail,
     diagnostics,
   };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Exclusion: tree canopy / patio cage / shadow / no-solar-support / outlier
