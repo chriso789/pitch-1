@@ -1359,6 +1359,11 @@ function validatePerimeterShape(args: ShapeValidationInput): ShapeValidation {
   let nonRoofCrossing = 0;
   let longCornerCut = 0;
 
+  const segDiags: PerimeterSegmentDiagnostic[] = [];
+  const cornerCutMidpoints: [number, number][] = [];
+  const unsupportedSegments: number[] = [];
+  const mppFt = input.meters_per_pixel * 3.28084;
+
   for (let i = 0; i < ring.length - 1; i++) {
     const a = ring[i];
     const b = ring[i + 1];
@@ -1371,60 +1376,120 @@ function validatePerimeterShape(args: ShapeValidationInput): ShapeValidation {
     const samples = Math.max(2, Math.min(8, Math.round(len / 8)));
 
     let segMaxPerp = 0;
+    let segDsmSup = 0, segDsmTot = 0;
+    let segAerialSup = 0, segAerialTot = 0;
+    let segNonRoof = 0;
+    const segDistances: number[] = [];
+
     for (let s = 1; s <= samples; s++) {
       const t = s / (samples + 1);
       const mx = a[0] + dx * t;
       const my = a[1] + dy * t;
 
-      // DSM perpendicular gradient: max sobel in ±3 perpendicular band
+      // DSM perpendicular gradient
       if (dsm) {
         dsmTotal++;
+        segDsmTot++;
         let bestMag = 0;
+        let bestOffset: number | null = null;
         for (let k = -3; k <= 3; k++) {
           const sx = Math.round(mx + px * k);
           const sy = Math.round(my + py * k);
           const m = sobelMagAt(dsm, sx, sy, W, H);
-          if (m > bestMag) bestMag = m;
+          if (m > bestMag) { bestMag = m; bestOffset = Math.abs(k); }
         }
-        if (bestMag > 8) dsmSupported++;
+        if (bestMag > 8) { dsmSupported++; segDsmSup++; }
         if (bestMag > segMaxPerp) segMaxPerp = bestMag;
+        if (bestOffset != null && bestMag > 8) segDistances.push(bestOffset);
       }
 
       // Aerial RGB gradient
       if (rgba) {
         aerialTotal++;
-        const supported = rgbEdgeStrengthAt(rgba, Math.round(mx), Math.round(my), W, H, px, py) > 18;
-        if (supported) aerialSupported++;
+        segAerialTot++;
+        let bestRgb = 0;
+        for (let k = -3; k <= 3; k++) {
+          const sx = Math.round(mx + px * k);
+          const sy = Math.round(my + py * k);
+          const m = rgbEdgeStrengthAt(rgba, sx, sy, W, H, px, py);
+          if (m > bestRgb) bestRgb = m;
+        }
+        if (bestRgb > 18) { aerialSupported++; segAerialSup++; }
       }
 
-      // Non-roof crossing: ~8px inward, check solar/dsm support
+      // Non-roof crossing: ~8px inward
       const inx = Math.round(mx - px * 8);
       const iny = Math.round(my - py * 8);
       if (inx >= 0 && iny >= 0 && inx < W && iny < H) {
         const idx = iny * W + inx;
         const noSolar = input.solar_segment_masks_px ? !input.solar_segment_masks_px[idx] : false;
         const lowDsm = dsm ? (dsm[idx] ?? 0) < 1.5 : false;
-        if (noSolar && lowDsm) nonRoofCrossing++;
+        if (noSolar && lowDsm) { nonRoofCrossing++; segNonRoof++; }
       }
     }
 
-    // Long segment corner-cut detector: long segment with a strong off-axis
-    // perpendicular edge mid-span suggests a missed corner.
+    // Long segment corner-cut detector
+    let cornerCutDetected = false;
+    let cornerCutMid: [number, number] | null = null;
     if (len > 40 && dsm) {
       const mx = a[0] + dx * 0.5;
       const my = a[1] + dy * 0.5;
       let perpStrong = 0;
+      let perpStrongK = 0;
       for (let k = -5; k <= 5; k++) {
         if (Math.abs(k) < 2) continue;
         const sx = Math.round(mx + px * k);
         const sy = Math.round(my + py * k);
         const m = sobelMagAt(dsm, sx, sy, W, H);
-        if (m > perpStrong) perpStrong = m;
+        if (m > perpStrong) { perpStrong = m; perpStrongK = k; }
       }
       const baseline = sobelMagAt(dsm, Math.round(mx), Math.round(my), W, H);
-      if (perpStrong > Math.max(12, baseline * 1.8)) longCornerCut++;
+      if (perpStrong > Math.max(12, baseline * 1.8)) {
+        longCornerCut++;
+        cornerCutDetected = true;
+        cornerCutMid = [mx + px * perpStrongK * 0.5, my + py * perpStrongK * 0.5];
+        cornerCutMidpoints.push(cornerCutMid);
+      }
     }
+
+    const segDsmPct = segDsmTot > 0 ? segDsmSup / segDsmTot : null;
+    const segAerialPct = segAerialTot > 0 ? segAerialSup / segAerialTot : null;
+    const visualPctParts: number[] = [];
+    if (segAerialPct != null) visualPctParts.push(segAerialPct);
+    if (segDsmPct != null) visualPctParts.push(segDsmPct);
+    const segVisualPct = visualPctParts.length > 0
+      ? visualPctParts.reduce((s, v) => s + v, 0) / visualPctParts.length
+      : null;
+    const status: 'supported' | 'weak' | 'failed' =
+      segVisualPct == null ? 'weak'
+      : segVisualPct >= 0.70 ? 'supported'
+      : segVisualPct >= 0.40 ? 'weak'
+      : 'failed';
+    if (status !== 'supported') unsupportedSegments.push(i);
+
+    const distMean = segDistances.length
+      ? segDistances.reduce((s, v) => s + v, 0) / segDistances.length
+      : null;
+    const distMax = segDistances.length ? Math.max(...segDistances) : null;
+
+    segDiags.push({
+      edge_id: i,
+      p1_px: [round(a[0], 2), round(a[1], 2)],
+      p2_px: [round(b[0], 2), round(b[1], 2)],
+      length_px: round(len, 2),
+      length_ft: round(len * mppFt, 2),
+      visual_edge_support_pct: segVisualPct != null ? round(segVisualPct, 3) : null,
+      dsm_boundary_support_pct: segDsmPct != null ? round(segDsmPct, 3) : null,
+      aerial_edge_support_pct: segAerialPct != null ? round(segAerialPct, 3) : null,
+      crosses_non_roof: segNonRoof > 0,
+      corner_cut_detected: cornerCutDetected,
+      corner_cut_midpoint_px: cornerCutMid,
+      nearest_visible_edge_distance_px_mean: distMean != null ? round(distMean, 2) : null,
+      nearest_visible_edge_distance_px_max: distMax,
+      alignment_status: status,
+    });
   }
+
 
   const dsmPct = dsmTotal > 0 ? dsmSupported / dsmTotal : null;
   const aerialPct = aerialTotal > 0 ? aerialSupported / aerialTotal : null;
