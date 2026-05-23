@@ -12,6 +12,7 @@ import {
   buildCapOutDataFromCommission,
   buildCapOutHtml,
   generateCapOutPdf,
+  generateCapOutPdfBlob,
   type CapOutPdfData,
   type CapOutFinancials,
 } from './CapOutPdfExport';
@@ -71,26 +72,41 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, finan
       toast.error('Please enter a recipient email');
       return;
     }
-    if (!html) return;
+    if (!data) return;
     setSending(true);
     try {
-      const wrappedHtml = `<div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
-        <p style="white-space:pre-wrap;color:#374151;">${shareMessage.replace(/</g, '&lt;')}</p>
-        <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;" />
-        ${html}
-      </div>`;
+      // Generate the PDF attachment
+      const pdfBlob = await generateCapOutPdfBlob(data);
+      const arrayBuffer = await pdfBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)) as any);
+      }
+      const base64Pdf = btoa(binary);
+
+      const safeName = (data.projectName || data.customerName || 'cap-out-sheet')
+        .replace(/[^a-z0-9-_ ]/gi, '')
+        .trim()
+        .replace(/\s+/g, '-');
+      const filename = `Cap-Out-${safeName || 'Sheet'}.pdf`;
+
+      const bodyText = `${shareMessage}\n\nThe Cap Out Sheet is attached as a PDF.`;
+
       const { error: fnError } = await supabase.functions.invoke('email-api', {
         body: {
           __route: '/send',
           to: [shareTo],
+          cc: ['support@pitch-crm.ai'],
           subject: shareSubject,
-          body: wrappedHtml,
+          body: bodyText,
+          attachments: [{ filename, content: base64Pdf }],
         },
       });
       if (fnError) throw fnError;
-      toast.success(`Cap Out Sheet sent to ${shareTo}`);
+      toast.success(`Cap Out Sheet sent to ${shareTo} (copied to support)`);
       setShareOpen(false);
-      setShareTo('');
     } catch (err: any) {
       console.error('Cap out share failed:', err);
       toast.error(err?.message || 'Failed to send email');

@@ -19,6 +19,7 @@ interface SendEmailRequest {
   cc?: string[];
   bcc?: string[];
   document_ids?: string[]; // IDs of documents to attach
+  attachments?: Array<{ filename: string; content: string }>; // Inline base64 attachments
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -43,7 +44,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Unauthorized");
     }
 
-    const { to, subject, body, contactId, cc, bcc, document_ids }: SendEmailRequest = await req.json();
+    const { to, subject, body, contactId, cc, bcc, document_ids, attachments: inlineAttachments }: SendEmailRequest = await req.json();
 
     if (!to || to.length === 0 || !subject || !body) {
       return new Response(
@@ -60,7 +61,7 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     // Fetch and prepare document attachments if requested
-    const attachments: Array<{ filename: string; content: string }> = [];
+    const attachments: Array<{ filename: string; content: string }> = Array.isArray(inlineAttachments) ? [...inlineAttachments] : [];
     const attachmentLinks: Array<{ filename: string; url: string }> = [];
     
     if (document_ids && document_ids.length > 0 && profile?.tenant_id) {

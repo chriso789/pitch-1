@@ -225,6 +225,68 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   }
 }
 
+/**
+ * Render the cap out sheet HTML into a PDF Blob using html2canvas + jsPDF.
+ * Used for email attachments so the recipient gets the same visual output.
+ */
+export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> {
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
+  ]);
+
+  const html = buildCapOutHtml(data);
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  // Force a known render width so html2canvas produces consistent pages
+  container.style.cssText = 'position:absolute;left:-10000px;top:0;width:816px;background:#ffffff;';
+  document.body.appendChild(container);
+
+  try {
+    // Wait for images (e.g., company logo) to load
+    const imgs = Array.from(container.querySelectorAll('img'));
+    await Promise.all(
+      imgs.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            })
+      )
+    );
+
+    const canvas = await html2canvas(container, {
+      scale: 1.5,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+    });
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageWidth = 612;
+    const pageHeight = 792;
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.7);
+    let heightLeft = imgHeight;
+    let position = 0;
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    return pdf.output('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
 // Fetch only the branding/customer/rep context for a job. Financial numbers are
 // passed in by the caller so the sheet matches the Commission Report row exactly
 // (enhanced_estimates + invoiced actuals + change orders + sales-tax-excluded math).
