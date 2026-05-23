@@ -25,8 +25,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle, Wallet } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, Eye, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle, Wallet } from 'lucide-react';
 import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
+import { CapOutPreviewDialog } from '@/components/commission/CapOutPreviewDialog';
 import {
   Collapsible,
   CollapsibleContent,
@@ -70,6 +71,7 @@ export default function CommissionReport() {
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [verifyEntry, setVerifyEntry] = useState<ComputedCommission | null>(null);
+  const [previewEntryId, setPreviewEntryId] = useState<string | null>(null);
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
   // Minimum stage_order for "project" level
@@ -647,6 +649,18 @@ export default function CommissionReport() {
                                         variant="ghost"
                                         size="icon"
                                         className="h-7 w-7"
+                                        title="Preview Cap Out Sheet"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPreviewEntryId(c.id);
+                                        }}
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
                                         title="Print Cap Out Sheet"
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -735,6 +749,11 @@ export default function CommissionReport() {
             onVerified={() => { setVerifyEntry(null); refetch(); }}
           />
         )}
+        <CapOutPreviewDialog
+          pipelineEntryId={previewEntryId}
+          open={!!previewEntryId}
+          onOpenChange={(open) => { if (!open) setPreviewEntryId(null); }}
+        />
       </div>
     </GlobalLayout>
   );
