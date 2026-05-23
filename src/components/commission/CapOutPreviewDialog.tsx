@@ -4,15 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Printer } from 'lucide-react';
 import {
   buildCapOutDataForJob,
+  buildCapOutDataFromCommission,
   buildCapOutHtml,
   generateCapOutPdf,
   type CapOutPdfData,
+  type CapOutFinancials,
 } from './CapOutPdfExport';
 
 interface CapOutPreviewDialogProps {
   pipelineEntryId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  financials?: CapOutFinancials | null;
 }
 
 export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange }: CapOutPreviewDialogProps) {
