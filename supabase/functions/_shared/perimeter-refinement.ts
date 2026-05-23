@@ -237,14 +237,34 @@ export function refineTrueOuterRoofPerimeter(
   const rawAreaVsTargetPct = targetAreaSqft
     ? (Math.abs(rawAreaSqft - targetAreaSqft) / targetAreaSqft) * 100
     : null;
+  // Loosened to 25% so a raw perimeter that's modestly larger than the
+  // target mask (a common Solar-mask-vs-DSM-mask discrepancy — Fonsica:
+  // raw 3336.9 vs target 2829 = 17.95%) still counts as "sane" for the
+  // do-no-harm guard.
   const rawNearReference =
-    (rawAreaVsBenchmarkPct != null && rawAreaVsBenchmarkPct <= 15) ||
-    (rawAreaVsTargetPct != null && rawAreaVsTargetPct <= 15);
+    (rawAreaVsBenchmarkPct != null && rawAreaVsBenchmarkPct <= 25) ||
+    (rawAreaVsTargetPct != null && rawAreaVsTargetPct <= 25);
 
-  const destructive = rawNearReference && rawToRefinedAreaRatio < 0.85;
+  const _verticesRemovedPctEarly = raw.length > 0
+    ? (removed / raw.length) * 100
+    : 0;
 
-  // Conservative raw gate.
-  const rawIoUOk = rawIoUvsTarget == null ? false : rawIoUvsTarget >= 0.80;
+  // Destructive if ANY of:
+  //   (a) raw is sane AND refined kept <85% of raw area (>15% loss rule)
+  //   (b) refined collapsed below 50% of raw area, regardless of raw sanity
+  //       (absolute-collapse override — catches OOB drops, snap blowups,
+  //        coord-space mismatch annihilation, etc. Fonsica refined/raw=0.17)
+  //   (c) refinement dropped >40% of original vertices in one pass
+  const destructiveByRule = rawNearReference && rawToRefinedAreaRatio < 0.85;
+  const destructiveByCollapse = rawToRefinedAreaRatio < 0.50;
+  const destructiveByVertexLoss = _verticesRemovedPctEarly > 40;
+  const destructive = destructiveByRule || destructiveByCollapse || destructiveByVertexLoss;
+
+  // Conservative raw gate: raw IoU >= 0.80 normally; relaxed to 0.65 when
+  // raw area is within 25% of target/benchmark (raw is shape-sane even if
+  // the target mask is noisy / smaller than the true outer perimeter).
+  const rawIoUThreshold = rawNearReference ? 0.65 : 0.80;
+  const rawIoUOk = rawIoUvsTarget == null ? false : rawIoUvsTarget >= rawIoUThreshold;
   const rawAreaOk = rawNearReference;
   const conservativeRawPassed = rawIoUOk && rawAreaOk;
 
