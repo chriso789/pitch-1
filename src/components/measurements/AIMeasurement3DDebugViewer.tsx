@@ -377,133 +377,18 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
         </DialogHeader>
 
 
-        <div className="flex-1 min-h-0 grid grid-cols-[260px_1fr_320px] gap-0">
-          {/* LEFT: stage timeline */}
-          <div className="border-r overflow-y-auto">
-            <ScrollArea className="h-full">
-              <div className="p-3 space-y-1">
-                {stages.map((s, i) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setActiveStage(s.id)}
-                    className={cn(
-                      'w-full text-left px-3 py-2 rounded-md border text-sm transition-colors',
-                      'flex items-start gap-2',
-                      activeStage === s.id
-                        ? 'bg-primary/10 border-primary/40'
-                        : 'border-transparent hover:bg-muted',
-                    )}
-                  >
-                    <span className="text-xs text-muted-foreground w-5 mt-0.5">
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{s.label}</div>
-                      {s.source && (
-                        <div className="text-[11px] text-muted-foreground truncate">
-                          src: {s.source}
-                        </div>
-                      )}
-                      {s.reason && (
-                        <div className="text-[11px] text-destructive truncate">{s.reason}</div>
-                      )}
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn('text-[10px] px-1.5 py-0 gap-1', statusColor[s.status])}
-                    >
-                      {statusIcon[s.status]}
-                      {s.status}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
+        <ViewerBody
+          stages={stages}
+          activeStage={activeStage}
+          setActiveStage={setActiveStage}
+          layers={layers}
+          setLayers={setLayers}
+          stage={stage}
+          measurement={measurement}
+          rasterUrl={rasterUrl}
+          phase0Bypassed={phase0Bypassed}
+        />
 
-          {/* CENTER: canvas */}
-          <div className="flex flex-col min-h-0">
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-              <div className="flex items-center gap-2 text-sm">
-                <Eye className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{stage?.label}</span>
-                <Badge
-                  variant="outline"
-                  className={cn('text-[10px] px-1.5 py-0 gap-1', statusColor[stage?.status || 'unknown'])}
-                >
-                  {statusIcon[stage?.status || 'unknown']}
-                  {stage?.status}
-                </Badge>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Run: {measurement?.id?.slice(0, 8)} · engine{' '}
-                {measurement?.ai_measurement_engine_version || '—'}
-              </div>
-            </div>
-
-            {phase0Bypassed && (
-              <div className="mx-4 mt-3 p-3 rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-sm flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <div>
-                  <div className="font-semibold">BUG: Perimeter Phase 0 was bypassed</div>
-                  <div className="text-xs">
-                    Target-mask isolation has data but the perimeter gate didn't run.
-                    AI Measurement should not have proceeded.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex-1 min-h-0 p-4">
-              <DebugCanvas
-                measurement={measurement}
-                stage={stage}
-                layers={layers}
-                rasterUrl={rasterUrl}
-              />
-            </div>
-          </div>
-
-          {/* RIGHT: layers + payload */}
-          <div className="border-l overflow-y-auto">
-            <ScrollArea className="h-full">
-              <div className="p-4 space-y-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-                    Layers
-                  </div>
-                  <div className="space-y-2">
-                    {LAYER_TOGGLES.map((l) => (
-                      <div key={l.key} className="flex items-center justify-between">
-                        <Label htmlFor={`layer-${l.key}`} className="text-sm cursor-pointer">
-                          {l.label}
-                        </Label>
-                        <Switch
-                          id={`layer-${l.key}`}
-                          checked={layers[l.key]}
-                          onCheckedChange={(v) =>
-                            setLayers((prev) => ({ ...prev, [l.key]: v }))
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div>
-                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-                    Stage payload
-                  </div>
-                  <pre className="text-[10px] bg-muted/40 p-2 rounded border overflow-auto max-h-[400px]">
-                    {JSON.stringify(stage?.payload ?? {}, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            </ScrollArea>
-          </div>
-        </div>
 
         <div className="px-6 py-3 border-t flex justify-between items-center text-xs text-muted-foreground">
           <span>
