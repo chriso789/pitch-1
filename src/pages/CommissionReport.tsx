@@ -750,9 +750,20 @@ export default function CommissionReport() {
           />
         )}
         <CapOutPreviewDialog
-          pipelineEntryId={previewEntryId}
-          open={!!previewEntryId}
-          onOpenChange={(open) => { if (!open) setPreviewEntryId(null); }}
+          pipelineEntryId={previewEntry?.id ?? null}
+          open={!!previewEntry}
+          onOpenChange={(open) => { if (!open) setPreviewEntry(null); }}
+          financials={previewEntry ? {
+            contractValue: previewEntry.contractValue,
+            materialCost: previewEntry.materialCost,
+            laborCost: previewEntry.laborCost,
+            overheadAmount: previewEntry.overheadAmount,
+            grossProfit: previewEntry.grossProfit,
+            commissionAmount: previewEntry.commissionAmount,
+            commissionRate: previewEntry.commissionRate,
+            commissionType: previewEntry.commissionType,
+            repName: previewEntry.repName,
+          } : null}
         />
       </div>
     </GlobalLayout>
