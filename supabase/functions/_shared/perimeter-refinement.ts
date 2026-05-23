@@ -145,6 +145,25 @@ export interface PerimeterRefinementDiagnostics {
     area_ok: boolean;
     passed: boolean;
   };
+  // ── Benchmark-aware acceptance (v1.2) ─────────────────────────────────────
+  benchmark_override_used: boolean;
+  benchmark_override_reason: string | null;
+  benchmark_area_delta_pct: number | null;
+  target_mask_iou_demoted_to_warning: boolean;
+  perimeter_acceptance_source:
+    | 'target_mask_iou'
+    | 'benchmark_area_sanity'
+    | 'raw_fallback'
+    | 'manual_override'
+    | 'failed';
+  confidence_source:
+    | 'target_mask_iou'
+    | 'benchmark_area_sanity'
+    | 'raw_fallback'
+    | null;
+  confidence_warnings: string[];
+  ring_closed: boolean;
+  ring_self_intersecting: boolean;
   applied_tree_exclusions_count: number;
   rejected_tree_exclusions_count: number;
   applied_patio_exclusions_count: number;
@@ -153,6 +172,7 @@ export interface PerimeterRefinementDiagnostics {
   snap_distance_cap_px: number;
   debug_perimeter_overlay_svg: string | null;
 }
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Public entry
@@ -224,7 +244,14 @@ export function refineTrueOuterRoofPerimeter(
   const iouPassed = iou == null ? true : iou >= T.min_iou_vs_target_mask;
   const ratioPassed = ratio == null ? true : ratio <= T.max_ratio_vs_target_mask;
   const confidencePassed = confidence >= T.min_confidence;
-  const refinementPassed = iouPassed && ratioPassed && confidencePassed;
+  const refinementPassedNative = iouPassed && ratioPassed && confidencePassed;
+
+  // ── Ring sanity (closed + non-self-intersecting) ─────────────────────────
+  const ringClosed =
+    refinedClosed.length >= 4 &&
+    refinedClosed[0][0] === refinedClosed[refinedClosed.length - 1][0] &&
+    refinedClosed[0][1] === refinedClosed[refinedClosed.length - 1][1];
+  const ringSelfIntersecting = isRingSelfIntersecting(refinedClosed);
 
   // ── Safe-refinement guard ───────────────────────────────────────────────
   const rawToRefinedAreaRatio = rawAreaSqft > 0 ? refinedAreaSqft / rawAreaSqft : 0;
@@ -237,10 +264,6 @@ export function refineTrueOuterRoofPerimeter(
   const rawAreaVsTargetPct = targetAreaSqft
     ? (Math.abs(rawAreaSqft - targetAreaSqft) / targetAreaSqft) * 100
     : null;
-  // Loosened to 25% so a raw perimeter that's modestly larger than the
-  // target mask (a common Solar-mask-vs-DSM-mask discrepancy — Fonsica:
-  // raw 3336.9 vs target 2829 = 17.95%) still counts as "sane" for the
-  // do-no-harm guard.
   const rawNearReference =
     (rawAreaVsBenchmarkPct != null && rawAreaVsBenchmarkPct <= 25) ||
     (rawAreaVsTargetPct != null && rawAreaVsTargetPct <= 25);
@@ -248,21 +271,62 @@ export function refineTrueOuterRoofPerimeter(
   const _verticesRemovedPctEarly = raw.length > 0
     ? (removed / raw.length) * 100
     : 0;
+  const _verticesRemovedFractionEarly = _verticesRemovedPctEarly / 100;
 
-  // Destructive if ANY of:
-  //   (a) raw is sane AND refined kept <85% of raw area (>15% loss rule)
-  //   (b) refined collapsed below 50% of raw area, regardless of raw sanity
-  //       (absolute-collapse override — catches OOB drops, snap blowups,
-  //        coord-space mismatch annihilation, etc. Fonsica refined/raw=0.17)
-  //   (c) refinement dropped >40% of original vertices in one pass
   const destructiveByRule = rawNearReference && rawToRefinedAreaRatio < 0.85;
   const destructiveByCollapse = rawToRefinedAreaRatio < 0.50;
   const destructiveByVertexLoss = _verticesRemovedPctEarly > 40;
   const destructive = destructiveByRule || destructiveByCollapse || destructiveByVertexLoss;
 
+  // ── Benchmark-aware override (v1.2) ──────────────────────────────────────
+  // When a vendor benchmark exists and the refined polygon is area-accurate,
+  // shape-stable, and structurally valid, accept it even if target-mask IoU
+  // is low. The target mask is often noisier/smaller than the true outer
+  // roof perimeter (Solar mask vs DSM mask discrepancy) and must not outrank
+  // a strong benchmark area match.
+  let benchmarkOverrideUsed = false;
+  let benchmarkOverrideReason: string | null = null;
+  let targetMaskIoULowDemoted = false;
+  const confidenceWarnings: string[] = [];
+
+  if (
+    !destructive &&
+    input.benchmark_area_sqft != null &&
+    deltaVsBenchmark != null
+  ) {
+    const benchmarkDeltaAbs = Math.abs(deltaVsBenchmark);
+    const eligible =
+      benchmarkDeltaAbs <= 8 &&
+      rawToRefinedAreaRatio >= 0.85 &&
+      _verticesRemovedFractionEarly <= 0.20 &&
+      refinedClosed.length >= 5 &&
+      ringClosed &&
+      !ringSelfIntersecting;
+    if (eligible) {
+      benchmarkOverrideUsed = true;
+      benchmarkOverrideReason =
+        `benchmark_area_within_8pct:delta=${deltaVsBenchmark.toFixed(2)}%,` +
+        `raw_to_refined_ratio=${rawToRefinedAreaRatio.toFixed(3)},` +
+        `vertices_removed_pct=${_verticesRemovedPctEarly.toFixed(0)},` +
+        `vertex_count=${refinedClosed.length},ring_closed=true,non_self_intersecting=true`;
+      if (iou != null && iou < T.min_iou_vs_target_mask) {
+        targetMaskIoULowDemoted = true;
+        confidenceWarnings.push(
+          `target_mask_iou_low_but_benchmark_area_passed:iou=${iou.toFixed(3)}<${T.min_iou_vs_target_mask}`,
+        );
+      }
+      if (!confidencePassed) {
+        confidenceWarnings.push(
+          `confidence_below_threshold_demoted_by_benchmark_override:confidence=${confidence.toFixed(3)}<${T.min_confidence}`,
+        );
+      }
+    }
+  }
+
+  const refinementPassed = refinementPassedNative || benchmarkOverrideUsed;
+
   // Conservative raw gate: raw IoU >= 0.80 normally; relaxed to 0.65 when
-  // raw area is within 25% of target/benchmark (raw is shape-sane even if
-  // the target mask is noisy / smaller than the true outer perimeter).
+  // raw area is shape-sane vs target/benchmark.
   const rawIoUThreshold = rawNearReference ? 0.65 : 0.80;
   const rawIoUOk = rawIoUvsTarget == null ? false : rawIoUvsTarget >= rawIoUThreshold;
   const rawAreaOk = rawNearReference;
@@ -277,6 +341,9 @@ export function refineTrueOuterRoofPerimeter(
   let hardFail: string | null;
   let returnedRing: PxPt[];
   let reason: string;
+  let acceptanceSource: PerimeterRefinementDiagnostics['perimeter_acceptance_source'] = 'failed';
+  let confidenceSource: PerimeterRefinementDiagnostics['confidence_source'] = null;
+  let effectiveConfidence = confidence;
 
   if (destructive) {
     refinementRejected = true;
@@ -292,19 +359,38 @@ export function refineTrueOuterRoofPerimeter(
       passed = true;
       hardFail = null;
       provisionalReady = true;
+      acceptanceSource = 'raw_fallback';
+      confidenceSource = 'raw_fallback';
       reason = `raw_fallback_after_destructive_refinement:rawIoU=${rawIoUvsTarget?.toFixed(2)}:triggers=${triggers.join('|')}`;
     } else {
       passed = false;
       hardFail = 'perimeter_shape_not_accurate';
+      acceptanceSource = 'failed';
       reason = `destructive_refinement_collapse_and_raw_failed_conservative_gate:` +
         `rawIoU=${rawIoUvsTarget?.toFixed(2)},rawAreaOk=${rawAreaOk},triggers=${triggers.join('|')}`;
     }
-  } else if (refinementPassed) {
+  } else if (benchmarkOverrideUsed) {
     passed = true;
     hardFail = null;
     selected = 'refined_perimeter';
     fallbackUsed = 'refined_perimeter';
     returnedRing = refinedClosed;
+    provisionalReady = true;
+    acceptanceSource = 'benchmark_area_sanity';
+    confidenceSource = 'benchmark_area_sanity';
+    // Boost confidence to >=0.85 when accepted via benchmark sanity.
+    effectiveConfidence = Math.max(confidence, 0.85);
+    reason = `benchmark_area_override:delta=${deltaVsBenchmark!.toFixed(2)}%` +
+      (targetMaskIoULowDemoted ? `:target_mask_iou_demoted=${iou?.toFixed(3)}` : '') +
+      `:vertices=${refinedClosed.length}`;
+  } else if (refinementPassedNative) {
+    passed = true;
+    hardFail = null;
+    selected = 'refined_perimeter';
+    fallbackUsed = 'refined_perimeter';
+    returnedRing = refinedClosed;
+    acceptanceSource = 'target_mask_iou';
+    confidenceSource = 'target_mask_iou';
     reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}`;
   } else {
     // Refinement failed but not destructive — try raw fallback if conservative gate passes.
@@ -315,6 +401,8 @@ export function refineTrueOuterRoofPerimeter(
       fallbackUsed = 'raw_perimeter';
       returnedRing = raw;
       provisionalReady = true;
+      acceptanceSource = 'raw_fallback';
+      confidenceSource = 'raw_fallback';
       reason = `raw_fallback_after_refinement_failed_conservative_passed:rawIoU=${rawIoUvsTarget?.toFixed(2)}`;
     } else {
       passed = false;
@@ -322,6 +410,7 @@ export function refineTrueOuterRoofPerimeter(
       selected = 'refined_perimeter';
       fallbackUsed = null;
       returnedRing = raw; // still give downstream something for diagrams
+      acceptanceSource = 'failed';
       const failReasons: string[] = [];
       if (!iouPassed) failReasons.push(`iou:${iou?.toFixed(3)}<${T.min_iou_vs_target_mask}`);
       if (!ratioPassed) failReasons.push(`ratio:${ratio?.toFixed(3)}>${T.max_ratio_vs_target_mask}`);
@@ -329,6 +418,7 @@ export function refineTrueOuterRoofPerimeter(
       reason = `perimeter_shape_not_accurate:${failReasons.join(',')}`;
     }
   }
+
 
   const appliedTree = treeRegions.filter(r => r.applied).length;
   const appliedPatio = patioRegions.filter(r => r.applied).length;
@@ -349,7 +439,7 @@ export function refineTrueOuterRoofPerimeter(
     perimeter_area_delta_pct_vs_benchmark: deltaVsBenchmark != null ? round(deltaVsBenchmark, 2) : null,
     perimeter_to_target_mask_ratio: ratio != null ? round(ratio, 3) : null,
     perimeter_vs_mask_iou: iou != null ? round(iou, 3) : null,
-    perimeter_confidence: round(confidence, 3),
+    perimeter_confidence: round(effectiveConfidence, 3),
     tree_shadow_exclusion_regions: treeRegions,
     patio_screen_exclusion_regions: patioRegions,
     aerial_snap_vertices_added: added,
@@ -386,6 +476,15 @@ export function refineTrueOuterRoofPerimeter(
       area_ok: rawAreaOk,
       passed: conservativeRawPassed,
     },
+    benchmark_override_used: benchmarkOverrideUsed,
+    benchmark_override_reason: benchmarkOverrideReason,
+    benchmark_area_delta_pct: deltaVsBenchmark != null ? round(deltaVsBenchmark, 2) : null,
+    target_mask_iou_demoted_to_warning: targetMaskIoULowDemoted,
+    perimeter_acceptance_source: acceptanceSource,
+    confidence_source: confidenceSource,
+    confidence_warnings: confidenceWarnings,
+    ring_closed: ringClosed,
+    ring_self_intersecting: ringSelfIntersecting,
     applied_tree_exclusions_count: appliedTree,
     rejected_tree_exclusions_count: rejectedTree,
     applied_patio_exclusions_count: appliedPatio,
@@ -394,6 +493,7 @@ export function refineTrueOuterRoofPerimeter(
     snap_distance_cap_px: snapCapPx,
     debug_perimeter_overlay_svg: overlay,
   };
+
 
   return {
     refined_perimeter_px: returnedRing,
@@ -876,6 +976,15 @@ function failResult(
         area_ok: false,
         passed: false,
       },
+      benchmark_override_used: false,
+      benchmark_override_reason: null,
+      benchmark_area_delta_pct: null,
+      target_mask_iou_demoted_to_warning: false,
+      perimeter_acceptance_source: 'failed',
+      confidence_source: null,
+      confidence_warnings: [],
+      ring_closed: false,
+      ring_self_intersecting: false,
       applied_tree_exclusions_count: 0,
       rejected_tree_exclusions_count: 0,
       applied_patio_exclusions_count: 0,
@@ -886,3 +995,43 @@ function failResult(
     },
   };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Ring self-intersection check (O(n²) segment-vs-segment).
+// Adjacent (and wrap-adjacent) edges are excluded.
+// ────────────────────────────────────────────────────────────────────────────
+function isRingSelfIntersecting(ring: PxPt[]): boolean {
+  if (ring.length < 5) return false;
+  // Treat ring as closed; ignore duplicate closing vertex if present.
+  const n =
+    ring.length >= 2 &&
+    ring[0][0] === ring[ring.length - 1][0] &&
+    ring[0][1] === ring[ring.length - 1][1]
+      ? ring.length - 1
+      : ring.length;
+  if (n < 4) return false;
+  const segs: [PxPt, PxPt][] = [];
+  for (let i = 0; i < n; i++) segs.push([ring[i], ring[(i + 1) % n]]);
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      // Skip adjacent (and wrap-adjacent) segments.
+      if (j === i + 1) continue;
+      if (i === 0 && j === segs.length - 1) continue;
+      if (segmentsIntersect(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsIntersect(p1: PxPt, p2: PxPt, p3: PxPt, p4: PxPt): boolean {
+  const d = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
+    (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  const d1 = d(p3[0], p3[1], p4[0], p4[1], p1[0], p1[1]);
+  const d2 = d(p3[0], p3[1], p4[0], p4[1], p2[0], p2[1]);
+  const d3 = d(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]);
+  const d4 = d(p1[0], p1[1], p2[0], p2[1], p4[0], p4[1]);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  return false;
+}
+
