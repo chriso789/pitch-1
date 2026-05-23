@@ -551,6 +551,7 @@ export function refineTrueOuterRoofPerimeter(
     },
     benchmark_override_used: benchmarkOverrideUsed,
     benchmark_override_reason: benchmarkOverrideReason,
+    benchmark_support_used: benchmarkSupportUsed,
     benchmark_area_delta_pct: deltaVsBenchmark != null ? round(deltaVsBenchmark, 2) : null,
     target_mask_iou_demoted_to_warning: targetMaskIoULowDemoted,
     perimeter_acceptance_source: acceptanceSource,
@@ -564,6 +565,9 @@ export function refineTrueOuterRoofPerimeter(
     rejected_patio_exclusions_count: rejectedPatio,
     footprint_bbox_diagonal_px: round(bboxDiagPx, 1),
     snap_distance_cap_px: snapCapPx,
+    expected_min_vertices: expectedMinVertices,
+    perimeter_status: perimeterStatus,
+    shape_validation: shape,
     debug_perimeter_overlay_svg: overlay,
   };
 
