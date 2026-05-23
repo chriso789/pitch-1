@@ -107,14 +107,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             last_name,
             overhead_rate,
             personal_overhead_rate,
-            commission_rate
+            commission_rate,
+            commission_structure
           )
         `)
         .eq('id', pipelineEntryId)
         .single();
       
       if (error) throw error;
-      return data?.profiles as SalesRepData | null;
+      return data?.profiles as (SalesRepData & { commission_structure: string | null }) | null;
     },
     enabled: !!pipelineEntryId,
   });
