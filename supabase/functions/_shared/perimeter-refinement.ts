@@ -311,13 +311,11 @@ export function refineTrueOuterRoofPerimeter(
   const destructiveByVertexLoss = _verticesRemovedPctEarly > 40;
   const destructive = destructiveByRule || destructiveByCollapse || destructiveByVertexLoss;
 
-  // ── Benchmark-aware override (v1.2) ──────────────────────────────────────
-  // When a vendor benchmark exists and the refined polygon is area-accurate,
-  // shape-stable, and structurally valid, accept it even if target-mask IoU
-  // is low. The target mask is often noisier/smaller than the true outer
-  // roof perimeter (Solar mask vs DSM mask discrepancy) and must not outrank
-  // a strong benchmark area match.
-  let benchmarkOverrideUsed = false;
+  // ── Benchmark-aware demotion (v1.3) ──────────────────────────────────────
+  // Benchmark area MATCH alone does NOT promote a perimeter to "valid".
+  // It only demotes a low target_mask_iou from hard-fail to a warning.
+  // Final pass still requires shape/visual edge evidence (see shape gate below).
+  let benchmarkSupportUsed = false;
   let benchmarkOverrideReason: string | null = null;
   let targetMaskIoULowDemoted = false;
   const confidenceWarnings: string[] = [];
@@ -336,27 +334,45 @@ export function refineTrueOuterRoofPerimeter(
       ringClosed &&
       !ringSelfIntersecting;
     if (eligible) {
-      benchmarkOverrideUsed = true;
+      benchmarkSupportUsed = true;
       benchmarkOverrideReason =
-        `benchmark_area_within_8pct:delta=${deltaVsBenchmark.toFixed(2)}%,` +
+        `benchmark_area_support:delta=${deltaVsBenchmark.toFixed(2)}%,` +
         `raw_to_refined_ratio=${rawToRefinedAreaRatio.toFixed(3)},` +
         `vertices_removed_pct=${_verticesRemovedPctEarly.toFixed(0)},` +
-        `vertex_count=${refinedClosed.length},ring_closed=true,non_self_intersecting=true`;
+        `vertex_count=${refinedClosed.length}`;
       if (iou != null && iou < T.min_iou_vs_target_mask) {
         targetMaskIoULowDemoted = true;
         confidenceWarnings.push(
           `target_mask_iou_low_but_benchmark_area_passed:iou=${iou.toFixed(3)}<${T.min_iou_vs_target_mask}`,
         );
       }
-      if (!confidencePassed) {
-        confidenceWarnings.push(
-          `confidence_below_threshold_demoted_by_benchmark_override:confidence=${confidence.toFixed(3)}<${T.min_confidence}`,
-        );
-      }
     }
   }
 
-  const refinementPassed = refinementPassedNative || benchmarkOverrideUsed;
+  // ── Shape / visual edge validation (v1.3) — required gate ────────────────
+  // benchmark_support_used kept for back-compat with consumers.
+  const benchmarkOverrideUsed = benchmarkSupportUsed;
+  const expectedMinVertices = computeExpectedMinVertices(input, refinedClosed.length);
+  const shape = validatePerimeterShape({
+    ring: refinedClosed,
+    input,
+    bboxDiagPx,
+    rawAreaSqft,
+    refinedAreaSqft,
+    targetAreaSqft,
+    benchmarkAreaSqft: input.benchmark_area_sqft ?? null,
+    deltaVsBenchmark,
+    deltaVsTarget,
+    ringClosed,
+    ringSelfIntersecting,
+    expectedMinVertices,
+    benchmarkSupportUsed,
+  });
+
+  // Refinement-native pass is now contingent on shape gate too.
+  const refinementPassedNativeWithShape =
+    refinementPassedNative && shape.shape_passed;
+  const refinementPassed = (refinementPassedNativeWithShape || (benchmarkSupportUsed && shape.shape_passed));
 
   // Conservative raw gate: raw IoU >= 0.80 normally; relaxed to 0.65 when
   // raw area is shape-sane vs target/benchmark.
@@ -377,6 +393,7 @@ export function refineTrueOuterRoofPerimeter(
   let acceptanceSource: PerimeterRefinementDiagnostics['perimeter_acceptance_source'] = 'failed';
   let confidenceSource: PerimeterRefinementDiagnostics['confidence_source'] = null;
   let effectiveConfidence = confidence;
+  let perimeterStatus: 'valid' | 'provisional' | 'failed' = 'failed';
 
   if (destructive) {
     refinementRejected = true;
@@ -392,39 +409,60 @@ export function refineTrueOuterRoofPerimeter(
       passed = true;
       hardFail = null;
       provisionalReady = true;
+      perimeterStatus = 'provisional';
       acceptanceSource = 'raw_fallback';
       confidenceSource = 'raw_fallback';
       reason = `raw_fallback_after_destructive_refinement:rawIoU=${rawIoUvsTarget?.toFixed(2)}:triggers=${triggers.join('|')}`;
     } else {
       passed = false;
       hardFail = 'perimeter_shape_not_accurate';
+      perimeterStatus = 'failed';
       acceptanceSource = 'failed';
       reason = `destructive_refinement_collapse_and_raw_failed_conservative_gate:` +
         `rawIoU=${rawIoUvsTarget?.toFixed(2)},rawAreaOk=${rawAreaOk},triggers=${triggers.join('|')}`;
     }
-  } else if (benchmarkOverrideUsed) {
+  } else if (!shape.shape_passed) {
+    // Shape gate is authoritative: area-only matches are NOT accepted.
+    selected = 'refined_perimeter';
+    fallbackUsed = null;
+    returnedRing = refinedClosed; // keep for diagram
+    if (shape.shape_uncertain) {
+      passed = false;
+      hardFail = 'perimeter_shape_not_accurate';
+      perimeterStatus = 'provisional';
+      provisionalReady = true;
+      acceptanceSource = 'failed';
+      reason = `perimeter_shape_uncertain:${shape.shape_failure_reasons.join('|')}`;
+    } else {
+      passed = false;
+      hardFail = 'perimeter_shape_not_accurate';
+      perimeterStatus = 'failed';
+      acceptanceSource = 'failed';
+      reason = `visual_perimeter_alignment_failed:${shape.shape_failure_reasons.join('|')}`;
+    }
+  } else if (benchmarkSupportUsed) {
     passed = true;
     hardFail = null;
     selected = 'refined_perimeter';
     fallbackUsed = 'refined_perimeter';
     returnedRing = refinedClosed;
-    provisionalReady = true;
+    perimeterStatus = 'valid';
     acceptanceSource = 'benchmark_area_sanity';
     confidenceSource = 'benchmark_area_sanity';
-    // Boost confidence to >=0.85 when accepted via benchmark sanity.
     effectiveConfidence = Math.max(confidence, 0.85);
-    reason = `benchmark_area_override:delta=${deltaVsBenchmark!.toFixed(2)}%` +
+    reason = `benchmark_area_support_plus_shape_validated:delta=${deltaVsBenchmark!.toFixed(2)}%` +
       (targetMaskIoULowDemoted ? `:target_mask_iou_demoted=${iou?.toFixed(3)}` : '') +
-      `:vertices=${refinedClosed.length}`;
+      `:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}:vertices=${refinedClosed.length}`;
   } else if (refinementPassedNative) {
     passed = true;
     hardFail = null;
     selected = 'refined_perimeter';
     fallbackUsed = 'refined_perimeter';
     returnedRing = refinedClosed;
+    perimeterStatus = 'valid';
     acceptanceSource = 'target_mask_iou';
     confidenceSource = 'target_mask_iou';
-    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}`;
+    reason = `refined_${input.raw_perimeter_source}:vertices=${refinedClosed.length}:iou=${iou?.toFixed(2)}:edge_align=${shape.visual_edge_alignment_score.toFixed(2)}`;
   } else {
     // Refinement failed but not destructive — try raw fallback if conservative gate passes.
     if (conservativeRawPassed) {
@@ -434,6 +472,7 @@ export function refineTrueOuterRoofPerimeter(
       fallbackUsed = 'raw_perimeter';
       returnedRing = raw;
       provisionalReady = true;
+      perimeterStatus = 'provisional';
       acceptanceSource = 'raw_fallback';
       confidenceSource = 'raw_fallback';
       reason = `raw_fallback_after_refinement_failed_conservative_passed:rawIoU=${rawIoUvsTarget?.toFixed(2)}`;
@@ -442,7 +481,8 @@ export function refineTrueOuterRoofPerimeter(
       hardFail = 'perimeter_shape_not_accurate';
       selected = 'refined_perimeter';
       fallbackUsed = null;
-      returnedRing = raw; // still give downstream something for diagrams
+      returnedRing = raw;
+      perimeterStatus = 'failed';
       acceptanceSource = 'failed';
       const failReasons: string[] = [];
       if (!iouPassed) failReasons.push(`iou:${iou?.toFixed(3)}<${T.min_iou_vs_target_mask}`);
