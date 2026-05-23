@@ -132,6 +132,14 @@ export function useMeasurementJob(pipelineEntryId: string) {
     userVerifiedPerimeter?: boolean;
     /** Optional id of a prior AI measurement job (for visual QA rerun continuity). */
     priorAiMeasurementJobId?: string | null;
+    /**
+     * Registration Gate v2 — confirmed roof center in raster/DSM pixel space
+     * (the PIN's pixel coordinate on the displayed satellite tile). Required
+     * for Gate B/C to evaluate. `[x, y]` in raster pixels.
+     */
+    confirmedRoofCenterPx?: [number, number] | null;
+    /** Raster size used when computing confirmedRoofCenterPx, e.g. { width, height }. */
+    confirmedRoofCenterRasterSize?: { width: number; height: number } | null;
   }) => {
     // Canonical AI Measurement entrypoint: async job flow that writes to
     // measurement_jobs (polled below) and publishes to roof_measurements +
@@ -157,6 +165,8 @@ export function useMeasurementJob(pipelineEntryId: string) {
         original_geocode_lng: params.originalGeocodeLng ?? null,
         confirmed_roof_center_lat: params.lat,
         confirmed_roof_center_lng: params.lng,
+        confirmed_roof_center_px: params.confirmedRoofCenterPx ?? null,
+        confirmed_roof_center_raster_size: params.confirmedRoofCenterRasterSize ?? null,
         marker_offset_ft: params.markerOffsetFt ?? null,
         user_confirmed_roof_target: params.userConfirmedRoofTarget ?? true,
         roof_target_admin_override: params.roofTargetAdminOverride ?? false,

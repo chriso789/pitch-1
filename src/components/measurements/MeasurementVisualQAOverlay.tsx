@@ -655,8 +655,9 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 type="button"
                 size="sm"
                 className="w-full"
-                disabled={!aiMeasurementJobId || saving || !dirty}
+                disabled={!aiMeasurementJobId || saving || !dirty || !approvalAllowed}
                 onClick={() => callVerify(true, true)}
+                title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
               >
                 <Save className="h-4 w-4 mr-1" />
                 Save edited perimeter
@@ -666,8 +667,9 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 size="sm"
                 variant="default"
                 className="w-full"
-                disabled={!aiMeasurementJobId || saving || rerunning}
+                disabled={!aiMeasurementJobId || saving || rerunning || !approvalAllowed}
                 onClick={() => approveAndRerun()}
+                title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
               >
                 <RefreshCcw className={`h-4 w-4 mr-1 ${rerunning ? 'animate-spin' : ''}`} />
                 Approve & rerun (user_verified=true)
@@ -678,8 +680,9 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   size="sm"
                   variant="outline"
                   className="flex-1"
-                  disabled={!aiMeasurementJobId || saving}
+                  disabled={!aiMeasurementJobId || saving || !approvalAllowed}
                   onClick={() => callVerify(true, false)}
+                  title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
                 >
                   <Check className="h-4 w-4 mr-1" /> Approve only
                 </Button>
@@ -688,12 +691,20 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   size="sm"
                   variant="outline"
                   className="flex-1"
-                  disabled={!aiMeasurementJobId || saving}
+                  disabled={!aiMeasurementJobId || saving || !approvalAllowed}
                   onClick={() => callVerify(false, false)}
+                  title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
                 >
                   <XCircle className="h-4 w-4 mr-1" /> Reject
                 </Button>
               </div>
+              {!approvalAllowed && (
+                <p className="text-[10px] text-destructive leading-snug">
+                  Manual approval is disabled until the coordinate registration gate passes
+                  (confirm roof target + valid geo→DSM→raster transforms + candidate contains
+                  confirmed center).
+                </p>
+              )}
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
                 <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.

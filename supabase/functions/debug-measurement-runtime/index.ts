@@ -21,7 +21,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v1";
+const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v2-registration";
 
 interface AuditQuery {
   lead_id?: string | null;
@@ -81,6 +81,45 @@ function derivePhaseStatus(block: any): "executed" | "skipped" | "missing" {
   return "missing";
 }
 
+function summarizeRegistration(g: Record<string, any> | null) {
+  const reg = (g?.registration ?? null) as Record<string, any> | null;
+  if (!reg) {
+    return {
+      present: false,
+      version: null,
+      user_confirmed_roof_target: null,
+      roof_target_admin_override: null,
+      original_geocode_lat_lng: null,
+      confirmed_roof_center_lat_lng: null,
+      confirmed_roof_center_px: null,
+      geo_to_dsm_px_success: null,
+      dsm_pixel_transform_valid: null,
+      dsm_to_raster_transform_present: null,
+      raster_bounds_contain_confirmed_center: null,
+      confirmed_center_inside_candidate: null,
+      candidate_centroid_offset_from_confirmed_center_px: null,
+      coordinate_registration_gate_passed: null,
+    };
+  }
+  return {
+    present: true,
+    version: reg.version ?? null,
+    user_confirmed_roof_target: reg.user_confirmed_roof_target ?? null,
+    roof_target_admin_override: reg.roof_target_admin_override ?? null,
+    original_geocode_lat_lng: reg.original_geocode_lat_lng ?? null,
+    confirmed_roof_center_lat_lng: reg.confirmed_roof_center_lat_lng ?? null,
+    confirmed_roof_center_px: reg.confirmed_roof_center_px ?? null,
+    geo_to_dsm_px_success: reg.geo_to_dsm_px_success ?? null,
+    dsm_pixel_transform_valid: reg.dsm_pixel_transform_valid ?? null,
+    dsm_to_raster_transform_present: reg.dsm_to_raster_transform != null,
+    raster_bounds_contain_confirmed_center: reg.raster_bounds_contain_confirmed_center ?? null,
+    confirmed_center_inside_candidate: reg.confirmed_center_inside_candidate ?? null,
+    candidate_centroid_offset_from_confirmed_center_px:
+      reg.candidate_centroid_offset_from_confirmed_center_px ?? null,
+    coordinate_registration_gate_passed: reg.coordinate_registration_gate_passed ?? null,
+  };
+}
+
 function summarizeRow(row: any) {
   const g = (row?.geometry_report_json ?? null) as Record<string, any> | null;
   const phase3_5 = pickPhaseBlock(g, "phase3_5") ?? pickPhaseBlock(g, "phase3A_5");
@@ -107,6 +146,7 @@ function summarizeRow(row: any) {
     report_blocked: row.report_blocked ?? null,
     route_warning: g?.route_warning ?? null,
     route_provenance: pickPhaseBlock(g, "route_provenance"),
+    registration: summarizeRegistration(g),
     phase3_5,
     phase3A: pickPhaseBlock(g, "phase3A"),
     phase3B: pickPhaseBlock(g, "phase3B"),
