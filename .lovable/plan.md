@@ -1,143 +1,150 @@
+## Goal
+Stop Fonsica/West Coast wrong-house overlays by making target registration a hard upstream gate. If the target is unconfirmed, the DSM/raster frame is invalid, or the selected candidate does not contain the confirmed roof center, the run must fail as source/target registration — not perimeter shape — and the UI must not allow manual approval.
 
-# Target Roof Registration Gate v2
+## Rules this implements
+- **Roof Measurement Vision QA & Geometry Contract**
+  - Rule 3: true target/perimeter before topology.
+  - Rule 11: customer report stays blocked on registration failure.
+  - Required diagnostics: `route_provenance`, `phase3_5`, `phase3C`, `phase3D`, `phase3E` must be present or explicitly skipped.
+- **Canonical Route & Runtime Provenance Auditor**
+  - Canonical path remains:
+    ```text
+    PullMeasurementsButton -> useMeasurementJob.startJob -> start-ai-measurement -> autonomous graph solver -> MeasurementReportDialog/render PDF
+    ```
+  - Registration failures must still stamp canonical provenance.
+- **Gate math to enforce**
+  - Gate A: `!user_confirmed_roof_target && !roof_target_admin_override` OR missing confirmed roof center => `ai_failed_target_unconfirmed` / `target_roof_not_confirmed`, no source acquisition.
+  - Gate B: `geo_to_dsm_px_success=false` OR `dsm_pixel_transform_valid=false` OR `dsm_to_raster_transform=null` OR confirmed center outside raster bounds => `ai_failed_source_acquisition` / `coordinate_registration_failed`, no candidate selection/perimeter refinement.
+  - Gate C: candidate polygon must contain `confirmed_roof_center_px`; otherwise reject candidate with `candidate_does_not_contain_confirmed_roof_center`.
 
-## Problem (confirmed from screenshots + report JSON)
+## Current audit findings
 
-The Fonsica overlay is drawn on the **wrong house** (neighbor SE of 4063 Fonsica). The pipeline itself already knows registration is broken but kept rendering an editable perimeter anyway:
+### Active route table
+| Caller | Hook/API | Edge function | Writes | Solver/renderer | Status |
+|---|---|---|---|---|---|
+| `PullMeasurementsButton` | `useMeasurementJob.startJob` | `start-ai-measurement` | `measurement_jobs`, `ai_measurement_jobs`, `roof_measurements` | `_shared/autonomous-graph-solver.solveAutonomousGraph`, `MeasurementReportDialog` | Canonical, but registration failure rows are not being persisted early enough. |
+| `MeasurementVisualQAOverlay` | `verify-perimeter-manually` | `verify-perimeter-manually` | `ai_measurement_jobs` | canonical rerun expected through `start-ai-measurement` | UI disables some buttons only when a readable `geometry_report_json.registration` exists; latest Fonsica rows have no registration block. |
+| `MeasurementReportDialog` | report UI / PDF | `render-measurement-pdf` | reads `roof_measurements`; updates render fields | report renderer | Needs registration-aware diagnostic display; must not draw selected perimeter as valid on gate failure. |
 
-- `target_confirmation.src = none`
-- Source acquisition: "No imagery source selected"
-- `overlay_debug.coordinate_space = satellite_px` vs `coordinate_space_solver = dsm_px`
-- `geo_to_dsm_px_success = false`
-- `dsm_pixel_transform_valid = false`
-- `raster_url` centered at stale geocode (27.0820246, -82.1962156)
-- Perimeter sourced from `google_solar_mask_contour` but rendered on a neighbor
-- `coordinate_match = true` is **misleading** — it passed despite frame mismatch
+### Legacy route table
+| Route | Writes | Current risk |
+|---|---|---|
+| `analyze-roof-aerial` | `roof_measurements` | Has legacy provenance constants, but still capable of writing measurement rows. Must stay non-canonical. |
+| `measure` | `roof_measurements` | Legacy measurement route used by older hooks. Must not be used for manual reruns or canonical report rows. |
+| `measure-roof` | `roof_measurements` | Legacy/manual measurement path. |
+| `generate-roof-overlay` | invokes `analyze-roof-aerial` | Legacy route path. |
+| `save-manual-footprint`, `detect-building-footprint`, `useVertexEditing` | `roof_measurements` | Manual/edit paths; should not create customer-ready AI rows. |
 
-This is a **coordinate registration / target confirmation bug**, not a perimeter shape problem. All Phase 3A.5 / 3C / 3D / 3E perimeter-shape tuning is paused until registration is fixed.
+### Canonical row proof from current DB
+Recent Fonsica rows are canonical by route but missing registration diagnostics:
+- Example: `fd8cce32-8f1d-4e64-a7ca-2d39ed9b0963`
+- `created_by_function = start-ai-measurement`
+- `canonical_measurement_route = true`
+- `route_provenance` exists
+- But `geometry_report_json.registration = null`
+- `geometry_report_json.registration_gate = null`
+- `result_state = ai_failed_perimeter`
+- `hard_fail_reason = perimeter_shape_not_accurate`
 
-Skills invoked: `roof-measurement-vision-qa`, `canonical-route-provenance-auditor`.
+### Missing provenance/diagnostic fields
+- Current Fonsica rows have route provenance, but no registration block.
+- Registration failure is being overwritten/misclassified as perimeter failure.
+- Failed registration should persist:
+  - `geometry_report_json.registration_gate`
+  - `geometry_report_json.registration`
+  - `result_state`
+  - `hard_fail_reason`
+  - `block_customer_report_reason`
+  - `diagram_render_intent`
+  - phase blocks with `executed:false`, `skipped_reason:'blocked_by_registration_gate'`
 
-## Scope (Phase 1 — gate + diagnostics only)
+## Implementation plan
 
-Read-only-to-customer: no customer report can be produced from an unregistered run. No deletions, no schema rewrites of existing rows, no auto-recentering of historical jobs. Forward-only enforcement on new runs.
+### 1. Add canonical registration-failure row publishing in `start-ai-measurement`
+- Import and use `evaluateTargetConfirmation()` directly.
+- After resolving tenant/source, create `measurement_jobs` and `ai_measurement_jobs` as canonical failed jobs when Gate A fails.
+- Insert a diagnostic `roof_measurements` row with:
+  - `result_state = ai_failed_target_unconfirmed`
+  - `hard_fail_reason = target_roof_not_confirmed`
+  - `block_customer_report_reason = target_roof_not_confirmed`
+  - `customer_report_ready = false`
+  - `diagram_render_intent = target_confirmation_required`
+  - canonical route DB columns
+  - `geometry_report_json.registration_gate` and `geometry_report_json.registration`
+  - `phase3_5`, `phase3C`, `phase3D`, `phase3E` skipped with `blocked_by_registration_gate`
+- Return `412` after the failed jobs/diagnostic row are persisted.
 
-## Hard gates added
+### 2. Add Gate B immediately after raster/DSM/Solar frame construction
+- Build the registration input from actual frame diagnostics, not hardcoded `geo_to_dsm_px_success:true`.
+- Evaluate `evaluateRegistrationGate()` immediately after raster/DSM/Solar frame values are known and before candidate selection/perimeter refinement.
+- If Gate B fails:
+  - Do not select/render a perimeter.
+  - Do not run Phase 0 or Phase 3A.5.
+  - Persist a diagnostic row as `ai_failed_source_acquisition` / `coordinate_registration_failed`.
+  - Set `diagram_render_intent = coordinate_registration_debug_only`.
+  - Mark Phase 3A.5/3C/3D/3E as skipped by registration gate.
 
-### Gate A — Target confirmation required
-`start-ai-measurement` rejects (HTTP 412) when:
-- `user_confirmed_roof_target ≠ true` AND `roof_target_admin_override ≠ true`
-- OR `confirmed_roof_center_lat/lng` missing
-- OR `confirmed_roof_center_px` missing in the displayed raster
+### 3. Harden Gate C candidate ranking
+- Keep the existing `evaluateCandidate()` loop, but ensure all required per-candidate fields are persisted for every candidate:
+  - `confirmed_center_inside_candidate`
+  - `candidate_centroid_offset_from_confirmed_center_px`
+  - `nearest_neighbor_structure_distance_px`
+  - `rejected`
+  - `rejection_reason`
+- If all candidates fail containment, persist `ai_failed_source_acquisition` / `candidate_does_not_contain_confirmed_roof_center` instead of falling back to mask contour or perimeter refinement.
+- Never let a candidate marked rejected become `selected`.
 
-Persist on the row:
-- `result_state = ai_failed_target_unconfirmed`
-- `hard_fail_reason = target_roof_not_confirmed`
-- `block_customer_report_reason = target_roof_not_confirmed`
+### 4. Make the registration block authoritative in payload prep
+- Update `prepareRoofMeasurementPayload()` so registration is persisted under both:
+  - `geometry_report_json.registration`
+  - `geometry_report_json.registration_gate`
+- If registration failure exists, it must override any later perimeter-derived `result_state`, `hard_fail_reason`, `block_customer_report_reason`, and `diagram_render_intent`.
 
-### Gate B — Frame registration valid
-Block source acquisition and perimeter refinement when any of:
-- `geo_to_dsm_px_success = false`
-- `dsm_pixel_transform_valid = false`
-- `dsm_to_raster_transform` missing / non-invertible
-- raster bounds do not contain `confirmed_roof_center_lat_lng`
+### 5. Fix the UI approval gate and wrong-house overlay display
+- Update `src/lib/measurement/registration-gate.ts` to read both `registration` and `registration_gate`.
+- Treat missing registration on an AI failed row as invalid; show the warning instead of silently omitting it.
+- Update `MeasurementVisualQAOverlay`:
+  - Disable Save edited perimeter, Approve & rerun, Approve only, and Reject when registration is invalid.
+  - Show exact red warning: `Cannot approve perimeter: target roof registration failed.`
+  - If registration fails, do not draw the selected perimeter as valid/editable.
+  - Render registration debug only: geocode marker, confirmed center marker, static map center marker, rejected candidates, wrong-house candidate in red, target-confirmation warning.
+- Update `MeasurementReportDialog` so it passes the canonical rerun handler to `MeasurementVisualQAOverlay` and displays registration-failure diagnostics instead of a customer-style preview.
 
-Persist:
-- `result_state = ai_failed_source_acquisition`
-- `hard_fail_reason = coordinate_registration_failed`
+### 6. Regression tests
 
-### Gate C — Candidate must contain confirmed roof center
-For every footprint / mask / solar-contour candidate:
-- polygon must contain `confirmed_roof_center_px`
-- centroid offset within threshold (target: ≤ 0.5 × candidate bbox half-diagonal)
-- nearest neighboring structure center must be farther than confirmed center
-- otherwise reject with `candidate_does_not_contain_confirmed_roof_center`
+#### Test file paths
+- `supabase/functions/_shared/__tests__/registration-gate_test.ts` — extend existing pure tests.
+- `supabase/functions/start-ai-measurement/__tests__/registration-enforcement-fonsica_test.ts` — new edge regression for pre-source and pre-perimeter blocking.
+- `src/lib/measurement/__tests__/registration-gate.test.ts` — frontend mirror extraction and approval gating.
+- `src/components/measurements/__tests__/MeasurementVisualQAOverlay.registration.test.tsx` — UI buttons disabled and warning visible.
 
-Persist per candidate: `confirmed_center_inside_candidate`, `candidate_centroid_offset_from_confirmed_center_px`, `nearest_neighbor_structure_distance_px`, `selected_candidate_distance_rank`.
+#### Fixtures
+- `supabase/functions/_shared/__fixtures__/fonsica-registration-failure.json`
+  - Anonymized persisted Fonsica row shape using the observed failure: no target confirmation, invalid geo→DSM/raster frame, wrong-house candidate.
+- `src/test/fixtures/fonsica-registration-failure.ts`
+  - Frontend version of the same row for visual QA tests.
 
-### Gate D — Manual approval disabled when registration invalid
-UI disables Save edited perimeter / Approve & rerun unless ALL true:
-- `user_confirmed_roof_target`
-- `geo_to_dsm_px_success`
-- `dsm_pixel_transform_valid`
-- `confirmed_center_inside_candidate`
-- `coordinate_registration_gate_passed`
+#### Assertions
+- No `user_confirmed_roof_target` -> `ai_failed_target_unconfirmed`, `target_roof_not_confirmed`, no source acquisition status.
+- `geo_to_dsm_px_success=false` -> `ai_failed_source_acquisition`, `coordinate_registration_failed`, no Phase 3A.5 execution.
+- `dsm_pixel_transform_valid=false` -> same source-acquisition failure.
+- Candidate outside `confirmed_roof_center_px` -> candidate `rejected=true`, `rejection_reason='candidate_does_not_contain_confirmed_roof_center'`.
+- UI `canApproveManualPerimeter=false` disables Save / Approve & rerun / Approve only / Reject.
+- Phase 3A.5 block exists with `executed=false`, `skipped_reason='blocked_by_registration_gate'` when registration fails.
+- Fonsica acceptance thresholds remain: area ±2%, perimeter ±5%, facets within 25%, pitch ±1/12 — but these are not evaluated until registration passes.
 
-Inline warning: "Cannot approve perimeter until target roof registration passes."
+#### Test commands I will run after implementation
+- `supabase--test_edge_functions` for `start-ai-measurement` and shared registration tests.
+- `bunx vitest run src/lib/measurement/__tests__/registration-gate.test.ts src/components/measurements/__tests__/MeasurementVisualQAOverlay.registration.test.tsx`
 
-## Recentering rule
+### 7. Fonsica / West Coast validation
+After deployment, rerun the current Fonsica lead through the canonical path and verify:
+- `selected perimeter` is not rendered over the neighboring house.
+- Target confirmation is required when missing.
+- `registration_gate` and `registration` blocks are populated.
+- Manual approval buttons are disabled.
+- `result_state` is `ai_failed_target_unconfirmed` or `ai_failed_source_acquisition`.
+- Phase 3A.5 has `executed=false`, `skipped_reason='blocked_by_registration_gate'`.
 
-When user has confirmed a structure, raster/static-map center MUST be `confirmed_roof_center_lat_lng`, never the stale address geocode. DSM tile fetch uses the same confirmed center for bounds.
-
-## AI Process Viewer additions
-
-Independently toggleable markers/layers, each tagged with its coordinate frame:
-- original geocode marker
-- confirmed roof center marker (crosshair)
-- static map center marker
-- Google Solar building center marker
-- selected perimeter
-- accepted candidate masks/components
-- rejected candidate footprints (with reason)
-- target component id label
-
-If any layer's frame ≠ the displayed raster frame, render a red banner: "Coordinate frame mismatch — overlay not eligible for manual approval." (no auto-suppress; user sees the mismatch).
-
-## Persisted frame fields (JSONB, not new DB columns)
-
-All of the following written under `geometry_report_json.registration`:
-`original_geocode_lat_lng`, `confirmed_roof_center_lat_lng`, `static_map_center_lat_lng`, `google_solar_building_center_lat_lng`, `dsm_tile_origin_lat_lng`, `dsm_tile_bounds_lat_lng`, `raster_bounds_lat_lng`, `raster_size_px`, `dsm_size_px`, `meters_per_pixel`, `geo_to_raster_transform`, `geo_to_dsm_transform`, `dsm_to_raster_transform`, `coordinate_registration_gate_passed`.
-
-Per drift guard skill: JSONB only — no new stable columns.
-
-## Debug endpoint
-
-Extend `debug-measurement-runtime` to return, per row:
-address, original geocode, confirmed roof center, static map center, Google Solar building center, selected perimeter centroid, `confirmed_center_inside_selected_perimeter`, `dsm_pixel_transform_valid`, `geo_to_dsm_px_success`, `coordinate_registration_gate_passed`, `result_state`, `hard_fail_reason`, route provenance block.
-
-## Result state contract
-
-All new buckets reuse the existing 10-bucket normalizer (`ai_failed_target_unconfirmed`, `ai_failed_source_acquisition` already canonical). No CHECK constraint change. Specific reasons live in `hard_fail_reason` / `block_customer_report_reason` / `geometry_report_json.failure_details`.
-
-## Files / functions touched
-
-Backend (no new edge function folders):
-- `supabase/functions/start-ai-measurement/index.ts` — Gate A pre-flight (HTTP 412); persist confirmation fields
-- `supabase/functions/_shared/autonomous-graph-solver.ts` (and callers) — Gate B & C; reject mis-centered candidates; persist `geometry_report_json.registration`
-- `supabase/functions/_shared/result-state.ts` — ensure both new failure tokens route through `normalizeResultStateForWrite()`
-- `supabase/functions/debug-measurement-runtime/index.ts` — new fields in response
-- `supabase/functions/_shared/dsm-geometry-contract.ts` — add registration gate as a prereq to the existing 6 contracts (does not replace them)
-
-Frontend:
-- `src/components/measurements/MeasurementReportDialog.tsx` — disable approval CTAs when registration invalid; banner
-- `src/components/measurements/AIMeasurement3DDebugViewer.tsx` (and overlay canvas) — frame markers, layer toggles, mismatch banner
-- `src/hooks/useMeasurementJob.ts` — surface registration flags; gate the "Approve & rerun" action
-- `src/components/measurements/StructureSelectionMap.tsx` — emit `confirmed_roof_center_lat/lng` + `confirmed_roof_center_px` on PIN placement (already the confirmation step per Patent Rule 1)
-
-## Tests (regression harness skill)
-
-New Deno + Vitest tests under existing harness:
-- `start-ai-measurement/__tests__/fonsica-target-not-confirmed-412.test.ts` — Gate A
-- `start-ai-measurement/__tests__/fonsica-registration-fail-blocks-perimeter.test.ts` — Gate B; assert `result_state=ai_failed_source_acquisition`, no perimeter, no topology
-- `_shared/__tests__/candidate-must-contain-confirmed-center.test.ts` — Gate C using a fixture where solar mask centroid lies on the SE neighbor (Fonsica reproducer)
-- `MeasurementReportDialog.registration-invalid.test.tsx` — approval CTAs disabled, banner present
-- `debug-measurement-runtime/__tests__/registration-fields.test.ts` — endpoint returns all 11 required fields
-
-Fonsica fixture: anonymized copy of the current bad row (confirmed center ≈ target roof, candidate centroid on SE neighbor, `geo_to_dsm_px_success=false`).
-
-## Out of scope (deferred)
-
-- Auto-fixing historical mis-registered rows
-- Topology / perimeter-shape scoring changes
-- Any change that would let manual approval bypass Gate D
-- Schema CHECK constraint changes
-
-## Acceptance for Fonsica
-
-A rerun on 4063 Fonsica must:
-1. Refuse to run without PIN confirmation (Gate A).
-2. With PIN placed on the actual Fonsica roof: raster recenters on confirmed center; DSM tile fetched at confirmed center.
-3. If `geo_to_dsm` / `dsm_to_raster` still invalid → row persists as `ai_failed_source_acquisition` with full `registration` block; no editable perimeter shown.
-4. If registration valid → only candidates containing the confirmed center are eligible; SE-neighbor solar contour is rejected with `candidate_does_not_contain_confirmed_roof_center`.
-5. Manual approval CTAs remain disabled until all five Gate D flags are true.
-6. `debug-measurement-runtime` returns the full 11-field registration proof.
+## Database changes
+No schema migration is planned unless the existing columns reject the diagnostic row payload. The fix is edge-function/control-flow and frontend gating.
