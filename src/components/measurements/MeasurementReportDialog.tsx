@@ -1175,6 +1175,40 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                       </AlertDescription>
                     </Alert>
                   )}
+                  {(() => {
+                    const p35: any = (grj as any)?.phase3A_5 ?? (grj as any)?.phase3_5;
+                    const overlaySvg: string | undefined = p35?.debug_perimeter_overlay_svg;
+                    if (!overlaySvg) return null;
+                    const safe = DOMPurify.sanitize(overlaySvg, { USE_PROFILES: { svg: true, svgFilters: true } });
+                    const rejected = !!p35?.refinement_rejected;
+                    const rejectReason = p35?.refinement_rejection_reason;
+                    const fallback = p35?.refinement_fallback_used;
+                    return (
+                      <div className="border rounded-lg overflow-hidden bg-background">
+                        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                          <div className="font-semibold text-sm">Phase 3A.5 — Perimeter Refinement Overlay</div>
+                          <Badge variant="secondary">debug</Badge>
+                        </div>
+                        {rejected && (
+                          <div className="border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-900 dark:text-amber-200">
+                            Refinement rejected: <strong>{rejectReason || 'unknown'}</strong>
+                            {fallback ? <> — fell back to <strong>{fallback}</strong>.</> : null}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 text-[11px] text-muted-foreground border-b">
+                          <span><span className="inline-block w-3 h-0.5 bg-[#888] mr-1 align-middle" /> raw</span>
+                          <span><span className="inline-block w-3 h-0.5 bg-[#00c853] mr-1 align-middle" /> refined</span>
+                          <span><span className="inline-block w-3 h-0.5 bg-[#2196f3] mr-1 align-middle border-dashed" /> selected</span>
+                          <span><span className="inline-block w-2 h-2 rounded-full bg-[#ff5252] mr-1 align-middle" /> rejected vertex</span>
+                          <span><span className="inline-block w-2 h-2 rounded-full bg-[#ff9800] mr-1 align-middle" /> applied exclusion</span>
+                        </div>
+                        <div
+                          className="relative w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[60vh] [&_svg]:block"
+                          dangerouslySetInnerHTML={{ __html: safe }}
+                        />
+                      </div>
+                    );
+                  })()}
                   {diagrams.map((d) => {
                     const label =
                       PAGE_LABELS[(d.page_number || 1) - 1] || d.title || d.diagram_type;

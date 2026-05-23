@@ -2835,7 +2835,9 @@ async function processJob(input: any) {
             rgba: null,
             solar_segment_masks_px: null,
             roof_centroid_px: [cX, cY],
-            benchmark_area_sqft: null,
+            benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft
+              ?? (benchmarkForPerimeter as any)?.area_sqft
+              ?? null,
           });
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
@@ -2879,13 +2881,21 @@ async function processJob(input: any) {
         };
       }
 
-      // HARD GATE: if refinement was attempted and failed, stop before topology.
-      if (phase3A5Result && !phase3A5Result.passed) {
+      // HARD GATE: only fail if refinement failed AND no provisional raw fallback is ready.
+      const provisionalReady = !!(phase3A5Diagnostics as any)?.provisional_perimeter_ready;
+      const fallbackUsed = (phase3A5Diagnostics as any)?.refinement_fallback_used ?? null;
+      const selectedPerimeterLabel = (phase3A5Diagnostics as any)?.selected_perimeter_after_refinement ?? null;
+      const refinementRejected = !!(phase3A5Diagnostics as any)?.refinement_rejected;
+
+      if (phase3A5Result && !phase3A5Result.passed && !provisionalReady) {
         const failReason = phase3A5Result.hard_fail_reason || 'perimeter_refinement_failed';
         console.error(`[PHASE3A5_GATE] FAIL: ${failReason}`,
           JSON.stringify({ iou: phase3A5Diagnostics?.perimeter_vs_mask_iou,
                            ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio,
-                           confidence: phase3A5Diagnostics?.perimeter_confidence }));
+                           confidence: phase3A5Diagnostics?.perimeter_confidence,
+                           refinement_rejected: refinementRejected,
+                           fallback_used: fallbackUsed,
+                           selected: selectedPerimeterLabel }));
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -2895,16 +2905,17 @@ async function processJob(input: any) {
           dsm_loaded: true,
           mask_loaded: !!roofMask,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
-          // Phase 3A.5 verbatim diagnostics
           phase3_5_perimeter_refinement_enabled: true,
           phase3A_5: phase3A5Diagnostics,
           refinement_passed: false,
+          refinement_rejected: refinementRejected,
+          refinement_fallback_used: fallbackUsed,
+          selected_perimeter_after_refinement: selectedPerimeterLabel,
           refinement_iou: phase3A5Diagnostics?.perimeter_vs_mask_iou ?? null,
           perimeter_to_target_mask_ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio ?? null,
           tree_shadow_exclusion_regions: phase3A5Diagnostics?.tree_shadow_exclusion_regions ?? [],
           patio_screen_exclusion_regions: phase3A5Diagnostics?.patio_screen_exclusion_regions ?? [],
           refinement_diagnostics: phase3A5Diagnostics,
-          // Routing — these all map to ai_failed_perimeter via the normalizer.
           hard_fail_reason: failReason,
           block_customer_report_reason: 'perimeter_shape_not_accurate',
           customer_report_ready: false,
@@ -2928,24 +2939,32 @@ async function processJob(input: any) {
         return;
       }
 
-      // GATE PASSED (or not attempted): if we have a refined perimeter, project it
-      // back to geo and use that as the solver footprint.
-      if (phase3A5Result && phase3A5Result.passed && phase3A5Result.refined_perimeter_px.length >= 4) {
+      // GATE PASSED (or refinement rejected with provisional raw fallback).
+      // Project the selected perimeter back to geo for the solver.
+      if (phase3A5Result && phase3A5Result.refined_perimeter_px.length >= 4 &&
+          (phase3A5Result.passed || provisionalReady)) {
         const dsmRef: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
         if (dsmRef) {
           const b = dsmRef.bounds;
-          const refinedGeo: [number, number][] = phase3A5Result.refined_perimeter_px.map(([px, py]) => {
+          const selectedGeo: [number, number][] = phase3A5Result.refined_perimeter_px.map(([px, py]) => {
             const lng = b.minLng + (px / dsmRef.width) * (b.maxLng - b.minLng);
             const lat = b.maxLat - (py / dsmRef.height) * (b.maxLat - b.minLat);
             return [lng, lat] as [number, number];
           });
-          if (refinedGeo.length >= 4) {
-            footprintGeoForSolver = refinedGeo;
-            phase3A5SelectedSource = 'refined_true_outer_roof_perimeter';
-            console.log(`[PHASE3A5_GATE] PASS: replacing solver perimeter with refined (${refinedGeo.length} verts, iou=${phase3A5Diagnostics?.perimeter_vs_mask_iou}, ratio=${phase3A5Diagnostics?.perimeter_to_target_mask_ratio})`);
+          if (selectedGeo.length >= 4) {
+            footprintGeoForSolver = selectedGeo;
+            // Label source honestly based on what was selected.
+            if (fallbackUsed === 'raw_perimeter' || selectedPerimeterLabel === 'raw_perimeter') {
+              phase3A5SelectedSource = 'raw_perimeter_after_destructive_refinement_rejected';
+              console.log(`[PHASE3A5_GATE] PROVISIONAL: refinement rejected (${(phase3A5Diagnostics as any)?.refinement_rejection_reason}); falling back to raw perimeter (${selectedGeo.length} verts, rawIoU=${(phase3A5Diagnostics as any)?.raw_iou_vs_target})`);
+            } else {
+              phase3A5SelectedSource = 'refined_true_outer_roof_perimeter';
+              console.log(`[PHASE3A5_GATE] PASS: replacing solver perimeter with refined (${selectedGeo.length} verts, iou=${phase3A5Diagnostics?.perimeter_vs_mask_iou}, ratio=${phase3A5Diagnostics?.perimeter_to_target_mask_ratio})`);
+            }
           }
         }
       }
+
 
       const perimeterEdges = footprintGeoForSolver.map((p, i) => [p, footprintGeoForSolver[(i + 1) % footprintGeoForSolver.length]] as [[number, number], [number, number]]);
       const graphInput: AutonomousGraphInput = {
