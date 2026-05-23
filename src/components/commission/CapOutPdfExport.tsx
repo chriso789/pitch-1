@@ -13,6 +13,7 @@ export interface CapOutPdfData {
   materialsCost: number;
   laborCost: number;
   overheadAmount: number;
+  otherCharges: number;
   commissionAmount: number;
   miscCost: number;
   totalCost: number;
