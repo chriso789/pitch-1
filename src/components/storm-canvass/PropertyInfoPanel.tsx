@@ -70,6 +70,7 @@ export default function PropertyInfoPanel({
 }: PropertyInfoPanelProps) {
   const { profile } = useUserProfile();
   const isAppMode = useIsAppFieldMode();
+  const { isFieldMobileMode } = useFieldMobileMode();
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [activeTab, setActiveTab] = useState('tools');
