@@ -19,6 +19,7 @@ interface SendEmailRequest {
   cc?: string[];
   bcc?: string[];
   document_ids?: string[]; // IDs of documents to attach
+  attachments?: Array<{ filename: string; content: string }>; // Inline base64 attachments
 }
 
 const handler = async (req: Request): Promise<Response> => {
