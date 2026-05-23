@@ -37,14 +37,26 @@ export interface CapOutPdfData {
 }
 
 export function buildCapOutHtml(data: CapOutPdfData): string {
-  const brandColor = '#2563eb';
+  const brandColor = data.brandPrimaryColor || '#2563eb';
+  const companyName = data.companyName || 'Company';
   const logoBlock = data.companyLogoUrl
-    ? `<img src="${data.companyLogoUrl}" alt="${data.companyName || 'Company'} logo" style="max-height:64px;max-width:220px;object-fit:contain;" />`
-    : `<div style="font-size:20px;font-weight:700;color:${brandColor};">${data.companyName || 'PITCH CRM'}</div>`;
+    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" style="max-height:72px;max-width:240px;object-fit:contain;display:block;" />`
+    : `<div style="font-size:24px;font-weight:800;color:${brandColor};letter-spacing:-0.01em;">${companyName}</div>`;
 
-  const companyMetaParts = [data.companyAddress, data.companyPhone, data.companyEmail].filter(Boolean);
-  const companyMeta = companyMetaParts.length
-    ? `<div style="font-size:10px;color:#64748b;text-align:right;line-height:1.4;">${companyMetaParts.join('<br/>')}</div>`
+  const companyTagParts = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean);
+  const companyTag = companyTagParts.length
+    ? `<div style="font-size:10px;color:#64748b;margin-top:2px;">${companyTagParts.join(' · ')}</div>`
+    : '';
+
+  const locationLine = data.locationName
+    ? `<div style="font-size:12px;font-weight:600;color:#1a1a1a;">${data.locationName}</div>`
+    : '';
+  const locationAddr = data.locationAddress
+    ? `<div style="font-size:11px;color:#475569;line-height:1.4;">${data.locationAddress}</div>`
+    : (data.companyAddress ? `<div style="font-size:11px;color:#475569;line-height:1.4;">${data.companyAddress}</div>` : '');
+  const contactLine = [data.locationPhone || data.companyPhone, data.locationEmail || data.companyEmail].filter(Boolean).join(' · ');
+  const contactBlock = contactLine
+    ? `<div style="font-size:11px;color:#475569;line-height:1.4;">${contactLine}</div>`
     : '';
 
   return `
@@ -56,11 +68,11 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; background: #fff; }
-    .brand-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 12px; }
-    .brand-left { display: flex; align-items: center; gap: 12px; }
-    .brand-company { font-size: 13px; font-weight: 600; color: #1a1a1a; }
-    .header { text-align: center; border-bottom: 2px solid ${brandColor}; padding-bottom: 8px; margin-bottom: 12px; }
-    .header h1 { font-size: 22px; color: ${brandColor}; margin-bottom: 2px; }
+    .brand-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 14px; border-bottom: 3px solid ${brandColor}; margin-bottom: 16px; }
+    .brand-left { display: flex; flex-direction: column; gap: 4px; }
+    .brand-right { text-align: right; }
+    .header { text-align: center; padding-bottom: 8px; margin-bottom: 14px; }
+    .header h1 { font-size: 22px; color: ${brandColor}; margin-bottom: 2px; letter-spacing: 0.05em; }
     .header p { color: #666; font-size: 11px; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 12px; }
     .info-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -89,9 +101,14 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   <div class="brand-bar">
     <div class="brand-left">
       ${logoBlock}
-      ${data.companyName && data.companyLogoUrl ? `<div class="brand-company">${data.companyName}</div>` : ''}
+      ${companyTag}
     </div>
-    ${companyMeta}
+    <div class="brand-right">
+      <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${companyName}</div>
+      ${locationLine}
+      ${locationAddr}
+      ${contactBlock}
+    </div>
   </div>
 
   <div class="header">
