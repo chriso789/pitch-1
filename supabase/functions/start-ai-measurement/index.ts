@@ -454,7 +454,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
     failure_stage: payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'),
-    diagram_render_intent: String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true),
+    diagram_render_intent: payload.diagram_render_intent ?? (String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true)),
     customer_report_ready: resultState === 'customer_report_ready',
   };
 }
