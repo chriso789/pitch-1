@@ -308,6 +308,7 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
   measurement,
   open,
   onOpenChange,
+  embedded = false,
 }) => {
   const stages = useMemo(() => buildStages(measurement), [measurement]);
   const [activeStage, setActiveStage] = useState<string>(stages[0]?.id || 'target');
