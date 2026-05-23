@@ -652,7 +652,7 @@ export default function CommissionReport() {
                                         title="Preview Cap Out Sheet"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setPreviewEntryId(c.id);
+                                          setPreviewEntry(c);
                                         }}
                                       >
                                         <Eye className="h-4 w-4" />
