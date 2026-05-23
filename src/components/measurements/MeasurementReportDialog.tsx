@@ -24,6 +24,7 @@ import AIMeasurement3DDebugViewer from './AIMeasurement3DDebugViewer';
 import MeasurementVisualQAOverlay from './MeasurementVisualQAOverlay';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { Layers as LayersIcon } from 'lucide-react';
+import { readRegistrationBlock } from '@/lib/measurement/registration-gate';
 
 interface MeasurementReportDialogProps {
   open: boolean;
@@ -146,6 +147,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const phase3Enabled = grj.phase3_enabled ?? phase3?.enabled ?? sourceCtxDebug?.phase3_enabled ?? null;
   const acquisitionAudit = grj.acquisition_audit || grj.source_acquisition_debug?.acquisition_audit || m.source_context?.acquisition_audit || m.source_context?.debug?.acquisition_audit || null;
   const sourceAcquisitionDebug = grj.source_acquisition_debug || m.source_context?.source_acquisition_debug || m.source_context?.debug?.source_acquisition_debug || null;
+  const registrationGate = grj.registration_gate || grj.registration || sourceCtxDebug?.registration_gate || sourceCtxDebug?.registration || {};
 
   const fmt = (v: any, unit = '') => {
     if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return '—';
@@ -194,6 +196,21 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Image Source', value: String(m.selected_image_source ?? m.image_source ?? '—') },
     // v13: registration gate
     { label: 'Registration Passed', value: String(grj.footprint_registration_passed ?? '—') },
+    { label: 'Registration Version', value: String(registrationGate.version ?? '—') },
+    { label: 'Target Confirmed', value: String(registrationGate.user_confirmed_roof_target ?? '—') },
+    { label: 'Original Geocode', value: JSON.stringify(registrationGate.original_geocode_lat_lng ?? null) },
+    { label: 'Confirmed Roof Center', value: JSON.stringify(registrationGate.confirmed_roof_center_lat_lng ?? null) },
+    { label: 'Confirmed Center PX', value: JSON.stringify(registrationGate.confirmed_roof_center_px ?? null) },
+    { label: 'Static Map Center', value: JSON.stringify(registrationGate.static_map_center_lat_lng ?? null) },
+    { label: 'Raster Bounds', value: JSON.stringify(registrationGate.raster_bounds_lat_lng ?? null) },
+    { label: 'DSM Tile Bounds', value: JSON.stringify(registrationGate.dsm_tile_bounds_lat_lng ?? null) },
+    { label: 'geo_to_dsm_px_success', value: String(registrationGate.geo_to_dsm_px_success ?? grj.geo_to_dsm_px_success ?? '—') },
+    { label: 'dsm_pixel_transform_valid', value: String(registrationGate.dsm_pixel_transform_valid ?? grj.dsm_pixel_transform_valid ?? '—') },
+    { label: 'dsm_to_raster_transform_exists', value: String((registrationGate.dsm_to_raster_transform_exists ?? registrationGate.dsm_to_raster_transform != null) ?? '—') },
+    { label: 'raster_bounds_contain_center', value: String(registrationGate.raster_bounds_contain_confirmed_center ?? '—') },
+    { label: 'confirmed_center_inside_candidate', value: String(registrationGate.confirmed_center_inside_candidate ?? '—') },
+    { label: 'coordinate_gate_passed', value: String(registrationGate.coordinate_registration_gate_passed ?? '—') },
+    { label: 'Registration Failure', value: String(registrationGate.failure_reason ?? registrationGate.failure?.reason ?? '—') },
     { label: 'Centroid Offset (px)', value: fmt(grj.centroid_offset_px) },
     { label: 'Roof Overlap Score', value: fmt(grj.roof_image_overlap_score) },
     { label: 'DSM Loaded', value: String(grj.dsm_loaded ?? '—') },
