@@ -204,7 +204,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   </div>
 
   <div class="footer">
-    Generated ${new Date().toLocaleDateString()} — ${data.companyName || 'PITCH CRM'}
+    Generated ${new Date().toLocaleDateString()} — ${data.companyName || 'Company'}
   </div>
 </body>
 </html>`;
