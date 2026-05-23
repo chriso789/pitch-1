@@ -369,7 +369,8 @@ export default function CommissionReport() {
           contractValue: Number(contractValue),
           materialCost: Number(materialCost),
           laborCost: Number(laborCost),
-          overheadAmount: Number(overheadAmount + otherCharges), // shown as combined overhead bucket
+          overheadAmount: Number(overheadAmount),
+          otherCharges: Number(otherCharges),
           grossProfit: Number(grossProfit),
           commissionRate: Number(commissionRate),
           commissionType,
