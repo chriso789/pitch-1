@@ -783,6 +783,88 @@ Deno.serve(async (req) => {
       .update({ ai_measurement_job_id: aiJob.id })
       .eq("id", measurementJob.id);
 
+    if (targetConfirmation.ok === false) {
+      const failReason = "target_roof_not_confirmed";
+      const fallbackCoords = {
+        lat: Number(latitude ?? sourceRecord?.verified_lat ?? sourceRecord?.contact_lat ?? original_geocode_lat ?? 0),
+        lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
+      };
+      const registrationBlock = {
+        version: "registration-gate-v2.0",
+        user_confirmed_roof_target: false,
+        roof_target_admin_override: false,
+        original_geocode_lat_lng:
+          original_geocode_lat != null && original_geocode_lng != null
+            ? { lat: original_geocode_lat, lng: original_geocode_lng }
+            : null,
+        confirmed_roof_center_lat_lng: null,
+        confirmed_roof_center_px: null,
+        geo_to_dsm_px_success: false,
+        dsm_pixel_transform_valid: false,
+        dsm_to_raster_transform_exists: false,
+        raster_bounds_contain_confirmed_center: false,
+        confirmed_center_inside_candidate: false,
+        coordinate_registration_gate_passed: false,
+        failure_reason: failReason,
+        blocked_before_source_acquisition: true,
+      };
+      const skippedByTarget = { version: "v1", executed: false, skipped_reason: "blocked_by_target_confirmation" };
+      const debugPayload = {
+        failure_stage: "registration",
+        hard_fail_reason: failReason,
+        block_customer_report_reason: failReason,
+        result_state: "ai_failed_target_unconfirmed",
+        diagram_render_intent: "target_confirmation_required",
+        customer_report_ready: false,
+        registration: registrationBlock,
+        registration_gate: registrationBlock,
+        source_acquisition_debug: {
+          source_acquisition_failed: false,
+          blocked_before_source_acquisition: true,
+          registration_failure_reason: failReason,
+        },
+        phase3A_5: skippedByTarget,
+        phase3_5: skippedByTarget,
+        phase3C: skippedByTarget,
+        phase3D: skippedByTarget,
+        phase3E: skippedByTarget,
+      };
+      const failedId = await insertFailedPreliminaryMeasurement({
+        measurement_job_id: measurementJob.id,
+        ai_measurement_job_id: aiJob.id,
+        lead_id,
+        project_id,
+        tenant_id,
+        company_id,
+        property_address: resolved_address ?? "Unknown Address",
+        source_record_type: lead_id ? "lead" : "project",
+        source_record_id: lead_id || project_id,
+        source_button,
+        logical_image_width,
+        logical_image_height,
+      }, fallbackCoords, failReason, debugPayload, null, 0);
+      await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
+      await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        result_state: normalizeResultStateForWrite("ai_failed_target_unconfirmed", debugPayload),
+        hard_fail_reason: failReason,
+        source_context: { gate_reason: failReason, hard_fail_reason: failReason, debug: debugPayload },
+      }).eq("id", aiJob.id);
+      return json({
+        success: false,
+        jobId: measurementJob.id,
+        aiMeasurementJobId: aiJob.id,
+        measurementId: failedId,
+        error: targetConfirmation.reason,
+        result_state: "ai_failed_target_unconfirmed",
+        hard_fail_reason: failReason,
+        block_customer_report_reason: failReason,
+        message: targetConfirmation.message,
+      }, 412);
+    }
+
     // Registration Gate v2 recentering: when the user has confirmed a roof
     // target, ALL downstream source acquisition (static map, DSM tile,
     // solar lookup) MUST use the confirmed roof center, never the stale
