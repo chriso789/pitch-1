@@ -48,6 +48,24 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const aiJobId: string | null = body.ai_measurement_job_id ?? body.aiMeasurementJobId ?? null;
     const approved: boolean = body.approved !== false;
+    const editedPerimeterPx: Array<[number, number]> | null = Array.isArray(body.edited_perimeter_px)
+      ? body.edited_perimeter_px
+          .map((p: unknown) =>
+            Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number"
+              ? [p[0], p[1]] as [number, number]
+              : null,
+          )
+          .filter((p: [number, number] | null): p is [number, number] => p !== null)
+      : null;
+    const editedPerimeterGeo: Array<[number, number]> | null = Array.isArray(body.edited_perimeter_geo)
+      ? body.edited_perimeter_geo
+          .map((p: unknown) =>
+            Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number"
+              ? [p[0], p[1]] as [number, number]
+              : null,
+          )
+          .filter((p: [number, number] | null): p is [number, number] => p !== null)
+      : null;
 
     if (!aiJobId) {
       return new Response(JSON.stringify({ error: "ai_measurement_job_id_required" }), {
@@ -55,10 +73,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Load the job to ensure caller has access (tenant match).
+    // Load the job to ensure caller has access and to merge into source_context.
     const { data: job, error: jobErr } = await supabase
       .from("ai_measurement_jobs")
-      .select("id, tenant_id, lead_id, project_id, perimeter_visual_review_required")
+      .select("id, tenant_id, lead_id, project_id, perimeter_visual_review_required, source_context")
       .eq("id", aiJobId)
       .single();
     if (jobErr || !job) {
@@ -67,18 +85,42 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Build source_context merge — keep edits in JSONB (schema-drift safe).
+    const existingCtx = (job.source_context && typeof job.source_context === "object")
+      ? job.source_context as Record<string, unknown>
+      : {};
+    const userEditedPerimeter = approved && (editedPerimeterPx?.length || editedPerimeterGeo?.length)
+      ? {
+          perimeter_px: editedPerimeterPx ?? null,
+          perimeter_geo: editedPerimeterGeo ?? null,
+          point_count: (editedPerimeterPx ?? editedPerimeterGeo ?? []).length,
+          saved_at: new Date().toISOString(),
+          saved_by: userId,
+        }
+      : null;
+
+    const nextCtx: Record<string, unknown> = { ...existingCtx };
+    if (userEditedPerimeter) {
+      nextCtx.user_edited_perimeter = userEditedPerimeter;
+    } else if (!approved) {
+      // Rejection clears any prior edit so a rerun starts fresh.
+      delete nextCtx.user_edited_perimeter;
+    }
+
     const updates: Record<string, unknown> = approved
       ? {
         user_verified_perimeter: true,
         user_verified_perimeter_at: new Date().toISOString(),
         user_verified_perimeter_by: userId,
         perimeter_source_locked: "user_verified_perimeter",
+        source_context: nextCtx,
       }
       : {
         user_verified_perimeter: false,
         user_verified_perimeter_at: null,
         user_verified_perimeter_by: null,
         perimeter_source_locked: null,
+        source_context: nextCtx,
       };
 
     const { error: updErr } = await supabase
@@ -91,8 +133,9 @@ Deno.serve(async (req) => {
       success: true,
       ai_measurement_job_id: aiJobId,
       user_verified_perimeter: approved,
+      edited_perimeter_persisted: !!userEditedPerimeter,
       next_step: approved
-        ? "Re-run AI Measurement with user_verified_perimeter=true to lock the perimeter and skip the visual-review gate."
+        ? "Re-run AI Measurement with user_verified_perimeter=true to lock the perimeter and skip the visual-review gate. customer_report_ready remains false until downstream topology/pitch/benchmark gates pass."
         : "Verification cleared.",
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
