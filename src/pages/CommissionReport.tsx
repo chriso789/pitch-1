@@ -649,6 +649,18 @@ export default function CommissionReport() {
                                         variant="ghost"
                                         size="icon"
                                         className="h-7 w-7"
+                                        title="Preview Cap Out Sheet"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPreviewEntryId(c.id);
+                                        }}
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
                                         title="Print Cap Out Sheet"
                                         onClick={(e) => {
                                           e.stopPropagation();
