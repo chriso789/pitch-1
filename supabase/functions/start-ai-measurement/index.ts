@@ -1008,10 +1008,74 @@ async function processJob(input: any) {
     const imageryDecisionLog = imageryResult.decisionLog;
     const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
 
-
-
+    // ══════════ REGISTRATION GATE B (frame validity) ══════════
+    // Verify the raster/DSM frame is sound BEFORE we run candidate selection
+    // or perimeter refinement. Without this, an invalid geo→pixel transform
+    // can let us paint a perimeter on the wrong house (Fonsica failure mode).
+    {
+      const geoToPxOk = Number.isFinite(actualMpp) && actualMpp > 0 && raster.width > 0 && raster.height > 0;
+      const tileExtentM = raster.width * actualMpp;
+      const tileHalfDeg = tileExtentM / 111320; // crude lat-deg per metre
+      const rasterBounds = {
+        sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
+        ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
+      };
+      const confirmedLatLng =
+        (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+          : { lat: coords.lat, lng: coords.lng };
+      const gateB = evaluateRegistrationGate({
+        user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
+        roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
+        original_geocode_lat_lng:
+          (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
+            ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
+            : null,
+        confirmed_roof_center_lat_lng: confirmedLatLng,
+        confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
+        geo_to_dsm_px_success: geoToPxOk,
+        dsm_pixel_transform_valid: geoToPxOk,
+        dsm_to_raster_transform: geoToPxOk ? { meters_per_pixel: actualMpp } : null,
+        raster_bounds_lat_lng: rasterBounds,
+        raster_size_px: { width: raster.width, height: raster.height },
+        meters_per_pixel: actualMpp,
+      });
+      if (gateB.failure && gateB.failure.result_state === "ai_failed_source_acquisition") {
+        const failReason = gateB.failure.hard_fail_reason;
+        const debugPayload = {
+          failure_stage: "registration",
+          hard_fail_reason: failReason,
+          block_customer_report_reason: failReason,
+          result_state: gateB.failure.result_state,
+          coordinate_space_solver: "dsm_px",
+          coordinate_space_renderer: "satellite_px",
+          geo_to_dsm_px_success: geoToPxOk,
+          dsm_pixel_transform_valid: geoToPxOk,
+          registration: gateB.registration,
+          registration_gate: gateB.registration,
+          raster_size: { width: raster.width, height: raster.height },
+          source_acquisition_debug: {
+            source_acquisition_failed: true,
+            no_imagery_source_selected: !geoToPxOk,
+            registration_failure_reason: gateB.failure.reason,
+          },
+          acquisition_audit: acquisitionAudit,
+        };
+        console.log("[REGISTRATION_GATE_B] REJECT", JSON.stringify({ reason: failReason }));
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Registration gate B failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Registration gate B failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit, registration: gateB.registration },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+    }
 
     // (Perimeter inner-trace detection gate runs AFTER footprint selection below)
+
 
 
     // ───────── GEOMETRY-FIRST PIPELINE ─────────
