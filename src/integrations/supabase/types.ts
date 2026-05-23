@@ -18335,6 +18335,636 @@ export type Database = {
           },
         ]
       }
+      import_audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          after_data: Json | null
+          batch_id: string
+          before_data: Json | null
+          created_at: string | null
+          entity_type: string | null
+          id: string
+          message: string | null
+          staging_record_id: string | null
+          target_record_id: string | null
+          target_table: string | null
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          after_data?: Json | null
+          batch_id: string
+          before_data?: Json | null
+          created_at?: string | null
+          entity_type?: string | null
+          id?: string
+          message?: string | null
+          staging_record_id?: string | null
+          target_record_id?: string | null
+          target_table?: string | null
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          after_data?: Json | null
+          batch_id?: string
+          before_data?: Json | null
+          created_at?: string | null
+          entity_type?: string | null
+          id?: string
+          message?: string | null
+          staging_record_id?: string | null
+          target_record_id?: string | null
+          target_table?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_audit_log_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_batches: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          created_by: string
+          duplicate_rows: number | null
+          failed_rows: number | null
+          id: string
+          import_mode: string
+          imported_rows: number | null
+          invalid_rows: number | null
+          metadata: Json | null
+          processed_rows: number | null
+          rollback_available: boolean | null
+          rollback_status: string | null
+          source_label: string | null
+          source_system: string
+          started_at: string | null
+          status: string
+          tenant_id: string
+          total_files: number | null
+          total_rows: number | null
+          updated_at: string | null
+          valid_rows: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          created_by: string
+          duplicate_rows?: number | null
+          failed_rows?: number | null
+          id?: string
+          import_mode?: string
+          imported_rows?: number | null
+          invalid_rows?: number | null
+          metadata?: Json | null
+          processed_rows?: number | null
+          rollback_available?: boolean | null
+          rollback_status?: string | null
+          source_label?: string | null
+          source_system: string
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          total_files?: number | null
+          total_rows?: number | null
+          updated_at?: string | null
+          valid_rows?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string
+          duplicate_rows?: number | null
+          failed_rows?: number | null
+          id?: string
+          import_mode?: string
+          imported_rows?: number | null
+          invalid_rows?: number | null
+          metadata?: Json | null
+          processed_rows?: number | null
+          rollback_available?: boolean | null
+          rollback_status?: string | null
+          source_label?: string | null
+          source_system?: string
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          total_files?: number | null
+          total_rows?: number | null
+          updated_at?: string | null
+          valid_rows?: number | null
+        }
+        Relationships: []
+      }
+      import_duplicate_reviews: {
+        Row: {
+          batch_id: string
+          candidate_record_id: string
+          candidate_table: string
+          confidence: number
+          created_at: string | null
+          decision: string
+          entity_type: string
+          id: string
+          match_reasons: Json | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          staging_record_id: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id: string
+          candidate_record_id: string
+          candidate_table: string
+          confidence?: number
+          created_at?: string | null
+          decision?: string
+          entity_type: string
+          id?: string
+          match_reasons?: Json | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          staging_record_id: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string
+          candidate_record_id?: string
+          candidate_table?: string
+          confidence?: number
+          created_at?: string | null
+          decision?: string
+          entity_type?: string
+          id?: string
+          match_reasons?: Json | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          staging_record_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_duplicate_reviews_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_duplicate_reviews_staging_record_id_fkey"
+            columns: ["staging_record_id"]
+            isOneToOne: false
+            referencedRelation: "import_staging_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_field_maps: {
+        Row: {
+          batch_id: string | null
+          confidence: number | null
+          created_at: string | null
+          default_value: string | null
+          entity_type: string
+          id: string
+          pitch_field: string
+          required: boolean | null
+          source_field: string
+          source_system: string
+          tenant_id: string
+          transform_rule: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          default_value?: string | null
+          entity_type: string
+          id?: string
+          pitch_field: string
+          required?: boolean | null
+          source_field: string
+          source_system: string
+          tenant_id: string
+          transform_rule?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          default_value?: string | null
+          entity_type?: string
+          id?: string
+          pitch_field?: string
+          required?: boolean | null
+          source_field?: string
+          source_system?: string
+          tenant_id?: string
+          transform_rule?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_field_maps_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_file_queue: {
+        Row: {
+          attempts: number | null
+          batch_id: string
+          created_at: string | null
+          file_category: string | null
+          id: string
+          import_file_id: string | null
+          last_error: string | null
+          linked_entity_id: string | null
+          linked_entity_type: string | null
+          metadata: Json | null
+          source_path: string
+          staging_record_id: string | null
+          status: string
+          target_bucket: string
+          target_path: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          batch_id: string
+          created_at?: string | null
+          file_category?: string | null
+          id?: string
+          import_file_id?: string | null
+          last_error?: string | null
+          linked_entity_id?: string | null
+          linked_entity_type?: string | null
+          metadata?: Json | null
+          source_path: string
+          staging_record_id?: string | null
+          status?: string
+          target_bucket?: string
+          target_path?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          batch_id?: string
+          created_at?: string | null
+          file_category?: string | null
+          id?: string
+          import_file_id?: string | null
+          last_error?: string | null
+          linked_entity_id?: string | null
+          linked_entity_type?: string | null
+          metadata?: Json | null
+          source_path?: string
+          staging_record_id?: string | null
+          status?: string
+          target_bucket?: string
+          target_path?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_file_queue_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_file_queue_import_file_id_fkey"
+            columns: ["import_file_id"]
+            isOneToOne: false
+            referencedRelation: "import_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_file_queue_staging_record_id_fkey"
+            columns: ["staging_record_id"]
+            isOneToOne: false
+            referencedRelation: "import_staging_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_files: {
+        Row: {
+          batch_id: string
+          created_at: string | null
+          detected_schema: Json | null
+          error_count: number | null
+          file_kind: string | null
+          file_size_bytes: number | null
+          id: string
+          metadata: Json | null
+          mime_type: string | null
+          original_filename: string
+          processed_count: number | null
+          row_count: number | null
+          status: string
+          storage_bucket: string
+          storage_path: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string | null
+          detected_schema?: Json | null
+          error_count?: number | null
+          file_kind?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          metadata?: Json | null
+          mime_type?: string | null
+          original_filename: string
+          processed_count?: number | null
+          row_count?: number | null
+          status?: string
+          storage_bucket?: string
+          storage_path: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string | null
+          detected_schema?: Json | null
+          error_count?: number | null
+          file_kind?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          metadata?: Json | null
+          mime_type?: string | null
+          original_filename?: string
+          processed_count?: number | null
+          row_count?: number | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_files_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_rollback_items: {
+        Row: {
+          batch_id: string
+          created_at: string | null
+          error: string | null
+          id: string
+          restore_data: Json | null
+          rollback_action: string
+          status: string
+          target_record_id: string
+          target_table: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          restore_data?: Json | null
+          rollback_action?: string
+          status?: string
+          target_record_id: string
+          target_table: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          restore_data?: Json | null
+          rollback_action?: string
+          status?: string
+          target_record_id?: string
+          target_table?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_rollback_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_staging_records: {
+        Row: {
+          batch_id: string
+          created_at: string | null
+          duplicate_candidates: Json | null
+          duplicate_status: string
+          entity_type: string
+          file_id: string | null
+          id: string
+          import_status: string
+          normalized_data: Json
+          raw_data: Json
+          row_number: number | null
+          source_record_id: string | null
+          target_record_id: string | null
+          target_table: string | null
+          tenant_id: string
+          updated_at: string | null
+          validation_errors: Json | null
+          validation_status: string
+          warnings: Json | null
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string | null
+          duplicate_candidates?: Json | null
+          duplicate_status?: string
+          entity_type: string
+          file_id?: string | null
+          id?: string
+          import_status?: string
+          normalized_data?: Json
+          raw_data?: Json
+          row_number?: number | null
+          source_record_id?: string | null
+          target_record_id?: string | null
+          target_table?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          validation_errors?: Json | null
+          validation_status?: string
+          warnings?: Json | null
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string | null
+          duplicate_candidates?: Json | null
+          duplicate_status?: string
+          entity_type?: string
+          file_id?: string | null
+          id?: string
+          import_status?: string
+          normalized_data?: Json
+          raw_data?: Json
+          row_number?: number | null
+          source_record_id?: string | null
+          target_record_id?: string | null
+          target_table?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          validation_errors?: Json | null
+          validation_status?: string
+          warnings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_staging_records_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_staging_records_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "import_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          entity_type: string
+          field_map: Json
+          id: string
+          is_global: boolean | null
+          source_system: string
+          template_name: string
+          tenant_id: string | null
+          transform_rules: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          entity_type: string
+          field_map?: Json
+          id?: string
+          is_global?: boolean | null
+          source_system: string
+          template_name: string
+          tenant_id?: string | null
+          transform_rules?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          entity_type?: string
+          field_map?: Json
+          id?: string
+          is_global?: boolean | null
+          source_system?: string
+          template_name?: string
+          tenant_id?: string | null
+          transform_rules?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      import_validation_errors: {
+        Row: {
+          batch_id: string
+          created_at: string | null
+          entity_type: string | null
+          error_code: string
+          field_name: string | null
+          id: string
+          message: string
+          raw_value: string | null
+          severity: string
+          staging_record_id: string | null
+          suggested_fix: string | null
+          tenant_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string | null
+          entity_type?: string | null
+          error_code: string
+          field_name?: string | null
+          id?: string
+          message: string
+          raw_value?: string | null
+          severity?: string
+          staging_record_id?: string | null
+          suggested_fix?: string | null
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string | null
+          entity_type?: string | null
+          error_code?: string
+          field_name?: string | null
+          id?: string
+          message?: string
+          raw_value?: string | null
+          severity?: string
+          staging_record_id?: string | null
+          suggested_fix?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_validation_errors_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_validation_errors_staging_record_id_fkey"
+            columns: ["staging_record_id"]
+            isOneToOne: false
+            referencedRelation: "import_staging_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       improvement_actions: {
         Row: {
           action_type: string
