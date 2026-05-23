@@ -604,6 +604,11 @@ Deno.serve(async (req) => {
     const roof_target_admin_override: boolean = Boolean(
       body.roof_target_admin_override ?? body.roofTargetAdminOverride ?? false,
     );
+    // v1.4 — caller asserts a human visually approved the perimeter overlay
+    // on a prior run. Bypasses the visual-review gate for this run.
+    const user_verified_perimeter: boolean = Boolean(
+      body.user_verified_perimeter ?? body.userVerifiedPerimeter ?? false,
+    );
     const marker_offset_ft: number | null =
       body.marker_offset_ft ?? body.markerOffsetFt ?? null;
 
@@ -729,6 +734,7 @@ Deno.serve(async (req) => {
       logical_image_width,
       logical_image_height,
       raster_scale,
+      user_verified_perimeter,
     });
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
@@ -2838,6 +2844,7 @@ async function processJob(input: any) {
             benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft
               ?? (benchmarkForPerimeter as any)?.area_sqft
               ?? null,
+            user_verified_perimeter: !!input.user_verified_perimeter,
           });
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
@@ -6994,10 +7001,23 @@ async function processJob(input: any) {
     // perimeter_only         → perimeter passed but topology/promotion/patent failed
     // ai_failed_<stage>      → perimeter failed or upstream failure
     const _perimeterPassed = autonomousDebug?.perimeter_gate_passed === true;
+    // v1.4 — manual visual-QA gate. Even when the numeric perimeter passes,
+    // a low visual_edge_alignment / aerial_edge_support / corner_snap score
+    // (or any long-segment cutoff / non-roof crossing) forces a human review
+    // before the customer report is allowed.
+    const _phase3_5Block: any = (geometryReportJson as any)?.phase3_5
+      ?? (geometryReportJson as any)?.phase3A_5
+      ?? (autonomousDebug as any)?.phase3_5
+      ?? null;
+    const _perimeterVisualReviewRequired =
+      !!_phase3_5Block?.perimeter_visual_review_required
+      && !_phase3_5Block?.user_verified_perimeter;
+    const _userVerifiedPerimeter = !!_phase3_5Block?.user_verified_perimeter;
     const _customerReady = promotedCustomerReportReady
       && !reviewRequired
       && !vendorTruthComparison?.needs_internal_review
-      && !patentBlockReason;
+      && !patentBlockReason
+      && !_perimeterVisualReviewRequired;
     let _resultState: ResultState;
     if (_customerReady) {
       _resultState = 'customer_report_ready';
@@ -7008,6 +7028,19 @@ async function processJob(input: any) {
         : topologyMismatch ? 'topology'
         : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
       _resultState = normalizeResultState(`ai_failed_${_stage}`);
+    }
+    // Surface visual-review block reason for downstream persistence.
+    if (_perimeterVisualReviewRequired) {
+      const failedMetrics = (_phase3_5Block?.visual_review_gate?.failed_metrics ?? []).join(',');
+      blockCustomerReportReason = blockCustomerReportReason
+        ? `${blockCustomerReportReason}|perimeter_visual_review_required:${failedMetrics}`
+        : `perimeter_visual_review_required:${failedMetrics}`;
+      (geometryReportJson as any).perimeter_visual_review_required = true;
+      (geometryReportJson as any).block_customer_report_reason = blockCustomerReportReason;
+    }
+    if (_userVerifiedPerimeter) {
+      (geometryReportJson as any).perimeter_source = _phase3_5Block?.perimeter_source_locked
+        ?? 'user_verified_perimeter';
     }
 
     // ── Phase 3A hard sanity gate ──
@@ -7073,6 +7106,10 @@ async function processJob(input: any) {
       report_blocked: !_customerReadyFinal,
       needs_review: !_customerReadyFinal,
       result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
+      perimeter_visual_review_required: _perimeterVisualReviewRequired,
+      perimeter_source_locked: _userVerifiedPerimeter
+        ? (_phase3_5Block?.perimeter_source_locked ?? 'user_verified_perimeter')
+        : null,
     }).eq("id", input.ai_measurement_job_id);
 
     // Generate the customer-visible SVG report pages from the measured geometry.
