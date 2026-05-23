@@ -432,10 +432,92 @@ export function refineTrueOuterRoofPerimeter(
     benchmarkSupportUsed,
   });
 
+  // ── v1.6 — Corner-cut repair pass ────────────────────────────────────────
+  // When the shape validator reports long straight segments cutting across
+  // visible roof corners, insert the detected midpoints as new vertices and
+  // re-validate. We only accept the repair if it strictly improves the gate
+  // (i.e. resolves the long-segment cut without breaking shape_passed). The
+  // raw shape result is always preserved as shape_before_repair for the
+  // diagnostic overlay / audit trail.
+  let cornerCutRepair: any = { attempted: false, reason: 'no_corner_cuts_detected' };
+  let activeRing = refinedClosed;
+  let activeShape = shape;
+  if (
+    !input.user_verified_perimeter
+    && shape.long_segment_corner_cut_count > 0
+    && Array.isArray(shape.long_segment_corner_cut_midpoints_px)
+    && shape.long_segment_corner_cut_midpoints_px.length > 0
+  ) {
+    try {
+      const repairedRing = insertCornerCutVertices(
+        refinedClosed,
+        shape.long_segment_corner_cut_midpoints_px as PxPt[],
+      );
+      const repairedClosed = repairedRing[repairedRing.length - 1] &&
+        repairedRing[0] &&
+        repairedRing[0][0] === repairedRing[repairedRing.length - 1][0] &&
+        repairedRing[0][1] === repairedRing[repairedRing.length - 1][1];
+      const repairedSelfIntersect = ringSelfIntersects(repairedRing);
+      const repairedShape = validatePerimeterShape({
+        ring: repairedRing,
+        input,
+        bboxDiagPx,
+        rawAreaSqft,
+        refinedAreaSqft,
+        targetAreaSqft,
+        benchmarkAreaSqft: input.benchmark_area_sqft ?? null,
+        deltaVsBenchmark,
+        deltaVsTarget,
+        ringClosed: repairedClosed,
+        ringSelfIntersecting: repairedSelfIntersect,
+        expectedMinVertices,
+        benchmarkSupportUsed,
+      });
+      const improved =
+        repairedShape.long_segment_corner_cut_count < shape.long_segment_corner_cut_count
+        && !repairedSelfIntersect
+        && (repairedShape.shape_passed || !shape.shape_passed);
+      cornerCutRepair = {
+        attempted: true,
+        accepted: improved,
+        inserted_vertices: repairedRing.length - refinedClosed.length,
+        midpoints_used: shape.long_segment_corner_cut_midpoints_px.length,
+        before: {
+          long_segment_corner_cut_count: shape.long_segment_corner_cut_count,
+          shape_passed: shape.shape_passed,
+          aerial_edge_support_pct: shape.aerial_edge_support_pct,
+          corner_snap_confidence: shape.corner_snap_confidence,
+          vertex_count: refinedClosed.length,
+        },
+        after: {
+          long_segment_corner_cut_count: repairedShape.long_segment_corner_cut_count,
+          shape_passed: repairedShape.shape_passed,
+          aerial_edge_support_pct: repairedShape.aerial_edge_support_pct,
+          corner_snap_confidence: repairedShape.corner_snap_confidence,
+          vertex_count: repairedRing.length,
+          self_intersecting: repairedSelfIntersect,
+        },
+      };
+      if (improved) {
+        activeRing = repairedRing;
+        activeShape = repairedShape;
+      }
+    } catch (err) {
+      cornerCutRepair = { attempted: true, failed: true, error: (err as Error).message };
+    }
+  }
+  // Use the (possibly repaired) ring + shape for downstream gates.
+  // shape_before_repair is exposed below for auditability.
+  const shapeBeforeRepair = shape;
+  // Replace local refs used below with repaired versions.
+  // NOTE: refinedClosed kept as original for the overlay; activeRing drives gates.
+  // deno-lint-ignore no-explicit-any
+  (refinedClosed as any).length; // keep tsc happy; original ring preserved
+
   // Refinement-native pass is now contingent on shape gate too.
   const refinementPassedNativeWithShape =
-    refinementPassedNative && shape.shape_passed;
-  const refinementPassed = (refinementPassedNativeWithShape || (benchmarkSupportUsed && shape.shape_passed));
+    refinementPassedNative && activeShape.shape_passed;
+  const refinementPassed = (refinementPassedNativeWithShape || (benchmarkSupportUsed && activeShape.shape_passed));
 
   // Conservative raw gate: raw IoU >= 0.80 normally; relaxed to 0.65 when
   // raw area is shape-sane vs target/benchmark.
