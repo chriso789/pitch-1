@@ -404,6 +404,7 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     materialsCost,
     laborCost,
     overheadAmount,
+    otherCharges: 0,
     commissionAmount,
     miscCost: 0,
     totalCost,
