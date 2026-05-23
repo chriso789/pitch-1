@@ -891,9 +891,9 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
         {/* Confirmed roof center */}
         {layers.confirmed && (
           <g>
-            <circle cx={W / 2} cy={H / 2} r={10} fill="none" stroke="#22c55e" strokeWidth={2} />
-            <line x1={W / 2 - 14} y1={H / 2} x2={W / 2 + 14} y2={H / 2} stroke="#22c55e" />
-            <line x1={W / 2} y1={H / 2 - 14} x2={W / 2} y2={H / 2 + 14} stroke="#22c55e" />
+            <circle cx={confirmedPx[0]} cy={confirmedPx[1]} r={10} fill="none" stroke="#22c55e" strokeWidth={2} />
+            <line x1={confirmedPx[0] - 14} y1={confirmedPx[1]} x2={confirmedPx[0] + 14} y2={confirmedPx[1]} stroke="#22c55e" />
+            <line x1={confirmedPx[0]} y1={confirmedPx[1] - 14} x2={confirmedPx[0]} y2={confirmedPx[1] + 14} stroke="#22c55e" />
           </g>
         )}
 
