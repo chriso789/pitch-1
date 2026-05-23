@@ -318,6 +318,7 @@ async function fetchCapOutContext(pipelineEntryId: string) {
     customerName,
     address,
     repName,
+    repEmail,
     commissionRate,
     commissionType,
     companyName, companyLogoUrl, companyPhone, companyAddress, companyEmail,
