@@ -8801,10 +8801,46 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       dominant_rejection: debug?.dominant_rejection || null,
     },
   };
+
+  // Registration Gate v2 — always stash a gate input on failed rows so
+  // prepareRoofMeasurementPayload persists `geometry_report_json.registration`
+  // even when the failure was downstream of the gate (e.g. perimeter shape).
+  // Without this the UI registration debug card shows "—" for every field on
+  // every failed run and operators cannot tell whether registration passed.
+  try {
+    const rasterSize = debug?.raster_size || {
+      width: Number(input.actual_image_width || input.logical_image_width || 1280),
+      height: Number(input.actual_image_height || input.logical_image_height || 1280),
+    };
+    const mppFinite = Number.isFinite(mpp) && (mpp as number) > 0;
+    (failurePayload as any)._registration_gate_input = {
+      user_confirmed_roof_target: Boolean(input?.user_confirmed_roof_target),
+      roof_target_admin_override: Boolean(input?.roof_target_admin_override),
+      original_geocode_lat_lng:
+        input?.original_geocode_lat != null && input?.original_geocode_lng != null
+          ? { lat: Number(input.original_geocode_lat), lng: Number(input.original_geocode_lng) }
+          : null,
+      confirmed_roof_center_lat_lng:
+        input?.confirmed_roof_center_lat != null && input?.confirmed_roof_center_lng != null
+          ? { lat: Number(input.confirmed_roof_center_lat), lng: Number(input.confirmed_roof_center_lng) }
+          : { lat: coords.lat, lng: coords.lng },
+      confirmed_roof_center_px: input?.confirmed_roof_center_px ?? null,
+      geo_to_dsm_px_success: Boolean(debug?.geo_to_dsm_px_success ?? debug?.coordinate_space_match ?? mppFinite),
+      dsm_pixel_transform_valid: Boolean(debug?.dsm_pixel_transform_valid ?? mppFinite),
+      dsm_to_raster_transform: mppFinite ? { meters_per_pixel: mpp } : null,
+      raster_size_px: rasterSize,
+      meters_per_pixel: mppFinite ? mpp : null,
+      selected_candidate_polygon_px: Array.isArray(debug?.footprint_px) ? debug.footprint_px : null,
+    };
+  } catch (e) {
+    console.warn("[REGISTRATION_GATE] insertFailedPreliminaryMeasurement: failed to build gate input", (e as Error)?.message);
+  }
+
   const { data, error } = await insertRoofMeasurementWithSchemaGuard(failurePayload);
   if (error) throw error;
   return data.id as string;
 }
+
 function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0; }
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
