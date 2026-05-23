@@ -761,25 +761,31 @@ function renderDebugOverlay(
   input: PerimeterRefinementInput,
   raw: PxPt[],
   refined: PxPt[],
+  selected: PxPt[],
   trees: ExcludedRegion[],
   patios: ExcludedRegion[],
+  selectedLabel: 'raw_perimeter' | 'refined_perimeter',
 ): string | null {
   try {
     const W = input.width;
     const H = input.height;
     const path = (pts: PxPt[]) =>
       pts.length ? 'M' + pts.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' L') + ' Z' : '';
-    const dots = (regions: ExcludedRegion[], color: string) =>
+    const dots = (regions: ExcludedRegion[], appliedColor: string, rejectedColor: string) =>
       regions.map(r => {
         const cx = (r.bbox_px.minX + r.bbox_px.maxX) / 2;
         const cy = (r.bbox_px.minY + r.bbox_px.maxY) / 2;
-        return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3" fill="${color}" opacity="0.8"/>`;
+        const color = r.applied ? appliedColor : rejectedColor;
+        return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3" fill="${color}" opacity="0.85"/>`;
       }).join('');
+    // Don't double-draw selected if it equals raw or refined; still draw blue for clarity.
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` +
       `<path d="${path(raw)}" fill="none" stroke="#888" stroke-width="1.5" opacity="0.8"/>` +
-      `<path d="${path(refined)}" fill="none" stroke="#00c853" stroke-width="2" opacity="0.95"/>` +
-      dots(trees, '#ff5252') +
-      dots(patios, '#ff9800') +
+      `<path d="${path(refined)}" fill="none" stroke="#00c853" stroke-width="2" opacity="0.9"/>` +
+      `<path d="${path(selected)}" fill="none" stroke="#2196f3" stroke-width="2.5" stroke-dasharray="4,3" opacity="0.95"/>` +
+      dots(trees, '#ff9800', '#ff5252') +
+      dots(patios, '#ff9800', '#ff5252') +
+      `<title>selected=${selectedLabel}</title>` +
       `</svg>`;
   } catch {
     return null;
@@ -828,6 +834,30 @@ function failResult(
         confidence_actual: 0,
         confidence_passed: false,
       },
+      raw_to_refined_area_ratio: null,
+      raw_iou_vs_target: null,
+      raw_area_vs_benchmark_delta_pct: null,
+      raw_area_vs_target_delta_pct: null,
+      vertices_removed_pct: 0,
+      destructive_refinement_detected: false,
+      refinement_rejected: false,
+      refinement_rejection_reason: null,
+      refinement_fallback_used: null,
+      selected_perimeter_after_refinement: 'refined_perimeter',
+      provisional_perimeter_ready: false,
+      conservative_raw_gate: {
+        iou_threshold: 0.80,
+        iou_actual: null,
+        iou_ok: false,
+        area_ok: false,
+        passed: false,
+      },
+      applied_tree_exclusions_count: 0,
+      rejected_tree_exclusions_count: 0,
+      applied_patio_exclusions_count: 0,
+      rejected_patio_exclusions_count: 0,
+      footprint_bbox_diagonal_px: 0,
+      snap_distance_cap_px: T.max_snap_distance_px,
       debug_perimeter_overlay_svg: null,
     },
   };
