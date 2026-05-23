@@ -4,18 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Printer } from 'lucide-react';
 import {
   buildCapOutDataForJob,
+  buildCapOutDataFromCommission,
   buildCapOutHtml,
   generateCapOutPdf,
   type CapOutPdfData,
+  type CapOutFinancials,
 } from './CapOutPdfExport';
 
 interface CapOutPreviewDialogProps {
   pipelineEntryId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  financials?: CapOutFinancials | null;
 }
 
-export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange }: CapOutPreviewDialogProps) {
+export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange, financials }: CapOutPreviewDialogProps) {
   const [loading, setLoading] = useState(false);
   const [html, setHtml] = useState<string>('');
   const [data, setData] = useState<CapOutPdfData | null>(null);
@@ -26,7 +29,10 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange }: Cap
     let cancelled = false;
     setLoading(true);
     setError(null);
-    buildCapOutDataForJob(pipelineEntryId)
+    const loader = financials
+      ? buildCapOutDataFromCommission(pipelineEntryId, financials)
+      : buildCapOutDataForJob(pipelineEntryId);
+    loader
       .then((d) => {
         if (cancelled) return;
         setData(d);
@@ -41,7 +47,7 @@ export function CapOutPreviewDialog({ pipelineEntryId, open, onOpenChange }: Cap
     return () => {
       cancelled = true;
     };
-  }, [open, pipelineEntryId]);
+  }, [open, pipelineEntryId, financials]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

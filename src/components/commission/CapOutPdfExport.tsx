@@ -222,12 +222,14 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   }
 }
 
-export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<CapOutPdfData> {
-  // Get pipeline entry with contact and rep info
+// Fetch only the branding/customer/rep context for a job. Financial numbers are
+// passed in by the caller so the sheet matches the Commission Report row exactly
+// (enhanced_estimates + invoiced actuals + change orders + sales-tax-excluded math).
+async function fetchCapOutContext(pipelineEntryId: string) {
   const { data: entry } = await supabase
     .from('pipeline_entries')
     .select(`
-      id, lead_name, estimated_value, assigned_to, status, tenant_id, location_id,
+      id, lead_name, estimated_value, assigned_to, tenant_id, location_id,
       contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, address_city, address_state, address_zip)
     `)
     .eq('id', pipelineEntryId)
@@ -235,7 +237,6 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
 
   if (!entry) throw new Error('Job not found');
 
-  // Get rep profile
   let repName = 'N/A';
   let commissionRate = 0;
   let commissionType = 'profit_split';
@@ -252,16 +253,6 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     }
   }
 
-  // Get latest estimate
-  const { data: estimate } = await supabase
-    .from('estimates')
-    .select('selling_price, material_cost, labor_cost, overhead_amount')
-    .eq('pipeline_entry_id', pipelineEntryId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  // Get company branding from tenant
   let companyName: string | null = null;
   let companyLogoUrl: string | null = null;
   let companyPhone: string | null = null;
@@ -290,7 +281,6 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     }
   }
 
-  // Get location info (if assigned)
   let locationName: string | null = null;
   let locationAddress: string | null = null;
   let locationPhone: string | null = null;
@@ -317,7 +307,76 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     ? [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(', ')
     : '';
 
-  const sellPrice = Number(estimate?.selling_price || entry.estimated_value || 0);
+  return {
+    entry,
+    projectName: entry.lead_name || customerName || 'N/A',
+    customerName,
+    address,
+    repName,
+    commissionRate,
+    commissionType,
+    companyName, companyLogoUrl, companyPhone, companyAddress, companyEmail,
+    companyWebsite, companyLicense, brandPrimaryColor,
+    locationName, locationAddress, locationPhone, locationEmail,
+  };
+}
+
+export interface CapOutFinancials {
+  contractValue: number;
+  materialCost: number;
+  laborCost: number;
+  overheadAmount: number;
+  grossProfit: number;
+  commissionAmount: number;
+  commissionRate?: number;
+  commissionType?: string;
+  repName?: string;
+}
+
+/**
+ * Build cap out data using EXACT numbers from the Commission Report row, so the
+ * printed/preview sheet shows the same materials/labor/overhead/profit/commission
+ * the user sees in the table (no separate, divergent recomputation).
+ */
+export async function buildCapOutDataFromCommission(
+  pipelineEntryId: string,
+  fin: CapOutFinancials,
+): Promise<CapOutPdfData> {
+  const { entry: _e, ...ctx } = await fetchCapOutContext(pipelineEntryId);
+  const totalCost = fin.materialCost + fin.laborCost + fin.overheadAmount;
+  const marginPct = fin.contractValue > 0 ? (fin.grossProfit / fin.contractValue) * 100 : 0;
+  return {
+    ...ctx,
+    repName: fin.repName || ctx.repName,
+    date: new Date().toLocaleDateString(),
+    sellPrice: fin.contractValue,
+    materialsCost: fin.materialCost,
+    laborCost: fin.laborCost,
+    overheadAmount: fin.overheadAmount,
+    commissionAmount: fin.commissionAmount,
+    miscCost: 0,
+    totalCost,
+    profit: fin.grossProfit,
+    marginPct,
+    commissionRate: fin.commissionRate ?? ctx.commissionRate,
+    commissionType: fin.commissionType ?? ctx.commissionType,
+  };
+}
+
+/** Fallback path when no precomputed commission row is available. */
+export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<CapOutPdfData> {
+  const ctx = await fetchCapOutContext(pipelineEntryId);
+  const { entry } = ctx;
+
+  const { data: estimate } = await supabase
+    .from('enhanced_estimates')
+    .select('selling_price, material_cost, labor_cost, overhead_amount')
+    .eq('pipeline_entry_id', pipelineEntryId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const sellPrice = Number(estimate?.selling_price || (entry as any).estimated_value || 0);
   const materialsCost = Number(estimate?.material_cost || 0);
   const laborCost = Number(estimate?.labor_cost || 0);
   const overheadAmount = Number(estimate?.overhead_amount || 0);
@@ -326,17 +385,15 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
   const marginPct = sellPrice > 0 ? (profit / sellPrice) * 100 : 0;
 
   let commissionAmount = 0;
-  if (commissionType === 'percentage_contract_price' || commissionType === 'percentage_selling_price') {
-    commissionAmount = sellPrice * (commissionRate / 100);
+  if (ctx.commissionType === 'percentage_contract_price' || ctx.commissionType === 'percentage_selling_price') {
+    commissionAmount = sellPrice * (ctx.commissionRate / 100);
   } else {
-    commissionAmount = Math.max(0, profit * (commissionRate / 100));
+    commissionAmount = Math.max(0, profit * (ctx.commissionRate / 100));
   }
 
+  const { entry: _drop, ...rest } = ctx;
   return {
-    projectName: entry.lead_name || customerName || 'N/A',
-    customerName,
-    address,
-    repName,
+    ...rest,
     date: new Date().toLocaleDateString(),
     sellPrice,
     materialsCost,
@@ -347,24 +404,13 @@ export async function buildCapOutDataForJob(pipelineEntryId: string): Promise<Ca
     totalCost,
     profit,
     marginPct,
-    commissionRate,
-    commissionType,
-    companyName,
-    companyLogoUrl,
-    companyPhone,
-    companyAddress,
-    companyEmail,
-    companyWebsite,
-    companyLicense,
-    brandPrimaryColor,
-    locationName,
-    locationAddress,
-    locationPhone,
-    locationEmail,
   };
 }
 
-export async function exportCapOutForJob(pipelineEntryId: string) {
-  const data = await buildCapOutDataForJob(pipelineEntryId);
+export async function exportCapOutForJob(pipelineEntryId: string, fin?: CapOutFinancials) {
+  const data = fin
+    ? await buildCapOutDataFromCommission(pipelineEntryId, fin)
+    : await buildCapOutDataForJob(pipelineEntryId);
   generateCapOutPdf(data);
 }
+

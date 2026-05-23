@@ -71,7 +71,7 @@ export default function CommissionReport() {
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [verifyEntry, setVerifyEntry] = useState<ComputedCommission | null>(null);
-  const [previewEntryId, setPreviewEntryId] = useState<string | null>(null);
+  const [previewEntry, setPreviewEntry] = useState<ComputedCommission | null>(null);
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
   // Minimum stage_order for "project" level
@@ -652,7 +652,7 @@ export default function CommissionReport() {
                                         title="Preview Cap Out Sheet"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setPreviewEntryId(c.id);
+                                          setPreviewEntry(c);
                                         }}
                                       >
                                         <Eye className="h-4 w-4" />
@@ -664,7 +664,17 @@ export default function CommissionReport() {
                                         title="Print Cap Out Sheet"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          exportCapOutForJob(c.id);
+                                          exportCapOutForJob(c.id, {
+                                            contractValue: c.contractValue,
+                                            materialCost: c.materialCost,
+                                            laborCost: c.laborCost,
+                                            overheadAmount: c.overheadAmount,
+                                            grossProfit: c.grossProfit,
+                                            commissionAmount: c.commissionAmount,
+                                            commissionRate: c.commissionRate,
+                                            commissionType: c.commissionType,
+                                            repName: c.repName,
+                                          });
                                         }}
                                       >
                                         <Printer className="h-4 w-4" />
@@ -750,9 +760,20 @@ export default function CommissionReport() {
           />
         )}
         <CapOutPreviewDialog
-          pipelineEntryId={previewEntryId}
-          open={!!previewEntryId}
-          onOpenChange={(open) => { if (!open) setPreviewEntryId(null); }}
+          pipelineEntryId={previewEntry?.id ?? null}
+          open={!!previewEntry}
+          onOpenChange={(open) => { if (!open) setPreviewEntry(null); }}
+          financials={previewEntry ? {
+            contractValue: previewEntry.contractValue,
+            materialCost: previewEntry.materialCost,
+            laborCost: previewEntry.laborCost,
+            overheadAmount: previewEntry.overheadAmount,
+            grossProfit: previewEntry.grossProfit,
+            commissionAmount: previewEntry.commissionAmount,
+            commissionRate: previewEntry.commissionRate,
+            commissionType: previewEntry.commissionType,
+            repName: previewEntry.repName,
+          } : null}
         />
       </div>
     </GlobalLayout>
