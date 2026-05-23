@@ -664,7 +664,17 @@ export default function CommissionReport() {
                                         title="Print Cap Out Sheet"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          exportCapOutForJob(c.id);
+                                          exportCapOutForJob(c.id, {
+                                            contractValue: c.contractValue,
+                                            materialCost: c.materialCost,
+                                            laborCost: c.laborCost,
+                                            overheadAmount: c.overheadAmount,
+                                            grossProfit: c.grossProfit,
+                                            commissionAmount: c.commissionAmount,
+                                            commissionRate: c.commissionRate,
+                                            commissionType: c.commissionType,
+                                            repName: c.repName,
+                                          });
                                         }}
                                       >
                                         <Printer className="h-4 w-4" />
