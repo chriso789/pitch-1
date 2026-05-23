@@ -2830,6 +2830,67 @@ async function processJob(input: any) {
           const cX = rawPerimDsmPx.reduce((s, p) => s + p[0], 0) / Math.max(1, rawPerimDsmPx.length);
           const cY = rawPerimDsmPx.reduce((s, p) => s + p[1], 0) / Math.max(1, rawPerimDsmPx.length);
 
+          // ── v1.5 — Aerial RGBA acquisition ───────────────────────────────
+          // Resample the already-decoded Google/Mapbox satellite tile into
+          // DSM pixel space so the visual-edge / corner-snap / non-roof
+          // crossing detectors in perimeter-refinement.ts get real RGB data
+          // instead of receiving null and falling back to "unknown" scores.
+          // Method: for each DSM pixel, pixelToGeo(DSM) → lngLatToPx(aerial),
+          // nearest-neighbour sample. O(dsmW*dsmH); typically <70k iterations.
+          let aerialRgba: Uint8ClampedArray | null = null;
+          let aerialResampleLog: any = { attempted: false };
+          try {
+            if (raster?.data && raster.width && raster.height && raster.data.length >= raster.width * raster.height * 3) {
+              const tileW = raster.width as number;
+              const tileH = raster.height as number;
+              const tileChannels = raster.data.length / (tileW * tileH);
+              const tileData = raster.data as Uint8Array;
+              const out = new Uint8ClampedArray(dsmW * dsmH * 4);
+              let sampled = 0;
+              let oob = 0;
+              for (let dy = 0; dy < dsmH; dy++) {
+                for (let dx = 0; dx < dsmW; dx++) {
+                  const [glng, glat] = pixelToGeo(dx, dy, dsmForRefine);
+                  const tilePx = lngLatToPx(
+                    glat, glng,
+                    { lat: coords.lat, lng: coords.lng },
+                    tileW, tileH, actualMpp,
+                  );
+                  const tx = Math.round(tilePx.x);
+                  const ty = Math.round(tilePx.y);
+                  const oi = (dy * dsmW + dx) * 4;
+                  if (tx < 0 || tx >= tileW || ty < 0 || ty >= tileH) {
+                    out[oi] = 0; out[oi + 1] = 0; out[oi + 2] = 0; out[oi + 3] = 0;
+                    oob++;
+                    continue;
+                  }
+                  const ti = (ty * tileW + tx) * tileChannels;
+                  out[oi] = tileData[ti];
+                  out[oi + 1] = tileData[ti + 1];
+                  out[oi + 2] = tileData[ti + 2];
+                  out[oi + 3] = tileChannels >= 4 ? tileData[ti + 3] : 255;
+                  sampled++;
+                }
+              }
+              aerialRgba = out;
+              aerialResampleLog = {
+                attempted: true,
+                aerial_tile_size: { width: tileW, height: tileH },
+                aerial_tile_channels: tileChannels,
+                dsm_size: { width: dsmW, height: dsmH },
+                sampled_pixels: sampled,
+                out_of_bounds_pixels: oob,
+                coverage_pct: Number((sampled / (dsmW * dsmH)).toFixed(3)),
+              };
+            } else {
+              aerialResampleLog = { attempted: false, reason: 'no_decoded_aerial_raster_available' };
+            }
+          } catch (err) {
+            aerialRgba = null;
+            aerialResampleLog = { attempted: true, failed: true, error: (err as Error).message };
+          }
+          console.log('[PHASE3A5_AERIAL_RGBA]', JSON.stringify(aerialResampleLog));
+
           phase3A5Result = refineTrueOuterRoofPerimeter({
             raw_perimeter_px: rawPerimDsmPx,
             raw_perimeter_source: phase3A5SelectedSource,
@@ -2838,7 +2899,7 @@ async function processJob(input: any) {
             width: dsmW,
             height: dsmH,
             meters_per_pixel: mppRefine,
-            rgba: null,
+            rgba: aerialRgba,
             solar_segment_masks_px: null,
             roof_centroid_px: [cX, cY],
             benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft
@@ -2846,6 +2907,7 @@ async function processJob(input: any) {
               ?? null,
             user_verified_perimeter: !!input.user_verified_perimeter,
           });
+          (phase3A5Result.diagnostics as any).aerial_rgba_resample = aerialResampleLog;
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
             enabled: true,
