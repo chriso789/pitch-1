@@ -219,45 +219,27 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   }, [open]);
 
+  // Sync contact info (phone/email/name) when toggle changes — address stays
+  // independent so users can add a lead for a different property than the
+  // contact's home address.
   useEffect(() => {
     if (contact && formData.useSameInfo) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        address: fullAddress,
+      setFormData(prev => ({
+        ...prev,
         phone: contact.phone || "",
         email: contact.email || "",
-        name: `${contact.first_name} ${contact.last_name} - Roofing Project`
+        name: prev.name || `${contact.first_name} ${contact.last_name} - Roofing Project`,
       }));
-      
-      if (fullAddress && contact.latitude && contact.longitude) {
-        setVerifiedAddress({
-          street: contact.address_street || '',
-          city: contact.address_city || '',
-          state: contact.address_state || '',
-          zip: contact.address_zip || '',
-          lat: contact.latitude,
-          lng: contact.longitude,
-          formatted_address: fullAddress,
-        });
-      }
     } else if (!formData.useSameInfo) {
-      setVerifiedAddress(null);
-      setFormData(prev => ({ 
-        ...prev, 
-        address: "",
+      setFormData(prev => ({
+        ...prev,
         phone: "",
         email: "",
-        name: ""
+        name: "",
       }));
     }
   }, [formData.useSameInfo, contact]);
+
 
   const loadUserProfile = async () => {
     try {
