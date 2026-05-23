@@ -447,7 +447,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
       // 1. Upload the file to storage
       const fileExt = pendingInvoiceFile.name.split('.').pop();
-      const fileName = `${pipelineEntryId}/${Date.now()}.${fileExt}`;
+      const fileName = `${profile.tenant_id}/${pipelineEntryId}/${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from('documents')
