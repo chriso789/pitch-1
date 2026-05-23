@@ -61,7 +61,7 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     // Fetch and prepare document attachments if requested
-    const attachments: Array<{ filename: string; content: string }> = [];
+    const attachments: Array<{ filename: string; content: string }> = Array.isArray(inlineAttachments) ? [...inlineAttachments] : [];
     const attachmentLinks: Array<{ filename: string; url: string }> = [];
     
     if (document_ids && document_ids.length > 0 && profile?.tenant_id) {
