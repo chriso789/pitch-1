@@ -16,6 +16,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useIsAppFieldMode } from '@/lib/native/appMode';
+import { useFieldMobileMode } from '@/hooks/useFieldMobileMode';
+import PropertyInfoPanelMobileBody from './property-panel/PropertyInfoPanelMobileBody';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
@@ -68,6 +70,7 @@ export default function PropertyInfoPanel({
 }: PropertyInfoPanelProps) {
   const { profile } = useUserProfile();
   const isAppMode = useIsAppFieldMode();
+  const { isFieldMobileMode } = useFieldMobileMode();
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [activeTab, setActiveTab] = useState('tools');
@@ -860,14 +863,52 @@ export default function PropertyInfoPanel({
       <SheetContent
         side="bottom"
         className={cn(
-          "rounded-t-2xl p-0 flex flex-col",
-          isAppMode
-            ? "h-[92vh] max-h-[92vh]"
-            : "h-auto max-h-[85vh]"
+          "rounded-t-3xl p-0 flex flex-col overflow-hidden",
+          isFieldMobileMode
+            ? "h-[92dvh] max-h-[92dvh]"
+            : isAppMode
+              ? "h-[92vh] max-h-[92vh]"
+              : "h-auto max-h-[85vh]"
         )}
-        style={isAppMode ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
+        style={(isFieldMobileMode || isAppMode) ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
       >
-        {/* Scrollable content wrapper for mobile */}
+        {isFieldMobileMode ? (
+          <PropertyInfoPanelMobileBody
+            ownerName={ownerName}
+            fullAddress={fullAddress}
+            primaryOwner={primaryOwner}
+            localProperty={localProperty}
+            property={property}
+            propertyLat={propertyLat}
+            propertyLng={propertyLng}
+            verification={verification as any}
+            phoneNumbers={phoneNumbers}
+            emails={emails}
+            publicLookupLoading={publicLookupLoading}
+            enriching={enriching}
+            skipTraceError={skipTraceError}
+            doorStrategy={doorStrategy}
+            generatingStrategy={generatingStrategy}
+            pipelineScores={pipelineScores}
+            notes={notes}
+            setNotes={setNotes}
+            dispositions={DISPOSITIONS as any}
+            getDispositionBgColor={getDispositionBgColor}
+            onDisposition={handleDisposition}
+            onCall={handleCall}
+            onEmail={handleEmail}
+            onNavigate={handleNavigate}
+            onAddCustomer={handleAddCustomer}
+            onSkipTrace={() => handleSkipTrace()}
+            onPhoto={() => setShowPhotoCapture(true)}
+            onFastEstimate={() => setShowFastEstimate(true)}
+            onInspection={() => setShowInspection(true)}
+            onStormReports={handleStormReports}
+            onGenerateStrategy={handleGenerateStrategy}
+            onGoogleSun={() => window.open(`https://sunroof.withgoogle.com/building/${property.lat}/${property.lng}`, '_blank')}
+          />
+        ) : (
+        /* Scrollable content wrapper for mobile */
         <div
           className={cn(
             "flex-1 overflow-y-auto overscroll-contain",
@@ -875,6 +916,7 @@ export default function PropertyInfoPanel({
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
+
 
           <SheetHeader className="pb-3">
             <div className="flex items-start justify-between">
@@ -1338,6 +1380,8 @@ export default function PropertyInfoPanel({
           {/* Bottom safe area padding for iOS */}
           <div className="h-6 flex-shrink-0" />
         </div>
+        )}
+
         <FastEstimateModal 
           open={showFastEstimate}
           onOpenChange={setShowFastEstimate}

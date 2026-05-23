@@ -1,95 +1,156 @@
-# App Field Mode — 3-Part Pass
+# Mobile Field Mode — Live Canvassing Refactor
 
-Scope: tighten the canvassing field UI for the iOS WebView wrapper and stand up a JS↔Swift bridge. Frontend only. No backend, RLS, or data-model changes.
+Builds on what's already shipped (`src/lib/native/appMode.ts`, `src/lib/native/bridge.ts`, basic safe-area on PropertyInfoPanel / MobileDispositionPanel, Apple Maps bridge wire-in in LiveCanvassingPage). This plan covers the full structural refactor requested.
 
----
-
-## Part 1 — Split PropertyInfoPanel for mobile
-
-`src/components/storm-canvass/PropertyInfoPanel.tsx` is 1478 lines. I will NOT rewrite it. Instead:
-
-1. **Extract the current panel body into sub-sections** (no logic changes), in a new folder `src/components/storm-canvass/property-panel/`:
-   - `PanelHeader.tsx` — owner, badges, address, distance/confidence
-   - `QuickActionsRow.tsx` — Call · Navigate · Photo · Add Customer (sticky, 44px targets)
-   - `DispositionsStrip.tsx` — sticky horizontal scroll of disposition pills
-   - `PropertyIntelSection.tsx` — collapsed by default
-   - `ContactLookupSection.tsx` — collapsed until tapped
-   - `ToolsSection.tsx` — AI Strategy / Storm Reports / Estimate / Inspection grouped under one accordion
-2. **New wrapper** `PropertyInfoPanelMobile.tsx` that composes the sections above with `Accordion` from shadcn, sticky header + actions, `pb-[env(safe-area-inset-bottom)]`, and a shorter default sheet snap (60vh) with drag-to-expand to 92vh.
-3. **PropertyInfoPanel.tsx** stays as the desktop/tablet experience. At the top it branches: `if (isAppFieldMode) return <PropertyInfoPanelMobile {...props} />`.
-4. Same for `MobileDispositionPanel.tsx` — add `pb-[env(safe-area-inset-bottom)]` and a 55vh collapsed snap.
-
-Risk control: extracted sections are pure presentational chunks of the existing JSX. All handlers/state stay in the parent and are passed down.
+Frontend only. No schema, RLS, or edge-function changes. No business logic changes — only JSX reorganization and class tweaks.
 
 ---
 
-## Part 2 — App-mode flag
+## 1. Layout helper
 
-New file `src/lib/native/appMode.ts`:
+**New:** `src/hooks/useFieldMobileMode.ts`
+- Re-exports / composes existing pieces:
+  - `isMobileViewport` from `useIsMobile()` (already exists at `src/hooks/use-mobile.tsx`)
+  - `isNativeApp` from `src/lib/native/appMode.ts` (already exists)
+- Exports `useFieldMobileMode(): { isMobileViewport, isNativeApp, isFieldMobileMode }`
+- `isFieldMobileMode = isMobileViewport || isNativeApp`
 
-```ts
-export const isNativeApp = (): boolean =>
-  typeof navigator !== 'undefined' &&
-  (/PitchCRMApp/i.test(navigator.userAgent) || !!(window as any).PitchNative);
-
-export const isAppFieldMode = (): boolean => isNativeApp(); // alias for clarity
-```
-
-Hook: `useIsAppFieldMode()` returning a stable boolean.
-
-Usage:
-- PropertyInfoPanel branches to mobile layout when true.
-- LiveCanvassingPage tightens paddings (`px-2` vs `px-4`) and hides desktop-only chrome when true.
-- No global CSS changes — opt-in per component to avoid regressions in the browser app.
+**Alias:** `src/utils/nativeBridge.ts` — re-export wrapper around existing `src/lib/native/bridge.ts` exposing the exact function names the user asked for (`isPitchNativeApp`, `openNativeCamera`, `requestNativeLocation`, `openNativeMaps`, `storeNativeToken`, `requestPushPermission`, `haptic`). Thin shim so callers can use either path.
 
 ---
 
-## Part 3 — `window.PitchNative` JS bridge
+## 2. PropertyInfoPanel — modular mobile layout
 
-New file `src/lib/native/bridge.ts` exposing a typed API with web fallbacks. Swift side (in Xcode) implements `WKScriptMessageHandler` for each channel.
+**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx` (1,496 lines)
 
-```ts
-type BridgeResult<T> = { ok: true; data: T } | { ok: false; error: string };
+Approach: keep the existing component as the single source of state/handlers (all `useState`, `useRef`, `useCallback`, Supabase calls stay put). Extract presentational sections into co-located sub-components under `src/components/storm-canvass/property-panel/` that receive props. Then render either the desktop tree (existing) or the mobile tree (new composition) based on `isFieldMobileMode`.
 
-interface PitchNativeAPI {
-  openCamera(opts?: { quality?: number }): Promise<BridgeResult<{ dataUrl: string }>>;
-  getLocation(): Promise<BridgeResult<{ lat: number; lng: number; accuracy: number }>>;
-  openAppleMaps(lat: number, lng: number, label?: string): Promise<BridgeResult<null>>;
-  storeToken(key: string, value: string): Promise<BridgeResult<null>>;
-  readToken(key: string): Promise<BridgeResult<{ value: string | null }>>;
-  requestPushPermission(): Promise<BridgeResult<{ granted: boolean; deviceToken?: string }>>;
-  haptic(style: 'light' | 'medium' | 'heavy' | 'success' | 'error'): Promise<BridgeResult<null>>;
-  share(payload: { title?: string; text?: string; url?: string }): Promise<BridgeResult<null>>;
+**New sub-components** (`src/components/storm-canvass/property-panel/`):
+- `MobilePanelHeader.tsx` — owner, age badge, address, distance verification badge, current disposition badge, small confidence badge. Sticky `top-0 z-10 bg-background border-b`.
+- `MobileQuickActions.tsx` — 4-icon row (Call / Navigate / Photo / Add Customer), `h-12` minimum, `+ More` overflow popover for less-common actions. Sticky under header.
+- `MobileDispositionStrip.tsx` — horizontal scroll chips, `h-11`, readable label, obvious selected state. Uses the same `DISPOSITIONS` array + `handleDisposition` handler from parent.
+- `MobileContactInfo.tsx` — first 2 phones + first 1 email visible; "Show all contact info" expander. DNC numbers disabled + marked. `tel:` / `mailto:` via existing handlers. If no contact: single "Get Contact Info" CTA (de-duplicated — removed from elsewhere on mobile).
+- `MobilePropertyIntel.tsx` — Accordion (collapsed default): APN, sqft, year built, homestead, assessed value, sources + confidence.
+- `MobileFieldTools.tsx` — Collapsible (collapsed default): 3-col icon grid, `h-16` cells — Storm, Google Sun, Directions, Fast Estimate, Add Photo, Strategy, Inspection.
+- `MobileAIPanels.tsx` — Collapsibles for AI Strategy (compact summary first, "View Details" expand), Storm Reports list, Score "Why" panel.
+- `MobileNotesSection.tsx` — collapsed when empty; full-width readable textarea when expanded; never pushes sticky actions off screen.
+
+**Wrapper composition:** in `PropertyInfoPanel.tsx` after all state/handlers, branch:
+
+```tsx
+if (isFieldMobileMode) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="h-[92dvh] max-h-[92dvh] rounded-t-3xl overflow-hidden p-0 flex flex-col"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        <MobilePanelHeader ... />
+        <MobileQuickActions ... />
+        <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-4"
+             style={{ WebkitOverflowScrolling: 'touch' }}>
+          <MobileDispositionStrip ... />
+          <MobileContactInfo ... />
+          <MobilePropertyIntel ... />
+          <MobileFieldTools ... />
+          <MobileAIPanels ... />
+          <MobileNotesSection ... />
+        </div>
+        {/* existing dialogs (FastEstimate, PhotoCapture, Inspection, StormScoreWhy) stay rendered below */}
+      </SheetContent>
+    </Sheet>
+  );
 }
+// existing desktop JSX unchanged below
 ```
 
-Implementation:
-- Each method posts to `window.webkit.messageHandlers.<name>.postMessage(...)` and awaits a response promise resolved by a global callback (`window.__pitchNativeResolve(id, result)`).
-- If `window.webkit?.messageHandlers?.<name>` is missing → web fallback:
-  - `openCamera` → hidden `<input type="file" accept="image/*" capture="environment">`
-  - `getLocation` → `navigator.geolocation.getCurrentPosition`
-  - `openAppleMaps` → `window.location.href = 'maps://?daddr=...'` (iOS) or `https://maps.google.com/?daddr=...`
-  - `storeToken`/`readToken` → `localStorage`
-  - `requestPushPermission` → web `Notification.requestPermission()`
-  - `haptic` → `navigator.vibrate`
-  - `share` → `navigator.share` then anchor fallback
-- Exported as `nativeBridge` and also attached to `window.PitchNative` so legacy code and the Swift side can call uniformly.
-
-Wire-in points (minimal, additive):
-- LiveCanvassingPage navigation handler → `nativeBridge.openAppleMaps(...)` instead of the inline `maps://` builder.
-- Photo capture button on the panel → `nativeBridge.openCamera()` when in app mode, existing flow otherwise.
-- Recenter / GPS in canvass → `nativeBridge.getLocation()` (still falls back to browser geo).
-- Disposition save → `nativeBridge.haptic('success')` (no-op on web).
+Risk control: zero changes to handlers, refs, effects, or Supabase calls — only JSX rearrangement. Desktop tree is preserved 1:1.
 
 ---
 
-## Out of scope (called out, not done)
-- Swift handlers, push registration, Keychain wiring — those live in Xcode, not this repo.
-- Rest of CRM (lead detail, estimate, job pages) app-mode polish — separate pass once this lands.
-- Backend / RLS / schema.
+## 3. MobileDispositionPanel polish
 
-## Files touched
-- **New:** `src/lib/native/appMode.ts`, `src/lib/native/bridge.ts`, `src/components/storm-canvass/property-panel/{PanelHeader,QuickActionsRow,DispositionsStrip,PropertyIntelSection,ContactLookupSection,ToolsSection,PropertyInfoPanelMobile}.tsx`
-- **Edited:** `PropertyInfoPanel.tsx` (top-level branch only), `MobileDispositionPanel.tsx` (safe-area + snap), `LiveCanvassingPage.tsx` (bridge wire-in + app-mode paddings)
+**File:** `src/components/storm-canvass/MobileDispositionPanel.tsx`
+- Switch container to `max-h-[90dvh]` (already at 70vh; widen).
+- Sticky `SheetHeader` with `top-0 bg-background z-10`.
+- Disposition buttons → `h-12` minimum.
+- Notes section collapsed by default (already toggles; keep).
+- "Navigate Here" routes through `nativeBridge.openNativeMaps(...)`.
+- `overflow-y-auto` + `WebkitOverflowScrolling: 'touch'` (partly there; harden).
+- Keep `paddingBottom: env(safe-area-inset-bottom, 0px)` already in place.
 
-Approve and I'll ship Part 1 → 2 → 3 in that order.
+---
+
+## 4. LiveCanvassingPage iOS-safe polish
+
+**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
+- Replace any `h-screen`/`100vh` with `100dvh` (page root already uses `h-[100dvh]`; audit children).
+- Top control bar: ensure `paddingTop: env(safe-area-inset-top, 0px)` (already on root; verify FAB/search bar).
+- Bottom recenter / canvass-mode FAB cluster: add `paddingBottom: calc(env(safe-area-inset-bottom, 0px) + 12px)` to its container so it floats above the home indicator.
+- NavigationPanel: bottom offset bumped by safe-area so it doesn't sit under PropertyInfoPanel sheet drag handle.
+- No changes to: `GoogleLiveLocationMap`, GPS acquisition, route calculation, address search, drop pin, offline photo sync, map style toggle, panel open/close, disposition.
+
+---
+
+## 5. Native bridge shim
+
+**New:** `src/utils/nativeBridge.ts` — re-exports from `src/lib/native/bridge.ts` with the exact names from the spec:
+
+```ts
+export { isNativeApp as isPitchNativeApp } from '@/lib/native/appMode';
+export const openNativeCamera = (p?) => nativeBridge.openCamera(p);
+export const requestNativeLocation = () => nativeBridge.getLocation();
+export const openNativeMaps = (lat, lng, label?) => nativeBridge.openAppleMaps(lat, lng, label);
+export const storeNativeToken = (t: string) => nativeBridge.storeToken('auth', t);
+export const requestPushPermission = () => nativeBridge.requestPushPermission();
+export const haptic = (t?) => nativeBridge.haptic(t ?? 'light');
+```
+
+All already implemented with safe web fallbacks in `bridge.ts`. Wire-in points:
+- `MobileQuickActions` Photo → `openNativeCamera()`; on failure/no native, fall through to existing `setShowPhotoCapture(true)`.
+- `MobileQuickActions` Navigate → `openNativeMaps(lat, lng, address)`; existing `onNavigate` prop still called for route-line state.
+- `handleDisposition` (parent) → `haptic('success')` after successful Supabase update (no-op in browser).
+
+---
+
+## 6 / 7. Backend + business logic untouched
+
+No changes to schema, RLS, or edge functions. No changes to:
+`storm-public-lookup`, `canvassiq-skip-trace`, `noaa-storm-reports`, `door-knock-strategy`, public lookup auto-run, skip trace, owner enrichment, DNC protection, disposition update, visit logging, `canvass_activity_log` insert, auto-create contact on positive dispositions, add-customer merge, storm reports, fast estimate, inspection/photo, distance verification.
+
+---
+
+## 8. QA doc
+
+**New:** `docs/mobile-field-mode-qa.md` — viewport checklist (iPhone SE / 15-17 Pro / iPad / desktop), Live Canvassing flow checklist (select pin → disposition → get contact → call → navigate → add customer → photo → tools → strategy), safe-area / home indicator / notch checks, no horizontal overflow check.
+
+---
+
+## Files
+
+**New (9):**
+- `src/hooks/useFieldMobileMode.ts`
+- `src/utils/nativeBridge.ts`
+- `src/components/storm-canvass/property-panel/MobilePanelHeader.tsx`
+- `src/components/storm-canvass/property-panel/MobileQuickActions.tsx`
+- `src/components/storm-canvass/property-panel/MobileDispositionStrip.tsx`
+- `src/components/storm-canvass/property-panel/MobileContactInfo.tsx`
+- `src/components/storm-canvass/property-panel/MobilePropertyIntel.tsx`
+- `src/components/storm-canvass/property-panel/MobileFieldTools.tsx`
+- `src/components/storm-canvass/property-panel/MobileAIPanels.tsx`
+- `src/components/storm-canvass/property-panel/MobileNotesSection.tsx`
+- `docs/mobile-field-mode-qa.md`
+
+**Edited (3):**
+- `src/components/storm-canvass/PropertyInfoPanel.tsx` — add mobile branch; desktop tree untouched.
+- `src/components/storm-canvass/MobileDispositionPanel.tsx` — sticky header, `h-12` buttons, native maps wire-in.
+- `src/pages/storm-canvass/LiveCanvassingPage.tsx` — safe-area on FAB cluster + NavigationPanel; `100dvh` audit.
+
+## Acceptance
+
+Map-first canvass preserved · property details no longer cramped on iPhone · thumb-reachable actions · no duplicate "Get Contact Info" CTAs · no horizontal overflow · no Supabase regressions · no desktop regressions · native bridge safe in browser · build passes.
+
+## Out of scope
+
+Swift handlers (Xcode side). Lead detail page / estimate / job page polish — separate pass once canvass lands.
