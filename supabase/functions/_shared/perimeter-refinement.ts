@@ -152,17 +152,22 @@ export interface PerimeterRefinementDiagnostics {
   // ── Benchmark-aware acceptance (v1.2) ─────────────────────────────────────
   benchmark_override_used: boolean;
   benchmark_override_reason: string | null;
+  /** v1.3 alias: benchmark match alone NEVER promotes perimeter to valid.
+   * It only demotes a low target_mask_iou from hard-fail to warning. */
+  benchmark_support_used: boolean;
   benchmark_area_delta_pct: number | null;
   target_mask_iou_demoted_to_warning: boolean;
   perimeter_acceptance_source:
     | 'target_mask_iou'
     | 'benchmark_area_sanity'
+    | 'shape_validated'
     | 'raw_fallback'
     | 'manual_override'
     | 'failed';
   confidence_source:
     | 'target_mask_iou'
     | 'benchmark_area_sanity'
+    | 'shape_validated'
     | 'raw_fallback'
     | null;
   confidence_warnings: string[];
@@ -174,7 +179,31 @@ export interface PerimeterRefinementDiagnostics {
   rejected_patio_exclusions_count: number;
   footprint_bbox_diagonal_px: number;
   snap_distance_cap_px: number;
+  // ── v1.3 Shape / visual edge validation ───────────────────────────────────
+  expected_min_vertices: number;
+  perimeter_status: 'valid' | 'provisional' | 'failed';
+  shape_validation: ShapeValidation;
   debug_perimeter_overlay_svg: string | null;
+}
+
+export interface ShapeValidation {
+  area_sanity_passed: boolean;
+  vertex_sanity_passed: boolean;
+  visual_edge_alignment_score: number;
+  aerial_edge_support_pct: number | null;
+  dsm_boundary_support_pct: number | null;
+  corner_snap_confidence: number;
+  long_segment_corner_cut_count: number;
+  non_roof_crossing_count: number;
+  centroid_shift_px: number;
+  centroid_shift_threshold_px: number;
+  target_overlap_with_perimeter: number | null;
+  expected_min_vertices: number;
+  actual_vertex_count: number;
+  shape_passed: boolean;
+  shape_uncertain: boolean;
+  shape_failure_reasons: string[];
+  warnings: string[];
 }
 
 
