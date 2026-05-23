@@ -397,9 +397,10 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
               {measurement?.result_state || '—'}
             </span>
           </span>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange?.(false)}>
             Close
           </Button>
+
         </div>
       </DialogContent>
     </Dialog>
