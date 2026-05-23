@@ -293,16 +293,17 @@ const LAYER_TOGGLES: LayerToggle[] = [
   { key: 'confirmed', label: 'Confirmed roof center', default: true },
   { key: 'solar', label: 'Solar segments', default: true },
   { key: 'targetMask', label: 'Target roof mask', default: true },
-  { key: 'globalMask', label: 'Global mask', default: false },
+  { key: 'globalMask', label: 'Global mask', default: true },
   { key: 'missed', label: 'Missed roof regions', default: true },
   { key: 'perimeter', label: 'Selected perimeter', default: true },
   { key: 'eaves', label: 'Eaves', default: true },
   { key: 'rakes', label: 'Rakes', default: true },
   { key: 'ridges', label: 'Ridges', default: true },
-  { key: 'hips', label: 'Hips', default: false },
-  { key: 'valleys', label: 'Valleys', default: false },
-  { key: 'rejected', label: 'Rejected edges', default: false },
+  { key: 'hips', label: 'Hips', default: true },
+  { key: 'valleys', label: 'Valleys', default: true },
+  { key: 'rejected', label: 'Rejected edges', default: true },
 ];
+
 
 export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
   measurement,
