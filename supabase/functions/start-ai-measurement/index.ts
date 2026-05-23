@@ -604,6 +604,11 @@ Deno.serve(async (req) => {
     const roof_target_admin_override: boolean = Boolean(
       body.roof_target_admin_override ?? body.roofTargetAdminOverride ?? false,
     );
+    // v1.4 — caller asserts a human visually approved the perimeter overlay
+    // on a prior run. Bypasses the visual-review gate for this run.
+    const user_verified_perimeter: boolean = Boolean(
+      body.user_verified_perimeter ?? body.userVerifiedPerimeter ?? false,
+    );
     const marker_offset_ft: number | null =
       body.marker_offset_ft ?? body.markerOffsetFt ?? null;
 
