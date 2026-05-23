@@ -775,21 +775,44 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
         {layers.solar &&
           solarSegments.map((seg: any, i: number) => {
             const poly = seg.polygon_px || seg.bbox_px;
-            if (!poly || !Array.isArray(poly) || poly.length < 3) return null;
+            if (poly && Array.isArray(poly) && poly.length >= 3) {
+              return (
+                <g key={`solar-${i}`}>
+                  <polygon
+                    points={poly.map((p: [number, number]) => `${p[0]},${p[1]}`).join(' ')}
+                    fill="rgba(59,130,246,0.18)"
+                    stroke="#3b82f6"
+                    strokeWidth={1.5}
+                  />
+                </g>
+              );
+            }
+            // Fallback: render center from geo + area
+            const centerGeo = seg.center_geo; // [lng, lat]
+            const cPx = centerGeo
+              ? geoToPx(centerGeo[1], centerGeo[0])
+              : seg.center_px || null;
+            if (!cPx) return null;
+            const areaSqft = Number(seg.area_sqft || 0);
+            const radiusPx = mppX
+              ? Math.max(6, Math.sqrt((areaSqft * 0.092903) / Math.PI) / mppX)
+              : 10;
             return (
               <g key={`solar-${i}`}>
-                <polygon
-                  points={poly.map((p: [number, number]) => `${p[0]},${p[1]}`).join(' ')}
+                <circle
+                  cx={cPx[0]}
+                  cy={cPx[1]}
+                  r={radiusPx}
                   fill="rgba(59,130,246,0.18)"
                   stroke="#3b82f6"
                   strokeWidth={1.5}
                 />
-                {seg.center_px && seg.azimuth_degrees != null && (
+                {seg.azimuth_degrees != null && (
                   <line
-                    x1={seg.center_px[0]}
-                    y1={seg.center_px[1]}
-                    x2={seg.center_px[0] + 25 * Math.sin((seg.azimuth_degrees * Math.PI) / 180)}
-                    y2={seg.center_px[1] - 25 * Math.cos((seg.azimuth_degrees * Math.PI) / 180)}
+                    x1={cPx[0]}
+                    y1={cPx[1]}
+                    x2={cPx[0] + 25 * Math.sin((seg.azimuth_degrees * Math.PI) / 180)}
+                    y2={cPx[1] - 25 * Math.cos((seg.azimuth_degrees * Math.PI) / 180)}
                     stroke="#3b82f6"
                     strokeWidth={2}
                     markerEnd="url(#arrow)"
