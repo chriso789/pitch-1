@@ -165,6 +165,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
         <td>Overhead</td>
         <td class="amount">${formatCurrency(data.overheadAmount)}</td>
       </tr>
+      ${data.otherCharges > 0 ? `<tr><td>Other Charges</td><td class="amount">${formatCurrency(data.otherCharges)}</td></tr>` : ''}
       ${data.miscCost > 0 ? `<tr><td>Misc</td><td class="amount">${formatCurrency(data.miscCost)}</td></tr>` : ''}
       <tr class="total">
         <td>Total Cost</td>
