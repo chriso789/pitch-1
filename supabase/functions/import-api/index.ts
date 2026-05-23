@@ -424,4 +424,159 @@ app.post("/duplicates/:id/decide", async (c) => {
   return jsonOk(c, { id, decision });
 });
 
+// ============================================================
+// Vendor Migration Adapter Layer (Phase 1, staging-only)
+// ============================================================
+import { listAdapters, getAdapter, rankAdapters, detectBestAdapter } from "../_shared/import/adapters/registry.ts";
+import type { ImportFileDescriptor, PitchImportEntity } from "../_shared/import/adapters/types.ts";
+
+async function loadBatchFiles(sb: any, tenantId: string, batchId: string): Promise<ImportFileDescriptor[]> {
+  const { data: files } = await sb.from("import_files").select("*")
+    .eq("tenant_id", tenantId).eq("batch_id", batchId);
+  return (files ?? []).map((f: any) => ({
+    id: f.id, name: f.file_name ?? f.name ?? "",
+    path: f.storage_path ?? null, size: f.file_size ?? null,
+    mime_type: f.mime_type ?? null,
+    ext: ((f.file_name ?? "").split(".").pop() ?? "").toLowerCase(),
+    headers: f.detected_headers ?? f.headers ?? [],
+    sample_rows: f.sample_rows ?? [],
+    folder: f.folder ?? null,
+  }));
+}
+
+// POST /batches/:id/detect-source-system
+app.post("/batches/:id/detect-source-system", async (c) => {
+  const a = await authMaster(c.req.raw); if (a.error) return a.error;
+  const { ctx } = a; const sb = ctx!.sb;
+  const batch_id = c.req.param("id");
+  const files = await loadBatchFiles(sb, ctx!.tenantId, batch_id);
+  const ranked = await rankAdapters(files);
+  const top = await detectBestAdapter(files);
+  if (top) {
+    await sb.from("import_source_manifests").insert({
+      tenant_id: ctx!.tenantId, batch_id,
+      source_system: top.source_system,
+      detected_confidence: top.confidence,
+      files: files as any,
+      detected_entities: top.entities,
+      folder_structure: {},
+      warnings: top.warnings,
+    });
+  }
+  await audit(sb, ctx!.tenantId, batch_id, ctx!.userId, "vendor_detect", top?.source_system ?? "none");
+  return jsonOk(c, { ranked, top });
+});
+
+// POST /batches/:id/source-manifest  body: { source_system }
+app.post("/batches/:id/source-manifest", async (c) => {
+  const a = await authMaster(c.req.raw); if (a.error) return a.error;
+  const { ctx } = a; const sb = ctx!.sb;
+  const batch_id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const adapter = getAdapter(String(body?.source_system ?? ""));
+  if (!adapter) return jsonErr(c, "unknown_adapter", "source_system not recognized", 400);
+  const files = await loadBatchFiles(sb, ctx!.tenantId, batch_id);
+  const manifest = await adapter.buildManifest(files);
+  const { data: row, error } = await sb.from("import_source_manifests").insert({
+    tenant_id: ctx!.tenantId, batch_id,
+    source_system: manifest.source_system,
+    detected_confidence: manifest.detected_confidence,
+    files: manifest.files as any,
+    detected_entities: manifest.detected_entities,
+    folder_structure: manifest.folder_structure,
+    warnings: manifest.warnings,
+  }).select().single();
+  if (error) return jsonErr(c, "manifest_failed", error.message, 500);
+  await audit(sb, ctx!.tenantId, batch_id, ctx!.userId, "vendor_manifest", manifest.source_system);
+  return jsonOk(c, { manifest: row });
+});
+
+// POST /batches/:id/preview-normalized  body: { source_system, entity_type, limit? }
+app.post("/batches/:id/preview-normalized", async (c) => {
+  const a = await authMaster(c.req.raw); if (a.error) return a.error;
+  const { ctx } = a; const sb = ctx!.sb;
+  const batch_id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const adapter = getAdapter(String(body?.source_system ?? ""));
+  if (!adapter) return jsonErr(c, "unknown_adapter", "source_system not recognized", 400);
+  const entity = String(body?.entity_type ?? "contact") as PitchImportEntity;
+  const limit = Math.min(Number(body?.limit ?? 50), 200);
+  const { data: rows } = await sb.from("import_staging_records")
+    .select("id, raw_data, entity_type")
+    .eq("tenant_id", ctx!.tenantId).eq("batch_id", batch_id).eq("entity_type", entity).limit(limit);
+  const preview = [];
+  for (const r of rows ?? []) {
+    const norm = await adapter.normalizeRecord({
+      entityType: entity, raw: r.raw_data ?? {}, batchId: batch_id, tenantId: ctx!.tenantId,
+    });
+    preview.push({ staging_id: r.id, raw: r.raw_data, normalized: norm.normalized, confidence: norm.confidence, warnings: norm.warnings, source_record_id: norm.sourceRecordId });
+  }
+  return jsonOk(c, { preview, entity_type: entity, count: preview.length });
+});
+
+// POST /batches/:id/migration-plan  body: { source_system }
+app.post("/batches/:id/migration-plan", async (c) => {
+  const a = await authMaster(c.req.raw); if (a.error) return a.error;
+  const { ctx } = a; const sb = ctx!.sb;
+  const batch_id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const source_system = String(body?.source_system ?? "");
+  const adapter = getAdapter(source_system);
+  if (!adapter) return jsonErr(c, "unknown_adapter", "source_system not recognized", 400);
+  const { data: man } = await sb.from("import_source_manifests").select("*")
+    .eq("tenant_id", ctx!.tenantId).eq("batch_id", batch_id).eq("source_system", source_system)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!man) return jsonErr(c, "no_manifest", "Run source-manifest first.", 400);
+  const plan = await adapter.buildMigrationPlan({
+    source_system, detected_confidence: man.detected_confidence,
+    files: man.files ?? [], detected_entities: man.detected_entities ?? {},
+    folder_structure: man.folder_structure ?? {}, warnings: man.warnings ?? [],
+  });
+  const { data: row, error } = await sb.from("import_migration_plans").insert({
+    tenant_id: ctx!.tenantId, batch_id, source_system,
+    plan_status: "draft",
+    entity_order: plan.entity_order,
+    estimated_counts: plan.estimated_counts,
+    required_mappings: plan.required_mappings,
+    optional_mappings: plan.optional_mappings,
+    unresolved_requirements: plan.unresolved_requirements,
+    risk_flags: plan.risk_flags,
+    recommended_actions: plan.recommended_actions,
+    confidence_score: plan.confidence_score,
+    confidence_band: plan.confidence_band,
+    created_by: ctx!.userId,
+  }).select().single();
+  if (error) return jsonErr(c, "plan_failed", error.message, 500);
+  await audit(sb, ctx!.tenantId, batch_id, ctx!.userId, "vendor_plan", `score=${plan.confidence_score}`);
+  return jsonOk(c, { plan: row });
+});
+
+// POST /adapters/test  body: { source_system, entity_type, sample_rows[] }
+app.post("/adapters/test", async (c) => {
+  const a = await authMaster(c.req.raw); if (a.error) return a.error;
+  const { ctx } = a;
+  const body = await c.req.json().catch(() => ({}));
+  const adapter = getAdapter(String(body?.source_system ?? ""));
+  if (!adapter) return jsonErr(c, "unknown_adapter", "source_system not recognized", 400);
+  const entity = String(body?.entity_type ?? "contact") as PitchImportEntity;
+  const samples: any[] = Array.isArray(body?.sample_rows) ? body.sample_rows : [];
+  const results = [];
+  for (const raw of samples.slice(0, 20)) {
+    const n = await adapter.normalizeRecord({ entityType: entity, raw, batchId: "__test__", tenantId: ctx!.tenantId });
+    results.push(n);
+  }
+  const avg = results.length ? results.reduce((a, b) => a + b.confidence, 0) / results.length : 0;
+  return jsonOk(c, { adapter: adapter.sourceSystem, entity_type: entity, results, average_confidence: avg });
+});
+
+// GET /adapters  — list registry
+app.get("/adapters", async (c) => {
+  const a = await authMaster(c.req.raw); if (a.error) return a.error;
+  return jsonOk(c, { adapters: listAdapters().map((x) => ({
+    source_system: x.sourceSystem, display_name: x.displayName, version: x.version,
+    supported_file_types: x.supportedFileTypes, supported_entity_types: x.supportedEntityTypes,
+  })) });
+});
+
 Deno.serve(app.fetch);
+
