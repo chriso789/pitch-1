@@ -46488,6 +46488,101 @@ export type Database = {
         }
         Relationships: []
       }
+      system_audit_findings: {
+        Row: {
+          category: string
+          company_id: string | null
+          created_at: string
+          detail: string | null
+          entity_id: string
+          entity_type: string
+          evidence: Json | null
+          finding_key: string
+          id: string
+          recommended_action: string | null
+          risk_explanation: string | null
+          run_id: string
+          severity: string
+          title: string
+        }
+        Insert: {
+          category: string
+          company_id?: string | null
+          created_at?: string
+          detail?: string | null
+          entity_id: string
+          entity_type: string
+          evidence?: Json | null
+          finding_key: string
+          id?: string
+          recommended_action?: string | null
+          risk_explanation?: string | null
+          run_id: string
+          severity: string
+          title: string
+        }
+        Update: {
+          category?: string
+          company_id?: string | null
+          created_at?: string
+          detail?: string | null
+          entity_id?: string
+          entity_type?: string
+          evidence?: Json | null
+          finding_key?: string
+          id?: string
+          recommended_action?: string | null
+          risk_explanation?: string | null
+          run_id?: string
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_audit_findings_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "system_audit_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_audit_runs: {
+        Row: {
+          duration_ms: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          module: string
+          started_at: string
+          status: string
+          summary: Json
+          triggered_by: string
+        }
+        Insert: {
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          module: string
+          started_at?: string
+          status?: string
+          summary?: Json
+          triggered_by: string
+        }
+        Update: {
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          module?: string
+          started_at?: string
+          status?: string
+          summary?: Json
+          triggered_by?: string
+        }
+        Relationships: []
+      }
       system_crashes: {
         Row: {
           auto_recovered: boolean | null
