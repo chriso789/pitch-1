@@ -1,124 +1,143 @@
-# Vendor Migration Adapter Layer — Phase 1 Plan
 
-Builds on the existing Import & Migration Center (staging-only, master-only). Scope: vendor detection, normalization preview, and migration planning. **Read-only / staging-only — no live commits.**
+# Target Roof Registration Gate v2
 
-## Architecture Guard Compliance
+## Problem (confirmed from screenshots + report JSON)
 
-The project is near the 500-function cap (currently 461). The spec requests 5 new edge functions, which would push us closer to the cap and violate the `pitch-crm-architecture-guard` skill ("never create one function per feature").
+The Fonsica overlay is drawn on the **wrong house** (neighbor SE of 4063 Fonsica). The pipeline itself already knows registration is broken but kept rendering an editable perimeter anyway:
 
-**Decision**: Add adapter routes to the existing `import-api` grouped function, not as new functions. Function folder count does not increase.
+- `target_confirmation.src = none`
+- Source acquisition: "No imagery source selected"
+- `overlay_debug.coordinate_space = satellite_px` vs `coordinate_space_solver = dsm_px`
+- `geo_to_dsm_px_success = false`
+- `dsm_pixel_transform_valid = false`
+- `raster_url` centered at stale geocode (27.0820246, -82.1962156)
+- Perimeter sourced from `google_solar_mask_contour` but rendered on a neighbor
+- `coordinate_match = true` is **misleading** — it passed despite frame mismatch
 
-Routes added to `import-api`:
-- `POST /batches/:id/detect-source-system`
-- `POST /batches/:id/source-manifest`
-- `POST /batches/:id/preview-normalized`
-- `POST /batches/:id/migration-plan`
-- `POST /adapters/test`
+This is a **coordinate registration / target confirmation bug**, not a perimeter shape problem. All Phase 3A.5 / 3C / 3D / 3E perimeter-shape tuning is paused until registration is fixed.
 
-Frontend calls via `supabase.functions.invoke('import-api', { body: { route: '...', ... } })`.
+Skills invoked: `roof-measurement-vision-qa`, `canonical-route-provenance-auditor`.
 
-## Database Migration (one migration)
+## Scope (Phase 1 — gate + diagnostics only)
 
-Tables (all RLS-gated by `master` role + `company_id = current_tenant_id()`):
-- `vendor_import_adapters` — adapter registry seeded with 9 rows (jobnimbus, acculynx, roofr, quickbooks, companycam, jobber, housecallpro, generic_csv, generic_zip)
-- `import_source_manifests`
-- `import_migration_plans`
-- `import_vendor_record_links` (unique on company_id + source_system + source_entity_type + source_record_id — idempotency key)
-- `import_status_maps`
-- `import_user_maps`
-- `import_budget_category_maps`
-- `import_document_category_maps`
+Read-only-to-customer: no customer report can be produced from an unregistered run. No deletions, no schema rewrites of existing rows, no auto-recentering of historical jobs. Forward-only enforcement on new runs.
 
-All include indexes per spec. RLS uses `has_role(auth.uid(), 'master')` + tenant scoping. `NOTIFY pgrst, 'reload schema'` at the end.
+## Hard gates added
 
-## Shared Adapter Library
+### Gate A — Target confirmation required
+`start-ai-measurement` rejects (HTTP 412) when:
+- `user_confirmed_roof_target ≠ true` AND `roof_target_admin_override ≠ true`
+- OR `confirmed_roof_center_lat/lng` missing
+- OR `confirmed_roof_center_px` missing in the displayed raster
 
-`supabase/functions/_shared/import/adapters/`:
-- `types.ts` — `PitchImportEntity` union, `VendorImportAdapter` interface, `ImportFileDescriptor`, `ImportSourceManifest`, `ImportMigrationPlan` types
-- `registry.ts` — `getAdapter(sourceSystem)`, `detectBestAdapter(files)`, registers all 9 adapters
-- `jobnimbus.ts` — detects `jnid`, `customer_id`, `job_number`, file names `contacts|jobs|activities|estimates|work_orders`
-- `acculynx.ts` — detects `lead_id`, `milestone`, `production_status`, AccuLynx-named files
-- `roofr.ts` — detects measurement PDFs, `roof_area`, `facets`, `pitch`, `waste_factor`
-- `quickbooks.ts` — detects `TxnDate`, `DocNumber`, IIF/QBO-style headers; routes to invoices/payments/budget
-- `companycam.ts` — detects project folders, photo EXIF, ZIP with `project_id`/`photo_id`
-- `jobber.ts` — detects `client_name`, `visit_schedule`, `quote_status`
-- `housecallPro.ts` — detects `job_type`, `scheduled_start`, `invoice_total`
-- `genericCsv.ts` — fallback using existing `fieldAliases.ts`; requires manual entity selection
-- `genericZip.ts` — fallback ZIP analyzer, filename/address matching
+Persist on the row:
+- `result_state = ai_failed_target_unconfirmed`
+- `hard_fail_reason = target_roof_not_confirmed`
+- `block_customer_report_reason = target_roof_not_confirmed`
 
-`supabase/functions/_shared/import/transforms.ts` — trim, title case, normalize phone/email/address, parse currency/percentage/date, split/combine name, status/user/category/stage mappers (consume the four new map tables).
+### Gate B — Frame registration valid
+Block source acquisition and perimeter refinement when any of:
+- `geo_to_dsm_px_success = false`
+- `dsm_pixel_transform_valid = false`
+- `dsm_to_raster_transform` missing / non-invertible
+- raster bounds do not contain `confirmed_roof_center_lat_lng`
 
-Every adapter implements the full `VendorImportAdapter` interface: `detect`, `buildManifest`, `suggestFieldMap`, `normalizeRecord`, `buildMigrationPlan`. Phase 1 adapters return real detection + normalization; full field maps for the dominant entity per vendor (contacts/jobs for CRM vendors, invoices/payments for QBO, photos for CompanyCam). Remaining entities return stubs with `confidence: 0` + warning, to be filled in Phase 1.5.
+Persist:
+- `result_state = ai_failed_source_acquisition`
+- `hard_fail_reason = coordinate_registration_failed`
 
-## Edge Function Routes (in `import-api`)
+### Gate C — Candidate must contain confirmed roof center
+For every footprint / mask / solar-contour candidate:
+- polygon must contain `confirmed_roof_center_px`
+- centroid offset within threshold (target: ≤ 0.5 × candidate bbox half-diagonal)
+- nearest neighboring structure center must be farther than confirmed center
+- otherwise reject with `candidate_does_not_contain_confirmed_roof_center`
 
-1. **`detect-source-system`** — scans batch files via every adapter's `detect()`, returns ranked candidates with confidence scores, writes top result to `import_source_manifests`.
-2. **`source-manifest`** — runs chosen adapter's `buildManifest`, persists files/folder structure/detected entities/warnings.
-3. **`preview-normalized`** — runs `normalizeRecord` on first N rows per entity (chunked, default 50), returns raw+normalized+confidence+warnings side-by-side. **No DB writes to live tables.**
-4. **`migration-plan`** — runs `buildMigrationPlan`, computes migration confidence score (detection × required-field coverage × valid-row % × duplicate rate × file-link confidence × mapping completion), persists to `import_migration_plans` with status `draft`.
-5. **`adapter-test`** — accepts a small sample payload, runs detect→parse→normalize→validate, returns mapping confidence + warnings. Used by admin to dry-run before huge imports.
+Persist per candidate: `confirmed_center_inside_candidate`, `candidate_centroid_offset_from_confirmed_center_px`, `nearest_neighbor_structure_distance_px`, `selected_candidate_distance_rank`.
 
-Auth on every route: `requireAuth` + `requireMaster` + tenant resolution from JWT (never from body). Audit log on every action via existing `import_audit_log`.
+### Gate D — Manual approval disabled when registration invalid
+UI disables Save edited perimeter / Approve & rerun unless ALL true:
+- `user_confirmed_roof_target`
+- `geo_to_dsm_px_success`
+- `dsm_pixel_transform_valid`
+- `confirmed_center_inside_candidate`
+- `coordinate_registration_gate_passed`
 
-## Frontend Components
+Inline warning: "Cannot approve perimeter until target roof registration passes."
 
-`src/components/import/`:
-- `SourceSystemDetector.tsx` — triggers detect route, shows top candidate + confidence
-- `VendorAdapterSelector.tsx` — dropdown to override detected vendor (reads `vendor_import_adapters`)
-- `SourceManifestViewer.tsx` — files/folders tree, detected entities, warnings
-- `MigrationPlanPanel.tsx` — recommended order, required/optional mappings, risk flags, confidence band (Safe/Review/Cleanup/DoNotImport)
-- `NormalizedPreviewTable.tsx` — raw row | normalized fields | confidence | warnings | duplicate likelihood; accept/change/ignore/transform actions; "Save template" button
-- `AdapterConfidenceCard.tsx` — overall score + band + top issues
+## Recentering rule
 
-Wired into existing `src/pages/developer/ImportCenter.tsx` as new tabs: **Detect → Manifest → Plan → Preview**. Existing Upload / Mapping / Validation / Duplicate Review tabs remain.
+When user has confirmed a structure, raster/static-map center MUST be `confirmed_roof_center_lat_lng`, never the stale address geocode. DSM tile fetch uses the same confirmed center for bounds.
 
-## Chunking / Resume
+## AI Process Viewer additions
 
-- All routes accept `cursor` (continuation token = `{file_id, offset}`) and `chunk_size` (default 500 rows).
-- `import_batches.processed_count` updated per chunk.
-- Resume = re-call route with last cursor; `import_vendor_record_links` (UNIQUE constraint) prevents duplicate staging.
-- No live-table writes in Phase 1, so resume safety is purely within staging.
+Independently toggleable markers/layers, each tagged with its coordinate frame:
+- original geocode marker
+- confirmed roof center marker (crosshair)
+- static map center marker
+- Google Solar building center marker
+- selected perimeter
+- accepted candidate masks/components
+- rejected candidate footprints (with reason)
+- target component id label
 
-## Idempotency
+If any layer's frame ≠ the displayed raster frame, render a red banner: "Coordinate frame mismatch — overlay not eligible for manual approval." (no auto-suppress; user sees the mismatch).
 
-`import_vendor_record_links` is the dedup key. When Phase 2 (live commit) ships, the commit step will check this table before inserting and update-instead-of-insert when a link already exists.
+## Persisted frame fields (JSONB, not new DB columns)
 
-## Out of Scope (deferred to Phase 2)
+All of the following written under `geometry_report_json.registration`:
+`original_geocode_lat_lng`, `confirmed_roof_center_lat_lng`, `static_map_center_lat_lng`, `google_solar_building_center_lat_lng`, `dsm_tile_origin_lat_lng`, `dsm_tile_bounds_lat_lng`, `raster_bounds_lat_lng`, `raster_size_px`, `dsm_size_px`, `meters_per_pixel`, `geo_to_raster_transform`, `geo_to_dsm_transform`, `dsm_to_raster_transform`, `coordinate_registration_gate_passed`.
 
-- Live commit of normalized records to production tables (`contacts`, `jobs`, `invoices`, …)
-- Auto-creation of vendor record links during commit
-- File movement from `import-quarantine` to production buckets
-- Rollback engine
-- Full field maps for non-dominant entities per vendor (notes, tasks, messages for non-CRM vendors)
+Per drift guard skill: JSONB only — no new stable columns.
 
-These remain documented in `docs/import-migration-center.md` and surface as `TODO: Phase 2` markers in adapter stubs.
+## Debug endpoint
 
-## File Inventory
+Extend `debug-measurement-runtime` to return, per row:
+address, original geocode, confirmed roof center, static map center, Google Solar building center, selected perimeter centroid, `confirmed_center_inside_selected_perimeter`, `dsm_pixel_transform_valid`, `geo_to_dsm_px_success`, `coordinate_registration_gate_passed`, `result_state`, `hard_fail_reason`, route provenance block.
 
-**New files (15):**
-- 1 migration SQL
-- 10 adapter files (`types.ts`, `registry.ts`, 8 vendor adapters, generic CSV/ZIP — note: spec lists 11 but types.ts + registry.ts are infrastructure, 9 adapters total)
-- 1 `transforms.ts`
-- 6 React components
+## Result state contract
 
-**Edited files (3):**
-- `supabase/functions/import-api/index.ts` — add 5 routes
-- `src/pages/developer/ImportCenter.tsx` — wire new tabs
-- `docs/import-migration-center.md` — document adapter layer + Phase 2 scope
+All new buckets reuse the existing 10-bucket normalizer (`ai_failed_target_unconfirmed`, `ai_failed_source_acquisition` already canonical). No CHECK constraint change. Specific reasons live in `hard_fail_reason` / `block_customer_report_reason` / `geometry_report_json.failure_details`.
 
-**Function folders added: 0.**
+## Files / functions touched
 
-## Acceptance (Phase 1)
+Backend (no new edge function folders):
+- `supabase/functions/start-ai-measurement/index.ts` — Gate A pre-flight (HTTP 412); persist confirmation fields
+- `supabase/functions/_shared/autonomous-graph-solver.ts` (and callers) — Gate B & C; reject mis-centered candidates; persist `geometry_report_json.registration`
+- `supabase/functions/_shared/result-state.ts` — ensure both new failure tokens route through `normalizeResultStateForWrite()`
+- `supabase/functions/debug-measurement-runtime/index.ts` — new fields in response
+- `supabase/functions/_shared/dsm-geometry-contract.ts` — add registration gate as a prereq to the existing 6 contracts (does not replace them)
 
-- JobNimbus / AccuLynx / Roofr / QuickBooks / CompanyCam / Jobber / Housecall Pro exports detected with confidence score.
-- Unknown CSV/ZIP routed to generic fallback with manual-entity warning.
-- Migration plan generated with confidence band before any commit option appears.
-- Normalized preview shows raw↔normalized side-by-side for first 50 rows per entity.
-- Re-running detect/manifest on same batch is idempotent.
-- All adapter actions write to `import_audit_log`.
-- Master-only enforced server-side; non-master gets 403.
+Frontend:
+- `src/components/measurements/MeasurementReportDialog.tsx` — disable approval CTAs when registration invalid; banner
+- `src/components/measurements/AIMeasurement3DDebugViewer.tsx` (and overlay canvas) — frame markers, layer toggles, mismatch banner
+- `src/hooks/useMeasurementJob.ts` — surface registration flags; gate the "Approve & rerun" action
+- `src/components/measurements/StructureSelectionMap.tsx` — emit `confirmed_roof_center_lat/lng` + `confirmed_roof_center_px` on PIN placement (already the confirmation step per Patent Rule 1)
 
-## Confirmation needed
+## Tests (regression harness skill)
 
-1. **OK to consolidate the 5 requested edge functions into `import-api` routes** (per architecture guard, since we're near the function cap)? The spec asks for separate functions, but project rules forbid sprawl. If you require separate functions, I'll flag the guard violation and you'd need to explicitly approve.
-2. **Phase 1 stays staging-only** (no live writes, no Phase 2 commit/rollback) — confirmed from prior phasing decision, just re-confirming since this spec mentions "commit" semantics.
+New Deno + Vitest tests under existing harness:
+- `start-ai-measurement/__tests__/fonsica-target-not-confirmed-412.test.ts` — Gate A
+- `start-ai-measurement/__tests__/fonsica-registration-fail-blocks-perimeter.test.ts` — Gate B; assert `result_state=ai_failed_source_acquisition`, no perimeter, no topology
+- `_shared/__tests__/candidate-must-contain-confirmed-center.test.ts` — Gate C using a fixture where solar mask centroid lies on the SE neighbor (Fonsica reproducer)
+- `MeasurementReportDialog.registration-invalid.test.tsx` — approval CTAs disabled, banner present
+- `debug-measurement-runtime/__tests__/registration-fields.test.ts` — endpoint returns all 11 required fields
+
+Fonsica fixture: anonymized copy of the current bad row (confirmed center ≈ target roof, candidate centroid on SE neighbor, `geo_to_dsm_px_success=false`).
+
+## Out of scope (deferred)
+
+- Auto-fixing historical mis-registered rows
+- Topology / perimeter-shape scoring changes
+- Any change that would let manual approval bypass Gate D
+- Schema CHECK constraint changes
+
+## Acceptance for Fonsica
+
+A rerun on 4063 Fonsica must:
+1. Refuse to run without PIN confirmation (Gate A).
+2. With PIN placed on the actual Fonsica roof: raster recenters on confirmed center; DSM tile fetched at confirmed center.
+3. If `geo_to_dsm` / `dsm_to_raster` still invalid → row persists as `ai_failed_source_acquisition` with full `registration` block; no editable perimeter shown.
+4. If registration valid → only candidates containing the confirmed center are eligible; SE-neighbor solar contour is rejected with `candidate_does_not_contain_confirmed_roof_center`.
+5. Manual approval CTAs remain disabled until all five Gate D flags are true.
+6. `debug-measurement-runtime` returns the full 11-field registration proof.
