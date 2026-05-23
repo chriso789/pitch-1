@@ -280,7 +280,11 @@ export function refineTrueOuterRoofPerimeter(
 
   if (destructive) {
     refinementRejected = true;
-    refinementRejectionReason = 'destructive_refinement_collapse';
+    const triggers: string[] = [];
+    if (destructiveByRule) triggers.push('refined_lost_gt15pct_of_sane_raw');
+    if (destructiveByCollapse) triggers.push(`absolute_collapse_ratio=${rawToRefinedAreaRatio.toFixed(2)}`);
+    if (destructiveByVertexLoss) triggers.push(`vertex_loss_pct=${_verticesRemovedPctEarly.toFixed(0)}`);
+    refinementRejectionReason = `destructive_refinement_collapse:${triggers.join('|')}`;
     fallbackUsed = 'raw_perimeter';
     selected = 'raw_perimeter';
     returnedRing = raw;
@@ -288,12 +292,12 @@ export function refineTrueOuterRoofPerimeter(
       passed = true;
       hardFail = null;
       provisionalReady = true;
-      reason = `raw_fallback_after_destructive_refinement:rawIoU=${rawIoUvsTarget?.toFixed(2)}`;
+      reason = `raw_fallback_after_destructive_refinement:rawIoU=${rawIoUvsTarget?.toFixed(2)}:triggers=${triggers.join('|')}`;
     } else {
       passed = false;
       hardFail = 'perimeter_shape_not_accurate';
       reason = `destructive_refinement_collapse_and_raw_failed_conservative_gate:` +
-        `rawIoU=${rawIoUvsTarget?.toFixed(2)},rawAreaOk=${rawAreaOk}`;
+        `rawIoU=${rawIoUvsTarget?.toFixed(2)},rawAreaOk=${rawAreaOk},triggers=${triggers.join('|')}`;
     }
   } else if (refinementPassed) {
     passed = true;
