@@ -2835,7 +2835,9 @@ async function processJob(input: any) {
             rgba: null,
             solar_segment_masks_px: null,
             roof_centroid_px: [cX, cY],
-            benchmark_area_sqft: null,
+            benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft
+              ?? (benchmarkForPerimeter as any)?.area_sqft
+              ?? null,
           });
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
