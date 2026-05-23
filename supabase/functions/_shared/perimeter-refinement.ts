@@ -1261,9 +1261,13 @@ function EMPTY_SHAPE_VALIDATION(): ShapeValidation {
     vertex_sanity_passed: false,
     visual_edge_alignment_score: 0,
     aerial_edge_support_pct: null,
+    aerial_edge_support_sample_count: 0,
+    aerial_edge_supported_sample_count: 0,
+    aerial_edge_unsupported_segments: [],
     dsm_boundary_support_pct: null,
     corner_snap_confidence: 0,
     long_segment_corner_cut_count: 0,
+    long_segment_corner_cut_midpoints_px: [],
     non_roof_crossing_count: 0,
     centroid_shift_px: 0,
     centroid_shift_threshold_px: 0,
@@ -1274,8 +1278,10 @@ function EMPTY_SHAPE_VALIDATION(): ShapeValidation {
     shape_uncertain: false,
     shape_failure_reasons: ['not_evaluated'],
     warnings: [],
+    segment_diagnostics: [],
   };
 }
+
 
 function computeExpectedMinVertices(input: PerimeterRefinementInput, actualVerts: number): number {
   // Heuristic: complex roofs need ≥ (segments + 2) outer vertices.
