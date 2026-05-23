@@ -39,6 +39,7 @@ import {
   readRegistrationBlock,
   canApproveManualPerimeter,
   registrationBanner,
+  isRegistrationFailure,
 } from '@/lib/measurement/registration-gate';
 
 type Pt = [number, number];
@@ -137,7 +138,8 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // Registration Gate v2 — disable manual approval when the displayed
   // perimeter may be drawn on the wrong house / wrong coordinate frame.
   const registration = readRegistrationBlock(measurement);
-  const approvalAllowed = canApproveManualPerimeter(registration);
+  const registrationFailed = isRegistrationFailure(measurement);
+  const approvalAllowed = !registrationFailed && canApproveManualPerimeter(registration);
   const banner = registrationBanner(registration);
 
   const rasterUrl: string | null =
@@ -196,8 +198,13 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
       .filter((e: any) => e.p1 && e.p2);
   }, [overlayDbg]);
 
-  const [layers, setLayers] = useState<Record<LayerKey, boolean>>(DEFAULT_LAYERS);
-  const setLayer = (k: LayerKey, v: boolean) => setLayers((s) => ({ ...s, [k]: v }));
+  const [rawLayers, setRawLayers] = useState<Record<LayerKey, boolean>>(DEFAULT_LAYERS);
+  // When registration failed, force the editable / refined perimeter layers
+  // off so we never draw a manipulable polygon on the wrong house.
+  const layers: Record<LayerKey, boolean> = registrationFailed
+    ? { ...rawLayers, selected: false, refined: false }
+    : rawLayers;
+  const setLayer = (k: LayerKey, v: boolean) => setRawLayers((s) => ({ ...s, [k]: v }));
 
   // ---- Canvas rendering ---------------------------------------------------
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -699,12 +706,14 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 </Button>
               </div>
               {!approvalAllowed && (
-                <p className="text-[10px] text-destructive leading-snug">
-                  Manual approval is disabled until the coordinate registration gate passes
-                  (confirm roof target + valid geo→DSM→raster transforms + candidate contains
-                  confirmed center).
+                <p className="text-[11px] text-destructive font-semibold leading-snug">
+                  Cannot approve perimeter: target roof registration failed.
                 </p>
               )}
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
+                <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
+              </p>
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
                 <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.

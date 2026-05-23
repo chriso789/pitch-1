@@ -516,10 +516,45 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  if (regInput && (!geometry.registration || typeof geometry.registration !== "object")) {
+  if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
+      // Always write under BOTH keys so legacy readers (`registration_gate`)
+      // and v2 readers (`registration`) both find the block.
       geometry.registration = result.registration;
+      geometry.registration_gate = result.registration;
+      // If registration failed, the failure must dominate any downstream
+      // perimeter/topology classification. Otherwise a wrong-house overlay
+      // can still be persisted as `ai_failed_perimeter` and present as a
+      // shape problem instead of a target problem.
+      if (result.failure) {
+        const failure = result.failure;
+        geometry.result_state = failure.result_state;
+        geometry.hard_fail_reason = failure.hard_fail_reason;
+        geometry.block_customer_report_reason = failure.block_customer_report_reason;
+        geometry.failure_stage = "registration";
+        geometry.diagram_render_intent =
+          failure.result_state === "ai_failed_target_unconfirmed"
+            ? "target_confirmation_required"
+            : "coordinate_registration_debug_only";
+        // Mirror to the top-level row so the UI / debug endpoints don't have
+        // to dig through nested JSON to decide what to render.
+        (next as any).result_state = failure.result_state;
+        (next as any).hard_fail_reason = failure.hard_fail_reason;
+        (next as any).block_customer_report_reason = failure.block_customer_report_reason;
+        (next as any).diagram_render_intent = geometry.diagram_render_intent;
+        (next as any).customer_report_ready = false;
+        (next as any).validation_status = "failed";
+        // Force every phase block to advertise the registration block so
+        // the UI never claims phase3_5/3C/3D/3E "didn't reach the callsite".
+        for (const k of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
+          const blk = (geometry as any)[k];
+          if (blk && typeof blk === "object") {
+            (blk as any).executed = false;
+            (blk as any).skipped_reason = "blocked_by_registration_gate";
+          }
+        }
+      }
     } catch (e) {
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
@@ -973,10 +1008,74 @@ async function processJob(input: any) {
     const imageryDecisionLog = imageryResult.decisionLog;
     const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
 
-
-
+    // ══════════ REGISTRATION GATE B (frame validity) ══════════
+    // Verify the raster/DSM frame is sound BEFORE we run candidate selection
+    // or perimeter refinement. Without this, an invalid geo→pixel transform
+    // can let us paint a perimeter on the wrong house (Fonsica failure mode).
+    {
+      const geoToPxOk = Number.isFinite(actualMpp) && actualMpp > 0 && raster.width > 0 && raster.height > 0;
+      const tileExtentM = raster.width * actualMpp;
+      const tileHalfDeg = tileExtentM / 111320; // crude lat-deg per metre
+      const rasterBounds = {
+        sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
+        ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
+      };
+      const confirmedLatLng =
+        (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+          : { lat: coords.lat, lng: coords.lng };
+      const gateB = evaluateRegistrationGate({
+        user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
+        roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
+        original_geocode_lat_lng:
+          (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
+            ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
+            : null,
+        confirmed_roof_center_lat_lng: confirmedLatLng,
+        confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
+        geo_to_dsm_px_success: geoToPxOk,
+        dsm_pixel_transform_valid: geoToPxOk,
+        dsm_to_raster_transform: geoToPxOk ? { meters_per_pixel: actualMpp } : null,
+        raster_bounds_lat_lng: rasterBounds,
+        raster_size_px: { width: raster.width, height: raster.height },
+        meters_per_pixel: actualMpp,
+      });
+      if (gateB.failure && gateB.failure.result_state === "ai_failed_source_acquisition") {
+        const failReason = gateB.failure.hard_fail_reason;
+        const debugPayload = {
+          failure_stage: "registration",
+          hard_fail_reason: failReason,
+          block_customer_report_reason: failReason,
+          result_state: gateB.failure.result_state,
+          coordinate_space_solver: "dsm_px",
+          coordinate_space_renderer: "satellite_px",
+          geo_to_dsm_px_success: geoToPxOk,
+          dsm_pixel_transform_valid: geoToPxOk,
+          registration: gateB.registration,
+          registration_gate: gateB.registration,
+          raster_size: { width: raster.width, height: raster.height },
+          source_acquisition_debug: {
+            source_acquisition_failed: true,
+            no_imagery_source_selected: !geoToPxOk,
+            registration_failure_reason: gateB.failure.reason,
+          },
+          acquisition_audit: acquisitionAudit,
+        };
+        console.log("[REGISTRATION_GATE_B] REJECT", JSON.stringify({ reason: failReason }));
+        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Registration gate B failed: ${failReason}`, failedId);
+        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Registration gate B failed: ${failReason}`);
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit, registration: gateB.registration },
+        }).eq("id", input.ai_measurement_job_id);
+        return;
+      }
+    }
 
     // (Perimeter inner-trace detection gate runs AFTER footprint selection below)
+
 
 
     // ───────── GEOMETRY-FIRST PIPELINE ─────────
@@ -1809,10 +1908,61 @@ async function processJob(input: any) {
       }
     }
 
+    // Registration Gate C HARD FAIL: when a confirmed roof center was
+    // supplied but no candidate polygon contains it, every remaining
+    // candidate is the wrong building. Fail fast as a source-acquisition /
+    // candidate-containment failure — do NOT fall through to the mask
+    // contour fallback, because that's how Fonsica ended up painting a
+    // perimeter on the neighbor's roof.
+    const allCandidatesWrongHouse =
+      !!confirmedCenterPxForGateC &&
+      candidates.length > 0 &&
+      candidates.every((c) => c.rejected_reason !== null) &&
+      candidates.some((c) => c.rejected_reason === "candidate_does_not_contain_confirmed_roof_center");
+    if (allCandidatesWrongHouse) {
+      const failReason = "candidate_does_not_contain_confirmed_roof_center";
+      const debugPayload = {
+        failure_stage: "registration",
+        hard_fail_reason: failReason,
+        block_customer_report_reason: failReason,
+        result_state: "ai_failed_source_acquisition",
+        coordinate_space_solver: "dsm_px",
+        coordinate_space_renderer: "satellite_px",
+        geo_to_dsm_px_success: true,
+        dsm_pixel_transform_valid: true,
+        raster_size: { width: raster.width, height: raster.height },
+        source_acquisition_debug: {
+          source_acquisition_failed: true,
+          all_candidates_wrong_house: true,
+          candidates_tried: candidates.length,
+        },
+        candidates: candidates.map((c) => ({
+          source: c.source,
+          rejected_reason: c.rejected_reason,
+          confirmed_center_inside_candidate: (c as any).confirmed_center_inside_candidate,
+          candidate_centroid_offset_from_confirmed_center_px:
+            (c as any).candidate_centroid_offset_from_confirmed_center_px,
+        })),
+        acquisition_audit: acquisitionAudit,
+      };
+      console.log("[REGISTRATION_GATE_C] HARD FAIL — all candidates miss confirmed roof center");
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Registration gate C failed: ${failReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Registration gate C failed: ${failReason}`);
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+      }).eq("id", input.ai_measurement_job_id);
+      return;
+    }
+
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
 
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
+
+
 
     let footprint: Point[] = selected?.polygon ?? [];
     let footprintSource: string = selected?.source ?? "none";

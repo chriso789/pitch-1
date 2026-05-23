@@ -33,12 +33,13 @@ export interface RegistrationBlock {
 export function readRegistrationBlock(measurement: any): RegistrationBlock | null {
   const grj = measurement?.geometry_report_json;
   if (!grj || typeof grj !== "object") return null;
-  if (grj.registration && typeof grj.registration === "object") {
-    return grj.registration as RegistrationBlock;
+  const reg = (grj as any).registration ?? (grj as any).registration_gate ?? null;
+  if (reg && typeof reg === "object") {
+    return reg as RegistrationBlock;
   }
   // Legacy fallback — synthesize a minimal block from overlay_debug flags so
   // historical rows still trigger the UI banner / disable approve.
-  const ov = grj.overlay_debug ?? {};
+  const ov = (grj as any).overlay_debug ?? {};
   return {
     user_confirmed_roof_target: null,
     geo_to_dsm_px_success: ov.geo_to_dsm_px_success ?? null,
@@ -46,6 +47,31 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
     confirmed_center_inside_candidate: null,
     coordinate_registration_gate_passed: null,
   };
+}
+
+/**
+ * True when a measurement row has a registration-class failure — used by
+ * the UI to hide the editable perimeter and disable manual approval even
+ * when the failure is mis-classified upstream as `ai_failed_perimeter`.
+ */
+export function isRegistrationFailure(measurement: any): boolean {
+  const grj = measurement?.geometry_report_json;
+  const hardFail = String(
+    measurement?.hard_fail_reason ?? grj?.hard_fail_reason ?? "",
+  );
+  const resultState = String(measurement?.result_state ?? grj?.result_state ?? "");
+  if (
+    resultState === "ai_failed_target_unconfirmed" ||
+    resultState === "ai_failed_source_acquisition"
+  ) return true;
+  if (
+    hardFail === "target_roof_not_confirmed" ||
+    hardFail === "coordinate_registration_failed" ||
+    hardFail === "candidate_does_not_contain_confirmed_roof_center"
+  ) return true;
+  const reg = readRegistrationBlock(measurement);
+  if (reg?.coordinate_registration_gate_passed === false) return true;
+  return false;
 }
 
 export function canApproveManualPerimeter(reg: RegistrationBlock | null | undefined): boolean {
