@@ -560,6 +560,8 @@ const corsHeaders = {
 };
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+const TRANSFORM_CALLSITE = "start-ai-measurement";
+const TRANSFORM_CALLSITE_VERSION = "runtime-transform-wiring-v1";
 
 const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "archetype_debug",
