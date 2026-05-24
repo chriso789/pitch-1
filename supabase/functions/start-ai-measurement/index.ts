@@ -7663,12 +7663,18 @@ async function processJob(input: any) {
         meters_per_pixel: mppFinite ? actualMpp : null,
         static_map_center_lat_lng: transformPkgFinal.static_map_center_lat_lng ?? { lat: coords.lat, lng: coords.lng },
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
+        selected_candidate_polygon_geo: selectedFootprintPolygonPx
+          ? selectedFootprintPolygonPx.map(([x, y]) => pxToLngLat({ x, y }, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp))
+          : null,
+        candidate_coordinate_space: "raster_px",
+        candidate_distance_rank: selected ? validCandidates.findIndex((c) => c === selected) + 1 : null,
+        rejection_reason: selected?.rejected_reason ?? null,
         footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
       // Stash the package so prepareRoofMeasurementPayload merges it into the
       // persisted registration block (truth-from-math reference for the UI).
       (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
-      (roofMeasurementPayload as any)._registration_transform_build_stage = "candidate_final";
+      (roofMeasurementPayload as any)._registration_transform_build_stage = transformPkgFinal.dsm_tile_bounds_lat_lng ? "dsm" : "static_map";
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
     }
