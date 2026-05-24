@@ -162,3 +162,36 @@ Deno.test("registration failures normalize away from perimeter state", () => {
   assertEquals(normalizeResultStateForWrite("coordinate_registration_failed", {}), "ai_failed_source_acquisition");
   assertEquals(normalizeResultStateForWrite("candidate_does_not_contain_confirmed_roof_center", {}), "ai_failed_source_acquisition");
 });
+
+// ─── Regression: registration failures must outrank perimeter failures ───
+// The `derivePhase3ResultState` helper in start-ai-measurement reads the
+// registration block directly. These tests pin the contract the helper
+// relies on: a failing gate ALWAYS resolves to a registration result_state,
+// never to ai_failed_perimeter, even when a perimeter_shape_not_accurate
+// reason is also present on the debug bag.
+
+Deno.test("regression: user_confirmed=false yields target_unconfirmed (not perimeter)", () => {
+  const r = evaluateRegistrationGate({
+    user_confirmed_roof_target: false,
+    confirmed_roof_center_lat_lng: CONFIRMED,
+    geo_to_dsm_px_success: false,
+    dsm_pixel_transform_valid: false,
+  });
+  assert(r.failure);
+  assertEquals(r.failure!.result_state, "ai_failed_target_unconfirmed");
+  assertEquals(r.failure!.hard_fail_reason, "target_roof_not_confirmed");
+  assertEquals(canApproveManualPerimeter(r), false);
+});
+
+Deno.test("regression: confirmed but bad transform yields source_acquisition", () => {
+  const r = evaluateRegistrationGate({
+    user_confirmed_roof_target: true,
+    confirmed_roof_center_lat_lng: CONFIRMED,
+    geo_to_dsm_px_success: false,
+    dsm_pixel_transform_valid: false,
+  });
+  assert(r.failure);
+  assertEquals(r.failure!.result_state, "ai_failed_source_acquisition");
+  assertEquals(r.failure!.hard_fail_reason, "coordinate_registration_failed");
+  assertEquals(canApproveManualPerimeter(r), false);
+});
