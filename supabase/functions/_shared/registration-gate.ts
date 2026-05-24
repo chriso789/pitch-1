@@ -77,6 +77,12 @@ export interface RegistrationGateInput {
   // v2.2 — strict mode flag. When true, the gate enforces real transform
   // evidence and rejects "no candidate yet = pass".
   candidate_selection_started?: boolean;
+
+  // v2.3 — explicit evaluation stage. `candidate_final` (default) is implicitly
+  // strict AND additionally requires original_geocode / confirmed_center_latlng /
+  // raster_bounds_contain_confirmed_center. Preflights may never publish a
+  // pass.
+  evaluation_stage?: RegistrationEvaluationStage;
 }
 
 export interface RegistrationGateResult {
