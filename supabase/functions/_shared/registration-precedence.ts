@@ -15,6 +15,7 @@
 // ============================================================================
 
 export const REGISTRATION_PRECEDENCE_VERSION = "registration-precedence-v1";
+export const REGISTRATION_BLOCKED_SKIPPED_REASON = "blocked_by_registration_gate";
 
 export type RegistrationPrecedenceReason =
   | "target_roof_not_confirmed"
@@ -49,9 +50,30 @@ export function stampPhaseBlockBlockedByRegistration<T extends Record<string, an
   return {
     ...blk,
     executed: false,
-    skipped_reason: "blocked_by_registration_gate",
+    skipped_reason: REGISTRATION_BLOCKED_SKIPPED_REASON,
     skipped_by: REGISTRATION_PRECEDENCE_VERSION,
   };
+}
+
+export function buildRegistrationBlockedPhaseBlock(existing: any = {}): Record<string, any> {
+  const base = existing && typeof existing === "object" ? existing : {};
+  return stampPhaseBlockBlockedByRegistration({ version: "v1", ...base });
+}
+
+export function forceRegistrationBlockedPhaseBlocks<T extends Record<string, any>>(geometry: T): T {
+  for (const key of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
+    geometry[key as keyof T] = buildRegistrationBlockedPhaseBlock((geometry as any)[key]) as any;
+  }
+  return geometry;
+}
+
+export function stripRegistrationBlockedGeometryArtifacts<T extends Record<string, any>>(geometry: T): T {
+  delete (geometry as any).perimeter_phase0;
+  delete (geometry as any).perimeter_gate_metrics;
+  delete (geometry as any).perimeter_inner_trace;
+  delete (geometry as any).selected_perimeter_after_refinement;
+  delete (geometry as any).debug_perimeter_overlay_svg;
+  return geometry;
 }
 
 /**

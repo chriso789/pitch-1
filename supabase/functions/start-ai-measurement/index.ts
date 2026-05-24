@@ -35,6 +35,9 @@ import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
+  buildRegistrationBlockedPhaseBlock,
+  forceRegistrationBlockedPhaseBlocks,
+  stripRegistrationBlockedGeometryArtifacts,
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
@@ -457,6 +460,11 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
 }
 
+function registrationFailureStage(reason: ReturnType<typeof deriveRegistrationFailureReason>): "target_confirmation" | "source_registration" | null {
+  if (!reason) return null;
+  return reason === "target_roof_not_confirmed" ? "target_confirmation" : "source_registration";
+}
+
 // Registration Precedence helpers are imported from
 // `_shared/registration-precedence.ts` so they are unit-testable without
 // booting the edge function (Deno.serve at module scope).
@@ -475,7 +483,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
         ? 'perimeter_classification_invalid'
         : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null));
   const failureStage = regFailureReason
-    ? 'registration'
+    ? registrationFailureStage(regFailureReason)
     : (payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'));
 
   // Build phase blocks first…
@@ -492,17 +500,11 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
   // would leak past a registration failure and let the UI render a perimeter
   // shape error over the wrong house.
   if (regFailureReason) {
-    const stamp = (blk: Record<string, any>) => ({
-      ...blk,
-      executed: false,
-      skipped_reason: 'blocked_by_registration_gate',
-      skipped_by: REGISTRATION_PRECEDENCE_VERSION,
-    });
-    phase3_5 = stamp(phase3_5);
-    phase3A_5 = stamp(phase3A_5);
-    phase3C = stamp(phase3C);
-    phase3D = stamp(phase3D);
-    phase3E = stamp(phase3E);
+    phase3_5 = buildRegistrationBlockedPhaseBlock(phase3_5);
+    phase3A_5 = buildRegistrationBlockedPhaseBlock(phase3A_5);
+    phase3C = buildRegistrationBlockedPhaseBlock(phase3C);
+    phase3D = buildRegistrationBlockedPhaseBlock(phase3D);
+    phase3E = buildRegistrationBlockedPhaseBlock(phase3E);
   }
 
   return {
@@ -518,7 +520,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     phase3E,
     result_state: normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
-    block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
+    block_customer_report_reason: regFailureReason ? hardFailReason : (payload.block_customer_report_reason ?? hardFailReason ?? null),
     failure_stage: failureStage,
     diagram_render_intent: regFailureReason
       ? (resultState === 'ai_failed_target_unconfirmed' ? 'target_confirmation_required' : 'coordinate_registration_debug_only')
@@ -609,7 +611,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         geometry.result_state = failure.result_state;
         geometry.hard_fail_reason = failure.hard_fail_reason;
         geometry.block_customer_report_reason = failure.block_customer_report_reason;
-        geometry.failure_stage = "registration";
+        geometry.failure_stage = registrationFailureStage(failure.reason as any);
         geometry.diagram_render_intent =
           failure.result_state === "ai_failed_target_unconfirmed"
             ? "target_confirmation_required"
@@ -619,6 +621,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         (next as any).result_state = failure.result_state;
         (next as any).hard_fail_reason = failure.hard_fail_reason;
         (next as any).block_customer_report_reason = failure.block_customer_report_reason;
+        (next as any).failure_stage = geometry.failure_stage;
         (next as any).diagram_render_intent = geometry.diagram_render_intent;
         (next as any).customer_report_ready = false;
         (next as any).validation_status = "failed";
@@ -645,17 +648,8 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // withPhase3Visibility — needed because some code paths skip the wrapper
   // and feed `geometry_report_json` to prepareRoofMeasurementPayload directly.
   if (regFailureReasonForPrecedence) {
-    for (const k of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
-      const blk = (geometry as any)[k];
-      if (blk && typeof blk === "object") {
-        (geometry as any)[k] = {
-          ...blk,
-          executed: false,
-          skipped_reason: "blocked_by_registration_gate",
-          skipped_by: REGISTRATION_PRECEDENCE_VERSION,
-        };
-      }
-    }
+    forceRegistrationBlockedPhaseBlocks(geometry as any);
+    stripRegistrationBlockedGeometryArtifacts(geometry as any);
   }
 
   // Always stamp the precedence version so we can prove enforcement on every row.
@@ -893,8 +887,7 @@ Deno.serve(async (req) => {
         lat: Number(latitude ?? sourceRecord?.verified_lat ?? sourceRecord?.contact_lat ?? original_geocode_lat ?? 0),
         lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
       };
-      const registrationBlock = {
-        version: "registration-gate-v2.0",
+      const gateA = evaluateRegistrationGate({
         user_confirmed_roof_target: false,
         roof_target_admin_override: false,
         original_geocode_lat_lng:
@@ -902,19 +895,18 @@ Deno.serve(async (req) => {
             ? { lat: original_geocode_lat, lng: original_geocode_lng }
             : null,
         confirmed_roof_center_lat_lng: null,
-        confirmed_roof_center_px: null,
         geo_to_dsm_px_success: false,
         dsm_pixel_transform_valid: false,
-        dsm_to_raster_transform_exists: false,
-        raster_bounds_contain_confirmed_center: false,
-        confirmed_center_inside_candidate: false,
-        coordinate_registration_gate_passed: false,
+        dsm_to_raster_transform: null,
+      });
+      const registrationBlock = {
+        ...gateA.registration,
         failure_reason: failReason,
         blocked_before_source_acquisition: true,
       };
-      const skippedByTarget = { version: "v1", executed: false, skipped_reason: "blocked_by_target_confirmation" };
+      const skippedByTarget = buildRegistrationBlockedPhaseBlock();
       const debugPayload = {
-        failure_stage: "registration",
+        failure_stage: "target_confirmation",
         hard_fail_reason: failReason,
         block_customer_report_reason: failReason,
         result_state: "ai_failed_target_unconfirmed",
@@ -946,6 +938,13 @@ Deno.serve(async (req) => {
         source_button,
         logical_image_width,
         logical_image_height,
+        original_geocode_lat,
+        original_geocode_lng,
+        confirmed_roof_center_lat,
+        confirmed_roof_center_lng,
+        confirmed_roof_center_px,
+        user_confirmed_roof_target,
+        roof_target_admin_override,
       }, fallbackCoords, failReason, debugPayload, null, 0);
       await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
       await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
@@ -954,7 +953,23 @@ Deno.serve(async (req) => {
         report_blocked: true,
         result_state: normalizeResultStateForWrite("ai_failed_target_unconfirmed", debugPayload),
         hard_fail_reason: failReason,
-        source_context: { gate_reason: failReason, hard_fail_reason: failReason, debug: debugPayload },
+        source_context: {
+          gate_reason: failReason,
+          hard_fail_reason: failReason,
+          block_customer_report_reason: failReason,
+          failure_stage: "target_confirmation",
+          registration: registrationBlock,
+          registration_gate: registrationBlock,
+          registration_precedence_version: REGISTRATION_PRECEDENCE_VERSION,
+          registration_precedence_applied: true,
+          registration_precedence_reason: failReason,
+          phase3_5: skippedByTarget,
+          phase3A_5: skippedByTarget,
+          phase3C: skippedByTarget,
+          phase3D: skippedByTarget,
+          phase3E: skippedByTarget,
+          debug: debugPayload,
+        },
       }).eq("id", aiJob.id);
       return json({
         success: false,
@@ -1204,7 +1219,7 @@ async function processJob(input: any) {
       if (gateB.failure && (gateB.failure.result_state === "ai_failed_source_acquisition" || gateB.failure.result_state === "ai_failed_target_unconfirmed")) {
         const failReason = gateB.failure.hard_fail_reason;
         const debugPayload = {
-          failure_stage: "registration",
+          failure_stage: "source_registration",
           hard_fail_reason: failReason,
           block_customer_report_reason: failReason,
           result_state: gateB.failure.result_state,
@@ -1221,6 +1236,11 @@ async function processJob(input: any) {
             registration_failure_reason: gateB.failure.reason,
           },
           acquisition_audit: acquisitionAudit,
+          phase3_5: buildRegistrationBlockedPhaseBlock(),
+          phase3A_5: buildRegistrationBlockedPhaseBlock(),
+          phase3C: buildRegistrationBlockedPhaseBlock(),
+          phase3D: buildRegistrationBlockedPhaseBlock(),
+          phase3E: buildRegistrationBlockedPhaseBlock(),
         };
         console.log("[REGISTRATION_GATE_B] REJECT", JSON.stringify({ reason: failReason }));
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
@@ -1229,7 +1249,26 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit, registration: gateB.registration },
+          result_state: gateB.failure.result_state,
+          hard_fail_reason: failReason,
+          source_context: {
+            gate_reason: failReason,
+            hard_fail_reason: failReason,
+            block_customer_report_reason: failReason,
+            failure_stage: "source_registration",
+            registration: gateB.registration,
+            registration_gate: gateB.registration,
+            registration_precedence_version: REGISTRATION_PRECEDENCE_VERSION,
+            registration_precedence_applied: true,
+            registration_precedence_reason: gateB.failure.reason,
+            phase3_5: debugPayload.phase3_5,
+            phase3A_5: debugPayload.phase3A_5,
+            phase3C: debugPayload.phase3C,
+            phase3D: debugPayload.phase3D,
+            phase3E: debugPayload.phase3E,
+            debug: debugPayload,
+            acquisition_audit: acquisitionAudit,
+          },
         }).eq("id", input.ai_measurement_job_id);
         return;
       }

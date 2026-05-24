@@ -137,8 +137,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   // ai_measurement_jobs.source_context.debug. Fall back to it so
   // perimeter_phase0 and target-mask metrics are always available in the UI.
   const sourceCtxDebug = m.source_context?.debug || m.source_context?.source_context?.debug || null;
-  const phase0 = grj.perimeter_phase0 || sourceCtxDebug?.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null;
-  const targetMask = phase0?.target_mask_isolation || grj.perimeter_inner_trace || sourceCtxDebug?.perimeter_inner_trace || grj.target_mask_isolation || {};
+  const registrationBlocked = grj.registration_precedence_applied === true;
+  const registrationPrecedenceReason = grj.registration_precedence_reason || grj.hard_fail_reason || grj.block_customer_report_reason || null;
+  const phase0 = registrationBlocked ? null : (grj.perimeter_phase0 || sourceCtxDebug?.perimeter_phase0 || grj.perimeter_gate_metrics || m.perimeter_gate_metrics || null);
+  const targetMask = registrationBlocked ? {} : (phase0?.target_mask_isolation || grj.perimeter_inner_trace || sourceCtxDebug?.perimeter_inner_trace || grj.target_mask_isolation || {});
   const dp = grj.debug_pipeline || {};
   const phase3 = grj.phase3 || sourceCtxDebug?.phase3 || null;
   const phase3A = grj.phase3A || sourceCtxDebug?.phase3A || null;
@@ -171,7 +173,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
 
   const debugRows: { label: string; value: string }[] = [
     { label: 'Detection Method', value: String(m.detection_method ?? grj.detection_method ?? '—') },
-    { label: 'Footprint Source', value: String(m.footprint_source ?? grj.footprint_source ?? '—') },
+    { label: 'Footprint Source', value: registrationBlocked ? 'blocked_by_registration_gate' : String(m.footprint_source ?? grj.footprint_source ?? '—') },
     { label: 'Footprint Valid', value: String(grj.footprint_valid ?? '—') },
     { label: 'Coordinate Match', value: String(grj.coordinate_space_match ?? grj.dsm_coordinate_match?.match ?? '—') },
     { label: 'Solver Space', value: String(grj.coordinate_space_solver ?? grj.overlay_debug?.coordinate_space_solver ?? '—') },
@@ -180,7 +182,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Attempted Faces', value: fmt(grj.attempted_faces ?? grj.faces_attempted) },
     { label: 'Validated Faces', value: fmt(grj.validated_faces ?? grj.valid_faces) },
     { label: 'Coverage', value: fmt(((grj.debug_geometry?.face_coverage_ratio ?? grj.face_coverage_ratio) || 0) * 100, '%') },
-    { label: 'Failure Reason', value: String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '—') },
+    { label: 'Failure Reason', value: String(registrationPrecedenceReason ?? m.gate_reason ?? '—') },
     // ─── Registration Precedence (registration-precedence-v1) ───
     { label: 'Registration Precedence Version', value: String(grj.registration_precedence_version ?? '—') },
     { label: 'Registration Precedence Applied', value: String(grj.registration_precedence_applied ?? '—') },
@@ -265,7 +267,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Report Renderer Version', value: String((m as any).report_renderer_version ?? grj.report_renderer_version ?? '—') },
   ];
 
-  const blockReason = grj.block_customer_report_reason;
+  const blockReason = registrationBlocked ? registrationPrecedenceReason : grj.block_customer_report_reason;
   const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
@@ -276,7 +278,8 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const phase0MissingBug = !phase0 && innerTraceFired;
   const phase0BypassBug = developerBug === 'phase0_bypassed_before_perimeter_gate' || /phase0_bypassed/i.test(failureReasonStr);
 
-  if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
+  if (registrationBlocked) errorList.push(`Registration failure: ${String(registrationPrecedenceReason)}`);
+  else if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (phase3Enabled !== true) errorList.push('Phase 3 visibility fields missing — stale function or unwired payload.');
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
   if (m.validation_status === 'needs_manual_measurement') errorList.push('Validation: needs_manual_measurement');
@@ -429,6 +432,9 @@ const parseRasterSizeFromUrl = (url?: string | null): { width: number; height: n
 
 const getRasterOverlayData = (measurement: any) => {
   const grj = measurement?.geometry_report_json || {};
+  if (grj?.registration_precedence_applied === true) {
+    return { grj, rasterUrl: null, rasterSize: null, planes_px: [], edges_px: [], footprint_px: [], hasRasterOverlay: false };
+  }
   const overlayDbg = grj?.overlay_debug || {};
   const rasterUrl =
     overlayDbg?.raster_url ||
@@ -475,12 +481,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [overrideEditorOpen, setOverrideEditorOpen] = useState(false);
   const [debugViewerOpen, setDebugViewerOpen] = useState(false);
   const { user: currentUser } = useCurrentUser();
+  const effectiveMeasurement = fullMeasurement || measurement;
   const canOverride = (() => {
+    const registrationBlocked = (effectiveMeasurement as any)?.geometry_report_json?.registration_precedence_applied === true;
     const r = (currentUser?.role ?? '').toLowerCase();
-    return r === 'master' || r === 'admin' || r === 'cob';
+    return !registrationBlocked && (r === 'master' || r === 'admin' || r === 'cob');
   })();
 
-  const effectiveMeasurement = fullMeasurement || measurement;
   const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(effectiveMeasurement), [effectiveMeasurement]);
 
@@ -855,13 +862,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const overlayDbg = grj.overlay_debug || {};
               const debugGeom = grj.debug_geometry || {};
               const dsmDbg = grj.dsm_planar_graph_debug || {};
-              const footprintSource =
-                (effectiveMeasurement as any)?.footprint_source
-                ?? grj.footprint_source
-                ?? debugGeom.footprint_source
-                ?? dsmDbg.footprint_source
-                ?? overlayDbg.footprint_source
-                ?? 'unknown';
+              const footprintSource = grj.registration_precedence_applied === true
+                ? 'blocked_by_registration_gate'
+                : ((effectiveMeasurement as any)?.footprint_source
+                  ?? grj.footprint_source
+                  ?? debugGeom.footprint_source
+                  ?? dsmDbg.footprint_source
+                  ?? overlayDbg.footprint_source
+                  ?? 'unknown');
               const inferenceSource =
                 (effectiveMeasurement as any)?.inference_source ?? grj.inference_source ?? 'unknown';
               const topologySource = grj.topology_source ?? grj.geometry_source ?? 'unknown';
@@ -1223,6 +1231,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     </Alert>
                   )}
                   {(() => {
+                    if ((grj as any)?.registration_precedence_applied === true) return null;
                     const p35: any = (grj as any)?.phase3A_5 ?? (grj as any)?.phase3_5;
                     const overlaySvg: string | undefined = p35?.debug_perimeter_overlay_svg;
                     if (!overlaySvg) return null;
