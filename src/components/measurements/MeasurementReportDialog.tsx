@@ -922,11 +922,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                       )}
                     </>
                   )}
-                  {blocked && (
-                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-xs break-all whitespace-normal max-w-full block">
-                      blocked: {String(blocked)}
-                    </span>
-                  )}
+                  {blocked && (() => {
+                    const reasonLabels: Record<string, string> = {
+                      target_roof_not_confirmed: 'Roof target not confirmed (place pin in StructureSelectionMap)',
+                      coordinate_registration_failed: 'Coordinate registration failed (DSM/raster transform invalid)',
+                      registration_field_conflict: 'Registration field conflict — gate passed with contradictory data',
+                      missing_selected_candidate: 'Missing selected candidate (registration produced no candidate)',
+                      blocked_by_registration_gate: 'Blocked by registration gate',
+                    };
+                    const friendly = reasonLabels[String(blocked)] || String(blocked);
+                    return (
+                      <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-xs break-all whitespace-normal max-w-full block" title={String(blocked)}>
+                        blocked: {friendly}
+                      </span>
+                    );
+                  })()}
                   {pdfIsStale && (
                     <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
                       PDF stale — will regenerate
