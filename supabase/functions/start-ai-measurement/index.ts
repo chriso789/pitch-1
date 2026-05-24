@@ -43,6 +43,10 @@ import {
   validateRegistrationTransformPackage,
 } from "../_shared/source-registration-transform.ts";
 import {
+  classifyRegistrationStage,
+  REGISTRATION_STAGE_CLASSIFIER_VERSION,
+} from "../_shared/registration-stage-classifier.ts";
+import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
   derivePrecedenceReasonWithConflict,
@@ -3596,8 +3600,62 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if footprint does not overlap DSM grid, do NOT call solver.
       if (!dsmCoordinateMatch) {
-        const failReason = "coordinate_registration_failed";
-        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
+        // Build the transform package against what we actually have so we can
+        // promote the generic "coordinate_registration_failed" into a
+        // stage-specific token (dsm_bounds_missing, dsm_center_out_of_bounds,
+        // candidate_polygon_missing, candidate_does_not_contain_confirmed_center,
+        // coordinate_space_mismatch, dsm_raster_overlap_failed).
+        const _confirmedLatLng = (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+          : { lat: coords.lat, lng: coords.lng };
+        const _dsmBoundsLL = effectiveDSMForMatch
+          ? { sw: { lat: effectiveDSMForMatch.bounds.minLat, lng: effectiveDSMForMatch.bounds.minLng }, ne: { lat: effectiveDSMForMatch.bounds.maxLat, lng: effectiveDSMForMatch.bounds.maxLng } }
+          : null;
+        const _dsmSizePx = effectiveDSMForMatch ? { width: effectiveDSMForMatch.width, height: effectiveDSMForMatch.height } : null;
+        const _transformPkg = buildRegistrationTransformPackage({
+          confirmed_roof_center_lat_lng: _confirmedLatLng,
+          static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+          zoom: Number.isFinite(Number((input as any).zoom)) ? Number((input as any).zoom) : 19,
+          size: { width: Number((input as any).logical_image_width || 640), height: Number((input as any).logical_image_height || 640) },
+          scale: Number((input as any).raster_scale || 2),
+          dsm_tile_bounds_lat_lng: _dsmBoundsLL,
+          dsm_size_px: _dsmSizePx,
+          dsm_meters_per_pixel: (effectiveDSMForMatch as any)?.resolution ?? null,
+        });
+        const _candidatePolygonPx = footprint.map(p => [p.x, p.y] as [number, number]);
+        const _stageReport = classifyRegistrationStage({
+          confirmed_roof_center_lat_lng: _confirmedLatLng,
+          confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ?? null,
+          confirmed_roof_center_dsm_px: _transformPkg.confirmed_roof_center_dsm_px ?? null,
+          raster_size_px: { width: raster.width, height: raster.height },
+          raster_bounds_lat_lng: _transformPkg.raster_bounds_lat_lng ?? null,
+          static_transform_succeeded: !!_transformPkg.geo_to_raster_transform && !!_transformPkg.confirmed_roof_center_px,
+          geo_to_dsm_px_success: _transformPkg.geo_to_dsm_px_success === true,
+          dsm_pixel_transform_valid: _transformPkg.dsm_pixel_transform_valid === true,
+          dsm_tile_bounds_contain_confirmed_center: _transformPkg.dsm_tile_bounds_contain_confirmed_center === true,
+          dsm_to_raster_bounds_overlap: _transformPkg.dsm_to_raster_transform?.bounds_overlap ?? null,
+          dsm: {
+            dsm_url_present: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
+            dsm_loaded: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
+            dsm_decode_success: !!effectiveDSMForMatch,
+            dsm_bounds_source: _dsmBoundsLL ? "solar_data_layers_metadata" : "missing",
+            dsm_tile_bounds_lat_lng: _dsmBoundsLL,
+            dsm_size_px: _dsmSizePx,
+            dsm_meters_per_pixel: (effectiveDSMForMatch as any)?.resolution ?? null,
+          },
+          candidate: {
+            selected_candidate_polygon_px: _candidatePolygonPx,
+            candidate_coordinate_space: "dsm_px",
+            candidate_source: String(footprintSource ?? "unknown"),
+            candidate_area_sqft: Math.round(footprintAreaSqftVal),
+            candidate_centroid_offset_threshold_px: Math.max(
+              6,
+              Math.round(0.05 * Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height))),
+            ),
+          },
+        });
+        const failReason = _stageReport.hard_fail_reason;
+        console.error(`[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`, JSON.stringify({ missing: _stageReport.missing_required_fields, mixed: _stageReport.coordinate_space_audit.mixed_space_detected }));
         const registrationGate = evaluateRegistrationGate({
           evaluation_stage: "candidate_final",
           candidate_selection_started: true,
@@ -3607,19 +3665,46 @@ async function processJob(input: any) {
             (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
               ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
               : null,
-          confirmed_roof_center_lat_lng:
-            (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
-              ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
-              : null,
-          confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
-          geo_to_dsm_px_success: false,
-          dsm_pixel_transform_valid: false,
-          dsm_to_raster_transform: null,
+          confirmed_roof_center_lat_lng: _confirmedLatLng,
+          confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ?? null,
+          geo_to_dsm_px_success: _transformPkg.geo_to_dsm_px_success === true,
+          dsm_pixel_transform_valid: _transformPkg.dsm_pixel_transform_valid === true,
+          dsm_to_raster_transform: _transformPkg.dsm_to_raster_transform ?? null,
           raster_size_px: { width: raster.width, height: raster.height },
-          dsm_size_px: effectiveDSMForMatch ? { width: effectiveDSMForMatch.width, height: effectiveDSMForMatch.height } : null,
-          dsm_tile_bounds_lat_lng: effectiveDSMForMatch ? { sw: { lat: effectiveDSMForMatch.bounds.minLat, lng: effectiveDSMForMatch.bounds.minLng }, ne: { lat: effectiveDSMForMatch.bounds.maxLat, lng: effectiveDSMForMatch.bounds.maxLng } } : null,
+          dsm_size_px: _dsmSizePx,
+          dsm_tile_bounds_lat_lng: _dsmBoundsLL,
         });
         const skippedByRegistration = { version: "v1", executed: false, skipped_reason: "blocked_by_registration_gate" };
+        const registrationBlock = {
+          ...registrationGate.registration,
+          failure: registrationGate.failure,
+          dsm_to_raster_transform_exists: !!_transformPkg.dsm_to_raster_transform,
+          transform_builder_called: true,
+          transform_callsite: "start-ai-measurement",
+          transform_callsite_version: "must-run-transform-preflight-v1",
+          transform_package_valid: _transformPkg.transform_package_valid,
+          transform_failure_reasons: validateRegistrationTransformPackage(_transformPkg).reasons,
+          stage_classifier_version: REGISTRATION_STAGE_CLASSIFIER_VERSION,
+          stage_failure_stage: _stageReport.failure_stage,
+          stage_hard_fail_reason: _stageReport.hard_fail_reason,
+          stage_missing_required_fields: _stageReport.missing_required_fields,
+          dsm_proof: _stageReport.dsm_proof,
+          candidate_proof: _stageReport.candidate_proof,
+          coordinate_space_audit: _stageReport.coordinate_space_audit,
+          // Hoist commonly-queried fields up to the registration root so the
+          // debug-measurement-runtime endpoint can read them without nesting.
+          dsm_tile_bounds_lat_lng: _stageReport.dsm_proof.dsm_tile_bounds_lat_lng,
+          dsm_size_px: _stageReport.dsm_proof.dsm_size_px,
+          geo_to_dsm_transform: _transformPkg.geo_to_dsm_transform,
+          confirmed_roof_center_dsm_px: _transformPkg.confirmed_roof_center_dsm_px,
+          dsm_tile_bounds_contain_confirmed_center: _transformPkg.dsm_tile_bounds_contain_confirmed_center,
+          dsm_to_raster_transform: _transformPkg.dsm_to_raster_transform,
+          selected_candidate_polygon_px: _candidatePolygonPx,
+          candidate_coordinate_space: "dsm_px",
+          confirmed_center_inside_candidate: _stageReport.candidate_proof.confirmed_center_inside_candidate,
+          candidate_centroid_offset_from_confirmed_center_px:
+            _stageReport.candidate_proof.candidate_centroid_offset_from_confirmed_center_px,
+        };
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -3630,19 +3715,20 @@ async function processJob(input: any) {
           footprint_coordinate_space: "pixel",
           coordinate_space_match: false,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
-          registration: { ...registrationGate.registration, failure: registrationGate.failure, dsm_to_raster_transform_exists: false },
-          registration_gate: { ...registrationGate.registration, failure: registrationGate.failure, dsm_to_raster_transform_exists: false },
+          registration: registrationBlock,
+          registration_gate: registrationBlock,
           hard_fail_reason: failReason,
           block_customer_report_reason: failReason,
           result_state: "ai_failed_source_acquisition",
           diagram_render_intent: "coordinate_registration_debug_only",
-          failure_stage: "registration",
+          failure_stage: _stageReport.failure_stage,
+          missing_required_fields: _stageReport.missing_required_fields,
           phase3A_5: skippedByRegistration,
           phase3_5: skippedByRegistration,
           phase3C: skippedByRegistration,
           phase3D: skippedByRegistration,
           phase3E: skippedByRegistration,
-          footprint_px: footprint.map(p => [p.x, p.y]),
+          footprint_px: _candidatePolygonPx,
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },
         };
@@ -3652,6 +3738,7 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
         return;
       }
+
 
       // HARD BLOCK: if DSM completely unavailable (404 / no DataLayers), fail as no_dsm_coverage
       if (!dsmGrid && !maskedDSM) {
