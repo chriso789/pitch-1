@@ -58,6 +58,10 @@ import {
   deriveDiagramRenderIntent,
   type ResultState as _SharedResultState,
 } from "../_shared/result-state.ts";
+import {
+  normalizeDiagramRenderIntentForWrite,
+  isDiagramRenderIntentConstraintError,
+} from "../_shared/diagram-render-intent.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
