@@ -1,97 +1,121 @@
+## Goal
+Prove the Registration Gate v2.1 actually fires end-to-end on Fonsica, fix the residual bypass that lets `phase3_5.executed=true` survive a registration failure, and add a deployable runtime stamp so we can verify enforcement on every row.
 
-# Stop-the-Bleeding: Target Roof Registration Gate v2 enforcement
+## What's already in the repo (verified)
 
-The wiring exists (`evaluateTargetConfirmation`, `evaluateRegistrationGate`, `evaluateCandidate`, `registration_gate` block, `debug-measurement-runtime` reads the fields) but there are three escape hatches that still let bad runs through:
+| Claim | File / Line | Status |
+|---|---|---|
+| `derivePhase3ResultState` | `supabase/functions/start-ai-measurement/index.ts:387` | ✅ present, registration overrides perimeter/topology |
+| `withPhase3Visibility` | `supabase/functions/start-ai-measurement/index.ts:456` | ✅ present, derives `regFailureReason` |
+| `blocked_by_registration_gate` skip stamp | `index.ts:486, 604, 3161` | ✅ written in 3 sites |
+| `target_roof_not_confirmed → ai_failed_target_unconfirmed` | `_shared/registration-gate.ts:266`, `result-state.ts:45` + `index.ts:395` | ✅ |
+| `coordinate_registration_failed → ai_failed_source_acquisition` | `index.ts:398-407` + `registration-gate.ts` | ✅ |
+| Gate B hard-stop in handler | `index.ts:1134-1155` | ✅ |
+| `REGISTRATION_GATE_VERSION = "registration-gate-v2.1"` | `_shared/registration-gate.ts:17` | ✅ |
 
-1. **`useMeasurementJob.ts:171`** defaults `user_confirmed_roof_target: params.userConfirmedRoofTarget ?? true`. Any caller that doesn't pass the flag silently bypasses Gate A.
-2. **PullMeasurementsButton** opens `StructureSelectionMap` but does not require the user to drop a confirmation PIN before invoking `startJob` — and even when it does, the truthy default above masks regressions.
-3. **Candidate loop in `start-ai-measurement`** calls `evaluateCandidate` but still allows fallbacks (best-of remaining, mask-union fallback, hull rescue) to become the *selected* perimeter — so a wrong-house polygon can still surface in the editor.
+So the module + override logic exists. The user's last Fonsica row predates the fix — the next rerun is what will prove it.
 
-This plan closes those three escape hatches and tightens diagnostics + UI + tests so the failure path is unambiguous.
+## Why the last Fonsica row was still `ai_failed_perimeter` (root cause we still need to close)
 
-## Scope (no business-logic rewrites beyond gating)
+There is a real residual bypass in `withPhase3Visibility` (index.ts 482-510) and in the prepare-payload override (index.ts 600-606):
 
-### 1. Frontend: never invoke the pipeline without an explicit confirmed target
+```text
+if (regFailureReason) {
+  for k in [phase3_5, phase3A_5, phase3C, phase3D, phase3E]:
+    if payload[k] exists: payload[k] = {...blk, executed:false, skipped_reason:'blocked_by_registration_gate'}
+}
+return { ..., phase3_5: buildPhase3A5Block(payload), phase3C: buildPhase3CBlock(payload), ... }
+```
 
-- `src/hooks/useMeasurementJob.ts`
-  - Change the default: `user_confirmed_roof_target` MUST be passed explicitly; if absent or falsy AND no `roof_target_admin_override`, throw before invoking — never send `?? true`.
-  - Forward `confirmed_roof_lat`, `confirmed_roof_lng`, and `original_geocode_*` exactly as supplied.
-- `src/components/measurements/PullMeasurementsButton.tsx`
-  - The "Start AI Measurement" button stays disabled until `StructureSelectionMap` reports a placed confirmation PIN (or master uses the admin override toggle).
-  - When the user proceeds, pass `userConfirmedRoofTarget: true` + the PIN coords. Otherwise it's not allowed to call `startJob`.
-- `src/components/measurements/StructureSelectionMap.tsx`
-  - Emit a single `onTargetConfirmed({ lat, lng })` callback only after the user explicitly places/accepts the pin. No auto-confirm on open.
+Two problems:
 
-### 2. Backend: tighten the three gates already in `start-ai-measurement`
+1. The override only mutates blocks that **already exist** on the payload. If phase3A_5 ran partially and is present, it gets stamped; if it didn't run at all, `buildPhase3A5Block` returns its **stage-default** `skipped_reason: 'perimeter_refinement_callsite_not_reached'` — not `blocked_by_registration_gate`.
+2. If the registration block isn't populated on the in-memory `debug` object at the failure-write callsite (e.g. `index.ts:8612` `withPhase3Visibility(debug, [], failureReason)`), `regFailureReason` is `null` and the visibility wrapper never knows registration was the cause. The pre-write `prepareRoofMeasurementPayload` then sees `_registration_gate_input` and tries to override the result_state, but by then `phase3_5.executed=true` is already baked into `geometry_report_json`.
 
-- **Gate A (target confirmation)** — already present at ~L694. Add a hard assertion that if `user_confirmed_roof_target !== true` and `roof_target_admin_override !== true`, the function returns immediately with the diagnostic row already specified (no Solar fetch, no DSM fetch). Verify no code path after this block can re-enter source acquisition.
-- **Gate B (registration)** — already at ~L1084 / L3092. Make both call sites share one helper `assertRegistrationGateOrFail(input, ctx)` in `_shared/registration-gate.ts` so the failure shape (result_state, hard_fail_reason, diagram_render_intent, phase3_5.skipped_reason, registration_gate block) is identical and can't drift. Remove any path that proceeds to perimeter refinement when `gateB.passed === false`.
-- **Gate C (containment)** — at ~L1955 / L2046. Today rejected candidates are tracked but the loop can still select a fallback. Change the contract: if **no** candidate contains `confirmed_roof_center_px`, fail hard with `hard_fail_reason = candidate_does_not_contain_confirmed_roof_center` and `result_state = ai_failed_source_acquisition`. Forbidden fallbacks: `solar_segment_union`, `solar_segment_hull`, `mask_union`, `bbox_rescue`. Wrong-house polygons may only be persisted under `rejected_candidates[]`, never as `selected_perimeter`.
-- All three failure paths must persist `_registration_gate_input` so `prepareRoofMeasurementPayload` writes a canonical `registration` snapshot (already wired at L7198 / L8816 — verify both call sites).
+Both are why the user's pasted row still showed `result_state=ai_failed_perimeter`, `phase3_5 executed=true`, `Perimeter Phase 0 ran`.
 
-### 3. Result-state + render-intent contract
+## Fix
 
-In `supabase/functions/_shared/result-state.ts`, confirm the mapping (already partly present):
+### 1. Make registration override unconditional in `withPhase3Visibility`
+After the builders run, if `regFailureReason` is truthy, force each phase block to:
+```
+{ ...block, executed: false, skipped_reason: 'blocked_by_registration_gate', skipped_by: 'registration_precedence_v1' }
+```
+Do the same in `prepareRoofMeasurementPayload` (index.ts 580-607) after the geometry mutations.
 
-| condition | result_state | hard_fail_reason | diagram_render_intent | phase3_5.skipped_reason |
-|---|---|---|---|---|
-| Gate A fail | `ai_failed_target_unconfirmed` | `target_roof_not_confirmed` | `target_confirmation_required` | `blocked_by_target_confirmation` |
-| Gate B fail | `ai_failed_source_acquisition` | `coordinate_registration_failed` | `coordinate_registration_debug_only` | `blocked_by_registration_gate` |
-| Gate C fail | `ai_failed_source_acquisition` | `candidate_does_not_contain_confirmed_roof_center` | `coordinate_registration_debug_only` | `blocked_by_registration_gate` |
+### 2. Add runtime stamp on every write
+In both `withPhase3Visibility` and `prepareRoofMeasurementPayload`, write to `geometry_report_json`:
+```jsonc
+registration_precedence_version: "registration-precedence-v1",
+registration_precedence_applied: boolean,         // true when override fired
+registration_precedence_reason:                    // matches enum below or null
+  "target_roof_not_confirmed"
+  | "coordinate_registration_failed"
+  | "candidate_does_not_contain_confirmed_roof_center"
+  | null,
+registration_gate_version: "registration-gate-v2.1"
+```
 
-`customer_report_ready` forced `false` and `block_customer_report_reason` set to the same `hard_fail_reason` in all three.
+### 3. Guarantee the registration block is populated on every failure-write path
+Audit every `withPhase3Visibility(debug, …)` callsite. If `debug.registration` is missing but a `_registration_gate_input` (or equivalent acquisition context) is present, evaluate the gate inline so the wrapper sees the registration block. Specific sites: `index.ts:8612` and the early-failure return at ~866/901/911.
 
-### 4. UI: report dialog + manual editor
+### 4. Surface stamps in `debug-measurement-runtime`
+Add the three `registration_precedence_*` fields plus the registration block summary to the row shape returned by `supabase/functions/debug-measurement-runtime/index.ts`.
 
-- `MeasurementReportDialog.tsx`
-  - Header banner reads from `hard_fail_reason` directly — never show "blocked: perimeter_shape_not_accurate" if `registration_gate.coordinate_registration_gate_passed !== true`.
-  - When any gate fails: hide editable blue selected perimeter; show aerial with original geocode marker, confirmed-center marker (if any), static-map center marker, and rejected candidate polygons in red/orange.
-  - Disable "Save edited perimeter", "Approve & rerun", "Approve only" buttons. Re-use `canApproveManualPerimeter()` which already requires all five registration flags — wire it to every approval button.
-  - On Gate A fail: render the Confirm Roof Target CTA that opens `StructureSelectionMap`.
-- `src/lib/measurement/registration-gate.ts`
-  - Keep the historical-row fallback that already detects pre-v2 rows.
+### 5. Surface stamps in `MeasurementReportDialog`
+Show a new "Registration Precedence" row in the diagnostics card:
+- version
+- applied (yes/no)
+- reason
+And update the blocked-badge logic so when `registration_precedence_applied===true`, the badge text reads the precedence reason (e.g. `target_roof_not_confirmed`) instead of `perimeter_shape_not_accurate`.
 
-### 5. Debug endpoint
+### 6. Regression tests (per AI Measurement Regression Harness skill)
+Add to `supabase/functions/start-ai-measurement/__tests__/`:
+- `registration-precedence-target-unconfirmed.test.ts` — feeds a Fonsica-shaped payload with `user_confirmed_roof_target=false`, asserts:
+  - `result_state === 'ai_failed_target_unconfirmed'`
+  - `hard_fail_reason === 'target_roof_not_confirmed'`
+  - `block_customer_report_reason === 'target_roof_not_confirmed'`
+  - `failure_stage === 'registration'`
+  - `phase3_5.executed === false` AND `skipped_reason === 'blocked_by_registration_gate'`
+  - same for `phase3A_5`, `phase3C`, `phase3D`, `phase3E`
+  - `registration_precedence_applied === true`
+  - `registration_precedence_reason === 'target_roof_not_confirmed'`
+- `registration-precedence-broken-frame.test.ts` — target confirmed but `geo_to_dsm_px_success=false`, asserts:
+  - `result_state === 'ai_failed_source_acquisition'`
+  - `hard_fail_reason === 'coordinate_registration_failed'`
+  - phase blocks skipped with `blocked_by_registration_gate`
+  - `registration_precedence_reason === 'coordinate_registration_failed'`
 
-`supabase/functions/debug-measurement-runtime/index.ts` already returns most fields. Add to the selected columns / response:
-- `registration_gate.version`
-- `coordinate_registration_gate_passed`
-- `phase3_5.executed`, `phase3_5.skipped_reason`
-- `diagram_render_intent`
-- `manual_approval_allowed` (derived via `canApproveManualPerimeter`)
+Run via `supabase--test_edge_functions` on `start-ai-measurement`.
 
-POST contract unchanged: `{ address, limit }`.
+### 7. Manual rerun proof
+After deploy, the user reruns Fonsica twice:
+- Without confirming PIN → expect Test #1 acceptance shape.
+- With PIN but forced bad transform → expect Test #2 acceptance shape.
+Verify via `debug-measurement-runtime?lead_id=<fonsica>` that:
+- `registration_precedence_version === "registration-precedence-v1"`
+- `registration_precedence_applied === true`
+- `registration_precedence_reason` matches the scenario
+- All five phase blocks carry `skipped_reason: blocked_by_registration_gate`
 
-### 6. Regression tests
+## Files to edit
 
-Add under `supabase/functions/_shared/__tests__/registration-gate_test.ts` (extend existing file):
+- `supabase/functions/start-ai-measurement/index.ts` — fix override, stamp precedence, audit failure-write callsites
+- `supabase/functions/debug-measurement-runtime/index.ts` — surface precedence fields
+- `src/components/measurements/MeasurementReportDialog.tsx` (and any sibling diagnostics card) — surface precedence row, fix blocked-badge text
+- `supabase/functions/start-ai-measurement/__tests__/registration-precedence-target-unconfirmed.test.ts` *(new)*
+- `supabase/functions/start-ai-measurement/__tests__/registration-precedence-broken-frame.test.ts` *(new)*
 
-1. `evaluateTargetConfirmation` — missing flag ⇒ Gate A failure shape exact match.
-2. `evaluateRegistrationGate` — `geo_to_dsm_px_success=false` ⇒ Gate B failure; `dsm_pixel_transform_valid=false` ⇒ Gate B failure; missing `dsm_to_raster_transform` ⇒ Gate B failure.
-3. `evaluateCandidate` — polygon not containing confirmed center ⇒ rejected; no candidate containing center ⇒ Gate C hard fail.
-4. `canApproveManualPerimeter` — returns false when any of the five flags missing; true only when all five present.
-5. `normalizeResultStateForWrite` — the three `hard_fail_reason` values map to the correct buckets.
+## Out of scope (intentionally deferred until both Fonsica tests pass)
 
-Add a Vitest snapshot under `src/components/measurements/__tests__/MeasurementReportDialog.registration-gate.test.tsx`:
-- Gate A row ⇒ shows Confirm Target CTA, no editable perimeter, all approve buttons disabled.
-- Gate B row ⇒ shows registration debug overlay, no editable perimeter, approvals disabled.
-- Gate C row ⇒ shows rejected candidate in red, no selected perimeter, approvals disabled.
+- Any further perimeter shape / Phase 3A.5 tuning
+- Topology / backbone / repair changes
+- Vendor benchmark gate work
 
-### 7. Acceptance (Fonsica West Coast rerun)
+## Acceptance
 
-The plan is done when, on a fresh Fonsica run:
-
-- If the user hasn't confirmed: `result_state=ai_failed_target_unconfirmed`, `hard_fail_reason=target_roof_not_confirmed`, no perimeter diagram, Phase 3A.5 `skipped_reason=blocked_by_target_confirmation`, debug endpoint shows all eleven fields, manual approval disabled.
-- If transforms invalid: `result_state=ai_failed_source_acquisition`, `hard_fail_reason=coordinate_registration_failed`, no selected perimeter, registration debug overlay visible.
-- If wrong candidate: `hard_fail_reason=candidate_does_not_contain_confirmed_roof_center`, candidate shown only under rejected.
-- `perimeter_shape_not_accurate` can only appear when all three gates passed.
-
-### Out of scope (later prompts)
-
-- Perimeter shape gate tuning, topology fixes, roof_lines generation, vendor benchmark — none of these run until this gate is solid.
-
-## Skills applied
-- Roof Measurement Vision QA & Geometry Contract (gate ordering, customer-report contract)
-- Canonical Route & Runtime Provenance Auditor (single canonical entrypoint, debug endpoint fields)
-- Measurement Overlay UI & Visual QA (blocked-topology UI, rejected-candidate rendering, approval gating)
-- AI Measurement Regression Harness (test list, Fonsica acceptance)
+Plan is complete when:
+1. A fresh Fonsica row without target confirmation persists `ai_failed_target_unconfirmed` + `blocked_by_registration_gate` on all 5 phase blocks + `registration_precedence_applied=true`.
+2. A fresh Fonsica row with broken registration persists `ai_failed_source_acquisition` + `coordinate_registration_failed`.
+3. Both new Deno tests pass under `supabase--test_edge_functions`.
+4. `MeasurementReportDialog` blocked badge reads the precedence reason (not `perimeter_shape_not_accurate`) and shows the new precedence row.
