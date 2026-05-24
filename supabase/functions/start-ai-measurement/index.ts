@@ -3352,6 +3352,8 @@ async function processJob(input: any) {
         const failReason = "coordinate_registration_failed";
         console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
         const registrationGate = evaluateRegistrationGate({
+          evaluation_stage: "candidate_final",
+          candidate_selection_started: true,
           user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
           roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
           original_geocode_lat_lng:
