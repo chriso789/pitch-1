@@ -32,7 +32,16 @@ import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
-import { buildRegistrationTransformPackage } from "../_shared/source-registration-transform.ts";
+import {
+  buildRegistrationTransformPackage,
+  buildRasterBoundsFromStaticMap,
+  buildGeoToRasterTransform,
+  buildGeoToDsmTransform,
+  buildDsmToRasterTransform,
+  projectLatLngToRasterPx,
+  projectLatLngToDsmPx,
+  validateRegistrationTransformPackage,
+} from "../_shared/source-registration-transform.ts";
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
@@ -42,6 +51,7 @@ import {
   buildRegistrationBlockedPhaseBlock,
   forceRegistrationBlockedPhaseBlocks,
   stripRegistrationBlockedGeometryArtifacts,
+  quarantineRegistrationBlockedVisibleGeometry,
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
@@ -550,6 +560,22 @@ const corsHeaders = {
 };
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+const TRANSFORM_CALLSITE = "start-ai-measurement";
+const TRANSFORM_CALLSITE_VERSION = "runtime-transform-wiring-v1";
+export const SOURCE_REGISTRATION_RUNTIME_WIRING_PROOF = {
+  callsite: TRANSFORM_CALLSITE,
+  version: TRANSFORM_CALLSITE_VERSION,
+  imports: {
+    buildRegistrationTransformPackage,
+    buildRasterBoundsFromStaticMap,
+    buildGeoToRasterTransform,
+    buildGeoToDsmTransform,
+    buildDsmToRasterTransform,
+    projectLatLngToRasterPx,
+    projectLatLngToDsmPx,
+    validateRegistrationTransformPackage,
+  },
+};
 
 const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "archetype_debug",
@@ -632,15 +658,20 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         // Proof-of-call telemetry — always overwrite (never gated by ??).
         registrationBlock.transform_builder_version = (regTransformPkg as any).version ?? "source-registration-transform-v1";
         registrationBlock.transform_builder_called = true;
-        registrationBlock.transform_package_valid = (regTransformPkg as any).transform_package_valid === true;
-        registrationBlock.transform_failure_reasons = Array.isArray((regTransformPkg as any).missing_required_fields)
-          ? (regTransformPkg as any).missing_required_fields
-          : [];
+        const transformValidation = validateRegistrationTransformPackage(regTransformPkg as any);
+        registrationBlock.transform_package_valid = transformValidation.valid === true;
+        registrationBlock.transform_failure_reasons = transformValidation.reasons.length
+          ? transformValidation.reasons
+          : (Array.isArray((regTransformPkg as any).missing_required_fields) ? (regTransformPkg as any).missing_required_fields : []);
         registrationBlock.transform_build_stage = (next as any)._registration_transform_build_stage ?? "candidate_final";
+        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
+        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
       } else {
         registrationBlock.transform_builder_called = false;
         registrationBlock.transform_package_valid = false;
         registrationBlock.transform_failure_reasons = ["transform_package_absent"];
+        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
+        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
       }
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
@@ -666,7 +697,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         // Quarantine stale Phase 3B / roof_lines when registration blocks.
         // The gate cannot have produced new typed roof_lines, so any present
         // values are from prior solver state and must not be reported as live.
-        const staleKeys = ["roof_lines", "phase3B", "phase3_b", "perimeter_eave_ft", "perimeter_rake_ft", "perimeter_total_ft"];
+        const staleKeys = ["roof_lines", "phase3B", "phase3_b", "phase3B_active", "roof_lines_count", "reportable_roof_lines_count", "roof_line_total_lf_by_attribute", "perimeter_eave_ft", "perimeter_rake_ft", "perimeter_total_ft"];
         const stale: Record<string, unknown> = (geometry as any).stale_debug_payload ?? {};
         for (const k of staleKeys) {
           if ((geometry as any)[k] != null) {
@@ -675,12 +706,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           }
         }
         (geometry as any).stale_debug_payload = stale;
-        (geometry as any).roof_lines_count = 0;
-        (geometry as any).phase3B = {
-          version: "v1",
-          executed: false,
-          skipped_reason: "blocked_by_registration_gate",
-        };
+        quarantineRegistrationBlockedVisibleGeometry(geometry as any);
         (next as any).roof_lines_count = 0;
       }
     } catch (e) {
@@ -779,6 +805,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       (geometry as any).stale_debug_payload = stale;
     }
     (geometry as any).roof_lines_count = 0;
+    quarantineRegistrationBlockedVisibleGeometry(geometry as any);
     (geometry as any).footprint_source = "blocked_by_registration_gate";
     (geometry as any).perimeter_topology = null;
     (geometry as any).perimeter_phase0 = null;
@@ -7636,12 +7663,18 @@ async function processJob(input: any) {
         meters_per_pixel: mppFinite ? actualMpp : null,
         static_map_center_lat_lng: transformPkgFinal.static_map_center_lat_lng ?? { lat: coords.lat, lng: coords.lng },
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
+        selected_candidate_polygon_geo: selectedFootprintPolygonPx
+          ? selectedFootprintPolygonPx.map(([x, y]) => pxToLngLat({ x, y }, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp))
+          : null,
+        candidate_coordinate_space: "raster_px",
+        candidate_distance_rank: selected ? validCandidates.findIndex((c) => c === selected) + 1 : null,
+        rejection_reason: selected?.rejected_reason ?? null,
         footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
       // Stash the package so prepareRoofMeasurementPayload merges it into the
       // persisted registration block (truth-from-math reference for the UI).
       (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
-      (roofMeasurementPayload as any)._registration_transform_build_stage = "candidate_final";
+      (roofMeasurementPayload as any)._registration_transform_build_stage = transformPkgFinal.dsm_tile_bounds_lat_lng ? "dsm" : "static_map";
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
     }

@@ -182,6 +182,44 @@ export function stripRegistrationBlockedGeometryArtifacts<T extends Record<strin
   return geometry;
 }
 
+export function quarantineRegistrationBlockedVisibleGeometry<T extends Record<string, any>>(geometry: T): T {
+  const stale: Record<string, unknown> =
+    geometry.stale_debug_payload && typeof geometry.stale_debug_payload === "object" && !Array.isArray(geometry.stale_debug_payload)
+      ? { ...(geometry.stale_debug_payload as Record<string, unknown>) }
+      : {};
+  const stalePhase3B: Record<string, unknown> = {};
+  for (const key of [
+    "phase3B",
+    "phase3B_active",
+    "roof_lines_count",
+    "reportable_roof_lines_count",
+    "roof_lines_by_attribute",
+    "roof_line_total_lf_by_attribute",
+    "roof_lines",
+  ]) {
+    if ((geometry as any)[key] != null) stalePhase3B[key] = (geometry as any)[key];
+  }
+  if (Object.keys(stalePhase3B).length > 0) stale.phase3B = stalePhase3B;
+  (geometry as any).stale_debug_payload = stale;
+  (geometry as any).phase3B = {
+    version: "v1",
+    executed: false,
+    skipped_reason: REGISTRATION_BLOCKED_SKIPPED_REASON,
+    phase3B_active: false,
+    roof_lines_count: 0,
+    reportable_roof_lines_count: 0,
+    roof_lines_by_attribute: {},
+    roof_line_total_lf_by_attribute: {},
+  };
+  (geometry as any).phase3B_active = false;
+  (geometry as any).roof_lines_count = 0;
+  (geometry as any).reportable_roof_lines_count = 0;
+  (geometry as any).roof_lines_by_attribute = {};
+  (geometry as any).roof_line_total_lf_by_attribute = {};
+  (geometry as any).roof_lines = [];
+  return geometry;
+}
+
 /**
  * Map a registration failure reason to the result_state bucket.
  */
