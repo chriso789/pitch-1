@@ -255,6 +255,8 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
+      width: 816,
+      windowWidth: 816,
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
