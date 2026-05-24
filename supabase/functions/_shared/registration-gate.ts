@@ -72,6 +72,10 @@ export interface RegistrationGateInput {
 
   // Selected candidate
   selected_candidate_polygon_px?: Polygon | null;
+  selected_candidate_polygon_geo?: unknown | null;
+  candidate_coordinate_space?: "raster_px" | "dsm_px" | string | null;
+  candidate_distance_rank?: number | null;
+  rejection_reason?: string | null;
   footprint_bbox_diagonal_px?: number | null;
 
   // v2.2 — strict mode flag. When true, the gate enforces real transform
@@ -398,12 +402,17 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     geo_to_raster_transform: input.geo_to_raster_transform ?? null,
     geo_to_dsm_transform: input.geo_to_dsm_transform ?? null,
     dsm_to_raster_transform: input.dsm_to_raster_transform ?? null,
+    selected_candidate_polygon_px: input.selected_candidate_polygon_px ?? null,
+    selected_candidate_polygon_geo: input.selected_candidate_polygon_geo ?? null,
+    candidate_coordinate_space: input.candidate_coordinate_space ?? null,
     geo_to_dsm_px_success,
     dsm_pixel_transform_valid,
     raster_bounds_contain_confirmed_center: rasterBoundsContainConfirmedCenter,
     confirmed_center_inside_candidate,
     candidate_centroid_offset_from_confirmed_center_px,
     candidate_centroid_offset_threshold_px: maxOffset,
+    candidate_distance_rank: input.candidate_distance_rank ?? null,
+    rejection_reason: input.rejection_reason ?? null,
     centroid_offset_exceeds_threshold,
     footprint_bbox_diagonal_px: footprintDiagonalPx ?? null,
     coordinate_registration_gate_passed,
