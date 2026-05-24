@@ -756,7 +756,8 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  const regTransformPkg = (next as any)._registration_transform_package as any | undefined;
+  const regPreflight = (next as any)._registration_preflight as EarlyTransformPreflight | undefined;
+  const regTransformPkg = ((next as any)._registration_transform_package as any | undefined) ?? regPreflight?.transform_package;
   let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> | "registration_field_conflict" | null = null;
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
@@ -773,6 +774,8 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           dsm_stage_pending: !(regTransformPkg as any).geo_to_dsm_transform,
           transform_build_stage: (next as any)._registration_transform_build_stage ?? EARLY_TRANSFORM_STAGE,
         }));
+      } else if (regPreflight) {
+        registrationBlock = mergeRegistrationProof(registrationBlock, regPreflight);
       } else {
         registrationBlock = mergeRegistrationProof(registrationBlock, null, {
           transform_builder_called: false,
@@ -819,10 +822,15 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     } catch (e) {
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
+  } else if (regPreflight) {
+    const registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
+    geometry.registration = registrationBlock;
+    geometry.registration_gate = registrationBlock;
   }
   delete (next as any)._registration_gate_input;
   delete (next as any)._registration_transform_package;
   delete (next as any)._registration_transform_build_stage;
+  delete (next as any)._registration_preflight;
 
   // v2.2: mirror authoritative registration block booleans to top-level
   // geometry fields BEFORE conflict detection so block↔top-level drift cannot
