@@ -32,7 +32,16 @@ import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
 import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
-import { buildRegistrationTransformPackage } from "../_shared/source-registration-transform.ts";
+import {
+  buildRegistrationTransformPackage,
+  buildRasterBoundsFromStaticMap,
+  buildGeoToRasterTransform,
+  buildGeoToDsmTransform,
+  buildDsmToRasterTransform,
+  projectLatLngToRasterPx,
+  projectLatLngToDsmPx,
+  validateRegistrationTransformPackage,
+} from "../_shared/source-registration-transform.ts";
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
@@ -42,6 +51,7 @@ import {
   buildRegistrationBlockedPhaseBlock,
   forceRegistrationBlockedPhaseBlocks,
   stripRegistrationBlockedGeometryArtifacts,
+  quarantineRegistrationBlockedVisibleGeometry,
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
