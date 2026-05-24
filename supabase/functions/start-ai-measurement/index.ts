@@ -884,8 +884,7 @@ Deno.serve(async (req) => {
         lat: Number(latitude ?? sourceRecord?.verified_lat ?? sourceRecord?.contact_lat ?? original_geocode_lat ?? 0),
         lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
       };
-      const registrationBlock = {
-        version: "registration-gate-v2.0",
+      const gateA = evaluateRegistrationGate({
         user_confirmed_roof_target: false,
         roof_target_admin_override: false,
         original_geocode_lat_lng:
@@ -893,17 +892,16 @@ Deno.serve(async (req) => {
             ? { lat: original_geocode_lat, lng: original_geocode_lng }
             : null,
         confirmed_roof_center_lat_lng: null,
-        confirmed_roof_center_px: null,
         geo_to_dsm_px_success: false,
         dsm_pixel_transform_valid: false,
-        dsm_to_raster_transform_exists: false,
-        raster_bounds_contain_confirmed_center: false,
-        confirmed_center_inside_candidate: false,
-        coordinate_registration_gate_passed: false,
+        dsm_to_raster_transform: null,
+      });
+      const registrationBlock = {
+        ...gateA.registration,
         failure_reason: failReason,
         blocked_before_source_acquisition: true,
       };
-      const skippedByTarget = { version: "v1", executed: false, skipped_reason: "blocked_by_target_confirmation" };
+      const skippedByTarget = buildRegistrationBlockedPhaseBlock();
       const debugPayload = {
         failure_stage: "registration",
         hard_fail_reason: failReason,
