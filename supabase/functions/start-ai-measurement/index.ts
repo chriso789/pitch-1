@@ -1236,6 +1236,11 @@ async function processJob(input: any) {
             registration_failure_reason: gateB.failure.reason,
           },
           acquisition_audit: acquisitionAudit,
+          phase3_5: buildRegistrationBlockedPhaseBlock(),
+          phase3A_5: buildRegistrationBlockedPhaseBlock(),
+          phase3C: buildRegistrationBlockedPhaseBlock(),
+          phase3D: buildRegistrationBlockedPhaseBlock(),
+          phase3E: buildRegistrationBlockedPhaseBlock(),
         };
         console.log("[REGISTRATION_GATE_B] REJECT", JSON.stringify({ reason: failReason }));
         const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
@@ -1244,7 +1249,26 @@ async function processJob(input: any) {
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit, registration: gateB.registration },
+          result_state: gateB.failure.result_state,
+          hard_fail_reason: failReason,
+          source_context: {
+            gate_reason: failReason,
+            hard_fail_reason: failReason,
+            block_customer_report_reason: failReason,
+            failure_stage: "source_registration",
+            registration: gateB.registration,
+            registration_gate: gateB.registration,
+            registration_precedence_version: REGISTRATION_PRECEDENCE_VERSION,
+            registration_precedence_applied: true,
+            registration_precedence_reason: gateB.failure.reason,
+            phase3_5: debugPayload.phase3_5,
+            phase3A_5: debugPayload.phase3A_5,
+            phase3C: debugPayload.phase3C,
+            phase3D: debugPayload.phase3D,
+            phase3E: debugPayload.phase3E,
+            debug: debugPayload,
+            acquisition_audit: acquisitionAudit,
+          },
         }).eq("id", input.ai_measurement_job_id);
         return;
       }
