@@ -909,7 +909,7 @@ Deno.serve(async (req) => {
       };
       const skippedByTarget = buildRegistrationBlockedPhaseBlock();
       const debugPayload = {
-        failure_stage: "registration",
+        failure_stage: "target_confirmation",
         hard_fail_reason: failReason,
         block_customer_report_reason: failReason,
         result_state: "ai_failed_target_unconfirmed",
