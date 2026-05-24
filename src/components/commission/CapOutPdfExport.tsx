@@ -232,7 +232,7 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
   const html = buildCapOutHtml(data);
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:absolute;left:-10000px;top:0;width:816px;height:1200px;border:0;background:#ffffff;visibility:hidden;';
+  frame.style.cssText = 'position:absolute;left:-10000px;top:0;width:816px;height:1200px;border:0;background:#ffffff;pointer-events:none;';
   document.body.appendChild(frame);
 
   try {
