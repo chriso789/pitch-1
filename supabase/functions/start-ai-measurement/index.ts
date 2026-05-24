@@ -61,6 +61,7 @@ import {
 import {
   normalizeDiagramRenderIntentForWrite,
   isDiagramRenderIntentConstraintError,
+  withDiagramRenderIntentConstraintRetryPayload,
 } from "../_shared/diagram-render-intent.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
@@ -696,6 +697,9 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   const intentNorm = normalizeDiagramRenderIntentForWrite(rawIntent, {
     result_state: (next as any).result_state,
     hard_fail_reason: (next as any).hard_fail_reason,
+    block_customer_report_reason: (next as any).block_customer_report_reason,
+    registration_precedence_reason: regFailureReasonForPrecedence,
+    failure_stage: (next as any).failure_stage,
   });
   (next as any).diagram_render_intent = intentNorm.normalized;
   (geometry as any).diagram_render_intent = intentNorm.normalized;
@@ -741,15 +745,7 @@ async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unkn
     if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
       diagramIntentRetried = true;
       const failed = (safePayload as any).diagram_render_intent ?? null;
-      const geom = (typeof safePayload.geometry_report_json === "object" && safePayload.geometry_report_json !== null && !Array.isArray(safePayload.geometry_report_json))
-        ? { ...(safePayload.geometry_report_json as Record<string, unknown>) }
-        : { raw_geometry_report_json: safePayload.geometry_report_json ?? null };
-      const retry = Array.isArray((geom as any).insert_retry) ? [...(geom as any).insert_retry] : [];
-      retry.push({ column: "diagram_render_intent", failed_value: failed, coerced_to: "diagnostic_only", at: new Date().toISOString() });
-      (geom as any).insert_retry = retry;
-      (geom as any).raw_diagram_render_intent = failed;
-      (geom as any).diagram_render_intent = "diagnostic_only";
-      safePayload = { ...safePayload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+      safePayload = withDiagramRenderIntentConstraintRetryPayload(safePayload);
       console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert after diagram_render_intent CHECK violation", failed);
       continue;
     }
@@ -772,15 +768,7 @@ async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<
     if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
       diagramIntentRetried = true;
       const failed = (safePayload as any).diagram_render_intent ?? null;
-      const geom = (typeof safePayload.geometry_report_json === "object" && safePayload.geometry_report_json !== null && !Array.isArray(safePayload.geometry_report_json))
-        ? { ...(safePayload.geometry_report_json as Record<string, unknown>) }
-        : { raw_geometry_report_json: safePayload.geometry_report_json ?? null };
-      const retry = Array.isArray((geom as any).insert_retry) ? [...(geom as any).insert_retry] : [];
-      retry.push({ column: "diagram_render_intent", failed_value: failed, coerced_to: "diagnostic_only", at: new Date().toISOString() });
-      (geom as any).insert_retry = retry;
-      (geom as any).raw_diagram_render_intent = failed;
-      (geom as any).diagram_render_intent = "diagnostic_only";
-      safePayload = { ...safePayload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+      safePayload = withDiagramRenderIntentConstraintRetryPayload(safePayload);
       console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update after diagram_render_intent CHECK violation", failed);
       continue;
     }
