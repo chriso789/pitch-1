@@ -594,20 +594,14 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> = null;
+  let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> | "registration_field_conflict" | null = null;
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
-      // Always write under BOTH keys so legacy readers (`registration_gate`)
-      // and v2 readers (`registration`) both find the block.
       geometry.registration = result.registration;
       geometry.registration_gate = result.registration;
       regVersionForPrecedence = (result.registration as any)?.version ?? null;
-      // If registration failed, the failure must dominate any downstream
-      // perimeter/topology classification. Otherwise a wrong-house overlay
-      // can still be persisted as `ai_failed_perimeter` and present as a
-      // shape problem instead of a target problem.
       if (result.failure) {
         const failure = result.failure;
         regFailureReasonForPrecedence = failure.reason as any;
@@ -619,8 +613,6 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           failure.result_state === "ai_failed_target_unconfirmed"
             ? "target_confirmation_required"
             : "coordinate_registration_debug_only";
-        // Mirror to the top-level row so the UI / debug endpoints don't have
-        // to dig through nested JSON to decide what to render.
         (next as any).result_state = failure.result_state;
         (next as any).hard_fail_reason = failure.hard_fail_reason;
         (next as any).block_customer_report_reason = failure.block_customer_report_reason;
@@ -635,27 +627,54 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   }
   delete (next as any)._registration_gate_input;
 
-  // Re-derive the failure reason from the (possibly pre-populated) registration
-  // block so we also catch the case where the gate was already evaluated upstream
-  // and only the persisted block survives on `geometry`.
+  // v2.2: mirror authoritative registration block booleans to top-level
+  // geometry fields BEFORE conflict detection so block↔top-level drift cannot
+  // be persisted. Truth-in-advertising: top-level booleans must match the
+  // block; never `true` while transforms are null.
+  const regForMirror = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
+  if (regForMirror && typeof regForMirror === "object") {
+    (geometry as any).geo_to_dsm_px_success = regForMirror.geo_to_dsm_px_success ?? false;
+    (geometry as any).dsm_pixel_transform_valid = regForMirror.dsm_pixel_transform_valid ?? false;
+    (geometry as any).coordinate_registration_gate_passed =
+      regForMirror.coordinate_registration_gate_passed ?? false;
+    (geometry as any).confirmed_center_inside_candidate =
+      regForMirror.confirmed_center_inside_candidate ?? false;
+  }
+
+  // v2.2 conflict detector — runs over the final geometry bag (block + mirrored
+  // top-level booleans). If the block claims pass while evidence is missing,
+  // or top-level booleans contradict the block, force a hard fail.
+  const conflicts = detectRegistrationFieldConflicts(geometry);
+  if (conflicts.length > 0) {
+    regFailureReasonForPrecedence = "registration_field_conflict" as any;
+    (geometry as any).registration_field_conflicts = conflicts;
+    (geometry as any).result_state = "ai_failed_source_acquisition";
+    (geometry as any).hard_fail_reason = "registration_field_conflict";
+    (geometry as any).block_customer_report_reason = "registration_field_conflict";
+    (geometry as any).failure_stage = "source_registration";
+    (geometry as any).diagram_render_intent = "coordinate_registration_debug_only";
+    (next as any).result_state = "ai_failed_source_acquisition";
+    (next as any).hard_fail_reason = "registration_field_conflict";
+    (next as any).block_customer_report_reason = "registration_field_conflict";
+    (next as any).failure_stage = "source_registration";
+    (next as any).diagram_render_intent = "coordinate_registration_debug_only";
+    (next as any).customer_report_ready = false;
+    (next as any).validation_status = "failed";
+  }
+
   if (!regFailureReasonForPrecedence) {
     const reg = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
-    regFailureReasonForPrecedence = deriveRegistrationFailureReason(reg);
+    regFailureReasonForPrecedence = deriveRegistrationFailureReason(reg) as any;
     if (!regVersionForPrecedence && reg && typeof reg === 'object') {
       regVersionForPrecedence = (reg as any).version ?? null;
     }
   }
 
-  // Unconditionally stamp every phase block when registration failed.
-  // This is the *write-time* counterpart to the same override in
-  // withPhase3Visibility — needed because some code paths skip the wrapper
-  // and feed `geometry_report_json` to prepareRoofMeasurementPayload directly.
   if (regFailureReasonForPrecedence) {
     forceRegistrationBlockedPhaseBlocks(geometry as any);
     stripRegistrationBlockedGeometryArtifacts(geometry as any);
   }
 
-  // Always stamp the precedence version so we can prove enforcement on every row.
   (geometry as any).registration_precedence_version = REGISTRATION_PRECEDENCE_VERSION;
   (geometry as any).registration_precedence_applied = !!regFailureReasonForPrecedence;
   (geometry as any).registration_precedence_reason = regFailureReasonForPrecedence;
