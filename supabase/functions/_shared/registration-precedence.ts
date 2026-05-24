@@ -67,6 +67,15 @@ export function forceRegistrationBlockedPhaseBlocks<T extends Record<string, any
   return geometry;
 }
 
+export function stripRegistrationBlockedGeometryArtifacts<T extends Record<string, any>>(geometry: T): T {
+  delete (geometry as any).perimeter_phase0;
+  delete (geometry as any).perimeter_gate_metrics;
+  delete (geometry as any).perimeter_inner_trace;
+  delete (geometry as any).selected_perimeter_after_refinement;
+  delete (geometry as any).debug_perimeter_overlay_svg;
+  return geometry;
+}
+
 /**
  * Map a registration failure reason to the result_state bucket the row
  * MUST be normalized to. Mirrors `evaluateRegistrationGate`.
