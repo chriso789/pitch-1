@@ -935,6 +935,13 @@ Deno.serve(async (req) => {
         source_button,
         logical_image_width,
         logical_image_height,
+        original_geocode_lat,
+        original_geocode_lng,
+        confirmed_roof_center_lat,
+        confirmed_roof_center_lng,
+        confirmed_roof_center_px,
+        user_confirmed_roof_target,
+        roof_target_admin_override,
       }, fallbackCoords, failReason, debugPayload, null, 0);
       await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
       await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
@@ -943,7 +950,23 @@ Deno.serve(async (req) => {
         report_blocked: true,
         result_state: normalizeResultStateForWrite("ai_failed_target_unconfirmed", debugPayload),
         hard_fail_reason: failReason,
-        source_context: { gate_reason: failReason, hard_fail_reason: failReason, debug: debugPayload },
+        source_context: {
+          gate_reason: failReason,
+          hard_fail_reason: failReason,
+          block_customer_report_reason: failReason,
+          failure_stage: "target_confirmation",
+          registration: registrationBlock,
+          registration_gate: registrationBlock,
+          registration_precedence_version: REGISTRATION_PRECEDENCE_VERSION,
+          registration_precedence_applied: true,
+          registration_precedence_reason: failReason,
+          phase3_5: skippedByTarget,
+          phase3A_5: skippedByTarget,
+          phase3C: skippedByTarget,
+          phase3D: skippedByTarget,
+          phase3E: skippedByTarget,
+          debug: debugPayload,
+        },
       }).eq("id", aiJob.id);
       return json({
         success: false,
