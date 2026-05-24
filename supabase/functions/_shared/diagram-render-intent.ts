@@ -176,3 +176,21 @@ export function isDiagramRenderIntentConstraintError(error: unknown): boolean {
     (code === "23514" && msg.includes("diagram_render_intent"))
   );
 }
+
+export function withDiagramRenderIntentConstraintRetryPayload<T extends Record<string, unknown>>(
+  payload: T,
+): T {
+  const failed = (payload as any).diagram_render_intent ?? null;
+  const geom = (typeof payload.geometry_report_json === "object" && payload.geometry_report_json !== null && !Array.isArray(payload.geometry_report_json))
+    ? { ...(payload.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: payload.geometry_report_json ?? null };
+  (geom as any).insert_retry = {
+    reason: "diagram_render_intent_check_violation",
+    raw_diagram_render_intent: failed,
+    retried_with: "diagnostic_only",
+  };
+  (geom as any).raw_diagram_render_intent = failed;
+  (geom as any).normalized_diagram_render_intent = "diagnostic_only";
+  (geom as any).diagram_render_intent = "diagnostic_only";
+  return { ...payload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+}
