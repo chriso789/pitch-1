@@ -644,15 +644,20 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         // Proof-of-call telemetry — always overwrite (never gated by ??).
         registrationBlock.transform_builder_version = (regTransformPkg as any).version ?? "source-registration-transform-v1";
         registrationBlock.transform_builder_called = true;
-        registrationBlock.transform_package_valid = (regTransformPkg as any).transform_package_valid === true;
-        registrationBlock.transform_failure_reasons = Array.isArray((regTransformPkg as any).missing_required_fields)
-          ? (regTransformPkg as any).missing_required_fields
-          : [];
+        const transformValidation = validateRegistrationTransformPackage(regTransformPkg as any);
+        registrationBlock.transform_package_valid = transformValidation.valid === true;
+        registrationBlock.transform_failure_reasons = transformValidation.reasons.length
+          ? transformValidation.reasons
+          : (Array.isArray((regTransformPkg as any).missing_required_fields) ? (regTransformPkg as any).missing_required_fields : []);
         registrationBlock.transform_build_stage = (next as any)._registration_transform_build_stage ?? "candidate_final";
+        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
+        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
       } else {
         registrationBlock.transform_builder_called = false;
         registrationBlock.transform_package_valid = false;
         registrationBlock.transform_failure_reasons = ["transform_package_absent"];
+        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
+        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
       }
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
@@ -678,7 +683,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         // Quarantine stale Phase 3B / roof_lines when registration blocks.
         // The gate cannot have produced new typed roof_lines, so any present
         // values are from prior solver state and must not be reported as live.
-        const staleKeys = ["roof_lines", "phase3B", "phase3_b", "perimeter_eave_ft", "perimeter_rake_ft", "perimeter_total_ft"];
+        const staleKeys = ["roof_lines", "phase3B", "phase3_b", "phase3B_active", "roof_lines_count", "reportable_roof_lines_count", "roof_line_total_lf_by_attribute", "perimeter_eave_ft", "perimeter_rake_ft", "perimeter_total_ft"];
         const stale: Record<string, unknown> = (geometry as any).stale_debug_payload ?? {};
         for (const k of staleKeys) {
           if ((geometry as any)[k] != null) {
@@ -687,12 +692,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           }
         }
         (geometry as any).stale_debug_payload = stale;
-        (geometry as any).roof_lines_count = 0;
-        (geometry as any).phase3B = {
-          version: "v1",
-          executed: false,
-          skipped_reason: "blocked_by_registration_gate",
-        };
+        quarantineRegistrationBlockedVisibleGeometry(geometry as any);
         (next as any).roof_lines_count = 0;
       }
     } catch (e) {
@@ -791,6 +791,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       (geometry as any).stale_debug_payload = stale;
     }
     (geometry as any).roof_lines_count = 0;
+    quarantineRegistrationBlockedVisibleGeometry(geometry as any);
     (geometry as any).footprint_source = "blocked_by_registration_gate";
     (geometry as any).perimeter_topology = null;
     (geometry as any).perimeter_phase0 = null;
