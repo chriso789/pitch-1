@@ -35,6 +35,9 @@ import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
+  derivePrecedenceReasonWithConflict,
+  detectRegistrationFieldConflicts,
+  resultStateForRegistrationFailure,
   buildRegistrationBlockedPhaseBlock,
   forceRegistrationBlockedPhaseBlocks,
   stripRegistrationBlockedGeometryArtifacts,
@@ -591,20 +594,14 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> = null;
+  let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> | "registration_field_conflict" | null = null;
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
-      // Always write under BOTH keys so legacy readers (`registration_gate`)
-      // and v2 readers (`registration`) both find the block.
       geometry.registration = result.registration;
       geometry.registration_gate = result.registration;
       regVersionForPrecedence = (result.registration as any)?.version ?? null;
-      // If registration failed, the failure must dominate any downstream
-      // perimeter/topology classification. Otherwise a wrong-house overlay
-      // can still be persisted as `ai_failed_perimeter` and present as a
-      // shape problem instead of a target problem.
       if (result.failure) {
         const failure = result.failure;
         regFailureReasonForPrecedence = failure.reason as any;
@@ -616,8 +613,6 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           failure.result_state === "ai_failed_target_unconfirmed"
             ? "target_confirmation_required"
             : "coordinate_registration_debug_only";
-        // Mirror to the top-level row so the UI / debug endpoints don't have
-        // to dig through nested JSON to decide what to render.
         (next as any).result_state = failure.result_state;
         (next as any).hard_fail_reason = failure.hard_fail_reason;
         (next as any).block_customer_report_reason = failure.block_customer_report_reason;
@@ -632,27 +627,54 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   }
   delete (next as any)._registration_gate_input;
 
-  // Re-derive the failure reason from the (possibly pre-populated) registration
-  // block so we also catch the case where the gate was already evaluated upstream
-  // and only the persisted block survives on `geometry`.
+  // v2.2: mirror authoritative registration block booleans to top-level
+  // geometry fields BEFORE conflict detection so block↔top-level drift cannot
+  // be persisted. Truth-in-advertising: top-level booleans must match the
+  // block; never `true` while transforms are null.
+  const regForMirror = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
+  if (regForMirror && typeof regForMirror === "object") {
+    (geometry as any).geo_to_dsm_px_success = regForMirror.geo_to_dsm_px_success ?? false;
+    (geometry as any).dsm_pixel_transform_valid = regForMirror.dsm_pixel_transform_valid ?? false;
+    (geometry as any).coordinate_registration_gate_passed =
+      regForMirror.coordinate_registration_gate_passed ?? false;
+    (geometry as any).confirmed_center_inside_candidate =
+      regForMirror.confirmed_center_inside_candidate ?? false;
+  }
+
+  // v2.2 conflict detector — runs over the final geometry bag (block + mirrored
+  // top-level booleans). If the block claims pass while evidence is missing,
+  // or top-level booleans contradict the block, force a hard fail.
+  const conflicts = detectRegistrationFieldConflicts(geometry);
+  if (conflicts.length > 0) {
+    regFailureReasonForPrecedence = "registration_field_conflict" as any;
+    (geometry as any).registration_field_conflicts = conflicts;
+    (geometry as any).result_state = "ai_failed_source_acquisition";
+    (geometry as any).hard_fail_reason = "registration_field_conflict";
+    (geometry as any).block_customer_report_reason = "registration_field_conflict";
+    (geometry as any).failure_stage = "source_registration";
+    (geometry as any).diagram_render_intent = "coordinate_registration_debug_only";
+    (next as any).result_state = "ai_failed_source_acquisition";
+    (next as any).hard_fail_reason = "registration_field_conflict";
+    (next as any).block_customer_report_reason = "registration_field_conflict";
+    (next as any).failure_stage = "source_registration";
+    (next as any).diagram_render_intent = "coordinate_registration_debug_only";
+    (next as any).customer_report_ready = false;
+    (next as any).validation_status = "failed";
+  }
+
   if (!regFailureReasonForPrecedence) {
     const reg = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
-    regFailureReasonForPrecedence = deriveRegistrationFailureReason(reg);
+    regFailureReasonForPrecedence = deriveRegistrationFailureReason(reg) as any;
     if (!regVersionForPrecedence && reg && typeof reg === 'object') {
       regVersionForPrecedence = (reg as any).version ?? null;
     }
   }
 
-  // Unconditionally stamp every phase block when registration failed.
-  // This is the *write-time* counterpart to the same override in
-  // withPhase3Visibility — needed because some code paths skip the wrapper
-  // and feed `geometry_report_json` to prepareRoofMeasurementPayload directly.
   if (regFailureReasonForPrecedence) {
     forceRegistrationBlockedPhaseBlocks(geometry as any);
     stripRegistrationBlockedGeometryArtifacts(geometry as any);
   }
 
-  // Always stamp the precedence version so we can prove enforcement on every row.
   (geometry as any).registration_precedence_version = REGISTRATION_PRECEDENCE_VERSION;
   (geometry as any).registration_precedence_applied = !!regFailureReasonForPrecedence;
   (geometry as any).registration_precedence_reason = regFailureReasonForPrecedence;
@@ -7331,14 +7353,80 @@ async function processJob(input: any) {
         perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
       };
 
-    // Registration Gate v2 — attach gate input so prepareRoofMeasurementPayload
+    // Registration Gate v2.2 — attach gate input so prepareRoofMeasurementPayload
     // can evaluate and persist geometry_report_json.registration at the
-    // single authoritative write site. See _shared/registration-gate.ts.
+    // single authoritative write site. STRICT MODE is on (candidate_selection_started=true)
+    // because by this point a candidate has been selected, transforms must
+    // be real, and we refuse to publish a registration block that claims
+    // pass with null evidence. See _shared/registration-gate.ts.
     try {
       const selectedFootprintPolygonPx = Array.isArray(footprint) && footprint.length >= 3
         ? footprint.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number])
         : null;
+      const mppFinite = Number.isFinite(actualMpp) && (actualMpp as number) > 0;
+      const tileExtentM = mppFinite ? raster.width * (actualMpp as number) : 0;
+      const tileHalfDeg = mppFinite ? tileExtentM / 111320 : 0;
+      const rasterBoundsLatLng = mppFinite
+        ? {
+            sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
+            ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
+          }
+        : null;
+      // Real (not synthetic) transform records. Only emit when we have the
+      // numeric evidence; otherwise leave null so v2.2 strict mode hard-fails
+      // honestly rather than passing on placeholders.
+      const geoToRasterTransform = mppFinite
+        ? {
+            kind: "linear_meters_per_pixel",
+            center_lat: coords.lat,
+            center_lng: coords.lng,
+            raster_width_px: raster.width,
+            raster_height_px: raster.height,
+            meters_per_pixel: actualMpp,
+          }
+        : null;
+      const dsmRef: any = (typeof effectiveDSMForMatch !== "undefined" && effectiveDSMForMatch)
+        ? effectiveDSMForMatch
+        : (typeof dsmGrid !== "undefined" && dsmGrid)
+          ? dsmGrid
+          : null;
+      const geoToDsmTransform = dsmRef
+        ? {
+            kind: "dsm_grid_geo_affine",
+            dsm_width_px: dsmRef.width,
+            dsm_height_px: dsmRef.height,
+            resolution_m: dsmRef.resolution ?? null,
+            bounds: dsmRef.bounds ?? null,
+          }
+        : null;
+      const dsmTileBoundsLatLng = dsmRef?.bounds
+        ? {
+            sw: { lat: dsmRef.bounds.minLat, lng: dsmRef.bounds.minLng },
+            ne: { lat: dsmRef.bounds.maxLat, lng: dsmRef.bounds.maxLng },
+          }
+        : null;
+      const dsmSizePx = dsmRef ? { width: dsmRef.width, height: dsmRef.height } : null;
+      const dsmToRasterTransform = (mppFinite && dsmRef)
+        ? {
+            kind: "dsm_to_raster_resample",
+            meters_per_pixel: actualMpp,
+            dsm_resolution_m: dsmRef.resolution ?? null,
+          }
+        : null;
+      const footprintBBoxDiagPx = selectedFootprintPolygonPx
+        ? (() => {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const [x, y] of selectedFootprintPolygonPx) {
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+            return Number.isFinite(minX)
+              ? Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2)
+              : null;
+          })()
+        : null;
       (roofMeasurementPayload as any)._registration_gate_input = {
+        candidate_selection_started: true,
         user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
         roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
         original_geocode_lat_lng:
@@ -7350,12 +7438,18 @@ async function processJob(input: any) {
             ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
             : { lat: coords.lat, lng: coords.lng },
         confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
-        geo_to_dsm_px_success: true,
-        dsm_pixel_transform_valid: Number.isFinite(actualMpp) && actualMpp > 0,
-        dsm_to_raster_transform: { meters_per_pixel: actualMpp },
+        geo_to_dsm_px_success: mppFinite && !!dsmRef,
+        dsm_pixel_transform_valid: mppFinite && !!dsmRef,
+        dsm_to_raster_transform: dsmToRasterTransform,
+        geo_to_raster_transform: geoToRasterTransform,
+        geo_to_dsm_transform: geoToDsmTransform,
+        raster_bounds_lat_lng: rasterBoundsLatLng,
+        dsm_tile_bounds_lat_lng: dsmTileBoundsLatLng,
         raster_size_px: { width: raster.width, height: raster.height },
-        meters_per_pixel: actualMpp,
+        dsm_size_px: dsmSizePx,
+        meters_per_pixel: mppFinite ? actualMpp : null,
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
+        footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);

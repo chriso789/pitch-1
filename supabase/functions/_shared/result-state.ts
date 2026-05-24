@@ -48,6 +48,8 @@ export function normalizeResultState(raw: unknown): ResultState {
   if (
     s.includes('coordinate_registration_failed') ||
     s.includes('candidate_does_not_contain_confirmed_roof_center') ||
+    s.includes('registration_field_conflict') ||
+    s.includes('missing_selected_candidate') ||
     s.includes('source_acquisition') ||
     s.includes('acquisition') ||
     s.includes('dsm_fetch') ||

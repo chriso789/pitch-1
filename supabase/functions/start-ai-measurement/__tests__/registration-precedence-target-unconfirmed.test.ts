@@ -68,7 +68,7 @@ Deno.test("buildRegistrationPrecedenceStamp — target unconfirmed", () => {
     geo_to_dsm_px_success: false,
     dsm_pixel_transform_valid: false,
   });
-  assertEquals(stamp.registration_precedence_version, "registration-precedence-v1");
+  assertEquals(stamp.registration_precedence_version, "registration-precedence-v2");
   assertEquals(stamp.registration_precedence_applied, true);
   assertEquals(stamp.registration_precedence_reason, "target_roof_not_confirmed");
   assertEquals(stamp.registration_gate_version, "registration-gate-v2.1");
