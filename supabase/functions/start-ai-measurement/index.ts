@@ -1107,6 +1107,15 @@ Deno.serve(async (req) => {
           ? { lat: confirmed_roof_center_lat, lng: confirmed_roof_center_lng }
           : null,
     });
+    const transformPreflight = await mustBuildTransformPackageEarly({
+      confirmed_roof_center_lat_lng: finiteLatLngOrNull(confirmed_roof_center_lat, confirmed_roof_center_lng),
+      original_geocode_lat_lng: finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ?? finiteLatLngOrNull(latitude, longitude),
+      static_map_center_lat_lng: finiteLatLngOrNull(confirmed_roof_center_lat, confirmed_roof_center_lng) ?? finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ?? finiteLatLngOrNull(latitude, longitude),
+      zoom,
+      logical_image_width,
+      logical_image_height,
+      raster_scale,
+    });
 
     const sourceRecord = await resolveSourceRecord({ lead_id, project_id });
     const tenant_id: string | null = sourceRecord?.tenant_id ?? tenant_id_hint;
@@ -1210,11 +1219,10 @@ Deno.serve(async (req) => {
         dsm_pixel_transform_valid: false,
         dsm_to_raster_transform: null,
       });
-      const registrationBlock = {
-        ...gateA.registration,
+      const registrationBlock = mergeRegistrationProof(gateA.registration, transformPreflight, {
         failure_reason: failReason,
         blocked_before_source_acquisition: true,
-      };
+      });
       const skippedByTarget = buildRegistrationBlockedPhaseBlock();
       const debugPayload = {
         failure_stage: "target_confirmation",
@@ -1256,6 +1264,7 @@ Deno.serve(async (req) => {
         confirmed_roof_center_px,
         user_confirmed_roof_target,
         roof_target_admin_override,
+          _registration_preflight: transformPreflight,
       }, fallbackCoords, failReason, debugPayload, null, 0);
       await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
       await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
@@ -1334,6 +1343,7 @@ Deno.serve(async (req) => {
       confirmed_roof_center_px,
       user_confirmed_roof_target,
       roof_target_admin_override,
+        _registration_preflight: transformPreflight,
     } as any);
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
