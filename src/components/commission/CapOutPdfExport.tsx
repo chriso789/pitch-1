@@ -219,84 +219,201 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   }
 }
 
+const normalizeHexColor = (value?: string | null) => {
+  const color = (value || '').trim();
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    return `#${color.slice(1).split('').map((c) => c + c).join('')}`;
+  }
+  return '#2563eb';
+};
+
+const hexToRgb = (hex: string): [number, number, number] => {
+  const normalized = normalizeHexColor(hex).slice(1);
+  return [0, 2, 4].map((offset) => parseInt(normalized.slice(offset, offset + 2), 16)) as [number, number, number];
+};
+
+const loadImageForPdf = (src?: string | null) => new Promise<{ dataUrl: string; width: number; height: number } | null>((resolve) => {
+  if (!src) return resolve(null);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx || !canvas.width || !canvas.height) return resolve(null);
+      ctx.drawImage(img, 0, 0);
+      resolve({ dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height });
+    } catch {
+      resolve(null);
+    }
+  };
+  img.onerror = () => resolve(null);
+  img.src = src;
+});
+
 /**
- * Render the cap out sheet HTML into a PDF Blob using html2canvas + jsPDF.
- * Used for email attachments so the recipient gets the same visual output.
+ * Render the cap out sheet as a true PDF Blob for email attachments.
+ * This avoids stretched/blurry html2canvas raster output in email clients.
  */
 export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> {
-  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
+  const { default: jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+  const pageWidth = 612;
+  const margin = 42;
+  const contentWidth = pageWidth - margin * 2;
+  const brandColor = normalizeHexColor(data.brandPrimaryColor);
+  const [brandR, brandG, brandB] = hexToRgb(brandColor);
+  const logo = await loadImageForPdf(data.companyLogoUrl);
+  let y = 36;
 
-  const html = buildCapOutHtml(data);
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:absolute;left:-10000px;top:0;width:816px;height:1200px;border:0;background:#ffffff;pointer-events:none;';
-  document.body.appendChild(frame);
-
-  try {
-    const frameDoc = frame.contentDocument || frame.contentWindow?.document;
-    if (!frameDoc) throw new Error('Unable to prepare PDF renderer');
-
-    await new Promise<void>((resolve) => {
-      frame.onload = () => resolve();
-      frameDoc.open();
-      frameDoc.write(html);
-      frameDoc.close();
-      setTimeout(resolve, 100);
-    });
-
-    // Wait for images (e.g., company logo) to load
-    const captureBody = frameDoc.body;
-    const imgs = Array.from(captureBody.querySelectorAll('img'));
-    await Promise.all(
-      imgs.map((img) =>
-        img.complete
-          ? Promise.resolve()
-          : new Promise<void>((resolve) => {
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-            })
-      )
-    );
-    await frameDoc.fonts?.ready?.catch(() => undefined);
-
-    frame.style.height = `${Math.max(captureBody.scrollHeight, 1056)}px`;
-
-    const canvas = await html2canvas(captureBody, {
-      scale: 1.5,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      width: 816,
-      height: captureBody.scrollHeight,
-      windowWidth: 816,
-      windowHeight: Math.max(captureBody.scrollHeight, 1056),
-    });
-
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    const pageWidth = 612;
-    const pageHeight = 792;
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.7);
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-    }
-
-    return pdf.output('blob');
-  } finally {
-    document.body.removeChild(frame);
+  if (logo) {
+    const logoHeight = 54;
+    const logoWidth = Math.min(150, (logo.width / logo.height) * logoHeight);
+    pdf.addImage(logo.dataUrl, 'PNG', margin, y, logoWidth, logoHeight, undefined, 'FAST');
+  } else {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.setTextColor(brandR, brandG, brandB);
+    pdf.text(data.companyName || 'Company', margin, y + 26, { maxWidth: 180 });
   }
+
+  pdf.setTextColor(26, 26, 26);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(14);
+  pdf.text(data.companyName || 'Company', pageWidth - margin, y + 12, { align: 'right', maxWidth: 220 });
+  if (data.locationName) {
+    pdf.setFontSize(11);
+    pdf.text(data.locationName, pageWidth - margin, y + 27, { align: 'right', maxWidth: 220 });
+  }
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9.5);
+  pdf.setTextColor(71, 85, 105);
+  const address = data.locationAddress || data.companyAddress || '';
+  if (address) pdf.text(address, pageWidth - margin, y + 43, { align: 'right', maxWidth: 260 });
+  const contact = [data.locationPhone || data.companyPhone, data.locationEmail || data.companyEmail].filter(Boolean).join(' · ');
+  if (contact) pdf.text(contact, pageWidth - margin, y + 57, { align: 'right', maxWidth: 260 });
+
+  const companyTag = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean).join(' · ');
+  if (companyTag) pdf.text(companyTag, margin, y + 78, { maxWidth: 220 });
+  y += 90;
+  pdf.setDrawColor(brandR, brandG, brandB);
+  pdf.setLineWidth(2);
+  pdf.line(margin, y, pageWidth - margin, y);
+
+  y += 34;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(24);
+  pdf.setTextColor(brandR, brandG, brandB);
+  pdf.text('CAP OUT SHEET', pageWidth / 2, y, { align: 'center' });
+  y += 15;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(11);
+  pdf.setTextColor(90, 90, 90);
+  pdf.text('Job Financial Summary', pageWidth / 2, y, { align: 'center' });
+
+  const drawLabelValue = (label: string, value: string, x: number, valueMaxWidth = 210) => {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(136, 136, 136);
+    pdf.text(label.toUpperCase(), x, y);
+    pdf.setFontSize(12);
+    pdf.setTextColor(26, 26, 26);
+    const lines = pdf.splitTextToSize(value || 'N/A', valueMaxWidth);
+    pdf.text(lines, x, y + 15);
+    return lines.length;
+  };
+
+  y += 46;
+  drawLabelValue('Project', data.projectName, margin);
+  drawLabelValue('Date', data.date, margin + contentWidth / 2);
+  y += 42;
+  drawLabelValue('Customer', data.customerName, margin);
+  drawLabelValue('Sales Rep', data.repName, margin + contentWidth / 2);
+  y += 42;
+  const addressLines = drawLabelValue('Property Address', data.address, margin, contentWidth);
+  y += 24 + Math.max(1, addressLines - 1) * 12;
+
+  const amountX = pageWidth - margin - 8;
+  const row = (label: string, amount: string, options: { bold?: boolean; header?: boolean; total?: boolean } = {}) => {
+    if (options.header) {
+      pdf.setFillColor(241, 245, 249);
+      pdf.rect(margin, y, contentWidth, 24, 'F');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(label.toUpperCase(), margin + 8, y + 16);
+      y += 24;
+      return;
+    }
+    if (options.total) {
+      pdf.setFillColor(248, 250, 252);
+      pdf.rect(margin, y, contentWidth, 28, 'F');
+      pdf.setDrawColor(brandR, brandG, brandB);
+      pdf.line(margin, y, pageWidth - margin, y);
+      pdf.line(margin, y + 28, pageWidth - margin, y + 28);
+    } else {
+      pdf.setDrawColor(226, 232, 240);
+      pdf.line(margin, y + 26, pageWidth - margin, y + 26);
+    }
+    pdf.setFont('helvetica', options.bold || options.total ? 'bold' : 'normal');
+    pdf.setFontSize(options.total ? 12 : 11);
+    pdf.setTextColor(26, 26, 26);
+    pdf.text(label, margin + 8, y + 17);
+    pdf.setFont('courier', options.bold || options.total ? 'bold' : 'normal');
+    pdf.text(amount, amountX, y + 17, { align: 'right' });
+    y += options.total ? 28 : 26;
+  };
+
+  row('Description', 'Amount', { header: true });
+  row('Contract / Selling Price', formatCurrency(data.sellPrice), { bold: true });
+  row('Costs', '', { header: true });
+  row('Materials', formatCurrency(data.materialsCost));
+  row('Labor', formatCurrency(data.laborCost));
+  row('Overhead', formatCurrency(data.overheadAmount));
+  if (data.otherCharges > 0) row('Other Charges', formatCurrency(data.otherCharges));
+  if (data.miscCost > 0) row('Misc', formatCurrency(data.miscCost));
+  row('Total Cost', formatCurrency(data.totalCost), { total: true });
+
+  y += 18;
+  const profitGreen = data.profit < 0 ? [239, 68, 68] : [34, 197, 94];
+  pdf.setFillColor(data.profit < 0 ? 254 : 240, data.profit < 0 ? 242 : 253, data.profit < 0 ? 242 : 244);
+  pdf.setDrawColor(profitGreen[0], profitGreen[1], profitGreen[2]);
+  pdf.roundedRect(margin, y, contentWidth, 62, 4, 4, 'FD');
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(12);
+  pdf.setTextColor(85, 85, 85);
+  pdf.text('Gross Profit', margin + 14, y + 26);
+  pdf.text('Profit Margin', margin + 14, y + 48);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(17);
+  pdf.setTextColor(profitGreen[0], profitGreen[1], profitGreen[2]);
+  pdf.text(formatCurrency(data.profit), amountX - 8, y + 26, { align: 'right' });
+  pdf.text(`${data.marginPct.toFixed(1)}%`, amountX - 8, y + 48, { align: 'right' });
+
+  y += 82;
+  pdf.setFillColor(239, 246, 255);
+  pdf.setDrawColor(59, 130, 246);
+  pdf.roundedRect(margin, y, contentWidth, 62, 4, 4, 'FD');
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(12);
+  pdf.setTextColor(85, 85, 85);
+  pdf.text('Commission Plan', margin + 14, y + 26);
+  pdf.text('Commission Amount', margin + 14, y + 48);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(26, 26, 26);
+  pdf.text(`${data.commissionType === 'profit_split' ? 'Profit Split' : '% of Selling Price'} @ ${data.commissionRate}%`, amountX - 8, y + 26, { align: 'right', maxWidth: 260 });
+  pdf.setFontSize(17);
+  pdf.setTextColor(brandR, brandG, brandB);
+  pdf.text(formatCurrency(data.commissionAmount), amountX - 8, y + 50, { align: 'right' });
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(160, 160, 160);
+  pdf.text(`Generated ${new Date().toLocaleDateString()} — ${data.companyName || 'Company'}`, pageWidth / 2, 760, { align: 'center' });
+  return pdf.output('blob');
 }
 
 // Fetch only the branding/customer/rep context for a job. Financial numbers are
