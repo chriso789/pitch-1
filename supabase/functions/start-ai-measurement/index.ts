@@ -31,7 +31,7 @@ import {
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
-import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
+import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, evaluateCandidateAgainstTarget, type RegistrationGateInput, type PerimeterCandidateRow } from "../_shared/registration-gate.ts";
 import {
   buildRegistrationTransformPackage,
   buildRasterBoundsFromStaticMap,
