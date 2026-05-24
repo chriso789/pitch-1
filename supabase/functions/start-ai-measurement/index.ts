@@ -385,6 +385,28 @@ function buildPhase3EBlock(debug: any): Record<string, any> {
 }
 
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
+  // ─── Registration failures outrank perimeter/topology classification. ───
+  // A run whose target was never confirmed, whose geo→pixel transform is
+  // invalid, or whose selected candidate does not contain the confirmed
+  // roof center is a REGISTRATION failure — not a perimeter shape failure.
+  // (See _shared/registration-gate.ts.)
+  const reg = (debug?.registration ?? debug?.registration_gate ?? null) as any;
+  if (reg && typeof reg === 'object') {
+    if (reg.user_confirmed_roof_target === false && reg.roof_target_admin_override !== true) {
+      return 'ai_failed_target_unconfirmed';
+    }
+    if (reg.geo_to_dsm_px_success === false || reg.dsm_pixel_transform_valid === false) {
+      return 'ai_failed_source_acquisition';
+    }
+    if (reg.confirmed_center_inside_candidate === false) {
+      return 'ai_failed_source_acquisition';
+    }
+    if (reg.coordinate_registration_gate_passed === false) {
+      return reg.user_confirmed_roof_target === false
+        ? 'ai_failed_target_unconfirmed'
+        : 'ai_failed_source_acquisition';
+    }
+  }
   const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
   if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
   const reason = String(raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? '').toLowerCase();
@@ -436,9 +458,35 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
   const phase3EdgeRows = edgeRows.length ? edgeRows : derivePhase3EdgeRows(payload);
   const phase3A = buildPhase3ABlock(payload.perimeter_phase0 ?? payload.perimeter_gate_metrics ?? null);
   const resultState = derivePhase3ResultState(rawResultState ?? payload.result_state ?? payload.hard_fail_reason, payload);
-  const hardFailReason = phase3A.perimeter_classification_invalid
-    ? 'perimeter_classification_invalid'
-    : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null);
+  // ─── Registration failure dominates hard_fail_reason / failure_stage ───
+  const reg = (payload.registration ?? payload.registration_gate ?? null) as any;
+  const regFailureReason =
+    reg && typeof reg === 'object'
+      ? (reg.user_confirmed_roof_target === false && reg.roof_target_admin_override !== true
+          ? 'target_roof_not_confirmed'
+          : (reg.geo_to_dsm_px_success === false || reg.dsm_pixel_transform_valid === false
+              ? 'coordinate_registration_failed'
+              : (reg.confirmed_center_inside_candidate === false
+                  ? 'candidate_does_not_contain_confirmed_roof_center'
+                  : null)))
+      : null;
+  const hardFailReason = regFailureReason
+    ? regFailureReason
+    : (phase3A.perimeter_classification_invalid
+        ? 'perimeter_classification_invalid'
+        : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null));
+  const failureStage = regFailureReason
+    ? 'registration'
+    : (payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'));
+  // If registration failed, every phase block must advertise the skipped reason.
+  if (regFailureReason) {
+    for (const k of ['phase3_5','phase3A_5','phase3C','phase3D','phase3E']) {
+      const blk = payload[k];
+      if (blk && typeof blk === 'object') {
+        payload[k] = { ...blk, executed: false, skipped_reason: 'blocked_by_registration_gate' };
+      }
+    }
+  }
   return {
     ...payload,
     ...PHASE3_VERSION_BLOCK,
@@ -453,8 +501,10 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     result_state: normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
-    failure_stage: payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'),
-    diagram_render_intent: payload.diagram_render_intent ?? (String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true)),
+    failure_stage: failureStage,
+    diagram_render_intent: regFailureReason
+      ? (resultState === 'ai_failed_target_unconfirmed' ? 'target_confirmation_required' : 'coordinate_registration_debug_only')
+      : (payload.diagram_render_intent ?? (String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true))),
     customer_report_ready: resultState === 'customer_report_ready',
   };
 }
@@ -1097,7 +1147,7 @@ async function processJob(input: any) {
         raster_size_px: { width: raster.width, height: raster.height },
         meters_per_pixel: actualMpp,
       });
-      if (gateB.failure && gateB.failure.result_state === "ai_failed_source_acquisition") {
+      if (gateB.failure && (gateB.failure.result_state === "ai_failed_source_acquisition" || gateB.failure.result_state === "ai_failed_target_unconfirmed")) {
         const failReason = gateB.failure.hard_fail_reason;
         const debugPayload = {
           failure_stage: "registration",
