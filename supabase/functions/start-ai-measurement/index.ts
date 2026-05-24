@@ -37,6 +37,7 @@ import {
   deriveRegistrationFailureReason,
   buildRegistrationBlockedPhaseBlock,
   forceRegistrationBlockedPhaseBlocks,
+  stripRegistrationBlockedGeometryArtifacts,
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
@@ -648,11 +649,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // and feed `geometry_report_json` to prepareRoofMeasurementPayload directly.
   if (regFailureReasonForPrecedence) {
     forceRegistrationBlockedPhaseBlocks(geometry as any);
-    delete (geometry as any).perimeter_phase0;
-    delete (geometry as any).perimeter_gate_metrics;
-    delete (geometry as any).perimeter_inner_trace;
-    delete (geometry as any).selected_perimeter_after_refinement;
-    delete (geometry as any).debug_perimeter_overlay_svg;
+    stripRegistrationBlockedGeometryArtifacts(geometry as any);
   }
 
   // Always stamp the precedence version so we can prove enforcement on every row.
