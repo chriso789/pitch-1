@@ -654,9 +654,12 @@ function mergeRegistrationProof(base: unknown, proof: EarlyTransformPreflight | 
   const proofRegistration = proof && typeof proof === "object" && "registration" in proof
     ? { ...((proof as EarlyTransformPreflight).registration ?? {}) }
     : (proof && typeof proof === "object" ? { ...(proof as Record<string, unknown>) } : {});
+  const merged: Record<string, unknown> = { ...proofRegistration };
+  for (const [key, value] of Object.entries(existing)) {
+    if (value !== null && value !== undefined) merged[key] = value;
+  }
   return {
-    ...proofRegistration,
-    ...existing,
+    ...merged,
     transform_builder_called: proofRegistration.transform_builder_called ?? existing.transform_builder_called ?? true,
     transform_builder_version: String(proofRegistration.transform_builder_version ?? existing.transform_builder_version ?? TRANSFORM_BUILDER_VERSION),
     transform_callsite: TRANSFORM_CALLSITE,
