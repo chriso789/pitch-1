@@ -198,10 +198,14 @@ function latLngInBounds(p: LatLng, b: { sw: LatLng; ne: LatLng }): boolean {
   );
 }
 
-/** v2.2 — centroid offset threshold per spec. */
+/** v3 — Target-Centered Perimeter Candidate Selection: tightened threshold.
+ *  Spec: max(100px, 0.30 * footprint_bbox_diagonal_px). The diagonal SHOULD
+ *  be the target component's diagonal (not a fused multi-component blob)
+ *  — callers should pass the target component diag explicitly when available.
+ */
 export function maxAllowedCentroidOffsetPx(footprintBBoxDiagonalPx: number | null | undefined): number {
   const diag = isFiniteNumber(footprintBBoxDiagonalPx) ? footprintBBoxDiagonalPx : 0;
-  return Math.max(150, 0.35 * diag);
+  return Math.max(100, 0.30 * diag);
 }
 
 // ---------------------------------------------------------------------------
