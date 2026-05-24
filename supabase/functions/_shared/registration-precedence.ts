@@ -133,6 +133,19 @@ export function detectRegistrationFieldConflicts(geometry: any): RegistrationFie
       });
     }
   }
+  // v3: final write must be evaluation_stage="candidate_final". A preflight
+  // block reaching the write path is itself a conflict.
+  if (
+    reg.evaluation_stage != null &&
+    reg.evaluation_stage !== "candidate_final" &&
+    reg.coordinate_registration_gate_passed === true
+  ) {
+    conflicts.push({
+      field: "evaluation_stage",
+      block_value: reg.evaluation_stage,
+      detail: `coordinate_registration_gate_passed=true with non-final evaluation_stage=${reg.evaluation_stage}`,
+    });
+  }
   return conflicts;
 }
 
