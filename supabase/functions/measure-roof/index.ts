@@ -1,4 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
+import {
+  isDiagramRenderIntentConstraintError,
+  normalizeDiagramRenderIntentForWrite,
+  withDiagramRenderIntentConstraintRetryPayload,
+} from '../_shared/diagram-render-intent.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -218,17 +223,35 @@ async function saveMeasurement(supabase: any, params: SaveParams) {
     route_warning: 'legacy_noncanonical_measurement_path',
     route_provenance: { ...LEGACY_MEASURE_ROOF_PROVENANCE },
   }
+  const intent = normalizeDiagramRenderIntentForWrite('diagnostic_only', {
+    result_state: 'ai_failed_unknown',
+    failure_stage: 'legacy_noncanonical_measurement_path',
+  })
+  legacyGeometryReport.raw_diagram_render_intent = intent.raw
+  legacyGeometryReport.normalized_diagram_render_intent = intent.normalized
+  legacyGeometryReport.diagram_render_intent = intent.normalized
   const insertRow = {
     ...LEGACY_MEASURE_ROOF_PROVENANCE,
     ...row,
+    diagram_render_intent: intent.normalized,
     geometry_report_json: legacyGeometryReport,
   }
 
-  const { data, error } = await supabase
+  let payload = insertRow
+  let { data, error } = await supabase
     .from('roof_measurements')
-    .insert(insertRow)
+    .insert(payload)
     .select('id')
     .single()
+
+  if (error && isDiagramRenderIntentConstraintError(error)) {
+    payload = withDiagramRenderIntentConstraintRetryPayload(payload)
+    ;({ data, error } = await supabase
+      .from('roof_measurements')
+      .insert(payload)
+      .select('id')
+      .single())
+  }
 
 
   if (error) {
