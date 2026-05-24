@@ -225,9 +225,12 @@ export function derivePrecedenceReasonWithConflict(
   conflicts: RegistrationFieldConflict[];
 } {
   const conflicts = detectRegistrationFieldConflicts(geometry);
-  if (conflicts.length > 0) {
-    return { reason: "registration_field_conflict", conflicts };
-  }
   const reg = geometry?.registration ?? geometry?.registration_gate ?? null;
-  return { reason: deriveRegistrationFailureReason(reg), conflicts };
+  // v3: prefer the honest gate-level failure (e.g. coordinate_registration_failed)
+  // when the gate already reported it. registration_field_conflict is only the
+  // dominant label when the block has no first-class failure of its own.
+  const gateLevel = deriveRegistrationFailureReason(reg);
+  if (gateLevel) return { reason: gateLevel, conflicts };
+  if (conflicts.length > 0) return { reason: "registration_field_conflict", conflicts };
+  return { reason: null, conflicts };
 }
