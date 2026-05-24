@@ -762,46 +762,23 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
-      const registrationBlock: Record<string, unknown> = { ...result.registration };
+      let registrationBlock: Record<string, unknown> = { ...result.registration };
       // Source Registration Transform Builder v1 — hoist truth-from-math values
       // into the top-level registration block so the gate, UI, and debug
       // endpoints all read the same evidence. Without this hoist, only the
       // nested `transform_package` carries the real coords while top-level
       // fields stay null and the run looks like a wiring regression.
       if (regTransformPkg) {
-        registrationBlock.transform_package = regTransformPkg;
-        const hoist = (k: string, v: unknown) => {
-          if (registrationBlock[k] == null && v != null) registrationBlock[k] = v;
-        };
-        hoist("static_map_center_lat_lng", (regTransformPkg as any).static_map_center_lat_lng);
-        hoist("raster_size_px",            (regTransformPkg as any).raster_size_px);
-        hoist("raster_bounds_lat_lng",     (regTransformPkg as any).raster_bounds_lat_lng);
-        hoist("geo_to_raster_transform",   (regTransformPkg as any).geo_to_raster_transform);
-        hoist("confirmed_roof_center_px",  (regTransformPkg as any).confirmed_roof_center_px);
-        hoist("raster_bounds_contain_confirmed_center", (regTransformPkg as any).raster_bounds_contain_confirmed_center);
-        hoist("dsm_tile_bounds_lat_lng",   (regTransformPkg as any).dsm_tile_bounds_lat_lng);
-        hoist("dsm_size_px",               (regTransformPkg as any).dsm_size_px);
-        hoist("geo_to_dsm_transform",      (regTransformPkg as any).geo_to_dsm_transform);
-        hoist("dsm_to_raster_transform",   (regTransformPkg as any).dsm_to_raster_transform);
-        hoist("confirmed_roof_center_dsm_px", (regTransformPkg as any).confirmed_roof_center_dsm_px);
-        hoist("dsm_tile_bounds_contain_confirmed_center", (regTransformPkg as any).dsm_tile_bounds_contain_confirmed_center);
-        // Proof-of-call telemetry — always overwrite (never gated by ??).
-        registrationBlock.transform_builder_version = (regTransformPkg as any).version ?? "source-registration-transform-v1";
-        registrationBlock.transform_builder_called = true;
-        const transformValidation = validateRegistrationTransformPackage(regTransformPkg as any);
-        registrationBlock.transform_package_valid = transformValidation.valid === true;
-        registrationBlock.transform_failure_reasons = transformValidation.reasons.length
-          ? transformValidation.reasons
-          : (Array.isArray((regTransformPkg as any).missing_required_fields) ? (regTransformPkg as any).missing_required_fields : []);
-        registrationBlock.transform_build_stage = (next as any)._registration_transform_build_stage ?? "candidate_final";
-        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
-        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
+        registrationBlock = mergeRegistrationProof(registrationBlock, registrationFromTransformPackage(regTransformPkg as any, {
+          dsm_stage_pending: !(regTransformPkg as any).geo_to_dsm_transform,
+          transform_build_stage: (next as any)._registration_transform_build_stage ?? EARLY_TRANSFORM_STAGE,
+        }));
       } else {
-        registrationBlock.transform_builder_called = false;
-        registrationBlock.transform_package_valid = false;
-        registrationBlock.transform_failure_reasons = ["transform_package_absent"];
-        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
-        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
+        registrationBlock = mergeRegistrationProof(registrationBlock, null, {
+          transform_builder_called: false,
+          transform_package_valid: false,
+          transform_failure_reasons: ["transform_package_absent"],
+        });
       }
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
