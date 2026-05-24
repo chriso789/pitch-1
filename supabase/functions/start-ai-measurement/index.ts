@@ -9241,23 +9241,56 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       height: Number(input.actual_image_height || input.logical_image_height || 1280),
     };
     const mppFinite = Number.isFinite(mpp) && (mpp as number) > 0;
+    const confirmedLatLngForFailure =
+      input?.confirmed_roof_center_lat != null && input?.confirmed_roof_center_lng != null
+        ? { lat: Number(input.confirmed_roof_center_lat), lng: Number(input.confirmed_roof_center_lng) }
+        : { lat: coords.lat, lng: coords.lng };
+    // Build the transform package on failure paths too so the persisted
+    // registration block carries real evidence (or an explicit failure
+    // reason list when inputs were insufficient).
+    const dsmTileBoundsForFailure = debug?.dsm_tile_bounds_lat_lng
+      || (debug?.dsm_bounds
+        ? {
+            sw: { lat: debug.dsm_bounds.minLat, lng: debug.dsm_bounds.minLng },
+            ne: { lat: debug.dsm_bounds.maxLat, lng: debug.dsm_bounds.maxLng },
+          }
+        : null);
+    const dsmSizeForFailure = debug?.dsm_size_px
+      || (debug?.dsm_width && debug?.dsm_height ? { width: debug.dsm_width, height: debug.dsm_height } : null);
+    const transformPkgFailure = buildRegistrationTransformPackage({
+      confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
+      static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+      zoom: Number(input.zoom),
+      size: { width: Number(input.logical_image_width || 640), height: Number(input.logical_image_height || 640) },
+      scale: Number(input.raster_scale || 2),
+      dsm_tile_bounds_lat_lng: dsmTileBoundsForFailure,
+      dsm_size_px: dsmSizeForFailure,
+      dsm_meters_per_pixel: mppFinite ? mpp : null,
+    });
+    (failurePayload as any)._registration_transform_package = transformPkgFailure;
+    (failurePayload as any)._registration_transform_build_stage =
+      debug?.failure_stage === "source_registration" ? "source_preflight" : "candidate_final";
     (failurePayload as any)._registration_gate_input = {
+      evaluation_stage: debug?.failure_stage === "source_registration" ? "source_preflight" : "candidate_final",
       user_confirmed_roof_target: Boolean(input?.user_confirmed_roof_target),
       roof_target_admin_override: Boolean(input?.roof_target_admin_override),
       original_geocode_lat_lng:
         input?.original_geocode_lat != null && input?.original_geocode_lng != null
           ? { lat: Number(input.original_geocode_lat), lng: Number(input.original_geocode_lng) }
           : null,
-      confirmed_roof_center_lat_lng:
-        input?.confirmed_roof_center_lat != null && input?.confirmed_roof_center_lng != null
-          ? { lat: Number(input.confirmed_roof_center_lat), lng: Number(input.confirmed_roof_center_lng) }
-          : { lat: coords.lat, lng: coords.lng },
-      confirmed_roof_center_px: input?.confirmed_roof_center_px ?? null,
-      geo_to_dsm_px_success: Boolean(debug?.geo_to_dsm_px_success ?? debug?.coordinate_space_match ?? mppFinite),
-      dsm_pixel_transform_valid: Boolean(debug?.dsm_pixel_transform_valid ?? mppFinite),
-      dsm_to_raster_transform: mppFinite ? { meters_per_pixel: mpp } : null,
-      raster_size_px: rasterSize,
+      confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
+      confirmed_roof_center_px: transformPkgFailure.confirmed_roof_center_px ?? null,
+      geo_to_dsm_px_success: transformPkgFailure.geo_to_dsm_px_success === true,
+      dsm_pixel_transform_valid: transformPkgFailure.dsm_pixel_transform_valid === true,
+      dsm_to_raster_transform: transformPkgFailure.dsm_to_raster_transform ?? null,
+      geo_to_raster_transform: transformPkgFailure.geo_to_raster_transform ?? null,
+      geo_to_dsm_transform: transformPkgFailure.geo_to_dsm_transform ?? null,
+      raster_bounds_lat_lng: transformPkgFailure.raster_bounds_lat_lng ?? null,
+      dsm_tile_bounds_lat_lng: transformPkgFailure.dsm_tile_bounds_lat_lng ?? dsmTileBoundsForFailure,
+      raster_size_px: transformPkgFailure.raster_size_px ?? rasterSize,
+      dsm_size_px: transformPkgFailure.dsm_size_px ?? dsmSizeForFailure,
       meters_per_pixel: mppFinite ? mpp : null,
+      static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
       selected_candidate_polygon_px: Array.isArray(debug?.footprint_px) ? debug.footprint_px : null,
     };
   } catch (e) {
