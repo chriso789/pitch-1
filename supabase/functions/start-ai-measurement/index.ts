@@ -688,7 +688,7 @@ function ensureRegistrationProofBeforeWrite(payload: Record<string, unknown>): R
     ? { ...(next.geometry_report_json as Record<string, unknown>) }
     : { raw_geometry_report_json: next.geometry_report_json ?? null };
   const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? null) as Record<string, unknown> | null;
-  if (existing?.transform_builder_called != null) {
+  if (existing?.transform_builder_called === true) {
     console.log("VTRACE_TRANSFORM_PREWRITE_ASSERTION_PASSED", JSON.stringify({ called: existing.transform_builder_called }));
     next.geometry_report_json = geometry;
     return next;
@@ -977,7 +977,7 @@ function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column:
 }
 
 async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
-  let safePayload = prepareRoofMeasurementPayload(payload);
+  let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));
   let lastError: unknown = null;
   let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -1000,7 +1000,7 @@ async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unkn
 }
 
 async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
-  let safePayload = prepareRoofMeasurementPayload(payload);
+  let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));
   let lastError: unknown = null;
   let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
