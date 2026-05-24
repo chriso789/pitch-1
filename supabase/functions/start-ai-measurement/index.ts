@@ -35,6 +35,9 @@ import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
+  derivePrecedenceReasonWithConflict,
+  detectRegistrationFieldConflicts,
+  resultStateForRegistrationFailure,
   buildRegistrationBlockedPhaseBlock,
   forceRegistrationBlockedPhaseBlocks,
   stripRegistrationBlockedGeometryArtifacts,
