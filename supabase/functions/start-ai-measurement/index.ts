@@ -1222,7 +1222,7 @@ async function processJob(input: any) {
       if (gateB.failure && (gateB.failure.result_state === "ai_failed_source_acquisition" || gateB.failure.result_state === "ai_failed_target_unconfirmed")) {
         const failReason = gateB.failure.hard_fail_reason;
         const debugPayload = {
-          failure_stage: "registration",
+          failure_stage: "source_registration",
           hard_fail_reason: failReason,
           block_customer_report_reason: failReason,
           result_state: gateB.failure.result_state,
