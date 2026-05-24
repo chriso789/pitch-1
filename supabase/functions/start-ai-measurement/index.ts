@@ -31,7 +31,7 @@ import {
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
-import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, type RegistrationGateInput } from "../_shared/registration-gate.ts";
+import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, evaluateCandidateAgainstTarget, type RegistrationGateInput, type PerimeterCandidateRow } from "../_shared/registration-gate.ts";
 import {
   buildRegistrationTransformPackage,
   buildRasterBoundsFromStaticMap,
@@ -59,7 +59,7 @@ import {
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics, pixelToGeo } from "../_shared/dsm-analyzer.ts";
+import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, extractMaskContourComponents, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics, pixelToGeo } from "../_shared/dsm-analyzer.ts";
 import { refineTrueOuterRoofPerimeter, type PerimeterRefinementResult } from "../_shared/perimeter-refinement.ts";
 import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
 import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
@@ -2274,6 +2274,92 @@ async function processJob(input: any) {
             candidates.push(maskCand);
             maskContourFailed = Boolean(maskCand.rejected_reason);
             if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
+          }
+
+          // ── Target-Centered Perimeter Candidate Selection v1 ──
+          // Decompose the mask into per-component contours and add each as its
+          // own candidate, so the candidate-selection gate can pick the
+          // component that contains the user-confirmed roof center (not a
+          // fused multi-house blob — Fonsica failure mode).
+          try {
+            const components = extractMaskContourComponents(
+              roofMaskForContour,
+              coords.lat,
+              coords.lng,
+            );
+            const confirmedCenterPxForComponents = (input as any).confirmed_roof_center_px as
+              | [number, number]
+              | null
+              | undefined;
+            if (components.length > 0) {
+              (globalThis as any).__maskComponentsRaw = components.map((c) => ({
+                component_id: c.component_id,
+                component_index: c.component_index,
+                size_px: c.size_px,
+                centroid_geo: c.centroid_geo,
+                vertex_count: c.polygon_geo.length,
+                is_largest: c.is_largest,
+                contains_geocode: c.contains_geocode,
+              }));
+              for (const comp of components) {
+                if (comp.polygon_geo.length < 4) continue;
+                const compPx = comp.polygon_geo.map(([lng, lat]) =>
+                  lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+                );
+                const sourceTag = `google_solar_mask_contour:component_${comp.component_index}`;
+                const compCand = scoreCandidate(sourceTag, compPx);
+                (compCand as any).component_id = comp.component_id;
+                (compCand as any).component_index = comp.component_index;
+                (compCand as any).component_size_px = comp.size_px;
+                // Per-component bbox diagonal (px) — the TARGET anchor for offset gate
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of compPx) {
+                  if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+                  if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+                }
+                const compDiag = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+                (compCand as any).component_bbox_diagonal_px = Math.round(compDiag);
+
+                if (confirmedCenterPxForComponents
+                    && Array.isArray(confirmedCenterPxForComponents)
+                    && confirmedCenterPxForComponents.length === 2
+                    && Number.isFinite(confirmedCenterPxForComponents[0])
+                    && Number.isFinite(confirmedCenterPxForComponents[1])) {
+                  const polyPx = compPx.map((p) => [p.x, p.y] as [number, number]);
+                  const ev = evaluateCandidateAgainstTarget(
+                    polyPx,
+                    confirmedCenterPxForComponents,
+                    compDiag,
+                  );
+                  (compCand as any).confirmed_center_inside_candidate = ev.confirmed_center_inside_candidate;
+                  (compCand as any).candidate_centroid_offset_from_confirmed_center_px =
+                    ev.candidate_centroid_offset_from_confirmed_center_px;
+                  (compCand as any).candidate_centroid_offset_threshold_px = ev.centroid_offset_threshold_px;
+                  (compCand as any).target_component_diagonal_px = ev.target_component_diagonal_px;
+                  if (ev.rejected) {
+                    compCand.rejected_reason = ev.rejection_reason ?? "candidate_does_not_contain_confirmed_roof_center";
+                  }
+                }
+                candidates.push(compCand);
+              }
+
+              // Also re-evaluate the legacy fused mask contour against the
+              // TARGET component diagonal (the smallest component that contains
+              // the confirmed center), not its own (huge) bbox diagonal.
+              if (confirmedCenterPxForComponents && components.length > 1) {
+                // Mark fused candidate as diagnostic-only when multiple
+                // viable components exist — it is the convex hull of merged
+                // components and is almost always inflated.
+                for (const cand of candidates) {
+                  if (cand.source === "google_solar_mask_contour" && !cand.rejected_reason) {
+                    cand.rejected_reason = "fused_multi_component_contour_superseded_by_component_split";
+                    console.log("[TARGET_CENTERED_SELECTION] Demoted fused contour — using per-component candidates instead");
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[MASK_CONTOUR_COMPONENTS] failed:", (e as Error).message);
           }
         }
       } catch (e) {
