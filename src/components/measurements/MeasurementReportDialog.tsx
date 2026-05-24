@@ -429,6 +429,9 @@ const parseRasterSizeFromUrl = (url?: string | null): { width: number; height: n
 
 const getRasterOverlayData = (measurement: any) => {
   const grj = measurement?.geometry_report_json || {};
+  if (grj?.registration_precedence_applied === true) {
+    return { grj, rasterUrl: null, rasterSize: null, planes_px: [], edges_px: [], footprint_px: [], hasRasterOverlay: false };
+  }
   const overlayDbg = grj?.overlay_debug || {};
   const rasterUrl =
     overlayDbg?.raster_url ||
@@ -475,12 +478,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [overrideEditorOpen, setOverrideEditorOpen] = useState(false);
   const [debugViewerOpen, setDebugViewerOpen] = useState(false);
   const { user: currentUser } = useCurrentUser();
+  const effectiveMeasurement = fullMeasurement || measurement;
   const canOverride = (() => {
+    const registrationBlocked = (effectiveMeasurement as any)?.geometry_report_json?.registration_precedence_applied === true;
     const r = (currentUser?.role ?? '').toLowerCase();
-    return r === 'master' || r === 'admin' || r === 'cob';
+    return !registrationBlocked && (r === 'master' || r === 'admin' || r === 'cob');
   })();
 
-  const effectiveMeasurement = fullMeasurement || measurement;
   const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(effectiveMeasurement), [effectiveMeasurement]);
 
