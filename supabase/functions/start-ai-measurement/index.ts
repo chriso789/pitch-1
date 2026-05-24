@@ -7546,6 +7546,7 @@ async function processJob(input: any) {
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
+        _registration_preflight: input._registration_preflight,
         quality_checks: quality,
         metadata: aiDetectionData,
         plane_breakdown: totals.plane_breakdown,
@@ -7809,6 +7810,7 @@ async function processJob(input: any) {
       // persisted registration block (truth-from-math reference for the UI).
       (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
       (roofMeasurementPayload as any)._registration_transform_build_stage = transformPkgFinal.dsm_tile_bounds_lat_lng ? "dsm" : "static_map";
+      console.log("VTRACE_TRANSFORM_MERGED_INTO_FINAL_PAYLOAD", JSON.stringify({ stage: (roofMeasurementPayload as any)._registration_transform_build_stage }));
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
     }
