@@ -267,7 +267,7 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Report Renderer Version', value: String((m as any).report_renderer_version ?? grj.report_renderer_version ?? '—') },
   ];
 
-  const blockReason = grj.block_customer_report_reason;
+  const blockReason = registrationBlocked ? registrationPrecedenceReason : grj.block_customer_report_reason;
   const faceRejections = Array.isArray(grj.face_rejection_table) ? grj.face_rejection_table : [];
   const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
   const errorList: string[] = [];
@@ -278,7 +278,8 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   const phase0MissingBug = !phase0 && innerTraceFired;
   const phase0BypassBug = developerBug === 'phase0_bypassed_before_perimeter_gate' || /phase0_bypassed/i.test(failureReasonStr);
 
-  if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
+  if (registrationBlocked) errorList.push(`Registration failure: ${String(registrationPrecedenceReason)}`);
+  else if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
   if (phase3Enabled !== true) errorList.push('Phase 3 visibility fields missing — stale function or unwired payload.');
   if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
   if (m.validation_status === 'needs_manual_measurement') errorList.push('Validation: needs_manual_measurement');
