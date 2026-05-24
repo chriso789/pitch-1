@@ -9431,13 +9431,14 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     const transformPkgFailure = buildRegistrationTransformPackage({
       confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
       static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
-      zoom: Number(input.zoom),
+      zoom: Number.isFinite(Number(input.zoom)) ? Number(input.zoom) : 19,
       size: { width: Number(input.logical_image_width || 640), height: Number(input.logical_image_height || 640) },
       scale: Number(input.raster_scale || 2),
       dsm_tile_bounds_lat_lng: dsmTileBoundsForFailure,
       dsm_size_px: dsmSizeForFailure,
       dsm_meters_per_pixel: mppFinite ? mpp : null,
     });
+    (failurePayload as any)._registration_preflight = input?._registration_preflight;
     (failurePayload as any)._registration_transform_package = transformPkgFailure;
     (failurePayload as any)._registration_transform_build_stage =
       debug?.failure_stage === "source_registration" ? "source_preflight" : "candidate_final";
