@@ -158,3 +158,63 @@ Deno.test("missing selected candidate at final stage hard-fails", () => {
   const missing = (result.registration as any).missing_required_fields as string[];
   assert(missing.includes("selected_candidate_polygon_px"));
 });
+
+Deno.test("must-run preflight: target unconfirmed still builds static transform proof", () => {
+  const pkg = buildRegistrationTransformPackage({
+    confirmed_roof_center_lat_lng: FONSICA,
+    static_map_center_lat_lng: FONSICA,
+    zoom: 19,
+    size: { width: 640, height: 640 },
+    scale: 2,
+  });
+  const result = evaluateRegistrationGate({
+    evaluation_stage: "target_preflight",
+    user_confirmed_roof_target: false,
+    roof_target_admin_override: false,
+    original_geocode_lat_lng: FONSICA,
+    confirmed_roof_center_lat_lng: FONSICA,
+    confirmed_roof_center_px: pkg.confirmed_roof_center_px,
+    geo_to_raster_transform: pkg.geo_to_raster_transform,
+    raster_bounds_lat_lng: pkg.raster_bounds_lat_lng,
+    raster_size_px: pkg.raster_size_px,
+    static_map_center_lat_lng: pkg.static_map_center_lat_lng,
+    geo_to_dsm_px_success: false,
+    dsm_pixel_transform_valid: false,
+    dsm_to_raster_transform: null,
+  });
+  assert(result.failure, "target-unconfirmed preflight may fail, but not with null static transform evidence");
+  assert(pkg.confirmed_roof_center_px, "confirmed_roof_center_px must be populated before target failure write");
+  assert(pkg.raster_bounds_lat_lng, "raster_bounds_lat_lng must be populated before target failure write");
+  assert(pkg.geo_to_raster_transform, "geo_to_raster_transform must be populated before target failure write");
+  assertEquals(result.failure?.result_state, "ai_failed_target_unconfirmed");
+});
+
+Deno.test("must-run preflight: source acquisition failure before DSM only misses DSM fields", () => {
+  const pkg = buildRegistrationTransformPackage({
+    confirmed_roof_center_lat_lng: FONSICA,
+    static_map_center_lat_lng: FONSICA,
+    zoom: 19,
+    size: { width: 640, height: 640 },
+    scale: 2,
+  });
+  assert(pkg.confirmed_roof_center_px, "static confirmed center px must be populated");
+  assert(pkg.geo_to_raster_transform, "static geo→raster transform must be populated");
+  assert(pkg.raster_bounds_lat_lng, "static raster bounds must be populated");
+  assertEquals(pkg.dsm_tile_bounds_lat_lng, null);
+  assertEquals(pkg.geo_to_dsm_transform, null);
+  assertEquals(pkg.dsm_to_raster_transform, null);
+  const missing = pkg.missing_required_fields;
+  assert(!missing.includes("confirmed_roof_center_px"));
+  assert(!missing.includes("geo_to_raster_transform"));
+  assert(!missing.includes("raster_bounds_lat_lng"));
+  assert(missing.includes("dsm_tile_bounds_lat_lng"));
+  assert(missing.includes("geo_to_dsm_transform"));
+});
+
+Deno.test("must-run preflight: write chokepoint has fallback proof for missing transform builder", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(source.includes("function ensureRegistrationProofBeforeWrite"));
+  assert(source.includes("transform_builder_not_called_before_write"));
+  assert(source.includes("transform_builder_called: false"));
+  assert(source.includes("let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));"));
+});
