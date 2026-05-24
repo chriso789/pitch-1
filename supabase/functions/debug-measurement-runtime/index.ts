@@ -112,12 +112,17 @@ function summarizeRegistration(g: Record<string, any> | null) {
     confirmed_roof_center_px: reg.confirmed_roof_center_px ?? null,
     geo_to_dsm_px_success: reg.geo_to_dsm_px_success ?? null,
     dsm_pixel_transform_valid: reg.dsm_pixel_transform_valid ?? null,
+    geo_to_dsm_transform_present: reg.geo_to_dsm_transform != null,
+    geo_to_raster_transform_present: reg.geo_to_raster_transform != null,
     dsm_to_raster_transform_present: reg.dsm_to_raster_transform != null,
     raster_bounds_contain_confirmed_center: reg.raster_bounds_contain_confirmed_center ?? null,
     confirmed_center_inside_candidate: reg.confirmed_center_inside_candidate ?? null,
     candidate_centroid_offset_from_confirmed_center_px:
       reg.candidate_centroid_offset_from_confirmed_center_px ?? null,
+    centroid_offset_threshold_px: reg.centroid_offset_threshold_px ?? null,
     coordinate_registration_gate_passed: reg.coordinate_registration_gate_passed ?? null,
+    candidate_selection_started: reg.candidate_selection_started ?? null,
+    missing_required_fields: Array.isArray(reg.missing_required_fields) ? reg.missing_required_fields : null,
   };
 }
 
