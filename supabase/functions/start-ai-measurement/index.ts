@@ -494,17 +494,11 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
   // would leak past a registration failure and let the UI render a perimeter
   // shape error over the wrong house.
   if (regFailureReason) {
-    const stamp = (blk: Record<string, any>) => ({
-      ...blk,
-      executed: false,
-      skipped_reason: 'blocked_by_registration_gate',
-      skipped_by: REGISTRATION_PRECEDENCE_VERSION,
-    });
-    phase3_5 = stamp(phase3_5);
-    phase3A_5 = stamp(phase3A_5);
-    phase3C = stamp(phase3C);
-    phase3D = stamp(phase3D);
-    phase3E = stamp(phase3E);
+    phase3_5 = buildRegistrationBlockedPhaseBlock(phase3_5);
+    phase3A_5 = buildRegistrationBlockedPhaseBlock(phase3A_5);
+    phase3C = buildRegistrationBlockedPhaseBlock(phase3C);
+    phase3D = buildRegistrationBlockedPhaseBlock(phase3D);
+    phase3E = buildRegistrationBlockedPhaseBlock(phase3E);
   }
 
   return {
