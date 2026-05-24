@@ -562,6 +562,20 @@ const corsHeaders = {
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 const TRANSFORM_CALLSITE = "start-ai-measurement";
 const TRANSFORM_CALLSITE_VERSION = "runtime-transform-wiring-v1";
+export const SOURCE_REGISTRATION_RUNTIME_WIRING_PROOF = {
+  callsite: TRANSFORM_CALLSITE,
+  version: TRANSFORM_CALLSITE_VERSION,
+  imports: {
+    buildRegistrationTransformPackage,
+    buildRasterBoundsFromStaticMap,
+    buildGeoToRasterTransform,
+    buildGeoToDsmTransform,
+    buildDsmToRasterTransform,
+    projectLatLngToRasterPx,
+    projectLatLngToDsmPx,
+    validateRegistrationTransformPackage,
+  },
+};
 
 const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "archetype_debug",
