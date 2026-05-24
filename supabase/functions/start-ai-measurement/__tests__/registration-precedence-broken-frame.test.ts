@@ -7,6 +7,8 @@ import {
   deriveRegistrationFailureReason,
   resultStateForRegistrationFailure,
   buildRegistrationPrecedenceStamp,
+  forceRegistrationBlockedPhaseBlocks,
+  stripRegistrationBlockedGeometryArtifacts,
 } from "../../_shared/registration-precedence.ts";
 import { evaluateRegistrationGate } from "../../_shared/registration-gate.ts";
 
@@ -59,4 +61,27 @@ Deno.test("buildRegistrationPrecedenceStamp — gate passed → applied=false, r
   });
   assertEquals(stamp.registration_precedence_applied, false);
   assertEquals(stamp.registration_precedence_reason, null);
+});
+
+Deno.test("broken frame failure blocks all phases and removes editable perimeter artifacts", () => {
+  const geometry: Record<string, any> = {
+    result_state: "ai_failed_source_acquisition",
+    hard_fail_reason: "coordinate_registration_failed",
+    registration_precedence_applied: true,
+    phase3_5: { version: "v1", executed: true },
+    phase3A_5: { version: "v1", executed: true },
+    phase3C: { version: "v1", executed: true },
+    phase3D: { version: "v1", executed: true },
+    phase3E: { version: "v1", executed: true },
+    perimeter_phase0: { executed: true },
+    selected_perimeter_after_refinement: [[100, 100], [200, 100]],
+  };
+  forceRegistrationBlockedPhaseBlocks(geometry);
+  stripRegistrationBlockedGeometryArtifacts(geometry);
+  for (const key of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"]) {
+    assertEquals(geometry[key].executed, false);
+    assertEquals(geometry[key].skipped_reason, "blocked_by_registration_gate");
+  }
+  assertEquals("perimeter_phase0" in geometry, false);
+  assertEquals("selected_perimeter_after_refinement" in geometry, false);
 });
