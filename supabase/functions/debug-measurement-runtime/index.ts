@@ -22,7 +22,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v2-registration";
+const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v3-registration-v2.2";
 
 interface AuditQuery {
   lead_id?: string | null;
