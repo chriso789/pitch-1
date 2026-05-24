@@ -13,7 +13,7 @@
 // mirrored booleans on `geometry_report_json`.
 // ============================================================================
 
-export const REGISTRATION_PRECEDENCE_VERSION = "registration-precedence-v2";
+export const REGISTRATION_PRECEDENCE_VERSION = "registration-precedence-v3";
 export const REGISTRATION_BLOCKED_SKIPPED_REASON = "blocked_by_registration_gate";
 
 export type RegistrationPrecedenceReason =
