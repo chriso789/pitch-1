@@ -168,6 +168,7 @@ function summarizeRow(row: any) {
       applied: g?.registration_precedence_applied ?? null,
       reason: g?.registration_precedence_reason ?? null,
       gate_version: g?.registration_gate_version ?? registration.version ?? null,
+      field_conflicts: detectRegistrationFieldConflicts(g),
     },
     diagram_render_intent: g?.diagram_render_intent ?? null,
     manual_approval_allowed,
