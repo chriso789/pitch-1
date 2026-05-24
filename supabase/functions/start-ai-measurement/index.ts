@@ -459,6 +459,11 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
 }
 
+function registrationFailureStage(reason: ReturnType<typeof deriveRegistrationFailureReason>): "target_confirmation" | "source_registration" | null {
+  if (!reason) return null;
+  return reason === "target_roof_not_confirmed" ? "target_confirmation" : "source_registration";
+}
+
 // Registration Precedence helpers are imported from
 // `_shared/registration-precedence.ts` so they are unit-testable without
 // booting the edge function (Deno.serve at module scope).
@@ -477,7 +482,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
         ? 'perimeter_classification_invalid'
         : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null));
   const failureStage = regFailureReason
-    ? 'registration'
+    ? registrationFailureStage(regFailureReason)
     : (payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'));
 
   // Build phase blocks first…
