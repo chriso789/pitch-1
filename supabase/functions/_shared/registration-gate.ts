@@ -25,8 +25,13 @@
 // disable manual approval — otherwise we lock the wrong structure.
 // ============================================================================
 
-export const REGISTRATION_GATE_VERSION = "registration-gate-v2.2";
+export const REGISTRATION_GATE_VERSION = "registration-gate-v2.3";
 export const REGISTRATION_SKIPPED_REASON = "blocked_by_registration_gate";
+
+export type RegistrationEvaluationStage =
+  | "target_preflight"
+  | "source_preflight"
+  | "candidate_final";
 
 export type LatLng = { lat: number; lng: number };
 export type Px = [number, number];
@@ -72,6 +77,12 @@ export interface RegistrationGateInput {
   // v2.2 — strict mode flag. When true, the gate enforces real transform
   // evidence and rejects "no candidate yet = pass".
   candidate_selection_started?: boolean;
+
+  // v2.3 — explicit evaluation stage. `candidate_final` (default) is implicitly
+  // strict AND additionally requires original_geocode / confirmed_center_latlng /
+  // raster_bounds_contain_confirmed_center. Preflights may never publish a
+  // pass.
+  evaluation_stage?: RegistrationEvaluationStage;
 }
 
 export interface RegistrationGateResult {
@@ -233,7 +244,13 @@ export function evaluateTargetConfirmation(
  * Missing any of these is `coordinate_registration_failed` — never silent pass.
  */
 export function evaluateRegistrationGate(input: RegistrationGateInput): RegistrationGateResult {
-  const strict = input.candidate_selection_started === true;
+  const evaluation_stage: RegistrationEvaluationStage =
+    input.evaluation_stage ?? "candidate_final";
+  const isFinal = evaluation_stage === "candidate_final";
+  const isPreflight = !isFinal;
+  // v2.3: candidate_final is implicitly strict, regardless of caller flag.
+  const strict = isFinal || input.candidate_selection_started === true;
+
   const user_confirmed_roof_target = !!input.user_confirmed_roof_target;
   const geo_to_dsm_px_success_raw = !!input.geo_to_dsm_px_success;
   const dsm_pixel_transform_valid_raw = !!input.dsm_pixel_transform_valid;
@@ -244,7 +261,7 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
       ? latLngInBounds(input.confirmed_roof_center_lat_lng, input.raster_bounds_lat_lng)
       : null;
 
-  // v2.2 strict transform-evidence enforcement.
+  // v2.2 + v2.3 strict transform-evidence enforcement.
   const missing_required_fields: string[] = [];
   if (strict) {
     if (!isFinitePx(input.confirmed_roof_center_px ?? null)) missing_required_fields.push("confirmed_roof_center_px");
@@ -258,7 +275,14 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     }
     if (!geo_to_dsm_px_success_raw) missing_required_fields.push("geo_to_dsm_px_success");
     if (!dsm_pixel_transform_valid_raw) missing_required_fields.push("dsm_pixel_transform_valid");
-  } else {
+  }
+  // v2.3 final-stage extras
+  if (isFinal) {
+    if (!isFiniteLatLng(input.original_geocode_lat_lng ?? null)) missing_required_fields.push("original_geocode_lat_lng");
+    if (!isFiniteLatLng(input.confirmed_roof_center_lat_lng ?? null)) missing_required_fields.push("confirmed_roof_center_lat_lng");
+    if (rasterBoundsContainConfirmedCenter !== true) missing_required_fields.push("raster_bounds_contain_confirmed_center");
+  }
+  if (!strict) {
     // Legacy permissive mode (pre-candidate). Still require the transform
     // object exists when the caller claimed pixel transform validity.
     if (
@@ -292,7 +316,11 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
   const maxOffset = maxAllowedCentroidOffsetPx(footprintDiagonalPx);
   let centroid_offset_exceeds_threshold = false;
 
-  if (input.confirmed_roof_center_px && input.selected_candidate_polygon_px) {
+  // v2.3 hard rule: never claim containment when the confirmed center pixel
+  // does not exist.
+  if (!isFinitePx(input.confirmed_roof_center_px ?? null)) {
+    confirmed_center_inside_candidate = false;
+  } else if (input.confirmed_roof_center_px && input.selected_candidate_polygon_px) {
     confirmed_center_inside_candidate = polygonContainsPoint(
       input.selected_candidate_polygon_px,
       input.confirmed_roof_center_px,
@@ -307,14 +335,9 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
       candidate_centroid_offset_from_confirmed_center_px > maxOffset
     ) {
       centroid_offset_exceeds_threshold = true;
-      // Strict mode: a candidate far from the confirmed center is the wrong
-      // building. Treat it as containment failure regardless of the polygon
-      // outline contains check (loose polys can still wrap the wrong house).
       if (strict) confirmed_center_inside_candidate = false;
     }
   } else if (strict) {
-    // v2.2 strict: missing candidate or missing confirmed center is NOT
-    // pass. The legacy "no candidate yet = pass" behavior is removed.
     confirmed_center_inside_candidate = false;
   } else if (!input.selected_candidate_polygon_px) {
     // Legacy permissive: pre-candidate stage, treat as n/a so we don't
@@ -322,29 +345,45 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     confirmed_center_inside_candidate = true;
   }
 
+  // v2.3: preflights may never publish a hard pass. Coordinate gate stays
+  // false during preflight; the caller exposes preflight outcomes via the
+  // dedicated *_preflight_passed flags below.
   const coordinate_registration_gate_passed =
+    !isPreflight &&
     (user_confirmed_roof_target || !!input.roof_target_admin_override) &&
     frame_valid &&
     confirmed_center_inside_candidate &&
-    (!strict || missing_required_fields.length === 0);
+    missing_required_fields.length === 0;
+
+  const target_preflight_passed =
+    (user_confirmed_roof_target || !!input.roof_target_admin_override) &&
+    isFiniteLatLng(input.confirmed_roof_center_lat_lng ?? null);
+  const source_preflight_passed =
+    target_preflight_passed &&
+    geo_to_dsm_px_success_raw &&
+    dsm_pixel_transform_valid_raw &&
+    input.dsm_to_raster_transform != null;
 
   // Persistence block — drift guard.
   const registration: Record<string, unknown> = {
     version: REGISTRATION_GATE_VERSION,
+    evaluation_stage,
     candidate_selection_started: !!strict,
     missing_required_fields,
-    required_transform_evidence: strict
-      ? {
-          confirmed_roof_center_px_present: isFinitePx(input.confirmed_roof_center_px ?? null),
-          geo_to_raster_transform_present: input.geo_to_raster_transform != null,
-          geo_to_dsm_transform_present: input.geo_to_dsm_transform != null,
-          dsm_to_raster_transform_present: input.dsm_to_raster_transform != null,
-          raster_bounds_lat_lng_present: input.raster_bounds_lat_lng != null,
-          dsm_tile_bounds_lat_lng_present: input.dsm_tile_bounds_lat_lng != null,
-          selected_candidate_polygon_px_present:
-            !!input.selected_candidate_polygon_px && input.selected_candidate_polygon_px.length >= 3,
-        }
-      : null,
+    required_transform_evidence: {
+      confirmed_roof_center_px_present: isFinitePx(input.confirmed_roof_center_px ?? null),
+      geo_to_raster_transform_present: input.geo_to_raster_transform != null,
+      geo_to_dsm_transform_present: input.geo_to_dsm_transform != null,
+      dsm_to_raster_transform_present: input.dsm_to_raster_transform != null,
+      raster_bounds_lat_lng_present: input.raster_bounds_lat_lng != null,
+      dsm_tile_bounds_lat_lng_present: input.dsm_tile_bounds_lat_lng != null,
+      selected_candidate_polygon_px_present:
+        !!input.selected_candidate_polygon_px && input.selected_candidate_polygon_px.length >= 3,
+      original_geocode_lat_lng_present: isFiniteLatLng(input.original_geocode_lat_lng ?? null),
+      confirmed_roof_center_lat_lng_present: isFiniteLatLng(input.confirmed_roof_center_lat_lng ?? null),
+    },
+    target_preflight_passed,
+    source_preflight_passed,
     original_geocode_lat_lng: input.original_geocode_lat_lng ?? null,
     confirmed_roof_center_lat_lng: input.confirmed_roof_center_lat_lng ?? null,
     confirmed_roof_center_px: input.confirmed_roof_center_px ?? null,
@@ -381,26 +420,33 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
       hard_fail_reason: "target_roof_not_confirmed",
       block_customer_report_reason: "target_roof_not_confirmed",
     };
-  } else if (strict && missing_required_fields.length > 0) {
+  } else if (isFinal && missing_required_fields.length > 0) {
     failure = {
       reason: "coordinate_registration_failed",
       result_state: "ai_failed_source_acquisition",
       hard_fail_reason: "coordinate_registration_failed",
       block_customer_report_reason: "coordinate_registration_failed",
     };
-  } else if (!frame_valid) {
+  } else if (isFinal && !frame_valid) {
     failure = {
       reason: "coordinate_registration_failed",
       result_state: "ai_failed_source_acquisition",
       hard_fail_reason: "coordinate_registration_failed",
       block_customer_report_reason: "coordinate_registration_failed",
     };
-  } else if (!confirmed_center_inside_candidate) {
+  } else if (isFinal && !confirmed_center_inside_candidate) {
     failure = {
       reason: "candidate_does_not_contain_confirmed_roof_center",
       result_state: "ai_failed_source_acquisition",
       hard_fail_reason: "candidate_does_not_contain_confirmed_roof_center",
       block_customer_report_reason: "candidate_does_not_contain_confirmed_roof_center",
+    };
+  } else if (strict && !isFinal && missing_required_fields.length > 0) {
+    failure = {
+      reason: "coordinate_registration_failed",
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: "coordinate_registration_failed",
+      block_customer_report_reason: "coordinate_registration_failed",
     };
   }
 

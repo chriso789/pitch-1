@@ -183,10 +183,14 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Validated Faces', value: fmt(grj.validated_faces ?? grj.valid_faces) },
     { label: 'Coverage', value: fmt(((grj.debug_geometry?.face_coverage_ratio ?? grj.face_coverage_ratio) || 0) * 100, '%') },
     { label: 'Failure Reason', value: String(registrationPrecedenceReason ?? m.gate_reason ?? '—') },
-    // ─── Registration Precedence (registration-precedence-v1) ───
+    // ─── Registration Precedence (registration-precedence-v3 / gate v2.3) ───
     { label: 'Registration Precedence Version', value: String(grj.registration_precedence_version ?? '—') },
     { label: 'Registration Precedence Applied', value: String(grj.registration_precedence_applied ?? '—') },
     { label: 'Registration Precedence Reason', value: String(grj.registration_precedence_reason ?? '—') },
+    { label: 'Registration Gate Version', value: String((registrationGate as any)?.version ?? grj.registration_gate_version ?? '—') },
+    { label: 'Registration Evaluation Stage', value: String((registrationGate as any)?.evaluation_stage ?? '—') },
+    { label: 'Coordinate Gate Passed', value: String((registrationGate as any)?.coordinate_registration_gate_passed ?? '—') },
+    { label: 'Missing Required Fields', value: Array.isArray((registrationGate as any)?.missing_required_fields) && (registrationGate as any).missing_required_fields.length > 0 ? (registrationGate as any).missing_required_fields.join(', ') : '—' },
     { label: 'Topology Source', value: String(grj.topology_source ?? grj.geometry_source ?? '—') },
     { label: 'Planes (saved)', value: fmt(dp.final_plane_count_saved) },
     { label: 'Edges (saved)', value: fmt(dp.final_edge_count_saved) },

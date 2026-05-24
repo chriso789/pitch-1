@@ -22,7 +22,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v3-registration-v2.2";
+const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v4-registration-v2.3";
 
 interface AuditQuery {
   lead_id?: string | null;
@@ -122,7 +122,9 @@ function summarizeRegistration(g: Record<string, any> | null) {
     centroid_offset_threshold_px: reg.centroid_offset_threshold_px ?? null,
     coordinate_registration_gate_passed: reg.coordinate_registration_gate_passed ?? null,
     candidate_selection_started: reg.candidate_selection_started ?? null,
+    evaluation_stage: reg.evaluation_stage ?? null,
     missing_required_fields: Array.isArray(reg.missing_required_fields) ? reg.missing_required_fields : null,
+    stale_debug_payload_present: (g as any)?.stale_debug_payload != null,
   };
 }
 

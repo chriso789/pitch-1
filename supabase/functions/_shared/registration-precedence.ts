@@ -13,7 +13,7 @@
 // mirrored booleans on `geometry_report_json`.
 // ============================================================================
 
-export const REGISTRATION_PRECEDENCE_VERSION = "registration-precedence-v2";
+export const REGISTRATION_PRECEDENCE_VERSION = "registration-precedence-v3";
 export const REGISTRATION_BLOCKED_SKIPPED_REASON = "blocked_by_registration_gate";
 
 export type RegistrationPrecedenceReason =
@@ -133,6 +133,19 @@ export function detectRegistrationFieldConflicts(geometry: any): RegistrationFie
       });
     }
   }
+  // v3: final write must be evaluation_stage="candidate_final". A preflight
+  // block reaching the write path is itself a conflict.
+  if (
+    reg.evaluation_stage != null &&
+    reg.evaluation_stage !== "candidate_final" &&
+    reg.coordinate_registration_gate_passed === true
+  ) {
+    conflicts.push({
+      field: "evaluation_stage",
+      block_value: reg.evaluation_stage,
+      detail: `coordinate_registration_gate_passed=true with non-final evaluation_stage=${reg.evaluation_stage}`,
+    });
+  }
   return conflicts;
 }
 
@@ -212,9 +225,12 @@ export function derivePrecedenceReasonWithConflict(
   conflicts: RegistrationFieldConflict[];
 } {
   const conflicts = detectRegistrationFieldConflicts(geometry);
-  if (conflicts.length > 0) {
-    return { reason: "registration_field_conflict", conflicts };
-  }
   const reg = geometry?.registration ?? geometry?.registration_gate ?? null;
-  return { reason: deriveRegistrationFailureReason(reg), conflicts };
+  // v3: prefer the honest gate-level failure (e.g. coordinate_registration_failed)
+  // when the gate already reported it. registration_field_conflict is only the
+  // dominant label when the block has no first-class failure of its own.
+  const gateLevel = deriveRegistrationFailureReason(reg);
+  if (gateLevel) return { reason: gateLevel, conflicts };
+  if (conflicts.length > 0) return { reason: "registration_field_conflict", conflicts };
+  return { reason: null, conflicts };
 }

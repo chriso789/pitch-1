@@ -646,36 +646,85 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       regForMirror.confirmed_center_inside_candidate ?? false;
   }
 
-  // v2.2 conflict detector — runs over the final geometry bag (block + mirrored
-  // top-level booleans). If the block claims pass while evidence is missing,
-  // or top-level booleans contradict the block, force a hard fail.
-  const conflicts = detectRegistrationFieldConflicts(geometry);
+  // v2.3 precedence: prefer the honest gate-level failure
+  // (coordinate_registration_failed) over the conflict label. Conflicts are
+  // still recorded for auditability and still hard-fail the write.
+  const { reason: dominantReason, conflicts } = derivePrecedenceReasonWithConflict(geometry);
   if (conflicts.length > 0) {
-    regFailureReasonForPrecedence = "registration_field_conflict" as any;
     (geometry as any).registration_field_conflicts = conflicts;
-    (geometry as any).result_state = "ai_failed_source_acquisition";
-    (geometry as any).hard_fail_reason = "registration_field_conflict";
-    (geometry as any).block_customer_report_reason = "registration_field_conflict";
-    (geometry as any).failure_stage = "source_registration";
-    (geometry as any).diagram_render_intent = "coordinate_registration_debug_only";
-    (next as any).result_state = "ai_failed_source_acquisition";
-    (next as any).hard_fail_reason = "registration_field_conflict";
-    (next as any).block_customer_report_reason = "registration_field_conflict";
-    (next as any).failure_stage = "source_registration";
-    (next as any).diagram_render_intent = "coordinate_registration_debug_only";
+  }
+  if (dominantReason) {
+    regFailureReasonForPrecedence = dominantReason as any;
+    const hard = dominantReason === "registration_field_conflict"
+      ? "registration_field_conflict"
+      : dominantReason;
+    const resultState =
+      dominantReason === "target_roof_not_confirmed"
+        ? "ai_failed_target_unconfirmed"
+        : "ai_failed_source_acquisition";
+    (geometry as any).result_state = resultState;
+    (geometry as any).hard_fail_reason = hard;
+    (geometry as any).block_customer_report_reason = hard;
+    (geometry as any).failure_stage = dominantReason === "target_roof_not_confirmed"
+      ? "target_confirmation"
+      : "source_registration";
+    (geometry as any).diagram_render_intent = dominantReason === "target_roof_not_confirmed"
+      ? "target_confirmation_required"
+      : "coordinate_registration_debug_only";
+    (next as any).result_state = resultState;
+    (next as any).hard_fail_reason = hard;
+    (next as any).block_customer_report_reason = hard;
+    (next as any).failure_stage = (geometry as any).failure_stage;
+    (next as any).diagram_render_intent = (geometry as any).diagram_render_intent;
     (next as any).customer_report_ready = false;
     (next as any).validation_status = "failed";
   }
 
   if (!regFailureReasonForPrecedence) {
     const reg = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
-    regFailureReasonForPrecedence = deriveRegistrationFailureReason(reg) as any;
     if (!regVersionForPrecedence && reg && typeof reg === 'object') {
       regVersionForPrecedence = (reg as any).version ?? null;
     }
   }
 
   if (regFailureReasonForPrecedence) {
+    // v2.3: quarantine stale perimeter / topology / refinement payloads under
+    // `stale_debug_payload` so a blocked-by-registration row cannot accidentally
+    // render eave/rake/perimeter totals from a prior successful pass.
+    const stale: Record<string, unknown> = {};
+    const STALE_KEYS = [
+      "phase3A",
+      "phase3A_5",
+      "perimeter_topology",
+      "perimeter_phase0",
+      "perimeter_gate_metrics",
+      "refinement_diagnostics",
+      "roof_lines",
+      "selected_perimeter_after_refinement",
+      "perimeter_inner_trace",
+      "debug_perimeter_overlay_svg",
+    ];
+    for (const k of STALE_KEYS) {
+      if ((geometry as any)[k] != null) {
+        stale[k] = (geometry as any)[k];
+        delete (geometry as any)[k];
+      }
+    }
+    // Nested phase3A_5 under dsm_planar_graph_debug
+    const dpgd = (geometry as any).dsm_planar_graph_debug;
+    if (dpgd && typeof dpgd === "object" && (dpgd as any).phase3A_5 != null) {
+      stale["dsm_planar_graph_debug.phase3A_5"] = (dpgd as any).phase3A_5;
+      delete (dpgd as any).phase3A_5;
+    }
+    if (Object.keys(stale).length > 0) {
+      (geometry as any).stale_debug_payload = stale;
+    }
+    (geometry as any).roof_lines_count = 0;
+    (geometry as any).footprint_source = "blocked_by_registration_gate";
+    (geometry as any).perimeter_topology = null;
+    (geometry as any).perimeter_phase0 = null;
+    (geometry as any).refinement_diagnostics = null;
+
     forceRegistrationBlockedPhaseBlocks(geometry as any);
     stripRegistrationBlockedGeometryArtifacts(geometry as any);
   }
@@ -956,6 +1005,7 @@ Deno.serve(async (req) => {
         lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
       };
       const gateA = evaluateRegistrationGate({
+        evaluation_stage: "target_preflight",
         user_confirmed_roof_target: false,
         roof_target_admin_override: false,
         original_geocode_lat_lng:
@@ -1269,6 +1319,7 @@ async function processJob(input: any) {
           ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
           : { lat: coords.lat, lng: coords.lng };
       const gateB = evaluateRegistrationGate({
+        evaluation_stage: "source_preflight",
         user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
         roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
         original_geocode_lat_lng:
@@ -3301,6 +3352,8 @@ async function processJob(input: any) {
         const failReason = "coordinate_registration_failed";
         console.error(`[DSM_COORDINATE_GATE] FAIL: footprint does not overlap DSM grid`, JSON.stringify(dsmCoordinateMatchDebug));
         const registrationGate = evaluateRegistrationGate({
+          evaluation_stage: "candidate_final",
+          candidate_selection_started: true,
           user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
           roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
           original_geocode_lat_lng:
