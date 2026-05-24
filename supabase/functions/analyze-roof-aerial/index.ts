@@ -1,5 +1,10 @@
 // NOTE: Avoid remote std/esm.sh imports where possible to prevent Supabase bundle timeouts.
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
+import {
+  isDiagramRenderIntentConstraintError,
+  normalizeDiagramRenderIntentForWrite,
+  withDiagramRenderIntentConstraintRetryPayload,
+} from '../_shared/diagram-render-intent.ts'
 
 // Legacy route provenance — analyze-roof-aerial is NOT the canonical AI measurement route.
 // Canonical route is `start-ai-measurement`. All inserts/updates here are stamped non-canonical.
@@ -10,6 +15,33 @@ const LEGACY_ANALYZE_PROVENANCE = {
   route_audit_version: "measurement-route-audit-v1",
   report_renderer_version: "legacy-analyze-roof-aerial-v0",
 } as const;
+
+function withLegacyDiagramIntent(row: Record<string, unknown>): Record<string, unknown> {
+  const intent = normalizeDiagramRenderIntentForWrite(row.diagram_render_intent ?? 'diagnostic_only', {
+    result_state: row.result_state ?? 'ai_failed_unknown',
+    failure_stage: 'legacy_noncanonical_measurement_path',
+  })
+  const geometry = typeof row.geometry_report_json === 'object' && row.geometry_report_json !== null && !Array.isArray(row.geometry_report_json)
+    ? { ...(row.geometry_report_json as Record<string, unknown>) }
+    : {}
+  geometry.route_warning = 'legacy_noncanonical_measurement_path'
+  geometry.route_provenance = { ...LEGACY_ANALYZE_PROVENANCE }
+  geometry.raw_diagram_render_intent = intent.raw
+  geometry.normalized_diagram_render_intent = intent.normalized
+  geometry.diagram_render_intent = intent.normalized
+  if (intent.warning) geometry.diagram_render_intent_normalization_warning = intent.warning
+  return { ...row, diagram_render_intent: intent.normalized, geometry_report_json: geometry }
+}
+
+async function insertRoofMeasurementWithDiagramRetry(supabase: any, row: Record<string, unknown>) {
+  let payload = withLegacyDiagramIntent(row)
+  let result = await supabase.from('roof_measurements').insert(payload).select().single()
+  if (result.error && isDiagramRenderIntentConstraintError(result.error)) {
+    payload = withDiagramRenderIntentConstraintRetryPayload(payload)
+    result = await supabase.from('roof_measurements').insert(payload).select().single()
+  }
+  return result
+}
 
 // Import worksheet engine - single source of truth for calculations
 import {
@@ -4136,7 +4168,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     console.log(`📐 Using ${authoritativeFootprint.source} footprint for perimeter WKT`);
   }
 
-  const { data, error } = await supabase.from('roof_measurements').insert({
+  const { data, error } = await insertRoofMeasurementWithDiagramRetry(supabase, {
     ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
@@ -4192,7 +4224,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     footprint_vertices_geo: authoritativeFootprint?.vertices || null,
     footprint_requires_review: authoritativeFootprint?.requiresManualReview ?? true,
     footprint_validation: authoritativeFootprint?.validation || null,
-  }).select().single()
+  })
 
   if (error) {
     console.error('Failed to save measurement:', error)
@@ -5424,7 +5456,7 @@ async function processSolarFastPath(
   console.log(`📊 Footprint tracking: source=${footprintSource}, vertices=${footprintVertexCount}, confidence=${(footprintConfidence * 100).toFixed(0)}%`);
 
   // Save to database
-  const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
+  const { data: measurementRecord, error: saveError } = await insertRoofMeasurementWithDiagramRetry(supabase, {
     ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
@@ -5483,7 +5515,7 @@ async function processSolarFastPath(
     footprint_requires_review: footprintSource === 'solar_bbox_fallback',
     dsm_available: dsmAvailable,
     footprint_validation: solarFastPathFootprint.validation,
-  }).select().single()
+  })
   
   if (saveError) {
     console.error('Solar Fast Path save error:', saveError)

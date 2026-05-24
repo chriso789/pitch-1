@@ -21,6 +21,11 @@ import { calibrateRidgePosition, type RidgeCalibrationResult } from "./ridge-cal
 import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts";
 import { solveAutonomousGraph, detectComplexRoof, validateAutonomousResult, type AutonomousGraphResult, type AutonomousGraphInput } from "./autonomous-graph-solver.ts";
 import { evaluateDSMContract, analyzeGraphTopology, computeOverlayRegistration, type DSMContractInput, type DSMContractGateResult } from "./dsm-geometry-contract.ts";
+import {
+  isDiagramRenderIntentConstraintError,
+  normalizeDiagramRenderIntentForWrite,
+  withDiagramRenderIntentConstraintRetryPayload,
+} from "../_shared/diagram-render-intent.ts";
 
 // Legacy route provenance — this function is NOT the canonical AI measurement route.
 // Canonical route is `start-ai-measurement`. Every DB write here is stamped non-canonical
@@ -2600,10 +2605,15 @@ Deno.serve(async (req) => {
             // Store result in roof_measurements if we have a property
             if (propertyId && unifiedResult.fused) {
               const fused = unifiedResult.fused;
-              await supabase.from('roof_measurements').insert({
+              const intent = normalizeDiagramRenderIntentForWrite('diagnostic_only', {
+                result_state: 'ai_failed_unknown',
+                failure_stage: 'legacy_noncanonical_measurement_path',
+              });
+              let insertPayload = {
                 ...LEGACY_MEASURE_PROVENANCE,
                 property_id: propertyId,
                 source: 'unified_pipeline',
+                diagram_render_intent: intent.normalized,
                 measurement_data: {
                   summary: {
                     total_area_sqft: fused.totalAreaSqft,
@@ -2626,8 +2636,21 @@ Deno.serve(async (req) => {
                   timing: unifiedResult.timing,
                   vendorTruthUsed: unifiedResult.vendorTruthUsed,
                 },
+                geometry_report_json: {
+                  route_warning: 'legacy_noncanonical_measurement_path',
+                  route_provenance: { ...LEGACY_MEASURE_PROVENANCE },
+                  raw_diagram_render_intent: intent.raw,
+                  normalized_diagram_render_intent: intent.normalized,
+                  diagram_render_intent: intent.normalized,
+                },
                 created_by: (await supabase.auth.getUser()).data?.user?.id,
-              });
+              };
+              let insertResult = await supabase.from('roof_measurements').insert(insertPayload);
+              if (insertResult.error && isDiagramRenderIntentConstraintError(insertResult.error)) {
+                insertPayload = withDiagramRenderIntentConstraintRetryPayload(insertPayload);
+                insertResult = await supabase.from('roof_measurements').insert(insertPayload);
+              }
+              if (insertResult.error) throw insertResult.error;
             }
             
             return json({
