@@ -545,3 +545,68 @@ export function canApproveManualPerimeter(reg: {
     !!reg.coordinate_registration_gate_passed
   );
 }
+
+// ===========================================================================
+// Target-Centered Perimeter Candidate Selection v1
+// ---------------------------------------------------------------------------
+// evaluateCandidateAgainstTarget anchors the centroid-offset threshold to the
+// TARGET component diagonal (the mask component containing the confirmed roof
+// center), not the candidate's own bbox diagonal. This breaks the Fonsica
+// failure mode where a fused multi-component contour has a huge bbox diag
+// (~3000px) that made the 0.30 * diag threshold > 900px and let a candidate
+// with an 878px centroid offset slip through.
+// ===========================================================================
+
+export interface PerimeterCandidateRow {
+  candidate_id: string;
+  source: string;
+  component_id?: number | string | null;
+  coordinate_space: "raster_px" | "dsm_px" | string;
+  area_sqft: number | null;
+  centroid_px: Px | null;
+  centroid_offset_from_confirmed_center_px: number | null;
+  centroid_offset_threshold_px: number | null;
+  contains_confirmed_center: boolean;
+  bbox_contains_confirmed_center: boolean;
+  iou_with_target_mask: number | null;
+  overlap_with_target_mask: number | null;
+  area_delta_pct_vs_benchmark: number | null;
+  visual_edge_support_pct: number | null;
+  selected: boolean;
+  rejection_reason: string | null;
+}
+
+export interface TargetAnchoredEvaluation extends CandidateEvaluation {
+  centroid_offset_threshold_px: number;
+  target_component_diagonal_px: number | null;
+}
+
+export function evaluateCandidateAgainstTarget(
+  candidate_polygon_px: Polygon | null | undefined,
+  confirmed_roof_center_px: Px | null | undefined,
+  target_component_diagonal_px: number | null | undefined,
+): TargetAnchoredEvaluation {
+  const inside = polygonContainsPoint(candidate_polygon_px, confirmed_roof_center_px);
+  const centroid = polygonCentroid(candidate_polygon_px);
+  const offset = pointDistancePx(centroid, confirmed_roof_center_px);
+  const threshold = maxAllowedCentroidOffsetPx(target_component_diagonal_px);
+  const exceeds = offset != null && offset > threshold;
+  const rejected = !inside || exceeds;
+  let rejection_reason: string | null = null;
+  if (!inside) rejection_reason = "candidate_does_not_contain_confirmed_roof_center";
+  else if (exceeds) rejection_reason = "centroid_offset_exceeds_target";
+  return {
+    confirmed_center_inside_candidate: inside && !exceeds,
+    candidate_centroid_offset_from_confirmed_center_px: offset,
+    candidate_centroid_offset_threshold_px: threshold,
+    centroid_offset_exceeds_threshold: exceeds,
+    nearest_neighbor_structure_distance_px: null,
+    rejected,
+    rejection_reason,
+    centroid_offset_threshold_px: threshold,
+    target_component_diagonal_px:
+      typeof target_component_diagonal_px === "number" && Number.isFinite(target_component_diagonal_px)
+        ? target_component_diagonal_px
+        : null,
+  };
+}
