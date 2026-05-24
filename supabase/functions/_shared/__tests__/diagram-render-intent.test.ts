@@ -93,3 +93,32 @@ Deno.test("insert retry payload preserves diagnostics and coerces diagram intent
   assertEquals((payload.geometry_report_json as any).raw_diagram_render_intent, "coordinate_registration_debug_only");
   assertEquals((payload.geometry_report_json as any).normalized_diagram_render_intent, "diagnostic_only");
 });
+
+Deno.test("mock insert retry catches constraint and still saves row", async () => {
+  const attempts: Array<Record<string, unknown>> = [];
+  const save = async (payload: Record<string, unknown>) => {
+    attempts.push(payload);
+    if (attempts.length === 1) {
+      return {
+        data: null,
+        error: { code: "23514", message: 'new row violates check constraint "roof_measurements_diagram_render_intent_check"' },
+      };
+    }
+    return { data: { id: "saved-row" }, error: null };
+  };
+
+  let payload: Record<string, unknown> = {
+    diagram_render_intent: "coordinate_registration_debug_only",
+    geometry_report_json: { phase3_5: { skipped_reason: "blocked_by_registration_gate" } },
+  };
+  let result = await save(payload);
+  if (result.error && isDiagramRenderIntentConstraintError(result.error)) {
+    payload = withDiagramRenderIntentConstraintRetryPayload(payload);
+    result = await save(payload);
+  }
+
+  assertEquals(result.data, { id: "saved-row" });
+  assertEquals(attempts.length, 2);
+  assertEquals(attempts[1].diagram_render_intent, "diagnostic_only");
+  assertEquals((attempts[1].geometry_report_json as any).phase3_5.skipped_reason, "blocked_by_registration_gate");
+});
