@@ -58,6 +58,10 @@ import {
   deriveDiagramRenderIntent,
   type ResultState as _SharedResultState,
 } from "../_shared/result-state.ts";
+import {
+  normalizeDiagramRenderIntentForWrite,
+  isDiagramRenderIntentConstraintError,
+} from "../_shared/diagram-render-intent.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -681,6 +685,28 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   (geometry as any).registration_gate_version =
     regVersionForPrecedence ?? (geometry as any).registration_gate_version ?? null;
 
+  // ─── diagram_render_intent normalization (DB-safe) ───
+  // Coerce whatever the pipeline produced into one of the 6 stable buckets
+  // permitted by roof_measurements_diagram_render_intent_check. Raw value
+  // and any warning are preserved in geometry_report_json for diagnostics.
+  const rawIntent =
+    (next as any).diagram_render_intent ??
+    (geometry as any).diagram_render_intent ??
+    null;
+  const intentNorm = normalizeDiagramRenderIntentForWrite(rawIntent, {
+    result_state: (next as any).result_state,
+    hard_fail_reason: (next as any).hard_fail_reason,
+  });
+  (next as any).diagram_render_intent = intentNorm.normalized;
+  (geometry as any).diagram_render_intent = intentNorm.normalized;
+  if (intentNorm.raw && intentNorm.raw !== intentNorm.normalized) {
+    (geometry as any).raw_diagram_render_intent = intentNorm.raw;
+    (geometry as any).normalized_diagram_render_intent = intentNorm.normalized;
+  }
+  if (intentNorm.warning) {
+    (geometry as any).diagram_render_intent_normalization_warning = intentNorm.warning;
+  }
+
   next.geometry_report_json = geometry;
   return next;
 }
@@ -707,10 +733,26 @@ function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column:
 async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
   let safePayload = prepareRoofMeasurementPayload(payload);
   let lastError: unknown = null;
+  let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const result = await supabase.from("roof_measurements").insert(safePayload as any).select("id").single();
     if (!result.error) return result;
     lastError = result.error;
+    if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
+      diagramIntentRetried = true;
+      const failed = (safePayload as any).diagram_render_intent ?? null;
+      const geom = (typeof safePayload.geometry_report_json === "object" && safePayload.geometry_report_json !== null && !Array.isArray(safePayload.geometry_report_json))
+        ? { ...(safePayload.geometry_report_json as Record<string, unknown>) }
+        : { raw_geometry_report_json: safePayload.geometry_report_json ?? null };
+      const retry = Array.isArray((geom as any).insert_retry) ? [...(geom as any).insert_retry] : [];
+      retry.push({ column: "diagram_render_intent", failed_value: failed, coerced_to: "diagnostic_only", at: new Date().toISOString() });
+      (geom as any).insert_retry = retry;
+      (geom as any).raw_diagram_render_intent = failed;
+      (geom as any).diagram_render_intent = "diagnostic_only";
+      safePayload = { ...safePayload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+      console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert after diagram_render_intent CHECK violation", failed);
+      continue;
+    }
     const missingColumn = getSchemaCacheMissingColumn(result.error);
     if (!missingColumn || !(missingColumn in safePayload)) return result;
     console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert without schema-cache-missing column", missingColumn);
@@ -722,10 +764,26 @@ async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unkn
 async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
   let safePayload = prepareRoofMeasurementPayload(payload);
   let lastError: unknown = null;
+  let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const result = await supabase.from("roof_measurements").update(safePayload as any).eq("id", id);
     if (!result.error) return result;
     lastError = result.error;
+    if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
+      diagramIntentRetried = true;
+      const failed = (safePayload as any).diagram_render_intent ?? null;
+      const geom = (typeof safePayload.geometry_report_json === "object" && safePayload.geometry_report_json !== null && !Array.isArray(safePayload.geometry_report_json))
+        ? { ...(safePayload.geometry_report_json as Record<string, unknown>) }
+        : { raw_geometry_report_json: safePayload.geometry_report_json ?? null };
+      const retry = Array.isArray((geom as any).insert_retry) ? [...(geom as any).insert_retry] : [];
+      retry.push({ column: "diagram_render_intent", failed_value: failed, coerced_to: "diagnostic_only", at: new Date().toISOString() });
+      (geom as any).insert_retry = retry;
+      (geom as any).raw_diagram_render_intent = failed;
+      (geom as any).diagram_render_intent = "diagnostic_only";
+      safePayload = { ...safePayload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+      console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update after diagram_render_intent CHECK violation", failed);
+      continue;
+    }
     const missingColumn = getSchemaCacheMissingColumn(result.error);
     if (!missingColumn || !(missingColumn in safePayload)) return result;
     console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update without schema-cache-missing column", missingColumn);
