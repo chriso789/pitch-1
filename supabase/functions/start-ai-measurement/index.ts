@@ -1306,18 +1306,22 @@ async function processJob(input: any) {
     // Verify the raster/DSM frame is sound BEFORE we run candidate selection
     // or perimeter refinement. Without this, an invalid geo→pixel transform
     // can let us paint a perimeter on the wrong house (Fonsica failure mode).
+    //
+    // v2.3 + Source Registration Transform Builder v1: derive confirmed
+    // center pixel / raster bounds / geo→raster transform from real Web-
+    // Mercator math instead of relying on caller-supplied flags.
     {
-      const geoToPxOk = Number.isFinite(actualMpp) && actualMpp > 0 && raster.width > 0 && raster.height > 0;
-      const tileExtentM = raster.width * actualMpp;
-      const tileHalfDeg = tileExtentM / 111320; // crude lat-deg per metre
-      const rasterBounds = {
-        sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
-        ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
-      };
       const confirmedLatLng =
         (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
           ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
           : { lat: coords.lat, lng: coords.lng };
+      const transformPkgPreflight = buildRegistrationTransformPackage({
+        confirmed_roof_center_lat_lng: confirmedLatLng,
+        static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+        zoom: effectiveZoom,
+        size: { width: Number(input.logical_image_width), height: Number(input.logical_image_height) },
+        scale: Number(input.raster_scale),
+      });
       const gateB = evaluateRegistrationGate({
         evaluation_stage: "source_preflight",
         user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
@@ -1327,14 +1331,23 @@ async function processJob(input: any) {
             ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
             : null,
         confirmed_roof_center_lat_lng: confirmedLatLng,
-        confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
-        geo_to_dsm_px_success: geoToPxOk,
-        dsm_pixel_transform_valid: geoToPxOk,
-        dsm_to_raster_transform: geoToPxOk ? { meters_per_pixel: actualMpp } : null,
-        raster_bounds_lat_lng: rasterBounds,
-        raster_size_px: { width: raster.width, height: raster.height },
+        confirmed_roof_center_px:
+          (input as any).confirmed_roof_center_px ?? transformPkgPreflight.confirmed_roof_center_px,
+        geo_to_dsm_px_success: false, // DSM not yet fetched at preflight
+        dsm_pixel_transform_valid: false,
+        dsm_to_raster_transform: null,
+        geo_to_raster_transform: transformPkgPreflight.geo_to_raster_transform,
+        raster_bounds_lat_lng: transformPkgPreflight.raster_bounds_lat_lng,
+        raster_size_px: transformPkgPreflight.raster_size_px,
+        static_map_center_lat_lng: transformPkgPreflight.static_map_center_lat_lng,
         meters_per_pixel: actualMpp,
       });
+      // Surface transform package + the legacy frame-valid flag for the
+      // failure block below.
+      (gateB.registration as any).transform_package = transformPkgPreflight;
+      const geoToPxOk =
+        Number.isFinite(actualMpp) && actualMpp > 0 && raster.width > 0 && raster.height > 0;
+      const rasterBounds = transformPkgPreflight.raster_bounds_lat_lng;
       if (gateB.failure && (gateB.failure.result_state === "ai_failed_source_acquisition" || gateB.failure.result_state === "ai_failed_target_unconfirmed")) {
         const failReason = gateB.failure.hard_fail_reason;
         const debugPayload = {
