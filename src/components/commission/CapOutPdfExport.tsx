@@ -368,6 +368,10 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
   };
 
   row('Description', 'Amount', { header: true });
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(10);
+  pdf.setTextColor(100, 116, 139);
+  pdf.text('AMOUNT', amountX, y - 8, { align: 'right' });
   row('Contract / Selling Price', formatCurrency(data.sellPrice), { bold: true });
   row('Costs', '', { header: true });
   row('Materials', formatCurrency(data.materialsCost));
