@@ -733,10 +733,26 @@ function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column:
 async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
   let safePayload = prepareRoofMeasurementPayload(payload);
   let lastError: unknown = null;
+  let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const result = await supabase.from("roof_measurements").insert(safePayload as any).select("id").single();
     if (!result.error) return result;
     lastError = result.error;
+    if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
+      diagramIntentRetried = true;
+      const failed = (safePayload as any).diagram_render_intent ?? null;
+      const geom = (typeof safePayload.geometry_report_json === "object" && safePayload.geometry_report_json !== null && !Array.isArray(safePayload.geometry_report_json))
+        ? { ...(safePayload.geometry_report_json as Record<string, unknown>) }
+        : { raw_geometry_report_json: safePayload.geometry_report_json ?? null };
+      const retry = Array.isArray((geom as any).insert_retry) ? [...(geom as any).insert_retry] : [];
+      retry.push({ column: "diagram_render_intent", failed_value: failed, coerced_to: "diagnostic_only", at: new Date().toISOString() });
+      (geom as any).insert_retry = retry;
+      (geom as any).raw_diagram_render_intent = failed;
+      (geom as any).diagram_render_intent = "diagnostic_only";
+      safePayload = { ...safePayload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+      console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert after diagram_render_intent CHECK violation", failed);
+      continue;
+    }
     const missingColumn = getSchemaCacheMissingColumn(result.error);
     if (!missingColumn || !(missingColumn in safePayload)) return result;
     console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert without schema-cache-missing column", missingColumn);
@@ -748,10 +764,26 @@ async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unkn
 async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
   let safePayload = prepareRoofMeasurementPayload(payload);
   let lastError: unknown = null;
+  let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const result = await supabase.from("roof_measurements").update(safePayload as any).eq("id", id);
     if (!result.error) return result;
     lastError = result.error;
+    if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
+      diagramIntentRetried = true;
+      const failed = (safePayload as any).diagram_render_intent ?? null;
+      const geom = (typeof safePayload.geometry_report_json === "object" && safePayload.geometry_report_json !== null && !Array.isArray(safePayload.geometry_report_json))
+        ? { ...(safePayload.geometry_report_json as Record<string, unknown>) }
+        : { raw_geometry_report_json: safePayload.geometry_report_json ?? null };
+      const retry = Array.isArray((geom as any).insert_retry) ? [...(geom as any).insert_retry] : [];
+      retry.push({ column: "diagram_render_intent", failed_value: failed, coerced_to: "diagnostic_only", at: new Date().toISOString() });
+      (geom as any).insert_retry = retry;
+      (geom as any).raw_diagram_render_intent = failed;
+      (geom as any).diagram_render_intent = "diagnostic_only";
+      safePayload = { ...safePayload, diagram_render_intent: "diagnostic_only", geometry_report_json: geom };
+      console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update after diagram_render_intent CHECK violation", failed);
+      continue;
+    }
     const missingColumn = getSchemaCacheMissingColumn(result.error);
     if (!missingColumn || !(missingColumn in safePayload)) return result;
     console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update without schema-cache-missing column", missingColumn);
