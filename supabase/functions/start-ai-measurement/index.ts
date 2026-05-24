@@ -629,6 +629,87 @@ const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "perimeter_edge_pitch_relation",
 ]);
 
+function registrationFromTransformPackage(pkg: ReturnType<typeof buildRegistrationTransformPackage> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const validation = validateRegistrationTransformPackage(pkg as any);
+  return {
+    ...(pkg ?? {}),
+    transform_package: pkg ?? null,
+    transform_builder_called: !!pkg,
+    transform_builder_version: (pkg as any)?.version ?? TRANSFORM_BUILDER_VERSION,
+    transform_callsite: TRANSFORM_CALLSITE,
+    transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
+    transform_build_stage: EARLY_TRANSFORM_STAGE,
+    transform_package_valid: validation.valid === true,
+    transform_failure_reasons: validation.reasons.length ? validation.reasons : (validation.missing ?? []),
+    geo_to_dsm_transform: (pkg as any)?.geo_to_dsm_transform ?? null,
+    dsm_tile_bounds_lat_lng: (pkg as any)?.dsm_tile_bounds_lat_lng ?? null,
+    dsm_to_raster_transform: (pkg as any)?.dsm_to_raster_transform ?? null,
+    dsm_stage_pending: true,
+    ...extra,
+  };
+}
+
+function mergeRegistrationProof(base: unknown, proof: EarlyTransformPreflight | Record<string, unknown> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const existing = base && typeof base === "object" && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
+  const proofRegistration = proof && typeof proof === "object" && "registration" in proof
+    ? { ...((proof as EarlyTransformPreflight).registration ?? {}) }
+    : (proof && typeof proof === "object" ? { ...(proof as Record<string, unknown>) } : {});
+  return {
+    ...proofRegistration,
+    ...existing,
+    transform_builder_called: proofRegistration.transform_builder_called ?? existing.transform_builder_called ?? true,
+    transform_builder_version: String(proofRegistration.transform_builder_version ?? existing.transform_builder_version ?? TRANSFORM_BUILDER_VERSION),
+    transform_callsite: TRANSFORM_CALLSITE,
+    transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
+    transform_build_stage: String(proofRegistration.transform_build_stage ?? existing.transform_build_stage ?? EARLY_TRANSFORM_STAGE),
+    transform_package_valid: Boolean(proofRegistration.transform_package_valid ?? existing.transform_package_valid ?? false),
+    transform_failure_reasons: Array.isArray(proofRegistration.transform_failure_reasons)
+      ? proofRegistration.transform_failure_reasons
+      : (Array.isArray(existing.transform_failure_reasons) ? existing.transform_failure_reasons : []),
+    ...extra,
+  };
+}
+
+function mergeTransformProofIntoDebug(debug: any, proof: EarlyTransformPreflight | null | undefined): any {
+  if (!proof) return debug ?? {};
+  const next = { ...(debug ?? {}) };
+  const merged = mergeRegistrationProof(next.registration ?? next.registration_gate, proof);
+  next.registration = merged;
+  next.registration_gate = merged;
+  return next;
+}
+
+function ensureRegistrationProofBeforeWrite(payload: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload };
+  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+    ? { ...(next.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: next.geometry_report_json ?? null };
+  const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? null) as Record<string, unknown> | null;
+  if (existing?.transform_builder_called != null) {
+    console.log("VTRACE_TRANSFORM_PREWRITE_ASSERTION_PASSED", JSON.stringify({ called: existing.transform_builder_called }));
+    next.geometry_report_json = geometry;
+    return next;
+  }
+  const fallback = mergeRegistrationProof(existing, null, {
+    transform_builder_called: false,
+    transform_package_valid: false,
+    transform_failure_reasons: ["transform_builder_not_called_before_write"],
+  });
+  (geometry as any).registration = fallback;
+  (geometry as any).registration_gate = fallback;
+  (geometry as any).result_state = "ai_failed_source_acquisition";
+  (geometry as any).hard_fail_reason = "transform_builder_not_called_before_write";
+  (geometry as any).block_customer_report_reason = "transform_builder_not_called_before_write";
+  (geometry as any).failure_stage = "source_registration";
+  (geometry as any).diagram_render_intent = "coordinate_registration_debug_only";
+  (next as any).result_state = "ai_failed_source_acquisition";
+  (next as any).hard_fail_reason = "transform_builder_not_called_before_write";
+  (next as any).block_customer_report_reason = "transform_builder_not_called_before_write";
+  (next as any).customer_report_ready = false;
+  next.geometry_report_json = geometry;
+  return next;
+}
+
 function getPhase3DbColumns(): Record<string, unknown> {
   return {
     phase3_enabled: PHASE3_VERSION_BLOCK.phase3_enabled,
