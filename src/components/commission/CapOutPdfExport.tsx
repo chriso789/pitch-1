@@ -230,15 +230,26 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
   ]);
 
   const html = buildCapOutHtml(data);
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  // Force a known render width so html2canvas produces consistent pages
-  container.style.cssText = 'position:absolute;left:-10000px;top:0;width:816px;background:#ffffff;';
-  document.body.appendChild(container);
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.cssText = 'position:absolute;left:-10000px;top:0;width:816px;height:1200px;border:0;background:#ffffff;visibility:hidden;';
+  document.body.appendChild(frame);
 
   try {
+    const frameDoc = frame.contentDocument || frame.contentWindow?.document;
+    if (!frameDoc) throw new Error('Unable to prepare PDF renderer');
+
+    await new Promise<void>((resolve) => {
+      frame.onload = () => resolve();
+      frameDoc.open();
+      frameDoc.write(html);
+      frameDoc.close();
+      setTimeout(resolve, 100);
+    });
+
     // Wait for images (e.g., company logo) to load
-    const imgs = Array.from(container.querySelectorAll('img'));
+    const captureBody = frameDoc.body;
+    const imgs = Array.from(captureBody.querySelectorAll('img'));
     await Promise.all(
       imgs.map((img) =>
         img.complete
@@ -249,14 +260,19 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
             })
       )
     );
+    await frameDoc.fonts?.ready?.catch(() => undefined);
 
-    const canvas = await html2canvas(container, {
+    frame.style.height = `${Math.max(captureBody.scrollHeight, 1056)}px`;
+
+    const canvas = await html2canvas(captureBody, {
       scale: 1.5,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
       width: 816,
+      height: captureBody.scrollHeight,
       windowWidth: 816,
+      windowHeight: Math.max(captureBody.scrollHeight, 1056),
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
@@ -279,7 +295,7 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
 
     return pdf.output('blob');
   } finally {
-    document.body.removeChild(container);
+    document.body.removeChild(frame);
   }
 }
 
