@@ -12,6 +12,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { detectRegistrationFieldConflicts } from "../_shared/registration-precedence.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -21,7 +22,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v2-registration";
+const ROUTE_AUDIT_RESPONSE_VERSION = "debug-measurement-runtime-v3-registration-v2.2";
 
 interface AuditQuery {
   lead_id?: string | null;
@@ -111,12 +112,17 @@ function summarizeRegistration(g: Record<string, any> | null) {
     confirmed_roof_center_px: reg.confirmed_roof_center_px ?? null,
     geo_to_dsm_px_success: reg.geo_to_dsm_px_success ?? null,
     dsm_pixel_transform_valid: reg.dsm_pixel_transform_valid ?? null,
+    geo_to_dsm_transform_present: reg.geo_to_dsm_transform != null,
+    geo_to_raster_transform_present: reg.geo_to_raster_transform != null,
     dsm_to_raster_transform_present: reg.dsm_to_raster_transform != null,
     raster_bounds_contain_confirmed_center: reg.raster_bounds_contain_confirmed_center ?? null,
     confirmed_center_inside_candidate: reg.confirmed_center_inside_candidate ?? null,
     candidate_centroid_offset_from_confirmed_center_px:
       reg.candidate_centroid_offset_from_confirmed_center_px ?? null,
+    centroid_offset_threshold_px: reg.centroid_offset_threshold_px ?? null,
     coordinate_registration_gate_passed: reg.coordinate_registration_gate_passed ?? null,
+    candidate_selection_started: reg.candidate_selection_started ?? null,
+    missing_required_fields: Array.isArray(reg.missing_required_fields) ? reg.missing_required_fields : null,
   };
 }
 
@@ -162,6 +168,7 @@ function summarizeRow(row: any) {
       applied: g?.registration_precedence_applied ?? null,
       reason: g?.registration_precedence_reason ?? null,
       gate_version: g?.registration_gate_version ?? registration.version ?? null,
+      field_conflicts: detectRegistrationFieldConflicts(g),
     },
     diagram_render_intent: g?.diagram_render_intent ?? null,
     manual_approval_allowed,
