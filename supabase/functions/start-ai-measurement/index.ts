@@ -561,7 +561,9 @@ const corsHeaders = {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 const TRANSFORM_CALLSITE = "start-ai-measurement";
-const TRANSFORM_CALLSITE_VERSION = "runtime-transform-wiring-v1";
+const TRANSFORM_CALLSITE_VERSION = "must-run-transform-preflight-v1";
+const EARLY_TRANSFORM_STAGE = "early_preflight";
+const TRANSFORM_BUILDER_VERSION = "source-registration-transform-v1";
 export const SOURCE_REGISTRATION_RUNTIME_WIRING_PROOF = {
   callsite: TRANSFORM_CALLSITE,
   version: TRANSFORM_CALLSITE_VERSION,
@@ -576,6 +578,50 @@ export const SOURCE_REGISTRATION_RUNTIME_WIRING_PROOF = {
     validateRegistrationTransformPackage,
   },
 };
+
+type EarlyTransformPreflight = {
+  transform_package: ReturnType<typeof buildRegistrationTransformPackage>;
+  registration: Record<string, unknown>;
+};
+
+function finiteLatLngOrNull(lat: unknown, lng: unknown): GeoPoint | null {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  return Number.isFinite(latNum) && Number.isFinite(lngNum)
+    ? { lat: latNum, lng: lngNum }
+    : null;
+}
+
+async function mustBuildTransformPackageEarly(ctx: {
+  confirmed_roof_center_lat_lng?: GeoPoint | null;
+  original_geocode_lat_lng?: GeoPoint | null;
+  static_map_center_lat_lng?: GeoPoint | null;
+  zoom?: number | null;
+  logical_image_width?: number | null;
+  logical_image_height?: number | null;
+  raster_scale?: number | null;
+}): Promise<EarlyTransformPreflight> {
+  console.log("VTRACE_TRANSFORM_PRESTART", JSON.stringify({ callsite: TRANSFORM_CALLSITE, stage: EARLY_TRANSFORM_STAGE }));
+  const center = ctx.confirmed_roof_center_lat_lng ?? ctx.original_geocode_lat_lng ?? null;
+  const zoom = Number.isFinite(Number(ctx.zoom)) ? Number(ctx.zoom) : 19;
+  const width = Number.isFinite(Number(ctx.logical_image_width)) ? Number(ctx.logical_image_width) : 640;
+  const height = Number.isFinite(Number(ctx.logical_image_height)) ? Number(ctx.logical_image_height) : 640;
+  const scale = Number.isFinite(Number(ctx.raster_scale)) ? Number(ctx.raster_scale) : 2;
+  const pkg = buildRegistrationTransformPackage({
+    confirmed_roof_center_lat_lng: center,
+    static_map_center_lat_lng: ctx.static_map_center_lat_lng ?? center,
+    zoom,
+    size: { width, height },
+    scale,
+  });
+  const staticValid = !!(pkg.raster_bounds_lat_lng && pkg.geo_to_raster_transform && pkg.confirmed_roof_center_px);
+  console.log("VTRACE_TRANSFORM_BUILT_STATIC", JSON.stringify({ staticValid, missing_required_fields: pkg.missing_required_fields }));
+  console.log("VTRACE_TRANSFORM_SKIPPED_DSM_PENDING", JSON.stringify({ dsm_stage_pending: true }));
+  return {
+    transform_package: pkg,
+    registration: registrationFromTransformPackage(pkg, { dsm_stage_pending: true }),
+  };
+}
 
 const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "archetype_debug",
