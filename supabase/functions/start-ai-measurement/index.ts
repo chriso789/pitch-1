@@ -7623,25 +7623,25 @@ async function processJob(input: any) {
             ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
             : null,
         confirmed_roof_center_lat_lng: confirmedLatLngFinal,
-        confirmed_roof_center_px:
-          (input as any).confirmed_roof_center_px ?? transformPkgFinal.confirmed_roof_center_px,
-        geo_to_dsm_px_success: transformPkgFinal.geo_to_dsm_px_success || (mppFinite && !!dsmRef),
-        dsm_pixel_transform_valid: transformPkgFinal.dsm_pixel_transform_valid || (mppFinite && !!dsmRef),
-        dsm_to_raster_transform: transformPkgFinal.dsm_to_raster_transform ?? dsmToRasterTransform,
-        geo_to_raster_transform: transformPkgFinal.geo_to_raster_transform ?? geoToRasterTransform,
-        geo_to_dsm_transform: transformPkgFinal.geo_to_dsm_transform ?? geoToDsmTransform,
-        raster_bounds_lat_lng: transformPkgFinal.raster_bounds_lat_lng ?? rasterBoundsLatLng,
-        dsm_tile_bounds_lat_lng: dsmTileBoundsLatLng,
+        confirmed_roof_center_px: transformPkgFinal.confirmed_roof_center_px ?? null,
+        geo_to_dsm_px_success: transformPkgFinal.geo_to_dsm_px_success === true,
+        dsm_pixel_transform_valid: transformPkgFinal.dsm_pixel_transform_valid === true,
+        dsm_to_raster_transform: transformPkgFinal.dsm_to_raster_transform ?? null,
+        geo_to_raster_transform: transformPkgFinal.geo_to_raster_transform ?? null,
+        geo_to_dsm_transform: transformPkgFinal.geo_to_dsm_transform ?? null,
+        raster_bounds_lat_lng: transformPkgFinal.raster_bounds_lat_lng ?? null,
+        dsm_tile_bounds_lat_lng: transformPkgFinal.dsm_tile_bounds_lat_lng ?? dsmTileBoundsLatLng,
         raster_size_px: transformPkgFinal.raster_size_px ?? { width: raster.width, height: raster.height },
-        dsm_size_px: dsmSizePx,
+        dsm_size_px: transformPkgFinal.dsm_size_px ?? dsmSizePx,
         meters_per_pixel: mppFinite ? actualMpp : null,
-        static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+        static_map_center_lat_lng: transformPkgFinal.static_map_center_lat_lng ?? { lat: coords.lat, lng: coords.lng },
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
         footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
       // Stash the package so prepareRoofMeasurementPayload merges it into the
       // persisted registration block (truth-from-math reference for the UI).
       (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
+      (roofMeasurementPayload as any)._registration_transform_build_stage = "candidate_final";
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
     }
