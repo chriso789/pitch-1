@@ -105,6 +105,13 @@ function summarizeRegistration(g: Record<string, any> | null) {
   return {
     present: true,
     version: reg.version ?? null,
+    transform_builder_version: reg.transform_builder_version ?? null,
+    transform_builder_called: reg.transform_builder_called ?? null,
+    transform_package_valid: reg.transform_package_valid ?? null,
+    transform_failure_reasons: Array.isArray(reg.transform_failure_reasons) ? reg.transform_failure_reasons : null,
+    transform_build_stage: reg.transform_build_stage ?? null,
+    transform_callsite: reg.transform_callsite ?? null,
+    transform_callsite_version: reg.transform_callsite_version ?? null,
     user_confirmed_roof_target: reg.user_confirmed_roof_target ?? null,
     roof_target_admin_override: reg.roof_target_admin_override ?? null,
     original_geocode_lat_lng: reg.original_geocode_lat_lng ?? null,
