@@ -7538,32 +7538,52 @@ async function processJob(input: any) {
               : null;
           })()
         : null;
+      // Source Registration Transform Builder v1 — derive confirmed pixel
+      // coords and all transform fields from real Web-Mercator math so the
+      // gate has real evidence (the client never sends confirmed_roof_center_px).
+      const confirmedLatLngFinal =
+        (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
+          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+          : { lat: coords.lat, lng: coords.lng };
+      const transformPkgFinal = buildRegistrationTransformPackage({
+        confirmed_roof_center_lat_lng: confirmedLatLngFinal,
+        static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+        zoom: typeof effectiveZoom === "number" ? effectiveZoom : Number((input as any).zoom),
+        size: { width: Number((input as any).logical_image_width), height: Number((input as any).logical_image_height) },
+        scale: Number((input as any).raster_scale),
+        dsm_tile_bounds_lat_lng: dsmTileBoundsLatLng,
+        dsm_size_px: dsmSizePx,
+        dsm_meters_per_pixel: mppFinite ? actualMpp : null,
+      });
       (roofMeasurementPayload as any)._registration_gate_input = {
         candidate_selection_started: true,
+        evaluation_stage: "candidate_final",
         user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
         roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
         original_geocode_lat_lng:
           (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
             ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
             : null,
-        confirmed_roof_center_lat_lng:
-          (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
-            ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
-            : { lat: coords.lat, lng: coords.lng },
-        confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
-        geo_to_dsm_px_success: mppFinite && !!dsmRef,
-        dsm_pixel_transform_valid: mppFinite && !!dsmRef,
-        dsm_to_raster_transform: dsmToRasterTransform,
-        geo_to_raster_transform: geoToRasterTransform,
-        geo_to_dsm_transform: geoToDsmTransform,
-        raster_bounds_lat_lng: rasterBoundsLatLng,
+        confirmed_roof_center_lat_lng: confirmedLatLngFinal,
+        confirmed_roof_center_px:
+          (input as any).confirmed_roof_center_px ?? transformPkgFinal.confirmed_roof_center_px,
+        geo_to_dsm_px_success: transformPkgFinal.geo_to_dsm_px_success || (mppFinite && !!dsmRef),
+        dsm_pixel_transform_valid: transformPkgFinal.dsm_pixel_transform_valid || (mppFinite && !!dsmRef),
+        dsm_to_raster_transform: transformPkgFinal.dsm_to_raster_transform ?? dsmToRasterTransform,
+        geo_to_raster_transform: transformPkgFinal.geo_to_raster_transform ?? geoToRasterTransform,
+        geo_to_dsm_transform: transformPkgFinal.geo_to_dsm_transform ?? geoToDsmTransform,
+        raster_bounds_lat_lng: transformPkgFinal.raster_bounds_lat_lng ?? rasterBoundsLatLng,
         dsm_tile_bounds_lat_lng: dsmTileBoundsLatLng,
-        raster_size_px: { width: raster.width, height: raster.height },
+        raster_size_px: transformPkgFinal.raster_size_px ?? { width: raster.width, height: raster.height },
         dsm_size_px: dsmSizePx,
         meters_per_pixel: mppFinite ? actualMpp : null,
+        static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
         footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
+      // Stash the package so prepareRoofMeasurementPayload merges it into the
+      // persisted registration block (truth-from-math reference for the UI).
+      (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
     }
