@@ -600,14 +600,19 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
+  const regTransformPkg = (next as any)._registration_transform_package as any | undefined;
   let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> | "registration_field_conflict" | null = null;
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
-      geometry.registration = result.registration;
-      geometry.registration_gate = result.registration;
-      regVersionForPrecedence = (result.registration as any)?.version ?? null;
+      const registrationBlock: Record<string, unknown> = { ...result.registration };
+      if (regTransformPkg) {
+        registrationBlock.transform_package = regTransformPkg;
+      }
+      geometry.registration = registrationBlock;
+      geometry.registration_gate = registrationBlock;
+      regVersionForPrecedence = (registrationBlock as any)?.version ?? null;
       if (result.failure) {
         const failure = result.failure;
         regFailureReasonForPrecedence = failure.reason as any;
@@ -632,6 +637,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     }
   }
   delete (next as any)._registration_gate_input;
+  delete (next as any)._registration_transform_package;
 
   // v2.2: mirror authoritative registration block booleans to top-level
   // geometry fields BEFORE conflict detection so block↔top-level drift cannot
