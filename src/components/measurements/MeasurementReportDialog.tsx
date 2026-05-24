@@ -181,6 +181,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     { label: 'Validated Faces', value: fmt(grj.validated_faces ?? grj.valid_faces) },
     { label: 'Coverage', value: fmt(((grj.debug_geometry?.face_coverage_ratio ?? grj.face_coverage_ratio) || 0) * 100, '%') },
     { label: 'Failure Reason', value: String(grj.hard_fail_reason ?? grj.block_customer_report_reason ?? m.gate_reason ?? '—') },
+    // ─── Registration Precedence (registration-precedence-v1) ───
+    { label: 'Registration Precedence Version', value: String(grj.registration_precedence_version ?? '—') },
+    { label: 'Registration Precedence Applied', value: String(grj.registration_precedence_applied ?? '—') },
+    { label: 'Registration Precedence Reason', value: String(grj.registration_precedence_reason ?? '—') },
     { label: 'Topology Source', value: String(grj.topology_source ?? grj.geometry_source ?? '—') },
     { label: 'Planes (saved)', value: fmt(dp.final_plane_count_saved) },
     { label: 'Edges (saved)', value: fmt(dp.final_edge_count_saved) },
