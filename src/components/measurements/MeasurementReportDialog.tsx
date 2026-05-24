@@ -862,13 +862,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const overlayDbg = grj.overlay_debug || {};
               const debugGeom = grj.debug_geometry || {};
               const dsmDbg = grj.dsm_planar_graph_debug || {};
-              const footprintSource =
-                (effectiveMeasurement as any)?.footprint_source
-                ?? grj.footprint_source
-                ?? debugGeom.footprint_source
-                ?? dsmDbg.footprint_source
-                ?? overlayDbg.footprint_source
-                ?? 'unknown';
+              const footprintSource = grj.registration_precedence_applied === true
+                ? 'blocked_by_registration_gate'
+                : ((effectiveMeasurement as any)?.footprint_source
+                  ?? grj.footprint_source
+                  ?? debugGeom.footprint_source
+                  ?? dsmDbg.footprint_source
+                  ?? overlayDbg.footprint_source
+                  ?? 'unknown');
               const inferenceSource =
                 (effectiveMeasurement as any)?.inference_source ?? grj.inference_source ?? 'unknown';
               const topologySource = grj.topology_source ?? grj.geometry_source ?? 'unknown';
@@ -1230,6 +1231,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     </Alert>
                   )}
                   {(() => {
+                    if ((grj as any)?.registration_precedence_applied === true) return null;
                     const p35: any = (grj as any)?.phase3A_5 ?? (grj as any)?.phase3_5;
                     const overlaySvg: string | undefined = p35?.debug_perimeter_overlay_svg;
                     if (!overlaySvg) return null;
