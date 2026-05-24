@@ -157,6 +157,12 @@ function summarizeRow(row: any) {
     route_warning: g?.route_warning ?? null,
     route_provenance: pickPhaseBlock(g, "route_provenance"),
     registration,
+    registration_precedence: {
+      version: g?.registration_precedence_version ?? null,
+      applied: g?.registration_precedence_applied ?? null,
+      reason: g?.registration_precedence_reason ?? null,
+      gate_version: g?.registration_gate_version ?? registration.version ?? null,
+    },
     diagram_render_intent: g?.diagram_render_intent ?? null,
     manual_approval_allowed,
     phase3_5,
