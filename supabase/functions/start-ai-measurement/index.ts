@@ -602,6 +602,8 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
+  let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> = null;
+  let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
@@ -609,12 +611,14 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       // and v2 readers (`registration`) both find the block.
       geometry.registration = result.registration;
       geometry.registration_gate = result.registration;
+      regVersionForPrecedence = (result.registration as any)?.version ?? null;
       // If registration failed, the failure must dominate any downstream
       // perimeter/topology classification. Otherwise a wrong-house overlay
       // can still be persisted as `ai_failed_perimeter` and present as a
       // shape problem instead of a target problem.
       if (result.failure) {
         const failure = result.failure;
+        regFailureReasonForPrecedence = failure.reason as any;
         geometry.result_state = failure.result_state;
         geometry.hard_fail_reason = failure.hard_fail_reason;
         geometry.block_customer_report_reason = failure.block_customer_report_reason;
@@ -631,21 +635,48 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         (next as any).diagram_render_intent = geometry.diagram_render_intent;
         (next as any).customer_report_ready = false;
         (next as any).validation_status = "failed";
-        // Force every phase block to advertise the registration block so
-        // the UI never claims phase3_5/3C/3D/3E "didn't reach the callsite".
-        for (const k of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
-          const blk = (geometry as any)[k];
-          if (blk && typeof blk === "object") {
-            (blk as any).executed = false;
-            (blk as any).skipped_reason = "blocked_by_registration_gate";
-          }
-        }
       }
     } catch (e) {
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
   }
   delete (next as any)._registration_gate_input;
+
+  // Re-derive the failure reason from the (possibly pre-populated) registration
+  // block so we also catch the case where the gate was already evaluated upstream
+  // and only the persisted block survives on `geometry`.
+  if (!regFailureReasonForPrecedence) {
+    const reg = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
+    regFailureReasonForPrecedence = deriveRegistrationFailureReason(reg);
+    if (!regVersionForPrecedence && reg && typeof reg === 'object') {
+      regVersionForPrecedence = (reg as any).version ?? null;
+    }
+  }
+
+  // Unconditionally stamp every phase block when registration failed.
+  // This is the *write-time* counterpart to the same override in
+  // withPhase3Visibility — needed because some code paths skip the wrapper
+  // and feed `geometry_report_json` to prepareRoofMeasurementPayload directly.
+  if (regFailureReasonForPrecedence) {
+    for (const k of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
+      const blk = (geometry as any)[k];
+      if (blk && typeof blk === "object") {
+        (geometry as any)[k] = {
+          ...blk,
+          executed: false,
+          skipped_reason: "blocked_by_registration_gate",
+          skipped_by: REGISTRATION_PRECEDENCE_VERSION,
+        };
+      }
+    }
+  }
+
+  // Always stamp the precedence version so we can prove enforcement on every row.
+  (geometry as any).registration_precedence_version = REGISTRATION_PRECEDENCE_VERSION;
+  (geometry as any).registration_precedence_applied = !!regFailureReasonForPrecedence;
+  (geometry as any).registration_precedence_reason = regFailureReasonForPrecedence;
+  (geometry as any).registration_gate_version =
+    regVersionForPrecedence ?? (geometry as any).registration_gate_version ?? null;
 
   next.geometry_report_json = geometry;
   return next;
