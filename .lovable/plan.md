@@ -1,102 +1,148 @@
+
 ## Goal
 
-Stop the registration block from ever showing `coordinate_registration_gate_passed = true` while required transform evidence is null. The post-hoc `registration_field_conflict` detector is doing the job the gate itself should have done. Ship Registration Gate **v2.3** so the gate fails directly, and make the persisted row honest about it.
+Fonsica now correctly hard-fails at `coordinate_registration_failed` because the upstream source-acquisition stage never built the pixel/transform package required by Registration Gate v2.3. This drop builds **Source Registration Transform Builder v1**: real Web-Mercator math for the Google Static Map raster and the DSM tile, populated *before* any candidate selection, then consumed by `evaluateRegistrationGate`. No gate loosening.
 
 ---
 
-## Root cause
+## 1. New shared module — `supabase/functions/_shared/source-registration-transform.ts`
 
-In `supabase/functions/_shared/registration-gate.ts`, strict mode (which downgrades the booleans) is only activated when the caller passes `candidate_selection_started=true`. On the Fonsica run the final write went through with strict=false, so:
+Pure functions, no I/O, fully unit-testable.
 
-- `geo_to_dsm_px_success` and `dsm_pixel_transform_valid` stayed `true` even though `geo_to_dsm_transform` / `geo_to_raster_transform` / `confirmed_roof_center_px` were `null`.
-- `confirmed_center_inside_candidate` defaulted to `true` (legacy "no candidate yet = pass").
-- `missing_required_fields` came back `[]`.
-- `coordinate_registration_gate_passed` was `true`, and only the conflict detector in `registration-precedence.ts` caught the contradiction after the fact.
+Exports:
+- `buildRasterBoundsFromStaticMap({ centerLatLng, zoom, sizePx, scale })` → `{ north, south, east, west }` via Web Mercator (mirrors `src/utils/geoCoordinates.ts` logic, ported to Deno).
+- `buildGeoToRasterTransform({ rasterBoundsLatLng, rasterSizePx })` → affine descriptor `{ kind: "web_mercator", bounds, sizePx, metersPerPixel }`.
+- `buildGeoToDsmTransform({ dsmTileBoundsLatLng, dsmSizePx })` → same shape, scoped to DSM tile.
+- `buildDsmToRasterTransform({ dsmTileBoundsLatLng, rasterBoundsLatLng, dsmSizePx, rasterSizePx })` → composed transform; returns `null` if bounds do not overlap.
+- `projectLatLngToRasterPx(latLng, transform)` / `projectLatLngToDsmPx(latLng, transform)` → `[x, y]` or `null` if outside.
+- `pointInBounds(latLng, bounds)` helper.
+- `validateRegistrationTransformPackage(pkg)` → `{ valid: boolean; missing: string[]; reasons: string[] }`.
+- `buildRegistrationTransformPackage(input)` → orchestrator: takes confirmed lat/lng + static-map params + optional DSM tile params, returns the full persisted package shape used by the gate.
 
-The fix is to (1) introduce an explicit evaluation stage, (2) make the **final** stage always strict regardless of caller flag, (3) populate `missing_required_fields` even outside strict mode, and (4) stop persisting stale Phase 3A/perimeter payloads when registration blocks.
+Package shape (persisted under `geometry_report_json.registration.transform_package`):
+```
+{
+  version: "source-registration-transform-v1",
+  static_map_center_lat_lng,
+  zoom, size, scale,
+  raster_size_px: { width, height },
+  raster_bounds_lat_lng,
+  geo_to_raster_transform,
+  confirmed_roof_center_px,
+  raster_bounds_contain_confirmed_center,
+  dsm_tile_bounds_lat_lng,
+  dsm_size_px,
+  geo_to_dsm_transform,
+  dsm_to_raster_transform,
+  confirmed_roof_center_dsm_px,
+  dsm_tile_bounds_contain_confirmed_center,
+  geo_to_dsm_px_success,
+  dsm_pixel_transform_valid,
+  coordinate_space_input: "geo_lat_lng",
+  coordinate_space_candidate: "raster_px",
+  coordinate_space_solver: "dsm_px",
+  coordinate_space_renderer: "raster_px",
+  transform_package_valid: boolean,
+  missing_required_fields: string[]
+}
+```
+
+The `geo_to_dsm_px_success` and `dsm_pixel_transform_valid` booleans are derived strictly from real math — point-in-bounds check + non-null composed transform — never from caller flags.
 
 ---
 
-## Changes
+## 2. Wire transform builder into the pipeline
 
-### 1. `supabase/functions/_shared/registration-gate.ts` → v2.3
+### 2a. Static-map raster acquisition
+Edit the source-acquisition step in `supabase/functions/start-ai-measurement/index.ts` (and any helper under `_shared/` that constructs the Google Static Map URL — locate during build via `rg "staticmap"`). At the same site where the URL is composed:
+- persist `static_map_center_lat_lng`, `zoom`, `size`, `scale`
+- call `buildRegistrationTransformPackage` with the static-map-only inputs first
+- merge result into `registration.transform_package`
 
-- Bump `REGISTRATION_GATE_VERSION` to `registration-gate-v2.3`.
-- Add `evaluation_stage: "target_preflight" | "source_preflight" | "candidate_final"` to `RegistrationGateInput`. Default `"candidate_final"`.
-- Treat `evaluation_stage === "candidate_final"` as implicitly strict (in addition to the existing `candidate_selection_started` trigger). Persist `registration.evaluation_stage`.
-- In `candidate_final`, require ALL of:
-  - `user_confirmed_roof_target` (or `roof_target_admin_override`)
-  - `original_geocode_lat_lng`, `confirmed_roof_center_lat_lng`, `confirmed_roof_center_px`
-  - `geo_to_raster_transform`, `geo_to_dsm_transform`, `dsm_to_raster_transform`
-  - `raster_bounds_lat_lng`, `dsm_tile_bounds_lat_lng`
-  - `raster_bounds_contain_confirmed_center === true`
-  - `geo_to_dsm_px_success === true`, `dsm_pixel_transform_valid === true`
-  - `selected_candidate_polygon_px` (≥3 pts)
-  - `confirmed_center_inside_candidate === true`
-  - `candidate_centroid_offset_from_confirmed_center_px <= candidate_centroid_offset_threshold_px`
-- Any missing/false → push exact field name into `missing_required_fields` (no longer empty for final stage), set:
-  - `coordinate_registration_gate_passed = false`
-  - `failure = { reason: "coordinate_registration_failed", result_state: "ai_failed_source_acquisition", hard_fail_reason: "coordinate_registration_failed", block_customer_report_reason: "coordinate_registration_failed" }`
-- Hard rule: if `confirmed_roof_center_px` is null, force `confirmed_center_inside_candidate = false` (no defaulting to true).
-- Preflight stages may only set `target_preflight_passed` / `source_preflight_passed`. They must NOT set `coordinate_registration_gate_passed = true`; leave it `null` (or `false`).
+### 2b. DSM / Solar Data Layers acquisition
+At the DSM fetch site (likely `_shared/autonomous-graph-solver.ts` or a dedicated DSM loader — locate during build):
+- persist `dsm_tile_bounds_lat_lng`, `dsm_size_px`
+- re-call `buildRegistrationTransformPackage` with DSM inputs added to enrich the same package
+- recompute `geo_to_dsm_px_success` / `dsm_pixel_transform_valid` from the transform result, never inherit from prior booleans
 
-### 2. `supabase/functions/_shared/registration-precedence.ts`
+### 2c. Candidate selection (after transforms only)
+At the candidate/footprint selection site, persist per candidate:
+- `selected_candidate_polygon_px` (in `raster_px`)
+- `selected_candidate_polygon_geo` if available
+- `confirmed_center_inside_candidate` (point-in-polygon against confirmed_roof_center_px)
+- `candidate_centroid_offset_from_confirmed_center_px`
+- `candidate_centroid_offset_threshold_px` (default e.g. 80 px @ scale 2 / zoom 19 — tune in module)
+- `candidate_distance_rank`
+- `candidate_coordinate_space: "raster_px"`
 
-- Bump `REGISTRATION_PRECEDENCE_VERSION` to `registration-precedence-v3`.
-- Map new reason ordering: prefer `coordinate_registration_failed` over `registration_field_conflict` when the gate already failed honestly. Keep `registration_field_conflict` as a safety net for any historic contradictory rows.
-- Extend `detectRegistrationFieldConflicts` to flag when `evaluation_stage !== "candidate_final"` but the row is being written as a final measurement.
+Reject candidate when: does not contain confirmed center, centroid offset > threshold, or another detected structure is closer than confirmed center.
 
-### 3. `supabase/functions/start-ai-measurement/index.ts`
+### 2d. Coordinate-space naming
+Replace any ambiguous `"satellite_px" | "pixel" | "unknown"` references with the explicit `raster_px` / `dsm_px` / `geo_lat_lng` set in registration metadata. Audit via `rg "satellite_px|coordinate_space" supabase/functions`.
 
-- Pass `evaluation_stage: "candidate_final"` (and `candidate_selection_started: true`) on the final pre-write gate call.
-- Use `evaluation_stage: "target_preflight"` for the early target-confirm check and `"source_preflight"` for the source-acquisition pre-check, so preflights stay permissive but can never produce a final-pass row.
-- When `registration_precedence_applied === true` for the write payload:
-  - Move any existing `geometry_report_json.phase3A`, `phase3A_5`, `perimeter_topology`, `perimeter_phase0`, `refinement_diagnostics`, `dsm_planar_graph_debug.phase3A_5`, `roof_lines` into `geometry_report_json.stale_debug_payload`.
-  - Zero out top-level perimeter totals: `roof_lines_count = 0`, `footprint_source = "blocked_by_registration_gate"`, `perimeter_topology = null`, `perimeter_phase0 = null`, `refinement_diagnostics = null`.
-  - Ensure `phase3_5.executed = false` with `skipped_reason = "blocked_by_registration_gate"`.
+---
 
-### 4. `supabase/functions/debug-measurement-runtime/index.ts`
+## 3. `_shared/registration-gate.ts` v2.3 — consume transform package
 
-- Bump `ROUTE_AUDIT_RESPONSE_VERSION` to `debug-measurement-runtime-v4-registration-v2.3`.
-- Surface `evaluation_stage`, full `missing_required_fields`, and a `stale_debug_payload_present` flag.
+No version bump (still v2.3). In `candidate_final`, replace the loose field-presence checks with:
+- read `registration.transform_package`
+- require `transform_package_valid === true`
+- require all of: `confirmed_roof_center_px`, `confirmed_roof_center_dsm_px`, `selected_candidate_polygon_px`, `geo_to_raster_transform`, `geo_to_dsm_transform`, `dsm_to_raster_transform`, `raster_bounds_contain_confirmed_center`, `dsm_tile_bounds_contain_confirmed_center`, `confirmed_center_inside_candidate`, centroid offset within threshold
+- any missing → push field name into `missing_required_fields`, fail as today
 
-### 5. UI — `src/components/measurements/MeasurementReportDialog.tsx` and `src/lib/measurement/registration-gate.ts`
+Preflights remain permissive (no transform package required).
 
-- Extend frontend `RegistrationBlock` with `evaluation_stage`, `missing_required_fields`, and the `required_transform_evidence` sub-object.
-- When `registration_precedence_applied === true` OR `coordinate_registration_gate_passed === false`:
-  - Display **Failure Reason** = `coordinate_registration_failed` (fall back to `registration_field_conflict` only when no gate-level reason exists).
-  - Show **Registration Gate: failed** and the literal `missing_required_fields` list.
-  - Hide stale eave / rake / perimeter / refinement / Phase 3A totals (read only from active fields, not `stale_debug_payload`).
-  - Keep manual approval disabled.
-  - Do not render any selected perimeter on the editable overlay.
+---
 
-### 6. Regression tests
+## 4. UI cleanup — stale debug payload visibility
 
-Add `supabase/functions/start-ai-measurement/__tests__/registration-v2-3-strict.test.ts`:
+In `src/components/measurements/MeasurementReportDialog.tsx` (and any helper that reads the row for the summary panel — likely `src/lib/measurement/registration-gate.ts` + the report summary component):
 
-- **Test A — final stage, transforms null:** asserts `coordinate_registration_gate_passed=false`, `missing_required_fields` includes `confirmed_roof_center_px` / `geo_to_dsm_transform` / `geo_to_raster_transform`, `result_state=ai_failed_source_acquisition`, `hard_fail_reason=coordinate_registration_failed`, `phase3_5.skipped_reason=blocked_by_registration_gate`, no `perimeter_topology` on the written row.
-- **Test B — preflight stage:** with transforms missing, gate may return preflight pass but `coordinate_registration_gate_passed` must NOT be `true`; final write rejected unless promoted to `candidate_final`.
-- **Test C — contradictory legacy input:** caller forces `coordinate_registration_gate_passed=true` with a null required field → write path normalizes to `false`, emits `registration_field_conflict`, persists `diagram_render_intent=registration_blocked`.
-- **Test D — stale payload quarantine:** input contains a prior `phase3A` block; after registration block, written row has `stale_debug_payload.phase3A` set and top-level `phase3A=null` / `roof_lines_count=0`.
+When `coordinate_registration_gate_passed === false` OR `registration_precedence_applied === true`:
+- Force visible **Roof Lines Count = 0**
+- Phase 3A / 3B / 3A.5 / 3C / 3D / 3E rows show `skipped: blocked_by_registration_gate` (read only from active fields, never from `stale_debug_payload`)
+- Hide stale eave/rake/perimeter/refinement totals from the main summary
+- `stale_debug_payload` remains visible only inside the raw-JSON expander
 
-Run via `supabase--test_edge_functions` on `start-ai-measurement`.
+Also surface the new transform-package fields in the Registration block: `static_map_center_lat_lng`, `raster_bounds_lat_lng`, `dsm_tile_bounds_lat_lng`, `transform_package_valid`, `confirmed_roof_center_px`, `confirmed_roof_center_dsm_px`, `selected_candidate_polygon_px` (presence/absence with "—" fallback).
 
-### 7. Verify
+Extend `RegistrationBlock` type in `src/lib/measurement/registration-gate.ts` accordingly.
 
-After deploy, request a Fonsica rerun and confirm the new row shows:
+---
 
-- `registration.version = registration-gate-v2.3`
-- `registration.evaluation_stage = candidate_final`
-- `coordinate_registration_gate_passed = false`
-- `missing_required_fields` lists the null transforms + `confirmed_roof_center_px`
-- `result_state = ai_failed_source_acquisition`
-- `hard_fail_reason = coordinate_registration_failed`
-- `phase3_5 / 3C / 3D / 3E` all `skipped: blocked_by_registration_gate`
-- No active perimeter/eave/rake/refinement payload; stale data only under `stale_debug_payload`
-- UI: Failure Reason = `coordinate_registration_failed`, Registration Gate = failed, manual approval disabled, no overlay perimeter
+## 5. Regression tests
 
-### Out of scope
+New file: `supabase/functions/_shared/__tests__/source-registration-transform.test.ts`
 
-No changes to perimeter, topology, vendor benchmark, or PDF rendering logic. No DB migration — the existing `diagram_render_intent` whitelist already covers `registration_blocked`, and `result_state=ai_failed_source_acquisition` is already in the 10-bucket enum.
+- **A — Static map transform:** center `(28.0, -82.5)`, zoom 19, size 640, scale 2 → `raster_bounds_lat_lng` defined; `projectLatLngToRasterPx(center)` within ±2 px of `(640, 640)`; `raster_bounds_contain_confirmed_center === true`.
+- **B — DSM transform:** synthetic DSM tile bounds + size → `geo_to_dsm_transform` defined; confirmed center projects inside bounds; `dsm_to_raster_transform` defined when raster bounds overlap.
+- **C — Missing transform package:** call `evaluateRegistrationGate` in `candidate_final` with `transform_package` absent → `coordinate_registration_gate_passed=false`, `hard_fail_reason=coordinate_registration_failed`, `missing_required_fields` contains `transform_package`, `confirmed_roof_center_px`, `geo_to_dsm_transform`.
+- **D — Candidate containment:** transform package valid but selected polygon excludes confirmed center → gate fails with `confirmed_center_inside_candidate` in `missing_required_fields`; manual approval disabled in frontend helper.
 
-Skills applied: Canonical Route & Runtime Provenance Auditor, Supabase Schema & DB Drift Guard, Measurement Overlay UI & Visual QA, AI Measurement Regression Harness.
+Extend `start-ai-measurement/__tests__/registration-v2-3-strict.test.ts` with one happy-path: full transform package + containing candidate → gate passes, downstream phases not skipped by registration.
+
+Run via `supabase--test_edge_functions` on `_shared` and `start-ai-measurement`.
+
+---
+
+## 6. Deploy & verify
+
+Deploy `start-ai-measurement` (and any other touched function). Re-run Fonsica from the lead at `/lead/0a38230e-...`. Expected on the new row:
+- `registration.transform_package.version = source-registration-transform-v1`
+- All seven previously-missing fields populated
+- `raster_bounds_contain_confirmed_center = true`
+- `dsm_tile_bounds_contain_confirmed_center = true`
+- `geo_to_dsm_px_success / dsm_pixel_transform_valid` derived from math
+- `selected_candidate_polygon_px` present
+- `confirmed_center_inside_candidate` reflects reality
+- Gate may pass → Phase 3A.5 / 3C / 3D / 3E execute. If candidate selection still rejects (legitimate miss), gate stays failed with honest `missing_required_fields` — that is acceptable.
+
+UI: Roof Lines Count = 0 when blocked, stale phase data hidden from summary.
+
+---
+
+## Out of scope
+
+No changes to perimeter shape validation, topology solver, vendor benchmark, PDF rendering, or `result_state` enum. No DB migration — all new fields live inside `geometry_report_json.registration.transform_package`.
+
+Skills applied: Canonical Route & Runtime Provenance Auditor, Measurement Overlay UI & Visual QA, AI Measurement Regression Harness, Supabase Schema & DB Drift Guard.
