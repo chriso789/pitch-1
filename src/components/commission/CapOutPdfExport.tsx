@@ -42,7 +42,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   const brandColor = data.brandPrimaryColor || '#2563eb';
   const companyName = data.companyName || 'Company';
   const logoBlock = data.companyLogoUrl
-    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" style="height:auto;width:auto;max-height:64px;max-width:180px;object-fit:contain;display:block;" />`
+    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" crossorigin="anonymous" />`
     : `<div style="font-size:24px;font-weight:800;color:${brandColor};letter-spacing:-0.01em;">${companyName}</div>`;
 
   const companyTagParts = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean);
