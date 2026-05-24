@@ -607,8 +607,40 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     try {
       const result = evaluateRegistrationGate(regInput);
       const registrationBlock: Record<string, unknown> = { ...result.registration };
+      // Source Registration Transform Builder v1 — hoist truth-from-math values
+      // into the top-level registration block so the gate, UI, and debug
+      // endpoints all read the same evidence. Without this hoist, only the
+      // nested `transform_package` carries the real coords while top-level
+      // fields stay null and the run looks like a wiring regression.
       if (regTransformPkg) {
         registrationBlock.transform_package = regTransformPkg;
+        const hoist = (k: string, v: unknown) => {
+          if (registrationBlock[k] == null && v != null) registrationBlock[k] = v;
+        };
+        hoist("static_map_center_lat_lng", (regTransformPkg as any).static_map_center_lat_lng);
+        hoist("raster_size_px",            (regTransformPkg as any).raster_size_px);
+        hoist("raster_bounds_lat_lng",     (regTransformPkg as any).raster_bounds_lat_lng);
+        hoist("geo_to_raster_transform",   (regTransformPkg as any).geo_to_raster_transform);
+        hoist("confirmed_roof_center_px",  (regTransformPkg as any).confirmed_roof_center_px);
+        hoist("raster_bounds_contain_confirmed_center", (regTransformPkg as any).raster_bounds_contain_confirmed_center);
+        hoist("dsm_tile_bounds_lat_lng",   (regTransformPkg as any).dsm_tile_bounds_lat_lng);
+        hoist("dsm_size_px",               (regTransformPkg as any).dsm_size_px);
+        hoist("geo_to_dsm_transform",      (regTransformPkg as any).geo_to_dsm_transform);
+        hoist("dsm_to_raster_transform",   (regTransformPkg as any).dsm_to_raster_transform);
+        hoist("confirmed_roof_center_dsm_px", (regTransformPkg as any).confirmed_roof_center_dsm_px);
+        hoist("dsm_tile_bounds_contain_confirmed_center", (regTransformPkg as any).dsm_tile_bounds_contain_confirmed_center);
+        // Proof-of-call telemetry — always overwrite (never gated by ??).
+        registrationBlock.transform_builder_version = (regTransformPkg as any).version ?? "source-registration-transform-v1";
+        registrationBlock.transform_builder_called = true;
+        registrationBlock.transform_package_valid = (regTransformPkg as any).transform_package_valid === true;
+        registrationBlock.transform_failure_reasons = Array.isArray((regTransformPkg as any).missing_required_fields)
+          ? (regTransformPkg as any).missing_required_fields
+          : [];
+        registrationBlock.transform_build_stage = (next as any)._registration_transform_build_stage ?? "candidate_final";
+      } else {
+        registrationBlock.transform_builder_called = false;
+        registrationBlock.transform_package_valid = false;
+        registrationBlock.transform_failure_reasons = ["transform_package_absent"];
       }
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
@@ -631,6 +663,25 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         (next as any).diagram_render_intent = geometry.diagram_render_intent;
         (next as any).customer_report_ready = false;
         (next as any).validation_status = "failed";
+        // Quarantine stale Phase 3B / roof_lines when registration blocks.
+        // The gate cannot have produced new typed roof_lines, so any present
+        // values are from prior solver state and must not be reported as live.
+        const staleKeys = ["roof_lines", "phase3B", "phase3_b", "perimeter_eave_ft", "perimeter_rake_ft", "perimeter_total_ft"];
+        const stale: Record<string, unknown> = (geometry as any).stale_debug_payload ?? {};
+        for (const k of staleKeys) {
+          if ((geometry as any)[k] != null) {
+            stale[k] = (geometry as any)[k];
+            (geometry as any)[k] = Array.isArray((geometry as any)[k]) ? [] : null;
+          }
+        }
+        (geometry as any).stale_debug_payload = stale;
+        (geometry as any).roof_lines_count = 0;
+        (geometry as any).phase3B = {
+          version: "v1",
+          executed: false,
+          skipped_reason: "blocked_by_registration_gate",
+        };
+        (next as any).roof_lines_count = 0;
       }
     } catch (e) {
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
@@ -638,6 +689,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   }
   delete (next as any)._registration_gate_input;
   delete (next as any)._registration_transform_package;
+  delete (next as any)._registration_transform_build_stage;
 
   // v2.2: mirror authoritative registration block booleans to top-level
   // geometry fields BEFORE conflict detection so block↔top-level drift cannot
