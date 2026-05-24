@@ -4168,7 +4168,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     console.log(`📐 Using ${authoritativeFootprint.source} footprint for perimeter WKT`);
   }
 
-  const { data, error } = await supabase.from('roof_measurements').insert({
+  const { data, error } = await insertRoofMeasurementWithDiagramRetry(supabase, {
     ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
@@ -4224,7 +4224,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     footprint_vertices_geo: authoritativeFootprint?.vertices || null,
     footprint_requires_review: authoritativeFootprint?.requiresManualReview ?? true,
     footprint_validation: authoritativeFootprint?.validation || null,
-  }).select().single()
+  })
 
   if (error) {
     console.error('Failed to save measurement:', error)
@@ -5456,7 +5456,7 @@ async function processSolarFastPath(
   console.log(`📊 Footprint tracking: source=${footprintSource}, vertices=${footprintVertexCount}, confidence=${(footprintConfidence * 100).toFixed(0)}%`);
 
   // Save to database
-  const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
+  const { data: measurementRecord, error: saveError } = await insertRoofMeasurementWithDiagramRetry(supabase, {
     ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
     measured_by: userId || null,
@@ -5515,7 +5515,7 @@ async function processSolarFastPath(
     footprint_requires_review: footprintSource === 'solar_bbox_fallback',
     dsm_available: dsmAvailable,
     footprint_validation: solarFastPathFootprint.validation,
-  }).select().single()
+  })
   
   if (saveError) {
     console.error('Solar Fast Path save error:', saveError)
