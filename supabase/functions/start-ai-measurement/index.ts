@@ -459,26 +459,9 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
 }
 
-// ---------------------------------------------------------------------------
-// Registration Precedence stamp — written to every row so we can prove the
-// pipeline actually honored the registration gate (or chose not to).
-// See plan: registration-precedence-v1.
-// ---------------------------------------------------------------------------
-const REGISTRATION_PRECEDENCE_VERSION = "registration-precedence-v1";
-
-function deriveRegistrationFailureReason(reg: any): null | "target_roof_not_confirmed" | "coordinate_registration_failed" | "candidate_does_not_contain_confirmed_roof_center" {
-  if (!reg || typeof reg !== 'object') return null;
-  if (reg.user_confirmed_roof_target === false && reg.roof_target_admin_override !== true) {
-    return 'target_roof_not_confirmed';
-  }
-  if (reg.geo_to_dsm_px_success === false || reg.dsm_pixel_transform_valid === false) {
-    return 'coordinate_registration_failed';
-  }
-  if (reg.confirmed_center_inside_candidate === false) {
-    return 'candidate_does_not_contain_confirmed_roof_center';
-  }
-  return null;
-}
+// Registration Precedence helpers are imported from
+// `_shared/registration-precedence.ts` so they are unit-testable without
+// booting the edge function (Deno.serve at module scope).
 
 function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?: unknown): Record<string, any> {
   const payload: Record<string, any> = { ...(debug || {}) };
