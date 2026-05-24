@@ -519,7 +519,7 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     phase3E,
     result_state: normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
-    block_customer_report_reason: payload.block_customer_report_reason ?? hardFailReason ?? null,
+    block_customer_report_reason: regFailureReason ? hardFailReason : (payload.block_customer_report_reason ?? hardFailReason ?? null),
     failure_stage: failureStage,
     diagram_render_intent: regFailureReason
       ? (resultState === 'ai_failed_target_unconfirmed' ? 'target_confirmation_required' : 'coordinate_registration_debug_only')
