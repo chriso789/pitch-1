@@ -641,17 +641,12 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // withPhase3Visibility — needed because some code paths skip the wrapper
   // and feed `geometry_report_json` to prepareRoofMeasurementPayload directly.
   if (regFailureReasonForPrecedence) {
-    for (const k of ["phase3_5", "phase3A_5", "phase3C", "phase3D", "phase3E"] as const) {
-      const blk = (geometry as any)[k];
-      if (blk && typeof blk === "object") {
-        (geometry as any)[k] = {
-          ...blk,
-          executed: false,
-          skipped_reason: "blocked_by_registration_gate",
-          skipped_by: REGISTRATION_PRECEDENCE_VERSION,
-        };
-      }
-    }
+    forceRegistrationBlockedPhaseBlocks(geometry as any);
+    delete (geometry as any).perimeter_phase0;
+    delete (geometry as any).perimeter_gate_metrics;
+    delete (geometry as any).perimeter_inner_trace;
+    delete (geometry as any).selected_perimeter_after_refinement;
+    delete (geometry as any).debug_perimeter_overlay_svg;
   }
 
   // Always stamp the precedence version so we can prove enforcement on every row.
