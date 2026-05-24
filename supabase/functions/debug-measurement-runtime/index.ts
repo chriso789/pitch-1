@@ -122,7 +122,9 @@ function summarizeRegistration(g: Record<string, any> | null) {
     centroid_offset_threshold_px: reg.centroid_offset_threshold_px ?? null,
     coordinate_registration_gate_passed: reg.coordinate_registration_gate_passed ?? null,
     candidate_selection_started: reg.candidate_selection_started ?? null,
+    evaluation_stage: reg.evaluation_stage ?? null,
     missing_required_fields: Array.isArray(reg.missing_required_fields) ? reg.missing_required_fields : null,
+    stale_debug_payload_present: (g as any)?.stale_debug_payload != null,
   };
 }
 
