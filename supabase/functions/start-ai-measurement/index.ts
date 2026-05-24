@@ -685,6 +685,28 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   (geometry as any).registration_gate_version =
     regVersionForPrecedence ?? (geometry as any).registration_gate_version ?? null;
 
+  // ─── diagram_render_intent normalization (DB-safe) ───
+  // Coerce whatever the pipeline produced into one of the 6 stable buckets
+  // permitted by roof_measurements_diagram_render_intent_check. Raw value
+  // and any warning are preserved in geometry_report_json for diagnostics.
+  const rawIntent =
+    (next as any).diagram_render_intent ??
+    (geometry as any).diagram_render_intent ??
+    null;
+  const intentNorm = normalizeDiagramRenderIntentForWrite(rawIntent, {
+    result_state: (next as any).result_state,
+    hard_fail_reason: (next as any).hard_fail_reason,
+  });
+  (next as any).diagram_render_intent = intentNorm.normalized;
+  (geometry as any).diagram_render_intent = intentNorm.normalized;
+  if (intentNorm.raw && intentNorm.raw !== intentNorm.normalized) {
+    (geometry as any).raw_diagram_render_intent = intentNorm.raw;
+    (geometry as any).normalized_diagram_render_intent = intentNorm.normalized;
+  }
+  if (intentNorm.warning) {
+    (geometry as any).diagram_render_intent_normalization_warning = intentNorm.warning;
+  }
+
   next.geometry_report_json = geometry;
   return next;
 }
