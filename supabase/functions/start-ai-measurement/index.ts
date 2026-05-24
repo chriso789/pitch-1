@@ -43,6 +43,10 @@ import {
   validateRegistrationTransformPackage,
 } from "../_shared/source-registration-transform.ts";
 import {
+  classifyRegistrationStage,
+  REGISTRATION_STAGE_CLASSIFIER_VERSION,
+} from "../_shared/registration-stage-classifier.ts";
+import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
   derivePrecedenceReasonWithConflict,
