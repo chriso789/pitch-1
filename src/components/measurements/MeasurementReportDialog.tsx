@@ -866,7 +866,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                 (effectiveMeasurement as any)?.inference_source ?? grj.inference_source ?? 'unknown';
               const topologySource = grj.topology_source ?? grj.geometry_source ?? 'unknown';
               const usedDeterministic = grj.used_deterministic_topology === true;
-              const blocked = grj.block_customer_report_reason || null;
+              // Registration precedence wins — if the gate fired, show the
+              // precedence reason instead of any downstream perimeter/topology
+              // blocking reason that may still be stamped on the row.
+              const blocked = grj.registration_precedence_applied === true
+                ? (grj.registration_precedence_reason || grj.hard_fail_reason || grj.block_customer_report_reason || null)
+                : (grj.block_customer_report_reason || null);
               const coordMatch = grj.dsm_coordinate_match ?? overlayDbg.dsm_coordinate_match ?? dsmDbg.dsm_coordinate_match ?? null;
               const coordMatchOk = coordMatch?.match ?? null;
               return (
