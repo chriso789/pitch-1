@@ -1319,6 +1319,7 @@ async function processJob(input: any) {
           ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
           : { lat: coords.lat, lng: coords.lng };
       const gateB = evaluateRegistrationGate({
+        evaluation_stage: "source_preflight",
         user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
         roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
         original_geocode_lat_lng:
