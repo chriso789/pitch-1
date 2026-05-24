@@ -9146,7 +9146,9 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
 }
 
 async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
-  const phase3Debug = withPhase3Visibility(debug, [], failureReason);
+  const debugWithTransform = mergeTransformProofIntoDebug(debug, input?._registration_preflight ?? null);
+  console.log("VTRACE_TRANSFORM_MERGED_INTO_FAILURE_PAYLOAD", JSON.stringify({ has_preflight: !!input?._registration_preflight, reason: failureReason }));
+  const phase3Debug = withPhase3Visibility(debugWithTransform, [], failureReason);
   const persistedFailureReason = phase3Debug.hard_fail_reason || failureReason || 'ai_failed_unknown';
   const persistedResultState = normalizeResultStateForWrite(phase3Debug.result_state, phase3Debug);
   const aiDetectionData = {
