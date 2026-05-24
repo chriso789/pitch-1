@@ -1369,6 +1369,15 @@ async function processJob(input: any) {
   try {
     await setMeasurementJobStatus(input.measurement_job_id, "processing", "Resolving location");
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Resolving location");
+    input._registration_preflight = input._registration_preflight ?? await mustBuildTransformPackageEarly({
+      confirmed_roof_center_lat_lng: finiteLatLngOrNull(input.confirmed_roof_center_lat, input.confirmed_roof_center_lng),
+      original_geocode_lat_lng: finiteLatLngOrNull(input.original_geocode_lat, input.original_geocode_lng) ?? finiteLatLngOrNull(input.latitude, input.longitude),
+      static_map_center_lat_lng: finiteLatLngOrNull(input.confirmed_roof_center_lat, input.confirmed_roof_center_lng) ?? finiteLatLngOrNull(input.latitude, input.longitude),
+      zoom: Number(input.zoom),
+      logical_image_width: Number(input.logical_image_width),
+      logical_image_height: Number(input.logical_image_height),
+      raster_scale: Number(input.raster_scale),
+    });
 
     // ──────────── ACQUISITION COORDINATE AUDIT (pre-flight) ────────────
     // Persist every coordinate we know about for this property before we
@@ -1478,7 +1487,7 @@ async function processJob(input: any) {
     // Persist the audit early so it survives any downstream failure.
     try {
       await supabase.from("ai_measurement_jobs").update({
-        source_context: { acquisition_audit: acquisitionAudit },
+        source_context: { acquisition_audit: acquisitionAudit, registration: input._registration_preflight.registration, registration_gate: input._registration_preflight.registration },
       }).eq("id", input.ai_measurement_job_id);
     } catch (e) {
       console.warn("[ACQUISITION_AUDIT] persist failed", (e as Error).message);
