@@ -42,7 +42,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   const brandColor = data.brandPrimaryColor || '#2563eb';
   const companyName = data.companyName || 'Company';
   const logoBlock = data.companyLogoUrl
-    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" style="height:auto;width:auto;max-height:64px;max-width:180px;object-fit:contain;display:block;" />`
+    ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" crossorigin="anonymous" />`
     : `<div style="font-size:24px;font-weight:800;color:${brandColor};letter-spacing:-0.01em;">${companyName}</div>`;
 
   const companyTagParts = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean);
@@ -69,25 +69,27 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
   <title>Cap Out Sheet - ${data.projectName}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; background: #fff; }
-    .brand-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 12px; border-bottom: 3px solid ${brandColor}; margin-bottom: 16px; }
-    .brand-left { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; min-width: 0; }
-    .brand-right { text-align: right; flex: 1 1 auto; min-width: 0; word-wrap: break-word; }
+    html, body { width: 816px; }
+    body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; background: #fff; overflow-wrap: anywhere; word-break: break-word; }
+    .brand-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 12px; border-bottom: 3px solid ${brandColor}; margin-bottom: 16px; width: 100%; }
+    .brand-left { display: flex; flex-direction: column; gap: 4px; flex: 0 0 220px; max-width: 220px; min-width: 0; }
+    .brand-left img { display: block; height: auto; width: auto; max-height: 64px; max-width: 100%; object-fit: contain; }
+    .brand-right { text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .header { text-align: center; padding-bottom: 8px; margin-bottom: 14px; }
     .header h1 { font-size: 22px; color: ${brandColor}; margin-bottom: 2px; letter-spacing: 0.05em; }
     .header p { color: #666; font-size: 11px; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 12px; }
     .info-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
     .info-value { font-size: 13px; font-weight: 600; margin-top: 1px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; table-layout: fixed; }
     th { background: #f1f5f9; text-align: left; padding: 5px 8px; font-size: 10px; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0; }
-    td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
-    td.amount { text-align: right; font-family: 'Courier New', monospace; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; word-break: break-word; }
+    td.amount { text-align: right; font-family: 'Courier New', monospace; white-space: nowrap; }
     tr.total { background: #f8fafc; font-weight: 700; }
     tr.total td { border-top: 2px solid ${brandColor}; border-bottom: 2px solid ${brandColor}; font-size: 13px; }
     .profit-section { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
     .profit-section.negative { background: #fef2f2; border-color: #ef4444; }
-    .profit-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .profit-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
     .profit-row:last-child { margin-bottom: 0; }
     .profit-label { font-size: 12px; color: #555; }
     .profit-value { font-size: 16px; font-weight: 700; color: #16a34a; }
@@ -253,6 +255,8 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
+      width: 816,
+      windowWidth: 816,
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
