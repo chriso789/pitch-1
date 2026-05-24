@@ -561,7 +561,9 @@ const corsHeaders = {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 const TRANSFORM_CALLSITE = "start-ai-measurement";
-const TRANSFORM_CALLSITE_VERSION = "runtime-transform-wiring-v1";
+const TRANSFORM_CALLSITE_VERSION = "must-run-transform-preflight-v1";
+const EARLY_TRANSFORM_STAGE = "early_preflight";
+const TRANSFORM_BUILDER_VERSION = "source-registration-transform-v1";
 export const SOURCE_REGISTRATION_RUNTIME_WIRING_PROOF = {
   callsite: TRANSFORM_CALLSITE,
   version: TRANSFORM_CALLSITE_VERSION,
@@ -577,11 +579,153 @@ export const SOURCE_REGISTRATION_RUNTIME_WIRING_PROOF = {
   },
 };
 
+type EarlyTransformPreflight = {
+  transform_package: ReturnType<typeof buildRegistrationTransformPackage>;
+  registration: Record<string, unknown>;
+};
+
+function finiteLatLngOrNull(lat: unknown, lng: unknown): GeoPoint | null {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  return Number.isFinite(latNum) && Number.isFinite(lngNum)
+    ? { lat: latNum, lng: lngNum }
+    : null;
+}
+
+async function mustBuildTransformPackageEarly(ctx: {
+  confirmed_roof_center_lat_lng?: GeoPoint | null;
+  original_geocode_lat_lng?: GeoPoint | null;
+  static_map_center_lat_lng?: GeoPoint | null;
+  zoom?: number | null;
+  logical_image_width?: number | null;
+  logical_image_height?: number | null;
+  raster_scale?: number | null;
+}): Promise<EarlyTransformPreflight> {
+  console.log("VTRACE_TRANSFORM_PRESTART", JSON.stringify({ callsite: TRANSFORM_CALLSITE, stage: EARLY_TRANSFORM_STAGE }));
+  const center = ctx.confirmed_roof_center_lat_lng ?? ctx.original_geocode_lat_lng ?? null;
+  const zoom = Number.isFinite(Number(ctx.zoom)) ? Number(ctx.zoom) : 19;
+  const width = Number.isFinite(Number(ctx.logical_image_width)) ? Number(ctx.logical_image_width) : 640;
+  const height = Number.isFinite(Number(ctx.logical_image_height)) ? Number(ctx.logical_image_height) : 640;
+  const scale = Number.isFinite(Number(ctx.raster_scale)) ? Number(ctx.raster_scale) : 2;
+  const pkg = buildRegistrationTransformPackage({
+    confirmed_roof_center_lat_lng: center,
+    static_map_center_lat_lng: ctx.static_map_center_lat_lng ?? center,
+    zoom,
+    size: { width, height },
+    scale,
+  });
+  const staticValid = !!(pkg.raster_bounds_lat_lng && pkg.geo_to_raster_transform && pkg.confirmed_roof_center_px);
+  console.log("VTRACE_TRANSFORM_BUILT_STATIC", JSON.stringify({ staticValid, missing_required_fields: pkg.missing_required_fields }));
+  console.log("VTRACE_TRANSFORM_SKIPPED_DSM_PENDING", JSON.stringify({ dsm_stage_pending: true }));
+  return {
+    transform_package: pkg,
+    registration: registrationFromTransformPackage(pkg, { dsm_stage_pending: true }),
+  };
+}
+
 const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "archetype_debug",
   "eave_rake_classification_debug",
   "perimeter_edge_pitch_relation",
 ]);
+
+function registrationFromTransformPackage(pkg: ReturnType<typeof buildRegistrationTransformPackage> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const validation = validateRegistrationTransformPackage(pkg as any);
+  const dsmPending = extra.dsm_stage_pending === true;
+  const staticMissing = (validation.missing ?? []).filter((field) => [
+    "confirmed_roof_center_lat_lng",
+    "raster_bounds_lat_lng",
+    "zoom",
+    "size",
+    "scale",
+    "geo_to_raster_transform",
+    "confirmed_roof_center_px",
+    "raster_bounds_contain_confirmed_center",
+  ].includes(field));
+  const failureReasons = dsmPending
+    ? staticMissing
+    : (validation.reasons.length ? validation.reasons : (validation.missing ?? []));
+  return {
+    ...(pkg ?? {}),
+    transform_package: pkg ?? null,
+    transform_builder_called: !!pkg,
+    transform_builder_version: (pkg as any)?.version ?? TRANSFORM_BUILDER_VERSION,
+    transform_callsite: TRANSFORM_CALLSITE,
+    transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
+    transform_build_stage: EARLY_TRANSFORM_STAGE,
+    transform_package_valid: validation.valid === true,
+    transform_failure_reasons: failureReasons,
+    geo_to_dsm_transform: (pkg as any)?.geo_to_dsm_transform ?? null,
+    dsm_tile_bounds_lat_lng: (pkg as any)?.dsm_tile_bounds_lat_lng ?? null,
+    dsm_to_raster_transform: (pkg as any)?.dsm_to_raster_transform ?? null,
+    dsm_stage_pending: true,
+    ...extra,
+  };
+}
+
+function mergeRegistrationProof(base: unknown, proof: EarlyTransformPreflight | Record<string, unknown> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const existing = base && typeof base === "object" && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
+  const proofRegistration = proof && typeof proof === "object" && "registration" in proof
+    ? { ...((proof as EarlyTransformPreflight).registration ?? {}) }
+    : (proof && typeof proof === "object" ? { ...(proof as Record<string, unknown>) } : {});
+  const merged: Record<string, unknown> = { ...proofRegistration };
+  for (const [key, value] of Object.entries(existing)) {
+    if (value !== null && value !== undefined) merged[key] = value;
+  }
+  return {
+    ...merged,
+    transform_builder_called: proofRegistration.transform_builder_called ?? existing.transform_builder_called ?? true,
+    transform_builder_version: String(proofRegistration.transform_builder_version ?? existing.transform_builder_version ?? TRANSFORM_BUILDER_VERSION),
+    transform_callsite: TRANSFORM_CALLSITE,
+    transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
+    transform_build_stage: String(proofRegistration.transform_build_stage ?? existing.transform_build_stage ?? EARLY_TRANSFORM_STAGE),
+    transform_package_valid: Boolean(proofRegistration.transform_package_valid ?? existing.transform_package_valid ?? false),
+    transform_failure_reasons: Array.isArray(proofRegistration.transform_failure_reasons)
+      ? proofRegistration.transform_failure_reasons
+      : (Array.isArray(existing.transform_failure_reasons) ? existing.transform_failure_reasons : []),
+    ...extra,
+  };
+}
+
+function mergeTransformProofIntoDebug(debug: any, proof: EarlyTransformPreflight | null | undefined): any {
+  if (!proof) return debug ?? {};
+  const next = { ...(debug ?? {}) };
+  const merged = mergeRegistrationProof(next.registration ?? next.registration_gate, proof);
+  next.registration = merged;
+  next.registration_gate = merged;
+  return next;
+}
+
+function ensureRegistrationProofBeforeWrite(payload: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload };
+  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+    ? { ...(next.geometry_report_json as Record<string, unknown>) }
+    : { raw_geometry_report_json: next.geometry_report_json ?? null };
+  const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? null) as Record<string, unknown> | null;
+  if (existing?.transform_builder_called === true) {
+    console.log("VTRACE_TRANSFORM_PREWRITE_ASSERTION_PASSED", JSON.stringify({ called: existing.transform_builder_called }));
+    next.geometry_report_json = geometry;
+    return next;
+  }
+  const fallback = mergeRegistrationProof(existing, null, {
+    transform_builder_called: false,
+    transform_package_valid: false,
+    transform_failure_reasons: ["transform_builder_not_called_before_write"],
+  });
+  (geometry as any).registration = fallback;
+  (geometry as any).registration_gate = fallback;
+  (geometry as any).result_state = "ai_failed_source_acquisition";
+  (geometry as any).hard_fail_reason = "transform_builder_not_called_before_write";
+  (geometry as any).block_customer_report_reason = "transform_builder_not_called_before_write";
+  (geometry as any).failure_stage = "source_registration";
+  (geometry as any).diagram_render_intent = "coordinate_registration_debug_only";
+  (next as any).result_state = "ai_failed_source_acquisition";
+  (next as any).hard_fail_reason = "transform_builder_not_called_before_write";
+  (next as any).block_customer_report_reason = "transform_builder_not_called_before_write";
+  (next as any).customer_report_ready = false;
+  next.geometry_report_json = geometry;
+  return next;
+}
 
 function getPhase3DbColumns(): Record<string, unknown> {
   return {
@@ -626,52 +770,32 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
   const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  const regTransformPkg = (next as any)._registration_transform_package as any | undefined;
+  const regPreflight = (next as any)._registration_preflight as EarlyTransformPreflight | undefined;
+  const regTransformPkg = ((next as any)._registration_transform_package as any | undefined) ?? regPreflight?.transform_package;
   let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> | "registration_field_conflict" | null = null;
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
       const result = evaluateRegistrationGate(regInput);
-      const registrationBlock: Record<string, unknown> = { ...result.registration };
+      let registrationBlock: Record<string, unknown> = { ...result.registration };
       // Source Registration Transform Builder v1 — hoist truth-from-math values
       // into the top-level registration block so the gate, UI, and debug
       // endpoints all read the same evidence. Without this hoist, only the
       // nested `transform_package` carries the real coords while top-level
       // fields stay null and the run looks like a wiring regression.
       if (regTransformPkg) {
-        registrationBlock.transform_package = regTransformPkg;
-        const hoist = (k: string, v: unknown) => {
-          if (registrationBlock[k] == null && v != null) registrationBlock[k] = v;
-        };
-        hoist("static_map_center_lat_lng", (regTransformPkg as any).static_map_center_lat_lng);
-        hoist("raster_size_px",            (regTransformPkg as any).raster_size_px);
-        hoist("raster_bounds_lat_lng",     (regTransformPkg as any).raster_bounds_lat_lng);
-        hoist("geo_to_raster_transform",   (regTransformPkg as any).geo_to_raster_transform);
-        hoist("confirmed_roof_center_px",  (regTransformPkg as any).confirmed_roof_center_px);
-        hoist("raster_bounds_contain_confirmed_center", (regTransformPkg as any).raster_bounds_contain_confirmed_center);
-        hoist("dsm_tile_bounds_lat_lng",   (regTransformPkg as any).dsm_tile_bounds_lat_lng);
-        hoist("dsm_size_px",               (regTransformPkg as any).dsm_size_px);
-        hoist("geo_to_dsm_transform",      (regTransformPkg as any).geo_to_dsm_transform);
-        hoist("dsm_to_raster_transform",   (regTransformPkg as any).dsm_to_raster_transform);
-        hoist("confirmed_roof_center_dsm_px", (regTransformPkg as any).confirmed_roof_center_dsm_px);
-        hoist("dsm_tile_bounds_contain_confirmed_center", (regTransformPkg as any).dsm_tile_bounds_contain_confirmed_center);
-        // Proof-of-call telemetry — always overwrite (never gated by ??).
-        registrationBlock.transform_builder_version = (regTransformPkg as any).version ?? "source-registration-transform-v1";
-        registrationBlock.transform_builder_called = true;
-        const transformValidation = validateRegistrationTransformPackage(regTransformPkg as any);
-        registrationBlock.transform_package_valid = transformValidation.valid === true;
-        registrationBlock.transform_failure_reasons = transformValidation.reasons.length
-          ? transformValidation.reasons
-          : (Array.isArray((regTransformPkg as any).missing_required_fields) ? (regTransformPkg as any).missing_required_fields : []);
-        registrationBlock.transform_build_stage = (next as any)._registration_transform_build_stage ?? "candidate_final";
-        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
-        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
+        registrationBlock = mergeRegistrationProof(registrationBlock, registrationFromTransformPackage(regTransformPkg as any, {
+          dsm_stage_pending: !(regTransformPkg as any).geo_to_dsm_transform,
+          transform_build_stage: (next as any)._registration_transform_build_stage ?? EARLY_TRANSFORM_STAGE,
+        }));
+      } else if (regPreflight) {
+        registrationBlock = mergeRegistrationProof(registrationBlock, regPreflight);
       } else {
-        registrationBlock.transform_builder_called = false;
-        registrationBlock.transform_package_valid = false;
-        registrationBlock.transform_failure_reasons = ["transform_package_absent"];
-        registrationBlock.transform_callsite = TRANSFORM_CALLSITE;
-        registrationBlock.transform_callsite_version = TRANSFORM_CALLSITE_VERSION;
+        registrationBlock = mergeRegistrationProof(registrationBlock, null, {
+          transform_builder_called: false,
+          transform_package_valid: false,
+          transform_failure_reasons: ["transform_package_absent"],
+        });
       }
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
@@ -712,10 +836,15 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     } catch (e) {
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
+  } else if (regPreflight) {
+    const registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
+    geometry.registration = registrationBlock;
+    geometry.registration_gate = registrationBlock;
   }
   delete (next as any)._registration_gate_input;
   delete (next as any)._registration_transform_package;
   delete (next as any)._registration_transform_build_stage;
+  delete (next as any)._registration_preflight;
 
   // v2.2: mirror authoritative registration block booleans to top-level
   // geometry fields BEFORE conflict detection so block↔top-level drift cannot
@@ -870,7 +999,7 @@ function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column:
 }
 
 async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
-  let safePayload = prepareRoofMeasurementPayload(payload);
+  let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));
   let lastError: unknown = null;
   let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -893,7 +1022,7 @@ async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unkn
 }
 
 async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
-  let safePayload = prepareRoofMeasurementPayload(payload);
+  let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));
   let lastError: unknown = null;
   let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -1000,6 +1129,15 @@ Deno.serve(async (req) => {
           ? { lat: confirmed_roof_center_lat, lng: confirmed_roof_center_lng }
           : null,
     });
+    const transformPreflight = await mustBuildTransformPackageEarly({
+      confirmed_roof_center_lat_lng: finiteLatLngOrNull(confirmed_roof_center_lat, confirmed_roof_center_lng),
+      original_geocode_lat_lng: finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ?? finiteLatLngOrNull(latitude, longitude),
+      static_map_center_lat_lng: finiteLatLngOrNull(confirmed_roof_center_lat, confirmed_roof_center_lng) ?? finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ?? finiteLatLngOrNull(latitude, longitude),
+      zoom,
+      logical_image_width,
+      logical_image_height,
+      raster_scale,
+    });
 
     const sourceRecord = await resolveSourceRecord({ lead_id, project_id });
     const tenant_id: string | null = sourceRecord?.tenant_id ?? tenant_id_hint;
@@ -1103,11 +1241,10 @@ Deno.serve(async (req) => {
         dsm_pixel_transform_valid: false,
         dsm_to_raster_transform: null,
       });
-      const registrationBlock = {
-        ...gateA.registration,
+      const registrationBlock = mergeRegistrationProof(gateA.registration, transformPreflight, {
         failure_reason: failReason,
         blocked_before_source_acquisition: true,
-      };
+      });
       const skippedByTarget = buildRegistrationBlockedPhaseBlock();
       const debugPayload = {
         failure_stage: "target_confirmation",
@@ -1149,6 +1286,7 @@ Deno.serve(async (req) => {
         confirmed_roof_center_px,
         user_confirmed_roof_target,
         roof_target_admin_override,
+          _registration_preflight: transformPreflight,
       }, fallbackCoords, failReason, debugPayload, null, 0);
       await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
       await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
@@ -1227,6 +1365,7 @@ Deno.serve(async (req) => {
       confirmed_roof_center_px,
       user_confirmed_roof_target,
       roof_target_admin_override,
+        _registration_preflight: transformPreflight,
     } as any);
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
@@ -1252,6 +1391,15 @@ async function processJob(input: any) {
   try {
     await setMeasurementJobStatus(input.measurement_job_id, "processing", "Resolving location");
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Resolving location");
+    input._registration_preflight = input._registration_preflight ?? await mustBuildTransformPackageEarly({
+      confirmed_roof_center_lat_lng: finiteLatLngOrNull(input.confirmed_roof_center_lat, input.confirmed_roof_center_lng),
+      original_geocode_lat_lng: finiteLatLngOrNull(input.original_geocode_lat, input.original_geocode_lng) ?? finiteLatLngOrNull(input.latitude, input.longitude),
+      static_map_center_lat_lng: finiteLatLngOrNull(input.confirmed_roof_center_lat, input.confirmed_roof_center_lng) ?? finiteLatLngOrNull(input.latitude, input.longitude),
+      zoom: Number(input.zoom),
+      logical_image_width: Number(input.logical_image_width),
+      logical_image_height: Number(input.logical_image_height),
+      raster_scale: Number(input.raster_scale),
+    });
 
     // ──────────── ACQUISITION COORDINATE AUDIT (pre-flight) ────────────
     // Persist every coordinate we know about for this property before we
@@ -1361,7 +1509,7 @@ async function processJob(input: any) {
     // Persist the audit early so it survives any downstream failure.
     try {
       await supabase.from("ai_measurement_jobs").update({
-        source_context: { acquisition_audit: acquisitionAudit },
+        source_context: { acquisition_audit: acquisitionAudit, registration: input._registration_preflight.registration, registration_gate: input._registration_preflight.registration },
       }).eq("id", input.ai_measurement_job_id);
     } catch (e) {
       console.warn("[ACQUISITION_AUDIT] persist failed", (e as Error).message);
@@ -7412,6 +7560,7 @@ async function processJob(input: any) {
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
+        _registration_preflight: input._registration_preflight,
         quality_checks: quality,
         metadata: aiDetectionData,
         plane_breakdown: totals.plane_breakdown,
@@ -7675,6 +7824,7 @@ async function processJob(input: any) {
       // persisted registration block (truth-from-math reference for the UI).
       (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
       (roofMeasurementPayload as any)._registration_transform_build_stage = transformPkgFinal.dsm_tile_bounds_lat_lng ? "dsm" : "static_map";
+      console.log("VTRACE_TRANSFORM_MERGED_INTO_FINAL_PAYLOAD", JSON.stringify({ stage: (roofMeasurementPayload as any)._registration_transform_build_stage }));
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
     }
@@ -9020,7 +9170,9 @@ async function setAiJobStatus(id: string, status: string, msg: string, quality: 
 }
 
 async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
-  const phase3Debug = withPhase3Visibility(debug, [], failureReason);
+  const debugWithTransform = mergeTransformProofIntoDebug(debug, input?._registration_preflight ?? null);
+  console.log("VTRACE_TRANSFORM_MERGED_INTO_FAILURE_PAYLOAD", JSON.stringify({ has_preflight: !!input?._registration_preflight, reason: failureReason }));
+  const phase3Debug = withPhase3Visibility(debugWithTransform, [], failureReason);
   const persistedFailureReason = phase3Debug.hard_fail_reason || failureReason || 'ai_failed_unknown';
   const persistedResultState = normalizeResultStateForWrite(phase3Debug.result_state, phase3Debug);
   const aiDetectionData = {
@@ -9293,13 +9445,14 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     const transformPkgFailure = buildRegistrationTransformPackage({
       confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
       static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
-      zoom: Number(input.zoom),
+      zoom: Number.isFinite(Number(input.zoom)) ? Number(input.zoom) : 19,
       size: { width: Number(input.logical_image_width || 640), height: Number(input.logical_image_height || 640) },
       scale: Number(input.raster_scale || 2),
       dsm_tile_bounds_lat_lng: dsmTileBoundsForFailure,
       dsm_size_px: dsmSizeForFailure,
       dsm_meters_per_pixel: mppFinite ? mpp : null,
     });
+    (failurePayload as any)._registration_preflight = input?._registration_preflight;
     (failurePayload as any)._registration_transform_package = transformPkgFailure;
     (failurePayload as any)._registration_transform_build_stage =
       debug?.failure_stage === "source_registration" ? "source_preflight" : "candidate_final";
