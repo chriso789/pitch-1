@@ -25,8 +25,13 @@
 // disable manual approval — otherwise we lock the wrong structure.
 // ============================================================================
 
-export const REGISTRATION_GATE_VERSION = "registration-gate-v2.2";
+export const REGISTRATION_GATE_VERSION = "registration-gate-v2.3";
 export const REGISTRATION_SKIPPED_REASON = "blocked_by_registration_gate";
+
+export type RegistrationEvaluationStage =
+  | "target_preflight"
+  | "source_preflight"
+  | "candidate_final";
 
 export type LatLng = { lat: number; lng: number };
 export type Px = [number, number];
