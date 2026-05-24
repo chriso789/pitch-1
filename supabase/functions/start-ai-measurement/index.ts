@@ -385,6 +385,28 @@ function buildPhase3EBlock(debug: any): Record<string, any> {
 }
 
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
+  // ─── Registration failures outrank perimeter/topology classification. ───
+  // A run whose target was never confirmed, whose geo→pixel transform is
+  // invalid, or whose selected candidate does not contain the confirmed
+  // roof center is a REGISTRATION failure — not a perimeter shape failure.
+  // (See _shared/registration-gate.ts.)
+  const reg = (debug?.registration ?? debug?.registration_gate ?? null) as any;
+  if (reg && typeof reg === 'object') {
+    if (reg.user_confirmed_roof_target === false && reg.roof_target_admin_override !== true) {
+      return 'ai_failed_target_unconfirmed';
+    }
+    if (reg.geo_to_dsm_px_success === false || reg.dsm_pixel_transform_valid === false) {
+      return 'ai_failed_source_acquisition';
+    }
+    if (reg.confirmed_center_inside_candidate === false) {
+      return 'ai_failed_source_acquisition';
+    }
+    if (reg.coordinate_registration_gate_passed === false) {
+      return reg.user_confirmed_roof_target === false
+        ? 'ai_failed_target_unconfirmed'
+        : 'ai_failed_source_acquisition';
+    }
+  }
   const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
   if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
   const reason = String(raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? '').toLowerCase();
