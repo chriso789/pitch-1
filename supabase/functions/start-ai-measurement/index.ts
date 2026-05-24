@@ -35,6 +35,8 @@ import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
+  buildRegistrationBlockedPhaseBlock,
+  forceRegistrationBlockedPhaseBlocks,
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
