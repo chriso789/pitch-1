@@ -631,6 +631,20 @@ const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
 
 function registrationFromTransformPackage(pkg: ReturnType<typeof buildRegistrationTransformPackage> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const validation = validateRegistrationTransformPackage(pkg as any);
+  const dsmPending = extra.dsm_stage_pending === true;
+  const staticMissing = (validation.missing ?? []).filter((field) => [
+    "confirmed_roof_center_lat_lng",
+    "raster_bounds_lat_lng",
+    "zoom",
+    "size",
+    "scale",
+    "geo_to_raster_transform",
+    "confirmed_roof_center_px",
+    "raster_bounds_contain_confirmed_center",
+  ].includes(field));
+  const failureReasons = dsmPending
+    ? staticMissing
+    : (validation.reasons.length ? validation.reasons : (validation.missing ?? []));
   return {
     ...(pkg ?? {}),
     transform_package: pkg ?? null,
@@ -640,7 +654,7 @@ function registrationFromTransformPackage(pkg: ReturnType<typeof buildRegistrati
     transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
     transform_build_stage: EARLY_TRANSFORM_STAGE,
     transform_package_valid: validation.valid === true,
-    transform_failure_reasons: validation.reasons.length ? validation.reasons : (validation.missing ?? []),
+    transform_failure_reasons: failureReasons,
     geo_to_dsm_transform: (pkg as any)?.geo_to_dsm_transform ?? null,
     dsm_tile_bounds_lat_lng: (pkg as any)?.dsm_tile_bounds_lat_lng ?? null,
     dsm_to_raster_transform: (pkg as any)?.dsm_to_raster_transform ?? null,
