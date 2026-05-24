@@ -610,7 +610,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         geometry.result_state = failure.result_state;
         geometry.hard_fail_reason = failure.hard_fail_reason;
         geometry.block_customer_report_reason = failure.block_customer_report_reason;
-        geometry.failure_stage = "registration";
+        geometry.failure_stage = registrationFailureStage(failure.reason as any);
         geometry.diagram_render_intent =
           failure.result_state === "ai_failed_target_unconfirmed"
             ? "target_confirmation_required"
@@ -620,6 +620,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         (next as any).result_state = failure.result_state;
         (next as any).hard_fail_reason = failure.hard_fail_reason;
         (next as any).block_customer_report_reason = failure.block_customer_report_reason;
+        (next as any).failure_stage = geometry.failure_stage;
         (next as any).diagram_render_intent = geometry.diagram_render_intent;
         (next as any).customer_report_ready = false;
         (next as any).validation_status = "failed";
