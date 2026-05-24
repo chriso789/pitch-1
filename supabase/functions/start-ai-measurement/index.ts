@@ -1147,7 +1147,7 @@ async function processJob(input: any) {
         raster_size_px: { width: raster.width, height: raster.height },
         meters_per_pixel: actualMpp,
       });
-      if (gateB.failure && gateB.failure.result_state === "ai_failed_source_acquisition") {
+      if (gateB.failure && (gateB.failure.result_state === "ai_failed_source_acquisition" || gateB.failure.result_state === "ai_failed_target_unconfirmed")) {
         const failReason = gateB.failure.hard_fail_reason;
         const debugPayload = {
           failure_stage: "registration",
