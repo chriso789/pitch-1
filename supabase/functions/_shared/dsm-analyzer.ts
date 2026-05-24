@@ -1204,3 +1204,137 @@ function pointInPolygonScan(pt: {x: number; y: number}, poly: Array<{x: number; 
 }
 
 export type { };
+
+// ═══════════════════════════════════════════════════════════════════
+// Target-Centered Perimeter Candidate Selection v1
+// extractMaskContourComponents — returns ONE polygon per viable
+// connected component instead of a fused convex hull. Used by the
+// candidate-selection gate to reject components that don't contain
+// the user-confirmed roof center (Fonsica failure mode).
+// ═══════════════════════════════════════════════════════════════════
+
+export interface MaskContourComponent {
+  component_id: number;
+  component_index: number; // ordinal rank by size desc
+  size_px: number;
+  centroid_grid: { x: number; y: number };       // in downsampled grid coords
+  centroid_geo: [number, number];                // [lng, lat]
+  bbox_geo: { minLng: number; minLat: number; maxLng: number; maxLat: number };
+  polygon_geo: XY[];                             // closed ring [lng,lat]
+  is_largest: boolean;
+  contains_geocode: boolean;
+}
+
+export function extractMaskContourComponents(
+  mask: RoofMask,
+  geocodeLat?: number,
+  geocodeLng?: number,
+): MaskContourComponent[] {
+  const { data, width, height, bounds } = mask;
+  if (!data || width < 4 || height < 4) return [];
+
+  // 1. Downsample (same as extractMaskContour)
+  const maxDim = 256;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  const sw = Math.max(4, Math.round(width * scale));
+  const sh = Math.max(4, Math.round(height * scale));
+  const grid = new Uint8Array(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const ox = Math.floor(x / scale);
+      const oy = Math.floor(y / scale);
+      if (ox < width && oy < height && data[oy * width + ox] > 0) {
+        grid[y * sw + x] = 1;
+      }
+    }
+  }
+
+  // 2. Morphological close (bridges small gaps inside the SAME building)
+  const closeRadius = Math.max(1, Math.round(2 * scale));
+  const closed = morphClose(grid, sw, sh, closeRadius);
+
+  // 3. Label
+  const { labels, components } = labelConnectedComponents(closed, sw, sh);
+  if (components.length === 0) return [];
+
+  // 4. Filter to viable (>=10% of largest, min 4 px)
+  const maxSize = Math.max(...components.map(c => c.size));
+  const minSize = Math.max(4, maxSize * 0.10);
+  const viable = components.filter(c => c.size >= minSize);
+  if (viable.length === 0) return [];
+
+  // 5. For each viable component: extract own outer contour (no convex hull —
+  // we want the real shape; convex hull is what fused everything together).
+  let geoTx: number | undefined;
+  let geoTy: number | undefined;
+  if (geocodeLat != null && geocodeLng != null) {
+    geoTx = ((geocodeLng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * sw;
+    geoTy = ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) * sh;
+  }
+
+  const sortedBySize = [...viable].sort((a, b) => b.size - a.size);
+  const out: MaskContourComponent[] = [];
+  for (let rank = 0; rank < sortedBySize.length; rank++) {
+    const comp = sortedBySize[rank];
+    // Build per-component mask
+    const compMask = new Uint8Array(sw * sh);
+    let minX = sw, maxX = 0, minY = sh, maxY = 0;
+    for (let i = 0; i < sw * sh; i++) {
+      if (labels[i] === comp.id) {
+        compMask[i] = 1;
+        const cx = i % sw, cy = (i - cx) / sw;
+        if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+      }
+    }
+    const filled = fillHoles(compMask, sw, sh);
+    const boundary = traceOuterBoundary(filled, sw, sh);
+    if (boundary.length < 4) continue;
+    const epsilon = Math.max(0.8, sw / 120);
+    const simplified = rdpSimplify(boundary, epsilon);
+    if (simplified.length < 3) continue;
+
+    // Convert pixels → geo
+    const polygon_geo: XY[] = simplified.map(p => {
+      const lng = bounds.minLng + ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+      const lat = bounds.maxLat - ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+      return [lng, lat] as XY;
+    });
+    // Close the ring
+    if (polygon_geo.length > 0) {
+      const f = polygon_geo[0], l = polygon_geo[polygon_geo.length - 1];
+      if (f[0] !== l[0] || f[1] !== l[1]) polygon_geo.push([f[0], f[1]]);
+    }
+
+    const centroid_geo: [number, number] = [
+      bounds.minLng + ((comp.centroidX / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng),
+      bounds.maxLat - ((comp.centroidY / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat),
+    ];
+
+    let contains_geocode = false;
+    if (geoTx != null && geoTy != null) {
+      contains_geocode = pointInPolygonScan({ x: geoTx, y: geoTy }, simplified);
+    }
+
+    out.push({
+      component_id: comp.id,
+      component_index: rank,
+      size_px: comp.size,
+      centroid_grid: { x: comp.centroidX, y: comp.centroidY },
+      centroid_geo,
+      bbox_geo: {
+        minLng: bounds.minLng + (minX / scale / width) * (bounds.maxLng - bounds.minLng),
+        maxLng: bounds.minLng + ((maxX + 1) / scale / width) * (bounds.maxLng - bounds.minLng),
+        minLat: bounds.maxLat - ((maxY + 1) / scale / height) * (bounds.maxLat - bounds.minLat),
+        maxLat: bounds.maxLat - (minY / scale / height) * (bounds.maxLat - bounds.minLat),
+      },
+      polygon_geo,
+      is_largest: rank === 0,
+      contains_geocode,
+    });
+  }
+
+  console.log(`[MASK_CONTOUR_COMPONENTS] Extracted ${out.length} per-component contours (of ${components.length} total, ${viable.length} viable)`);
+  return out;
+}
+
