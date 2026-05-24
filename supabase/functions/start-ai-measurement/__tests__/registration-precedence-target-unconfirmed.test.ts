@@ -45,7 +45,7 @@ Deno.test("evaluateRegistrationGate routes Fonsica-no-confirm to ai_failed_targe
 });
 
 Deno.test("stampPhaseBlockBlockedByRegistration overrides executed=true to skipped", () => {
-  const phase3_5 = {
+  const phase3_5: Record<string, any> = {
     version: "v1",
     executed: true,
     refinement_iou: 0.91,
