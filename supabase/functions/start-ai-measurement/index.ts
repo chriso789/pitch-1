@@ -7353,14 +7353,80 @@ async function processJob(input: any) {
         perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
       };
 
-    // Registration Gate v2 — attach gate input so prepareRoofMeasurementPayload
+    // Registration Gate v2.2 — attach gate input so prepareRoofMeasurementPayload
     // can evaluate and persist geometry_report_json.registration at the
-    // single authoritative write site. See _shared/registration-gate.ts.
+    // single authoritative write site. STRICT MODE is on (candidate_selection_started=true)
+    // because by this point a candidate has been selected, transforms must
+    // be real, and we refuse to publish a registration block that claims
+    // pass with null evidence. See _shared/registration-gate.ts.
     try {
       const selectedFootprintPolygonPx = Array.isArray(footprint) && footprint.length >= 3
         ? footprint.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number])
         : null;
+      const mppFinite = Number.isFinite(actualMpp) && (actualMpp as number) > 0;
+      const tileExtentM = mppFinite ? raster.width * (actualMpp as number) : 0;
+      const tileHalfDeg = mppFinite ? tileExtentM / 111320 : 0;
+      const rasterBoundsLatLng = mppFinite
+        ? {
+            sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
+            ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
+          }
+        : null;
+      // Real (not synthetic) transform records. Only emit when we have the
+      // numeric evidence; otherwise leave null so v2.2 strict mode hard-fails
+      // honestly rather than passing on placeholders.
+      const geoToRasterTransform = mppFinite
+        ? {
+            kind: "linear_meters_per_pixel",
+            center_lat: coords.lat,
+            center_lng: coords.lng,
+            raster_width_px: raster.width,
+            raster_height_px: raster.height,
+            meters_per_pixel: actualMpp,
+          }
+        : null;
+      const dsmRef: any = (typeof effectiveDSMForMatch !== "undefined" && effectiveDSMForMatch)
+        ? effectiveDSMForMatch
+        : (typeof dsmGrid !== "undefined" && dsmGrid)
+          ? dsmGrid
+          : null;
+      const geoToDsmTransform = dsmRef
+        ? {
+            kind: "dsm_grid_geo_affine",
+            dsm_width_px: dsmRef.width,
+            dsm_height_px: dsmRef.height,
+            resolution_m: dsmRef.resolution ?? null,
+            bounds: dsmRef.bounds ?? null,
+          }
+        : null;
+      const dsmTileBoundsLatLng = dsmRef?.bounds
+        ? {
+            sw: { lat: dsmRef.bounds.minLat, lng: dsmRef.bounds.minLng },
+            ne: { lat: dsmRef.bounds.maxLat, lng: dsmRef.bounds.maxLng },
+          }
+        : null;
+      const dsmSizePx = dsmRef ? { width: dsmRef.width, height: dsmRef.height } : null;
+      const dsmToRasterTransform = (mppFinite && dsmRef)
+        ? {
+            kind: "dsm_to_raster_resample",
+            meters_per_pixel: actualMpp,
+            dsm_resolution_m: dsmRef.resolution ?? null,
+          }
+        : null;
+      const footprintBBoxDiagPx = selectedFootprintPolygonPx
+        ? (() => {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const [x, y] of selectedFootprintPolygonPx) {
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+            return Number.isFinite(minX)
+              ? Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2)
+              : null;
+          })()
+        : null;
       (roofMeasurementPayload as any)._registration_gate_input = {
+        candidate_selection_started: true,
         user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
         roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
         original_geocode_lat_lng:
@@ -7372,12 +7438,18 @@ async function processJob(input: any) {
             ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
             : { lat: coords.lat, lng: coords.lng },
         confirmed_roof_center_px: (input as any).confirmed_roof_center_px ?? null,
-        geo_to_dsm_px_success: true,
-        dsm_pixel_transform_valid: Number.isFinite(actualMpp) && actualMpp > 0,
-        dsm_to_raster_transform: { meters_per_pixel: actualMpp },
+        geo_to_dsm_px_success: mppFinite && !!dsmRef,
+        dsm_pixel_transform_valid: mppFinite && !!dsmRef,
+        dsm_to_raster_transform: dsmToRasterTransform,
+        geo_to_raster_transform: geoToRasterTransform,
+        geo_to_dsm_transform: geoToDsmTransform,
+        raster_bounds_lat_lng: rasterBoundsLatLng,
+        dsm_tile_bounds_lat_lng: dsmTileBoundsLatLng,
         raster_size_px: { width: raster.width, height: raster.height },
-        meters_per_pixel: actualMpp,
+        dsm_size_px: dsmSizePx,
+        meters_per_pixel: mppFinite ? actualMpp : null,
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
+        footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
     } catch (e) {
       console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
