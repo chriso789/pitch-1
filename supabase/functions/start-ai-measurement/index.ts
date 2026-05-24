@@ -1005,6 +1005,7 @@ Deno.serve(async (req) => {
         lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
       };
       const gateA = evaluateRegistrationGate({
+        evaluation_stage: "target_preflight",
         user_confirmed_roof_target: false,
         roof_target_admin_override: false,
         original_geocode_lat_lng:
