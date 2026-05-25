@@ -1,111 +1,282 @@
+## Goal
 
-# Fix overlay coordinate-frame mismatch (Fonsica run c732ade5)
+Make the aerial candidate roof graph actually execute on Fonsica-class runs where the registered raster + perimeter are present but DSM/topology fails. Diagnostics show all the right inputs exist on disk — the builder is skipping with `raster_transform_unavailable` because (a) the edge function never assigns the hoisted registration fields, and (b) the resolver only reads one perimeter location.
 
-## Problem
+No DSM, gating, schema, or overlay-projection changes.
 
-`raw_perimeter_px` / `debug_layers.raw_perimeter_px` / `perimeter_topology.perimeter_ring_px` are now persisted and ingested, but the debug viewer draws the polygon in the bottom-right of the aerial tile instead of over the house. The geometry itself is correct (bbox roughly x=580–710, y=550–702, centered near the confirmed [640,640] on a 1280×1280 raster). This is a viewer transform bug, not a geometry bug.
+## Root causes (already verified)
 
-## Root causes (identified in code, no fix yet)
+1. **Self-assignment bug** in `supabase/functions/start-ai-measurement/index.ts` ~L6344–6347:
+  ```ts
+   hoistedRasterBoundsLatLng = hoistedRasterBoundsLatLng;
+   hoistedGeoToRasterTransform = hoistedGeoToRasterTransform;
+   hoistedConfirmedRoofCenterPx = hoistedConfirmedRoofCenterPx;
+  ```
+   The outer-scope vars stay `null`, so every downstream `buildPreTopologyDebugBag(...)` call passes `geoToRasterTransform: null` / `rasterBoundsLatLng: null` → builder short-circuits with `raster_transform_unavailable`.
+2. **Resolver is too narrow** in `supabase/functions/_shared/aerial-candidate-graph.ts`:
+  - Only reads `args.perimeterTopology?.perimeter_ring_px` / `perimeter_ring_geo`.
+  - Requires *both* `geoToRasterTransform` AND `rasterBoundsLatLng`.
+  - Does not consider `registration.transform_package.*`, `overlay_debug.raster_url`, `debug_layers.raw_perimeter_px`, or `dsm_planar_graph_debug.*` fallbacks.
+3. `**primary_geometry_source` / `dsm_validation_status**` are not derived from the executed graph — viewer shows stale values.
+4. **UI**: `MeasurementReportDialog` shows `Reportable Roof Lines = 6` sourced from `phase3B.reportable_roof_lines_count` even when graph is not customer-ready. It must split "Debug Roof Lines" (6) from "Reportable Roof Lines" (0) until topology passes.
 
-1. **`AIMeasurement3DDebugViewer.DebugCanvas` falls back to an 800×800 raster size** when `overlay_debug.raster_size` and `analysis_image_size` are missing (lines 702–705). The polygon is authored in 1280-pixel space, so points near (640, 640) render at (640, 640) of an 800×800 `viewBox`, which is the lower-right quadrant — exactly the symptom seen.
-2. **`<img className="object-contain">` and `<svg preserveAspectRatio="xMidYMid meet">` letterbox independently.** They only line up when the SVG `viewBox` truly equals the raster's native aspect/size. Any wrong raster size in (1) cascades into a horizontal/vertical offset.
-3. **No coordinate-space tagging.** Fields like `debug_layers.raw_perimeter_px` are assumed to be raster_px, but DSM-only fields (e.g. `edges_px`) can be drawn in the same canvas with no `dsm_to_raster_transform` applied.
-4. **No on-screen overlay transform diagnostics**, so this class of bug is invisible until the user spots it.
+## Changes
 
-## Scope (this slice only)
+### A. Edge function — fix hoist (`supabase/functions/start-ai-measurement/index.ts`)
 
-- Viewer/renderer code only: `AIMeasurement3DDebugViewer.tsx`, `MeasurementVisualQAOverlay.tsx`, plus a small shared resolver in `src/lib/measurements/`.
-- **Do not** change: geometry generation, DSM logic, registration gate, `customer_report_ready`, edge functions, persisted JSON. Manual approval stays disabled when registration fails.
+Replace the self-assignment trio (~L6344–6347) with real assignments from `_transformPkg`:
 
-## Fix plan
+```ts
+hoistedRasterBoundsLatLng =
+  _transformPkg.raster_bounds_lat_lng ?? hoistedRasterBoundsLatLng;
+hoistedGeoToRasterTransform =
+  _transformPkg.geo_to_raster_transform ?? hoistedGeoToRasterTransform;
+hoistedConfirmedRoofCenterPx =
+  _transformPkg.confirmed_roof_center_px ?? hoistedConfirmedRoofCenterPx;
+```
 
-### 1. New shared module: `src/lib/measurements/overlayCoordinateFrame.ts`
+Also pass `registration: { transform_package: _transformPkg, raster: { url, size_px } }` into the three `buildPreTopologyDebugBag(...)` call sites (L6714, L6749, L7226) so the resolver has fallback paths.
 
-Single source of truth for "where does this px polygon live, and how do I draw it on the displayed image?".
+### B. Resolver — multi-source inputs (`supabase/functions/_shared/aerial-candidate-graph.ts`)
 
-- `resolveSourceRasterSize(measurement, rasterUrl)`:
-  - Prefer `overlay_debug.raster_size`.
-  - Then `geometry_report_json.raster_size`.
-  - Then `analysis_image_size`.
-  - Then `parseRasterSizeFromUrl(rasterUrl)`.
-  - Then infer from the loaded image's `naturalWidth`/`naturalHeight` (passed in by caller).
-  - **Remove the silent 800×800 / 1280×1280 hard-coded fallback.** If none resolves, return `{ source: 'unknown', width: null, height: null }` and let the viewer render a "raster size unknown" banner instead of mis-projecting.
-- `classifyCoordinateSpace(fieldPath)`:
-  - `raw_perimeter_px` / `debug_layers.raw_perimeter_px` / `perimeter_topology.perimeter_ring_px` / `phase3_5.raw_perimeter_px` / `phase3_5.refined_perimeter_px` / `aerial_candidate_roof_graph.perimeter_ring_px` / `true_outer_roof_perimeter_px` / `footprint_px` / `target_mask_*_px` → `raster_px`.
-  - `overlay_debug.edges_px`, anything under a `dsm_` prefix → `dsm_px`.
-  - Default to `raster_px` and log a console warning if unknown.
-- `computeDisplayTransform({ sourceRasterSize, displayedImageSize, fit })`:
-  - For `object-contain`: compute `scale = min(dW/sW, dH/sH)`, `offsetX = (dW - sW*scale)/2`, `offsetY = (dH - sH*scale)/2`.
-  - For canvas (full-cover scale): `scale = dW/sW` if aspect matches.
-  - Return `{ scaleX, scaleY, offsetX, offsetY, source }` with both scale axes (in case of non-uniform display).
-- `projectPxPoint(point, transform)`: applies `[x*scaleX + offsetX, y*scaleY + offsetY]`.
-- `hasDsmToRasterTransform(measurement)`: boolean; gate DSM-space layer rendering.
+Extend `BuildAerialCandidateGraphArgs` with optional `registration`, `debugLayers`, `dsmPlanarGraphDebug`, `debugRoofLines`.
 
-### 2. `AIMeasurement3DDebugViewer.DebugCanvas` rewrite of the projection layer
+New private resolvers, applied in this priority:
 
-- Replace the inline `W/H = size.width || 800` fallback with `resolveSourceRasterSize(...)`.
-- Switch from a static `viewBox="0 0 W H"` + `<img object-contain>` to a **measured container**:
-  - Use a `ref` + `ResizeObserver` on the wrapping div to get `displayedImageSize`.
-  - Load the aerial `<img>` and capture `naturalWidth/Height` to feed back into the resolver.
-  - Render the SVG with `viewBox="0 0 displayedW displayedH"` and project every polygon/line through `projectPxPoint`. The image stays as `object-contain` with its real bounding rect computed identically — both layers now share the exact same scale + letterbox offsets.
-- Refuse to render DSM-tagged layers unless `hasDsmToRasterTransform()` is true; show an inline "DSM layer suppressed — no DSM→raster transform persisted" note.
+- **perimeter_ring_px**:
+  1. `perimeterTopology.perimeter_ring_px`
+  2. `debugLayers.raw_perimeter_px`
+  3. `debugLayers.selected_perimeter_px`
+  4. `dsmPlanarGraphDebug.perimeter_topology.perimeter_ring_px`
+  5. `dsmPlanarGraphDebug.phase3_5.raw_perimeter_px`
+  6. `dsmPlanarGraphDebug.debug_layers.raw_perimeter_px`
+- **perimeter_ring_geo**:
+  1. `perimeterTopology.perimeter_ring_geo`
+  2. `dsmPlanarGraphDebug.perimeter_topology.perimeter_ring_geo`
+  3. Derived from `debugRoofLines[].geo` only when ring otherwise unavailable.
+- **raster registration** — registered when ANY are present:
+  - `geoToRasterTransform` OR `registration.transform_package.geo_to_raster_transform`
+  - `rasterBoundsLatLng` OR `registration.transform_package.raster_bounds_lat_lng`
+  - `rasterUrl` + `rasterBoundsLatLng` (URL+bounds is sufficient when transform missing — flagged `raster_registered_basis: "bounds_only"`).
+  - DSM transform is explicitly NOT required.
 
-### 3. `MeasurementVisualQAOverlay.tsx` parity
+Emit the schema from the user spec: `version`, `source: "registered_aerial_geometry"`, `coordinate_space: "raster_px"`, `executed: true`, `customer_ready: false`, populated ring/area/IoU, nodes, edges from `eave_edges`/`rake_edges` (fallback to ring segments) tagged `debug_only: true`, `validation_status: "candidate_only"`, `evidence.dsm_required: false`.
 
-The canvas-based renderer (lines 273–390) is already uniform-scaling correctly **if** `rasterSize` is right, but it shares the same risk via `parseRasterSizeFromUrl` + `{1280,1280}` hard fallback.
-- Route `rasterSize` through `resolveSourceRasterSize` and the `naturalWidth/Height` of the loaded `imgRef`.
-- If unresolved, render the "raster size unknown" banner and skip polygon draw rather than projecting onto a guessed frame.
-- Use `classifyCoordinateSpace` to decide whether to draw `dsmEdges` at all.
+### C. Diagnostics — primary/DSM status
 
-### 4. Overlay transform debug readout
+In `pre-topology-debug-bag.ts` (and where `geometry_report_json` is assembled), when `aerial_candidate_roof_graph.executed === true`:
 
-In both viewers, add a small collapsible "Overlay transform" panel (default open when registration is failing) showing:
+- Set `primary_geometry_source = "aerial_registered"`.
+- Set `dsm_validation_status`:
+  - `"invalid_transform"` when DSM loaded but `dsm_to_raster_transform` / `geo_to_dsm_transform` / `dsm_pixel_transform_valid` missing.
+  - `"pending"` when DSM not loaded.
+  - `"valid"` when transforms present.
+- Leave `customer_report_ready = false`, `report_blocked = true`, and keep existing `block_customer_report_reason` (e.g. `dsm_validation_required` or current runtime blocker).
 
-- `overlay_source_field` (which field provided the polygon)
-- `overlay_source_coordinate_space` (`raster_px` / `dsm_px` / `unknown`)
-- `source_raster_size_px` + where it came from (`overlay_debug` / `analysis_image_size` / `parsed_from_url` / `image_natural` / `unresolved`)
-- `displayed_image_size_px`
-- `scale_x`, `scale_y`, `offset_x`, `offset_y`
-- `first_point_before_transform`, `first_point_after_transform`
-- `confirmed_center_px` before/after transform
-- `bbox_center_px` before/after transform
+### D. CPU-preempt ordering
 
-This panel reads from the resolver's return value — no new persistence.
+Move `buildAerialCandidateGraph` invocation to happen **before** the Phase 3A.5 heavy-topology guard, and persist the result into the CPU-budget terminal payload (already structured in `pre-topology-debug-bag.ts` via the `aerialCandidateRoofGraph` field — extend the CPU-terminal builder to read from the pre-topology bag rather than rebuild). Confirms graph survives `ai_measurement_cpu_timeout`.
 
-### 5. Frame sanity check (warning, not a gate)
+### E. UI — separate debug vs reportable line counts
 
-After projection, compute the transformed bbox center of the selected perimeter and compare to the transformed `confirmed_roof_center_lat_lng` (or `[640,640]` fallback when in source space). If their distance exceeds `0.15 * min(displayedW, displayedH)`, surface a yellow "Overlay render transform mismatch" badge inside the existing registration warning area. Still draw the polygon so the user can see where it landed.
+`src/components/measurements/MeasurementReportDialog.tsx` (+ `measurementDiagnosticState.ts`):
 
-This is purely a viewer warning. It does **not** flip `approvalAllowed` or `customer_report_ready`.
+- Add `debug_roof_lines_count` (from `geometry_report_json.debug_roof_lines.length` or `phase3B.reportable_roof_lines_count`).
+- `reportable_roof_lines_count` shows `0` unless `customer_report_ready === true` OR `topology_validated === true`.
+- Render two rows: "Debug Roof Lines" and "Reportable Roof Lines".
 
-### 6. Tests
+### F. Tests
 
-New file `src/lib/measurements/__tests__/overlayCoordinateFrame.test.ts` (Vitest):
+New / updated:
 
-- 1280-source projected into a 640×640 display with `object-contain` → scale 0.5, zero offset; (640,640) maps to (320,320).
-- 1280-source projected into a 900×600 display (`object-contain`) → uniform scale 0.46875, vertical offset 0, horizontal offset 89.0625; (640,640) maps near display center.
-- `classifyCoordinateSpace('debug_layers.raw_perimeter_px')` → `'raster_px'`.
-- `classifyCoordinateSpace('overlay_debug.edges_px')` → `'dsm_px'`.
-- `resolveSourceRasterSize` prefers `overlay_debug.raster_size` over URL parsing over image natural size.
-- `resolveSourceRasterSize` returns `unresolved` (not `1280×1280`) when no source is available.
+- `supabase/functions/_shared/__tests__/aerial-candidate-graph.test.ts` (extend):
+  1. Executes when `perimeter_topology.perimeter_ring_px` + `geo_to_raster_transform` present, even with no DSM transform.
+  2. Falls back to `debug_layers.raw_perimeter_px` when `perimeter_topology.perimeter_ring_px` missing.
+  3. Falls back to `dsm_planar_graph_debug.perimeter_topology.perimeter_ring_px`.
+  4. Builds edges from `perimeter_topology.eave_edges` with both px + geo endpoints, tagged `debug_only`, `candidate_only`.
+  5. Raster registered via `rasterUrl + rasterBoundsLatLng` alone (no transform) → `raster_registered_basis: "bounds_only"`.
+  6. Does NOT require `geo_to_dsm_transform` or `dsm_to_raster_transform`.
+- `supabase/functions/start-ai-measurement/__tests__/aerial-primary-handoff.test.ts` (new):
+  7. With Fonsica-shaped input, hoisted registration is assigned and `aerial_candidate_roof_graph.executed === true`.
+  8. `primary_geometry_source === "aerial_registered"`, `dsm_validation_status === "invalid_transform"`, `customer_report_ready === false`.
+- `src/components/measurements/__tests__/MeasurementReportDialog.debug-vs-reportable.test.tsx` (new):
+  9. Renders "Debug Roof Lines = 6" and "Reportable Roof Lines = 0" when `customer_report_ready=false`.
 
-Component-level test on `AIMeasurement3DDebugViewer`:
-- Given fixture with `raster_size = {1280,1280}` and a polygon centered at (640,640), the rendered SVG points (after transform) land within 1px of the displayed image center for a 600×600 mounted container.
-- Given fixture with no `raster_size` and no `analysis_image_size`, the viewer renders the "raster size unknown" banner instead of projecting on 800×800.
+## Acceptance (Fonsica rerun)
 
-## Acceptance
+- `aerial_candidate_roof_graph.executed = true`, `skipped_reason = null`
+- `perimeter_ring_px` populated, `edges.length >= 6`
+- `evidence.raster_registered = true`, `evidence.target_mask_isolation_checked = true`
+- `primary_geometry_source = "aerial_registered"`, `dsm_validation_status = "invalid_transform"`
+- `customer_report_ready = false`; UI shows Debug=6 / Reportable=0
+- Overlay aligns to roof (viewer fix from previous turn)
 
-- On Fonsica run `c732ade5`, the raw/selected perimeter draws over the actual target roof rather than the bottom-right corner.
-- Overlay transform debug panel shows non-zero `scale_x/scale_y` consistent with the displayed image and matching bbox/confirmed centers.
-- Manual approval stays disabled (registration gate untouched).
-- `customer_report_ready` stays `false`.
-- No DSM logic, no geometry gate, and no edge-function code is modified in this slice.
+## Guardrails
+
+- No DSM solver, geometry gate, schema, or overlay projection changes.
+- Canonical route preserved (`start-ai-measurement` only).
+- All edges remain `debug_only: true`, `customer_ready: false`.
 
 ## Files touched
 
-- `src/lib/measurements/overlayCoordinateFrame.ts` (new)
-- `src/lib/measurements/__tests__/overlayCoordinateFrame.test.ts` (new)
-- `src/components/measurements/AIMeasurement3DDebugViewer.tsx` (canvas projection + transform panel)
-- `src/components/measurements/MeasurementVisualQAOverlay.tsx` (raster-size resolution + transform panel + DSM-layer gating)
+- `supabase/functions/start-ai-measurement/index.ts` (hoist fix + extra registration arg)
+- `supabase/functions/_shared/aerial-candidate-graph.ts` (multi-source resolver)
+- `supabase/functions/_shared/pre-topology-debug-bag.ts` (pass registration/debug layers; set primary/dsm status)
+- `src/lib/measurements/measurementDiagnosticState.ts` (debug vs reportable)
+- `src/components/measurements/MeasurementReportDialog.tsx` (two-row display)
+- Tests as listed above  
+  
+I’ll add this plan to Issue #5 as the implementation checklist, then give you the approval/adjustment note.
+  Received app response
+  This is the first Lovable plan in a while that is targeting the *actual* root cause cleanly.
+  I would approve it with only two additions:
+  ## 1. Force candidate edges to exist
+  Right now the report says:
+  ```
 
-Uses the `measurement-overlay-visual-qa` skill: keeps aerial-first background, preserves required layer toggles, leaves blocked-topology fallback rendering intact, and does not relax the manual-approval gate.
+  ```
+  ```
+  Aerial Candidate Graph present (0 candidate edges)
+  ```
+  even though the payload clearly has:
+  ```
+
+  ```
+  ```
+  perimeter_topology.eave_edges.length = 6
+  perimeter_topology.perimeter_edges.length = 6
+  ```
+  So the graph builder is still failing to promote the perimeter/eave edges into graph edges.
+  The plan needs this hard acceptance rule:
+  ```
+
+  ```
+  ```
+  If perimeter_topology.eave_edges or perimeter_edges exist,
+  aerial_candidate_roof_graph.edges.length must be >= 6.
+  ```
+  And if edge arrays are missing but the ring exists:
+  ```
+
+  ```
+  ```
+  Build fallback edges from consecutive perimeter ring points.
+  ```
+  Otherwise the aerial graph will still look empty.
+  ---
+  ## 2. Lock reportable roof lines to 0 until validated
+  Right now the UI confusion is dangerous.
+  You have:
+  - `phase3B.reportable_roof_lines_count = 6`  
+
+  -   
+  but `roof_lines_count = 0`  
+
+  -   
+  and `customer_report_ready = false`  
+
+  The plan already mentions separating them, but make it explicit:
+  ```
+
+  ```
+  ```
+  const trueReportableRoofLinesCount =
+    customer_report_ready === true || topology_validated === true
+      ? phase3B.reportable_roof_lines_count ?? roof_lines_count ?? 0
+      : 0;
+  ```
+  Because currently the system is accidentally calling debug eave candidates “reportable.”
+  That must stop.
+  ---
+  # Everything else in the plan is correct
+  The biggest bug is absolutely this:
+  ```
+
+  ```
+  ```
+  hoistedRasterBoundsLatLng = hoistedRasterBoundsLatLng;
+  hoistedGeoToRasterTransform = hoistedGeoToRasterTransform;
+  hoistedConfirmedRoofCenterPx = hoistedConfirmedRoofCenterPx;
+  ```
+  That is catastrophic because it silently keeps the aerial registration fields null.
+  Which means:
+  ```
+
+  ```
+  ```
+  raster_transform_unavailable
+  ```
+  even though the transform exists in `_transformPkg`.
+  That explains almost everything.
+  ---
+  # The good news
+  The latest Fonsica payload already proves the system has enough information to build the aerial graph:
+  -   
+  registered raster exists  
+
+  -   
+  perimeter ring exists  
+
+  -   
+  perimeter area exists  
+
+  -   
+  target mask exists  
+
+  -   
+  IoU exists  
+
+  -   
+  eave edges exist  
+
+  -   
+  corner nodes exist  
+
+  -   
+  bbox exists  
+
+  -   
+  confirmed center exists  
+
+  The graph builder is simply not consuming the data correctly.
+  That is MUCH easier than fixing geometry from scratch.
+  ---
+  # What success should look like after this deploy
+  The next run should finally show:
+  ```
+
+  ```
+  ```
+  aerial_candidate_roof_graph.executed = true
+  ```
+  with:
+  -   
+  perimeter ring  
+
+  -   
+  candidate edges  
+
+  -   
+  corner nodes  
+
+  -   
+  debug-only eave lines  
+
+  -   
+  raster_registered = true  
+
+  -   
+  primary_geometry_source = aerial_registered  
+
+  while still correctly blocking:
+  -   
+  customer report  
+
+  -   
+  validated topology  
+
+  -   
+  pitch/facet output  
+
+  That’s the exact intermediate state you want.
+  &nbsp;
