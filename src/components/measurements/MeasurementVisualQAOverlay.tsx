@@ -765,6 +765,41 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
               )}
             </div>
 
+            <details open={!rasterSizeResolved || frameCheck.mismatch || registrationFailed} className="border rounded p-2">
+              <summary className="text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer">
+                Overlay transform
+              </summary>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] font-mono mt-2">
+                <div className="text-muted-foreground">source_field</div>
+                <div className="text-right break-all">{overlaySourceField}</div>
+                <div className="text-muted-foreground">coord_space</div>
+                <div className="text-right">{overlayCoordSpace}</div>
+                <div className="text-muted-foreground">raster_size_src</div>
+                <div className="text-right">{resolvedRaster.source}</div>
+                <div className="text-muted-foreground">source_raster_px</div>
+                <div className="text-right">{rasterSize.width}×{rasterSize.height}</div>
+                <div className="text-muted-foreground">displayed_px</div>
+                <div className="text-right">{Math.round(containerWidth)}×{Math.round(displayHeight)}</div>
+                <div className="text-muted-foreground">scale</div>
+                <div className="text-right">{scale.toFixed(4)}</div>
+                <div className="text-muted-foreground">first_pt_src</div>
+                <div className="text-right">{firstPt ? `${firstPt[0].toFixed(1)},${firstPt[1].toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">first_pt_disp</div>
+                <div className="text-right">{projectedFirst ? `${projectedFirst[0].toFixed(1)},${projectedFirst[1].toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">bbox_center_src</div>
+                <div className="text-right">{bb ? `${bb.cx.toFixed(1)},${bb.cy.toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">confirmed_center_src</div>
+                <div className="text-right">{confirmedCenterPx ? `${confirmedCenterPx[0].toFixed(0)},${confirmedCenterPx[1].toFixed(0)}` : '—'}</div>
+                <div className="text-muted-foreground">frame_mismatch</div>
+                <div className={`text-right ${frameCheck.mismatch ? 'text-destructive' : ''}`}>
+                  {frameCheck.mismatch ? `${frameCheck.distancePx.toFixed(1)}px (>${frameCheck.tolerancePx.toFixed(1)})` : 'ok'}
+                </div>
+                <div className="text-muted-foreground">dsm_overlay</div>
+                <div className="text-right">{dsmAllowed ? 'allowed' : 'suppressed (no dsm→raster)'}</div>
+              </div>
+            </details>
+
+
             <div className="space-y-2 pt-2 border-t">
               <Button
                 type="button"
