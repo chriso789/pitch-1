@@ -14079,113 +14079,15 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
   if (s.includes("rake")) return "rake";
   return "unknown";
 }
-// Whitelist of footprint_source values accepted by the
-// roof_measurements_footprint_source_check constraint. Anything not in this
-// list MUST be mapped (or fall through to 'unknown') so inserts never fail.
-export const ALLOWED_FOOTPRINT_SOURCES = new Set<string>([
-  "mapbox_vector",
-  "regrid_parcel",
-  "osm_overpass",
-  "microsoft_buildings",
-  "solar_api_footprint",
-  "solar_bbox_fallback",
-  "manual_trace",
-  "manual_entry",
-  "imported",
-  "user_drawn",
-  "ai_detection",
-  "esri_buildings",
-  "google_solar_api",
-  "osm",
-  "google_maps",
-  "satellite",
-  "unknown",
-  "google_solar_bbox",
-  "google_solar_segments",
-  "google_solar_segments_hull",
-  "unet_mask",
-  "alpha_hull",
-  "convex_hull",
-]);
-
-export function normalizeRoofMeasurementFootprintSource(source: unknown) {
-  const raw = String(source ?? "unknown").trim();
-  // Direct alias remaps (legacy / producer-specific labels + DIAGNOSTIC
-  // labels that some failure paths used to write directly to the DB column).
-  // The DB CHECK constraint only accepts ALLOWED_FOOTPRINT_SOURCES; richer
-  // diagnostic labels MUST live inside geometry_report_json.footprint_source_diagnostic
-  // (handled by prepareRoofMeasurementPayload), not in the column.
-  const aliasMap: Record<string, string> = {
-    osm_building: "osm_overpass",
-    osm_buildings: "osm_overpass",
-    unet_segmentation: "ai_detection",
-    unet: "unet_mask",
-    none: "unknown",
-    "": "unknown",
-    unified_pipeline: "ai_detection",
-    topology_engine_v2: "ai_detection",
-    topology_engine_v2_skeleton: "ai_detection",
-    mapbox_static: "satellite",
-    single_plane_fallback: "solar_bbox_fallback",
-    google_solar_segments_convex_hull: "google_solar_segments_hull",
-    google_solar_segments_union: "google_solar_segments_hull",
-    // Diagnostic / failure-state labels — DB-safe coercion. Original value is
-    // preserved in geometry_report_json.footprint_source_diagnostic.
-    blocked_by_registration_gate: "unknown",
-    registration_blocked: "unknown",
-    coordinate_registration_failed: "unknown",
-    coordinate_registration_blocked: "unknown",
-    runtime_preempted: "unknown",
-    google_solar_roof_mask: "google_solar_api",
-  };
-  const remapped = aliasMap[raw] ?? raw;
-  if (ALLOWED_FOOTPRINT_SOURCES.has(remapped)) return remapped;
-  // Heuristic fallbacks for unrecognized values — keep insert valid.
-  const lower = remapped.toLowerCase();
-  if (lower.includes("solar")) return "google_solar_api";
-  if (lower.includes("osm")) return "osm_overpass";
-  if (lower.includes("hull")) return "convex_hull";
-  if (lower.includes("unet") || lower.includes("ai")) return "ai_detection";
-  if (lower.includes("manual")) return "manual_trace";
-  console.warn(
-    `[footprint_source] Unknown source '${raw}' — coercing to 'unknown'`,
-  );
-  return "unknown";
-}
-
-/**
- * Defensive chokepoint: any payload bound for roof_measurements MUST pass
- * through this. It normalizes `footprint_source` to a DB-whitelisted value,
- * and preserves the raw diagnostic label inside
- * `geometry_report_json.footprint_source_diagnostic`. This is belt-and-braces
- * protection so that any new code path that forgets to normalize cannot
- * crash the insert with a 23514 CHECK constraint failure.
- *
- * Exported test surface for footprint-source-normalization regression tests.
- */
-export function applyFootprintSourceDbSafeCoercion(
-  payload: Record<string, unknown>,
-  geometry: Record<string, unknown>,
-): { coerced: boolean; raw: string | null; normalized: string | null } {
-  const rawTop = payload.footprint_source;
-  const rawGeo = (geometry as any).footprint_source;
-  const raw = rawTop ?? rawGeo;
-  if (raw === undefined || raw === null) {
-    return { coerced: false, raw: null, normalized: null };
-  }
-  const rawStr = String(raw);
-  const normalized = normalizeRoofMeasurementFootprintSource(rawStr);
-  if (normalized !== rawStr) {
-    if (!(geometry as any).footprint_source_diagnostic) {
-      (geometry as any).footprint_source_diagnostic = rawStr;
-    }
-    (geometry as any).footprint_source_normalized_from = rawStr;
-    (geometry as any).footprint_source_normalized_to = normalized;
-  }
-  payload.footprint_source = normalized;
-  (geometry as any).footprint_source = normalized;
-  return { coerced: normalized !== rawStr, raw: rawStr, normalized };
-}
+// `footprint_source` DB-safe coercion lives in
+// `_shared/footprint-source.ts` so it can be unit-tested without importing
+// the entire edge function entrypoint (which pulls in npm:@supabase/...).
+// Re-exported here for back-compat with existing local references.
+export {
+  ALLOWED_FOOTPRINT_SOURCES,
+  applyFootprintSourceDbSafeCoercion,
+  normalizeRoofMeasurementFootprintSource,
+} from "../_shared/footprint-source.ts";
 function cleanPlane(
   plane: any,
   idx: number,
