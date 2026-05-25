@@ -969,9 +969,17 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
   } else if (regPreflight) {
-    const registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
+    let registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
+    registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock as Record<string, unknown>, geometry as any);
     geometry.registration = registrationBlock;
     geometry.registration_gate = registrationBlock;
+  } else {
+    // No regInput/regPreflight provided — still run the hoist so debug-only
+    // writes carry dsm_size_px / candidate fields when evidence exists.
+    const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? {}) as Record<string, unknown>;
+    const hoisted = applyLiveRuntimeHoistToRegistration({ ...existing }, geometry as any);
+    geometry.registration = hoisted;
+    geometry.registration_gate = hoisted;
   }
   delete (next as any)._registration_gate_input;
   delete (next as any)._registration_transform_package;
