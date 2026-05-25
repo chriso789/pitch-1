@@ -109,6 +109,10 @@ import {
   refineTrueOuterRoofPerimeter,
 } from "../_shared/perimeter-refinement.ts";
 import {
+  type Phase3A5CoordinateSpace,
+  selectPhase3A5TargetMaskComponent,
+} from "../_shared/phase3a5-coordinate-contract.ts";
+import {
   analyzeTopologyFidelity,
   type AutonomousGraphInput,
   detectComplexRoof,
@@ -533,6 +537,81 @@ function buildPhase3A5Block(debug: any): Record<string, any> {
   };
 }
 
+function svgEscape(value: unknown): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function buildPhase3A5AerialOverlayDataUrl(input: {
+  imageUrl: string | null;
+  width: number;
+  height: number;
+  rawPerimeter?: Array<{ x: number; y: number }> | null;
+  refinedPerimeter?: Array<[number, number]> | null;
+  targetMaskBbox?: any;
+  globalMaskBbox?: any;
+  perimeterCentroid?: [number, number] | null;
+  targetMaskCentroid?: [number, number] | null;
+  label: string;
+}): string | null {
+  try {
+    const W = Number(input.width || 0);
+    const H = Number(input.height || 0);
+    if (!W || !H) return input.imageUrl;
+    const pointPath = (pts: Array<[number, number]> | null | undefined) => {
+      if (!pts?.length) return "";
+      return pts.map(([x, y], i) =>
+        `${i === 0 ? "M" : "L"}${Number(x).toFixed(1)},${Number(y).toFixed(1)}`
+      ).join(" ") + " Z";
+    };
+    const rawPath = pointPath(
+      input.rawPerimeter?.map((p) => [p.x, p.y]) ?? null,
+    );
+    const refinedPath = pointPath(input.refinedPerimeter ?? null);
+    const rect = (b: any, color: string) =>
+      b && Number.isFinite(Number(b.minX))
+        ? `<rect x="${Number(b.minX).toFixed(1)}" y="${
+          Number(b.minY).toFixed(1)
+        }" width="${Number(b.maxX - b.minX).toFixed(1)}" height="${
+          Number(b.maxY - b.minY).toFixed(1)
+        }" fill="none" stroke="${color}" stroke-width="3"/>`
+        : "";
+    const dot = (p: [number, number] | null | undefined, color: string) =>
+      p
+        ? `<circle cx="${p[0].toFixed(1)}" cy="${
+          p[1].toFixed(1)
+        }" r="7" fill="${color}" stroke="#fff" stroke-width="2"/>`
+        : "";
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+      (input.imageUrl
+        ? `<image href="${
+          svgEscape(input.imageUrl)
+        }" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="none"/>`
+        : `<rect width="${W}" height="${H}" fill="#111"/>`) +
+      (rawPath
+        ? `<path d="${rawPath}" fill="rgba(255,255,0,0.16)" stroke="#ffcc00" stroke-width="4"/>`
+        : "") +
+      (refinedPath
+        ? `<path d="${refinedPath}" fill="rgba(0,120,255,0.14)" stroke="#0078ff" stroke-width="4"/>`
+        : "") +
+      rect(input.globalMaskBbox, "#27e1a0") +
+      rect(input.targetMaskBbox, "#ff3355") +
+      dot(input.perimeterCentroid, "#0078ff") +
+      dot(input.targetMaskCentroid, "#ff3355") +
+      `<text x="16" y="30" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke" font-family="Arial" font-size="20">${
+        svgEscape(input.label)
+      }</text>` +
+      `</svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  } catch {
+    return input.imageUrl;
+  }
+}
+
 function buildPhase3CBlock(debug: any): Record<string, any> {
   const r = debug?.phase3C ?? debug?.deferred_edges ?? null;
   if (!r) {
@@ -612,6 +691,27 @@ function buildPhase3EBlock(debug: any): Record<string, any> {
 }
 
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
+  const reason = String(
+    raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? "",
+  ).toLowerCase();
+  const phase3A5Ran = debug?.phase3A_5?.executed === true ||
+    debug?.phase3_5?.executed === true ||
+    debug?.phase3A_5?.perimeter_refinement_executed === true ||
+    debug?.phase3_5?.perimeter_refinement_executed === true;
+  if (
+    phase3A5Ran &&
+    (debug?.dsm_loaded === true || debug?.phase3A_5?.dsm_size_px != null) &&
+    (debug?.mask_loaded === true ||
+      debug?.phase3A_5?.target_mask_bbox_px != null) &&
+    (
+      reason.includes("perimeter") ||
+      reason.includes("coordinate_space_contract_unknown") ||
+      reason.includes("coordinate_space_mismatch")
+    )
+  ) {
+    return "ai_failed_perimeter";
+  }
+
   // ─── Registration failures outrank perimeter/topology classification. ───
   // A run whose target was never confirmed, whose geo→pixel transform is
   // invalid, or whose selected candidate does not contain the confirmed
@@ -644,10 +744,6 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
     debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null,
   );
   if (phase3A.perimeter_classification_invalid) return "ai_failed_perimeter";
-  const reason = String(
-    raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? "",
-  ).toLowerCase();
-
   // Phase 3A.5+ rule: once eave/rake classification has passed, downstream
   // failures that mention "footprint" or "facet" are TOPOLOGY failures, not
   // perimeter failures. Only mark perimeter when the perimeter gate itself
@@ -734,7 +830,15 @@ function withPhase3Visibility(
   // ─── Registration failure dominates hard_fail_reason / failure_stage ───
   const reg =
     (payload.registration ?? payload.registration_gate ?? null) as any;
-  const regFailureReason = deriveRegistrationFailureReason(reg);
+  const phase3A5RanWithSources = (
+    payload.phase3A_5?.executed === true ||
+    payload.phase3_5?.executed === true
+  ) &&
+    (payload.dsm_loaded === true || payload.phase3A_5?.dsm_size_px != null) &&
+    (payload.mask_loaded === true ||
+      payload.phase3A_5?.target_mask_bbox_px != null);
+  const rawRegFailureReason = deriveRegistrationFailureReason(reg);
+  const regFailureReason = phase3A5RanWithSources ? null : rawRegFailureReason;
   const hardFailReason = regFailureReason
     ? regFailureReason
     : (phase3A.perimeter_classification_invalid
@@ -5008,47 +5112,13 @@ async function processJob(input: any) {
         .filter((v): v is number =>
           Number.isFinite(Number(v)) && Number(v) > 0
         );
-      let target: TargetComp | null = null;
-      let bestScore = -Infinity;
-      for (const c of components) {
-        const componentAreaSqft = c.pixels * sqftPerPx2;
-        const insideRatio = c.insidePerimeterPixels / Math.max(1, c.pixels);
-        const footprintCoverage = c.insidePerimeterPixels / footprintAreaPx;
-        const centroidDist = Math.hypot(
-          c.cx - fpCentroid.x,
-          c.cy - fpCentroid.y,
-        );
-        const geocodeDist = Math.hypot(
-          c.cx - params.geocodePoint.x,
-          c.cy - params.geocodePoint.y,
-        );
-        const solarDist = params.solarCentroid
-          ? Math.hypot(
-            c.cx - params.solarCentroid.x,
-            c.cy - params.solarCentroid.y,
-          )
-          : 0;
-        const expectedAreaScore = refAreas.length
-          ? Math.max(
-            ...refAreas.map((ref) =>
-              Math.max(
-                0,
-                1 - Math.abs(componentAreaSqft - ref) / Math.max(ref, 1),
-              )
-            ),
-          )
-          : 0.5;
-        const score = insideRatio * 2.4 +
-          Math.min(1, footprintCoverage) * 1.6 +
-          (1 / (1 + centroidDist / 80)) * 1.2 +
-          (1 / (1 + geocodeDist / 160)) * 0.7 +
-          (params.solarCentroid ? (1 / (1 + solarDist / 120)) * 0.7 : 0) +
-          expectedAreaScore * 1.2;
-        if (score > bestScore) {
-          bestScore = score;
-          target = c;
-        }
-      }
+      const componentSelection = selectPhase3A5TargetMaskComponent({
+        components,
+        perimeter: perimeter.map((p) => [p.x, p.y] as [number, number]),
+        sqft_per_px2: sqftPerPx2,
+        reference_area_sqft: refAreas,
+      });
+      const target = componentSelection.selected as TargetComp | null;
 
       const targetMaskGrid = new Uint8Array(W * H);
       let missedTargetPx = 0;
@@ -5130,20 +5200,14 @@ async function processJob(input: any) {
         solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
         footprint_area_sqft: Math.round(params.footprintAreaSqft),
         footprint_source: params.footprintSource,
-        mask_components_table: components
+        selected_component_id: componentSelection.selected_component_id,
+        rejected_component_reasons: componentSelection.rows
+          .filter((row) => row.rejection_reason)
+          .map((row) => ({ id: row.id, reason: row.rejection_reason })),
+        mask_components_table: componentSelection.rows
           .slice()
-          .sort((a, b) => b.pixels - a.pixels)
-          .slice(0, 12)
-          .map((c) => ({
-            id: c.id,
-            selected: target?.id === c.id,
-            area_sqft: Math.round(c.pixels * sqftPerPx2),
-            inside_perimeter_ratio: Number(
-              (c.insidePerimeterPixels / Math.max(1, c.pixels)).toFixed(3),
-            ),
-            centroid_px: [Math.round(c.cx), Math.round(c.cy)],
-            bbox_px: { minX: c.minX, minY: c.minY, maxX: c.maxX, maxY: c.maxY },
-          })),
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 12),
         // Legacy names retained for old debug readers, now TARGET-based.
         roof_mask_area_sqft: target ? Math.round(targetMaskAreaSqft) : null,
         perimeter_to_mask_ratio: perimeterToTargetMaskRatio != null
@@ -6256,6 +6320,7 @@ async function processJob(input: any) {
       let phase3A5Diagnostics: any = null;
       let phase3A5Result: PerimeterRefinementResult | null = null;
       let footprintGeoForSolver: [number, number][] = footprintGeo;
+      let phase3A5ScorerSpace: Phase3A5CoordinateSpace = "unknown";
       let phase3A5SelectedSource: string =
         (perimeterTopologySnapshot?.perimeter_source ??
           footprintSource) as string;
@@ -6357,25 +6422,90 @@ async function processJob(input: any) {
             JSON.stringify(aerialResampleLog),
           );
 
+          const targetMaskAerial = targetMaskIsolation?.target_mask_grid as
+            | Uint8Array
+            | null;
+          const useAerialScorer = !!(
+            targetMaskAerial &&
+            raster?.data &&
+            raster.width &&
+            raster.height &&
+            footprint.length >= 4
+          );
+          const rasterRgba = (() => {
+            if (!useAerialScorer) return null;
+            const W = raster.width as number;
+            const H = raster.height as number;
+            const channels = raster.data.length / (W * H);
+            if (channels < 3) return null;
+            const src = raster.data as Uint8Array;
+            const out = new Uint8ClampedArray(W * H * 4);
+            for (let i = 0; i < W * H; i++) {
+              const si = Math.floor(i * channels);
+              const oi = i * 4;
+              out[oi] = src[si];
+              out[oi + 1] = src[si + 1];
+              out[oi + 2] = src[si + 2];
+              out[oi + 3] = channels >= 4 ? src[si + 3] : 255;
+            }
+            return out;
+          })();
+          phase3A5ScorerSpace = useAerialScorer ? "aerial_px" : "dsm_px";
+          const rawPerimScorerPx: [number, number][] = useAerialScorer
+            ? footprint.map((p) => [p.x, p.y] as [number, number])
+            : rawPerimDsmPx;
+          const scorerW = useAerialScorer ? raster.width : dsmW;
+          const scorerH = useAerialScorer ? raster.height : dsmH;
+          const scorerMpp = useAerialScorer ? actualMpp : mppRefine;
+          const scorerMask = useAerialScorer
+            ? targetMaskAerial
+            : ((roofMask?.data as Uint8Array) ||
+              (maskedDSM?.mask as Uint8Array) || null);
+          const scorerRgba = useAerialScorer ? rasterRgba : aerialRgba;
+          const scorerDsm = useAerialScorer
+            ? null
+            : ((dsmForRefine.data as Float32Array) || null);
+          const scorerCentroid = [
+            rawPerimScorerPx.reduce((s, p) => s + p[0], 0) /
+            Math.max(1, rawPerimScorerPx.length),
+            rawPerimScorerPx.reduce((s, p) => s + p[1], 0) /
+            Math.max(1, rawPerimScorerPx.length),
+          ] as [number, number];
+
           phase3A5Result = refineTrueOuterRoofPerimeter({
-            raw_perimeter_px: rawPerimDsmPx,
+            raw_perimeter_px: rawPerimScorerPx,
             raw_perimeter_source: phase3A5SelectedSource,
-            dsm_grid: (dsmForRefine.data as Float32Array) || null,
-            target_mask_grid: (roofMask?.data as Uint8Array) ||
-              (maskedDSM?.mask as Uint8Array) || null,
-            width: dsmW,
-            height: dsmH,
-            meters_per_pixel: mppRefine,
-            rgba: aerialRgba,
+            dsm_grid: scorerDsm,
+            target_mask_grid: scorerMask,
+            width: scorerW,
+            height: scorerH,
+            meters_per_pixel: scorerMpp,
+            rgba: scorerRgba,
             solar_segment_masks_px: null,
-            roof_centroid_px: [cX, cY],
+            roof_centroid_px: scorerCentroid,
             benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft ??
               (benchmarkForPerimeter as any)?.area_sqft ??
               null,
             user_verified_perimeter: !!input.user_verified_perimeter,
+            perimeter_coordinate_space: phase3A5ScorerSpace,
+            target_mask_coordinate_space: phase3A5ScorerSpace,
+            scorer_coordinate_space: phase3A5ScorerSpace,
+            transform_used: useAerialScorer
+              ? "none_same_aerial_frame"
+              : "geo_to_dsm_transform",
+            source_image_size_px: {
+              width: raster.width,
+              height: raster.height,
+            },
+            dsm_size_px: { width: dsmW, height: dsmH },
+            mask_size_px: { width: scorerW, height: scorerH },
           });
           (phase3A5Result.diagnostics as any).aerial_rgba_resample =
             aerialResampleLog;
+          (phase3A5Result.diagnostics as any).scorer_coordinate_space =
+            phase3A5ScorerSpace;
+          (phase3A5Result.diagnostics as any).canonical_scoring_frame =
+            phase3A5ScorerSpace;
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
             enabled: true,
@@ -6439,6 +6569,23 @@ async function processJob(input: any) {
       if (phase3A5Result && !phase3A5Result.passed && !provisionalReady) {
         const failReason = phase3A5Result.hard_fail_reason ||
           "perimeter_refinement_failed";
+        const phase3A5AerialOverlayUrl = buildPhase3A5AerialOverlayDataUrl({
+          imageUrl,
+          width: raster.width,
+          height: raster.height,
+          rawPerimeter: footprint,
+          refinedPerimeter: phase3A5ScorerSpace === "aerial_px"
+            ? phase3A5Result.refined_perimeter_px
+            : null,
+          targetMaskBbox: phase3A5Diagnostics?.target_mask_bbox_px ??
+            targetMaskIsolation?.target_mask_bbox_px ?? null,
+          globalMaskBbox: targetMaskIsolation?.global_visible_roof_bbox_px ??
+            visibleRoofBboxPx ?? null,
+          perimeterCentroid: phase3A5Diagnostics?.perimeter_centroid_px ?? null,
+          targetMaskCentroid: phase3A5Diagnostics?.target_mask_centroid_px ??
+            null,
+          label: `Phase 3A.5 ${failReason} (${phase3A5ScorerSpace})`,
+        });
         console.error(
           `[PHASE3A5_GATE] FAIL: ${failReason}`,
           JSON.stringify({
@@ -6458,9 +6605,23 @@ async function processJob(input: any) {
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
           dsm_loaded: true,
           mask_loaded: !!roofMask,
+          coordinate_space_solver: phase3A5ScorerSpace,
+          perimeter_coordinate_space:
+            phase3A5Diagnostics?.perimeter_coordinate_space ??
+              phase3A5ScorerSpace,
+          target_mask_coordinate_space:
+            phase3A5Diagnostics?.target_mask_coordinate_space ??
+              phase3A5ScorerSpace,
+          scorer_coordinate_space:
+            phase3A5Diagnostics?.scorer_coordinate_space ?? phase3A5ScorerSpace,
+          coordinate_space_contract:
+            phase3A5Diagnostics?.coordinate_space_contract ??
+              null,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
           phase3_5_perimeter_refinement_enabled: true,
           phase3A_5: phase3A5Diagnostics,
+          satellite_overlay_url: phase3A5AerialOverlayUrl,
+          phase3A5_aerial_overlay_url: phase3A5AerialOverlayUrl,
           refinement_passed: false,
           refinement_rejected: refinementRejected,
           refinement_fallback_used: fallbackUsed,
@@ -6474,7 +6635,7 @@ async function processJob(input: any) {
             phase3A5Diagnostics?.patio_screen_exclusion_regions ?? [],
           refinement_diagnostics: phase3A5Diagnostics,
           hard_fail_reason: failReason,
-          block_customer_report_reason: "perimeter_shape_not_accurate",
+          block_customer_report_reason: failReason,
           customer_report_ready: false,
           failure_stage: "perimeter",
           result_state: "ai_failed_perimeter",
@@ -6526,7 +6687,25 @@ async function processJob(input: any) {
         (phase3A5Result.passed || provisionalReady)
       ) {
         const dsmRef: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
-        if (dsmRef) {
+        if (phase3A5ScorerSpace === "aerial_px") {
+          const selectedGeo: [number, number][] = phase3A5Result
+            .refined_perimeter_px.map(([px, py]) =>
+              pxToLngLat(
+                { x: px, y: py },
+                { lat: coords.lat, lng: coords.lng },
+                raster.width,
+                raster.height,
+                actualMpp,
+              ) as [number, number]
+            );
+          if (selectedGeo.length >= 4) {
+            footprintGeoForSolver = selectedGeo;
+            phase3A5SelectedSource = fallbackUsed === "raw_perimeter" ||
+                selectedPerimeterLabel === "raw_perimeter"
+              ? "raw_perimeter_after_destructive_refinement_rejected"
+              : "refined_true_outer_roof_perimeter";
+          }
+        } else if (dsmRef) {
           const b = dsmRef.bounds;
           const selectedGeo: [number, number][] = phase3A5Result
             .refined_perimeter_px.map(([px, py]) => {
@@ -14186,6 +14365,8 @@ async function insertFailedPreliminaryMeasurement(
     target_lat: coords.lat,
     target_lng: coords.lng,
     mapbox_image_url: imageUrl,
+    satellite_overlay_url: debug?.satellite_overlay_url ??
+      debug?.phase3A5_aerial_overlay_url ?? null,
     analysis_image_size: debug?.raster_size || {
       width: Number(
         input.actual_image_width || input.logical_image_width || 1280,

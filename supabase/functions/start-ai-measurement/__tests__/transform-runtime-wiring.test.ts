@@ -413,6 +413,21 @@ Deno.test("runtime has terminal-write guard and stale-job watchdog", async () =>
   assert(source.includes("needs_review: true"));
 });
 
+Deno.test("Phase 3A.5 failures preserve perimeter result state and aerial overlay", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
+  assert(source.includes("phase3A5RanWithSources"));
+  assert(source.includes('return "ai_failed_perimeter";'));
+  assert(source.includes("coordinate_space_solver: phase3A5ScorerSpace"));
+  assert(source.includes("block_customer_report_reason: failReason"));
+  assert(source.includes("buildPhase3A5AerialOverlayDataUrl"));
+  assert(source.includes("satellite_overlay_url: phase3A5AerialOverlayUrl"));
+  assert(
+    source.includes("satellite_overlay_url: debug?.satellite_overlay_url"),
+  );
+});
+
 Deno.test("must-run preflight: target unconfirmed still builds static transform proof", () => {
   const pkg = buildRegistrationTransformPackage({
     confirmed_roof_center_lat_lng: FONSICA,
