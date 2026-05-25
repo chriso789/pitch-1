@@ -138,6 +138,10 @@ const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS
 const UNET_ENDPOINT = Deno.env.get("PITCH_UNET_ENDPOINT") || Deno.env.get("INTERNAL_UNET_URL") || "";
 const UNET_API_KEY = Deno.env.get("PITCH_UNET_API_KEY") || Deno.env.get("INTERNAL_UNET_KEY") || "";
 const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
+const GOOGLE_SOLAR_STAGE_TIMEOUT_MS = 60_000;
+const GOOGLE_SOLAR_FETCH_TIMEOUT_MS = 20_000;
+const GOOGLE_SOLAR_DSM_TIMEOUT_MS = 20_000;
+const GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS = 20_000;
 
 // ─── RUNTIME BUILD / VERSION STAMP ────────────────────────────────────
 // Bump these when you change perimeter/phase0 control flow so deployed
@@ -181,6 +185,44 @@ function vlog(marker: string, payload: Record<string, unknown> = {}) {
   } catch {
     console.log(`[VTRACE] ${marker}`, payload);
   }
+}
+
+class StageTimeoutError extends Error {
+  constructor(public readonly timeoutMs: number, public readonly stage: string) {
+    super(`${stage}_timeout_${timeoutMs}ms`);
+    this.name = "StageTimeoutError";
+  }
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+async function withStageTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  stage: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new StageTimeoutError(timeoutMs, stage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function countMaskPoints(mask: any): number {
+  if (!mask?.data) return 0;
+  let n = 0;
+  for (const v of mask.data as Iterable<number>) {
+    if (Number(v) > 0) n++;
+  }
+  return n;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2521,12 +2563,60 @@ async function processJob(input: any) {
     let selectedMaskContourGeo: Array<[number, number]> | null = null;
     let maskContourDiagnostics: any = null;
     let maskContourFailed = true;
+    let googleSolarMaskHardFailReason: string | null = null;
+    const googleSolarMaskStageDebug: any = {
+      google_solar_stage_timeout_ms: GOOGLE_SOLAR_STAGE_TIMEOUT_MS,
+      google_solar_fetch_timeout_ms: GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+      dsm_fetch_timeout_ms: GOOGLE_SOLAR_DSM_TIMEOUT_MS,
+      footprint_extraction_timeout_ms: GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS,
+      google_solar_stage_started_at: null,
+      google_solar_stage_finished_at: null,
+      google_solar_stage_duration_ms: null,
+      google_solar_fetch_started_at: null,
+      google_solar_fetch_finished_at: null,
+      google_solar_fetch_duration_ms: null,
+      google_solar_status: "not_started",
+      google_solar_error: null,
+      dsm_fetch_started_at: null,
+      dsm_fetch_finished_at: null,
+      dsm_fetch_duration_ms: null,
+      dsm_loaded: false,
+      mask_loaded: false,
+      mask_point_count: 0,
+      footprint_point_count: 0,
+      footprint_extraction_started_at: null,
+      footprint_extraction_finished_at: null,
+      footprint_extraction_duration_ms: null,
+      footprint_extraction_error: null,
+    };
     if (GOOGLE_SOLAR_API_KEY) {
+      const googleSolarStageStarted = Date.now();
+      googleSolarMaskStageDebug.google_solar_stage_started_at = nowIso();
       try {
         await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
-        roofMaskForContour = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        googleSolarMaskStageDebug.google_solar_fetch_started_at = nowIso();
+        const solarFetchStarted = Date.now();
+        roofMaskForContour = await withStageTimeout(
+          fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+          GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+          "google_solar_roof_mask_fetch",
+        );
+        googleSolarMaskStageDebug.google_solar_fetch_finished_at = nowIso();
+        googleSolarMaskStageDebug.google_solar_fetch_duration_ms = Date.now() - solarFetchStarted;
+        googleSolarMaskStageDebug.google_solar_status = roofMaskForContour ? "mask_loaded" : "mask_missing";
+        googleSolarMaskStageDebug.mask_loaded = !!roofMaskForContour;
+        googleSolarMaskStageDebug.mask_point_count = countMaskPoints(roofMaskForContour);
         if (roofMaskForContour) {
-          const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
+          googleSolarMaskStageDebug.footprint_extraction_started_at = nowIso();
+          const footprintStarted = Date.now();
+          const maskContourGeo = await withStageTimeout(
+            Promise.resolve().then(() => extractMaskContour(roofMaskForContour, coords.lat, coords.lng)),
+            GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS,
+            "roof_mask_footprint_extraction",
+          );
+          googleSolarMaskStageDebug.footprint_extraction_finished_at = nowIso();
+          googleSolarMaskStageDebug.footprint_extraction_duration_ms = Date.now() - footprintStarted;
+          googleSolarMaskStageDebug.footprint_point_count = maskContourGeo.length;
           maskContourDiagnostics = getLastContourDiagnostics();
           if (maskContourDiagnostics) {
             console.log("[MASK_CONTOUR_DIAG]", JSON.stringify(maskContourDiagnostics));
@@ -2555,11 +2645,16 @@ async function processJob(input: any) {
           // component that contains the user-confirmed roof center (not a
           // fused multi-house blob — Fonsica failure mode).
           try {
-            const components = extractMaskContourComponents(
-              roofMaskForContour,
-              coords.lat,
-              coords.lng,
+            const components = await withStageTimeout(
+              Promise.resolve().then(() => extractMaskContourComponents(
+                roofMaskForContour,
+                coords.lat,
+                coords.lng,
+              )),
+              GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS,
+              "roof_mask_component_extraction",
             );
+            googleSolarMaskStageDebug.mask_component_count = components.length;
             const confirmedCenterPxForComponents = (input as any).confirmed_roof_center_px as
               | [number, number]
               | null
@@ -2632,12 +2727,90 @@ async function processJob(input: any) {
               }
             }
           } catch (e) {
+            googleSolarMaskStageDebug.footprint_extraction_error = (e as Error).message;
             console.warn("[MASK_CONTOUR_COMPONENTS] failed:", (e as Error).message);
           }
         }
       } catch (e) {
-        console.warn("[FOOTPRINT_MASK_CONTOUR_PRIMARY] failed:", (e as Error).message);
+        const err = e as Error;
+        googleSolarMaskStageDebug.google_solar_fetch_finished_at = googleSolarMaskStageDebug.google_solar_fetch_finished_at ?? nowIso();
+        if (googleSolarMaskStageDebug.google_solar_fetch_started_at && googleSolarMaskStageDebug.google_solar_fetch_duration_ms == null) {
+          googleSolarMaskStageDebug.google_solar_fetch_duration_ms =
+            Date.now() - Date.parse(googleSolarMaskStageDebug.google_solar_fetch_started_at);
+        }
+        googleSolarMaskStageDebug.google_solar_status = err instanceof StageTimeoutError ? "timeout" : "error";
+        googleSolarMaskStageDebug.google_solar_error = err.message;
+        googleSolarMaskHardFailReason = "google_solar_mask_timeout";
+        console.warn("[FOOTPRINT_MASK_CONTOUR_PRIMARY] failed:", err.message);
+      } finally {
+        googleSolarMaskStageDebug.google_solar_stage_finished_at = nowIso();
+        googleSolarMaskStageDebug.google_solar_stage_duration_ms = Date.now() - googleSolarStageStarted;
       }
+      if (!googleSolarMaskHardFailReason) {
+        if (!roofMaskForContour) {
+          googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";
+        } else if (googleSolarMaskStageDebug.mask_point_count <= 0) {
+          googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";
+        } else if ((googleSolarMaskStageDebug.footprint_point_count ?? 0) < 4 && (googleSolarMaskStageDebug.mask_component_count ?? 0) === 0) {
+          googleSolarMaskHardFailReason = googleSolarMaskStageDebug.footprint_extraction_error
+            ? "roof_mask_footprint_extraction_failed"
+            : "roof_mask_points_missing";
+        } else if ((googleSolarMaskStageDebug.footprint_extraction_duration_ms ?? 0) > GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS) {
+          googleSolarMaskHardFailReason = "google_solar_mask_timeout";
+        } else if ((googleSolarMaskStageDebug.google_solar_stage_duration_ms ?? 0) > GOOGLE_SOLAR_STAGE_TIMEOUT_MS) {
+          googleSolarMaskHardFailReason = "google_solar_mask_timeout";
+        }
+      }
+    }
+
+    if (googleSolarMaskHardFailReason) {
+      const debugPayload = {
+        topology_source: REQUIRED_TOPOLOGY_SOURCE,
+        failure_stage: "google_solar_roof_mask_footprint_extraction",
+        hard_fail_reason: googleSolarMaskHardFailReason,
+        block_customer_report_reason: googleSolarMaskHardFailReason,
+        result_state: "ai_failed_source_acquisition",
+        diagram_render_intent: "debug_only",
+        customer_report_ready: false,
+        roof_lines_count: 0,
+        footprint_source: "google_solar_roof_mask",
+        footprint_valid: false,
+        footprint_point_count: googleSolarMaskStageDebug.footprint_point_count ?? 0,
+        mask_point_count: googleSolarMaskStageDebug.mask_point_count ?? 0,
+        dsm_loaded: false,
+        mask_loaded: googleSolarMaskStageDebug.mask_loaded === true,
+        google_solar_status: googleSolarMaskStageDebug.google_solar_status,
+        google_solar_error: googleSolarMaskStageDebug.google_solar_error,
+        google_solar_stage_started_at: googleSolarMaskStageDebug.google_solar_stage_started_at,
+        google_solar_stage_finished_at: googleSolarMaskStageDebug.google_solar_stage_finished_at,
+        google_solar_stage_duration_ms: googleSolarMaskStageDebug.google_solar_stage_duration_ms,
+        google_solar_mask_stage: googleSolarMaskStageDebug,
+        google_solar_fetch_started_at: googleSolarMaskStageDebug.google_solar_fetch_started_at,
+        google_solar_fetch_finished_at: googleSolarMaskStageDebug.google_solar_fetch_finished_at,
+        google_solar_fetch_duration_ms: googleSolarMaskStageDebug.google_solar_fetch_duration_ms,
+        dsm_fetch_started_at: googleSolarMaskStageDebug.dsm_fetch_started_at,
+        dsm_fetch_finished_at: googleSolarMaskStageDebug.dsm_fetch_finished_at,
+        dsm_fetch_duration_ms: googleSolarMaskStageDebug.dsm_fetch_duration_ms,
+        footprint_extraction_duration_ms: googleSolarMaskStageDebug.footprint_extraction_duration_ms,
+        footprint_extraction_error: googleSolarMaskStageDebug.footprint_extraction_error,
+        source_acquisition_debug: {
+          source_acquisition_failed: true,
+          google_solar_mask_stage_failed: true,
+          google_solar_mask_stage: googleSolarMaskStageDebug,
+          candidates_tried: candidates.length,
+        },
+        acquisition_audit: acquisitionAudit,
+      };
+      const failedId = await insertFailedPreliminaryMeasurement(input, coords, googleSolarMaskHardFailReason, debugPayload, imageUrl, actualMpp);
+      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Google Solar roof mask failed: ${googleSolarMaskHardFailReason}`, failedId);
+      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Google Solar roof mask failed: ${googleSolarMaskHardFailReason}`);
+      await supabase.from("ai_measurement_jobs").update({
+        needs_review: true,
+        report_blocked: true,
+        hard_fail_reason: googleSolarMaskHardFailReason,
+        source_context: { gate_reason: googleSolarMaskHardFailReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+      }).eq("id", input.ai_measurement_job_id);
+      return;
     }
 
     if (noOsmCandidatesAtSolarFallback && maskContourFailed && solarSegmentTotalAreaSqft >= 300 && solarSegmentTotalAreaSqft <= RESIDENTIAL_MAX_SQFT) {
@@ -3152,6 +3325,23 @@ async function processJob(input: any) {
         footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null ? Number(footprintToSolarBboxAreaRatio.toFixed(3)) : null,
         exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
         footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
+        google_solar_status: googleSolarMaskStageDebug.google_solar_status,
+        google_solar_error: googleSolarMaskStageDebug.google_solar_error,
+        google_solar_stage_started_at: googleSolarMaskStageDebug.google_solar_stage_started_at,
+        google_solar_stage_finished_at: googleSolarMaskStageDebug.google_solar_stage_finished_at,
+        google_solar_stage_duration_ms: googleSolarMaskStageDebug.google_solar_stage_duration_ms,
+        google_solar_fetch_started_at: googleSolarMaskStageDebug.google_solar_fetch_started_at,
+        google_solar_fetch_finished_at: googleSolarMaskStageDebug.google_solar_fetch_finished_at,
+        google_solar_fetch_duration_ms: googleSolarMaskStageDebug.google_solar_fetch_duration_ms,
+        dsm_fetch_started_at: googleSolarMaskStageDebug.dsm_fetch_started_at,
+        dsm_fetch_finished_at: googleSolarMaskStageDebug.dsm_fetch_finished_at,
+        dsm_fetch_duration_ms: googleSolarMaskStageDebug.dsm_fetch_duration_ms,
+        dsm_loaded: googleSolarMaskStageDebug.dsm_loaded === true,
+        mask_loaded: googleSolarMaskStageDebug.mask_loaded === true,
+        mask_point_count: googleSolarMaskStageDebug.mask_point_count ?? 0,
+        footprint_extraction_duration_ms: googleSolarMaskStageDebug.footprint_extraction_duration_ms,
+        footprint_extraction_error: googleSolarMaskStageDebug.footprint_extraction_error,
+        google_solar_mask_stage: googleSolarMaskStageDebug,
         footprint_area_too_large: footprintAreaTooLarge,
         footprint_bbox_too_large: footprintBboxTooLarge,
         footprint_inflated_vs_solar: footprintInflatedVsSolar,
@@ -3192,6 +3382,7 @@ async function processJob(input: any) {
           solar_segments_count: solarSegments.length,
           dsm_datalayers_diagnostics: getLastDSMDiagnostics(),
           mask_contour_diagnostics: maskContourDiagnostics || null,
+          google_solar_mask_stage: googleSolarMaskStageDebug,
         },
       };
 
@@ -3861,14 +4052,36 @@ async function processJob(input: any) {
       try {
         if (GOOGLE_SOLAR_API_KEY) {
           // Fetch DSM first (populates shared diagnostics), then mask uses cached dataLayers
-          dsmGrid = await fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
-          roofMask = await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+          googleSolarMaskStageDebug.dsm_fetch_started_at = nowIso();
+          const dsmFetchStarted = Date.now();
+          dsmGrid = await withStageTimeout(
+            fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+            GOOGLE_SOLAR_DSM_TIMEOUT_MS,
+            "google_solar_dsm_fetch",
+          );
+          googleSolarMaskStageDebug.dsm_fetch_finished_at = nowIso();
+          googleSolarMaskStageDebug.dsm_fetch_duration_ms = Date.now() - dsmFetchStarted;
+          googleSolarMaskStageDebug.dsm_loaded = !!dsmGrid;
+          roofMask = roofMaskForContour || await withStageTimeout(
+            fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+            GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+            "google_solar_roof_mask_fetch_dsm_stage",
+          );
           maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
           if (roofMask) (globalThis as any).__roofMaskForQA = roofMask;
         } else {
           console.warn("[AUTONOMOUS_DSM_GRAPH] No GOOGLE_SOLAR_API_KEY configured");
         }
       } catch (e) {
+        googleSolarMaskStageDebug.dsm_fetch_finished_at = googleSolarMaskStageDebug.dsm_fetch_finished_at ?? nowIso();
+        if (googleSolarMaskStageDebug.dsm_fetch_started_at && googleSolarMaskStageDebug.dsm_fetch_duration_ms == null) {
+          googleSolarMaskStageDebug.dsm_fetch_duration_ms =
+            Date.now() - Date.parse(googleSolarMaskStageDebug.dsm_fetch_started_at);
+        }
+        if (e instanceof StageTimeoutError) {
+          googleSolarMaskStageDebug.google_solar_status = "timeout";
+          googleSolarMaskStageDebug.google_solar_error = (e as Error).message;
+        }
         console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
       }
       const dsmDiag = getLastDSMDiagnostics();
@@ -9708,6 +9921,23 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     dsm_planar_graph_debug: debug,
     acquisition_audit: debug?.acquisition_audit || null,
     source_acquisition_debug: debug?.source_acquisition_debug || null,
+    google_solar_status: debug?.google_solar_status ?? debug?.google_solar_mask_stage?.google_solar_status ?? null,
+    google_solar_error: debug?.google_solar_error ?? debug?.google_solar_mask_stage?.google_solar_error ?? null,
+    google_solar_stage_started_at: debug?.google_solar_stage_started_at ?? debug?.google_solar_mask_stage?.google_solar_stage_started_at ?? null,
+    google_solar_stage_finished_at: debug?.google_solar_stage_finished_at ?? debug?.google_solar_mask_stage?.google_solar_stage_finished_at ?? null,
+    google_solar_stage_duration_ms: debug?.google_solar_stage_duration_ms ?? debug?.google_solar_mask_stage?.google_solar_stage_duration_ms ?? null,
+    google_solar_fetch_started_at: debug?.google_solar_fetch_started_at ?? debug?.google_solar_mask_stage?.google_solar_fetch_started_at ?? null,
+    google_solar_fetch_finished_at: debug?.google_solar_fetch_finished_at ?? debug?.google_solar_mask_stage?.google_solar_fetch_finished_at ?? null,
+    google_solar_fetch_duration_ms: debug?.google_solar_fetch_duration_ms ?? debug?.google_solar_mask_stage?.google_solar_fetch_duration_ms ?? null,
+    dsm_fetch_started_at: debug?.dsm_fetch_started_at ?? debug?.google_solar_mask_stage?.dsm_fetch_started_at ?? null,
+    dsm_fetch_finished_at: debug?.dsm_fetch_finished_at ?? debug?.google_solar_mask_stage?.dsm_fetch_finished_at ?? null,
+    dsm_fetch_duration_ms: debug?.dsm_fetch_duration_ms ?? debug?.google_solar_mask_stage?.dsm_fetch_duration_ms ?? null,
+    dsm_loaded: debug?.dsm_loaded ?? debug?.google_solar_mask_stage?.dsm_loaded ?? false,
+    mask_loaded: debug?.mask_loaded ?? debug?.google_solar_mask_stage?.mask_loaded ?? false,
+    mask_point_count: debug?.mask_point_count ?? debug?.google_solar_mask_stage?.mask_point_count ?? 0,
+    footprint_extraction_duration_ms: debug?.footprint_extraction_duration_ms ?? debug?.google_solar_mask_stage?.footprint_extraction_duration_ms ?? null,
+    footprint_extraction_error: debug?.footprint_extraction_error ?? debug?.google_solar_mask_stage?.footprint_extraction_error ?? null,
+    google_solar_mask_stage: debug?.google_solar_mask_stage ?? null,
     // ── Phase 0: Perimeter-First Topology Contract ──
     perimeter_phase0: debug?.perimeter_phase0 ?? null,
     perimeter_ready: debug?.perimeter_ready ?? false,

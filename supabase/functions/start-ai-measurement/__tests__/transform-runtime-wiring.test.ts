@@ -245,6 +245,24 @@ Deno.test("runtime path reruns gate after DSM/candidate hoist", async () => {
   assert(source.includes('reg.candidate_source_status = "stale_debug_only";'));
 });
 
+Deno.test("Google Solar roof mask stage has bounded timeout diagnostics", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(source.includes("const GOOGLE_SOLAR_STAGE_TIMEOUT_MS = 60_000;"));
+  assert(source.includes("const GOOGLE_SOLAR_FETCH_TIMEOUT_MS = 20_000;"));
+  assert(source.includes("const GOOGLE_SOLAR_DSM_TIMEOUT_MS = 20_000;"));
+  assert(source.includes("const GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS = 20_000;"));
+  assert(source.includes("google_solar_stage_duration_ms"));
+  assert(source.includes("google_solar_fetch_started_at"));
+  assert(source.includes("google_solar_fetch_duration_ms"));
+  assert(source.includes("footprint_extraction_duration_ms"));
+  assert(source.includes('googleSolarMaskHardFailReason = "google_solar_mask_timeout";'));
+  assert(source.includes('googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";'));
+  assert(source.includes('"roof_mask_footprint_extraction_failed"'));
+  assert(source.includes('"roof_mask_points_missing"'));
+  assert(source.includes('diagram_render_intent: "debug_only"'));
+  assert(source.includes('roof_lines_count: 0'));
+});
+
 Deno.test("must-run preflight: target unconfirmed still builds static transform proof", () => {
   const pkg = buildRegistrationTransformPackage({
     confirmed_roof_center_lat_lng: FONSICA,
