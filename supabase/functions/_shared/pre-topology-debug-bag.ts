@@ -10,6 +10,13 @@
 // inputs, and do not mutate their inputs (except the explicit safety-gate
 // helper, which mutates the in-place payload it is given).
 
+import {
+  type AerialCandidateRoofGraph,
+  buildAerialCandidateGraph,
+} from "./aerial-candidate-graph.ts";
+
+
+
 export type PreTopologyStage =
   | "pre_phase3_5_preempt"
   | "phase3_5_perimeter_refinement"
