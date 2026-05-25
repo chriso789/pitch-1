@@ -179,3 +179,77 @@ Deno.test("Test F — Candidate does not contain confirmed center", () => {
   assertEquals(r.hard_fail_reason, "candidate_does_not_contain_confirmed_center");
   assertEquals(r.candidate_proof.confirmed_center_inside_candidate, false);
 });
+
+// ── Two-phase preflight ordering guard (Fonsica regression) ──
+// Before this guard, an early-phase classifier call with no DSM evidence
+// returned hard_fail_reason="dsm_bounds_missing", short-circuiting the run
+// before Google Solar / DSM / mask were ever fetched.
+
+Deno.test("Phase 1 — no DSM attempted → hard_fail_reason is null (early_preflight)", () => {
+  const r = classifyRegistrationStage({
+    confirmed_roof_center_lat_lng: confirmedLL,
+    confirmed_roof_center_px: [320, 320],
+    raster_bounds_lat_lng: rasterBounds,
+    static_transform_succeeded: true,
+    // No DSM URL, not loaded, no transform success, no attempt flag.
+    dsm: { dsm_url_present: false, dsm_loaded: false },
+    candidate: { selected_candidate_polygon_px: null },
+  });
+  assertEquals(r.hard_fail_reason, null);
+  assertEquals(r.failure_stage, "early_preflight");
+  // No DSM-derived fields may appear in missing_required_fields.
+  assertEquals(r.missing_required_fields.includes("dsm_tile_bounds_lat_lng"), false);
+  assertEquals(r.missing_required_fields.includes("dsm_size_px"), false);
+  assertEquals(r.missing_required_fields.includes("geo_to_dsm_transform"), false);
+  assertEquals(r.missing_required_fields.includes("dsm_to_raster_transform"), false);
+  assertEquals(r.missing_required_fields.includes("confirmed_roof_center_dsm_px"), false);
+  assertEquals(r.missing_required_fields.includes("selected_candidate_polygon_px"), false);
+});
+
+Deno.test("Phase 1 — explicit dsm_fetch_attempted=false also returns null hard fail", () => {
+  const r = classifyRegistrationStage({
+    confirmed_roof_center_lat_lng: confirmedLL,
+    static_transform_succeeded: true,
+    dsm_fetch_attempted: false,
+    dsm: { dsm_url_present: false, dsm_loaded: false },
+    candidate: { selected_candidate_polygon_px: null },
+  } as any);
+  assertEquals(r.hard_fail_reason, null);
+  assertEquals(r.failure_stage, "early_preflight");
+});
+
+Deno.test("Phase 2 — dsm_fetch_attempted=true with bounds missing → dsm_bounds_missing", () => {
+  const r = classifyRegistrationStage({
+    confirmed_roof_center_lat_lng: confirmedLL,
+    confirmed_roof_center_px: [320, 320],
+    raster_bounds_lat_lng: rasterBounds,
+    static_transform_succeeded: true,
+    dsm_fetch_attempted: true,
+    dsm: {
+      dsm_url_present: true,
+      dsm_loaded: true,
+      dsm_decode_success: true,
+      dsm_tile_bounds_lat_lng: null,
+      dsm_size_px: null,
+    },
+    candidate: { selected_candidate_polygon_px: null },
+  } as any);
+  assertEquals(r.hard_fail_reason, "dsm_bounds_missing");
+  assertEquals(r.failure_stage, "dsm_bounds_extraction");
+});
+
+Deno.test("Phase 2 — dsm attempted but URL only, decode failed → dsm_decode_failed not silently early", () => {
+  const r = classifyRegistrationStage({
+    confirmed_roof_center_lat_lng: confirmedLL,
+    static_transform_succeeded: true,
+    dsm: {
+      dsm_url_present: true,
+      dsm_loaded: true,
+      dsm_decode_success: false,
+    },
+    candidate: { selected_candidate_polygon_px: null },
+  });
+  // dsmAttempted=true via dsm_url_present, so classifier may emit hard fail.
+  assertEquals(r.failure_stage === "early_preflight", false);
+  assertEquals(r.hard_fail_reason, "dsm_decode_failed");
+});
