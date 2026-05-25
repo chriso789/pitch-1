@@ -73,11 +73,16 @@ Deno.test("evaluateRegistrationGate — fails on invalid frame", () => {
 Deno.test("evaluateRegistrationGate — fails when candidate doesn't contain confirmed center", () => {
   const res = evaluateRegistrationGate({
     user_confirmed_roof_target: true,
+    original_geocode_lat_lng: CONFIRMED,
     confirmed_roof_center_lat_lng: CONFIRMED,
     confirmed_roof_center_px: [50, 50], // outside SQUARE
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
+    geo_to_raster_transform: { a: 1 },
+    geo_to_dsm_transform: { a: 1 },
     dsm_to_raster_transform: { a: 1 },
+    raster_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
+    dsm_tile_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
     selected_candidate_polygon_px: SQUARE,
   });
   assertEquals(res.confirmed_center_inside_candidate, false);
@@ -90,11 +95,16 @@ Deno.test("evaluateRegistrationGate — fails when candidate doesn't contain con
 Deno.test("evaluateRegistrationGate — passes when all gates satisfied", () => {
   const res = evaluateRegistrationGate({
     user_confirmed_roof_target: true,
+    original_geocode_lat_lng: CONFIRMED,
     confirmed_roof_center_lat_lng: CONFIRMED,
     confirmed_roof_center_px: [200, 200], // inside SQUARE
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
+    geo_to_raster_transform: { a: 1 },
+    geo_to_dsm_transform: { a: 1 },
     dsm_to_raster_transform: { a: 1 },
+    raster_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
+    dsm_tile_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
     selected_candidate_polygon_px: SQUARE,
   });
   assertEquals(res.failure, null);
@@ -102,6 +112,7 @@ Deno.test("evaluateRegistrationGate — passes when all gates satisfied", () => 
   assertEquals(res.confirmed_center_inside_candidate, true);
   assertEquals((res.registration as any).version.startsWith("registration-gate-v"), true);
 });
+
 
 Deno.test("evaluateCandidate — rejects when point outside", () => {
   const r = evaluateCandidate(SQUARE, [50, 50]);
