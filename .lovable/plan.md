@@ -1,47 +1,65 @@
 ## Goal
-Confirm commit `a4d543767f5c7a321cc7b24c133803fa01204592` is live on Supabase, then rerun AI Measurement for 4063 Fonsica Avenue and report the full diagnostic field set.
+Deploy commit `09e2df70c75e7ec3a2a14927f19fc30c3d1bfae4` (AbortController + terminal-write guard + watchdog), clean up the stuck Fonsica job `6d93693d-9ade-4f20-ab32-9768ffcb9ce8`, then rerun 4063 Fonsica Avenue and report the full diagnostic field set.
 
-## Pre-flight state (already verified)
-- Workspace HEAD = `a4d54376` ✅ (matches required commit)
-- New timeout constants present in source (`GOOGLE_SOLAR_STAGE_TIMEOUT_MS=60_000`, fetch/footprint=20_000) ✅
-- New failure tokens wired (`google_solar_mask_timeout`, `roof_mask_footprint_extraction_failed`, `roof_mask_points_missing`) ✅
-- No stuck/running Fonsica row — last 5 are all terminal `ai_failed_source_acquisition` with the legacy `coordinate_registration_failed` hard_fail_reason, latest at 2026-05-25 00:17 UTC ✅
-- That legacy token on the most recent row means the **deployed** edge function is older than `a4d54376`
+## Pre-flight
+1. Confirm workspace HEAD = `09e2df70c75e7ec3a2a14927f19fc30c3d1bfae4` (`git rev-parse HEAD`).
+2. Confirm the new code is present in source:
+   - `AbortController` wired into `fetchRoofMaskFromGoogleSolar`, `fetchDsmFromGoogleSolar`, and Google Solar `dataLayers` fetch
+   - 20s timeout option threaded into Google Solar fetch helpers
+   - Top-level `try/finally` terminal-write guard in `start-ai-measurement` handler
+   - New watchdog edge function (service-role-protected) for stale running jobs > 120s
+3. Run the new regression tests via `supabase--test_edge_functions` (must show the 34 passing).
 
-## Steps
+## Step 1 — Deploy
+- `supabase--deploy_edge_functions` for:
+  - `start-ai-measurement`
+  - the new watchdog function (whatever name commit `09e2df7` introduced — to be confirmed by reading the commit's file list)
+- Verify deploy success; capture deployment ID + timestamp.
 
-### 1. Force deploy `start-ai-measurement` (and shared modules pulled in via bundling)
-Use `supabase--deploy_edge_functions` with `["start-ai-measurement"]`. After deploy, hit the function with a no-op auth probe (or just rely on the rerun) and grep edge logs for the new diagnostic field name `google_solar_stage_duration_ms` to prove the new code path is serving traffic.
+## Step 2 — Clean up the stuck job
+Stuck job `6d93693d-9ade-4f20-ab32-9768ffcb9ce8` needs to be marked terminal. Since `psql` is select-only, this requires a **one-off migration** (`supabase--migration`) that updates exactly that row:
 
-### 2. Trigger the rerun
-Invoke `start-ai-measurement` for the Fonsica lead (address: `4063 Fonsica Avenue, North Port, FL 34286`). Either:
-- via `supabase--curl_edge_functions` with the lead_id payload, or
-- ask the user to click "Pull AI Measurement" on the Fonsica lead detail page
+```sql
+update public.ai_measurement_jobs
+set status = 'failed',
+    hard_fail_reason = 'ai_measurement_runtime_timeout',
+    report_blocked = true,
+    needs_review = true,
+    updated_at = now()
+where id = '6d93693d-9ade-4f20-ab32-9768ffcb9ce8'
+  and status in ('running','processing','queued');
+```
+(Mirror onto `measurement_jobs` / `roof_measurements` only if a matching row exists — verified first with `supabase--read_query`.)
 
-The job should complete or hard-fail within ~60s; it must not sit in "Extracting Google Solar roof mask footprint" for 8 minutes.
+Alternative if a watchdog function was just added: invoke it once with the service-role secret to drain stale rows, then verify Fonsica's row is now terminal.
 
-### 3. Pull the resulting row and assemble the report
-Query `roof_measurements` for the newest Fonsica row and extract:
+## Step 3 — Verify no stale "running" Fonsica row
+`supabase--read_query` on `ai_measurement_jobs` filtered to the Fonsica lead / address — assert the latest row is terminal before rerun.
 
-**Top-level columns:**
-`id`, `created_at`, `result_state`, `hard_fail_reason`, `block_customer_report_reason`, `customer_report_ready`, `last_failure_stage`, `created_by_function`, `route_audit_version`
+## Step 4 — Rerun
+Invoke `start-ai-measurement` via `supabase--curl_edge_functions` with the Fonsica lead payload (address `4063 Fonsica Avenue, North Port, FL 34286`, confirmed roof-target coords from prior runs at `27.0820246, -82.1962156`). Capture the new `job_id`.
 
-**From `geometry_report_json` / `geometry_report_json.source_acquisition_debug.google_solar_mask_stage`:**
-`google_solar_status`, `google_solar_error`, `google_solar_stage_duration_ms`, `google_solar_fetch_duration_ms`, `dsm_fetch_duration_ms`, `dsm_loaded`, `mask_loaded`, `mask_point_count`, `footprint_point_count`, `footprint_extraction_duration_ms`, `footprint_extraction_error`
+Poll until terminal or 180s, whichever first.
 
-**From `geometry_report_json.registration` (or `.registration_gate`):**
-`dsm_hoist_called`, `dsm_size_px`, `dsm_tile_bounds_lat_lng`, `geo_to_dsm_transform`, `dsm_to_raster_transform`, `selected_candidate_polygon_px` (presence), `coordinate_registration_gate_passed`
+## Step 5 — Pass/Fail evaluation
+**Pass** if:
+- Runtime < 180s AND terminal state written
+- `hard_fail_reason` ∈ {`google_solar_mask_timeout`, `google_solar_roof_mask_missing`, `roof_mask_footprint_extraction_failed`, `roof_mask_points_missing`, `ai_measurement_runtime_timeout`, `dsm_bounds_missing`, `candidate_centroid_offset_exceeds_target`, `coordinate_space_mismatch`} OR clean success with all gates passed
+- `customer_report_ready` is `false` for any failed/debug row; `true` only after `assertCustomerReportReady`
 
-**Runtime:** `created_at` of job vs row update timestamp.
+**Fail** if:
+- Job still `running` after 180s
+- Reaches the 8-minute safety limit
+- Generic `coordinate_registration_failed` returns
+- `customer_report_ready=true` on a debug-only row
 
-### 4. Apply pass/fail rule
-- **Pass shape:** specific hard_fail_reason from the allow-list (`google_solar_mask_timeout`, `google_solar_roof_mask_missing`, `roof_mask_footprint_extraction_failed`, `roof_mask_points_missing`, `dsm_size_missing`, `dsm_bounds_missing`, `geo_to_dsm_transform_missing`, `dsm_to_raster_transform_missing`, `selected_candidate_polygon_missing`, `candidate_centroid_offset_exceeds_target`, `coordinate_space_mismatch`) OR a clean success with all gates passed before `customer_report_ready=true`.
-- **Fail shape:** any of `8_minute_safety_limit`, generic `coordinate_registration_failed`, still-running >120s, or `customer_report_ready=true` on a debug-only row.
-
-### 5. If still generic `coordinate_registration_failed`
-Open `registration-stage-classifier.ts` and trace why the new specific-token branches aren't hit — likely the source-acquisition failure path is bypassing the classifier and falling through to a legacy default. Patch the fallback to emit the most specific available token from the google_solar_mask_stage debug block before reaching the generic case.
+## Step 6 — Report
+Query the resulting `ai_measurement_jobs` + `roof_measurements` row and emit all 30 requested fields:
+- Top: deployed commit SHA, deployment timestamp, stuck-job cleanup result, new job_id, new measurement_id, runtime_seconds, status, status_message, result_state, hard_fail_reason, block_customer_report_reason, customer_report_ready, diagram_render_intent, roof_lines_count
+- `geometry_report_json.source_acquisition_debug.google_solar_mask_stage`: google_solar_status, google_solar_error, google_solar_stage_duration_ms, google_solar_fetch_duration_ms, dsm_fetch_duration_ms, dsm_loaded, mask_loaded, mask_point_count, footprint_point_count, footprint_extraction_duration_ms, footprint_extraction_error
+- `geometry_report_json.registration`: dsm_hoist_called, dsm_size_px, dsm_tile_bounds_lat_lng, geo_to_dsm_transform, dsm_to_raster_transform, selected_candidate_polygon_px_present, coordinate_registration_gate_passed
 
 ## Notes
-- No DB migrations needed.
-- No frontend changes needed for this loop.
-- Plan mode → switch to build mode to actually deploy + curl.
+- One migration only (the targeted stuck-job update). No schema changes.
+- No frontend changes.
+- If the rerun returns generic `coordinate_registration_failed` again, follow the prior plan's Step 5: inspect `registration-stage-classifier.ts` and patch the fallback to emit the most specific token before the generic case — but **report first, patch second**.
