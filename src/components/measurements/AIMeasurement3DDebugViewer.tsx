@@ -136,11 +136,19 @@ function buildStages(m: any): StageDef[] {
   const pitchOk = pitch?.pitch_valid === true ||
     (m?.predominant_pitch != null && m.predominant_pitch > 0);
 
+  const facetCount = Number(m?.facet_count ?? topo?.facets_count ?? 0);
+  const roofLinesCount = Array.isArray(grj?.roof_lines)
+    ? grj.roof_lines.length
+    : Number(grj?.roof_lines_count ?? 0);
   const topoOk = topo?.facets_count != null
     ? Number(topo.facets_count) >= 3
-    : Number(m?.facet_count || 0) >= 3;
+    : facetCount >= 3;
 
-  const finalOk = !!grj?.final_diagram_url || Array.isArray(grj?.roof_lines);
+  // Final diagram CANNOT pass without real geometry. Zero facets AND zero
+  // roof_lines means we have nothing reportable, regardless of any URL.
+  const hasFinalGeometry = facetCount > 0 || roofLinesCount > 0;
+  const finalOk = hasFinalGeometry &&
+    (!!grj?.final_diagram_url || Array.isArray(grj?.roof_lines));
 
   const customerReady = m?.customer_report_ready === true ||
     customerGate?.customer_report_ready === true;
