@@ -73,6 +73,11 @@ export interface StageClassifierInput {
   dsm_tile_bounds_contain_confirmed_center?: boolean | null;
   dsm_to_raster_bounds_overlap?: boolean | null;
   static_transform_succeeded?: boolean | null;
+  // Two-phase gate: set true only AFTER Google Solar / DSM / mask fetch
+  // has been attempted. When false the classifier returns a soft
+  // `early_preflight` result with hard_fail_reason=null instead of
+  // synthesizing DSM-derived hard fails before DSM is even fetched.
+  dsm_fetch_attempted?: boolean | null;
 }
 
 export interface DsmProof {
@@ -122,7 +127,9 @@ export interface CoordinateSpaceAudit {
 
 export interface StageClassifierResult {
   version: typeof REGISTRATION_STAGE_CLASSIFIER_VERSION;
-  hard_fail_reason: string;
+  /** `null` when the run is still in `early_preflight` — DSM/source has
+   *  not yet been attempted, so no DSM-derived hard fail may be promoted. */
+  hard_fail_reason: string | null;
   failure_stage: string;
   result_state: "ai_failed_source_acquisition";
   missing_required_fields: string[];
@@ -268,6 +275,21 @@ export function classifyRegistrationStage(
     mixed_space_failure_reason: mixedReason,
   };
 
+  // ── Two-phase gate: early_preflight vs post-source-acquisition ──
+  // DSM is considered attempted when ANY of these is true:
+  //   - caller explicitly set dsm_fetch_attempted
+  //   - DSM URL was constructed (`dsm_url_present`)
+  //   - DSM was loaded
+  //   - geo→DSM transform succeeded (only possible after DSM was fetched)
+  // When DSM has NOT been attempted, the classifier refuses to promote any
+  // DSM-derived hard fail. The run is still in early request-validation
+  // phase; the post-source-acquisition gate runs later with real evidence.
+  const dsmAttempted =
+    (input as any).dsm_fetch_attempted === true ||
+    dsmUrlPresent ||
+    dsmLoaded ||
+    input.geo_to_dsm_px_success === true;
+
   // ── Stage-specific missing_required_fields ──
   // Static transform already succeeded → DO NOT report static fields missing.
   const staticOK = input.static_transform_succeeded === true;
@@ -275,6 +297,25 @@ export function classifyRegistrationStage(
     if (!input.raster_bounds_lat_lng) missing.push("raster_bounds_lat_lng");
     if (!input.confirmed_roof_center_px) missing.push("confirmed_roof_center_px");
   }
+
+  if (!dsmAttempted) {
+    // Early preflight: only static-transform fields may appear in `missing`.
+    // No DSM, candidate, or transform-derived hard fail. The post-source-
+    // acquisition gate will re-classify once real evidence exists.
+    return {
+      version: REGISTRATION_STAGE_CLASSIFIER_VERSION,
+      hard_fail_reason: null,
+      failure_stage: "early_preflight",
+      result_state: "ai_failed_source_acquisition",
+      missing_required_fields: missing,
+      dsm_proof: dsmProof,
+      candidate_proof: candidateProof,
+      coordinate_space_audit: audit,
+    };
+  }
+
+  // Post-source-acquisition only: these fields are only meaningful once
+  // DSM/source acquisition has actually been attempted.
   if (!dsmProof.dsm_size_px) missing.push("dsm_size_px");
   if (!dsmProof.dsm_tile_bounds_lat_lng) missing.push("dsm_tile_bounds_lat_lng");
   if (input.geo_to_dsm_px_success !== true) missing.push("geo_to_dsm_transform");
@@ -298,7 +339,7 @@ export function classifyRegistrationStage(
   //  10. candidate_centroid_offset_exceeds_target (when threshold provided)
   //  11. candidate_does_not_contain_confirmed_center
   //  12. coordinate_registration_failed (fallback)
-  let hardFail = "coordinate_registration_failed";
+  let hardFail: string | null = "coordinate_registration_failed";
   let stage = "registration";
   if (dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng) {
     hardFail = "dsm_bounds_missing";
@@ -355,6 +396,7 @@ export function classifyRegistrationStage(
     hardFail = "candidate_does_not_contain_confirmed_center";
     stage = "candidate_containment";
   }
+
 
 
   return {

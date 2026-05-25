@@ -6042,7 +6042,7 @@ async function processJob(input: any) {
             candidate_centroid_offset_threshold_px: _centroidThresholdPx,
           },
         });
-        const failReason = _stageReport.hard_fail_reason;
+        const failReason = _stageReport.hard_fail_reason ?? "coordinate_registration_failed";
         console.error(
           `[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`,
           JSON.stringify({
@@ -14373,18 +14373,40 @@ async function insertFailedPreliminaryMeasurement(
       dsm_size_px: dsmSizeForFailure,
       dsm_meters_per_pixel: mppFinite ? mpp : null,
     });
+    // Two-phase ordering: a failure that lands here BEFORE DSM/Source has
+    // been attempted MUST NOT be re-classified as `candidate_final`
+    // (strict + isFinal), or evaluateRegistrationGate will synthesise a
+    // DSM-derived hard_fail (dsm_bounds_missing / dsm_to_raster_transform_
+    // missing) on fields that nothing in the pipeline has yet had a chance
+    // to populate. Promote those to `candidate_final` only when DSM was
+    // actually attempted (bounds, size, or explicit attempt flag present).
+    const dsmAttemptedForFailure = !!(
+      dsmTileBoundsForFailure ||
+      dsmSizeForFailure ||
+      debug?.dsm_fetch_attempted === true ||
+      debug?.dsm_loaded === true
+    );
+    const evaluationStageForFailure: "source_preflight" | "candidate_final" =
+      !dsmAttemptedForFailure
+        ? "source_preflight"
+        : (debug?.failure_stage === "source_registration"
+          ? "source_preflight"
+          : "candidate_final");
+    const transformBuildStageForFailure = !dsmAttemptedForFailure
+      ? "early_preflight"
+      : evaluationStageForFailure;
     (failurePayload as any)._registration_preflight = input
       ?._registration_preflight;
     (failurePayload as any)._registration_transform_package =
       transformPkgFailure;
     (failurePayload as any)._registration_transform_build_stage =
-      debug?.failure_stage === "source_registration"
-        ? "source_preflight"
-        : "candidate_final";
+      transformBuildStageForFailure;
     (failurePayload as any)._registration_gate_input = {
-      evaluation_stage: debug?.failure_stage === "source_registration"
-        ? "source_preflight"
-        : "candidate_final",
+      evaluation_stage: evaluationStageForFailure,
+      // Only declare candidate-selection-started (which triggers strict mode)
+      // when DSM was actually attempted. Otherwise the strict path will
+      // synthesise DSM-field missing tokens before DSM was fetched.
+      candidate_selection_started: dsmAttemptedForFailure,
       user_confirmed_roof_target: Boolean(input?.user_confirmed_roof_target),
       roof_target_admin_override: Boolean(input?.roof_target_admin_override),
       original_geocode_lat_lng: input?.original_geocode_lat != null &&
