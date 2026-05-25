@@ -7,12 +7,20 @@
 // them at the candidate_final site. If either contract drifts, the persisted
 // Fonsica row will go back to all-null transforms and these tests fail.
 
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildRegistrationTransformPackage,
   SOURCE_REGISTRATION_TRANSFORM_VERSION,
 } from "../../_shared/source-registration-transform.ts";
 import { evaluateRegistrationGate } from "../../_shared/registration-gate.ts";
+import {
+  fetchRoofMaskFromGoogleSolar,
+  getLastDSMDiagnostics,
+  resetDSMDiagnostics,
+} from "../../_shared/dsm-analyzer.ts";
 
 const FONSICA = { lat: 27.9506, lng: -82.4572 };
 
@@ -31,12 +39,24 @@ Deno.test("happy path: confirmed center projects to raster centre and gate field
     dsm_meters_per_pixel: 0.5,
   });
   assertEquals(pkg.version, SOURCE_REGISTRATION_TRANSFORM_VERSION);
-  assert(pkg.confirmed_roof_center_px, "confirmed_roof_center_px must be populated");
-  assert(pkg.geo_to_raster_transform, "geo_to_raster_transform must be populated");
+  assert(
+    pkg.confirmed_roof_center_px,
+    "confirmed_roof_center_px must be populated",
+  );
+  assert(
+    pkg.geo_to_raster_transform,
+    "geo_to_raster_transform must be populated",
+  );
   assert(pkg.raster_bounds_lat_lng, "raster_bounds_lat_lng must be populated");
   assert(pkg.geo_to_dsm_transform, "geo_to_dsm_transform must be populated");
-  assert(pkg.dsm_to_raster_transform, "dsm_to_raster_transform must be populated");
-  assert(pkg.confirmed_roof_center_dsm_px, "confirmed_roof_center_dsm_px must be populated");
+  assert(
+    pkg.dsm_to_raster_transform,
+    "dsm_to_raster_transform must be populated",
+  );
+  assert(
+    pkg.confirmed_roof_center_dsm_px,
+    "confirmed_roof_center_dsm_px must be populated",
+  );
   // Centre of 640x640@scale2 raster is (640,640).
   const [x, y] = pkg.confirmed_roof_center_px!;
   assert(Math.abs(x - 640) < 1, `expected x≈640 got ${x}`);
@@ -101,7 +121,10 @@ Deno.test("gate passes only when candidate polygon contains confirmed centre", (
   const [cx, cy] = pkg.confirmed_roof_center_px!;
   // Candidate polygon containing the centre.
   const containing: [number, number][] = [
-    [cx - 100, cy - 100], [cx + 100, cy - 100], [cx + 100, cy + 100], [cx - 100, cy + 100],
+    [cx - 100, cy - 100],
+    [cx + 100, cy - 100],
+    [cx + 100, cy + 100],
+    [cx - 100, cy + 100],
   ];
   const result = evaluateRegistrationGate({
     evaluation_stage: "candidate_final",
@@ -157,9 +180,13 @@ Deno.test("missing selected candidate at final stage hard-fails", () => {
   });
   assertEquals(result.coordinate_registration_gate_passed, false);
   assert(result.failure, "final stage must fail without selected candidate");
-  const missing = (result.registration as any).missing_required_fields as string[];
+  const missing = (result.registration as any)
+    .missing_required_fields as string[];
   assert(missing.includes("selected_candidate_polygon_px"));
-  assertEquals(result.failure?.hard_fail_reason, "selected_candidate_polygon_missing");
+  assertEquals(
+    result.failure?.hard_fail_reason,
+    "selected_candidate_polygon_missing",
+  );
 });
 
 Deno.test("candidate in dsm_px uses confirmed_roof_center_dsm_px", () => {
@@ -173,16 +200,28 @@ Deno.test("candidate in dsm_px uses confirmed_roof_center_dsm_px", () => {
     geo_to_raster_transform: {},
     geo_to_dsm_transform: {},
     dsm_to_raster_transform: {},
-    raster_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
-    dsm_tile_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    raster_bounds_lat_lng: {
+      sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 },
+      ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 },
+    },
+    dsm_tile_bounds_lat_lng: {
+      sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 },
+      ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 },
+    },
     dsm_size_px: { width: 998, height: 998 },
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
-    selected_candidate_polygon_px: [[630,630],[650,630],[650,650],[630,650]],
+    selected_candidate_polygon_px: [[630, 630], [650, 630], [650, 650], [
+      630,
+      650,
+    ]],
     candidate_coordinate_space: "dsm_px",
     footprint_bbox_diagonal_px: 40,
   });
-  assertEquals((result.registration as any).center_used_for_candidate_check, "dsm_px");
+  assertEquals(
+    (result.registration as any).center_used_for_candidate_check,
+    "dsm_px",
+  );
   assertEquals(result.confirmed_center_inside_candidate, true);
   assertEquals(result.failure, null);
 });
@@ -198,16 +237,28 @@ Deno.test("candidate in raster_px uses confirmed_roof_center_px", () => {
     geo_to_raster_transform: {},
     geo_to_dsm_transform: {},
     dsm_to_raster_transform: {},
-    raster_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
-    dsm_tile_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    raster_bounds_lat_lng: {
+      sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 },
+      ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 },
+    },
+    dsm_tile_bounds_lat_lng: {
+      sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 },
+      ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 },
+    },
     dsm_size_px: { width: 998, height: 998 },
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
-    selected_candidate_polygon_px: [[630,630],[650,630],[650,650],[630,650]],
+    selected_candidate_polygon_px: [[630, 630], [650, 630], [650, 650], [
+      630,
+      650,
+    ]],
     candidate_coordinate_space: "raster_px",
     footprint_bbox_diagonal_px: 40,
   });
-  assertEquals((result.registration as any).center_used_for_candidate_check, "raster_px");
+  assertEquals(
+    (result.registration as any).center_used_for_candidate_check,
+    "raster_px",
+  );
   assertEquals(result.confirmed_center_inside_candidate, true);
   assertEquals(result.failure, null);
 });
@@ -223,30 +274,57 @@ Deno.test("candidate offset above target threshold hard-fails specifically", () 
     geo_to_raster_transform: {},
     geo_to_dsm_transform: {},
     dsm_to_raster_transform: {},
-    raster_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
-    dsm_tile_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    raster_bounds_lat_lng: {
+      sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 },
+      ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 },
+    },
+    dsm_tile_bounds_lat_lng: {
+      sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 },
+      ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 },
+    },
     dsm_size_px: { width: 998, height: 998 },
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
-    selected_candidate_polygon_px: [[100,100],[120,100],[120,120],[100,120]],
+    selected_candidate_polygon_px: [[100, 100], [120, 100], [120, 120], [
+      100,
+      120,
+    ]],
     candidate_coordinate_space: "raster_px",
     footprint_bbox_diagonal_px: 40,
   });
-  assertEquals(result.failure?.hard_fail_reason, "candidate_centroid_offset_exceeds_target");
-  assertEquals((result.registration as any).candidate_rejection_reason, "centroid_offset_exceeds_target");
+  assertEquals(
+    result.failure?.hard_fail_reason,
+    "candidate_centroid_offset_exceeds_target",
+  );
+  assertEquals(
+    (result.registration as any).candidate_rejection_reason,
+    "centroid_offset_exceeds_target",
+  );
 });
 
 Deno.test("runtime path reruns gate after DSM/candidate hoist", async () => {
-  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
-  assert(source.includes("registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock, geometry as any);"));
-  assert(source.includes("const refreshedGateInput = registrationInputFromBlock(regInput, registrationBlock);"));
-  assert(source.includes("result = evaluateRegistrationGate(refreshedGateInput);"));
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
+  assert(
+    source.includes(
+      "registrationBlock = applyLiveRuntimeHoistToRegistration(",
+    ),
+  );
+  assert(
+    source.includes("const refreshedGateInput = registrationInputFromBlock("),
+  );
+  assert(
+    source.includes("result = evaluateRegistrationGate(refreshedGateInput);"),
+  );
   assert(source.includes('reg.dsm_hoist_callsite = "start-ai-measurement";'));
   assert(source.includes('reg.candidate_source_status = "stale_debug_only";'));
 });
 
 Deno.test("Google Solar roof mask stage has bounded timeout diagnostics", async () => {
-  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
   assert(source.includes("const GOOGLE_SOLAR_STAGE_TIMEOUT_MS = 60_000;"));
   assert(source.includes("const GOOGLE_SOLAR_FETCH_TIMEOUT_MS = 20_000;"));
   assert(source.includes("const GOOGLE_SOLAR_DSM_TIMEOUT_MS = 20_000;"));
@@ -255,12 +333,84 @@ Deno.test("Google Solar roof mask stage has bounded timeout diagnostics", async 
   assert(source.includes("google_solar_fetch_started_at"));
   assert(source.includes("google_solar_fetch_duration_ms"));
   assert(source.includes("footprint_extraction_duration_ms"));
-  assert(source.includes('googleSolarMaskHardFailReason = "google_solar_mask_timeout";'));
-  assert(source.includes('googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";'));
+  assert(
+    source.includes(
+      'googleSolarMaskHardFailReason = "google_solar_mask_timeout";',
+    ),
+  );
+  assert(
+    source.includes(
+      'googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";',
+    ),
+  );
   assert(source.includes('"roof_mask_footprint_extraction_failed"'));
   assert(source.includes('"roof_mask_points_missing"'));
   assert(source.includes('diagram_render_intent: "debug_only"'));
-  assert(source.includes('roof_lines_count: 0'));
+  assert(source.includes("roof_lines_count: 0"));
+});
+
+Deno.test("Google Solar helpers pass AbortSignal into real fetch calls", async () => {
+  const originalFetch = globalThis.fetch;
+  let observedSignal: AbortSignal | null = null;
+  resetDSMDiagnostics();
+  try {
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      observedSignal = init?.signal ?? null;
+      return new Promise<Response>((_resolve, reject) => {
+        observedSignal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted by test", "AbortError"));
+        }, { once: true });
+      });
+    }) as typeof fetch;
+
+    const result = await fetchRoofMaskFromGoogleSolar(
+      27.950601,
+      -82.457201,
+      "test-key",
+      {
+        timeoutMs: 1,
+      },
+    );
+
+    assertEquals(result, null);
+    assert(observedSignal, "fetch must receive an AbortSignal");
+    const signal = observedSignal as AbortSignal;
+    assertEquals(signal.aborted, true);
+    assertEquals(
+      getLastDSMDiagnostics().failure_code,
+      "google_solar_datalayers_timeout",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("runtime has terminal-write guard and stale-job watchdog", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
+  assert(source.includes("let terminalStatusWritten = false;"));
+  assert(
+    source.includes("ensureTerminalStatusWritten(") &&
+      source.includes("AI_RUNTIME_UNHANDLED_FAILURE_REASON"),
+  );
+  assert(
+    source.includes("AI_RUNTIME_UNHANDLED_FAILURE_REASON") &&
+      source.includes('"ai_measurement_runtime_killed_or_unhandled"'),
+  );
+  assert(
+    source.includes(
+      'const AI_RUNTIME_TIMEOUT_FAILURE_REASON = "ai_measurement_runtime_timeout";',
+    ),
+  );
+  assert(source.includes("async function runAiMeasurementWatchdog()"));
+  assert(
+    source.includes("AI_MEASUREMENT_STALE_RUNNING_MS") &&
+      source.includes("120_000"),
+  );
+  assert(source.includes('.eq("status", "running")'));
+  assert(source.includes("report_blocked: true"));
+  assert(source.includes("needs_review: true"));
 });
 
 Deno.test("must-run preflight: target unconfirmed still builds static transform proof", () => {
@@ -286,10 +436,22 @@ Deno.test("must-run preflight: target unconfirmed still builds static transform 
     dsm_pixel_transform_valid: false,
     dsm_to_raster_transform: null,
   });
-  assert(result.failure, "target-unconfirmed preflight may fail, but not with null static transform evidence");
-  assert(pkg.confirmed_roof_center_px, "confirmed_roof_center_px must be populated before target failure write");
-  assert(pkg.raster_bounds_lat_lng, "raster_bounds_lat_lng must be populated before target failure write");
-  assert(pkg.geo_to_raster_transform, "geo_to_raster_transform must be populated before target failure write");
+  assert(
+    result.failure,
+    "target-unconfirmed preflight may fail, but not with null static transform evidence",
+  );
+  assert(
+    pkg.confirmed_roof_center_px,
+    "confirmed_roof_center_px must be populated before target failure write",
+  );
+  assert(
+    pkg.raster_bounds_lat_lng,
+    "raster_bounds_lat_lng must be populated before target failure write",
+  );
+  assert(
+    pkg.geo_to_raster_transform,
+    "geo_to_raster_transform must be populated before target failure write",
+  );
   assertEquals(result.failure?.result_state, "ai_failed_target_unconfirmed");
 });
 
@@ -301,8 +463,14 @@ Deno.test("must-run preflight: source acquisition failure before DSM only misses
     size: { width: 640, height: 640 },
     scale: 2,
   });
-  assert(pkg.confirmed_roof_center_px, "static confirmed center px must be populated");
-  assert(pkg.geo_to_raster_transform, "static geo→raster transform must be populated");
+  assert(
+    pkg.confirmed_roof_center_px,
+    "static confirmed center px must be populated",
+  );
+  assert(
+    pkg.geo_to_raster_transform,
+    "static geo→raster transform must be populated",
+  );
   assert(pkg.raster_bounds_lat_lng, "static raster bounds must be populated");
   assertEquals(pkg.dsm_tile_bounds_lat_lng, null);
   assertEquals(pkg.geo_to_dsm_transform, null);
@@ -316,9 +484,14 @@ Deno.test("must-run preflight: source acquisition failure before DSM only misses
 });
 
 Deno.test("must-run preflight: write chokepoint has fallback proof for missing transform builder", async () => {
-  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
   assert(source.includes("function ensureRegistrationProofBeforeWrite"));
   assert(source.includes("transform_builder_not_called_before_write"));
   assert(source.includes("transform_builder_called: false"));
-  assert(source.includes("let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));"));
+  assert(
+    source.includes("let safePayload = ensureRegistrationProofBeforeWrite(") &&
+      source.includes("prepareRoofMeasurementPayload(payload)"),
+  );
 });

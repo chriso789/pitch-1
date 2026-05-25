@@ -6,79 +6,141 @@
 import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
-import { detectHipRoof, synthesizeHipPlanesFromFootprint } from "../_shared/hip-roof-detector.ts";
+import {
+  detectHipRoof,
+  synthesizeHipPlanesFromFootprint,
+} from "../_shared/hip-roof-detector.ts";
 import { solveHybridRoof } from "../_shared/hybrid-roof-solver.ts";
 import { solveMultiStructureRoof } from "../_shared/multi-structure-roof-solver.ts";
 import { partitionFootprint } from "../_shared/footprint-partitioner.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
-import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
-import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
-import { validateAerialStructuralMatch, assertDiagramUsesAerialGeometry } from "../_shared/aerial-structural-diagram.ts";
-import { detectRidgesInPolygon } from "../_shared/image-ridge-detector.ts";
-import { splitPlanesFromRidges, type Line as RidgeLine } from "../_shared/ridge-plane-splitter.ts";
 import {
-  filterRidges,
+  fetchOSMBuildingCandidates,
+  fetchOSMBuildingFootprint,
+} from "../_shared/osm-footprint-extractor.ts";
+import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
+import {
+  assertDiagramUsesAerialGeometry,
+  validateAerialStructuralMatch,
+} from "../_shared/aerial-structural-diagram.ts";
+import { detectRidgesInPolygon } from "../_shared/image-ridge-detector.ts";
+import {
+  type Line as RidgeLine,
+  splitPlanesFromRidges,
+} from "../_shared/ridge-plane-splitter.ts";
+import {
   consolidatePlanes,
+  filterRidges,
   type RidgeLine as FilterRidgeLine,
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
-import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
 import {
-  solvePlanesFromFootprint,
-  rebuildPlanesFromSkeletonSegments,
+  lineWithinBBox,
+  mergeClusterAwarePlanes,
+} from "../_shared/cluster-aware-plane-merge.ts";
+import {
   planeAdjacencyStats,
+  rebuildPlanesFromSkeletonSegments,
+  solvePlanesFromFootprint,
 } from "../_shared/footprint-plane-solver.ts";
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
-import { computeOverlayTransform, computeRegistrationQuality, transformOverlayPoint, type OverlayRegistrationResult } from "../_shared/overlay-transform.ts";
-import { evaluateTargetConfirmation, evaluateRegistrationGate, evaluateCandidate, evaluateCandidateAgainstTarget, type RegistrationGateInput, type PerimeterCandidateRow } from "../_shared/registration-gate.ts";
 import {
-  buildRegistrationTransformPackage,
-  buildRasterBoundsFromStaticMap,
-  buildGeoToRasterTransform,
-  buildGeoToDsmTransform,
+  computeOverlayTransform,
+  computeRegistrationQuality,
+  type OverlayRegistrationResult,
+  transformOverlayPoint,
+} from "../_shared/overlay-transform.ts";
+import {
+  evaluateCandidate,
+  evaluateCandidateAgainstTarget,
+  evaluateRegistrationGate,
+  evaluateTargetConfirmation,
+  type PerimeterCandidateRow,
+  type RegistrationGateInput,
+} from "../_shared/registration-gate.ts";
+import {
   buildDsmToRasterTransform,
-  projectLatLngToRasterPx,
+  buildGeoToDsmTransform,
+  buildGeoToRasterTransform,
+  buildRasterBoundsFromStaticMap,
+  buildRegistrationTransformPackage,
   projectLatLngToDsmPx,
+  projectLatLngToRasterPx,
   validateRegistrationTransformPackage,
 } from "../_shared/source-registration-transform.ts";
 import {
   classifyRegistrationStage,
   REGISTRATION_STAGE_CLASSIFIER_VERSION,
 } from "../_shared/registration-stage-classifier.ts";
-import { buildDsmRegistration, DSM_REGISTRATION_VERSION } from "../_shared/dsm-registration.ts";
+import {
+  buildDsmRegistration,
+  DSM_REGISTRATION_VERSION,
+} from "../_shared/dsm-registration.ts";
 import { hoistSelectedCandidatePolygon } from "../_shared/candidate-hoist.ts";
 
 import {
-  REGISTRATION_PRECEDENCE_VERSION,
-  deriveRegistrationFailureReason,
-  derivePrecedenceReasonWithConflict,
-  detectRegistrationFieldConflicts,
-  resultStateForRegistrationFailure,
   buildRegistrationBlockedPhaseBlock,
+  derivePrecedenceReasonWithConflict,
+  deriveRegistrationFailureReason,
+  detectRegistrationFieldConflicts,
   forceRegistrationBlockedPhaseBlocks,
-  stripRegistrationBlockedGeometryArtifacts,
   quarantineRegistrationBlockedVisibleGeometry,
+  REGISTRATION_PRECEDENCE_VERSION,
+  resultStateForRegistrationFailure,
+  stripRegistrationBlockedGeometryArtifacts,
 } from "../_shared/registration-precedence.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
-import { fetchDSMFromGoogleSolar, fetchRoofMaskFromGoogleSolar, applyMaskToDSM, computeMaskIoU, extractMaskContour, extractMaskContourComponents, getLastContourDiagnostics, geoToPixel, getLastDSMDiagnostics, pixelToGeo } from "../_shared/dsm-analyzer.ts";
-import { refineTrueOuterRoofPerimeter, type PerimeterRefinementResult } from "../_shared/perimeter-refinement.ts";
-import { solveAutonomousGraph, detectComplexRoof, analyzeTopologyFidelity, type AutonomousGraphInput, type TopologyFidelityResult } from "../_shared/autonomous-graph-solver.ts";
-import { buildPerimeterTopology, evaluatePerimeterGate } from "../_shared/perimeter-topology.ts";
-import { classifyLayer1, ALLOWED_LAYER1_SOURCES } from "../_shared/layer-model.ts";
-import { buildRoofLine, aggregateLineTotalsByAttribute, totalsHaveTypedBacking, type RoofLine, type RoofLineAttribute } from "../_shared/roof-lines.ts";
+import {
+  applyMaskToDSM,
+  computeMaskIoU,
+  extractMaskContour,
+  extractMaskContourComponents,
+  fetchDSMFromGoogleSolar,
+  fetchRoofMaskFromGoogleSolar,
+  geoToPixel,
+  getLastContourDiagnostics,
+  getLastDSMDiagnostics,
+  pixelToGeo,
+} from "../_shared/dsm-analyzer.ts";
+import {
+  type PerimeterRefinementResult,
+  refineTrueOuterRoofPerimeter,
+} from "../_shared/perimeter-refinement.ts";
+import {
+  analyzeTopologyFidelity,
+  type AutonomousGraphInput,
+  detectComplexRoof,
+  solveAutonomousGraph,
+  type TopologyFidelityResult,
+} from "../_shared/autonomous-graph-solver.ts";
+import {
+  buildPerimeterTopology,
+  evaluatePerimeterGate,
+} from "../_shared/perimeter-topology.ts";
+import {
+  ALLOWED_LAYER1_SOURCES,
+  classifyLayer1,
+} from "../_shared/layer-model.ts";
+import {
+  aggregateLineTotalsByAttribute,
+  buildRoofLine,
+  type RoofLine,
+  type RoofLineAttribute,
+  totalsHaveTypedBacking,
+} from "../_shared/roof-lines.ts";
 import { assertCustomerReportReady } from "../_shared/measurement-gates.ts";
 import {
   ALLOWED_RESULT_STATES as _SHARED_ALLOWED_RESULT_STATES,
+  deriveDiagramRenderIntent,
   normalizeResultState as _sharedNormalizeResultState,
   normalizeResultStateForWrite,
-  deriveDiagramRenderIntent,
   type ResultState as _SharedResultState,
 } from "../_shared/result-state.ts";
 import {
-  normalizeDiagramRenderIntentForWrite,
   isDiagramRenderIntentConstraintError,
+  normalizeDiagramRenderIntentForWrite,
   withDiagramRenderIntentConstraintRetryPayload,
 } from "../_shared/diagram-render-intent.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
@@ -105,13 +167,22 @@ type RoofPlane = {
   source: string;
   cluster_id?: string | number | null;
   ridge_group_id?: string | number | null;
-  region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  region_bbox?:
+    | { minX: number; minY: number; maxX: number; maxY: number }
+    | null;
   source_ridge_ids?: Array<string | number>;
   multi_part_px?: Point[][];
 };
 
 type RoofEdge = {
-  edge_type: "ridge" | "hip" | "valley" | "eave" | "rake" | "unknown" | "unknown_interior";
+  edge_type:
+    | "ridge"
+    | "hip"
+    | "valley"
+    | "eave"
+    | "rake"
+    | "unknown"
+    | "unknown_interior";
   line_px: Point[];
   confidence: number;
   source: string;
@@ -120,7 +191,9 @@ type RoofEdge = {
   debug_reason?: string;
   cluster_id?: string | number | null;
   ridge_group_id?: string | number | null;
-  region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  region_bbox?:
+    | { minX: number; minY: number; maxX: number; maxY: number }
+    | null;
   source_ridge_ids?: Array<string | number>;
 };
 
@@ -128,20 +201,35 @@ type DecodedRaster = { width: number; height: number; data: Uint8Array };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const MAPBOX_TOKEN =
-  Deno.env.get("MAPBOX_PUBLIC_TOKEN") ||
+const MAPBOX_TOKEN = Deno.env.get("MAPBOX_PUBLIC_TOKEN") ||
   Deno.env.get("MAPBOX_ACCESS_TOKEN") ||
   Deno.env.get("MAPBOX_TOKEN") ||
   "";
 const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
-const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
-const UNET_ENDPOINT = Deno.env.get("PITCH_UNET_ENDPOINT") || Deno.env.get("INTERNAL_UNET_URL") || "";
-const UNET_API_KEY = Deno.env.get("PITCH_UNET_API_KEY") || Deno.env.get("INTERNAL_UNET_KEY") || "";
+const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") ||
+  GOOGLE_MAPS_API_KEY;
+const UNET_ENDPOINT = Deno.env.get("PITCH_UNET_ENDPOINT") ||
+  Deno.env.get("INTERNAL_UNET_URL") || "";
+const UNET_API_KEY = Deno.env.get("PITCH_UNET_API_KEY") ||
+  Deno.env.get("INTERNAL_UNET_KEY") || "";
 const REQUIRED_TOPOLOGY_SOURCE = "autonomous_dsm_graph_solver";
 const GOOGLE_SOLAR_STAGE_TIMEOUT_MS = 60_000;
 const GOOGLE_SOLAR_FETCH_TIMEOUT_MS = 20_000;
 const GOOGLE_SOLAR_DSM_TIMEOUT_MS = 20_000;
 const GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS = 20_000;
+const AI_MEASUREMENT_STALE_RUNNING_MS = 120_000;
+const AI_RUNTIME_UNHANDLED_FAILURE_REASON =
+  "ai_measurement_runtime_killed_or_unhandled";
+const AI_RUNTIME_TIMEOUT_FAILURE_REASON = "ai_measurement_runtime_timeout";
+const AI_TERMINAL_STATUSES = new Set([
+  "completed",
+  "failed",
+  "needs_review",
+  "needs_internal_review",
+  "needs_manual_measurement",
+  "topology_mismatch",
+]);
+const LEGACY_TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
 // ─── RUNTIME BUILD / VERSION STAMP ────────────────────────────────────
 // Bump these when you change perimeter/phase0 control flow so deployed
@@ -169,7 +257,8 @@ export const PHASE3D_BACKBONE_SEED_VERSION = "v1";
 export const PHASE3E_CONSTRAINT_REPAIR_VERSION = "v1";
 export const PHASE3F_RESULT_STATE_VERSION = "v1";
 export const PHASE3G_DIAGRAM_RENDER_INTENT_VERSION = "v1";
-export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") || Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
+export const GIT_COMMIT_SHA = Deno.env.get("GIT_COMMIT_SHA") ||
+  Deno.env.get("DENO_DEPLOYMENT_ID") || "unknown";
 export const DEPLOYED_AT = new Date().toISOString();
 export const RUNTIME_VERSION_STAMP = {
   ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
@@ -181,14 +270,20 @@ export const RUNTIME_VERSION_STAMP = {
 
 function vlog(marker: string, payload: Record<string, unknown> = {}) {
   try {
-    console.log(`[VTRACE] ${marker}`, JSON.stringify({ ...RUNTIME_VERSION_STAMP, ...payload }));
+    console.log(
+      `[VTRACE] ${marker}`,
+      JSON.stringify({ ...RUNTIME_VERSION_STAMP, ...payload }),
+    );
   } catch {
     console.log(`[VTRACE] ${marker}`, payload);
   }
 }
 
 class StageTimeoutError extends Error {
-  constructor(public readonly timeoutMs: number, public readonly stage: string) {
+  constructor(
+    public readonly timeoutMs: number,
+    public readonly stage: string,
+  ) {
     super(`${stage}_timeout_${timeoutMs}ms`);
     this.name = "StageTimeoutError";
   }
@@ -208,7 +303,10 @@ async function withStageTimeout<T>(
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new StageTimeoutError(timeoutMs, stage)), timeoutMs);
+        timer = setTimeout(
+          () => reject(new StageTimeoutError(timeoutMs, stage)),
+          timeoutMs,
+        );
       }),
     ]);
   } finally {
@@ -243,17 +341,20 @@ export const PHASE3_VERSION_BLOCK = {
     enabled: true,
     engine_version: PHASE3_ENGINE_VERSION,
     phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
-    phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
+    phase3B_roof_lines_persistence_version:
+      PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
     phase3C_deferred_edges_version: PHASE3C_DEFERRED_EDGES_VERSION,
     phase3D_backbone_seed_version: PHASE3D_BACKBONE_SEED_VERSION,
     phase3E_constraint_repair_version: PHASE3E_CONSTRAINT_REPAIR_VERSION,
     phase3F_result_state_version: PHASE3F_RESULT_STATE_VERSION,
-    phase3G_diagram_render_intent_version: PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
+    phase3G_diagram_render_intent_version:
+      PHASE3G_DIAGRAM_RENDER_INTENT_VERSION,
   },
   phase3_enabled: true,
   phase3_engine_version: PHASE3_ENGINE_VERSION,
   phase3A_eave_rake_classifier_version: PHASE3A_EAVE_RAKE_CLASSIFIER_VERSION,
-  phase3B_roof_lines_persistence_version: PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
+  phase3B_roof_lines_persistence_version:
+    PHASE3B_ROOF_LINES_PERSISTENCE_VERSION,
   phase3C_deferred_edges_version: PHASE3C_DEFERRED_EDGES_VERSION,
   phase3D_backbone_seed_version: PHASE3D_BACKBONE_SEED_VERSION,
   phase3E_constraint_repair_version: PHASE3E_CONSTRAINT_REPAIR_VERSION,
@@ -267,9 +368,12 @@ export const PHASE3_VERSION_BLOCK = {
 // prove the measurement came from the canonical AI Measurement path.
 export const MEASUREMENT_ROUTE_AUDIT_VERSION = "measurement-route-audit-v1";
 export const CANONICAL_CREATED_BY_FUNCTION = "start-ai-measurement";
-export const CANONICAL_CREATED_BY_COMPONENT = "PullMeasurementsButton/useMeasurementJob";
-export const CANONICAL_SOLVER_ENTRYPOINT = "_shared/autonomous-graph-solver.solveAutonomousGraph";
-export const CANONICAL_REPORT_RENDERER_VERSION = "measurement-report-renderer-v1";
+export const CANONICAL_CREATED_BY_COMPONENT =
+  "PullMeasurementsButton/useMeasurementJob";
+export const CANONICAL_SOLVER_ENTRYPOINT =
+  "_shared/autonomous-graph-solver.solveAutonomousGraph";
+export const CANONICAL_REPORT_RENDERER_VERSION =
+  "measurement-report-renderer-v1";
 
 export const CANONICAL_ROUTE_PROVENANCE = {
   created_by_function: CANONICAL_CREATED_BY_FUNCTION,
@@ -291,10 +395,13 @@ export function getCanonicalRouteDbColumns(): Record<string, unknown> {
   };
 }
 
-
 export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
-  const eaveLf = Number(perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0);
-  const rakeLf = Number(perimeterPhase0?.rake_length_lf ?? perimeterPhase0?.rake_candidate_lf ?? 0);
+  const eaveLf = Number(
+    perimeterPhase0?.eave_length_lf ?? perimeterPhase0?.eave_candidate_lf ?? 0,
+  );
+  const rakeLf = Number(
+    perimeterPhase0?.rake_length_lf ?? perimeterPhase0?.rake_candidate_lf ?? 0,
+  );
   const unknownLf = Number(perimeterPhase0?.unknown_perimeter_lf ?? 0);
   const totalLf = Number(perimeterPhase0?.total_perimeter_lf ?? 0);
   const classTable = perimeterPhase0?.perimeter_edge_classification_table ?? [];
@@ -305,9 +412,13 @@ export function buildPhase3ABlock(perimeterPhase0: any): Record<string, any> {
     perimeterPhase0?.provisional_rake_demoted_count ?? hipPriorApplied,
   );
   let failureReason: string | null = null;
-  if (totalLf > 100 && eaveLf === 0) failureReason = 'eave_lf_zero_with_long_perimeter';
-  else if (totalLf > 0 && unknownLf / Math.max(totalLf, 1) >= 0.95) failureReason = 'all_unknown';
-  else if (rakeLf > 0 && eaveLf === 0 && totalLf > 50) failureReason = 'all_rake_no_eave';
+  if (totalLf > 100 && eaveLf === 0) {
+    failureReason = "eave_lf_zero_with_long_perimeter";
+  } else if (totalLf > 0 && unknownLf / Math.max(totalLf, 1) >= 0.95) {
+    failureReason = "all_unknown";
+  } else if (rakeLf > 0 && eaveLf === 0 && totalLf > 50) {
+    failureReason = "all_rake_no_eave";
+  }
   return {
     phase3A_active: true,
     eave_length_lf: eaveLf,
@@ -330,36 +441,56 @@ export function buildPhase3BBlock(edgeRows: any[]): Record<string, any> {
   const byAttr: Record<string, number> = {};
   const lfByAttr: Record<string, number> = {};
   for (const e of rows) {
-    const attr = String(e?.edge_type ?? e?.attribute ?? e?.type ?? 'unknown').toLowerCase();
+    const attr = String(e?.edge_type ?? e?.attribute ?? e?.type ?? "unknown")
+      .toLowerCase();
     byAttr[attr] = (byAttr[attr] ?? 0) + 1;
-    lfByAttr[attr] = (lfByAttr[attr] ?? 0) + Number(e?.length_ft ?? e?.length_lf ?? 0);
+    lfByAttr[attr] = (lfByAttr[attr] ?? 0) +
+      Number(e?.length_ft ?? e?.length_lf ?? 0);
   }
   const reportableAttrs = new Set([
-    'eave', 'rake', 'ridge', 'hip', 'valley',
-    'wall_flashing', 'step_flashing', 'flashing',
+    "eave",
+    "rake",
+    "ridge",
+    "hip",
+    "valley",
+    "wall_flashing",
+    "step_flashing",
+    "flashing",
   ]);
   const reportable = rows.filter((e) =>
-    reportableAttrs.has(String(e?.edge_type ?? e?.attribute ?? '').toLowerCase()),
+    reportableAttrs.has(
+      String(e?.edge_type ?? e?.attribute ?? "").toLowerCase(),
+    )
   );
   return {
     phase3B_active: true,
     roof_lines_count: rows.length,
     roof_lines_by_attribute: byAttr,
     roof_line_total_lf_by_attribute: Object.fromEntries(
-      Object.entries(lfByAttr).map(([k, v]) => [k, Number((v as number).toFixed(2))]),
+      Object.entries(lfByAttr).map((
+        [k, v],
+      ) => [k, Number((v as number).toFixed(2))]),
     ),
     reportable_roof_lines_count: reportable.length,
     persisted_to_roof_lines_table: false,
-    persistence_deferred_reason: 'phase3B_lite_counts_only_v1',
+    persistence_deferred_reason: "phase3B_lite_counts_only_v1",
   };
 }
 
 function derivePhase3EdgeRows(debug: any): any[] {
   if (Array.isArray(debug?.edgeRows)) return debug.edgeRows;
-  if (Array.isArray(debug?.accepted_edges_geo) && debug.accepted_edges_geo.length) return debug.accepted_edges_geo;
+  if (
+    Array.isArray(debug?.accepted_edges_geo) && debug.accepted_edges_geo.length
+  ) return debug.accepted_edges_geo;
   const perimeterRows = [
-    ...(debug?.perimeter_topology?.eave_edges ?? []).map((e: any) => ({ ...e, edge_type: 'eave' })),
-    ...(debug?.perimeter_topology?.rake_edges ?? []).map((e: any) => ({ ...e, edge_type: 'rake' })),
+    ...(debug?.perimeter_topology?.eave_edges ?? []).map((e: any) => ({
+      ...e,
+      edge_type: "eave",
+    })),
+    ...(debug?.perimeter_topology?.rake_edges ?? []).map((e: any) => ({
+      ...e,
+      edge_type: "rake",
+    })),
   ];
   return perimeterRows;
 }
@@ -374,22 +505,22 @@ function buildPhase3A5Block(debug: any): Record<string, any> {
   if (!r) {
     return {
       enabled: true,
-      version: 'v1',
+      version: "v1",
       executed: false,
-      skipped_reason: 'perimeter_refinement_callsite_not_reached',
+      skipped_reason: "perimeter_refinement_callsite_not_reached",
       refinement_iou: null,
       perimeter_to_target_mask_ratio: null,
       refined_perimeter_vertex_count: 0,
       phase3A_5_active: false,
-      phase3A_5_perimeter_refinement_version: 'v1',
+      phase3A_5_perimeter_refinement_version: "v1",
       phase3_5_perimeter_refinement_enabled: true,
       perimeter_refinement_executed: false,
-      perimeter_refinement_reason: 'perimeter_refinement_callsite_not_reached',
+      perimeter_refinement_reason: "perimeter_refinement_callsite_not_reached",
     };
   }
   return {
     enabled: true,
-    version: r.version ?? r.phase3A_5_perimeter_refinement_version ?? 'v1',
+    version: r.version ?? r.phase3A_5_perimeter_refinement_version ?? "v1",
     executed: r.executed ?? true,
     skipped_reason: r.skipped_reason ?? null,
     refinement_iou: r.refinement_iou ?? r.perimeter_vs_mask_iou ?? null,
@@ -406,29 +537,36 @@ function buildPhase3CBlock(debug: any): Record<string, any> {
   const r = debug?.phase3C ?? debug?.deferred_edges ?? null;
   if (!r) {
     return {
-      version: 'v1',
+      version: "v1",
       executed: false,
-      skipped_reason: 'connectivity_pruning_callsite_not_reached',
+      skipped_reason: "connectivity_pruning_callsite_not_reached",
       phase3C_active: false,
-      phase3C_deferred_edges_version: 'v1',
+      phase3C_deferred_edges_version: "v1",
       deferred_structural_candidates_count: 0,
       connectivity_edges_deferred: 0,
       deferred_edges_used_for_refinement: 0,
       phase3C_executed: false,
     };
   }
-  return { version: r.version ?? r.phase3C_deferred_edges_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3C_active: true, phase3C_executed: true, ...r };
+  return {
+    version: r.version ?? r.phase3C_deferred_edges_version ?? "v1",
+    executed: r.executed ?? true,
+    skipped_reason: r.skipped_reason ?? null,
+    phase3C_active: true,
+    phase3C_executed: true,
+    ...r,
+  };
 }
 
 function buildPhase3DBlock(debug: any): Record<string, any> {
   const r = debug?.phase3D ?? debug?.backbone_seed ?? null;
   if (!r) {
     return {
-      version: 'v1',
+      version: "v1",
       executed: false,
-      skipped_reason: 'backbone_seed_not_inserted_before_face_extraction',
+      skipped_reason: "backbone_seed_not_inserted_before_face_extraction",
       phase3D_active: false,
-      phase3D_backbone_seed_version: 'v1',
+      phase3D_backbone_seed_version: "v1",
       seed_backbone_edges_count: 0,
       locked_backbone_edges_count: 0,
       seed_ridge_lf: 0,
@@ -438,25 +576,39 @@ function buildPhase3DBlock(debug: any): Record<string, any> {
       phase3D_executed: false,
     };
   }
-  return { version: r.version ?? r.phase3D_backbone_seed_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3D_active: true, phase3D_executed: true, ...r };
+  return {
+    version: r.version ?? r.phase3D_backbone_seed_version ?? "v1",
+    executed: r.executed ?? true,
+    skipped_reason: r.skipped_reason ?? null,
+    phase3D_active: true,
+    phase3D_executed: true,
+    ...r,
+  };
 }
 
 function buildPhase3EBlock(debug: any): Record<string, any> {
   const r = debug?.phase3E ?? debug?.constraint_repair ?? null;
   if (!r) {
     return {
-      version: 'v1',
+      version: "v1",
       executed: false,
-      skipped_reason: 'constraint_solver_repair_not_called',
+      skipped_reason: "constraint_solver_repair_not_called",
       phase3E_active: false,
-      phase3E_constraint_repair_version: 'v1',
+      phase3E_constraint_repair_version: "v1",
       candidate_repair_attempted: false,
       repair_iterations: 0,
       final_selected_candidate: null,
       phase3E_executed: false,
     };
   }
-  return { version: r.version ?? r.phase3E_constraint_repair_version ?? 'v1', executed: r.executed ?? true, skipped_reason: r.skipped_reason ?? null, phase3E_active: true, phase3E_executed: true, ...r };
+  return {
+    version: r.version ?? r.phase3E_constraint_repair_version ?? "v1",
+    executed: r.executed ?? true,
+    skipped_reason: r.skipped_reason ?? null,
+    phase3E_active: true,
+    phase3E_executed: true,
+    ...r,
+  };
 }
 
 function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
@@ -466,25 +618,35 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   // roof center is a REGISTRATION failure — not a perimeter shape failure.
   // (See _shared/registration-gate.ts.)
   const reg = (debug?.registration ?? debug?.registration_gate ?? null) as any;
-  if (reg && typeof reg === 'object') {
-    if (reg.user_confirmed_roof_target === false && reg.roof_target_admin_override !== true) {
-      return 'ai_failed_target_unconfirmed';
+  if (reg && typeof reg === "object") {
+    if (
+      reg.user_confirmed_roof_target === false &&
+      reg.roof_target_admin_override !== true
+    ) {
+      return "ai_failed_target_unconfirmed";
     }
-    if (reg.geo_to_dsm_px_success === false || reg.dsm_pixel_transform_valid === false) {
-      return 'ai_failed_source_acquisition';
+    if (
+      reg.geo_to_dsm_px_success === false ||
+      reg.dsm_pixel_transform_valid === false
+    ) {
+      return "ai_failed_source_acquisition";
     }
     if (reg.confirmed_center_inside_candidate === false) {
-      return 'ai_failed_source_acquisition';
+      return "ai_failed_source_acquisition";
     }
     if (reg.coordinate_registration_gate_passed === false) {
       return reg.user_confirmed_roof_target === false
-        ? 'ai_failed_target_unconfirmed'
-        : 'ai_failed_source_acquisition';
+        ? "ai_failed_target_unconfirmed"
+        : "ai_failed_source_acquisition";
     }
   }
-  const phase3A = buildPhase3ABlock(debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null);
-  if (phase3A.perimeter_classification_invalid) return 'ai_failed_perimeter';
-  const reason = String(raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? '').toLowerCase();
+  const phase3A = buildPhase3ABlock(
+    debug?.perimeter_phase0 ?? debug?.perimeter_gate_metrics ?? null,
+  );
+  if (phase3A.perimeter_classification_invalid) return "ai_failed_perimeter";
+  const reason = String(
+    raw ?? debug?.hard_fail_reason ?? debug?.block_customer_report_reason ?? "",
+  ).toLowerCase();
 
   // Phase 3A.5+ rule: once eave/rake classification has passed, downstream
   // failures that mention "footprint" or "facet" are TOPOLOGY failures, not
@@ -494,65 +656,99 @@ function derivePhase3ResultState(raw: unknown, debug: any): ResultState {
   const perimeterPassed =
     debug?.perimeter_phase0?.perimeter_gate_passed === true ||
     debug?.perimeter_topology?.perimeter_passed === true ||
-    Number(debug?.perimeter_phase0?.eave_lf || debug?.perimeter_topology?.eave_lf || 0) > 0;
+    Number(
+        debug?.perimeter_phase0?.eave_lf ||
+          debug?.perimeter_topology?.eave_lf || 0,
+      ) > 0;
 
   // Explicit topology / backbone / repair failure reasons (Phase 3C/3D/3E)
   if (
-    reason.includes('topology') ||
-    reason.includes('undersegment') ||
-    reason.includes('backbone_not_applied') ||
-    reason.includes('backbone_repair') ||
-    reason.includes('ridge_network_missing') ||
-    reason.includes('seed_collapse') ||
-    reason.includes('connectivity_collapse') ||
-    reason.includes('invalid_roof_footprint:') || // "2_facets_for_3250sqft" style — facet count, not perimeter shape
-    reason.includes('facet') ||
-    reason.includes('ridge') ||
-    reason.includes('edge')
-  ) return 'ai_failed_topology';
+    reason.includes("topology") ||
+    reason.includes("undersegment") ||
+    reason.includes("backbone_not_applied") ||
+    reason.includes("backbone_repair") ||
+    reason.includes("ridge_network_missing") ||
+    reason.includes("seed_collapse") ||
+    reason.includes("connectivity_collapse") ||
+    reason.includes("invalid_roof_footprint:") || // "2_facets_for_3250sqft" style — facet count, not perimeter shape
+    reason.includes("facet") ||
+    reason.includes("ridge") ||
+    reason.includes("edge")
+  ) return "ai_failed_topology";
 
   // Explicit perimeter-shape reasons (Phase 3A and 3A.5)
   if (
-    reason.includes('perimeter_shape_not_accurate') ||
-    reason.includes('eave_lf_zero') ||
-    reason.includes('all_rake_no_eave') ||
-    reason.includes('perimeter_classification_invalid') ||
-    (!perimeterPassed && (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint')))
-  ) return 'ai_failed_perimeter';
+    reason.includes("perimeter_shape_not_accurate") ||
+    reason.includes("eave_lf_zero") ||
+    reason.includes("all_rake_no_eave") ||
+    reason.includes("perimeter_classification_invalid") ||
+    (!perimeterPassed &&
+      (reason.includes("perimeter") || reason.includes("target_mask") ||
+        reason.includes("footprint")))
+  ) return "ai_failed_perimeter";
 
   // Generic perimeter/footprint reasons AFTER perimeter passed → topology
-  if (perimeterPassed && (reason.includes('perimeter') || reason.includes('target_mask') || reason.includes('footprint'))) {
-    return 'ai_failed_topology';
+  if (
+    perimeterPassed &&
+    (reason.includes("perimeter") || reason.includes("target_mask") ||
+      reason.includes("footprint"))
+  ) {
+    return "ai_failed_topology";
   }
 
-  return normalizeResultStateForWrite(raw ?? debug?.result_state ?? debug?.failure_stage ?? 'ai_failed_unknown', null);
+  return normalizeResultStateForWrite(
+    raw ?? debug?.result_state ?? debug?.failure_stage ?? "ai_failed_unknown",
+    null,
+  );
 }
 
-function registrationFailureStage(reason: ReturnType<typeof deriveRegistrationFailureReason>): "target_confirmation" | "source_registration" | null {
+function registrationFailureStage(
+  reason: ReturnType<typeof deriveRegistrationFailureReason>,
+): "target_confirmation" | "source_registration" | null {
   if (!reason) return null;
-  return reason === "target_roof_not_confirmed" ? "target_confirmation" : "source_registration";
+  return reason === "target_roof_not_confirmed"
+    ? "target_confirmation"
+    : "source_registration";
 }
 
 // Registration Precedence helpers are imported from
 // `_shared/registration-precedence.ts` so they are unit-testable without
 // booting the edge function (Deno.serve at module scope).
 
-function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?: unknown): Record<string, any> {
+function withPhase3Visibility(
+  debug: any,
+  edgeRows: any[] = [],
+  rawResultState?: unknown,
+): Record<string, any> {
   const payload: Record<string, any> = { ...(debug || {}) };
-  const phase3EdgeRows = edgeRows.length ? edgeRows : derivePhase3EdgeRows(payload);
-  const phase3A = buildPhase3ABlock(payload.perimeter_phase0 ?? payload.perimeter_gate_metrics ?? null);
-  const resultState = derivePhase3ResultState(rawResultState ?? payload.result_state ?? payload.hard_fail_reason, payload);
+  const phase3EdgeRows = edgeRows.length
+    ? edgeRows
+    : derivePhase3EdgeRows(payload);
+  const phase3A = buildPhase3ABlock(
+    payload.perimeter_phase0 ?? payload.perimeter_gate_metrics ?? null,
+  );
+  const resultState = derivePhase3ResultState(
+    rawResultState ?? payload.result_state ?? payload.hard_fail_reason,
+    payload,
+  );
   // ─── Registration failure dominates hard_fail_reason / failure_stage ───
-  const reg = (payload.registration ?? payload.registration_gate ?? null) as any;
+  const reg =
+    (payload.registration ?? payload.registration_gate ?? null) as any;
   const regFailureReason = deriveRegistrationFailureReason(reg);
   const hardFailReason = regFailureReason
     ? regFailureReason
     : (phase3A.perimeter_classification_invalid
-        ? 'perimeter_classification_invalid'
-        : (payload.hard_fail_reason ?? payload.block_customer_report_reason ?? payload.failure_reason ?? null));
+      ? "perimeter_classification_invalid"
+      : (payload.hard_fail_reason ?? payload.block_customer_report_reason ??
+        payload.failure_reason ?? null));
   const failureStage = regFailureReason
     ? registrationFailureStage(regFailureReason)
-    : (payload.failure_stage ?? (String(resultState).includes('perimeter') ? 'perimeter' : String(resultState).includes('topology') ? 'topology' : 'unknown'));
+    : (payload.failure_stage ??
+      (String(resultState).includes("perimeter")
+        ? "perimeter"
+        : String(resultState).includes("topology")
+        ? "topology"
+        : "unknown"));
 
   // Build phase blocks first…
   let phase3_5 = buildPhase3A5Block(payload);
@@ -588,12 +784,23 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
     phase3E,
     result_state: normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
-    block_customer_report_reason: regFailureReason ? hardFailReason : (payload.block_customer_report_reason ?? hardFailReason ?? null),
+    block_customer_report_reason: regFailureReason
+      ? hardFailReason
+      : (payload.block_customer_report_reason ?? hardFailReason ?? null),
     failure_stage: failureStage,
     diagram_render_intent: regFailureReason
-      ? (resultState === 'ai_failed_target_unconfirmed' ? 'target_confirmation_required' : 'coordinate_registration_debug_only')
-      : (payload.diagram_render_intent ?? (String(resultState).startsWith('ai_failed_') ? 'rejected_only' : deriveDiagramRenderIntent(resultState, payload.perimeter_gate_passed === true))),
-    customer_report_ready: resultState === 'customer_report_ready' && !regFailureReason,
+      ? (resultState === "ai_failed_target_unconfirmed"
+        ? "target_confirmation_required"
+        : "coordinate_registration_debug_only")
+      : (payload.diagram_render_intent ??
+        (String(resultState).startsWith("ai_failed_")
+          ? "rejected_only"
+          : deriveDiagramRenderIntent(
+            resultState,
+            payload.perimeter_gate_passed === true,
+          ))),
+    customer_report_ready: resultState === "customer_report_ready" &&
+      !regFailureReason,
     // ─── Registration Precedence stamp (always written) ───
     registration_precedence_version: REGISTRATION_PRECEDENCE_VERSION,
     registration_precedence_applied: !!regFailureReason,
@@ -604,7 +811,8 @@ function withPhase3Visibility(debug: any, edgeRows: any[] = [], rawResultState?:
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -650,12 +858,25 @@ async function mustBuildTransformPackageEarly(ctx: {
   logical_image_height?: number | null;
   raster_scale?: number | null;
 }): Promise<EarlyTransformPreflight> {
-  console.log("VTRACE_TRANSFORM_PRESTART", JSON.stringify({ callsite: TRANSFORM_CALLSITE, stage: EARLY_TRANSFORM_STAGE }));
-  const center = ctx.confirmed_roof_center_lat_lng ?? ctx.original_geocode_lat_lng ?? null;
+  console.log(
+    "VTRACE_TRANSFORM_PRESTART",
+    JSON.stringify({
+      callsite: TRANSFORM_CALLSITE,
+      stage: EARLY_TRANSFORM_STAGE,
+    }),
+  );
+  const center = ctx.confirmed_roof_center_lat_lng ??
+    ctx.original_geocode_lat_lng ?? null;
   const zoom = Number.isFinite(Number(ctx.zoom)) ? Number(ctx.zoom) : 19;
-  const width = Number.isFinite(Number(ctx.logical_image_width)) ? Number(ctx.logical_image_width) : 640;
-  const height = Number.isFinite(Number(ctx.logical_image_height)) ? Number(ctx.logical_image_height) : 640;
-  const scale = Number.isFinite(Number(ctx.raster_scale)) ? Number(ctx.raster_scale) : 2;
+  const width = Number.isFinite(Number(ctx.logical_image_width))
+    ? Number(ctx.logical_image_width)
+    : 640;
+  const height = Number.isFinite(Number(ctx.logical_image_height))
+    ? Number(ctx.logical_image_height)
+    : 640;
+  const scale = Number.isFinite(Number(ctx.raster_scale))
+    ? Number(ctx.raster_scale)
+    : 2;
   const pkg = buildRegistrationTransformPackage({
     confirmed_roof_center_lat_lng: center,
     static_map_center_lat_lng: ctx.static_map_center_lat_lng ?? center,
@@ -663,12 +884,25 @@ async function mustBuildTransformPackageEarly(ctx: {
     size: { width, height },
     scale,
   });
-  const staticValid = !!(pkg.raster_bounds_lat_lng && pkg.geo_to_raster_transform && pkg.confirmed_roof_center_px);
-  console.log("VTRACE_TRANSFORM_BUILT_STATIC", JSON.stringify({ staticValid, missing_required_fields: pkg.missing_required_fields }));
-  console.log("VTRACE_TRANSFORM_SKIPPED_DSM_PENDING", JSON.stringify({ dsm_stage_pending: true }));
+  const staticValid =
+    !!(pkg.raster_bounds_lat_lng && pkg.geo_to_raster_transform &&
+      pkg.confirmed_roof_center_px);
+  console.log(
+    "VTRACE_TRANSFORM_BUILT_STATIC",
+    JSON.stringify({
+      staticValid,
+      missing_required_fields: pkg.missing_required_fields,
+    }),
+  );
+  console.log(
+    "VTRACE_TRANSFORM_SKIPPED_DSM_PENDING",
+    JSON.stringify({ dsm_stage_pending: true }),
+  );
   return {
     transform_package: pkg,
-    registration: registrationFromTransformPackage(pkg, { dsm_stage_pending: true }),
+    registration: registrationFromTransformPackage(pkg, {
+      dsm_stage_pending: true,
+    }),
   };
 }
 
@@ -678,27 +912,35 @@ const ROOF_MEASUREMENT_DEBUG_ONLY_COLUMNS = new Set([
   "perimeter_edge_pitch_relation",
 ]);
 
-function registrationFromTransformPackage(pkg: ReturnType<typeof buildRegistrationTransformPackage> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
+function registrationFromTransformPackage(
+  pkg: ReturnType<typeof buildRegistrationTransformPackage> | null | undefined,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
   const validation = validateRegistrationTransformPackage(pkg as any);
   const dsmPending = extra.dsm_stage_pending === true;
-  const staticMissing = (validation.missing ?? []).filter((field) => [
-    "confirmed_roof_center_lat_lng",
-    "raster_bounds_lat_lng",
-    "zoom",
-    "size",
-    "scale",
-    "geo_to_raster_transform",
-    "confirmed_roof_center_px",
-    "raster_bounds_contain_confirmed_center",
-  ].includes(field));
+  const staticMissing = (validation.missing ?? []).filter((field) =>
+    [
+      "confirmed_roof_center_lat_lng",
+      "raster_bounds_lat_lng",
+      "zoom",
+      "size",
+      "scale",
+      "geo_to_raster_transform",
+      "confirmed_roof_center_px",
+      "raster_bounds_contain_confirmed_center",
+    ].includes(field)
+  );
   const failureReasons = dsmPending
     ? staticMissing
-    : (validation.reasons.length ? validation.reasons : (validation.missing ?? []));
+    : (validation.reasons.length
+      ? validation.reasons
+      : (validation.missing ?? []));
   return {
     ...(pkg ?? {}),
     transform_package: pkg ?? null,
     transform_builder_called: !!pkg,
-    transform_builder_version: (pkg as any)?.version ?? TRANSFORM_BUILDER_VERSION,
+    transform_builder_version: (pkg as any)?.version ??
+      TRANSFORM_BUILDER_VERSION,
     transform_callsite: TRANSFORM_CALLSITE,
     transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
     transform_build_stage: EARLY_TRANSFORM_STAGE,
@@ -712,47 +954,84 @@ function registrationFromTransformPackage(pkg: ReturnType<typeof buildRegistrati
   };
 }
 
-function mergeRegistrationProof(base: unknown, proof: EarlyTransformPreflight | Record<string, unknown> | null | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
-  const existing = base && typeof base === "object" && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
-  const proofRegistration = proof && typeof proof === "object" && "registration" in proof
-    ? { ...((proof as EarlyTransformPreflight).registration ?? {}) }
-    : (proof && typeof proof === "object" ? { ...(proof as Record<string, unknown>) } : {});
+function mergeRegistrationProof(
+  base: unknown,
+  proof: EarlyTransformPreflight | Record<string, unknown> | null | undefined,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const existing = base && typeof base === "object" && !Array.isArray(base)
+    ? { ...(base as Record<string, unknown>) }
+    : {};
+  const proofRegistration =
+    proof && typeof proof === "object" && "registration" in proof
+      ? { ...((proof as EarlyTransformPreflight).registration ?? {}) }
+      : (proof && typeof proof === "object"
+        ? { ...(proof as Record<string, unknown>) }
+        : {});
   const merged: Record<string, unknown> = { ...proofRegistration };
   for (const [key, value] of Object.entries(existing)) {
     if (value !== null && value !== undefined) merged[key] = value;
   }
   return {
     ...merged,
-    transform_builder_called: proofRegistration.transform_builder_called ?? existing.transform_builder_called ?? true,
-    transform_builder_version: String(proofRegistration.transform_builder_version ?? existing.transform_builder_version ?? TRANSFORM_BUILDER_VERSION),
+    transform_builder_called: proofRegistration.transform_builder_called ??
+      existing.transform_builder_called ?? true,
+    transform_builder_version: String(
+      proofRegistration.transform_builder_version ??
+        existing.transform_builder_version ?? TRANSFORM_BUILDER_VERSION,
+    ),
     transform_callsite: TRANSFORM_CALLSITE,
     transform_callsite_version: TRANSFORM_CALLSITE_VERSION,
-    transform_build_stage: String(proofRegistration.transform_build_stage ?? existing.transform_build_stage ?? EARLY_TRANSFORM_STAGE),
-    transform_package_valid: Boolean(proofRegistration.transform_package_valid ?? existing.transform_package_valid ?? false),
-    transform_failure_reasons: Array.isArray(proofRegistration.transform_failure_reasons)
-      ? proofRegistration.transform_failure_reasons
-      : (Array.isArray(existing.transform_failure_reasons) ? existing.transform_failure_reasons : []),
+    transform_build_stage: String(
+      proofRegistration.transform_build_stage ??
+        existing.transform_build_stage ?? EARLY_TRANSFORM_STAGE,
+    ),
+    transform_package_valid: Boolean(
+      proofRegistration.transform_package_valid ??
+        existing.transform_package_valid ?? false,
+    ),
+    transform_failure_reasons:
+      Array.isArray(proofRegistration.transform_failure_reasons)
+        ? proofRegistration.transform_failure_reasons
+        : (Array.isArray(existing.transform_failure_reasons)
+          ? existing.transform_failure_reasons
+          : []),
     ...extra,
   };
 }
 
-function mergeTransformProofIntoDebug(debug: any, proof: EarlyTransformPreflight | null | undefined): any {
+function mergeTransformProofIntoDebug(
+  debug: any,
+  proof: EarlyTransformPreflight | null | undefined,
+): any {
   if (!proof) return debug ?? {};
   const next = { ...(debug ?? {}) };
-  const merged = mergeRegistrationProof(next.registration ?? next.registration_gate, proof);
+  const merged = mergeRegistrationProof(
+    next.registration ?? next.registration_gate,
+    proof,
+  );
   next.registration = merged;
   next.registration_gate = merged;
   return next;
 }
 
-function ensureRegistrationProofBeforeWrite(payload: Record<string, unknown>): Record<string, unknown> {
+function ensureRegistrationProofBeforeWrite(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
   const next: Record<string, unknown> = { ...payload };
-  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+  const geometry = typeof next.geometry_report_json === "object" &&
+      next.geometry_report_json !== null &&
+      !Array.isArray(next.geometry_report_json)
     ? { ...(next.geometry_report_json as Record<string, unknown>) }
     : { raw_geometry_report_json: next.geometry_report_json ?? null };
-  const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? null) as Record<string, unknown> | null;
+  const existing =
+    ((geometry as any).registration ?? (geometry as any).registration_gate ??
+      null) as Record<string, unknown> | null;
   if (existing?.transform_builder_called === true) {
-    console.log("VTRACE_TRANSFORM_PREWRITE_ASSERTION_PASSED", JSON.stringify({ called: existing.transform_builder_called }));
+    console.log(
+      "VTRACE_TRANSFORM_PREWRITE_ASSERTION_PASSED",
+      JSON.stringify({ called: existing.transform_builder_called }),
+    );
     next.geometry_report_json = geometry;
     return next;
   }
@@ -764,13 +1043,17 @@ function ensureRegistrationProofBeforeWrite(payload: Record<string, unknown>): R
   (geometry as any).registration = fallback;
   (geometry as any).registration_gate = fallback;
   (geometry as any).result_state = "ai_failed_source_acquisition";
-  (geometry as any).hard_fail_reason = "transform_builder_not_called_before_write";
-  (geometry as any).block_customer_report_reason = "transform_builder_not_called_before_write";
+  (geometry as any).hard_fail_reason =
+    "transform_builder_not_called_before_write";
+  (geometry as any).block_customer_report_reason =
+    "transform_builder_not_called_before_write";
   (geometry as any).failure_stage = "source_registration";
-  (geometry as any).diagram_render_intent = "coordinate_registration_debug_only";
+  (geometry as any).diagram_render_intent =
+    "coordinate_registration_debug_only";
   (next as any).result_state = "ai_failed_source_acquisition";
   (next as any).hard_fail_reason = "transform_builder_not_called_before_write";
-  (next as any).block_customer_report_reason = "transform_builder_not_called_before_write";
+  (next as any).block_customer_report_reason =
+    "transform_builder_not_called_before_write";
   (next as any).customer_report_ready = false;
   next.geometry_report_json = geometry;
   return next;
@@ -780,13 +1063,20 @@ function getPhase3DbColumns(): Record<string, unknown> {
   return {
     phase3_enabled: PHASE3_VERSION_BLOCK.phase3_enabled,
     phase3_engine_version: PHASE3_VERSION_BLOCK.phase3_engine_version,
-    phase3A_eave_rake_classifier_version: PHASE3_VERSION_BLOCK.phase3A_eave_rake_classifier_version,
-    phase3B_roof_lines_persistence_version: PHASE3_VERSION_BLOCK.phase3B_roof_lines_persistence_version,
-    phase3C_deferred_edges_version: PHASE3_VERSION_BLOCK.phase3C_deferred_edges_version,
-    phase3D_backbone_seed_version: PHASE3_VERSION_BLOCK.phase3D_backbone_seed_version,
-    phase3E_constraint_repair_version: PHASE3_VERSION_BLOCK.phase3E_constraint_repair_version,
-    phase3F_result_state_version: PHASE3_VERSION_BLOCK.phase3F_result_state_version,
-    phase3G_diagram_render_intent_version: PHASE3_VERSION_BLOCK.phase3G_diagram_render_intent_version,
+    phase3A_eave_rake_classifier_version:
+      PHASE3_VERSION_BLOCK.phase3A_eave_rake_classifier_version,
+    phase3B_roof_lines_persistence_version:
+      PHASE3_VERSION_BLOCK.phase3B_roof_lines_persistence_version,
+    phase3C_deferred_edges_version:
+      PHASE3_VERSION_BLOCK.phase3C_deferred_edges_version,
+    phase3D_backbone_seed_version:
+      PHASE3_VERSION_BLOCK.phase3D_backbone_seed_version,
+    phase3E_constraint_repair_version:
+      PHASE3_VERSION_BLOCK.phase3E_constraint_repair_version,
+    phase3F_result_state_version:
+      PHASE3_VERSION_BLOCK.phase3F_result_state_version,
+    phase3G_diagram_render_intent_version:
+      PHASE3_VERSION_BLOCK.phase3G_diagram_render_intent_version,
     // Canonical route provenance (stable top-level columns).
     ...getCanonicalRouteDbColumns(),
   };
@@ -794,10 +1084,13 @@ function getPhase3DbColumns(): Record<string, unknown> {
 
 function getSchemaCacheMissingColumn(error: unknown): string | null {
   const message = getErrorMessage(error);
-  if (!message.includes("schema cache") && !(error as any)?.code?.startsWith?.("PGRST")) return null;
-  return message.match(/Could not find the '([^']+)' column/)?.[1]
-    ?? message.match(/'([^']+)' column of 'roof_measurements'/)?.[1]
-    ?? null;
+  if (
+    !message.includes("schema cache") &&
+    !(error as any)?.code?.startsWith?.("PGRST")
+  ) return null;
+  return message.match(/Could not find the '([^']+)' column/)?.[1] ??
+    message.match(/'([^']+)' column of 'roof_measurements'/)?.[1] ??
+    null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -823,40 +1116,80 @@ function registrationInputFromBlock(
 ): RegistrationGateInput {
   return {
     ...original,
-    original_geocode_lat_lng: (reg.original_geocode_lat_lng as any) ?? original.original_geocode_lat_lng ?? null,
-    confirmed_roof_center_lat_lng: (reg.confirmed_roof_center_lat_lng as any) ?? original.confirmed_roof_center_lat_lng ?? null,
-    confirmed_roof_center_px: (reg.confirmed_roof_center_px as any) ?? original.confirmed_roof_center_px ?? null,
-    confirmed_roof_center_dsm_px: (reg.confirmed_roof_center_dsm_px as any) ?? (original as any).confirmed_roof_center_dsm_px ?? null,
-    geo_to_dsm_px_success: (reg.geo_to_dsm_px_success as any) ?? original.geo_to_dsm_px_success ?? null,
-    dsm_pixel_transform_valid: (reg.dsm_pixel_transform_valid as any) ?? original.dsm_pixel_transform_valid ?? null,
-    dsm_to_raster_transform: reg.dsm_to_raster_transform ?? original.dsm_to_raster_transform ?? null,
-    geo_to_raster_transform: reg.geo_to_raster_transform ?? original.geo_to_raster_transform ?? null,
-    geo_to_dsm_transform: reg.geo_to_dsm_transform ?? original.geo_to_dsm_transform ?? null,
-    raster_bounds_lat_lng: (reg.raster_bounds_lat_lng as any) ?? original.raster_bounds_lat_lng ?? null,
-    dsm_tile_bounds_lat_lng: (reg.dsm_tile_bounds_lat_lng as any) ?? original.dsm_tile_bounds_lat_lng ?? null,
-    raster_size_px: (reg.raster_size_px as any) ?? original.raster_size_px ?? null,
+    original_geocode_lat_lng: (reg.original_geocode_lat_lng as any) ??
+      original.original_geocode_lat_lng ?? null,
+    confirmed_roof_center_lat_lng: (reg.confirmed_roof_center_lat_lng as any) ??
+      original.confirmed_roof_center_lat_lng ?? null,
+    confirmed_roof_center_px: (reg.confirmed_roof_center_px as any) ??
+      original.confirmed_roof_center_px ?? null,
+    confirmed_roof_center_dsm_px: (reg.confirmed_roof_center_dsm_px as any) ??
+      (original as any).confirmed_roof_center_dsm_px ?? null,
+    geo_to_dsm_px_success: (reg.geo_to_dsm_px_success as any) ??
+      original.geo_to_dsm_px_success ?? null,
+    dsm_pixel_transform_valid: (reg.dsm_pixel_transform_valid as any) ??
+      original.dsm_pixel_transform_valid ?? null,
+    dsm_to_raster_transform: reg.dsm_to_raster_transform ??
+      original.dsm_to_raster_transform ?? null,
+    geo_to_raster_transform: reg.geo_to_raster_transform ??
+      original.geo_to_raster_transform ?? null,
+    geo_to_dsm_transform: reg.geo_to_dsm_transform ??
+      original.geo_to_dsm_transform ?? null,
+    raster_bounds_lat_lng: (reg.raster_bounds_lat_lng as any) ??
+      original.raster_bounds_lat_lng ?? null,
+    dsm_tile_bounds_lat_lng: (reg.dsm_tile_bounds_lat_lng as any) ??
+      original.dsm_tile_bounds_lat_lng ?? null,
+    raster_size_px: (reg.raster_size_px as any) ?? original.raster_size_px ??
+      null,
     dsm_size_px: (reg.dsm_size_px as any) ?? original.dsm_size_px ?? null,
-    meters_per_pixel: (reg.meters_per_pixel as any) ?? original.meters_per_pixel ?? null,
-    static_map_center_lat_lng: (reg.static_map_center_lat_lng as any) ?? original.static_map_center_lat_lng ?? null,
+    meters_per_pixel: (reg.meters_per_pixel as any) ??
+      original.meters_per_pixel ?? null,
+    static_map_center_lat_lng: (reg.static_map_center_lat_lng as any) ??
+      original.static_map_center_lat_lng ?? null,
     selected_candidate_polygon_px:
-      (reg.candidate_source_status === "stale_debug_only" ? null : (reg.selected_candidate_polygon_px as any))
-      ?? original.selected_candidate_polygon_px
-      ?? null,
-    selected_candidate_polygon_geo: (reg.selected_candidate_polygon_geo as any) ?? original.selected_candidate_polygon_geo ?? null,
-    candidate_coordinate_space: (reg.candidate_coordinate_space as any) ?? original.candidate_coordinate_space ?? null,
-    footprint_bbox_diagonal_px: (reg.footprint_bbox_diagonal_px as any) ?? original.footprint_bbox_diagonal_px ?? null,
+      (reg.candidate_source_status === "stale_debug_only"
+        ? null
+        : (reg.selected_candidate_polygon_px as any)) ??
+        original.selected_candidate_polygon_px ??
+        null,
+    selected_candidate_polygon_geo:
+      (reg.selected_candidate_polygon_geo as any) ??
+        original.selected_candidate_polygon_geo ?? null,
+    candidate_coordinate_space: (reg.candidate_coordinate_space as any) ??
+      original.candidate_coordinate_space ?? null,
+    footprint_bbox_diagonal_px: (reg.footprint_bbox_diagonal_px as any) ??
+      original.footprint_bbox_diagonal_px ?? null,
     no_candidate_contains_confirmed_center:
-      (reg.no_candidate_contains_confirmed_center as any) ?? (original as any).no_candidate_contains_confirmed_center ?? null,
+      (reg.no_candidate_contains_confirmed_center as any) ??
+        (original as any).no_candidate_contains_confirmed_center ?? null,
   };
 }
 
-function dsmRasterOverlapRatio(dsmBounds: any, rasterBounds: any): number | null {
-  if (!dsmBounds?.sw || !dsmBounds?.ne || !rasterBounds?.sw || !rasterBounds?.ne) return null;
-  const lngOverlap = Math.max(0, Math.min(dsmBounds.ne.lng, rasterBounds.ne.lng) - Math.max(dsmBounds.sw.lng, rasterBounds.sw.lng));
-  const latOverlap = Math.max(0, Math.min(dsmBounds.ne.lat, rasterBounds.ne.lat) - Math.max(dsmBounds.sw.lat, rasterBounds.sw.lat));
+function dsmRasterOverlapRatio(
+  dsmBounds: any,
+  rasterBounds: any,
+): number | null {
+  if (
+    !dsmBounds?.sw || !dsmBounds?.ne || !rasterBounds?.sw || !rasterBounds?.ne
+  ) return null;
+  const lngOverlap = Math.max(
+    0,
+    Math.min(dsmBounds.ne.lng, rasterBounds.ne.lng) -
+      Math.max(dsmBounds.sw.lng, rasterBounds.sw.lng),
+  );
+  const latOverlap = Math.max(
+    0,
+    Math.min(dsmBounds.ne.lat, rasterBounds.ne.lat) -
+      Math.max(dsmBounds.sw.lat, rasterBounds.sw.lat),
+  );
   const overlapArea = lngOverlap * latOverlap;
-  const dsmArea = Math.max(0, (dsmBounds.ne.lng - dsmBounds.sw.lng) * (dsmBounds.ne.lat - dsmBounds.sw.lat));
-  if (!Number.isFinite(overlapArea) || !Number.isFinite(dsmArea) || dsmArea <= 0) return null;
+  const dsmArea = Math.max(
+    0,
+    (dsmBounds.ne.lng - dsmBounds.sw.lng) *
+      (dsmBounds.ne.lat - dsmBounds.sw.lat),
+  );
+  if (
+    !Number.isFinite(overlapArea) || !Number.isFinite(dsmArea) || dsmArea <= 0
+  ) return null;
   return overlapArea / dsmArea;
 }
 
@@ -869,32 +1202,35 @@ function applyLiveRuntimeHoistToRegistration(
     const reg: any = registrationBlock ?? {};
 
     // ── Pull DSM evidence already persisted on geometry ───────────
-    const dsmCoordinateMatchDebug = g.dsm_coordinate_match
-      ?? g.source_acquisition_debug?.dsm_coordinate_match
-      ?? null;
+    const dsmCoordinateMatchDebug = g.dsm_coordinate_match ??
+      g.source_acquisition_debug?.dsm_coordinate_match ??
+      null;
     const dsmLoaded = Boolean(
-      g.dsm_loaded
-        ?? g.source_acquisition_debug?.dsm_loaded
-        ?? reg.dsm_stage_attempted
-        ?? (dsmCoordinateMatchDebug?.dsm_bbox != null),
+      g.dsm_loaded ??
+        g.source_acquisition_debug?.dsm_loaded ??
+        reg.dsm_stage_attempted ??
+        (dsmCoordinateMatchDebug?.dsm_bbox != null),
     );
     const maskLoaded = Boolean(
       g.mask_loaded ?? g.source_acquisition_debug?.mask_loaded,
     );
-    const confirmedLL = reg.confirmed_roof_center_lat_lng
-      ?? g.confirmed_roof_center_lat_lng
-      ?? null;
+    const confirmedLL = reg.confirmed_roof_center_lat_lng ??
+      g.confirmed_roof_center_lat_lng ??
+      null;
     const rasterMpp = Number.isFinite(Number(g.meters_per_pixel))
       ? Number(g.meters_per_pixel)
       : Number.isFinite(Number(reg.meters_per_pixel))
-        ? Number(reg.meters_per_pixel)
+      ? Number(reg.meters_per_pixel)
       : Number.isFinite(Number(reg.raster_meters_per_pixel))
-        ? Number(reg.raster_meters_per_pixel)
-        : null;
+      ? Number(reg.raster_meters_per_pixel)
+      : null;
 
     // ── Only hoist DSM fields when registration is missing them ───
-    const dsmAlreadyHoisted = reg.dsm_size_px != null && reg.dsm_tile_bounds_lat_lng != null;
-    if (!dsmAlreadyHoisted && (dsmLoaded || maskLoaded || dsmCoordinateMatchDebug)) {
+    const dsmAlreadyHoisted = reg.dsm_size_px != null &&
+      reg.dsm_tile_bounds_lat_lng != null;
+    if (
+      !dsmAlreadyHoisted && (dsmLoaded || maskLoaded || dsmCoordinateMatchDebug)
+    ) {
       const dsmReg = buildDsmRegistration({
         dsm_loaded: dsmLoaded,
         mask_loaded: maskLoaded,
@@ -906,12 +1242,17 @@ function applyLiveRuntimeHoistToRegistration(
       });
       reg.dsm_size_px = reg.dsm_size_px ?? dsmReg.dsm_size_px;
       reg.dsm_size_source = reg.dsm_size_source ?? dsmReg.dsm_size_source;
-      reg.dsm_tile_bounds_lat_lng = reg.dsm_tile_bounds_lat_lng ?? dsmReg.dsm_tile_bounds_lat_lng;
+      reg.dsm_tile_bounds_lat_lng = reg.dsm_tile_bounds_lat_lng ??
+        dsmReg.dsm_tile_bounds_lat_lng;
       reg.dsm_bounds_source = reg.dsm_bounds_source ?? dsmReg.dsm_bounds_source;
-      reg.dsm_bounds_derived = reg.dsm_bounds_derived ?? dsmReg.dsm_bounds_derived;
-      reg.dsm_bounds_warning = reg.dsm_bounds_warning ?? dsmReg.dsm_bounds_warning;
-      reg.dsm_bounds_confidence = reg.dsm_bounds_confidence ?? dsmReg.dsm_bounds_confidence;
-      reg.dsm_meters_per_pixel = reg.dsm_meters_per_pixel ?? dsmReg.dsm_meters_per_pixel;
+      reg.dsm_bounds_derived = reg.dsm_bounds_derived ??
+        dsmReg.dsm_bounds_derived;
+      reg.dsm_bounds_warning = reg.dsm_bounds_warning ??
+        dsmReg.dsm_bounds_warning;
+      reg.dsm_bounds_confidence = reg.dsm_bounds_confidence ??
+        dsmReg.dsm_bounds_confidence;
+      reg.dsm_meters_per_pixel = reg.dsm_meters_per_pixel ??
+        dsmReg.dsm_meters_per_pixel;
       reg.dsm_mpp_source = reg.dsm_mpp_source ?? dsmReg.dsm_mpp_source;
       reg.dsm_registration_version = dsmReg.dsm_registration_version;
       reg.dsm_registration_source = dsmReg.dsm_registration_source;
@@ -926,69 +1267,99 @@ function applyLiveRuntimeHoistToRegistration(
     if (
       reg.dsm_tile_bounds_lat_lng &&
       reg.dsm_size_px &&
-      (!reg.geo_to_dsm_transform || !reg.dsm_to_raster_transform || !reg.confirmed_roof_center_dsm_px)
+      (!reg.geo_to_dsm_transform || !reg.dsm_to_raster_transform ||
+        !reg.confirmed_roof_center_dsm_px)
     ) {
       const logicalSize = reg.size && typeof reg.size === "object"
         ? reg.size
-        : reg.raster_size_px && typeof reg.raster_size_px === "object" && Number(reg.scale) > 0
+        : reg.raster_size_px && typeof reg.raster_size_px === "object" &&
+            Number(reg.scale) > 0
         ? {
-            width: Number((reg.raster_size_px as any).width) / Number(reg.scale),
-            height: Number((reg.raster_size_px as any).height) / Number(reg.scale),
-          }
+          width: Number((reg.raster_size_px as any).width) / Number(reg.scale),
+          height: Number((reg.raster_size_px as any).height) /
+            Number(reg.scale),
+        }
         : null;
       const transformPkg = buildRegistrationTransformPackage({
         confirmed_roof_center_lat_lng: confirmedLL,
-        static_map_center_lat_lng: (reg.static_map_center_lat_lng as any) ?? g.static_map_center_lat_lng ?? confirmedLL,
-        zoom: Number.isFinite(Number(reg.zoom)) ? Number(reg.zoom) : Number.isFinite(Number(g.zoom)) ? Number(g.zoom) : 19,
+        static_map_center_lat_lng: (reg.static_map_center_lat_lng as any) ??
+          g.static_map_center_lat_lng ?? confirmedLL,
+        zoom: Number.isFinite(Number(reg.zoom))
+          ? Number(reg.zoom)
+          : Number.isFinite(Number(g.zoom))
+          ? Number(g.zoom)
+          : 19,
         size: logicalSize as any,
-        scale: Number.isFinite(Number(reg.scale)) ? Number(reg.scale) : Number.isFinite(Number(g.scale)) ? Number(g.scale) : 2,
+        scale: Number.isFinite(Number(reg.scale))
+          ? Number(reg.scale)
+          : Number.isFinite(Number(g.scale))
+          ? Number(g.scale)
+          : 2,
         dsm_tile_bounds_lat_lng: reg.dsm_tile_bounds_lat_lng as any,
         dsm_size_px: reg.dsm_size_px as any,
-        dsm_meters_per_pixel: Number.isFinite(Number(reg.dsm_meters_per_pixel)) ? Number(reg.dsm_meters_per_pixel) : rasterMpp,
+        dsm_meters_per_pixel: Number.isFinite(Number(reg.dsm_meters_per_pixel))
+          ? Number(reg.dsm_meters_per_pixel)
+          : rasterMpp,
       });
-      reg.geo_to_dsm_transform = reg.geo_to_dsm_transform ?? transformPkg.geo_to_dsm_transform;
-      reg.confirmed_roof_center_dsm_px = reg.confirmed_roof_center_dsm_px ?? transformPkg.confirmed_roof_center_dsm_px;
+      reg.geo_to_dsm_transform = reg.geo_to_dsm_transform ??
+        transformPkg.geo_to_dsm_transform;
+      reg.confirmed_roof_center_dsm_px = reg.confirmed_roof_center_dsm_px ??
+        transformPkg.confirmed_roof_center_dsm_px;
       reg.geo_to_dsm_px_success = transformPkg.geo_to_dsm_px_success === true;
-      reg.dsm_tile_bounds_contain_confirmed_center = transformPkg.dsm_tile_bounds_contain_confirmed_center === true;
-      reg.dsm_to_raster_transform = reg.dsm_to_raster_transform ?? transformPkg.dsm_to_raster_transform;
-      reg.dsm_raster_bounds_overlap = transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
+      reg.dsm_tile_bounds_contain_confirmed_center =
+        transformPkg.dsm_tile_bounds_contain_confirmed_center === true;
+      reg.dsm_to_raster_transform = reg.dsm_to_raster_transform ??
+        transformPkg.dsm_to_raster_transform;
+      reg.dsm_raster_bounds_overlap =
+        transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
       reg.dsm_raster_overlap_ratio = dsmRasterOverlapRatio(
         transformPkg.dsm_tile_bounds_lat_lng,
         transformPkg.raster_bounds_lat_lng,
       );
-      reg.dsm_pixel_transform_valid = transformPkg.dsm_pixel_transform_valid === true;
-      reg.raster_bounds_lat_lng = reg.raster_bounds_lat_lng ?? transformPkg.raster_bounds_lat_lng;
+      reg.dsm_pixel_transform_valid =
+        transformPkg.dsm_pixel_transform_valid === true;
+      reg.raster_bounds_lat_lng = reg.raster_bounds_lat_lng ??
+        transformPkg.raster_bounds_lat_lng;
       reg.raster_size_px = reg.raster_size_px ?? transformPkg.raster_size_px;
-      reg.geo_to_raster_transform = reg.geo_to_raster_transform ?? transformPkg.geo_to_raster_transform;
-      reg.confirmed_roof_center_px = reg.confirmed_roof_center_px ?? transformPkg.confirmed_roof_center_px;
+      reg.geo_to_raster_transform = reg.geo_to_raster_transform ??
+        transformPkg.geo_to_raster_transform;
+      reg.confirmed_roof_center_px = reg.confirmed_roof_center_px ??
+        transformPkg.confirmed_roof_center_px;
       reg.transform_package = reg.transform_package ?? transformPkg;
-      reg.transform_failure_reasons = validateRegistrationTransformPackage(transformPkg).reasons;
+      reg.transform_failure_reasons =
+        validateRegistrationTransformPackage(transformPkg).reasons;
     }
 
     // ── Candidate polygon hoist ───────────────────────────────────
-    const candidateAlreadyHoisted = Array.isArray(reg.selected_candidate_polygon_px)
-      && reg.selected_candidate_polygon_px.length >= 3;
+    const candidateAlreadyHoisted =
+      Array.isArray(reg.selected_candidate_polygon_px) &&
+      reg.selected_candidate_polygon_px.length >= 3;
     if (!candidateAlreadyHoisted) {
       const autoDebug = g.autonomous_debug ?? g.dsm_planar_graph_debug ?? {};
-      const candidateTable = autoDebug?.perimeter_phase0?.perimeter_candidate_table
-        ?? g.perimeter_phase0?.perimeter_candidate_table
-        ?? null;
-      const perimeterTopology = g.perimeter_topology
-        ?? autoDebug?.perimeter_topology
-        ?? null;
-      const staleTopology = (g.stale_debug_payload as any)?.perimeter_topology ?? null;
+      const candidateTable =
+        autoDebug?.perimeter_phase0?.perimeter_candidate_table ??
+          g.perimeter_phase0?.perimeter_candidate_table ??
+          null;
+      const perimeterTopology = g.perimeter_topology ??
+        autoDebug?.perimeter_topology ??
+        null;
+      const staleTopology =
+        (g.stale_debug_payload as any)?.perimeter_topology ?? null;
       const hoist = hoistSelectedCandidatePolygon({
         perimeter_candidate_table: candidateTable,
         perimeter_topology: perimeterTopology ?? staleTopology,
         default_coordinate_space: "dsm_px",
       });
-      const staleOnly = perimeterTopology == null && staleTopology != null && hoist.selected_candidate_polygon_px;
+      const staleOnly = perimeterTopology == null && staleTopology != null &&
+        hoist.selected_candidate_polygon_px;
       if (staleOnly) {
         reg.candidate_source_status = "stale_debug_only";
       } else if (hoist.selected_candidate_polygon_px) {
         reg.selected_candidate_polygon_px = hoist.selected_candidate_polygon_px;
-        reg.selected_candidate_polygon_geo = hoist.selected_candidate_polygon_geo;
-        reg.selected_candidate_polygon_point_count = hoist.selected_candidate_polygon_point_count;
+        reg.selected_candidate_polygon_geo =
+          hoist.selected_candidate_polygon_geo;
+        reg.selected_candidate_polygon_point_count =
+          hoist.selected_candidate_polygon_point_count;
         reg.candidate_coordinate_space = hoist.candidate_coordinate_space;
         reg.candidate_source = hoist.candidate_source;
         reg.candidate_area_sqft = hoist.candidate_area_sqft;
@@ -1000,8 +1371,9 @@ function applyLiveRuntimeHoistToRegistration(
     }
     reg.candidate_hoist_called = true;
     reg.candidate_hoist_version = CANDIDATE_HOIST_VERSION;
-    reg.selected_candidate_polygon_px_present = Array.isArray(reg.selected_candidate_polygon_px)
-      && reg.selected_candidate_polygon_px.length >= 3;
+    reg.selected_candidate_polygon_px_present =
+      Array.isArray(reg.selected_candidate_polygon_px) &&
+      reg.selected_candidate_polygon_px.length >= 3;
     if (reg.selected_candidate_polygon_px_present) {
       const stageReport = classifyRegistrationStage({
         confirmed_roof_center_lat_lng: reg.confirmed_roof_center_lat_lng as any,
@@ -1009,10 +1381,12 @@ function applyLiveRuntimeHoistToRegistration(
         confirmed_roof_center_dsm_px: reg.confirmed_roof_center_dsm_px as any,
         raster_size_px: reg.raster_size_px as any,
         raster_bounds_lat_lng: reg.raster_bounds_lat_lng as any,
-        static_transform_succeeded: !!reg.geo_to_raster_transform && !!reg.confirmed_roof_center_px,
+        static_transform_succeeded: !!reg.geo_to_raster_transform &&
+          !!reg.confirmed_roof_center_px,
         geo_to_dsm_px_success: reg.geo_to_dsm_px_success === true,
         dsm_pixel_transform_valid: reg.dsm_pixel_transform_valid === true,
-        dsm_tile_bounds_contain_confirmed_center: reg.dsm_tile_bounds_contain_confirmed_center === true,
+        dsm_tile_bounds_contain_confirmed_center:
+          reg.dsm_tile_bounds_contain_confirmed_center === true,
         dsm_to_raster_bounds_overlap: reg.dsm_raster_bounds_overlap === true,
         dsm: {
           dsm_loaded: reg.dsm_stage_attempted === true,
@@ -1020,25 +1394,35 @@ function applyLiveRuntimeHoistToRegistration(
           dsm_bounds_source: reg.dsm_bounds_source as any,
           dsm_tile_bounds_lat_lng: reg.dsm_tile_bounds_lat_lng as any,
           dsm_size_px: reg.dsm_size_px as any,
-          dsm_meters_per_pixel: Number.isFinite(Number(reg.dsm_meters_per_pixel)) ? Number(reg.dsm_meters_per_pixel) : null,
+          dsm_meters_per_pixel:
+            Number.isFinite(Number(reg.dsm_meters_per_pixel))
+              ? Number(reg.dsm_meters_per_pixel)
+              : null,
         },
         candidate: {
-          selected_candidate_polygon_px: reg.selected_candidate_polygon_px as any,
-          selected_candidate_polygon_geo: reg.selected_candidate_polygon_geo as any,
+          selected_candidate_polygon_px: reg
+            .selected_candidate_polygon_px as any,
+          selected_candidate_polygon_geo: reg
+            .selected_candidate_polygon_geo as any,
           candidate_coordinate_space: reg.candidate_coordinate_space as any,
           candidate_source: reg.candidate_source as any,
           candidate_area_sqft: reg.candidate_area_sqft as any,
           candidate_centroid_px: reg.candidate_centroid_px as any,
-          candidate_centroid_offset_threshold_px: reg.candidate_centroid_offset_threshold_px as any,
+          candidate_centroid_offset_threshold_px: reg
+            .candidate_centroid_offset_threshold_px as any,
         },
       });
-      reg.center_used_for_candidate_check = stageReport.coordinate_space_audit.center_used_for_candidate_check;
-      reg.confirmed_center_inside_candidate = stageReport.candidate_proof.confirmed_center_inside_candidate;
+      reg.center_used_for_candidate_check =
+        stageReport.coordinate_space_audit.center_used_for_candidate_check;
+      reg.confirmed_center_inside_candidate =
+        stageReport.candidate_proof.confirmed_center_inside_candidate;
       reg.candidate_centroid_offset_from_confirmed_center_px =
-        stageReport.candidate_proof.candidate_centroid_offset_from_confirmed_center_px;
+        stageReport.candidate_proof
+          .candidate_centroid_offset_from_confirmed_center_px;
       reg.candidate_centroid_offset_threshold_px =
         stageReport.candidate_proof.candidate_centroid_offset_threshold_px;
-      reg.candidate_rejection_reason = stageReport.hard_fail_reason === "candidate_centroid_offset_exceeds_target"
+      reg.candidate_rejection_reason = stageReport.hard_fail_reason ===
+          "candidate_centroid_offset_exceeds_target"
         ? "centroid_offset_exceeds_target"
         : stageReport.candidate_proof.candidate_rejection_reason;
       reg.stage_hard_fail_reason = stageReport.hard_fail_reason;
@@ -1047,17 +1431,25 @@ function applyLiveRuntimeHoistToRegistration(
     }
     return reg;
   } catch (e) {
-    console.warn("[DSM_HOIST_V1] applyLiveRuntimeHoistToRegistration failed", (e as Error)?.message);
+    console.warn(
+      "[DSM_HOIST_V1] applyLiveRuntimeHoistToRegistration failed",
+      (e as Error)?.message,
+    );
     (registrationBlock as any).dsm_hoist_called = true;
     (registrationBlock as any).dsm_hoist_version = DSM_HOIST_VERSION;
-    (registrationBlock as any).dsm_hoist_error = (e as Error)?.message ?? "unknown";
+    (registrationBlock as any).dsm_hoist_error = (e as Error)?.message ??
+      "unknown";
     return registrationBlock;
   }
 }
 
-function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record<string, unknown> {
+function prepareRoofMeasurementPayload(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
   const next: Record<string, unknown> = { ...payload };
-  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+  const geometry = typeof next.geometry_report_json === "object" &&
+      next.geometry_report_json !== null &&
+      !Array.isArray(next.geometry_report_json)
     ? { ...(next.geometry_report_json as Record<string, unknown>) }
     : { raw_geometry_report_json: next.geometry_report_json ?? null };
 
@@ -1073,27 +1465,46 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // `geometry.registration` block. This is the single, authoritative write
   // site for the registration JSONB so we never persist drift.
   // The temp field is stripped before insert/update.
-  const regInput = (next as any)._registration_gate_input as RegistrationGateInput | undefined;
-  const regPreflight = (next as any)._registration_preflight as EarlyTransformPreflight | undefined;
-  const regTransformPkg = ((next as any)._registration_transform_package as any | undefined) ?? regPreflight?.transform_package;
-  let regFailureReasonForPrecedence: ReturnType<typeof deriveRegistrationFailureReason> | "registration_field_conflict" | null = null;
+  const regInput = (next as any)._registration_gate_input as
+    | RegistrationGateInput
+    | undefined;
+  const regPreflight = (next as any)._registration_preflight as
+    | EarlyTransformPreflight
+    | undefined;
+  const regTransformPkg =
+    ((next as any)._registration_transform_package as any | undefined) ??
+      regPreflight?.transform_package;
+  let regFailureReasonForPrecedence:
+    | ReturnType<typeof deriveRegistrationFailureReason>
+    | "registration_field_conflict"
+    | null = null;
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
       let result = evaluateRegistrationGate(regInput);
-      let registrationBlock: Record<string, unknown> = { ...result.registration };
+      let registrationBlock: Record<string, unknown> = {
+        ...result.registration,
+      };
       // Source Registration Transform Builder v1 — hoist truth-from-math values
       // into the top-level registration block so the gate, UI, and debug
       // endpoints all read the same evidence. Without this hoist, only the
       // nested `transform_package` carries the real coords while top-level
       // fields stay null and the run looks like a wiring regression.
       if (regTransformPkg) {
-        registrationBlock = mergeRegistrationProof(registrationBlock, registrationFromTransformPackage(regTransformPkg as any, {
-          dsm_stage_pending: !(regTransformPkg as any).geo_to_dsm_transform,
-          transform_build_stage: (next as any)._registration_transform_build_stage ?? EARLY_TRANSFORM_STAGE,
-        }));
+        registrationBlock = mergeRegistrationProof(
+          registrationBlock,
+          registrationFromTransformPackage(regTransformPkg as any, {
+            dsm_stage_pending: !(regTransformPkg as any).geo_to_dsm_transform,
+            transform_build_stage:
+              (next as any)._registration_transform_build_stage ??
+                EARLY_TRANSFORM_STAGE,
+          }),
+        );
       } else if (regPreflight) {
-        registrationBlock = mergeRegistrationProof(registrationBlock, regPreflight);
+        registrationBlock = mergeRegistrationProof(
+          registrationBlock,
+          regPreflight,
+        );
       } else {
         registrationBlock = mergeRegistrationProof(registrationBlock, null, {
           transform_builder_called: false,
@@ -1104,8 +1515,14 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       // Live-runtime DSM + Candidate hoist — hoist BEFORE quarantine so the
       // registration block reports dsm_size_px / selected_candidate_polygon_px
       // from whatever evidence already lives on geometry_report_json.
-      registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock, geometry as any);
-      const refreshedGateInput = registrationInputFromBlock(regInput, registrationBlock);
+      registrationBlock = applyLiveRuntimeHoistToRegistration(
+        registrationBlock,
+        geometry as any,
+      );
+      const refreshedGateInput = registrationInputFromBlock(
+        regInput,
+        registrationBlock,
+      );
       result = evaluateRegistrationGate(refreshedGateInput);
       registrationBlock = { ...registrationBlock, ...result.registration };
       (geometry as any).registration = registrationBlock;
@@ -1116,28 +1533,47 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         regFailureReasonForPrecedence = failure.reason as any;
         (geometry as any).result_state = failure.result_state;
         (geometry as any).hard_fail_reason = failure.hard_fail_reason;
-        (geometry as any).block_customer_report_reason = failure.block_customer_report_reason;
-        (geometry as any).failure_stage = registrationFailureStage(failure.reason as any);
+        (geometry as any).block_customer_report_reason =
+          failure.block_customer_report_reason;
+        (geometry as any).failure_stage = registrationFailureStage(
+          failure.reason as any,
+        );
         (geometry as any).diagram_render_intent =
           failure.result_state === "ai_failed_target_unconfirmed"
             ? "target_confirmation_required"
             : "coordinate_registration_debug_only";
         (next as any).result_state = failure.result_state;
         (next as any).hard_fail_reason = failure.hard_fail_reason;
-        (next as any).block_customer_report_reason = failure.block_customer_report_reason;
+        (next as any).block_customer_report_reason =
+          failure.block_customer_report_reason;
         (next as any).failure_stage = (geometry as any).failure_stage;
-        (next as any).diagram_render_intent = (geometry as any).diagram_render_intent;
+        (next as any).diagram_render_intent =
+          (geometry as any).diagram_render_intent;
         (next as any).customer_report_ready = false;
         (next as any).validation_status = "failed";
         // Quarantine stale Phase 3B / roof_lines when registration blocks.
         // The gate cannot have produced new typed roof_lines, so any present
         // values are from prior solver state and must not be reported as live.
-        const staleKeys = ["roof_lines", "phase3B", "phase3_b", "phase3B_active", "roof_lines_count", "reportable_roof_lines_count", "roof_line_total_lf_by_attribute", "perimeter_eave_ft", "perimeter_rake_ft", "perimeter_total_ft"];
-        const stale: Record<string, unknown> = (geometry as any).stale_debug_payload ?? {};
+        const staleKeys = [
+          "roof_lines",
+          "phase3B",
+          "phase3_b",
+          "phase3B_active",
+          "roof_lines_count",
+          "reportable_roof_lines_count",
+          "roof_line_total_lf_by_attribute",
+          "perimeter_eave_ft",
+          "perimeter_rake_ft",
+          "perimeter_total_ft",
+        ];
+        const stale: Record<string, unknown> =
+          (geometry as any).stale_debug_payload ?? {};
         for (const k of staleKeys) {
           if ((geometry as any)[k] != null) {
             stale[k] = (geometry as any)[k];
-            (geometry as any)[k] = Array.isArray((geometry as any)[k]) ? [] : null;
+            (geometry as any)[k] = Array.isArray((geometry as any)[k])
+              ? []
+              : null;
           }
         }
         (geometry as any).stale_debug_payload = stale;
@@ -1145,18 +1581,32 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
         (next as any).roof_lines_count = 0;
       }
     } catch (e) {
-      console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
+      console.warn(
+        "[REGISTRATION_GATE_V2] evaluation failed in payload prep",
+        (e as Error)?.message,
+      );
     }
   } else if (regPreflight) {
-    let registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
-    registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock as Record<string, unknown>, geometry as any);
+    let registrationBlock = mergeRegistrationProof(
+      (geometry as any).registration ?? (geometry as any).registration_gate,
+      regPreflight,
+    );
+    registrationBlock = applyLiveRuntimeHoistToRegistration(
+      registrationBlock as Record<string, unknown>,
+      geometry as any,
+    );
     geometry.registration = registrationBlock;
     geometry.registration_gate = registrationBlock;
   } else {
     // No regInput/regPreflight provided — still run the hoist so debug-only
     // writes carry dsm_size_px / candidate fields when evidence exists.
-    const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? {}) as Record<string, unknown>;
-    const hoisted = applyLiveRuntimeHoistToRegistration({ ...existing }, geometry as any);
+    const existing =
+      ((geometry as any).registration ?? (geometry as any).registration_gate ??
+        {}) as Record<string, unknown>;
+    const hoisted = applyLiveRuntimeHoistToRegistration(
+      { ...existing },
+      geometry as any,
+    );
     geometry.registration = hoisted;
     geometry.registration_gate = hoisted;
   }
@@ -1169,10 +1619,13 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // geometry fields BEFORE conflict detection so block↔top-level drift cannot
   // be persisted. Truth-in-advertising: top-level booleans must match the
   // block; never `true` while transforms are null.
-  const regForMirror = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
+  const regForMirror = (geometry as any).registration ??
+    (geometry as any).registration_gate ?? null;
   if (regForMirror && typeof regForMirror === "object") {
-    (geometry as any).geo_to_dsm_px_success = regForMirror.geo_to_dsm_px_success ?? false;
-    (geometry as any).dsm_pixel_transform_valid = regForMirror.dsm_pixel_transform_valid ?? false;
+    (geometry as any).geo_to_dsm_px_success =
+      regForMirror.geo_to_dsm_px_success ?? false;
+    (geometry as any).dsm_pixel_transform_valid =
+      regForMirror.dsm_pixel_transform_valid ?? false;
     (geometry as any).coordinate_registration_gate_passed =
       regForMirror.coordinate_registration_gate_passed ?? false;
     (geometry as any).confirmed_center_inside_candidate =
@@ -1182,7 +1635,8 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   // v2.3 precedence: prefer the honest gate-level failure
   // (coordinate_registration_failed) over the conflict label. Conflicts are
   // still recorded for auditability and still hard-fail the write.
-  const { reason: dominantReason, conflicts } = derivePrecedenceReasonWithConflict(geometry);
+  const { reason: dominantReason, conflicts } =
+    derivePrecedenceReasonWithConflict(geometry);
   if (conflicts.length > 0) {
     (geometry as any).registration_field_conflicts = conflicts;
   }
@@ -1191,31 +1645,34 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     const hard = dominantReason === "registration_field_conflict"
       ? "registration_field_conflict"
       : dominantReason;
-    const resultState =
-      dominantReason === "target_roof_not_confirmed"
-        ? "ai_failed_target_unconfirmed"
-        : "ai_failed_source_acquisition";
+    const resultState = dominantReason === "target_roof_not_confirmed"
+      ? "ai_failed_target_unconfirmed"
+      : "ai_failed_source_acquisition";
     (geometry as any).result_state = resultState;
     (geometry as any).hard_fail_reason = hard;
     (geometry as any).block_customer_report_reason = hard;
-    (geometry as any).failure_stage = dominantReason === "target_roof_not_confirmed"
-      ? "target_confirmation"
-      : "source_registration";
-    (geometry as any).diagram_render_intent = dominantReason === "target_roof_not_confirmed"
-      ? "target_confirmation_required"
-      : "coordinate_registration_debug_only";
+    (geometry as any).failure_stage =
+      dominantReason === "target_roof_not_confirmed"
+        ? "target_confirmation"
+        : "source_registration";
+    (geometry as any).diagram_render_intent =
+      dominantReason === "target_roof_not_confirmed"
+        ? "target_confirmation_required"
+        : "coordinate_registration_debug_only";
     (next as any).result_state = resultState;
     (next as any).hard_fail_reason = hard;
     (next as any).block_customer_report_reason = hard;
     (next as any).failure_stage = (geometry as any).failure_stage;
-    (next as any).diagram_render_intent = (geometry as any).diagram_render_intent;
+    (next as any).diagram_render_intent =
+      (geometry as any).diagram_render_intent;
     (next as any).customer_report_ready = false;
     (next as any).validation_status = "failed";
   }
 
   if (!regFailureReasonForPrecedence) {
-    const reg = (geometry as any).registration ?? (geometry as any).registration_gate ?? null;
-    if (!regVersionForPrecedence && reg && typeof reg === 'object') {
+    const reg = (geometry as any).registration ??
+      (geometry as any).registration_gate ?? null;
+    if (!regVersionForPrecedence && reg && typeof reg === "object") {
       regVersionForPrecedence = (reg as any).version ?? null;
     }
   }
@@ -1263,18 +1720,20 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     stripRegistrationBlockedGeometryArtifacts(geometry as any);
   }
 
-  (geometry as any).registration_precedence_version = REGISTRATION_PRECEDENCE_VERSION;
-  (geometry as any).registration_precedence_applied = !!regFailureReasonForPrecedence;
-  (geometry as any).registration_precedence_reason = regFailureReasonForPrecedence;
-  (geometry as any).registration_gate_version =
-    regVersionForPrecedence ?? (geometry as any).registration_gate_version ?? null;
+  (geometry as any).registration_precedence_version =
+    REGISTRATION_PRECEDENCE_VERSION;
+  (geometry as any).registration_precedence_applied =
+    !!regFailureReasonForPrecedence;
+  (geometry as any).registration_precedence_reason =
+    regFailureReasonForPrecedence;
+  (geometry as any).registration_gate_version = regVersionForPrecedence ??
+    (geometry as any).registration_gate_version ?? null;
 
   // ─── diagram_render_intent normalization (DB-safe) ───
   // Coerce whatever the pipeline produced into one of the 6 stable buckets
   // permitted by roof_measurements_diagram_render_intent_check. Raw value
   // and any warning are preserved in geometry_report_json for diagnostics.
-  const rawIntent =
-    (next as any).diagram_render_intent ??
+  const rawIntent = (next as any).diagram_render_intent ??
     (geometry as any).diagram_render_intent ??
     null;
   const intentNorm = normalizeDiagramRenderIntentForWrite(rawIntent, {
@@ -1291,16 +1750,22 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
     (geometry as any).normalized_diagram_render_intent = intentNorm.normalized;
   }
   if (intentNorm.warning) {
-    (geometry as any).diagram_render_intent_normalization_warning = intentNorm.warning;
+    (geometry as any).diagram_render_intent_normalization_warning =
+      intentNorm.warning;
   }
 
   next.geometry_report_json = geometry;
   return next;
 }
 
-function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column: string): Record<string, unknown> {
+function stripColumnIntoGeometryReport(
+  payload: Record<string, unknown>,
+  column: string,
+): Record<string, unknown> {
   const next: Record<string, unknown> = { ...payload };
-  const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
+  const geometry = typeof next.geometry_report_json === "object" &&
+      next.geometry_report_json !== null &&
+      !Array.isArray(next.geometry_report_json)
     ? { ...(next.geometry_report_json as Record<string, unknown>) }
     : { raw_geometry_report_json: next.geometry_report_json ?? null };
   const stripped = Array.isArray(geometry.schema_drift_stripped_columns)
@@ -1308,7 +1773,9 @@ function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column:
     : [];
 
   if (column in next) {
-    if (next[column] != null && !(column in geometry)) geometry[column] = next[column];
+    if (next[column] != null && !(column in geometry)) {
+      geometry[column] = next[column];
+    }
     delete next[column];
   }
   if (!stripped.includes(column)) stripped.push(column);
@@ -1317,107 +1784,163 @@ function stripColumnIntoGeometryReport(payload: Record<string, unknown>, column:
   return next;
 }
 
-async function insertRoofMeasurementWithSchemaGuard(payload: Record<string, unknown>) {
-  let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));
+async function insertRoofMeasurementWithSchemaGuard(
+  payload: Record<string, unknown>,
+) {
+  let safePayload = ensureRegistrationProofBeforeWrite(
+    prepareRoofMeasurementPayload(payload),
+  );
   let lastError: unknown = null;
   let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
-    const result = await supabase.from("roof_measurements").insert(safePayload as any).select("id").single();
+    const result = await supabase.from("roof_measurements").insert(
+      safePayload as any,
+    ).select("id").single();
     if (!result.error) return result;
     lastError = result.error;
-    if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
+    if (
+      !diagramIntentRetried &&
+      isDiagramRenderIntentConstraintError(result.error)
+    ) {
       diagramIntentRetried = true;
       const failed = (safePayload as any).diagram_render_intent ?? null;
       safePayload = withDiagramRenderIntentConstraintRetryPayload(safePayload);
-      console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert after diagram_render_intent CHECK violation", failed);
+      console.warn(
+        "[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert after diagram_render_intent CHECK violation",
+        failed,
+      );
       continue;
     }
     const missingColumn = getSchemaCacheMissingColumn(result.error);
     if (!missingColumn || !(missingColumn in safePayload)) return result;
-    console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert without schema-cache-missing column", missingColumn);
+    console.warn(
+      "[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying insert without schema-cache-missing column",
+      missingColumn,
+    );
     safePayload = stripColumnIntoGeometryReport(safePayload, missingColumn);
   }
   return { data: null, error: lastError };
 }
 
-async function updateRoofMeasurementWithSchemaGuard(id: string, payload: Record<string, unknown>) {
-  let safePayload = ensureRegistrationProofBeforeWrite(prepareRoofMeasurementPayload(payload));
+async function updateRoofMeasurementWithSchemaGuard(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  let safePayload = ensureRegistrationProofBeforeWrite(
+    prepareRoofMeasurementPayload(payload),
+  );
   let lastError: unknown = null;
   let diagramIntentRetried = false;
   for (let attempt = 0; attempt < 8; attempt++) {
-    const result = await supabase.from("roof_measurements").update(safePayload as any).eq("id", id);
+    const result = await supabase.from("roof_measurements").update(
+      safePayload as any,
+    ).eq("id", id);
     if (!result.error) return result;
     lastError = result.error;
-    if (!diagramIntentRetried && isDiagramRenderIntentConstraintError(result.error)) {
+    if (
+      !diagramIntentRetried &&
+      isDiagramRenderIntentConstraintError(result.error)
+    ) {
       diagramIntentRetried = true;
       const failed = (safePayload as any).diagram_render_intent ?? null;
       safePayload = withDiagramRenderIntentConstraintRetryPayload(safePayload);
-      console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update after diagram_render_intent CHECK violation", failed);
+      console.warn(
+        "[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update after diagram_render_intent CHECK violation",
+        failed,
+      );
       continue;
     }
     const missingColumn = getSchemaCacheMissingColumn(result.error);
     if (!missingColumn || !(missingColumn in safePayload)) return result;
-    console.warn("[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update without schema-cache-missing column", missingColumn);
+    console.warn(
+      "[ROOF_MEASUREMENT_SCHEMA_GUARD] retrying update without schema-cache-missing column",
+      missingColumn,
+    );
     safePayload = stripColumnIntoGeometryReport(safePayload, missingColumn);
   }
   return { data: null, error: lastError };
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
   vlog("ENTER_start_ai_measurement", { url: req.url });
 
   try {
+    const url = new URL(req.url);
+    if (url.pathname.endsWith("/watchdog")) {
+      const authHeader = req.headers.get("authorization") || "";
+      const apiKeyHeader = req.headers.get("apikey") || "";
+      const authorized = authHeader === `Bearer ${SERVICE_ROLE}` ||
+        apiKeyHeader === SERVICE_ROLE;
+      if (!authorized) return json({ error: "Service role required" }, 401);
+      const result = await runAiMeasurementWatchdog();
+      return json(result);
+    }
+
     const body = await req.json();
 
     // Normalize: accept both new and legacy field names.
-    const lead_id: string | null =
-      body.lead_id ?? body.pipelineEntryId ?? body.pipeline_entry_id ?? null;
+    const lead_id: string | null = body.lead_id ?? body.pipelineEntryId ??
+      body.pipeline_entry_id ?? null;
     const project_id: string | null = body.project_id ?? null;
-    const property_address: string | null = body.property_address ?? body.address ?? null;
+    const property_address: string | null = body.property_address ??
+      body.address ?? null;
     const latitude: number | null = body.latitude ?? body.lat ?? null;
     const longitude: number | null = body.longitude ?? body.lng ?? null;
     const source_button: string = body.source_button ?? "AI Measurement";
-    const pitch_override: string | null = body.pitch_override ?? body.pitchOverride ?? null;
-    const waste_factor_percent: number = Number(body.waste_factor_percent ?? 10);
+    const pitch_override: string | null = body.pitch_override ??
+      body.pitchOverride ?? null;
+    const waste_factor_percent: number = Number(
+      body.waste_factor_percent ?? 10,
+    );
     const zoom: number = Number(body.zoom ?? 20);
     const logical_image_width: number = Number(body.logical_image_width ?? 640);
-    const logical_image_height: number = Number(body.logical_image_height ?? 640);
+    const logical_image_height: number = Number(
+      body.logical_image_height ?? 640,
+    );
     const raster_scale: number = Number(body.raster_scale ?? 2);
     const user_id: string | null = body.user_id ?? body.userId ?? null;
-    const tenant_id_hint: string | null = body.tenantId ?? body.tenant_id ?? null;
+    const tenant_id_hint: string | null = body.tenantId ?? body.tenant_id ??
+      null;
 
     // Patent Rule 1 + Registration Gate v2: confirmed roof target. The user
     // must have placed/accepted a marker on the actual roof structure before
     // AI measurement may run, AND the marker must carry explicit lat/lng
     // (no silent fallback to the address geocode — that's how Fonsica ended
     // up overlaying the neighboring house).
-    const original_geocode_lat: number | null =
-      body.original_geocode_lat ?? body.originalGeocodeLat ?? null;
-    const original_geocode_lng: number | null =
-      body.original_geocode_lng ?? body.originalGeocodeLng ?? null;
-    const confirmed_roof_center_lat_raw =
-      body.confirmed_roof_center_lat ?? body.confirmedRoofCenterLat ?? null;
-    const confirmed_roof_center_lng_raw =
-      body.confirmed_roof_center_lng ?? body.confirmedRoofCenterLng ?? null;
+    const original_geocode_lat: number | null = body.original_geocode_lat ??
+      body.originalGeocodeLat ?? null;
+    const original_geocode_lng: number | null = body.original_geocode_lng ??
+      body.originalGeocodeLng ?? null;
+    const confirmed_roof_center_lat_raw = body.confirmed_roof_center_lat ??
+      body.confirmedRoofCenterLat ?? null;
+    const confirmed_roof_center_lng_raw = body.confirmed_roof_center_lng ??
+      body.confirmedRoofCenterLng ?? null;
     const confirmed_roof_center_lat: number | null =
-      typeof confirmed_roof_center_lat_raw === "number" && Number.isFinite(confirmed_roof_center_lat_raw)
+      typeof confirmed_roof_center_lat_raw === "number" &&
+        Number.isFinite(confirmed_roof_center_lat_raw)
         ? confirmed_roof_center_lat_raw
         : null;
     const confirmed_roof_center_lng: number | null =
-      typeof confirmed_roof_center_lng_raw === "number" && Number.isFinite(confirmed_roof_center_lng_raw)
+      typeof confirmed_roof_center_lng_raw === "number" &&
+        Number.isFinite(confirmed_roof_center_lng_raw)
         ? confirmed_roof_center_lng_raw
         : null;
-    const confirmed_roof_center_px_raw =
-      body.confirmed_roof_center_px ?? body.confirmedRoofCenterPx ?? null;
+    const confirmed_roof_center_px_raw = body.confirmed_roof_center_px ??
+      body.confirmedRoofCenterPx ?? null;
     const confirmed_roof_center_px: [number, number] | null =
       Array.isArray(confirmed_roof_center_px_raw) &&
-      confirmed_roof_center_px_raw.length === 2 &&
-      Number.isFinite(Number(confirmed_roof_center_px_raw[0])) &&
-      Number.isFinite(Number(confirmed_roof_center_px_raw[1]))
-        ? [Number(confirmed_roof_center_px_raw[0]), Number(confirmed_roof_center_px_raw[1])]
+        confirmed_roof_center_px_raw.length === 2 &&
+        Number.isFinite(Number(confirmed_roof_center_px_raw[0])) &&
+        Number.isFinite(Number(confirmed_roof_center_px_raw[1]))
+        ? [
+          Number(confirmed_roof_center_px_raw[0]),
+          Number(confirmed_roof_center_px_raw[1]),
+        ]
         : null;
     const user_confirmed_roof_target: boolean = Boolean(
       body.user_confirmed_roof_target ?? body.userConfirmedRoofTarget ?? false,
@@ -1430,14 +1953,18 @@ Deno.serve(async (req) => {
     const user_verified_perimeter: boolean = Boolean(
       body.user_verified_perimeter ?? body.userVerifiedPerimeter ?? false,
     );
-    const marker_offset_ft: number | null =
-      body.marker_offset_ft ?? body.markerOffsetFt ?? null;
+    const marker_offset_ft: number | null = body.marker_offset_ft ??
+      body.markerOffsetFt ?? null;
 
     if (!lead_id && !project_id) {
-      return json({ error: "lead_id (or pipelineEntryId) or project_id is required." }, 400);
+      return json({
+        error: "lead_id (or pipelineEntryId) or project_id is required.",
+      }, 400);
     }
     if (!property_address && (latitude == null || longitude == null)) {
-      return json({ error: "Property address or latitude/longitude is required." }, 400);
+      return json({
+        error: "Property address or latitude/longitude is required.",
+      }, 400);
     }
 
     const targetConfirmation = evaluateTargetConfirmation({
@@ -1449,9 +1976,18 @@ Deno.serve(async (req) => {
           : null,
     });
     const transformPreflight = await mustBuildTransformPackageEarly({
-      confirmed_roof_center_lat_lng: finiteLatLngOrNull(confirmed_roof_center_lat, confirmed_roof_center_lng),
-      original_geocode_lat_lng: finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ?? finiteLatLngOrNull(latitude, longitude),
-      static_map_center_lat_lng: finiteLatLngOrNull(confirmed_roof_center_lat, confirmed_roof_center_lng) ?? finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ?? finiteLatLngOrNull(latitude, longitude),
+      confirmed_roof_center_lat_lng: finiteLatLngOrNull(
+        confirmed_roof_center_lat,
+        confirmed_roof_center_lng,
+      ),
+      original_geocode_lat_lng:
+        finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ??
+          finiteLatLngOrNull(latitude, longitude),
+      static_map_center_lat_lng: finiteLatLngOrNull(
+        confirmed_roof_center_lat,
+        confirmed_roof_center_lng,
+      ) ?? finiteLatLngOrNull(original_geocode_lat, original_geocode_lng) ??
+        finiteLatLngOrNull(latitude, longitude),
       zoom,
       logical_image_width,
       logical_image_height,
@@ -1461,10 +1997,15 @@ Deno.serve(async (req) => {
     const sourceRecord = await resolveSourceRecord({ lead_id, project_id });
     const tenant_id: string | null = sourceRecord?.tenant_id ?? tenant_id_hint;
     const company_id: string | null = sourceRecord?.company_id ?? null;
-    const resolved_address: string | null =
-      property_address || sourceRecord?.address || sourceRecord?.property_address || null;
+    const resolved_address: string | null = property_address ||
+      sourceRecord?.address || sourceRecord?.property_address || null;
 
-    if (!tenant_id) return json({ error: "Unable to resolve tenant for this measurement." }, 400);
+    if (!tenant_id) {
+      return json(
+        { error: "Unable to resolve tenant for this measurement." },
+        400,
+      );
+    }
 
     const { data: measurementJob, error: measurementJobError } = await supabase
       .from("measurement_jobs")
@@ -1483,7 +2024,12 @@ Deno.serve(async (req) => {
         lat: latitude,
         lng: longitude,
         pitch_override,
-        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+        ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+        perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+        phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+        git_commit_sha: GIT_COMMIT_SHA,
+        runtime_deployed_at: DEPLOYED_AT,
         ...getCanonicalRouteDbColumns(),
       })
       .select("id")
@@ -1517,7 +2063,12 @@ Deno.serve(async (req) => {
         actual_image_width: actualW,
         actual_image_height: actualH,
         raster_scale,
-        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+        ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+        perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+        phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+        git_commit_sha: GIT_COMMIT_SHA,
+        runtime_deployed_at: DEPLOYED_AT,
         ...getCanonicalRouteDbColumns(),
         entrypoint: "start-ai-measurement",
         // Patent Rule 1: roof-target confirmation audit trail.
@@ -1529,7 +2080,9 @@ Deno.serve(async (req) => {
         user_confirmed_roof_target,
         roof_target_admin_override,
         roof_target_confirmed_by: user_confirmed_roof_target ? user_id : null,
-        roof_target_confirmed_at: user_confirmed_roof_target ? new Date().toISOString() : null,
+        roof_target_confirmed_at: user_confirmed_roof_target
+          ? new Date().toISOString()
+          : null,
       })
       .select("id")
       .single();
@@ -1544,8 +2097,14 @@ Deno.serve(async (req) => {
     if (targetConfirmation.ok === false) {
       const failReason = "target_roof_not_confirmed";
       const fallbackCoords = {
-        lat: Number(latitude ?? sourceRecord?.verified_lat ?? sourceRecord?.contact_lat ?? original_geocode_lat ?? 0),
-        lng: Number(longitude ?? sourceRecord?.verified_lng ?? sourceRecord?.contact_lng ?? original_geocode_lng ?? 0),
+        lat: Number(
+          latitude ?? sourceRecord?.verified_lat ?? sourceRecord?.contact_lat ??
+            original_geocode_lat ?? 0,
+        ),
+        lng: Number(
+          longitude ?? sourceRecord?.verified_lng ??
+            sourceRecord?.contact_lng ?? original_geocode_lng ?? 0,
+        ),
       };
       const gateA = evaluateRegistrationGate({
         evaluation_stage: "target_preflight",
@@ -1560,10 +2119,14 @@ Deno.serve(async (req) => {
         dsm_pixel_transform_valid: false,
         dsm_to_raster_transform: null,
       });
-      const registrationBlock = mergeRegistrationProof(gateA.registration, transformPreflight, {
-        failure_reason: failReason,
-        blocked_before_source_acquisition: true,
-      });
+      const registrationBlock = mergeRegistrationProof(
+        gateA.registration,
+        transformPreflight,
+        {
+          failure_reason: failReason,
+          blocked_before_source_acquisition: true,
+        },
+      );
       const skippedByTarget = buildRegistrationBlockedPhaseBlock();
       const debugPayload = {
         failure_stage: "target_confirmation",
@@ -1585,34 +2148,53 @@ Deno.serve(async (req) => {
         phase3D: skippedByTarget,
         phase3E: skippedByTarget,
       };
-      const failedId = await insertFailedPreliminaryMeasurement({
-        measurement_job_id: measurementJob.id,
-        ai_measurement_job_id: aiJob.id,
-        lead_id,
-        project_id,
-        tenant_id,
-        company_id,
-        property_address: resolved_address ?? "Unknown Address",
-        source_record_type: lead_id ? "lead" : "project",
-        source_record_id: lead_id || project_id,
-        source_button,
-        logical_image_width,
-        logical_image_height,
-        original_geocode_lat,
-        original_geocode_lng,
-        confirmed_roof_center_lat,
-        confirmed_roof_center_lng,
-        confirmed_roof_center_px,
-        user_confirmed_roof_target,
-        roof_target_admin_override,
+      const failedId = await insertFailedPreliminaryMeasurement(
+        {
+          measurement_job_id: measurementJob.id,
+          ai_measurement_job_id: aiJob.id,
+          lead_id,
+          project_id,
+          tenant_id,
+          company_id,
+          property_address: resolved_address ?? "Unknown Address",
+          source_record_type: lead_id ? "lead" : "project",
+          source_record_id: lead_id || project_id,
+          source_button,
+          logical_image_width,
+          logical_image_height,
+          original_geocode_lat,
+          original_geocode_lng,
+          confirmed_roof_center_lat,
+          confirmed_roof_center_lng,
+          confirmed_roof_center_px,
+          user_confirmed_roof_target,
+          roof_target_admin_override,
           _registration_preflight: transformPreflight,
-      }, fallbackCoords, failReason, debugPayload, null, 0);
-      await setMeasurementJobStatus(measurementJob.id, "failed", "Target roof confirmation required", failedId);
-      await setAiJobStatus(aiJob.id, "failed", "Target roof confirmation required");
+        },
+        fallbackCoords,
+        failReason,
+        debugPayload,
+        null,
+        0,
+      );
+      await setMeasurementJobStatus(
+        measurementJob.id,
+        "failed",
+        "Target roof confirmation required",
+        failedId,
+      );
+      await setAiJobStatus(
+        aiJob.id,
+        "failed",
+        "Target roof confirmation required",
+      );
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
-        result_state: normalizeResultStateForWrite("ai_failed_target_unconfirmed", debugPayload),
+        result_state: normalizeResultStateForWrite(
+          "ai_failed_target_unconfirmed",
+          debugPayload,
+        ),
         hard_fail_reason: failReason,
         source_context: {
           gate_reason: failReason,
@@ -1650,12 +2232,14 @@ Deno.serve(async (req) => {
     // solar lookup) MUST use the confirmed roof center, never the stale
     // address geocode. This is the root-cause fix for the wrong-house
     // overlay (Fonsica: address geocoded to neighbor, PIN on actual roof).
-    const effective_latitude =
-      confirmed_roof_center_lat != null ? confirmed_roof_center_lat : latitude;
-    const effective_longitude =
-      confirmed_roof_center_lng != null ? confirmed_roof_center_lng : longitude;
+    const effective_latitude = confirmed_roof_center_lat != null
+      ? confirmed_roof_center_lat
+      : latitude;
+    const effective_longitude = confirmed_roof_center_lng != null
+      ? confirmed_roof_center_lng
+      : longitude;
 
-    const work = processJob({
+    const processInput = {
       measurement_job_id: measurementJob.id,
       ai_measurement_job_id: aiJob.id,
       lead_id,
@@ -1684,13 +2268,26 @@ Deno.serve(async (req) => {
       confirmed_roof_center_px,
       user_confirmed_roof_target,
       roof_target_admin_override,
-        _registration_preflight: transformPreflight,
-    } as any);
+      _registration_preflight: transformPreflight,
+    } as any;
+
+    let terminalStatusWritten = false;
+    const work = processJob(processInput)
+      .catch((error) => {
+        console.error("processJob failed", error);
+      })
+      .finally(async () => {
+        terminalStatusWritten = await ensureTerminalStatusWritten(
+          processInput,
+          AI_RUNTIME_UNHANDLED_FAILURE_REASON,
+        );
+        processInput._terminalStatusWritten = terminalStatusWritten;
+      });
 
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
       (globalThis as any).EdgeRuntime.waitUntil(work);
     } else {
-      work.catch((e) => console.error("processJob failed", e));
+      work.catch((e) => console.error("processJob terminal guard failed", e));
     }
 
     return json({
@@ -1702,23 +2299,43 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("start-ai-measurement error:", error);
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    return json({
+      error: error instanceof Error ? error.message : String(error),
+    }, 500);
   }
 });
 
 async function processJob(input: any) {
   try {
-    await setMeasurementJobStatus(input.measurement_job_id, "processing", "Resolving location");
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Resolving location");
-    input._registration_preflight = input._registration_preflight ?? await mustBuildTransformPackageEarly({
-      confirmed_roof_center_lat_lng: finiteLatLngOrNull(input.confirmed_roof_center_lat, input.confirmed_roof_center_lng),
-      original_geocode_lat_lng: finiteLatLngOrNull(input.original_geocode_lat, input.original_geocode_lng) ?? finiteLatLngOrNull(input.latitude, input.longitude),
-      static_map_center_lat_lng: finiteLatLngOrNull(input.confirmed_roof_center_lat, input.confirmed_roof_center_lng) ?? finiteLatLngOrNull(input.latitude, input.longitude),
-      zoom: Number(input.zoom),
-      logical_image_width: Number(input.logical_image_width),
-      logical_image_height: Number(input.logical_image_height),
-      raster_scale: Number(input.raster_scale),
-    });
+    await setMeasurementJobStatus(
+      input.measurement_job_id,
+      "processing",
+      "Resolving location",
+    );
+    await setAiJobStatus(
+      input.ai_measurement_job_id,
+      "running",
+      "Resolving location",
+    );
+    input._registration_preflight = input._registration_preflight ??
+      await mustBuildTransformPackageEarly({
+        confirmed_roof_center_lat_lng: finiteLatLngOrNull(
+          input.confirmed_roof_center_lat,
+          input.confirmed_roof_center_lng,
+        ),
+        original_geocode_lat_lng: finiteLatLngOrNull(
+          input.original_geocode_lat,
+          input.original_geocode_lng,
+        ) ?? finiteLatLngOrNull(input.latitude, input.longitude),
+        static_map_center_lat_lng: finiteLatLngOrNull(
+          input.confirmed_roof_center_lat,
+          input.confirmed_roof_center_lng,
+        ) ?? finiteLatLngOrNull(input.latitude, input.longitude),
+        zoom: Number(input.zoom),
+        logical_image_width: Number(input.logical_image_width),
+        logical_image_height: Number(input.logical_image_height),
+        raster_scale: Number(input.raster_scale),
+      });
 
     // ──────────── ACQUISITION COORDINATE AUDIT (pre-flight) ────────────
     // Persist every coordinate we know about for this property before we
@@ -1728,12 +2345,15 @@ async function processJob(input: any) {
       job_address: input.property_address || null,
       property_address: input.property_address || null,
       request_input_lat_lng: (input.latitude != null && input.longitude != null)
-        ? { lat: Number(input.latitude), lng: Number(input.longitude) } : null,
+        ? { lat: Number(input.latitude), lng: Number(input.longitude) }
+        : null,
       coord_candidates: [] as any[],
       selected_measurement_lat_lng: null as any,
       lat_lng_source: null as string | null,
       tile_center_lat_lng: null as any,
-      distance_between_address_geocode_and_tile_center_ft: null as number | null,
+      distance_between_address_geocode_and_tile_center_ft: null as
+        | number
+        | null,
       overpass_attempts: [] as any[],
       tile_size_decision: null as any,
     };
@@ -1747,17 +2367,42 @@ async function processJob(input: any) {
     acquisitionAudit.coord_candidates = coordCandidates;
 
     // Geocode the address as the canonical reference point (used to compute drift)
-    const geocoded = input.property_address ? await geocodeAddress(input.property_address) : null;
-    acquisitionAudit.geocoded_lat_lng = geocoded ? { lat: geocoded.lat, lng: geocoded.lng, type: geocoded.geocode_location_type } : null;
+    const geocoded = input.property_address
+      ? await geocodeAddress(input.property_address)
+      : null;
+    acquisitionAudit.geocoded_lat_lng = geocoded
+      ? {
+        lat: geocoded.lat,
+        lng: geocoded.lng,
+        type: geocoded.geocode_location_type,
+      }
+      : null;
 
     // Initial coords selection: prefer caller input, otherwise first candidate.
     let coords: any = (input.latitude != null && input.longitude != null)
-      ? { lat: Number(input.latitude), lng: Number(input.longitude), geocode_location_type: "STORED" }
-      : (geocoded || (coordCandidates[0] ? { lat: coordCandidates[0].lat, lng: coordCandidates[0].lng, geocode_location_type: "FALLBACK" } : null));
+      ? {
+        lat: Number(input.latitude),
+        lng: Number(input.longitude),
+        geocode_location_type: "STORED",
+      }
+      : (geocoded ||
+        (coordCandidates[0]
+          ? {
+            lat: coordCandidates[0].lat,
+            lng: coordCandidates[0].lng,
+            geocode_location_type: "FALLBACK",
+          }
+          : null));
 
     if (!coords) throw new Error("Unable to geocode property address.");
-    acquisitionAudit.selected_measurement_lat_lng = { lat: coords.lat, lng: coords.lng };
-    acquisitionAudit.lat_lng_source = (input.latitude != null && input.longitude != null) ? "request_input" : (geocoded ? "address_geocode" : "fallback_first_candidate");
+    acquisitionAudit.selected_measurement_lat_lng = {
+      lat: coords.lat,
+      lng: coords.lng,
+    };
+    acquisitionAudit.lat_lng_source =
+      (input.latitude != null && input.longitude != null)
+        ? "request_input"
+        : (geocoded ? "address_geocode" : "fallback_first_candidate");
 
     // ──────────── PRE-FLIGHT OSM ACQUISITION (multi-coord, multi-radius) ────────────
     // The Overpass API is the cheapest, most stable source of a building polygon.
@@ -1765,8 +2410,16 @@ async function processJob(input: any) {
     // Failures are non-fatal — we still try Solar mask + DSM downstream — but they
     // tell us early whether this is an acquisition issue vs. a geometry issue.
     let preflightOSMHit = false;
-    for (const cand of [{ lat: coords.lat, lng: coords.lng, source: acquisitionAudit.lat_lng_source }, ...coordCandidates]) {
-      const res = await fetchOSMBuildingCandidates(cand.lat, cand.lng, { radii: [50, 100, 150] });
+    for (
+      const cand of [{
+        lat: coords.lat,
+        lng: coords.lng,
+        source: acquisitionAudit.lat_lng_source,
+      }, ...coordCandidates]
+    ) {
+      const res = await fetchOSMBuildingCandidates(cand.lat, cand.lng, {
+        radii: [50, 100, 150],
+      });
       acquisitionAudit.overpass_attempts.push({
         coord_source: (cand as any).source || "request_input",
         lat: cand.lat,
@@ -1775,17 +2428,32 @@ async function processJob(input: any) {
         total_candidates: res.candidates.length,
         nearest_id: res.candidates[0]?.osmId || null,
         nearest_distance_m: res.candidates[0]?.distanceFromPointM != null
-          ? Number(res.candidates[0].distanceFromPointM.toFixed(1)) : null,
+          ? Number(res.candidates[0].distanceFromPointM.toFixed(1))
+          : null,
       });
       if (res.candidates.length > 0) {
         preflightOSMHit = true;
         // If the original tile center returned nothing but a fallback coord did,
         // promote that fallback to the working tile center for the rest of the run.
-        if ((cand as any).source && (cand as any).source !== acquisitionAudit.lat_lng_source) {
-          coords = { lat: cand.lat, lng: cand.lng, geocode_location_type: `FALLBACK_${(cand as any).source}` };
-          acquisitionAudit.selected_measurement_lat_lng = { lat: coords.lat, lng: coords.lng };
+        if (
+          (cand as any).source &&
+          (cand as any).source !== acquisitionAudit.lat_lng_source
+        ) {
+          coords = {
+            lat: cand.lat,
+            lng: cand.lng,
+            geocode_location_type: `FALLBACK_${(cand as any).source}`,
+          };
+          acquisitionAudit.selected_measurement_lat_lng = {
+            lat: coords.lat,
+            lng: coords.lng,
+          };
           acquisitionAudit.lat_lng_source = (cand as any).source;
-          console.log(`[ACQUISITION_FALLBACK_COORD] Promoted ${(cand as any).source} after primary returned 0 buildings`);
+          console.log(
+            `[ACQUISITION_FALLBACK_COORD] Promoted ${
+              (cand as any).source
+            } after primary returned 0 buildings`,
+          );
         }
         break;
       }
@@ -1793,9 +2461,10 @@ async function processJob(input: any) {
     acquisitionAudit.preflight_osm_hit = preflightOSMHit;
     acquisitionAudit.tile_center_lat_lng = { lat: coords.lat, lng: coords.lng };
     if (geocoded) {
-      acquisitionAudit.distance_between_address_geocode_and_tile_center_ft = Math.round(
-        haversineFt(geocoded.lat, geocoded.lng, coords.lat, coords.lng)
-      );
+      acquisitionAudit.distance_between_address_geocode_and_tile_center_ft =
+        Math.round(
+          haversineFt(geocoded.lat, geocoded.lng, coords.lat, coords.lng),
+        );
     }
 
     // ──────────── TILE-SIZE SANITY ────────────
@@ -1806,10 +2475,14 @@ async function processJob(input: any) {
     let effectiveZoom = Number(input.zoom);
     const computeTileM = (z: number) => {
       const mpp = metersPerPixel(coords.lat, z) / Number(input.raster_scale);
-      return Number(input.logical_image_width) * Number(input.raster_scale) * mpp;
+      return Number(input.logical_image_width) * Number(input.raster_scale) *
+        mpp;
     };
     let originalTileM = computeTileM(effectiveZoom);
-    while (computeTileM(effectiveZoom) < MIN_ACQUISITION_WINDOW_M && effectiveZoom > 18) {
+    while (
+      computeTileM(effectiveZoom) < MIN_ACQUISITION_WINDOW_M &&
+      effectiveZoom > 18
+    ) {
       effectiveZoom -= 1;
     }
     const finalTileM = computeTileM(effectiveZoom);
@@ -1822,13 +2495,21 @@ async function processJob(input: any) {
       adjusted: effectiveZoom !== Number(input.zoom),
     };
     if (effectiveZoom !== Number(input.zoom)) {
-      console.log(`[ACQUISITION_TILE_RESIZE] Zoom ${input.zoom} → ${effectiveZoom} (tile ${originalTileM.toFixed(0)}m → ${finalTileM.toFixed(0)}m)`);
+      console.log(
+        `[ACQUISITION_TILE_RESIZE] Zoom ${input.zoom} → ${effectiveZoom} (tile ${
+          originalTileM.toFixed(0)
+        }m → ${finalTileM.toFixed(0)}m)`,
+      );
     }
 
     // Persist the audit early so it survives any downstream failure.
     try {
       await supabase.from("ai_measurement_jobs").update({
-        source_context: { acquisition_audit: acquisitionAudit, registration: input._registration_preflight.registration, registration_gate: input._registration_preflight.registration },
+        source_context: {
+          acquisition_audit: acquisitionAudit,
+          registration: input._registration_preflight.registration,
+          registration_gate: input._registration_preflight.registration,
+        },
       }).eq("id", input.ai_measurement_job_id);
     } catch (e) {
       console.warn("[ACQUISITION_AUDIT] persist failed", (e as Error).message);
@@ -1839,10 +2520,16 @@ async function processJob(input: any) {
     const actualFpp = actualMpp * 3.280839895;
 
     if (!MAPBOX_TOKEN && !GOOGLE_MAPS_API_KEY) {
-      throw new Error("No imagery provider configured: set GOOGLE_MAPS_API_KEY and/or MAPBOX_PUBLIC_TOKEN.");
+      throw new Error(
+        "No imagery provider configured: set GOOGLE_MAPS_API_KEY and/or MAPBOX_PUBLIC_TOKEN.",
+      );
     }
 
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching aerial imagery");
+    await setAiJobStatus(
+      input.ai_measurement_job_id,
+      "running",
+      "Fetching aerial imagery",
+    );
     const imageryResult = await fetchAerialImagery({
       lng: coords.lng,
       lat: coords.lat,
@@ -1853,7 +2540,11 @@ async function processJob(input: any) {
     const imageUrl = imageryResult.url;
     const imageryProvider = imageryResult.provider;
     const imageryDecisionLog = imageryResult.decisionLog;
-    const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
+    const raster = await decodeRaster(
+      imageryResult.buffer,
+      imageryResult.contentType,
+      imageryProvider,
+    );
 
     // ══════════ REGISTRATION GATE B (frame validity) ══════════
     // Verify the raster/DSM frame is sound BEFORE we run candidate selection
@@ -1865,43 +2556,62 @@ async function processJob(input: any) {
     // Mercator math instead of relying on caller-supplied flags.
     {
       const confirmedLatLng =
-        (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
-          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+        (input as any).confirmed_roof_center_lat != null &&
+          (input as any).confirmed_roof_center_lng != null
+          ? {
+            lat: Number((input as any).confirmed_roof_center_lat),
+            lng: Number((input as any).confirmed_roof_center_lng),
+          }
           : { lat: coords.lat, lng: coords.lng };
       const transformPkgPreflight = buildRegistrationTransformPackage({
         confirmed_roof_center_lat_lng: confirmedLatLng,
         static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
         zoom: effectiveZoom,
-        size: { width: Number(input.logical_image_width), height: Number(input.logical_image_height) },
+        size: {
+          width: Number(input.logical_image_width),
+          height: Number(input.logical_image_height),
+        },
         scale: Number(input.raster_scale),
       });
       const gateB = evaluateRegistrationGate({
         evaluation_stage: "source_preflight",
-        user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
-        roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
-        original_geocode_lat_lng:
-          (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
-            ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
-            : null,
+        user_confirmed_roof_target: Boolean(
+          (input as any).user_confirmed_roof_target,
+        ),
+        roof_target_admin_override: Boolean(
+          (input as any).roof_target_admin_override,
+        ),
+        original_geocode_lat_lng: (input as any).original_geocode_lat != null &&
+            (input as any).original_geocode_lng != null
+          ? {
+            lat: Number((input as any).original_geocode_lat),
+            lng: Number((input as any).original_geocode_lng),
+          }
+          : null,
         confirmed_roof_center_lat_lng: confirmedLatLng,
-        confirmed_roof_center_px:
-          (input as any).confirmed_roof_center_px ?? transformPkgPreflight.confirmed_roof_center_px,
+        confirmed_roof_center_px: (input as any).confirmed_roof_center_px ??
+          transformPkgPreflight.confirmed_roof_center_px,
         geo_to_dsm_px_success: false, // DSM not yet fetched at preflight
         dsm_pixel_transform_valid: false,
         dsm_to_raster_transform: null,
         geo_to_raster_transform: transformPkgPreflight.geo_to_raster_transform,
         raster_bounds_lat_lng: transformPkgPreflight.raster_bounds_lat_lng,
         raster_size_px: transformPkgPreflight.raster_size_px,
-        static_map_center_lat_lng: transformPkgPreflight.static_map_center_lat_lng,
+        static_map_center_lat_lng:
+          transformPkgPreflight.static_map_center_lat_lng,
         meters_per_pixel: actualMpp,
       });
       // Surface transform package + the legacy frame-valid flag for the
       // failure block below.
       (gateB.registration as any).transform_package = transformPkgPreflight;
-      const geoToPxOk =
-        Number.isFinite(actualMpp) && actualMpp > 0 && raster.width > 0 && raster.height > 0;
+      const geoToPxOk = Number.isFinite(actualMpp) && actualMpp > 0 &&
+        raster.width > 0 && raster.height > 0;
       const rasterBounds = transformPkgPreflight.raster_bounds_lat_lng;
-      if (gateB.failure && (gateB.failure.result_state === "ai_failed_source_acquisition" || gateB.failure.result_state === "ai_failed_target_unconfirmed")) {
+      if (
+        gateB.failure &&
+        (gateB.failure.result_state === "ai_failed_source_acquisition" ||
+          gateB.failure.result_state === "ai_failed_target_unconfirmed")
+      ) {
         const failReason = gateB.failure.hard_fail_reason;
         const debugPayload = {
           failure_stage: "source_registration",
@@ -1927,10 +2637,29 @@ async function processJob(input: any) {
           phase3D: buildRegistrationBlockedPhaseBlock(),
           phase3E: buildRegistrationBlockedPhaseBlock(),
         };
-        console.log("[REGISTRATION_GATE_B] REJECT", JSON.stringify({ reason: failReason }));
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Registration gate B failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Registration gate B failed: ${failReason}`);
+        console.log(
+          "[REGISTRATION_GATE_B] REJECT",
+          JSON.stringify({ reason: failReason }),
+        );
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          failReason,
+          debugPayload,
+          imageUrl,
+          actualMpp,
+        );
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          `Registration gate B failed: ${failReason}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          `Registration gate B failed: ${failReason}`,
+        );
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
@@ -1961,8 +2690,6 @@ async function processJob(input: any) {
 
     // (Perimeter inner-trace detection gate runs AFTER footprint selection below)
 
-
-
     // ───────── GEOMETRY-FIRST PIPELINE ─────────
     // U-Net is OPTIONAL. Solar bbox is allowed as a CANDIDATE footprint
     // (validated against coverage rules) — never auto-trusted.
@@ -1978,7 +2705,15 @@ async function processJob(input: any) {
         if (p.x > maxX) maxX = p.x;
         if (p.y > maxY) maxY = p.y;
       }
-      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, area: Math.max(0, (maxX - minX) * (maxY - minY)) };
+      return {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        width: maxX - minX,
+        height: maxY - minY,
+        area: Math.max(0, (maxX - minX) * (maxY - minY)),
+      };
     }
     function polygonAreaPx(points: Point[]) {
       let a = 0;
@@ -1990,15 +2725,24 @@ async function processJob(input: any) {
     }
     function bboxIntersect(a: any, b: any) {
       if (!a || !b) return 0;
-      const ix = Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX));
-      const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
+      const ix = Math.max(
+        0,
+        Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX),
+      );
+      const iy = Math.max(
+        0,
+        Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY),
+      );
       return ix * iy;
     }
     const pointToSegmentDistancePx = (p: Point, a: Point, b: Point) => {
       const abx = b.x - a.x;
       const aby = b.y - a.y;
       const denom = Math.max(abx * abx + aby * aby, 1e-9);
-      const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / denom));
+      const t = Math.max(
+        0,
+        Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / denom),
+      );
       const q = { x: a.x + abx * t, y: a.y + aby * t };
       return Math.hypot(p.x - q.x, p.y - q.y);
     };
@@ -2016,7 +2760,8 @@ async function processJob(input: any) {
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
         const pi = poly[i], pj = poly[j];
         const intersects = ((pi.y > pt.y) !== (pj.y > pt.y)) &&
-          (pt.x < (pj.x - pi.x) * (pt.y - pi.y) / ((pj.y - pi.y) || 1e-9) + pi.x);
+          (pt.x <
+            (pj.x - pi.x) * (pt.y - pi.y) / ((pj.y - pi.y) || 1e-9) + pi.x);
         if (intersects) inside = !inside;
       }
       return inside;
@@ -2024,7 +2769,10 @@ async function processJob(input: any) {
     // Sutherland-Hodgman polygon clipping against an axis-aligned rect.
     // Used for true polygon∩solar_bbox area (fixes the 0-overlap-with-60%-coverage bug
     // where bbox-vs-bbox overlap ignored polygon shape).
-    function clipPolygonToRect(poly: Point[], rect: { minX: number; minY: number; maxX: number; maxY: number }) {
+    function clipPolygonToRect(
+      poly: Point[],
+      rect: { minX: number; minY: number; maxX: number; maxY: number },
+    ) {
       if (!poly || poly.length < 3 || !rect) return [] as Point[];
       const edges: Array<(p: Point) => boolean> = [
         (p) => p.x >= rect.minX,
@@ -2035,13 +2783,17 @@ async function processJob(input: any) {
       const intersect = (a: Point, b: Point, side: number): Point => {
         // side: 0=left,1=right,2=top,3=bottom
         if (side === 0) {
-          const t = (rect.minX - a.x) / (b.x - a.x); return { x: rect.minX, y: a.y + t * (b.y - a.y) };
+          const t = (rect.minX - a.x) / (b.x - a.x);
+          return { x: rect.minX, y: a.y + t * (b.y - a.y) };
         } else if (side === 1) {
-          const t = (rect.maxX - a.x) / (b.x - a.x); return { x: rect.maxX, y: a.y + t * (b.y - a.y) };
+          const t = (rect.maxX - a.x) / (b.x - a.x);
+          return { x: rect.maxX, y: a.y + t * (b.y - a.y) };
         } else if (side === 2) {
-          const t = (rect.minY - a.y) / (b.y - a.y); return { x: a.x + t * (b.x - a.x), y: rect.minY };
+          const t = (rect.minY - a.y) / (b.y - a.y);
+          return { x: a.x + t * (b.x - a.x), y: rect.minY };
         } else {
-          const t = (rect.maxY - a.y) / (b.y - a.y); return { x: a.x + t * (b.x - a.x), y: rect.maxY };
+          const t = (rect.maxY - a.y) / (b.y - a.y);
+          return { x: a.x + t * (b.x - a.x), y: rect.maxY };
         }
       };
       let out = poly.slice();
@@ -2066,22 +2818,32 @@ async function processJob(input: any) {
     }
     // Convex hull (Andrew's monotone chain).
     function convexHull(points: Point[]): Point[] {
-      const pts = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+      const pts = points.filter((p) =>
+        Number.isFinite(p.x) && Number.isFinite(p.y)
+      )
         .slice().sort((a, b) => a.x - b.x || a.y - b.y);
       if (pts.length < 3) return pts;
-      const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      const cross = (o: Point, a: Point, b: Point) =>
+        (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
       const lower: Point[] = [];
       for (const p of pts) {
-        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        while (
+          lower.length >= 2 &&
+          cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+        ) lower.pop();
         lower.push(p);
       }
       const upper: Point[] = [];
       for (let i = pts.length - 1; i >= 0; i--) {
         const p = pts[i];
-        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+        while (
+          upper.length >= 2 &&
+          cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+        ) upper.pop();
         upper.push(p);
       }
-      lower.pop(); upper.pop();
+      lower.pop();
+      upper.pop();
       return lower.concat(upper);
     }
 
@@ -2094,8 +2856,10 @@ async function processJob(input: any) {
       if (!rects.length) return [];
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const r of rects) {
-        if (r.minX < minX) minX = r.minX; if (r.minY < minY) minY = r.minY;
-        if (r.maxX > maxX) maxX = r.maxX; if (r.maxY > maxY) maxY = r.maxY;
+        if (r.minX < minX) minX = r.minX;
+        if (r.minY < minY) minY = r.minY;
+        if (r.maxX > maxX) maxX = r.maxX;
+        if (r.maxY > maxY) maxY = r.maxY;
       }
       const W = Math.max(1, Math.round(maxX - minX));
       const H = Math.max(1, Math.round(maxY - minY));
@@ -2116,7 +2880,10 @@ async function processJob(input: any) {
       const filled = (x: number, y: number) =>
         x >= 0 && y >= 0 && x < gw && y < gh && grid[y * gw + x] === 1;
       const key = (x: number, y: number) => `${x},${y}`;
-      const adj = new Map<string, Array<{ to: string; x: number; y: number }>>();
+      const adj = new Map<
+        string,
+        Array<{ to: string; x: number; y: number }>
+      >();
       const addEdge = (ax: number, ay: number, bx: number, by: number) => {
         const k = key(ax, ay);
         if (!adj.has(k)) adj.set(k, []);
@@ -2125,10 +2892,22 @@ async function processJob(input: any) {
       for (let y = 0; y < gh; y++) {
         for (let x = 0; x < gw; x++) {
           if (!filled(x, y)) continue;
-          if (!filled(x, y - 1)) { addEdge(x, y, x + 1, y); addEdge(x + 1, y, x, y); }
-          if (!filled(x, y + 1)) { addEdge(x, y + 1, x + 1, y + 1); addEdge(x + 1, y + 1, x, y + 1); }
-          if (!filled(x - 1, y)) { addEdge(x, y, x, y + 1); addEdge(x, y + 1, x, y); }
-          if (!filled(x + 1, y)) { addEdge(x + 1, y, x + 1, y + 1); addEdge(x + 1, y + 1, x + 1, y); }
+          if (!filled(x, y - 1)) {
+            addEdge(x, y, x + 1, y);
+            addEdge(x + 1, y, x, y);
+          }
+          if (!filled(x, y + 1)) {
+            addEdge(x, y + 1, x + 1, y + 1);
+            addEdge(x + 1, y + 1, x, y + 1);
+          }
+          if (!filled(x - 1, y)) {
+            addEdge(x, y, x, y + 1);
+            addEdge(x, y + 1, x, y);
+          }
+          if (!filled(x + 1, y)) {
+            addEdge(x + 1, y, x + 1, y + 1);
+            addEdge(x + 1, y + 1, x + 1, y);
+          }
         }
       }
       if (adj.size === 0) return [];
@@ -2144,8 +2923,10 @@ async function processJob(input: any) {
         while (safety-- > 0) {
           visited.add(curKey);
           const nbrs = adj.get(curKey) || [];
-          const next = nbrs.find((n) => n.to !== prevKey && !visited.has(n.to))
-            || nbrs.find((n) => n.to !== prevKey);
+          const next = nbrs.find((n) =>
+            n.to !== prevKey && !visited.has(n.to)
+          ) ||
+            nbrs.find((n) => n.to !== prevKey);
           if (!next) break;
           if (next.to === startKey) break;
           loop.push({ x: next.x, y: next.y });
@@ -2160,8 +2941,7 @@ async function processJob(input: any) {
         const prev = bestLoop[(i - 1 + bestLoop.length) % bestLoop.length];
         const cur = bestLoop[i];
         const next = bestLoop[(i + 1) % bestLoop.length];
-        const collinear =
-          (prev.x === cur.x && cur.x === next.x) ||
+        const collinear = (prev.x === cur.x && cur.x === next.x) ||
           (prev.y === cur.y && cur.y === next.y);
         if (!collinear) simplified.push(cur);
       }
@@ -2169,17 +2949,43 @@ async function processJob(input: any) {
     }
 
     // Compute Solar bbox in pixel space — used as the coverage reference target.
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
+    await setAiJobStatus(
+      input.ai_measurement_job_id,
+      "running",
+      "Fetching Google Solar priors",
+    );
     const solarData = await fetchGoogleSolar(coords.lat, coords.lng);
     const solarInsightsDebug = (globalThis as any).__solarInsightsDebug || null;
     const solarBboxPx = (() => {
       const bb = solarData?.boundingBox;
       if (!bb?.sw || !bb?.ne) return null;
-      const sw = lngLatToPx(bb.sw.latitude, bb.sw.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
-      const ne = lngLatToPx(bb.ne.latitude, bb.ne.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      const sw = lngLatToPx(
+        bb.sw.latitude,
+        bb.sw.longitude,
+        { lat: coords.lat, lng: coords.lng },
+        raster.width,
+        raster.height,
+        actualMpp,
+      );
+      const ne = lngLatToPx(
+        bb.ne.latitude,
+        bb.ne.longitude,
+        { lat: coords.lat, lng: coords.lng },
+        raster.width,
+        raster.height,
+        actualMpp,
+      );
       const minX = Math.min(sw.x, ne.x), maxX = Math.max(sw.x, ne.x);
       const minY = Math.min(sw.y, ne.y), maxY = Math.max(sw.y, ne.y);
-      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, area: Math.max(0, (maxX - minX) * (maxY - minY)) };
+      return {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        width: maxX - minX,
+        height: maxY - minY,
+        area: Math.max(0, (maxX - minX) * (maxY - minY)),
+      };
     })();
 
     const geocodePx = { x: raster.width / 2, y: raster.height / 2 };
@@ -2199,7 +3005,9 @@ async function processJob(input: any) {
       const segs = solarData?.solarPotential?.roofSegmentStats || [];
       let total = 0;
       for (const s of segs as any[]) {
-        const m2 = Number(s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0);
+        const m2 = Number(
+          s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0,
+        );
         if (Number.isFinite(m2) && m2 > 0) total += m2 * 10.7639; // m² → sqft
       }
       return total;
@@ -2230,14 +3038,20 @@ async function processJob(input: any) {
       connected_component_isolated: boolean;
     };
 
-    function scoreCandidate(source: string, polygon: Point[]): FootprintCandidate {
+    function scoreCandidate(
+      source: string,
+      polygon: Point[],
+    ): FootprintCandidate {
       const cleaned = cleanPolygon(polygon, raster.width, raster.height);
       const valid = cleaned.length >= 3;
       const bbox = valid ? bboxOf(cleaned) : null;
       const areaPx = valid ? polygonAreaPx(cleaned) : 0;
       const area_sqft = areaPx * sqftPerPx2;
       const bbox_center_distance_from_geocode_px = bbox
-        ? Math.hypot((bbox.minX + bbox.maxX) / 2 - geocodePx.x, (bbox.minY + bbox.maxY) / 2 - geocodePx.y)
+        ? Math.hypot(
+          (bbox.minX + bbox.maxX) / 2 - geocodePx.x,
+          (bbox.minY + bbox.maxY) / 2 - geocodePx.y,
+        )
         : Number.POSITIVE_INFINITY;
       // FIX: real polygon ∩ solar_bbox area, not bbox ∩ bbox.
       // The previous bbox-vs-bbox version reported 0 overlap for OSM polygons that
@@ -2262,27 +3076,39 @@ async function processJob(input: any) {
         : 0;
       // Polygon-shape complexity: 4-corner rectangles get penalized when the building
       // is clearly more complex (multiple solar segments). 5+ vertex hulls get boosted.
-      const segCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
-      let polygon_shape_score = vertex_count >= 4 ? Math.min(1, vertex_count / 8) : 0;
+      const segCount =
+        (solarData?.solarPotential?.roofSegmentStats || []).length;
+      let polygon_shape_score = vertex_count >= 4
+        ? Math.min(1, vertex_count / 8)
+        : 0;
       // Only penalize simple rectangles if they have LOW solar coverage.
       // An OSM rectangle with >80% solar bbox coverage IS the main building — don't punish it.
-      const hasSufficientCoverage = coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox > 0.8;
-      if (vertex_count <= 4 && segCount > 1 && !hasSufficientCoverage) polygon_shape_score *= 0.4;
-      if (vertex_count >= 6) polygon_shape_score = Math.min(1, polygon_shape_score + 0.15);
+      const hasSufficientCoverage = coverage_ratio_vs_solar_bbox != null &&
+        coverage_ratio_vs_solar_bbox > 0.8;
+      if (vertex_count <= 4 && segCount > 1 && !hasSufficientCoverage) {
+        polygon_shape_score *= 0.4;
+      }
+      if (vertex_count >= 6) {
+        polygon_shape_score = Math.min(1, polygon_shape_score + 0.15);
+      }
 
       // Outbuilding penalty: small footprints far from geocode are likely sheds/garages.
       // Penalizes candidates where centroid is >25% of tile diagonal from geocode AND area < 1500 sqft.
       const OUTBUILDING_DISTANCE_THRESHOLD = maxDist * 0.5; // 25% of tile diagonal (maxDist is half-diagonal)
       const OUTBUILDING_AREA_THRESHOLD = 1500; // sqft
-      const isLikelyOutbuilding = bbox_center_distance_from_geocode_px > OUTBUILDING_DISTANCE_THRESHOLD && area_sqft < OUTBUILDING_AREA_THRESHOLD;
+      const isLikelyOutbuilding =
+        bbox_center_distance_from_geocode_px > OUTBUILDING_DISTANCE_THRESHOLD &&
+        area_sqft < OUTBUILDING_AREA_THRESHOLD;
       const outbuilding_penalty = isLikelyOutbuilding ? 0.35 : 0;
 
-      const validity_score = Math.max(0,
+      const validity_score = Math.max(
+        0,
         area_score * 0.30 +
-        solar_overlap_score * 0.30 +
-        geocode_center_score * 0.30 +
-        polygon_shape_score * 0.10 -
-        outbuilding_penalty);
+          solar_overlap_score * 0.30 +
+          geocode_center_score * 0.30 +
+          polygon_shape_score * 0.10 -
+          outbuilding_penalty,
+      );
 
       // Bbox-to-tile ratio: footprint bbox area / tile area
       const tileArea = raster.width * raster.height;
@@ -2298,51 +3124,104 @@ async function processJob(input: any) {
       const solarBboxAreaSqft = solarBboxPx && solarBboxPx.area > 0
         ? solarBboxPx.area * sqftPerPx2
         : null;
-      const footprintToSolarBboxRatio = solarBboxAreaSqft != null && solarBboxAreaSqft > 0
-        ? area_sqft / solarBboxAreaSqft
-        : null;
+      const footprintToSolarBboxRatio =
+        solarBboxAreaSqft != null && solarBboxAreaSqft > 0
+          ? area_sqft / solarBboxAreaSqft
+          : null;
 
       // Exterior spillover: how much candidate area lies OUTSIDE the solar bbox.
       // A good footprint has most of its area inside the building bbox.
       const outsideSolarBboxAreaPx = areaPx - overlapPolyPx;
-      const exteriorSpilloverRatio = areaPx > 0 ? outsideSolarBboxAreaPx / areaPx : 0;
+      const exteriorSpilloverRatio = areaPx > 0
+        ? outsideSolarBboxAreaPx / areaPx
+        : 0;
 
       // Rejection rules
       let rejected_reason: string | null = null;
       if (!valid) rejected_reason = "polygon_invalid_or_off_canvas";
       else if (vertex_count < 4) rejected_reason = "fewer_than_4_corners";
-      else if (area_sqft > 0 && area_sqft < RESIDENTIAL_MIN_SQFT) rejected_reason = `area_too_small:${Math.round(area_sqft)}sqft`;
-      else if (area_sqft > RESIDENTIAL_MAX_SQFT) rejected_reason = `area_too_large:${Math.round(area_sqft)}sqft_max_${RESIDENTIAL_MAX_SQFT}`;
-      else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) {
+      else if (area_sqft > 0 && area_sqft < RESIDENTIAL_MIN_SQFT) {
+        rejected_reason = `area_too_small:${Math.round(area_sqft)}sqft`;
+      } else if (area_sqft > RESIDENTIAL_MAX_SQFT) {
+        rejected_reason = `area_too_large:${
+          Math.round(area_sqft)
+        }sqft_max_${RESIDENTIAL_MAX_SQFT}`;
+      } else if (bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO) {
         // FIX: Montelluna — allow up to 40% ONLY for isolated connected-component mask contours
         // that meet strict quality criteria. Do NOT loosen for OSM, parcel, hull, union, or bbox.
-        const isConnectedComponent = source === 'google_solar_mask_contour';
-        const ccQualifies = isConnectedComponent
-          && area_sqft <= 8000
-          && exteriorSpilloverRatio <= 0.10
-          && bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC;
+        const isConnectedComponent = source === "google_solar_mask_contour";
+        const ccQualifies = isConnectedComponent &&
+          area_sqft <= 8000 &&
+          exteriorSpilloverRatio <= 0.10 &&
+          bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC;
         if (!ccQualifies) {
-          rejected_reason = `footprint_bbox_covers_${Math.round(bboxTileRatio * 100)}pct_of_tile_max_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)}pct`;
+          rejected_reason = `footprint_bbox_covers_${
+            Math.round(bboxTileRatio * 100)
+          }pct_of_tile_max_${
+            Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO * 100)
+          }pct`;
         } else {
-          console.log(`[BBOX_CAP_CC_RELAXED] Allowing ${source} at ${Math.round(bboxTileRatio * 100)}% tile (≤${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)}%): area=${Math.round(area_sqft)}sqft, spillover=${Math.round(exteriorSpilloverRatio * 100)}%`);
+          console.log(
+            `[BBOX_CAP_CC_RELAXED] Allowing ${source} at ${
+              Math.round(bboxTileRatio * 100)
+            }% tile (≤${
+              Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)
+            }%): area=${Math.round(area_sqft)}sqft, spillover=${
+              Math.round(exteriorSpilloverRatio * 100)
+            }%`,
+          );
         }
-      }
-      else if (footprintToSolarRatio != null && footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarRatio * 100)/100}x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
-      else if (footprintToSolarBboxRatio != null && footprintToSolarBboxRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO) rejected_reason = `footprint_${Math.round(footprintToSolarBboxRatio * 100)/100}x_solar_bbox_area_max_${MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO}x`;
-      else if (solarBboxPx && solarBboxPx.area > 0 && exteriorSpilloverRatio > MAX_EXTERIOR_SPILLOVER_RATIO) rejected_reason = `exterior_spillover_${Math.round(exteriorSpilloverRatio * 100)}pct_gt_${Math.round(MAX_EXTERIOR_SPILLOVER_RATIO * 100)}pct`;
-      else if (coverage_ratio_vs_solar_bbox != null && coverage_ratio_vs_solar_bbox < MIN_COVERAGE_RATIO)
-        rejected_reason = `coverage_${Math.round((coverage_ratio_vs_solar_bbox || 0) * 100)}pct_lt_${Math.round(MIN_COVERAGE_RATIO * 100)}pct`;
-      else if (solarBboxPx && solarBboxPx.area > 0 && overlap_with_solar_bbox <= 0)
+      } else if (
+        footprintToSolarRatio != null &&
+        footprintToSolarRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO
+      ) {
+        rejected_reason = `footprint_${
+          Math.round(footprintToSolarRatio * 100) / 100
+        }x_solar_area_max_${MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO}x`;
+      } else if (
+        footprintToSolarBboxRatio != null &&
+        footprintToSolarBboxRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO
+      ) {
+        rejected_reason = `footprint_${
+          Math.round(footprintToSolarBboxRatio * 100) / 100
+        }x_solar_bbox_area_max_${MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO}x`;
+      } else if (
+        solarBboxPx && solarBboxPx.area > 0 &&
+        exteriorSpilloverRatio > MAX_EXTERIOR_SPILLOVER_RATIO
+      ) {
+        rejected_reason = `exterior_spillover_${
+          Math.round(exteriorSpilloverRatio * 100)
+        }pct_gt_${Math.round(MAX_EXTERIOR_SPILLOVER_RATIO * 100)}pct`;
+      } else if (
+        coverage_ratio_vs_solar_bbox != null &&
+        coverage_ratio_vs_solar_bbox < MIN_COVERAGE_RATIO
+      ) {
+        rejected_reason = `coverage_${
+          Math.round((coverage_ratio_vs_solar_bbox || 0) * 100)
+        }pct_lt_${Math.round(MIN_COVERAGE_RATIO * 100)}pct`;
+      } else if (
+        solarBboxPx && solarBboxPx.area > 0 && overlap_with_solar_bbox <= 0
+      ) {
         rejected_reason = "no_overlap_with_solar_bbox";
-      else if (bbox && bbox_center_distance_from_geocode_px > Math.max(raster.width, raster.height) * 0.4)
+      } else if (
+        bbox &&
+        bbox_center_distance_from_geocode_px >
+          Math.max(raster.width, raster.height) * 0.4
+      ) {
         rejected_reason = "bbox_center_far_from_geocode";
-      else if (isLikelyOutbuilding)
-        rejected_reason = `likely_outbuilding:${Math.round(area_sqft)}sqft_${Math.round(bbox_center_distance_from_geocode_px)}px_from_geocode`;
+      } else if (isLikelyOutbuilding) {
+        rejected_reason = `likely_outbuilding:${Math.round(area_sqft)}sqft_${
+          Math.round(bbox_center_distance_from_geocode_px)
+        }px_from_geocode`;
+      }
 
       // Determine which bbox cap was used for diagnostics
-      const isCC = source === 'google_solar_mask_contour';
-      const ccRelaxed = isCC && bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO && bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC && !rejected_reason;
-      const effectiveBboxCap = ccRelaxed ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC : MAX_FOOTPRINT_BBOX_TILE_RATIO;
+      const isCC = source === "google_solar_mask_contour";
+      const ccRelaxed = isCC && bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO &&
+        bboxTileRatio <= MAX_FOOTPRINT_BBOX_TILE_RATIO_CC && !rejected_reason;
+      const effectiveBboxCap = ccRelaxed
+        ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC
+        : MAX_FOOTPRINT_BBOX_TILE_RATIO;
 
       return {
         source,
@@ -2364,26 +3243,50 @@ async function processJob(input: any) {
         centroid_offset_px: null,
         footprint_registration_passed: null,
         // v14: connected-component bbox cap diagnostics
-        bbox_cap_used: bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO ? effectiveBboxCap : null,
-        bbox_cap_reason: ccRelaxed ? `cc_isolated_relaxed_${Math.round(bboxTileRatio * 100)}pct_le_${Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)}pct` : null,
+        bbox_cap_used: bboxTileRatio > MAX_FOOTPRINT_BBOX_TILE_RATIO
+          ? effectiveBboxCap
+          : null,
+        bbox_cap_reason: ccRelaxed
+          ? `cc_isolated_relaxed_${Math.round(bboxTileRatio * 100)}pct_le_${
+            Math.round(MAX_FOOTPRINT_BBOX_TILE_RATIO_CC * 100)
+          }pct`
+          : null,
         connected_component_isolated: isCC,
       };
     }
 
     const isCenteredSolarBboxFallback = (cand: FootprintCandidate) =>
-      cand.source === "google_solar_bbox"
-      && cand.area_sqft >= 300
-      && cand.area_sqft <= RESIDENTIAL_MAX_SQFT
-      && cand.bbox_center_distance_from_geocode_px <= 200;
+      cand.source === "google_solar_bbox" &&
+      cand.area_sqft >= 300 &&
+      cand.area_sqft <= RESIDENTIAL_MAX_SQFT &&
+      cand.bbox_center_distance_from_geocode_px <= 200;
 
     // 1. Build OSM candidates (ALL nearby buildings, not just one).
     const candidates: FootprintCandidate[] = [];
-    const projectionDiagnostics: Array<{ source: string; raw_centroid_geo: { lat: number; lng: number }; projected_centroid_px: { x: number; y: number }; on_canvas: boolean; bbox_px: any; geo_distance_m: number }> = [];
+    const projectionDiagnostics: Array<
+      {
+        source: string;
+        raw_centroid_geo: { lat: number; lng: number };
+        projected_centroid_px: { x: number; y: number };
+        on_canvas: boolean;
+        bbox_px: any;
+        geo_distance_m: number;
+      }
+    > = [];
     try {
-      const osmRes = await fetchOSMBuildingCandidates(coords.lat, coords.lng, { searchRadius: 80 });
+      const osmRes = await fetchOSMBuildingCandidates(coords.lat, coords.lng, {
+        searchRadius: 80,
+      });
       for (const c of osmRes.candidates || []) {
         const polyPx = c.ring.map(([lng, lat]) =>
-          lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+          lngLatToPx(
+            lat,
+            lng,
+            { lat: coords.lat, lng: coords.lng },
+            raster.width,
+            raster.height,
+            actualMpp,
+          )
         );
         // Drop trailing duplicate vertex.
         let pp = polyPx;
@@ -2397,15 +3300,29 @@ async function processJob(input: any) {
           lat: c.ring.reduce((s, r) => s + r[1], 0) / c.ring.length,
           lng: c.ring.reduce((s, r) => s + r[0], 0) / c.ring.length,
         };
-        const projCentroid = lngLatToPx(rawCentroid.lat, rawCentroid.lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
-        const onCanvas = projCentroid.x >= 0 && projCentroid.x <= raster.width && projCentroid.y >= 0 && projCentroid.y <= raster.height;
-        const xs = pp.map(p => p.x), ys = pp.map(p => p.y);
+        const projCentroid = lngLatToPx(
+          rawCentroid.lat,
+          rawCentroid.lng,
+          { lat: coords.lat, lng: coords.lng },
+          raster.width,
+          raster.height,
+          actualMpp,
+        );
+        const onCanvas = projCentroid.x >= 0 &&
+          projCentroid.x <= raster.width && projCentroid.y >= 0 &&
+          projCentroid.y <= raster.height;
+        const xs = pp.map((p) => p.x), ys = pp.map((p) => p.y);
         projectionDiagnostics.push({
           source: `osm_overpass#${c.osmId}`,
           raw_centroid_geo: rawCentroid,
           projected_centroid_px: projCentroid,
           on_canvas: onCanvas,
-          bbox_px: { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) },
+          bbox_px: {
+            minX: Math.min(...xs),
+            maxX: Math.max(...xs),
+            minY: Math.min(...ys),
+            maxY: Math.max(...ys),
+          },
           geo_distance_m: c.distanceFromPointM,
         });
 
@@ -2413,22 +3330,51 @@ async function processJob(input: any) {
         candidates.push(sc);
       }
       if (projectionDiagnostics.length > 0) {
-        const onCanvasCount = projectionDiagnostics.filter(d => d.on_canvas).length;
-        console.log(`[PROJECTION_DIAGNOSTICS] ${projectionDiagnostics.length} OSM candidates: ${onCanvasCount} on-canvas, ${projectionDiagnostics.length - onCanvasCount} off-canvas. Tile: ${raster.width}x${raster.height}px, center: ${coords.lat.toFixed(6)},${coords.lng.toFixed(6)}, actualMpp: ${actualMpp.toFixed(4)}`);
+        const onCanvasCount = projectionDiagnostics.filter((d) =>
+          d.on_canvas
+        ).length;
+        console.log(
+          `[PROJECTION_DIAGNOSTICS] ${projectionDiagnostics.length} OSM candidates: ${onCanvasCount} on-canvas, ${
+            projectionDiagnostics.length - onCanvasCount
+          } off-canvas. Tile: ${raster.width}x${raster.height}px, center: ${
+            coords.lat.toFixed(6)
+          },${coords.lng.toFixed(6)}, actualMpp: ${actualMpp.toFixed(4)}`,
+        );
         // Log closest 3 candidates for debugging
-        const sorted = [...projectionDiagnostics].sort((a, b) => a.geo_distance_m - b.geo_distance_m).slice(0, 3);
+        const sorted = [...projectionDiagnostics].sort((a, b) =>
+          a.geo_distance_m - b.geo_distance_m
+        ).slice(0, 3);
         for (const d of sorted) {
-          console.log(`  ${d.source}: geo_dist=${d.geo_distance_m.toFixed(1)}m, centroid_px=(${d.projected_centroid_px.x.toFixed(0)},${d.projected_centroid_px.y.toFixed(0)}), on_canvas=${d.on_canvas}, bbox_px=[${d.bbox_px.minX.toFixed(0)},${d.bbox_px.minY.toFixed(0)}]-[${d.bbox_px.maxX.toFixed(0)},${d.bbox_px.maxY.toFixed(0)}]`);
+          console.log(
+            `  ${d.source}: geo_dist=${
+              d.geo_distance_m.toFixed(1)
+            }m, centroid_px=(${d.projected_centroid_px.x.toFixed(0)},${
+              d.projected_centroid_px.y.toFixed(0)
+            }), on_canvas=${d.on_canvas}, bbox_px=[${
+              d.bbox_px.minX.toFixed(0)
+            },${d.bbox_px.minY.toFixed(0)}]-[${d.bbox_px.maxX.toFixed(0)},${
+              d.bbox_px.maxY.toFixed(0)
+            }]`,
+          );
         }
       }
     } catch (e) {
-      console.warn("[footprint-selection] OSM candidate scan failed:", (e as Error).message);
+      console.warn(
+        "[footprint-selection] OSM candidate scan failed:",
+        (e as Error).message,
+      );
     }
-    const noOsmCandidatesAtSolarFallback = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+    const noOsmCandidatesAtSolarFallback = candidates.filter((c) =>
+      c.source.startsWith("osm_overpass")
+    ).length === 0;
 
     // 2. Optional U-Net segmentation pass — produces a candidate footprint AND
     //    optional plane/edge refinements (used later if topology yields nothing).
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Optional segmentation pass");
+    await setAiJobStatus(
+      input.ai_measurement_job_id,
+      "running",
+      "Optional segmentation pass",
+    );
     const segmentation = await runSegmentation({
       image_url: imageUrl,
       image_width: raster.width,
@@ -2439,7 +3385,9 @@ async function processJob(input: any) {
       feet_per_pixel_actual: actualFpp,
     });
     const unetPlanes = (segmentation.planes || [])
-      .map((p: any, i: number) => cleanPlane(p, i + 1, raster.width, raster.height))
+      .map((p: any, i: number) =>
+        cleanPlane(p, i + 1, raster.width, raster.height)
+      )
       .filter(Boolean) as RoofPlane[];
     const unetEdges = (segmentation.edges || [])
       .map((e: any) => cleanEdge(e, raster.width, raster.height))
@@ -2451,8 +3399,15 @@ async function processJob(input: any) {
 
     // 3a. Solar roofSegmentStats hull — preferred over the plain bbox because
     // straight_skeleton/topology needs a real building shape, not a 4-corner rect.
-    const solarSegments = (solarData?.solarPotential?.roofSegmentStats || []) as any[];
-    let solarSegmentsDebug: any = { count: solarSegments.length, hull_px: null, hull_area_sqft: 0, bbox_area_sqft: 0, hull_vs_bbox_area_ratio: null };
+    const solarSegments =
+      (solarData?.solarPotential?.roofSegmentStats || []) as any[];
+    let solarSegmentsDebug: any = {
+      count: solarSegments.length,
+      hull_px: null,
+      hull_area_sqft: 0,
+      bbox_area_sqft: 0,
+      hull_vs_bbox_area_ratio: null,
+    };
     if (solarSegments.length >= 1) {
       const segPts: Point[] = [];
       const centersPx: Array<[number, number]> = [];
@@ -2461,12 +3416,21 @@ async function processJob(input: any) {
         const cLat = Number(seg?.center?.latitude);
         const cLng = Number(seg?.center?.longitude);
         if (Number.isFinite(cLat) && Number.isFinite(cLng)) {
-          const c = lngLatToPx(cLat, cLng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const c = lngLatToPx(
+            cLat,
+            cLng,
+            { lat: coords.lat, lng: coords.lng },
+            raster.width,
+            raster.height,
+            actualMpp,
+          );
           segPts.push(c);
           centersPx.push([Math.round(c.x), Math.round(c.y)]);
           // Buffer a square around the center sized by sqrt(groundAreaMeters2),
           // so the hull captures the true segment extent.
-          const groundM2 = Number(seg?.stats?.groundAreaMeters2 || seg?.stats?.areaMeters2);
+          const groundM2 = Number(
+            seg?.stats?.groundAreaMeters2 || seg?.stats?.areaMeters2,
+          );
           if (Number.isFinite(groundM2) && groundM2 > 0) {
             const halfM = Math.sqrt(groundM2) / 2;
             const halfPx = halfM / actualMpp;
@@ -2478,11 +3442,29 @@ async function processJob(input: any) {
         }
         const bb = seg?.boundingBox;
         if (bb?.sw && bb?.ne) {
-          const sw = lngLatToPx(bb.sw.latitude, bb.sw.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
-          const ne = lngLatToPx(bb.ne.latitude, bb.ne.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const sw = lngLatToPx(
+            bb.sw.latitude,
+            bb.sw.longitude,
+            { lat: coords.lat, lng: coords.lng },
+            raster.width,
+            raster.height,
+            actualMpp,
+          );
+          const ne = lngLatToPx(
+            bb.ne.latitude,
+            bb.ne.longitude,
+            { lat: coords.lat, lng: coords.lng },
+            raster.width,
+            raster.height,
+            actualMpp,
+          );
           segPts.push(sw, ne, { x: sw.x, y: ne.y }, { x: ne.x, y: sw.y });
-          boundsPx.push({ minX: Math.round(Math.min(sw.x, ne.x)), maxX: Math.round(Math.max(sw.x, ne.x)),
-                          minY: Math.round(Math.min(sw.y, ne.y)), maxY: Math.round(Math.max(sw.y, ne.y)) });
+          boundsPx.push({
+            minX: Math.round(Math.min(sw.x, ne.x)),
+            maxX: Math.round(Math.max(sw.x, ne.x)),
+            minY: Math.round(Math.min(sw.y, ne.y)),
+            maxY: Math.round(Math.max(sw.y, ne.y)),
+          });
         }
       }
       if (segPts.length >= 3) {
@@ -2493,7 +3475,8 @@ async function processJob(input: any) {
           // true eave/rake roof perimeter. Keep it diagnostic unless the later
           // no-OSM + failed-mask fallback explicitly clears this rejection.
           if (!hullCand.rejected_reason) {
-            hullCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
+            hullCand.rejected_reason =
+              "solar_inner_geometry_not_roof_perimeter";
           }
           candidates.push(hullCand);
           solarSegmentsDebug = {
@@ -2516,16 +3499,22 @@ async function processJob(input: any) {
         try {
           const unionPoly = rectilinearUnionPolygon(boundsPx);
           if (unionPoly.length >= 4) {
-            const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
+            const unionCand = scoreCandidate(
+              "google_solar_segments_union",
+              unionPoly,
+            );
             // CRITICAL FIX: Solar segment union traces INNER plane geometry, not
             // the true eave/rake roof perimeter. Keep it diagnostic unless the
             // later no-OSM + failed-mask fallback explicitly clears this rejection.
             if (!unionCand.rejected_reason) {
-              unionCand.rejected_reason = "solar_inner_geometry_not_roof_perimeter";
+              unionCand.rejected_reason =
+                "solar_inner_geometry_not_roof_perimeter";
             }
             candidates.push(unionCand);
             solarSegmentsDebug.union_vertices = unionPoly.length;
-            solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
+            solarSegmentsDebug.union_area_sqft = Math.round(
+              unionCand.area_sqft,
+            );
           }
         } catch (e) {
           console.warn("[SOLAR_SEGMENT_UNION] failed:", (e as Error).message);
@@ -2534,7 +3523,13 @@ async function processJob(input: any) {
     }
 
     // 3b. Solar building extent rectangle — diagnostic only, NOT a valid perimeter.
-    const solarFp = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+    const solarFp = footprintFromSolarBoundingBox(
+      solarData,
+      { lat: coords.lat, lng: coords.lng },
+      raster.width,
+      raster.height,
+      actualMpp,
+    );
     if (solarFp && solarFp.length >= 3) {
       const bboxCand = scoreCandidate("google_solar_bbox", solarFp);
       // Solar bbox is usually diagnostic only, but with no OSM it is a valid
@@ -2545,16 +3540,23 @@ async function processJob(input: any) {
       candidates.push(bboxCand);
       solarSegmentsDebug.bbox_area_sqft = Math.round(bboxCand.area_sqft);
       if (solarSegmentsDebug.hull_area_sqft && bboxCand.area_sqft > 0) {
-        solarSegmentsDebug.hull_vs_bbox_area_ratio = Number((solarSegmentsDebug.hull_area_sqft / bboxCand.area_sqft).toFixed(3));
+        solarSegmentsDebug.hull_vs_bbox_area_ratio = Number(
+          (solarSegmentsDebug.hull_area_sqft / bboxCand.area_sqft).toFixed(3),
+        );
       }
     }
 
-    console.log("[SOLAR_SEGMENT_FOOTPRINT]", JSON.stringify({
-      segment_count: solarSegments.length,
-      hull_vertices: Array.isArray(solarSegmentsDebug.hull_px) ? solarSegmentsDebug.hull_px.length : 0,
-      hull_area_sqft: solarSegmentsDebug.hull_area_sqft,
-      bbox_area_sqft: solarSegmentsDebug.bbox_area_sqft,
-    }));
+    console.log(
+      "[SOLAR_SEGMENT_FOOTPRINT]",
+      JSON.stringify({
+        segment_count: solarSegments.length,
+        hull_vertices: Array.isArray(solarSegmentsDebug.hull_px)
+          ? solarSegmentsDebug.hull_px.length
+          : 0,
+        hull_area_sqft: solarSegmentsDebug.hull_area_sqft,
+        bbox_area_sqft: solarSegmentsDebug.bbox_area_sqft,
+      }),
+    );
 
     // 4. Google Solar building mask contour is the primary verified footprint
     // source because it shares Solar/DSM geo-registration. It must be tried
@@ -2593,50 +3595,110 @@ async function processJob(input: any) {
       const googleSolarStageStarted = Date.now();
       googleSolarMaskStageDebug.google_solar_stage_started_at = nowIso();
       try {
-        await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting Google Solar roof mask footprint");
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "running",
+          "Extracting Google Solar roof mask footprint",
+        );
         googleSolarMaskStageDebug.google_solar_fetch_started_at = nowIso();
         const solarFetchStarted = Date.now();
         roofMaskForContour = await withStageTimeout(
-          fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+          fetchRoofMaskFromGoogleSolar(
+            coords.lat,
+            coords.lng,
+            GOOGLE_SOLAR_API_KEY,
+            {
+              timeoutMs: GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+            },
+          ),
           GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
           "google_solar_roof_mask_fetch",
         );
         googleSolarMaskStageDebug.google_solar_fetch_finished_at = nowIso();
-        googleSolarMaskStageDebug.google_solar_fetch_duration_ms = Date.now() - solarFetchStarted;
-        googleSolarMaskStageDebug.google_solar_status = roofMaskForContour ? "mask_loaded" : "mask_missing";
+        googleSolarMaskStageDebug.google_solar_fetch_duration_ms = Date.now() -
+          solarFetchStarted;
+        googleSolarMaskStageDebug.google_solar_status = roofMaskForContour
+          ? "mask_loaded"
+          : "mask_missing";
         googleSolarMaskStageDebug.mask_loaded = !!roofMaskForContour;
-        googleSolarMaskStageDebug.mask_point_count = countMaskPoints(roofMaskForContour);
+        googleSolarMaskStageDebug.mask_point_count = countMaskPoints(
+          roofMaskForContour,
+        );
+        const maskFetchDiagnostics = getLastDSMDiagnostics();
+        googleSolarMaskStageDebug.google_solar_diagnostics =
+          maskFetchDiagnostics;
+        if (
+          String(maskFetchDiagnostics?.failure_code || "").includes("timeout")
+        ) {
+          googleSolarMaskStageDebug.google_solar_status = "timeout";
+          googleSolarMaskStageDebug.google_solar_error =
+            maskFetchDiagnostics?.dsm_error_message ||
+            maskFetchDiagnostics?.failure_code || "google_solar_mask_timeout";
+          googleSolarMaskHardFailReason = "google_solar_mask_timeout";
+        }
         if (roofMaskForContour) {
           googleSolarMaskStageDebug.footprint_extraction_started_at = nowIso();
           const footprintStarted = Date.now();
           const maskContourGeo = await withStageTimeout(
-            Promise.resolve().then(() => extractMaskContour(roofMaskForContour, coords.lat, coords.lng)),
+            Promise.resolve().then(() =>
+              extractMaskContour(roofMaskForContour, coords.lat, coords.lng)
+            ),
             GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS,
             "roof_mask_footprint_extraction",
           );
           googleSolarMaskStageDebug.footprint_extraction_finished_at = nowIso();
-          googleSolarMaskStageDebug.footprint_extraction_duration_ms = Date.now() - footprintStarted;
-          googleSolarMaskStageDebug.footprint_point_count = maskContourGeo.length;
+          googleSolarMaskStageDebug.footprint_extraction_duration_ms =
+            Date.now() - footprintStarted;
+          googleSolarMaskStageDebug.footprint_point_count =
+            maskContourGeo.length;
           maskContourDiagnostics = getLastContourDiagnostics();
           if (maskContourDiagnostics) {
-            console.log("[MASK_CONTOUR_DIAG]", JSON.stringify(maskContourDiagnostics));
+            console.log(
+              "[MASK_CONTOUR_DIAG]",
+              JSON.stringify(maskContourDiagnostics),
+            );
           }
           if (maskContourGeo.length >= 4) {
             // Check contour coverage — reject if it misses >5% of mask
-            const contourValid = maskContourDiagnostics?.contour_valid !== false;
+            const contourValid =
+              maskContourDiagnostics?.contour_valid !== false;
             if (!contourValid && maskContourDiagnostics) {
-              console.warn(`[MASK_CONTOUR_UNDERCOVERAGE] Contour misses ${(maskContourDiagnostics.mask_missed_pct * 100).toFixed(1)}% of mask pixels — will still add as candidate but flag`);
+              console.warn(
+                `[MASK_CONTOUR_UNDERCOVERAGE] Contour misses ${
+                  (maskContourDiagnostics.mask_missed_pct * 100).toFixed(1)
+                }% of mask pixels — will still add as candidate but flag`,
+              );
             }
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
-              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+              lngLatToPx(
+                lat,
+                lng,
+                { lat: coords.lat, lng: coords.lng },
+                raster.width,
+                raster.height,
+                actualMpp,
+              )
             );
-            const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
-            maskCand.polygon_shape_score = Math.min(1, maskCand.polygon_shape_score + 0.45);
+            const maskCand = scoreCandidate(
+              "google_solar_mask_contour",
+              maskContourPx,
+            );
+            maskCand.polygon_shape_score = Math.min(
+              1,
+              maskCand.polygon_shape_score + 0.45,
+            );
             // Only boost if not rejected — oversized masks must NOT auto-win
-            maskCand.validity_score = Math.min(1, maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.25));
+            maskCand.validity_score = Math.min(
+              1,
+              maskCand.validity_score + (maskCand.rejected_reason ? 0 : 0.25),
+            );
             candidates.push(maskCand);
             maskContourFailed = Boolean(maskCand.rejected_reason);
-            if (!maskCand.rejected_reason) selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
+            if (!maskCand.rejected_reason) {
+              selectedMaskContourGeo = maskContourGeo as Array<
+                [number, number]
+              >;
+            }
           }
 
           // ── Target-Centered Perimeter Candidate Selection v1 ──
@@ -2646,19 +3708,22 @@ async function processJob(input: any) {
           // fused multi-house blob — Fonsica failure mode).
           try {
             const components = await withStageTimeout(
-              Promise.resolve().then(() => extractMaskContourComponents(
-                roofMaskForContour,
-                coords.lat,
-                coords.lng,
-              )),
+              Promise.resolve().then(() =>
+                extractMaskContourComponents(
+                  roofMaskForContour,
+                  coords.lat,
+                  coords.lng,
+                )
+              ),
               GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS,
               "roof_mask_component_extraction",
             );
             googleSolarMaskStageDebug.mask_component_count = components.length;
-            const confirmedCenterPxForComponents = (input as any).confirmed_roof_center_px as
-              | [number, number]
-              | null
-              | undefined;
+            const confirmedCenterPxForComponents = (input as any)
+              .confirmed_roof_center_px as
+                | [number, number]
+                | null
+                | undefined;
             if (components.length > 0) {
               (globalThis as any).__maskComponentsRaw = components.map((c) => ({
                 component_id: c.component_id,
@@ -2672,40 +3737,66 @@ async function processJob(input: any) {
               for (const comp of components) {
                 if (comp.polygon_geo.length < 4) continue;
                 const compPx = comp.polygon_geo.map(([lng, lat]) =>
-                  lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+                  lngLatToPx(
+                    lat,
+                    lng,
+                    { lat: coords.lat, lng: coords.lng },
+                    raster.width,
+                    raster.height,
+                    actualMpp,
+                  )
                 );
-                const sourceTag = `google_solar_mask_contour:component_${comp.component_index}`;
+                const sourceTag =
+                  `google_solar_mask_contour:component_${comp.component_index}`;
                 const compCand = scoreCandidate(sourceTag, compPx);
                 (compCand as any).component_id = comp.component_id;
                 (compCand as any).component_index = comp.component_index;
                 (compCand as any).component_size_px = comp.size_px;
                 // Per-component bbox diagonal (px) — the TARGET anchor for offset gate
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                let minX = Infinity,
+                  minY = Infinity,
+                  maxX = -Infinity,
+                  maxY = -Infinity;
                 for (const p of compPx) {
-                  if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-                  if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+                  if (p.x < minX) minX = p.x;
+                  if (p.x > maxX) maxX = p.x;
+                  if (p.y < minY) minY = p.y;
+                  if (p.y > maxY) maxY = p.y;
                 }
-                const compDiag = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
-                (compCand as any).component_bbox_diagonal_px = Math.round(compDiag);
+                const compDiag = Math.sqrt(
+                  (maxX - minX) ** 2 + (maxY - minY) ** 2,
+                );
+                (compCand as any).component_bbox_diagonal_px = Math.round(
+                  compDiag,
+                );
 
-                if (confirmedCenterPxForComponents
-                    && Array.isArray(confirmedCenterPxForComponents)
-                    && confirmedCenterPxForComponents.length === 2
-                    && Number.isFinite(confirmedCenterPxForComponents[0])
-                    && Number.isFinite(confirmedCenterPxForComponents[1])) {
-                  const polyPx = compPx.map((p) => [p.x, p.y] as [number, number]);
+                if (
+                  confirmedCenterPxForComponents &&
+                  Array.isArray(confirmedCenterPxForComponents) &&
+                  confirmedCenterPxForComponents.length === 2 &&
+                  Number.isFinite(confirmedCenterPxForComponents[0]) &&
+                  Number.isFinite(confirmedCenterPxForComponents[1])
+                ) {
+                  const polyPx = compPx.map((p) =>
+                    [p.x, p.y] as [number, number]
+                  );
                   const ev = evaluateCandidateAgainstTarget(
                     polyPx,
                     confirmedCenterPxForComponents,
                     compDiag,
                   );
-                  (compCand as any).confirmed_center_inside_candidate = ev.confirmed_center_inside_candidate;
-                  (compCand as any).candidate_centroid_offset_from_confirmed_center_px =
-                    ev.candidate_centroid_offset_from_confirmed_center_px;
-                  (compCand as any).candidate_centroid_offset_threshold_px = ev.centroid_offset_threshold_px;
-                  (compCand as any).target_component_diagonal_px = ev.target_component_diagonal_px;
+                  (compCand as any).confirmed_center_inside_candidate =
+                    ev.confirmed_center_inside_candidate;
+                  (compCand as any)
+                    .candidate_centroid_offset_from_confirmed_center_px =
+                      ev.candidate_centroid_offset_from_confirmed_center_px;
+                  (compCand as any).candidate_centroid_offset_threshold_px =
+                    ev.centroid_offset_threshold_px;
+                  (compCand as any).target_component_diagonal_px =
+                    ev.target_component_diagonal_px;
                   if (ev.rejected) {
-                    compCand.rejected_reason = ev.rejection_reason ?? "candidate_does_not_contain_confirmed_roof_center";
+                    compCand.rejected_reason = ev.rejection_reason ??
+                      "candidate_does_not_contain_confirmed_roof_center";
                   }
                 }
                 candidates.push(compCand);
@@ -2719,45 +3810,72 @@ async function processJob(input: any) {
                 // viable components exist — it is the convex hull of merged
                 // components and is almost always inflated.
                 for (const cand of candidates) {
-                  if (cand.source === "google_solar_mask_contour" && !cand.rejected_reason) {
-                    cand.rejected_reason = "fused_multi_component_contour_superseded_by_component_split";
-                    console.log("[TARGET_CENTERED_SELECTION] Demoted fused contour — using per-component candidates instead");
+                  if (
+                    cand.source === "google_solar_mask_contour" &&
+                    !cand.rejected_reason
+                  ) {
+                    cand.rejected_reason =
+                      "fused_multi_component_contour_superseded_by_component_split";
+                    console.log(
+                      "[TARGET_CENTERED_SELECTION] Demoted fused contour — using per-component candidates instead",
+                    );
                   }
                 }
               }
             }
           } catch (e) {
-            googleSolarMaskStageDebug.footprint_extraction_error = (e as Error).message;
-            console.warn("[MASK_CONTOUR_COMPONENTS] failed:", (e as Error).message);
+            googleSolarMaskStageDebug.footprint_extraction_error =
+              (e as Error).message;
+            console.warn(
+              "[MASK_CONTOUR_COMPONENTS] failed:",
+              (e as Error).message,
+            );
           }
         }
       } catch (e) {
         const err = e as Error;
-        googleSolarMaskStageDebug.google_solar_fetch_finished_at = googleSolarMaskStageDebug.google_solar_fetch_finished_at ?? nowIso();
-        if (googleSolarMaskStageDebug.google_solar_fetch_started_at && googleSolarMaskStageDebug.google_solar_fetch_duration_ms == null) {
+        googleSolarMaskStageDebug.google_solar_fetch_finished_at =
+          googleSolarMaskStageDebug.google_solar_fetch_finished_at ?? nowIso();
+        if (
+          googleSolarMaskStageDebug.google_solar_fetch_started_at &&
+          googleSolarMaskStageDebug.google_solar_fetch_duration_ms == null
+        ) {
           googleSolarMaskStageDebug.google_solar_fetch_duration_ms =
-            Date.now() - Date.parse(googleSolarMaskStageDebug.google_solar_fetch_started_at);
+            Date.now() -
+            Date.parse(googleSolarMaskStageDebug.google_solar_fetch_started_at);
         }
-        googleSolarMaskStageDebug.google_solar_status = err instanceof StageTimeoutError ? "timeout" : "error";
+        googleSolarMaskStageDebug.google_solar_status =
+          err instanceof StageTimeoutError ? "timeout" : "error";
         googleSolarMaskStageDebug.google_solar_error = err.message;
         googleSolarMaskHardFailReason = "google_solar_mask_timeout";
         console.warn("[FOOTPRINT_MASK_CONTOUR_PRIMARY] failed:", err.message);
       } finally {
         googleSolarMaskStageDebug.google_solar_stage_finished_at = nowIso();
-        googleSolarMaskStageDebug.google_solar_stage_duration_ms = Date.now() - googleSolarStageStarted;
+        googleSolarMaskStageDebug.google_solar_stage_duration_ms = Date.now() -
+          googleSolarStageStarted;
       }
       if (!googleSolarMaskHardFailReason) {
         if (!roofMaskForContour) {
           googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";
         } else if (googleSolarMaskStageDebug.mask_point_count <= 0) {
           googleSolarMaskHardFailReason = "google_solar_roof_mask_missing";
-        } else if ((googleSolarMaskStageDebug.footprint_point_count ?? 0) < 4 && (googleSolarMaskStageDebug.mask_component_count ?? 0) === 0) {
-          googleSolarMaskHardFailReason = googleSolarMaskStageDebug.footprint_extraction_error
-            ? "roof_mask_footprint_extraction_failed"
-            : "roof_mask_points_missing";
-        } else if ((googleSolarMaskStageDebug.footprint_extraction_duration_ms ?? 0) > GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS) {
+        } else if (
+          (googleSolarMaskStageDebug.footprint_point_count ?? 0) < 4 &&
+          (googleSolarMaskStageDebug.mask_component_count ?? 0) === 0
+        ) {
+          googleSolarMaskHardFailReason =
+            googleSolarMaskStageDebug.footprint_extraction_error
+              ? "roof_mask_footprint_extraction_failed"
+              : "roof_mask_points_missing";
+        } else if (
+          (googleSolarMaskStageDebug.footprint_extraction_duration_ms ?? 0) >
+            GOOGLE_SOLAR_FOOTPRINT_TIMEOUT_MS
+        ) {
           googleSolarMaskHardFailReason = "google_solar_mask_timeout";
-        } else if ((googleSolarMaskStageDebug.google_solar_stage_duration_ms ?? 0) > GOOGLE_SOLAR_STAGE_TIMEOUT_MS) {
+        } else if (
+          (googleSolarMaskStageDebug.google_solar_stage_duration_ms ?? 0) >
+            GOOGLE_SOLAR_STAGE_TIMEOUT_MS
+        ) {
           googleSolarMaskHardFailReason = "google_solar_mask_timeout";
         }
       }
@@ -2775,24 +3893,33 @@ async function processJob(input: any) {
         roof_lines_count: 0,
         footprint_source: "google_solar_roof_mask",
         footprint_valid: false,
-        footprint_point_count: googleSolarMaskStageDebug.footprint_point_count ?? 0,
+        footprint_point_count:
+          googleSolarMaskStageDebug.footprint_point_count ?? 0,
         mask_point_count: googleSolarMaskStageDebug.mask_point_count ?? 0,
         dsm_loaded: false,
         mask_loaded: googleSolarMaskStageDebug.mask_loaded === true,
         google_solar_status: googleSolarMaskStageDebug.google_solar_status,
         google_solar_error: googleSolarMaskStageDebug.google_solar_error,
-        google_solar_stage_started_at: googleSolarMaskStageDebug.google_solar_stage_started_at,
-        google_solar_stage_finished_at: googleSolarMaskStageDebug.google_solar_stage_finished_at,
-        google_solar_stage_duration_ms: googleSolarMaskStageDebug.google_solar_stage_duration_ms,
+        google_solar_stage_started_at:
+          googleSolarMaskStageDebug.google_solar_stage_started_at,
+        google_solar_stage_finished_at:
+          googleSolarMaskStageDebug.google_solar_stage_finished_at,
+        google_solar_stage_duration_ms:
+          googleSolarMaskStageDebug.google_solar_stage_duration_ms,
         google_solar_mask_stage: googleSolarMaskStageDebug,
-        google_solar_fetch_started_at: googleSolarMaskStageDebug.google_solar_fetch_started_at,
-        google_solar_fetch_finished_at: googleSolarMaskStageDebug.google_solar_fetch_finished_at,
-        google_solar_fetch_duration_ms: googleSolarMaskStageDebug.google_solar_fetch_duration_ms,
+        google_solar_fetch_started_at:
+          googleSolarMaskStageDebug.google_solar_fetch_started_at,
+        google_solar_fetch_finished_at:
+          googleSolarMaskStageDebug.google_solar_fetch_finished_at,
+        google_solar_fetch_duration_ms:
+          googleSolarMaskStageDebug.google_solar_fetch_duration_ms,
         dsm_fetch_started_at: googleSolarMaskStageDebug.dsm_fetch_started_at,
         dsm_fetch_finished_at: googleSolarMaskStageDebug.dsm_fetch_finished_at,
         dsm_fetch_duration_ms: googleSolarMaskStageDebug.dsm_fetch_duration_ms,
-        footprint_extraction_duration_ms: googleSolarMaskStageDebug.footprint_extraction_duration_ms,
-        footprint_extraction_error: googleSolarMaskStageDebug.footprint_extraction_error,
+        footprint_extraction_duration_ms:
+          googleSolarMaskStageDebug.footprint_extraction_duration_ms,
+        footprint_extraction_error:
+          googleSolarMaskStageDebug.footprint_extraction_error,
         source_acquisition_debug: {
           source_acquisition_failed: true,
           google_solar_mask_stage_failed: true,
@@ -2801,25 +3928,56 @@ async function processJob(input: any) {
         },
         acquisition_audit: acquisitionAudit,
       };
-      const failedId = await insertFailedPreliminaryMeasurement(input, coords, googleSolarMaskHardFailReason, debugPayload, imageUrl, actualMpp);
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Google Solar roof mask failed: ${googleSolarMaskHardFailReason}`, failedId);
-      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Google Solar roof mask failed: ${googleSolarMaskHardFailReason}`);
+      const failedId = await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        googleSolarMaskHardFailReason,
+        debugPayload,
+        imageUrl,
+        actualMpp,
+      );
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        `Google Solar roof mask failed: ${googleSolarMaskHardFailReason}`,
+        failedId,
+      );
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "failed",
+        `Google Solar roof mask failed: ${googleSolarMaskHardFailReason}`,
+      );
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
         hard_fail_reason: googleSolarMaskHardFailReason,
-        source_context: { gate_reason: googleSolarMaskHardFailReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+        source_context: {
+          gate_reason: googleSolarMaskHardFailReason,
+          debug: debugPayload,
+          acquisition_audit: acquisitionAudit,
+        },
       }).eq("id", input.ai_measurement_job_id);
       return;
     }
 
-    if (noOsmCandidatesAtSolarFallback && maskContourFailed && solarSegmentTotalAreaSqft >= 300 && solarSegmentTotalAreaSqft <= RESIDENTIAL_MAX_SQFT) {
+    if (
+      noOsmCandidatesAtSolarFallback && maskContourFailed &&
+      solarSegmentTotalAreaSqft >= 300 &&
+      solarSegmentTotalAreaSqft <= RESIDENTIAL_MAX_SQFT
+    ) {
       for (const cand of candidates) {
-        if ((cand.source === "google_solar_segments_hull" || cand.source === "google_solar_segments_union")
-          && cand.rejected_reason === "solar_inner_geometry_not_roof_perimeter") {
+        if (
+          (cand.source === "google_solar_segments_hull" ||
+            cand.source === "google_solar_segments_union") &&
+          cand.rejected_reason === "solar_inner_geometry_not_roof_perimeter"
+        ) {
           cand.rejected_reason = null;
           cand.validity_score = Math.min(1, cand.validity_score + 0.15);
-          console.log(`[SOLAR_SEGMENT_FALLBACK_ACCEPTED] ${cand.source}: no OSM candidates, mask contour failed, segment area=${Math.round(solarSegmentTotalAreaSqft)}sqft`);
+          console.log(
+            `[SOLAR_SEGMENT_FALLBACK_ACCEPTED] ${cand.source}: no OSM candidates, mask contour failed, segment area=${
+              Math.round(solarSegmentTotalAreaSqft)
+            }sqft`,
+          );
         }
       }
     }
@@ -2827,10 +3985,21 @@ async function processJob(input: any) {
     // ══════════ v13: FOOTPRINT REGISTRATION GATE ══════════
     // Build a "visible roof target" from the roof mask rasterized into satellite
     // pixel space. Every candidate must overlap this target, not the yard/driveway.
-    let visibleRoofBboxPx: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number; area: number } | null = null;
+    let visibleRoofBboxPx: {
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+      width: number;
+      height: number;
+      area: number;
+    } | null = null;
     let visibleRoofMaskPxGrid: Uint8Array | null = null;
     let registrationDebug: any = { enabled: false };
-    if (roofMaskForContour && roofMaskForContour.data && roofMaskForContour.width > 0) {
+    if (
+      roofMaskForContour && roofMaskForContour.data &&
+      roofMaskForContour.width > 0
+    ) {
       // Rasterize roof mask into satellite pixel space
       const mw = roofMaskForContour.width;
       const mh = roofMaskForContour.height;
@@ -2845,7 +4014,14 @@ async function processJob(input: any) {
           const lng = mb.minLng + ((mx + 0.5) / mw) * (mb.maxLng - mb.minLng);
           const lat = mb.maxLat - ((my + 0.5) / mh) * (mb.maxLat - mb.minLat);
           // Map geo to satellite pixel
-          const satPx = lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const satPx = lngLatToPx(
+            lat,
+            lng,
+            { lat: coords.lat, lng: coords.lng },
+            raster.width,
+            raster.height,
+            actualMpp,
+          );
           const sx = Math.round(satPx.x);
           const sy = Math.round(satPx.y);
           if (sx >= 0 && sx < raster.width && sy >= 0 && sy < raster.height) {
@@ -2860,8 +4036,12 @@ async function processJob(input: any) {
       }
       if (roofPxCount > 10) {
         visibleRoofBboxPx = {
-          minX: minRX, minY: minRY, maxX: maxRX, maxY: maxRY,
-          width: maxRX - minRX, height: maxRY - minRY,
+          minX: minRX,
+          minY: minRY,
+          maxX: maxRX,
+          maxY: maxRY,
+          width: maxRX - minRX,
+          height: maxRY - minRY,
           area: (maxRX - minRX) * (maxRY - minRY),
         };
         registrationDebug = {
@@ -2870,14 +4050,24 @@ async function processJob(input: any) {
           visible_roof_pixel_count: roofPxCount,
           tile_size: { width: raster.width, height: raster.height },
         };
-        console.log(`[REGISTRATION_GATE] Visible roof target: ${roofPxCount} px, bbox=[${minRX},${minRY}]-[${maxRX},${maxRY}]`);
+        console.log(
+          `[REGISTRATION_GATE] Visible roof target: ${roofPxCount} px, bbox=[${minRX},${minRY}]-[${maxRX},${maxRY}]`,
+        );
       } else {
-        registrationDebug = { enabled: false, reason: 'roof_mask_too_few_pixels', pixel_count: roofPxCount };
-        console.log(`[REGISTRATION_GATE] Disabled — only ${roofPxCount} roof mask pixels in satellite frame`);
+        registrationDebug = {
+          enabled: false,
+          reason: "roof_mask_too_few_pixels",
+          pixel_count: roofPxCount,
+        };
+        console.log(
+          `[REGISTRATION_GATE] Disabled — only ${roofPxCount} roof mask pixels in satellite frame`,
+        );
       }
     } else {
-      registrationDebug = { enabled: false, reason: 'no_roof_mask_available' };
-      console.log('[REGISTRATION_GATE] Disabled — no roof mask available for registration check');
+      registrationDebug = { enabled: false, reason: "no_roof_mask_available" };
+      console.log(
+        "[REGISTRATION_GATE] Disabled — no roof mask available for registration check",
+      );
     }
 
     // Validate each candidate against visible roof evidence
@@ -2894,14 +4084,20 @@ async function processJob(input: any) {
       }
 
       const candBbox = cand.bbox_px;
-      if (!candBbox) { cand.footprint_registration_passed = false; continue; }
+      if (!candBbox) {
+        cand.footprint_registration_passed = false;
+        continue;
+      }
 
       // Centroid offset from visible roof center
       const roofCenterX = (visibleRoofBboxPx.minX + visibleRoofBboxPx.maxX) / 2;
       const roofCenterY = (visibleRoofBboxPx.minY + visibleRoofBboxPx.maxY) / 2;
       const candCenterX = (candBbox.minX + candBbox.maxX) / 2;
       const candCenterY = (candBbox.minY + candBbox.maxY) / 2;
-      const centroidOffset = Math.hypot(candCenterX - roofCenterX, candCenterY - roofCenterY);
+      const centroidOffset = Math.hypot(
+        candCenterX - roofCenterX,
+        candCenterY - roofCenterY,
+      );
       cand.centroid_offset_px = Math.round(centroidOffset * 10) / 10;
 
       // Overlap score: rasterize candidate polygon into mask and compute intersection
@@ -2921,13 +4117,18 @@ async function processJob(input: any) {
             const yi = candPoly[i].y, yj = candPoly[j].y;
             if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
               const t = (y - yi) / (yj - yi);
-              intersections.push(candPoly[i].x + t * (candPoly[j].x - candPoly[i].x));
+              intersections.push(
+                candPoly[i].x + t * (candPoly[j].x - candPoly[i].x),
+              );
             }
           }
           intersections.sort((a, b) => a - b);
           for (let k = 0; k < intersections.length - 1; k += 2) {
             const x0 = Math.max(0, Math.round(intersections[k]));
-            const x1 = Math.min(raster.width - 1, Math.round(intersections[k + 1]));
+            const x1 = Math.min(
+              raster.width - 1,
+              Math.round(intersections[k + 1]),
+            );
             for (let x = x0; x <= x1; x++) {
               candPixels++;
               if (visibleRoofMaskPxGrid[y * raster.width + x] > 0) {
@@ -2938,14 +4139,21 @@ async function processJob(input: any) {
         }
       }
       const roofOverlapScore = candPixels > 0 ? overlapPixels / candPixels : 0;
-      cand.roof_image_overlap_score = Math.round(roofOverlapScore * 1000) / 1000;
+      cand.roof_image_overlap_score = Math.round(roofOverlapScore * 1000) /
+        1000;
 
       // Apply registration gate
-      const isSolarSource = cand.source.includes('solar_segments_union') || cand.source.includes('solar_segments_hull');
-      const isMaskContour = cand.source === 'google_solar_mask_contour';
-      const isTrustedSolarBboxFallback = noOsmCandidatesAtSolarFallback && isCenteredSolarBboxFallback(cand);
-      const maxOffset = isSolarSource ? SOLAR_STRICT_CENTROID_PX : MAX_CENTROID_OFFSET_PX;
-      const minOverlap = isSolarSource ? SOLAR_STRICT_OVERLAP : MIN_ROOF_IMAGE_OVERLAP;
+      const isSolarSource = cand.source.includes("solar_segments_union") ||
+        cand.source.includes("solar_segments_hull");
+      const isMaskContour = cand.source === "google_solar_mask_contour";
+      const isTrustedSolarBboxFallback = noOsmCandidatesAtSolarFallback &&
+        isCenteredSolarBboxFallback(cand);
+      const maxOffset = isSolarSource
+        ? SOLAR_STRICT_CENTROID_PX
+        : MAX_CENTROID_OFFSET_PX;
+      const minOverlap = isSolarSource
+        ? SOLAR_STRICT_OVERLAP
+        : MIN_ROOF_IMAGE_OVERLAP;
 
       // Mask contour is derived FROM the mask — skip self-validation
       if (isMaskContour || isTrustedSolarBboxFallback) {
@@ -2959,23 +4167,37 @@ async function processJob(input: any) {
 
       if (!cand.footprint_registration_passed && !cand.rejected_reason) {
         const reasons: string[] = [];
-        if (!centroidOk) reasons.push(`centroid_offset_${Math.round(centroidOffset)}px_gt_${maxOffset}px`);
-        if (!overlapOk) reasons.push(`roof_overlap_${Math.round(roofOverlapScore * 100)}pct_lt_${Math.round(minOverlap * 100)}pct`);
-        cand.rejected_reason = `footprint_registration_mismatch:${reasons.join(',')}`;
-        console.log(`[REGISTRATION_GATE] REJECT ${cand.source}: ${cand.rejected_reason}`);
+        if (!centroidOk) {
+          reasons.push(
+            `centroid_offset_${Math.round(centroidOffset)}px_gt_${maxOffset}px`,
+          );
+        }
+        if (!overlapOk) {
+          reasons.push(
+            `roof_overlap_${Math.round(roofOverlapScore * 100)}pct_lt_${
+              Math.round(minOverlap * 100)
+            }pct`,
+          );
+        }
+        cand.rejected_reason = `footprint_registration_mismatch:${
+          reasons.join(",")
+        }`;
+        console.log(
+          `[REGISTRATION_GATE] REJECT ${cand.source}: ${cand.rejected_reason}`,
+        );
       }
     }
 
     // Log registration results
     if (registrationDebug.enabled) {
-      const regResults = candidates.map(c => ({
+      const regResults = candidates.map((c) => ({
         source: c.source,
         centroid_offset_px: c.centroid_offset_px,
         roof_image_overlap_score: c.roof_image_overlap_score,
         registration_passed: c.footprint_registration_passed,
         rejected: c.rejected_reason,
       }));
-      console.log('[REGISTRATION_GATE_RESULTS]', JSON.stringify(regResults));
+      console.log("[REGISTRATION_GATE_RESULTS]", JSON.stringify(regResults));
     }
 
     // Registration Gate C (v2): per-candidate confirmed-roof-center containment.
@@ -2995,14 +4217,18 @@ async function processJob(input: any) {
       for (const cand of candidates) {
         if (cand.rejected_reason) continue;
         const polyPx = Array.isArray(cand.polygon)
-          ? cand.polygon.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number])
+          ? cand.polygon.map((p: any) =>
+            [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number]
+          )
           : null;
         const evalResult = evaluateCandidate(polyPx, confirmedCenterPxForGateC);
-        (cand as any).confirmed_center_inside_candidate = evalResult.confirmed_center_inside_candidate;
+        (cand as any).confirmed_center_inside_candidate =
+          evalResult.confirmed_center_inside_candidate;
         (cand as any).candidate_centroid_offset_from_confirmed_center_px =
           evalResult.candidate_centroid_offset_from_confirmed_center_px;
         if (evalResult.rejected) {
-          cand.rejected_reason = evalResult.rejection_reason ?? "candidate_does_not_contain_confirmed_roof_center";
+          cand.rejected_reason = evalResult.rejection_reason ??
+            "candidate_does_not_contain_confirmed_roof_center";
           console.log(
             `[REGISTRATION_GATE_C] REJECT ${cand.source}: confirmed roof center not inside candidate polygon`,
           );
@@ -3016,11 +4242,12 @@ async function processJob(input: any) {
     // candidate-containment failure — do NOT fall through to the mask
     // contour fallback, because that's how Fonsica ended up painting a
     // perimeter on the neighbor's roof.
-    const allCandidatesWrongHouse =
-      !!confirmedCenterPxForGateC &&
+    const allCandidatesWrongHouse = !!confirmedCenterPxForGateC &&
       candidates.length > 0 &&
       candidates.every((c) => c.rejected_reason !== null) &&
-      candidates.some((c) => c.rejected_reason === "candidate_does_not_contain_confirmed_roof_center");
+      candidates.some((c) =>
+        c.rejected_reason === "candidate_does_not_contain_confirmed_roof_center"
+      );
     if (allCandidatesWrongHouse) {
       const failReason = "no_perimeter_candidate_contains_confirmed_center";
       const debugPayload = {
@@ -3041,30 +4268,53 @@ async function processJob(input: any) {
         candidates: candidates.map((c) => ({
           source: c.source,
           rejected_reason: c.rejected_reason,
-          confirmed_center_inside_candidate: (c as any).confirmed_center_inside_candidate,
+          confirmed_center_inside_candidate:
+            (c as any).confirmed_center_inside_candidate,
           candidate_centroid_offset_from_confirmed_center_px:
             (c as any).candidate_centroid_offset_from_confirmed_center_px,
         })),
         acquisition_audit: acquisitionAudit,
       };
-      console.log("[REGISTRATION_GATE_C] HARD FAIL — all candidates miss confirmed roof center");
-      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Registration gate C failed: ${failReason}`, failedId);
-      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Registration gate C failed: ${failReason}`);
+      console.log(
+        "[REGISTRATION_GATE_C] HARD FAIL — all candidates miss confirmed roof center",
+      );
+      const failedId = await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        failReason,
+        debugPayload,
+        imageUrl,
+        actualMpp,
+      );
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        `Registration gate C failed: ${failReason}`,
+        failedId,
+      );
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "failed",
+        `Registration gate C failed: ${failReason}`,
+      );
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
-        source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+        source_context: {
+          gate_reason: failReason,
+          debug: debugPayload,
+          acquisition_audit: acquisitionAudit,
+        },
       }).eq("id", input.ai_measurement_job_id);
       return;
     }
 
-    const validCandidates = candidates.filter((c) => c.rejected_reason === null);
+    const validCandidates = candidates.filter((c) =>
+      c.rejected_reason === null
+    );
 
     validCandidates.sort((a, b) => b.validity_score - a.validity_score);
     const selected = validCandidates[0] || null;
-
-
 
     let footprint: Point[] = selected?.polygon ?? [];
     let footprintSource: string = selected?.source ?? "none";
@@ -3077,46 +4327,100 @@ async function processJob(input: any) {
     // from the Google Solar roof mask. This is priority B per the spec.
     if (footprintSelectionFailed && GOOGLE_SOLAR_API_KEY) {
       try {
-        await setAiJobStatus(input.ai_measurement_job_id, "running", "Extracting roof mask contour fallback");
-        roofMaskForContour = roofMaskForContour || await fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY);
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "running",
+          "Extracting roof mask contour fallback",
+        );
+        roofMaskForContour = roofMaskForContour || await withStageTimeout(
+          fetchRoofMaskFromGoogleSolar(
+            coords.lat,
+            coords.lng,
+            GOOGLE_SOLAR_API_KEY,
+            {
+              timeoutMs: GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+            },
+          ),
+          GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+          "google_solar_roof_mask_fetch_contour_fallback",
+        );
         if (roofMaskForContour) {
-          const maskContourGeo = extractMaskContour(roofMaskForContour, coords.lat, coords.lng);
-          if (!maskContourDiagnostics) maskContourDiagnostics = getLastContourDiagnostics();
+          const maskContourGeo = extractMaskContour(
+            roofMaskForContour,
+            coords.lat,
+            coords.lng,
+          );
+          if (!maskContourDiagnostics) {
+            maskContourDiagnostics = getLastContourDiagnostics();
+          }
           if (maskContourGeo.length >= 4) {
             const maskContourPx = maskContourGeo.map(([lng, lat]) =>
-              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+              lngLatToPx(
+                lat,
+                lng,
+                { lat: coords.lat, lng: coords.lng },
+                raster.width,
+                raster.height,
+                actualMpp,
+              )
             );
-            const maskCand = scoreCandidate("google_solar_mask_contour", maskContourPx);
+            const maskCand = scoreCandidate(
+              "google_solar_mask_contour",
+              maskContourPx,
+            );
             if (confirmedCenterPxForGateC) {
               const candidateEval = evaluateCandidate(
-                maskCand.polygon.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number]),
+                maskCand.polygon.map((p: any) =>
+                  [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number]
+                ),
                 confirmedCenterPxForGateC,
               );
-              (maskCand as any).confirmed_center_inside_candidate = candidateEval.confirmed_center_inside_candidate;
-              (maskCand as any).candidate_centroid_offset_from_confirmed_center_px = candidateEval.candidate_centroid_offset_from_confirmed_center_px;
-              (maskCand as any).nearest_neighbor_structure_distance_px = candidateEval.nearest_neighbor_structure_distance_px;
-              if (candidateEval.rejected) maskCand.rejected_reason = candidateEval.rejection_reason;
+              (maskCand as any).confirmed_center_inside_candidate =
+                candidateEval.confirmed_center_inside_candidate;
+              (maskCand as any)
+                .candidate_centroid_offset_from_confirmed_center_px =
+                  candidateEval
+                    .candidate_centroid_offset_from_confirmed_center_px;
+              (maskCand as any).nearest_neighbor_structure_distance_px =
+                candidateEval.nearest_neighbor_structure_distance_px;
+              if (candidateEval.rejected) {
+                maskCand.rejected_reason = candidateEval.rejection_reason;
+              }
             }
             candidates.push(maskCand);
             if (!maskCand.rejected_reason) {
               footprint = maskCand.polygon;
               footprintSource = "google_solar_mask_contour";
-              selectedMaskContourGeo = maskContourGeo as Array<[number, number]>;
+              selectedMaskContourGeo = maskContourGeo as Array<
+                [number, number]
+              >;
               footprintSelectionFailed = false;
-              console.log("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Roof mask contour accepted:", JSON.stringify({
-                vertices: maskCand.vertex_count,
-                area_sqft: Math.round(maskCand.area_sqft),
-                validity_score: Number(maskCand.validity_score.toFixed(3)),
-              }));
+              console.log(
+                "[FOOTPRINT_MASK_CONTOUR_FALLBACK] Roof mask contour accepted:",
+                JSON.stringify({
+                  vertices: maskCand.vertex_count,
+                  area_sqft: Math.round(maskCand.area_sqft),
+                  validity_score: Number(maskCand.validity_score.toFixed(3)),
+                }),
+              );
             } else {
-              console.warn("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Mask contour rejected:", maskCand.rejected_reason);
+              console.warn(
+                "[FOOTPRINT_MASK_CONTOUR_FALLBACK] Mask contour rejected:",
+                maskCand.rejected_reason,
+              );
             }
           } else {
-            console.warn("[FOOTPRINT_MASK_CONTOUR_FALLBACK] Mask contour too few vertices:", maskContourGeo.length);
+            console.warn(
+              "[FOOTPRINT_MASK_CONTOUR_FALLBACK] Mask contour too few vertices:",
+              maskContourGeo.length,
+            );
           }
         }
       } catch (e) {
-        console.warn("[FOOTPRINT_MASK_CONTOUR_FALLBACK] failed:", (e as Error).message);
+        console.warn(
+          "[FOOTPRINT_MASK_CONTOUR_FALLBACK] failed:",
+          (e as Error).message,
+        );
       }
     }
 
@@ -3139,17 +4443,27 @@ async function processJob(input: any) {
           moved_count: snap.moved_count,
           total_vertices: snap.total_vertices,
           avg_move_px: Number(snap.avg_move_px.toFixed(2)),
-          perimeter_off_eave_ratio: Number(snap.perimeter_off_eave_ratio.toFixed(3)),
+          perimeter_off_eave_ratio: Number(
+            snap.perimeter_off_eave_ratio.toFixed(3),
+          ),
         };
         (globalThis as any).__eaveSnapDebug = eaveSnapDebug;
         // Coverage gate: reject snap if it pulled footprint inside <75% of solar building bbox.
         const snappedBb = bboxOf(snap.snapped);
         const buildingArea = solarBboxPx?.area || 0;
         const snappedArea = snappedBb ? snappedBb.width * snappedBb.height : 0;
-        const coverageVsBuilding = buildingArea > 0 ? snappedArea / buildingArea : 1;
+        const coverageVsBuilding = buildingArea > 0
+          ? snappedArea / buildingArea
+          : 1;
         if (buildingArea > 0 && coverageVsBuilding < 0.75) {
-          console.warn("[EAVE_SNAP] rejected — snapped bbox covers", coverageVsBuilding.toFixed(2), "of solar building bbox (<0.75)");
-          eaveSnapDebug.rejected_low_coverage = Number(coverageVsBuilding.toFixed(3));
+          console.warn(
+            "[EAVE_SNAP] rejected — snapped bbox covers",
+            coverageVsBuilding.toFixed(2),
+            "of solar building bbox (<0.75)",
+          );
+          eaveSnapDebug.rejected_low_coverage = Number(
+            coverageVsBuilding.toFixed(3),
+          );
         } else {
           footprint = snap.snapped;
           snappedFootprintBboxPx = snappedBb;
@@ -3159,12 +4473,22 @@ async function processJob(input: any) {
           // the overlay covers the actual eaves/drip-edge.
           if (solarBboxPx && snappedBb) {
             const expansionNeeded = {
-              left: Math.max(0, Math.min(20, snappedBb.minX - solarBboxPx.minX)),
+              left: Math.max(
+                0,
+                Math.min(20, snappedBb.minX - solarBboxPx.minX),
+              ),
               top: Math.max(0, Math.min(20, snappedBb.minY - solarBboxPx.minY)),
-              right: Math.max(0, Math.min(20, solarBboxPx.maxX - snappedBb.maxX)),
-              bottom: Math.max(0, Math.min(20, solarBboxPx.maxY - snappedBb.maxY)),
+              right: Math.max(
+                0,
+                Math.min(20, solarBboxPx.maxX - snappedBb.maxX),
+              ),
+              bottom: Math.max(
+                0,
+                Math.min(20, solarBboxPx.maxY - snappedBb.maxY),
+              ),
             };
-            const totalExpansion = expansionNeeded.left + expansionNeeded.top + expansionNeeded.right + expansionNeeded.bottom;
+            const totalExpansion = expansionNeeded.left + expansionNeeded.top +
+              expansionNeeded.right + expansionNeeded.bottom;
             if (totalExpansion > 8) {
               const target = {
                 minX: snappedBb.minX - expansionNeeded.left,
@@ -3172,69 +4496,111 @@ async function processJob(input: any) {
                 maxX: snappedBb.maxX + expansionNeeded.right,
                 maxY: snappedBb.maxY + expansionNeeded.bottom,
               };
-              const scaleX = (snappedBb.maxX - snappedBb.minX) > 0 ? (target.maxX - target.minX) / (snappedBb.maxX - snappedBb.minX) : 1;
-              const scaleY = (snappedBb.maxY - snappedBb.minY) > 0 ? (target.maxY - target.minY) / (snappedBb.maxY - snappedBb.minY) : 1;
+              const scaleX = (snappedBb.maxX - snappedBb.minX) > 0
+                ? (target.maxX - target.minX) /
+                  (snappedBb.maxX - snappedBb.minX)
+                : 1;
+              const scaleY = (snappedBb.maxY - snappedBb.minY) > 0
+                ? (target.maxY - target.minY) /
+                  (snappedBb.maxY - snappedBb.minY)
+                : 1;
               footprint = footprint.map((p) => ({
                 x: target.minX + (p.x - snappedBb.minX) * scaleX,
                 y: target.minY + (p.y - snappedBb.minY) * scaleY,
               }));
               const expandedBb = bboxOf(footprint);
               snappedFootprintBboxPx = expandedBb;
-              console.log("[FOOTPRINT_EXPANSION]", JSON.stringify({
-                expansion_px: expansionNeeded,
-                scale_x: Number(scaleX.toFixed(3)),
-                scale_y: Number(scaleY.toFixed(3)),
-                expanded_coverage_vs_building: expandedBb && solarBboxPx.area > 0
-                  ? Number(((expandedBb.width * expandedBb.height) / solarBboxPx.area).toFixed(3))
-                  : null,
-              }));
+              console.log(
+                "[FOOTPRINT_EXPANSION]",
+                JSON.stringify({
+                  expansion_px: expansionNeeded,
+                  scale_x: Number(scaleX.toFixed(3)),
+                  scale_y: Number(scaleY.toFixed(3)),
+                  expanded_coverage_vs_building:
+                    expandedBb && solarBboxPx.area > 0
+                      ? Number(
+                        ((expandedBb.width * expandedBb.height) /
+                          solarBboxPx.area).toFixed(3),
+                      )
+                      : null,
+                }),
+              );
             }
           }
         }
-        console.log("[EAVE_SNAP]", JSON.stringify({ ...eaveSnapDebug, coverage_vs_building: Number(coverageVsBuilding.toFixed(3)) }));
+        console.log(
+          "[EAVE_SNAP]",
+          JSON.stringify({
+            ...eaveSnapDebug,
+            coverage_vs_building: Number(coverageVsBuilding.toFixed(3)),
+          }),
+        );
       } catch (e) {
         console.warn("[EAVE_SNAP] failed:", (e as Error).message);
       }
     }
 
-    console.log("[FOOTPRINT_SOURCE_SELECTION]", JSON.stringify({
-      candidates: candidates.map((c) => ({
-        source: c.source,
-        area_sqft: Math.round(c.area_sqft),
-        coverage_ratio_vs_solar_bbox: c.coverage_ratio_vs_solar_bbox,
-        overlap_with_solar_bbox: Math.round(c.overlap_with_solar_bbox),
-        center_distance_px: Math.round(c.bbox_center_distance_from_geocode_px),
-        vertex_count: c.vertex_count,
-        validity_score: Number(c.validity_score.toFixed(3)),
-        rejected_reason: c.rejected_reason,
-        roof_image_overlap_score: c.roof_image_overlap_score,
-        centroid_offset_px: c.centroid_offset_px,
-        bbox_cap_used: c.bbox_cap_used,
-        bbox_cap_reason: c.bbox_cap_reason,
-        connected_component_isolated: c.connected_component_isolated,
-      })),
-      selected: selected
-        ? { source: selected.source, area_sqft: Math.round(selected.area_sqft), validity_score: Number(selected.validity_score.toFixed(3)) }
-        : null,
-      rejected: candidates.filter((c) => c.rejected_reason).map((c) => ({ source: c.source, reason: c.rejected_reason })),
-    }));
+    console.log(
+      "[FOOTPRINT_SOURCE_SELECTION]",
+      JSON.stringify({
+        candidates: candidates.map((c) => ({
+          source: c.source,
+          area_sqft: Math.round(c.area_sqft),
+          coverage_ratio_vs_solar_bbox: c.coverage_ratio_vs_solar_bbox,
+          overlap_with_solar_bbox: Math.round(c.overlap_with_solar_bbox),
+          center_distance_px: Math.round(
+            c.bbox_center_distance_from_geocode_px,
+          ),
+          vertex_count: c.vertex_count,
+          validity_score: Number(c.validity_score.toFixed(3)),
+          rejected_reason: c.rejected_reason,
+          roof_image_overlap_score: c.roof_image_overlap_score,
+          centroid_offset_px: c.centroid_offset_px,
+          bbox_cap_used: c.bbox_cap_used,
+          bbox_cap_reason: c.bbox_cap_reason,
+          connected_component_isolated: c.connected_component_isolated,
+        })),
+        selected: selected
+          ? {
+            source: selected.source,
+            area_sqft: Math.round(selected.area_sqft),
+            validity_score: Number(selected.validity_score.toFixed(3)),
+          }
+          : null,
+        rejected: candidates.filter((c) => c.rejected_reason).map((c) => ({
+          source: c.source,
+          reason: c.rejected_reason,
+        })),
+      }),
+    );
 
     // ══════════ FOOTPRINT VALIDATION GATE ══════════
     // If footprint is still invalid after all fallbacks, fail immediately
     // with a specific reason — do NOT proceed to the DSM solver.
-     // Use the selected candidate footprint (already in satellite pixel space).
-     // Do NOT override with selectedMaskContourGeo — that is the raw mask tile
-     // boundary (all roof pixels in the GeoTIFF), not the building footprint.
-     const footprintForDsmPx = footprint;
-    const footprintAreaPxVal = footprintForDsmPx.length >= 3 ? polygonAreaPx(footprintForDsmPx) : 0;
+    // Use the selected candidate footprint (already in satellite pixel space).
+    // Do NOT override with selectedMaskContourGeo — that is the raw mask tile
+    // boundary (all roof pixels in the GeoTIFF), not the building footprint.
+    const footprintForDsmPx = footprint;
+    const footprintAreaPxVal = footprintForDsmPx.length >= 3
+      ? polygonAreaPx(footprintForDsmPx)
+      : 0;
     const footprintAreaSqftVal = footprintAreaPxVal * sqftPerPx2;
-    const footprintIsLatLng = footprintForDsmPx.length > 0 && footprintForDsmPx.every(p => Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90);
+    const footprintIsLatLng = footprintForDsmPx.length > 0 &&
+      footprintForDsmPx.every((p) =>
+        Math.abs(p.x) <= 180 && Math.abs(p.y) <= 90
+      );
     const footprintBbox = bboxOf(footprintForDsmPx);
-    const footprintCoordinateSpaceMatch = Boolean(footprintBbox && footprintBbox.maxX > 1 && footprintBbox.maxY > 1 && footprintBbox.minX >= -2 && footprintBbox.minY >= -2 && footprintBbox.maxX <= raster.width + 2 && footprintBbox.maxY <= raster.height + 2);
+    const footprintCoordinateSpaceMatch = Boolean(
+      footprintBbox && footprintBbox.maxX > 1 && footprintBbox.maxY > 1 &&
+        footprintBbox.minX >= -2 && footprintBbox.minY >= -2 &&
+        footprintBbox.maxX <= raster.width + 2 &&
+        footprintBbox.maxY <= raster.height + 2,
+    );
 
     // ── Enhanced sanity checks ──
     const footprintBboxTileRatio = footprintBbox
-      ? (footprintBbox.width * footprintBbox.height) / (raster.width * raster.height)
+      ? (footprintBbox.width * footprintBbox.height) /
+        (raster.width * raster.height)
       : 0;
     const footprintToSolarAreaRatio = solarSegmentTotalAreaSqft > 0
       ? footprintAreaSqftVal / solarSegmentTotalAreaSqft
@@ -3242,9 +4608,10 @@ async function processJob(input: any) {
     const solarBboxAreaSqftVal = solarBboxPx && solarBboxPx.area > 0
       ? solarBboxPx.area * sqftPerPx2
       : null;
-    const footprintToSolarBboxAreaRatio = solarBboxAreaSqftVal != null && solarBboxAreaSqftVal > 0
-      ? footprintAreaSqftVal / solarBboxAreaSqftVal
-      : null;
+    const footprintToSolarBboxAreaRatio =
+      solarBboxAreaSqftVal != null && solarBboxAreaSqftVal > 0
+        ? footprintAreaSqftVal / solarBboxAreaSqftVal
+        : null;
     const footprintOverlapPx = (solarBboxPx && footprintForDsmPx.length >= 3)
       ? polygonAreaPx(clipPolygonToRect(footprintForDsmPx, solarBboxPx))
       : footprintAreaPxVal;
@@ -3253,22 +4620,30 @@ async function processJob(input: any) {
       : 0;
     const footprintAreaTooLarge = footprintAreaSqftVal > RESIDENTIAL_MAX_SQFT;
     // Use relaxed 40% cap for connected-component mask contours that passed candidate selection
-    const selectedCandidateCCRelaxed = selected?.connected_component_isolated && selected?.bbox_cap_reason?.startsWith('cc_isolated_relaxed');
-    const effectiveValidationBboxCap = selectedCandidateCCRelaxed ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC : MAX_FOOTPRINT_BBOX_TILE_RATIO;
-    const footprintBboxTooLarge = footprintBboxTileRatio > effectiveValidationBboxCap;
-    const footprintInflatedVsSolar = footprintToSolarAreaRatio != null && footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
-    const footprintInflatedVsSolarBbox = footprintToSolarBboxAreaRatio != null && footprintToSolarBboxAreaRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO;
-    const footprintSpillsOutside = solarBboxPx && solarBboxPx.area > 0 && footprintExteriorSpillover > MAX_EXTERIOR_SPILLOVER_RATIO;
+    const selectedCandidateCCRelaxed = selected?.connected_component_isolated &&
+      selected?.bbox_cap_reason?.startsWith("cc_isolated_relaxed");
+    const effectiveValidationBboxCap = selectedCandidateCCRelaxed
+      ? MAX_FOOTPRINT_BBOX_TILE_RATIO_CC
+      : MAX_FOOTPRINT_BBOX_TILE_RATIO;
+    const footprintBboxTooLarge =
+      footprintBboxTileRatio > effectiveValidationBboxCap;
+    const footprintInflatedVsSolar = footprintToSolarAreaRatio != null &&
+      footprintToSolarAreaRatio > MAX_FOOTPRINT_TO_SOLAR_AREA_RATIO;
+    const footprintInflatedVsSolarBbox =
+      footprintToSolarBboxAreaRatio != null &&
+      footprintToSolarBboxAreaRatio > MAX_FOOTPRINT_TO_SOLAR_BBOX_AREA_RATIO;
+    const footprintSpillsOutside = solarBboxPx && solarBboxPx.area > 0 &&
+      footprintExteriorSpillover > MAX_EXTERIOR_SPILLOVER_RATIO;
 
-    const footprintValid = footprintForDsmPx.length >= 4
-      && footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT
-      && !footprintAreaTooLarge
-      && !footprintBboxTooLarge
-      && !footprintInflatedVsSolar
-      && !footprintInflatedVsSolarBbox
-      && !footprintSpillsOutside
-      && !footprintIsLatLng
-      && footprintCoordinateSpaceMatch;
+    const footprintValid = footprintForDsmPx.length >= 4 &&
+      footprintAreaSqftVal >= RESIDENTIAL_MIN_SQFT &&
+      !footprintAreaTooLarge &&
+      !footprintBboxTooLarge &&
+      !footprintInflatedVsSolar &&
+      !footprintInflatedVsSolarBbox &&
+      !footprintSpillsOutside &&
+      !footprintIsLatLng &&
+      footprintCoordinateSpaceMatch;
 
     // Auto-close footprint if not closed
     if (footprint.length >= 4) {
@@ -3279,38 +4654,48 @@ async function processJob(input: any) {
     }
 
     if (!footprintValid) {
-      const noOSMCandidates = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+      const noOSMCandidates = candidates.filter((c) =>
+        c.source.startsWith("osm_overpass")
+      ).length === 0;
       const noMaskEvidence = !roofMaskForContour;
       const noSolarEvidence = !solarBboxPx && solarSegments.length === 0;
-      const sourceAcquisitionFailed = noOSMCandidates && noMaskEvidence && noSolarEvidence && footprint.length < 4;
+      const sourceAcquisitionFailed = noOSMCandidates && noMaskEvidence &&
+        noSolarEvidence && footprint.length < 4;
       const failReason = sourceAcquisitionFailed
         ? "source_acquisition_failed"
         : footprint.length < 4
         ? "missing_valid_footprint"
         : footprintIsLatLng
-          ? "footprint_coordinate_mismatch"
-          : footprintAreaTooLarge
-            ? "invalid_roof_footprint:area_too_large"
-            : footprintBboxTooLarge
-              ? "invalid_roof_footprint:bbox_covers_too_much_tile"
-              : footprintInflatedVsSolar
-                ? "invalid_roof_footprint:area_inflation_vs_solar"
-                : footprintInflatedVsSolarBbox
-                  ? `invalid_roof_footprint:area_${Math.round(footprintToSolarBboxAreaRatio! * 100)/100}x_solar_bbox`
-                  : footprintSpillsOutside
-                    ? `invalid_roof_footprint:exterior_spillover_${Math.round(footprintExteriorSpillover * 100)}pct`
-                    : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
-                      ? "missing_valid_footprint"
-                      : "missing_valid_footprint";
+        ? "footprint_coordinate_mismatch"
+        : footprintAreaTooLarge
+        ? "invalid_roof_footprint:area_too_large"
+        : footprintBboxTooLarge
+        ? "invalid_roof_footprint:bbox_covers_too_much_tile"
+        : footprintInflatedVsSolar
+        ? "invalid_roof_footprint:area_inflation_vs_solar"
+        : footprintInflatedVsSolarBbox
+        ? `invalid_roof_footprint:area_${
+          Math.round(footprintToSolarBboxAreaRatio! * 100) / 100
+        }x_solar_bbox`
+        : footprintSpillsOutside
+        ? `invalid_roof_footprint:exterior_spillover_${
+          Math.round(footprintExteriorSpillover * 100)
+        }pct`
+        : footprintAreaSqftVal < RESIDENTIAL_MIN_SQFT
+        ? "missing_valid_footprint"
+        : "missing_valid_footprint";
 
-      console.error(`[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`, JSON.stringify({
-        footprint_length: footprintForDsmPx.length,
-        footprint_area_sqft: Math.round(footprintAreaSqftVal),
-        footprint_source: footprintSource,
-        is_lat_lng: footprintIsLatLng,
-        candidates_tried: candidates.length,
-        candidates_valid: validCandidates.length,
-      }));
+      console.error(
+        `[FOOTPRINT_VALIDATION_GATE] FAIL: ${failReason}`,
+        JSON.stringify({
+          footprint_length: footprintForDsmPx.length,
+          footprint_area_sqft: Math.round(footprintAreaSqftVal),
+          footprint_source: footprintSource,
+          is_lat_lng: footprintIsLatLng,
+          candidates_tried: candidates.length,
+          candidates_valid: validCandidates.length,
+        }),
+      );
 
       const footprintDebug = {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
@@ -3320,27 +4705,41 @@ async function processJob(input: any) {
         footprint_area_px: Math.round(footprintAreaPxVal),
         footprint_area_sqft: Math.round(footprintAreaSqftVal),
         solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
-        solar_bbox_area_sqft: solarBboxAreaSqftVal != null ? Math.round(solarBboxAreaSqftVal) : null,
-        footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
-        footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null ? Number(footprintToSolarBboxAreaRatio.toFixed(3)) : null,
+        solar_bbox_area_sqft: solarBboxAreaSqftVal != null
+          ? Math.round(solarBboxAreaSqftVal)
+          : null,
+        footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null
+          ? Number(footprintToSolarAreaRatio.toFixed(3))
+          : null,
+        footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null
+          ? Number(footprintToSolarBboxAreaRatio.toFixed(3))
+          : null,
         exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
         footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
         google_solar_status: googleSolarMaskStageDebug.google_solar_status,
         google_solar_error: googleSolarMaskStageDebug.google_solar_error,
-        google_solar_stage_started_at: googleSolarMaskStageDebug.google_solar_stage_started_at,
-        google_solar_stage_finished_at: googleSolarMaskStageDebug.google_solar_stage_finished_at,
-        google_solar_stage_duration_ms: googleSolarMaskStageDebug.google_solar_stage_duration_ms,
-        google_solar_fetch_started_at: googleSolarMaskStageDebug.google_solar_fetch_started_at,
-        google_solar_fetch_finished_at: googleSolarMaskStageDebug.google_solar_fetch_finished_at,
-        google_solar_fetch_duration_ms: googleSolarMaskStageDebug.google_solar_fetch_duration_ms,
+        google_solar_stage_started_at:
+          googleSolarMaskStageDebug.google_solar_stage_started_at,
+        google_solar_stage_finished_at:
+          googleSolarMaskStageDebug.google_solar_stage_finished_at,
+        google_solar_stage_duration_ms:
+          googleSolarMaskStageDebug.google_solar_stage_duration_ms,
+        google_solar_fetch_started_at:
+          googleSolarMaskStageDebug.google_solar_fetch_started_at,
+        google_solar_fetch_finished_at:
+          googleSolarMaskStageDebug.google_solar_fetch_finished_at,
+        google_solar_fetch_duration_ms:
+          googleSolarMaskStageDebug.google_solar_fetch_duration_ms,
         dsm_fetch_started_at: googleSolarMaskStageDebug.dsm_fetch_started_at,
         dsm_fetch_finished_at: googleSolarMaskStageDebug.dsm_fetch_finished_at,
         dsm_fetch_duration_ms: googleSolarMaskStageDebug.dsm_fetch_duration_ms,
         dsm_loaded: googleSolarMaskStageDebug.dsm_loaded === true,
         mask_loaded: googleSolarMaskStageDebug.mask_loaded === true,
         mask_point_count: googleSolarMaskStageDebug.mask_point_count ?? 0,
-        footprint_extraction_duration_ms: googleSolarMaskStageDebug.footprint_extraction_duration_ms,
-        footprint_extraction_error: googleSolarMaskStageDebug.footprint_extraction_error,
+        footprint_extraction_duration_ms:
+          googleSolarMaskStageDebug.footprint_extraction_duration_ms,
+        footprint_extraction_error:
+          googleSolarMaskStageDebug.footprint_extraction_error,
         google_solar_mask_stage: googleSolarMaskStageDebug,
         footprint_area_too_large: footprintAreaTooLarge,
         footprint_bbox_too_large: footprintBboxTooLarge,
@@ -3352,12 +4751,15 @@ async function processJob(input: any) {
         coordinate_space_match: footprintCoordinateSpaceMatch,
         hard_fail_reason: failReason,
         candidates_tried: candidates.length,
-        candidates_rejected: candidates.filter(c => c.rejected_reason).map(c => ({
-          source: c.source, reason: c.rejected_reason,
-          centroid_offset_px: c.centroid_offset_px,
-          roof_image_overlap_score: c.roof_image_overlap_score,
-          registration_passed: c.footprint_registration_passed,
-        })),
+        candidates_rejected: candidates.filter((c) => c.rejected_reason).map(
+          (c) => ({
+            source: c.source,
+            reason: c.rejected_reason,
+            centroid_offset_px: c.centroid_offset_px,
+            roof_image_overlap_score: c.roof_image_overlap_score,
+            registration_passed: c.footprint_registration_passed,
+          }),
+        ),
         selected_component_count: validCandidates.length,
         clipping_applied: false,
         projection_diagnostics: projectionDiagnostics.slice(0, 5),
@@ -3365,7 +4767,10 @@ async function processJob(input: any) {
           tile_center_geo: { lat: coords.lat, lng: coords.lng },
           tile_size_px: { width: raster.width, height: raster.height },
           actual_mpp: Number(actualMpp.toFixed(5)),
-          tile_ground_extent_m: { width: raster.width * actualMpp, height: raster.height * actualMpp },
+          tile_ground_extent_m: {
+            width: raster.width * actualMpp,
+            height: raster.height * actualMpp,
+          },
           solar_bbox_px: solarBboxPx,
         },
         // v13: registration gate diagnostics
@@ -3386,9 +4791,25 @@ async function processJob(input: any) {
         },
       };
 
-      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, footprintDebug, imageUrl, actualMpp);
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
-      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
+      const failedId = await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        failReason,
+        footprintDebug,
+        imageUrl,
+        actualMpp,
+      );
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        `Footprint validation failed: ${failReason}`,
+        failedId,
+      );
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "failed",
+        `Footprint validation failed: ${failReason}`,
+      );
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
@@ -3404,17 +4825,26 @@ async function processJob(input: any) {
 
     footprint = footprintForDsmPx;
 
-    console.log("[FOOTPRINT_VALIDATION_GATE] PASS", JSON.stringify({
-      source: footprintSource,
-      vertices: footprint.length,
-      area_sqft: Math.round(footprintAreaSqftVal),
-      solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
-      solar_bbox_area_sqft: solarBboxAreaSqftVal != null ? Math.round(solarBboxAreaSqftVal) : null,
-      footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null ? Number(footprintToSolarAreaRatio.toFixed(3)) : null,
-      footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null ? Number(footprintToSolarBboxAreaRatio.toFixed(3)) : null,
-      exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
-      footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
-    }));
+    console.log(
+      "[FOOTPRINT_VALIDATION_GATE] PASS",
+      JSON.stringify({
+        source: footprintSource,
+        vertices: footprint.length,
+        area_sqft: Math.round(footprintAreaSqftVal),
+        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+        solar_bbox_area_sqft: solarBboxAreaSqftVal != null
+          ? Math.round(solarBboxAreaSqftVal)
+          : null,
+        footprint_to_solar_area_ratio: footprintToSolarAreaRatio != null
+          ? Number(footprintToSolarAreaRatio.toFixed(3))
+          : null,
+        footprint_to_solar_bbox_ratio: footprintToSolarBboxAreaRatio != null
+          ? Number(footprintToSolarBboxAreaRatio.toFixed(3))
+          : null,
+        exterior_spillover_ratio: Number(footprintExteriorSpillover.toFixed(3)),
+        footprint_bbox_tile_ratio: Number(footprintBboxTileRatio.toFixed(3)),
+      }),
+    );
 
     // ══════════ TARGET-MASK ISOLATION + PERIMETER PHASE 0 ══════════
     // This MUST run before any inner-trace decision. Global visible-mask area is
@@ -3425,21 +4855,31 @@ async function processJob(input: any) {
     let perimeterTopologySnapshot: any = null;
     let perimeterGateSnapshot: any = null;
 
-    const lookupBenchmarkAreaSqftForPerimeter = async (): Promise<{ area_sqft: number | null; source: string | null }> => {
+    const lookupBenchmarkAreaSqftForPerimeter = async (): Promise<
+      { area_sqft: number | null; source: string | null }
+    > => {
       try {
         const { data: benchmarks } = await supabase
           .from("roof_measurement_benchmarks")
           .select("address, area_sqft")
           .limit(50);
-        const normalizeAddr = (a: string) => (a || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const inputAddr = normalizeAddr(input.property_address || resolved_address || '');
-        const match = (benchmarks || []).find((b: any) => inputAddr.includes(normalizeAddr(b.address || '')));
+        const normalizeAddr = (a: string) =>
+          (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const inputAddr = normalizeAddr(
+          input.property_address || resolved_address || "",
+        );
+        const match = (benchmarks || []).find((b: any) =>
+          inputAddr.includes(normalizeAddr(b.address || ""))
+        );
         const area = Number((match as any)?.area_sqft || 0);
         return Number.isFinite(area) && area > 0
           ? { area_sqft: area, source: `benchmark:${(match as any).address}` }
           : { area_sqft: null, source: null };
       } catch (benchErr) {
-        console.warn("[PERIMETER_BENCHMARK_SANITY] lookup failed:", (benchErr as Error).message);
+        console.warn(
+          "[PERIMETER_BENCHMARK_SANITY] lookup failed:",
+          (benchErr as Error).message,
+        );
         return { area_sqft: null, source: null };
       }
     };
@@ -3461,7 +4901,7 @@ async function processJob(input: any) {
       if (!maskGrid || perimeter.length < 3) {
         return {
           checked: false,
-          reason: !maskGrid ? 'no_visible_roof_mask' : 'invalid_perimeter',
+          reason: !maskGrid ? "no_visible_roof_mask" : "invalid_perimeter",
           target_mask_grid: null as Uint8Array | null,
           target_mask_area_sqft: null,
           global_mask_area_sqft: null,
@@ -3474,12 +4914,17 @@ async function processJob(input: any) {
       }
 
       let globalMaskPx = 0;
-      for (let i = 0; i < maskGrid.length; i++) if (maskGrid[i] > 0) globalMaskPx++;
+      for (let i = 0; i < maskGrid.length; i++) {
+        if (maskGrid[i] > 0) globalMaskPx++;
+      }
       const globalMaskAreaSqft = globalMaskPx * sqftPerPx2;
 
       const fpBbox = bboxOf(perimeter);
       let sx = 0, sy = 0;
-      for (const p of perimeter) { sx += p.x; sy += p.y; }
+      for (const p of perimeter) {
+        sx += p.x;
+        sy += p.y;
+      }
       const fpCentroid = { x: sx / perimeter.length, y: sy / perimeter.length };
       const footprintAreaPx = Math.max(1, polygonAreaPx(perimeter));
 
@@ -3493,8 +4938,14 @@ async function processJob(input: any) {
       const lw = xHi - xLo + 1;
       const labels = new Int32Array((yHi - yLo + 1) * lw);
       type TargetComp = {
-        id: number; pixels: number; cx: number; cy: number;
-        minX: number; maxX: number; minY: number; maxY: number;
+        id: number;
+        pixels: number;
+        cx: number;
+        cy: number;
+        minX: number;
+        maxX: number;
+        minY: number;
+        maxY: number;
         insidePerimeterPixels: number;
       };
       const components: TargetComp[] = [];
@@ -3514,11 +4965,18 @@ async function processJob(input: any) {
           while (queue.length) {
             const cy0 = queue.pop()!;
             const cx0 = queue.pop()!;
-            pixels++; sumX += cx0; sumY += cy0;
-            if (cx0 < mnX) mnX = cx0; if (cx0 > mxX) mxX = cx0;
-            if (cy0 < mnY) mnY = cy0; if (cy0 > mxY) mxY = cy0;
+            pixels++;
+            sumX += cx0;
+            sumY += cy0;
+            if (cx0 < mnX) mnX = cx0;
+            if (cx0 > mxX) mxX = cx0;
+            if (cy0 < mnY) mnY = cy0;
+            if (cy0 > mxY) mxY = cy0;
             if (pointInPolygon({ x: cx0, y: cy0 }, perimeter)) inPerimeter++;
-            const neigh = [[cx0 + 1, cy0], [cx0 - 1, cy0], [cx0, cy0 + 1], [cx0, cy0 - 1]];
+            const neigh = [[cx0 + 1, cy0], [cx0 - 1, cy0], [cx0, cy0 + 1], [
+              cx0,
+              cy0 - 1,
+            ]];
             for (const [nx, ny] of neigh) {
               if (nx < xLo || nx > xHi || ny < yLo || ny > yHi) continue;
               const nli = (ny - yLo) * lw + (nx - xLo);
@@ -3542,28 +5000,54 @@ async function processJob(input: any) {
         }
       }
 
-      const refAreas = [params.expectedAreaSqft, params.benchmarkAreaSqft, solarSegmentTotalAreaSqft]
-        .filter((v): v is number => Number.isFinite(Number(v)) && Number(v) > 0);
+      const refAreas = [
+        params.expectedAreaSqft,
+        params.benchmarkAreaSqft,
+        solarSegmentTotalAreaSqft,
+      ]
+        .filter((v): v is number =>
+          Number.isFinite(Number(v)) && Number(v) > 0
+        );
       let target: TargetComp | null = null;
       let bestScore = -Infinity;
       for (const c of components) {
         const componentAreaSqft = c.pixels * sqftPerPx2;
         const insideRatio = c.insidePerimeterPixels / Math.max(1, c.pixels);
         const footprintCoverage = c.insidePerimeterPixels / footprintAreaPx;
-        const centroidDist = Math.hypot(c.cx - fpCentroid.x, c.cy - fpCentroid.y);
-        const geocodeDist = Math.hypot(c.cx - params.geocodePoint.x, c.cy - params.geocodePoint.y);
-        const solarDist = params.solarCentroid ? Math.hypot(c.cx - params.solarCentroid.x, c.cy - params.solarCentroid.y) : 0;
+        const centroidDist = Math.hypot(
+          c.cx - fpCentroid.x,
+          c.cy - fpCentroid.y,
+        );
+        const geocodeDist = Math.hypot(
+          c.cx - params.geocodePoint.x,
+          c.cy - params.geocodePoint.y,
+        );
+        const solarDist = params.solarCentroid
+          ? Math.hypot(
+            c.cx - params.solarCentroid.x,
+            c.cy - params.solarCentroid.y,
+          )
+          : 0;
         const expectedAreaScore = refAreas.length
-          ? Math.max(...refAreas.map(ref => Math.max(0, 1 - Math.abs(componentAreaSqft - ref) / Math.max(ref, 1))))
+          ? Math.max(
+            ...refAreas.map((ref) =>
+              Math.max(
+                0,
+                1 - Math.abs(componentAreaSqft - ref) / Math.max(ref, 1),
+              )
+            ),
+          )
           : 0.5;
-        const score =
-          insideRatio * 2.4 +
+        const score = insideRatio * 2.4 +
           Math.min(1, footprintCoverage) * 1.6 +
           (1 / (1 + centroidDist / 80)) * 1.2 +
           (1 / (1 + geocodeDist / 160)) * 0.7 +
           (params.solarCentroid ? (1 / (1 + solarDist / 120)) * 0.7 : 0) +
           expectedAreaScore * 1.2;
-        if (score > bestScore) { bestScore = score; target = c; }
+        if (score > bestScore) {
+          bestScore = score;
+          target = c;
+        }
       }
 
       const targetMaskGrid = new Uint8Array(W * H);
@@ -3580,36 +5064,63 @@ async function processJob(input: any) {
       }
 
       const targetMaskAreaSqft = target ? target.pixels * sqftPerPx2 : 0;
-      const missedTargetRatio = target && target.pixels > 0 ? missedTargetPx / target.pixels : 0;
+      const missedTargetRatio = target && target.pixels > 0
+        ? missedTargetPx / target.pixels
+        : 0;
       const missedTargetRoofPct = missedTargetRatio * 100;
-      const perimeterToTargetMaskRatio = targetMaskAreaSqft > 0 ? params.footprintAreaSqft / targetMaskAreaSqft : null;
-      const targetOverlap = target ? target.insidePerimeterPixels / Math.max(1, target.pixels) : 0;
-      const globalInflationRatio = targetMaskAreaSqft > 0 ? globalMaskAreaSqft / targetMaskAreaSqft : null;
-      const solarSanityOk = solarSegmentTotalAreaSqft > 0
-        && Math.abs(params.footprintAreaSqft - solarSegmentTotalAreaSqft) / solarSegmentTotalAreaSqft <= 0.10;
-      const benchmarkSanityOk = params.benchmarkAreaSqft != null && params.benchmarkAreaSqft > 0
-        && Math.abs(params.footprintAreaSqft - params.benchmarkAreaSqft) / params.benchmarkAreaSqft <= 0.10;
-      const expectedSanityOk = params.expectedAreaSqft != null && params.expectedAreaSqft > 0
-        && Math.abs(params.footprintAreaSqft - params.expectedAreaSqft) / params.expectedAreaSqft <= 0.10;
-      const areaSanityOk = solarSanityOk || benchmarkSanityOk || expectedSanityOk;
+      const perimeterToTargetMaskRatio = targetMaskAreaSqft > 0
+        ? params.footprintAreaSqft / targetMaskAreaSqft
+        : null;
+      const targetOverlap = target
+        ? target.insidePerimeterPixels / Math.max(1, target.pixels)
+        : 0;
+      const globalInflationRatio = targetMaskAreaSqft > 0
+        ? globalMaskAreaSqft / targetMaskAreaSqft
+        : null;
+      const solarSanityOk = solarSegmentTotalAreaSqft > 0 &&
+        Math.abs(params.footprintAreaSqft - solarSegmentTotalAreaSqft) /
+              solarSegmentTotalAreaSqft <= 0.10;
+      const benchmarkSanityOk = params.benchmarkAreaSqft != null &&
+        params.benchmarkAreaSqft > 0 &&
+        Math.abs(params.footprintAreaSqft - params.benchmarkAreaSqft) /
+              params.benchmarkAreaSqft <= 0.10;
+      const expectedSanityOk = params.expectedAreaSqft != null &&
+        params.expectedAreaSqft > 0 &&
+        Math.abs(params.footprintAreaSqft - params.expectedAreaSqft) /
+              params.expectedAreaSqft <= 0.10;
+      const areaSanityOk = solarSanityOk || benchmarkSanityOk ||
+        expectedSanityOk;
 
       return {
         checked: true,
         target_mask_grid: target ? targetMaskGrid : null,
         target_mask_area_sqft: target ? Math.round(targetMaskAreaSqft) : null,
         target_mask_component_id: target?.id ?? null,
-        target_mask_bbox_px: target ? { minX: target.minX, minY: target.minY, maxX: target.maxX, maxY: target.maxY } : null,
+        target_mask_bbox_px: target
+          ? {
+            minX: target.minX,
+            minY: target.minY,
+            maxX: target.maxX,
+            maxY: target.maxY,
+          }
+          : null,
         target_mask_overlap_with_perimeter: Number(targetOverlap.toFixed(3)),
-        target_component_overlap_with_perimeter: Number(targetOverlap.toFixed(3)),
+        target_component_overlap_with_perimeter: Number(
+          targetOverlap.toFixed(3),
+        ),
         target_mask_component_count: components.length,
         global_mask_area_sqft: Math.round(globalMaskAreaSqft),
         global_roof_mask_area_sqft: Math.round(globalMaskAreaSqft),
         global_visible_roof_bbox_px: params.globalBbox,
-        global_mask_inflation_ratio: globalInflationRatio != null ? Number(globalInflationRatio.toFixed(2)) : null,
+        global_mask_inflation_ratio: globalInflationRatio != null
+          ? Number(globalInflationRatio.toFixed(2))
+          : null,
         missed_target_roof_pct: Number(missedTargetRoofPct.toFixed(2)),
         missed_target_roof_ratio: Number(missedTargetRatio.toFixed(4)),
         missed_target_roof_area_sqft: Math.round(missedTargetPx * sqftPerPx2),
-        perimeter_to_target_mask_ratio: perimeterToTargetMaskRatio != null ? Number(perimeterToTargetMaskRatio.toFixed(3)) : null,
+        perimeter_to_target_mask_ratio: perimeterToTargetMaskRatio != null
+          ? Number(perimeterToTargetMaskRatio.toFixed(3))
+          : null,
         solar_sanity_ok: solarSanityOk,
         benchmark_sanity_ok: benchmarkSanityOk,
         expected_area_sanity_ok: expectedSanityOk,
@@ -3623,33 +5134,55 @@ async function processJob(input: any) {
           .slice()
           .sort((a, b) => b.pixels - a.pixels)
           .slice(0, 12)
-          .map(c => ({
+          .map((c) => ({
             id: c.id,
             selected: target?.id === c.id,
             area_sqft: Math.round(c.pixels * sqftPerPx2),
-            inside_perimeter_ratio: Number((c.insidePerimeterPixels / Math.max(1, c.pixels)).toFixed(3)),
+            inside_perimeter_ratio: Number(
+              (c.insidePerimeterPixels / Math.max(1, c.pixels)).toFixed(3),
+            ),
             centroid_px: [Math.round(c.cx), Math.round(c.cy)],
             bbox_px: { minX: c.minX, minY: c.minY, maxX: c.maxX, maxY: c.maxY },
           })),
         // Legacy names retained for old debug readers, now TARGET-based.
         roof_mask_area_sqft: target ? Math.round(targetMaskAreaSqft) : null,
-        perimeter_to_mask_ratio: perimeterToTargetMaskRatio != null ? Number(perimeterToTargetMaskRatio.toFixed(3)) : null,
+        perimeter_to_mask_ratio: perimeterToTargetMaskRatio != null
+          ? Number(perimeterToTargetMaskRatio.toFixed(3))
+          : null,
         missed_roof_ratio: Number(missedTargetRatio.toFixed(4)),
         missed_roof_area_sqft: Math.round(missedTargetPx * sqftPerPx2),
       };
     };
 
-    const buildPhase0Snapshot = (isolation: any, forcedFailureReasons: string[] = []) => {
+    const buildPhase0Snapshot = (
+      isolation: any,
+      forcedFailureReasons: string[] = [],
+    ) => {
       const footprintGeoForPhase0 = footprint.map((p) =>
-        pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]
+        pxToLngLat(
+          p,
+          { lat: coords.lat, lng: coords.lng },
+          raster.width,
+          raster.height,
+          actualMpp,
+        ) as [number, number]
       );
-      const perimeterEdgesGeo = footprintGeoForPhase0.map((p, i) => [p, footprintGeoForPhase0[(i + 1) % footprintGeoForPhase0.length]] as [[number, number], [number, number]]);
+      const perimeterEdgesGeo = footprintGeoForPhase0.map((p, i) =>
+        [p, footprintGeoForPhase0[(i + 1) % footprintGeoForPhase0.length]] as [
+          [number, number],
+          [number, number],
+        ]
+      );
       const targetMaskGrid = isolation?.target_mask_grid || null;
       const targetMaskPxCount = targetMaskGrid
-        ? targetMaskGrid.reduce((sum: number, v: number) => sum + (v > 0 ? 1 : 0), 0)
+        ? targetMaskGrid.reduce(
+          (sum: number, v: number) => sum + (v > 0 ? 1 : 0),
+          0,
+        )
         : 0;
       const maskedTarget = targetMaskGrid ? { mask: targetMaskGrid } : null;
-      const targetMaskAreaSqft = Number(isolation?.target_mask_area_sqft || 0) || footprintAreaSqftVal;
+      const targetMaskAreaSqft =
+        Number(isolation?.target_mask_area_sqft || 0) || footprintAreaSqftVal;
 
       vlog("ENTER_build_perimeter_phase0", {
         footprint_source: footprintSource,
@@ -3668,8 +5201,15 @@ async function processJob(input: any) {
           solar_segments: solarSegments.map((s: any) => ({
             pitch_degrees: Number(s?.pitchDegrees || 0),
             azimuth_degrees: Number(s?.azimuthDegrees || 0),
-            area_sqft: Number(s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0) * 10.7639,
-            center_geo: s?.center ? [Number(s.center.longitude), Number(s.center.latitude)] as [number, number] : null,
+            area_sqft: Number(
+              s?.stats?.groundAreaMeters2 || s?.stats?.areaMeters2 || 0,
+            ) * 10.7639,
+            center_geo: s?.center
+              ? [Number(s.center.longitude), Number(s.center.latitude)] as [
+                number,
+                number,
+              ]
+              : null,
           })),
           roof_mask_pixel_count: targetMaskPxCount,
           dsm_width: raster.width,
@@ -3692,21 +5232,25 @@ async function processJob(input: any) {
           target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
           benchmark_area_sqft: isolation?.benchmark_area_sqft ?? null,
           solar_expected_area_sqft: isolation?.solar_segment_area_sqft ?? null,
-          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ??
+            null,
         });
         vlog("EXIT_evaluate_perimeter_gate", {
           passed: (gate.failure_reasons || []).length === 0,
           failure_reasons: gate.failure_reasons || [],
         });
-        let failureReasons = [...(gate.failure_reasons || []), ...forcedFailureReasons];
+        let failureReasons = [
+          ...(gate.failure_reasons || []),
+          ...forcedFailureReasons,
+        ];
 
         // Benchmark/Solar sanity exception: a selected perimeter within 10% of
         // expected area must not fail just because target/global mask area is noisy.
         if (isolation?.area_sanity_ok) {
           failureReasons = failureReasons.filter((r) =>
-            !String(r).startsWith('fonsica_area_off') &&
-            !String(r).startsWith('fonsica_missed_roof_high') &&
-            !String(r).startsWith('perimeter_area_mismatch')
+            !String(r).startsWith("fonsica_area_off") &&
+            !String(r).startsWith("fonsica_missed_roof_high") &&
+            !String(r).startsWith("perimeter_area_mismatch")
           );
         }
 
@@ -3719,9 +5263,11 @@ async function processJob(input: any) {
           target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
           target_mask_component_id: isolation?.target_mask_component_id ?? null,
           target_mask_bbox_px: isolation?.target_mask_bbox_px ?? null,
-          target_mask_overlap_with_perimeter: isolation?.target_mask_overlap_with_perimeter ?? null,
+          target_mask_overlap_with_perimeter:
+            isolation?.target_mask_overlap_with_perimeter ?? null,
           global_mask_area_sqft: isolation?.global_mask_area_sqft ?? null,
-          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ??
+            null,
           missed_target_roof_pct: isolation?.missed_target_roof_pct ?? null,
           solar_sanity_ok: isolation?.solar_sanity_ok ?? false,
           benchmark_sanity_ok: isolation?.benchmark_sanity_ok ?? false,
@@ -3735,14 +5281,26 @@ async function processJob(input: any) {
 
         return {
           topology,
-          gate: { ...gate, passed, perimeter_ready: passed, customer_perimeter_ready: passed && gate.customer_perimeter_ready, failure_reasons: failureReasons, diagnostics },
+          gate: {
+            ...gate,
+            passed,
+            perimeter_ready: passed,
+            customer_perimeter_ready: passed && gate.customer_perimeter_ready,
+            failure_reasons: failureReasons,
+            diagnostics,
+          },
           diagnostics,
         };
       } catch (err) {
-        console.error('[PERIMETER_PHASE_0] local build failed:', err);
-        const closed = footprint.length > 2 ? [...footprint, footprint[0]] : footprint;
+        console.error("[PERIMETER_PHASE_0] local build failed:", err);
+        const closed = footprint.length > 2
+          ? [...footprint, footprint[0]]
+          : footprint;
         const totalLf = polylineLengthPx(closed) * actualFpp;
-        const failureReasons = ['perimeter_phase0_build_failed', ...forcedFailureReasons];
+        const failureReasons = [
+          "perimeter_phase0_build_failed",
+          ...forcedFailureReasons,
+        ];
         const diagnostics = {
           perimeter_ready: false,
           perimeter_source: footprintSource,
@@ -3762,7 +5320,8 @@ async function processJob(input: any) {
           perimeter_gate_passed: false,
           target_mask_area_sqft: isolation?.target_mask_area_sqft ?? null,
           global_mask_area_sqft: isolation?.global_mask_area_sqft ?? null,
-          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ?? null,
+          global_mask_inflation_ratio: isolation?.global_mask_inflation_ratio ??
+            null,
           missed_target_roof_pct: isolation?.missed_target_roof_pct ?? null,
           solar_sanity_ok: isolation?.solar_sanity_ok ?? false,
           benchmark_sanity_ok: isolation?.benchmark_sanity_ok ?? false,
@@ -3770,7 +5329,17 @@ async function processJob(input: any) {
           mask_components_table: isolation?.mask_components_table ?? [],
           target_mask_isolation: { ...isolation, target_mask_grid: undefined },
         };
-        return { topology: null, gate: { passed: false, perimeter_ready: false, customer_perimeter_ready: false, failure_reasons: failureReasons, diagnostics }, diagnostics };
+        return {
+          topology: null,
+          gate: {
+            passed: false,
+            perimeter_ready: false,
+            customer_perimeter_ready: false,
+            failure_reasons: failureReasons,
+            diagnostics,
+          },
+          diagnostics,
+        };
       }
     };
 
@@ -3781,7 +5350,14 @@ async function processJob(input: any) {
           const lat = Number(seg?.center?.latitude);
           const lng = Number(seg?.center?.longitude);
           return Number.isFinite(lat) && Number.isFinite(lng)
-            ? lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)
+            ? lngLatToPx(
+              lat,
+              lng,
+              { lat: coords.lat, lng: coords.lng },
+              raster.width,
+              raster.height,
+              actualMpp,
+            )
             : null;
         })
         .filter(Boolean) as Point[];
@@ -3798,14 +5374,17 @@ async function processJob(input: any) {
       mask_grid_present: !!visibleRoofMaskPxGrid,
     });
 
-    console.log('[PHASE0_TRACE] target_mask_isolation:start', JSON.stringify({
-      footprint_source: footprintSource,
-      footprint_area_sqft: Math.round(footprintAreaSqftVal),
-      mask_grid_present: !!visibleRoofMaskPxGrid,
-      benchmark_area_sqft: benchmarkForPerimeter.area_sqft,
-      benchmark_source: benchmarkForPerimeter.source,
-      solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
-    }));
+    console.log(
+      "[PHASE0_TRACE] target_mask_isolation:start",
+      JSON.stringify({
+        footprint_source: footprintSource,
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        mask_grid_present: !!visibleRoofMaskPxGrid,
+        benchmark_area_sqft: benchmarkForPerimeter.area_sqft,
+        benchmark_source: benchmarkForPerimeter.source,
+        solar_segment_area_sqft: Math.round(solarSegmentTotalAreaSqft),
+      }),
+    );
 
     const targetMaskIsolation = isolateTargetRoofMask({
       perimeter: footprint,
@@ -3814,24 +5393,30 @@ async function processJob(input: any) {
       height: raster.height,
       geocodePoint: geocodePx,
       solarCentroid: solarCentroidPx,
-      expectedAreaSqft: solarSegmentTotalAreaSqft > 0 ? solarSegmentTotalAreaSqft : benchmarkForPerimeter.area_sqft,
+      expectedAreaSqft: solarSegmentTotalAreaSqft > 0
+        ? solarSegmentTotalAreaSqft
+        : benchmarkForPerimeter.area_sqft,
       benchmarkAreaSqft: benchmarkForPerimeter.area_sqft,
       footprintAreaSqft: footprintAreaSqftVal,
       footprintSource,
       globalBbox: visibleRoofBboxPx,
     });
 
-    console.log('[PHASE0_TRACE] target_mask_isolation:done', JSON.stringify({
-      checked: targetMaskIsolation.checked,
-      target_mask_area_sqft: targetMaskIsolation.target_mask_area_sqft,
-      global_mask_area_sqft: targetMaskIsolation.global_mask_area_sqft,
-      global_mask_inflation_ratio: targetMaskIsolation.global_mask_inflation_ratio,
-      missed_target_roof_pct: targetMaskIsolation.missed_target_roof_pct,
-      benchmark_sanity_ok: targetMaskIsolation.benchmark_sanity_ok,
-      solar_sanity_ok: targetMaskIsolation.solar_sanity_ok,
-      area_sanity_ok: targetMaskIsolation.area_sanity_ok,
-      mask_components: targetMaskIsolation.mask_components_table?.length ?? 0,
-    }));
+    console.log(
+      "[PHASE0_TRACE] target_mask_isolation:done",
+      JSON.stringify({
+        checked: targetMaskIsolation.checked,
+        target_mask_area_sqft: targetMaskIsolation.target_mask_area_sqft,
+        global_mask_area_sqft: targetMaskIsolation.global_mask_area_sqft,
+        global_mask_inflation_ratio:
+          targetMaskIsolation.global_mask_inflation_ratio,
+        missed_target_roof_pct: targetMaskIsolation.missed_target_roof_pct,
+        benchmark_sanity_ok: targetMaskIsolation.benchmark_sanity_ok,
+        solar_sanity_ok: targetMaskIsolation.solar_sanity_ok,
+        area_sanity_ok: targetMaskIsolation.area_sanity_ok,
+        mask_components: targetMaskIsolation.mask_components_table?.length ?? 0,
+      }),
+    );
 
     vlog("EXIT_target_mask_isolation", {
       checked: targetMaskIsolation.checked,
@@ -3848,52 +5433,77 @@ async function processJob(input: any) {
       mask_contour_diagnostics: maskContourDiagnostics || null,
     };
 
-    const targetIsolationFailed = targetMaskIsolation.checked && !targetMaskIsolation.target_mask_area_sqft;
-    const missedTargetPct = Number(targetMaskIsolation.missed_target_roof_pct ?? 0);
-    const targetInnerTraceDetected = missedTargetPct > 5 && !targetMaskIsolation.area_sanity_ok;
+    const targetIsolationFailed = targetMaskIsolation.checked &&
+      !targetMaskIsolation.target_mask_area_sqft;
+    const missedTargetPct = Number(
+      targetMaskIsolation.missed_target_roof_pct ?? 0,
+    );
+    const targetInnerTraceDetected = missedTargetPct > 5 &&
+      !targetMaskIsolation.area_sanity_ok;
     const forcedPhase0Failures: string[] = [];
-    if (targetIsolationFailed) forcedPhase0Failures.push('target_mask_isolation_failed');
-    if (targetInnerTraceDetected) forcedPhase0Failures.push('perimeter_inner_trace_detected');
+    if (targetIsolationFailed) {
+      forcedPhase0Failures.push("target_mask_isolation_failed");
+    }
+    if (targetInnerTraceDetected) {
+      forcedPhase0Failures.push("perimeter_inner_trace_detected");
+    }
 
-    console.log('[PHASE0_TRACE] phase0_build:start', JSON.stringify({
-      forced_failures: forcedPhase0Failures,
-      target_isolation_failed: targetIsolationFailed,
-      target_inner_trace_detected: targetInnerTraceDetected,
-      missed_target_pct: missedTargetPct,
-      area_sanity_ok: targetMaskIsolation.area_sanity_ok,
-    }));
+    console.log(
+      "[PHASE0_TRACE] phase0_build:start",
+      JSON.stringify({
+        forced_failures: forcedPhase0Failures,
+        target_isolation_failed: targetIsolationFailed,
+        target_inner_trace_detected: targetInnerTraceDetected,
+        missed_target_pct: missedTargetPct,
+        area_sanity_ok: targetMaskIsolation.area_sanity_ok,
+      }),
+    );
 
-    const phase0 = buildPhase0Snapshot(targetMaskIsolation, forcedPhase0Failures);
+    const phase0 = buildPhase0Snapshot(
+      targetMaskIsolation,
+      forcedPhase0Failures,
+    );
     perimeterPhase0Snapshot = phase0.diagnostics;
     perimeterTopologySnapshot = phase0.topology;
     perimeterGateSnapshot = phase0.gate;
     perimeterInnerTraceDebug.perimeter_phase0_ran = true;
-    perimeterInnerTraceDebug.perimeter_gate_passed = phase0.gate?.passed ?? false;
-    perimeterInnerTraceDebug.perimeter_failure_reasons = phase0.gate?.failure_reasons ?? [];
+    perimeterInnerTraceDebug.perimeter_gate_passed = phase0.gate?.passed ??
+      false;
+    perimeterInnerTraceDebug.perimeter_failure_reasons =
+      phase0.gate?.failure_reasons ?? [];
 
-    console.log('[PHASE0_TRACE] phase0_build:done', JSON.stringify({
-      gate_passed: phase0.gate?.passed ?? false,
-      failure_reasons: phase0.gate?.failure_reasons ?? [],
-      diagnostics_present: !!perimeterPhase0Snapshot,
-      perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
-      eave_lf: perimeterPhase0Snapshot?.eave_length_lf,
-      rake_lf: perimeterPhase0Snapshot?.rake_length_lf,
-      eave_candidate_lf: perimeterPhase0Snapshot?.eave_candidate_lf,
-      rake_candidate_lf: perimeterPhase0Snapshot?.rake_candidate_lf,
-      unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf,
-      eave_rake_confidence: perimeterPhase0Snapshot?.eave_rake_confidence,
-      archetype: perimeterPhase0Snapshot?.archetype_debug,
-      perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
-    }));
-    console.log('[TARGET_MASK_ISOLATION]', JSON.stringify(perimeterInnerTraceDebug));
-    console.log('[PERIMETER_PHASE_0_SNAPSHOT]', JSON.stringify({
-      perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
-      perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
-      target_mask_area_sqft: perimeterPhase0Snapshot?.target_mask_area_sqft,
-      global_mask_area_sqft: perimeterPhase0Snapshot?.global_mask_area_sqft,
-      missed_target_roof_pct: perimeterPhase0Snapshot?.missed_target_roof_pct,
-      failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons,
-    }));
+    console.log(
+      "[PHASE0_TRACE] phase0_build:done",
+      JSON.stringify({
+        gate_passed: phase0.gate?.passed ?? false,
+        failure_reasons: phase0.gate?.failure_reasons ?? [],
+        diagnostics_present: !!perimeterPhase0Snapshot,
+        perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
+        eave_lf: perimeterPhase0Snapshot?.eave_length_lf,
+        rake_lf: perimeterPhase0Snapshot?.rake_length_lf,
+        eave_candidate_lf: perimeterPhase0Snapshot?.eave_candidate_lf,
+        rake_candidate_lf: perimeterPhase0Snapshot?.rake_candidate_lf,
+        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf,
+        eave_rake_confidence: perimeterPhase0Snapshot?.eave_rake_confidence,
+        archetype: perimeterPhase0Snapshot?.archetype_debug,
+        perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
+      }),
+    );
+    console.log(
+      "[TARGET_MASK_ISOLATION]",
+      JSON.stringify(perimeterInnerTraceDebug),
+    );
+    console.log(
+      "[PERIMETER_PHASE_0_SNAPSHOT]",
+      JSON.stringify({
+        perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed,
+        perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft,
+        target_mask_area_sqft: perimeterPhase0Snapshot?.target_mask_area_sqft,
+        global_mask_area_sqft: perimeterPhase0Snapshot?.global_mask_area_sqft,
+        missed_target_roof_pct: perimeterPhase0Snapshot?.missed_target_roof_pct,
+        failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons,
+      }),
+    );
 
     // Hard guarantee: when target-mask gate fires, Phase 0 must be persisted.
     // perimeter_phase0 = null is now treated as a control-flow bug.
@@ -3903,18 +5513,29 @@ async function processJob(input: any) {
         perimeter_gate_passed: false,
         perimeter_source: footprintSource,
         perimeter_area_sqft: Math.round(footprintAreaSqftVal),
-        perimeter_failure_reasons: forcedPhase0Failures.length ? forcedPhase0Failures : ['perimeter_phase0_snapshot_missing'],
-        target_mask_area_sqft: targetMaskIsolation?.target_mask_area_sqft ?? null,
-        target_mask_component_id: targetMaskIsolation?.target_mask_component_id ?? null,
-        target_mask_overlap_with_perimeter: targetMaskIsolation?.target_mask_overlap_with_perimeter ?? null,
-        global_mask_area_sqft: targetMaskIsolation?.global_mask_area_sqft ?? null,
-        global_mask_inflation_ratio: targetMaskIsolation?.global_mask_inflation_ratio ?? null,
-        missed_target_roof_pct: targetMaskIsolation?.missed_target_roof_pct ?? null,
+        perimeter_failure_reasons: forcedPhase0Failures.length
+          ? forcedPhase0Failures
+          : ["perimeter_phase0_snapshot_missing"],
+        target_mask_area_sqft: targetMaskIsolation?.target_mask_area_sqft ??
+          null,
+        target_mask_component_id:
+          targetMaskIsolation?.target_mask_component_id ?? null,
+        target_mask_overlap_with_perimeter:
+          targetMaskIsolation?.target_mask_overlap_with_perimeter ?? null,
+        global_mask_area_sqft: targetMaskIsolation?.global_mask_area_sqft ??
+          null,
+        global_mask_inflation_ratio:
+          targetMaskIsolation?.global_mask_inflation_ratio ?? null,
+        missed_target_roof_pct: targetMaskIsolation?.missed_target_roof_pct ??
+          null,
         solar_sanity_ok: targetMaskIsolation?.solar_sanity_ok ?? false,
         benchmark_sanity_ok: targetMaskIsolation?.benchmark_sanity_ok ?? false,
         area_sanity_ok: targetMaskIsolation?.area_sanity_ok ?? false,
         mask_components_table: targetMaskIsolation?.mask_components_table ?? [],
-        target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
+        target_mask_isolation: {
+          ...targetMaskIsolation,
+          target_mask_grid: undefined,
+        },
       };
     }
 
@@ -3924,54 +5545,84 @@ async function processJob(input: any) {
       // perimeter_phase0 is somehow null, this is a control-flow bug — the old
       // global-mask early-return path. Refuse to emit perimeter_inner_trace_detected;
       // emit a developer_bug marker so the failure is unmistakable in the UI.
-      const phase0Bypassed =
-        footprintSource !== 'none' &&
-        footprintSource !== 'unknown' &&
+      const phase0Bypassed = footprintSource !== "none" &&
+        footprintSource !== "unknown" &&
         Array.isArray(footprint) &&
         footprint.length >= 3 &&
         !perimeterPhase0Snapshot;
       if (phase0Bypassed) {
-        const developerBug = 'phase0_bypassed_before_perimeter_gate';
-        console.error(`[PERIMETER_PHASE_0_INVARIANT] ${developerBug}`, JSON.stringify({
-          footprint_source: footprintSource,
-          footprint_point_count: footprint.length,
-          target_isolation_failed: targetIsolationFailed,
-          target_inner_trace_detected: targetInnerTraceDetected,
-        }));
+        const developerBug = "phase0_bypassed_before_perimeter_gate";
+        console.error(
+          `[PERIMETER_PHASE_0_INVARIANT] ${developerBug}`,
+          JSON.stringify({
+            footprint_source: footprintSource,
+            footprint_point_count: footprint.length,
+            target_isolation_failed: targetIsolationFailed,
+            target_inner_trace_detected: targetInnerTraceDetected,
+          }),
+        );
         const debugPayload: any = {
           developer_bug: developerBug,
           hard_fail_reason: developerBug,
-          failure_stage: 'perimeter',
-          result_state: normalizeResultStateForWrite('ai_failed_perimeter', null),
+          failure_stage: "perimeter",
+          result_state: normalizeResultStateForWrite(
+            "ai_failed_perimeter",
+            null,
+          ),
           footprint_source: footprintSource,
           footprint_point_count: footprint.length,
           footprint_area_sqft: Math.round(footprintAreaSqftVal),
           perimeter_phase0: null,
           perimeter_inner_trace: perimeterInnerTraceDebug,
-          diagram_render_intent: 'rejected_only',
+          diagram_render_intent: "rejected_only",
           ...PHASE3_VERSION_BLOCK,
           phase3A: buildPhase3ABlock(null),
           phase3B: buildPhase3BBlock([]),
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, developerBug, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Developer bug: ${developerBug}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Developer bug: ${developerBug}`);
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          developerBug,
+          debugPayload,
+          imageUrl,
+          actualMpp,
+        );
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          `Developer bug: ${developerBug}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          `Developer bug: ${developerBug}`,
+        );
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
-          source_context: { gate_reason: developerBug, hard_fail_reason: developerBug, debug: debugPayload },
+          result_state: normalizeResultStateForWrite(
+            "ai_failed_perimeter",
+            debugPayload,
+          ),
+          source_context: {
+            gate_reason: developerBug,
+            hard_fail_reason: developerBug,
+            debug: debugPayload,
+          },
         }).eq("id", input.ai_measurement_job_id);
         return;
       }
 
-      const failReason = targetIsolationFailed ? 'target_mask_isolation_failed' : 'perimeter_inner_trace_detected';
+      const failReason = targetIsolationFailed
+        ? "target_mask_isolation_failed"
+        : "perimeter_inner_trace_detected";
       perimeterInnerTraceDebug.inner_trace_detected = targetInnerTraceDetected;
       const debugPayload = {
         ...perimeterInnerTraceDebug,
         hard_fail_reason: failReason,
-        failure_stage: 'perimeter',
-        result_state: 'ai_failed_perimeter',
+        failure_stage: "perimeter",
+        result_state: "ai_failed_perimeter",
         footprint_source: footprintSource,
         footprint_valid: true,
         footprint_point_count: footprint.length,
@@ -3982,44 +5633,77 @@ async function processJob(input: any) {
         raster_size: { width: raster.width, height: raster.height },
         perimeter_inner_trace: perimeterInnerTraceDebug,
         perimeter_phase0: perimeterPhase0Snapshot,
-        perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed ?? false,
+        perimeter_gate_passed: perimeterPhase0Snapshot?.perimeter_gate_passed ??
+          false,
         perimeter_ready: false,
-        perimeter_source: perimeterTopologySnapshot?.perimeter_source ?? footprintSource,
+        perimeter_source: perimeterTopologySnapshot?.perimeter_source ??
+          footprintSource,
         perimeter_eave_ft: perimeterPhase0Snapshot?.eave_length_lf ?? null,
         perimeter_rake_ft: perimeterPhase0Snapshot?.rake_length_lf ?? null,
         perimeter_total_ft: perimeterPhase0Snapshot?.total_perimeter_lf ?? null,
-        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? null,
-        perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft ?? Math.round(footprintAreaSqftVal),
-        perimeter_failure_reasons: perimeterPhase0Snapshot?.perimeter_failure_reasons ?? [failReason],
+        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ??
+          null,
+        perimeter_area_sqft: perimeterPhase0Snapshot?.perimeter_area_sqft ??
+          Math.round(footprintAreaSqftVal),
+        perimeter_failure_reasons:
+          perimeterPhase0Snapshot?.perimeter_failure_reasons ?? [failReason],
         perimeter_topology: perimeterTopologySnapshot,
         // Phase 3F/3G: failed perimeter forces rejected_only diagram intent.
-        diagram_render_intent: 'rejected_only',
+        diagram_render_intent: "rejected_only",
         ...PHASE3_VERSION_BLOCK,
         phase3A: buildPhase3ABlock(perimeterPhase0Snapshot ?? null),
         phase3B: buildPhase3BBlock([]),
       };
-      console.error(`[PERIMETER_TARGET_MASK_GATE] FAIL: ${failReason}`, JSON.stringify(debugPayload));
-      console.log('[PHASE0_TRACE] phase0_persist:start', JSON.stringify({
-        fail_reason: failReason,
-        result_state: 'ai_failed_perimeter',
-        perimeter_phase0_present: !!debugPayload.perimeter_phase0,
-        perimeter_gate_passed: debugPayload.perimeter_gate_passed,
-        ai_measurement_job_id: input.ai_measurement_job_id,
-      }));
-      const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", `Perimeter target-mask gate failed: ${failReason}`, failedId);
-      await setAiJobStatus(input.ai_measurement_job_id, "failed", `Perimeter target-mask gate failed: ${failReason}`);
+      console.error(
+        `[PERIMETER_TARGET_MASK_GATE] FAIL: ${failReason}`,
+        JSON.stringify(debugPayload),
+      );
+      console.log(
+        "[PHASE0_TRACE] phase0_persist:start",
+        JSON.stringify({
+          fail_reason: failReason,
+          result_state: "ai_failed_perimeter",
+          perimeter_phase0_present: !!debugPayload.perimeter_phase0,
+          perimeter_gate_passed: debugPayload.perimeter_gate_passed,
+          ai_measurement_job_id: input.ai_measurement_job_id,
+        }),
+      );
+      const failedId = await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        failReason,
+        debugPayload,
+        imageUrl,
+        actualMpp,
+      );
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        `Perimeter target-mask gate failed: ${failReason}`,
+        failedId,
+      );
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "failed",
+        `Perimeter target-mask gate failed: ${failReason}`,
+      );
       await supabase.from("ai_measurement_jobs").update({
         needs_review: true,
         report_blocked: true,
-        result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
+        result_state: normalizeResultStateForWrite(
+          "ai_failed_perimeter",
+          debugPayload,
+        ),
         source_context: { gate_reason: failReason, debug: debugPayload },
       }).eq("id", input.ai_measurement_job_id);
-      console.log('[PHASE0_TRACE] phase0_persist:done', JSON.stringify({
-        fail_reason: failReason,
-        failed_measurement_id: failedId,
-        ai_measurement_job_id: input.ai_measurement_job_id,
-      }));
+      console.log(
+        "[PHASE0_TRACE] phase0_persist:done",
+        JSON.stringify({
+          fail_reason: failReason,
+          failed_measurement_id: failedId,
+          ai_measurement_job_id: input.ai_measurement_job_id,
+        }),
+      );
       return;
     }
 
@@ -4055,44 +5739,80 @@ async function processJob(input: any) {
           googleSolarMaskStageDebug.dsm_fetch_started_at = nowIso();
           const dsmFetchStarted = Date.now();
           dsmGrid = await withStageTimeout(
-            fetchDSMFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+            fetchDSMFromGoogleSolar(
+              coords.lat,
+              coords.lng,
+              GOOGLE_SOLAR_API_KEY,
+              {
+                timeoutMs: GOOGLE_SOLAR_DSM_TIMEOUT_MS,
+              },
+            ),
             GOOGLE_SOLAR_DSM_TIMEOUT_MS,
             "google_solar_dsm_fetch",
           );
           googleSolarMaskStageDebug.dsm_fetch_finished_at = nowIso();
-          googleSolarMaskStageDebug.dsm_fetch_duration_ms = Date.now() - dsmFetchStarted;
+          googleSolarMaskStageDebug.dsm_fetch_duration_ms = Date.now() -
+            dsmFetchStarted;
           googleSolarMaskStageDebug.dsm_loaded = !!dsmGrid;
           roofMask = roofMaskForContour || await withStageTimeout(
-            fetchRoofMaskFromGoogleSolar(coords.lat, coords.lng, GOOGLE_SOLAR_API_KEY),
+            fetchRoofMaskFromGoogleSolar(
+              coords.lat,
+              coords.lng,
+              GOOGLE_SOLAR_API_KEY,
+              {
+                timeoutMs: GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+              },
+            ),
             GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
             "google_solar_roof_mask_fetch_dsm_stage",
           );
-          maskedDSM = dsmGrid && roofMask ? applyMaskToDSM(dsmGrid, roofMask) : null;
+          maskedDSM = dsmGrid && roofMask
+            ? applyMaskToDSM(dsmGrid, roofMask)
+            : null;
           if (roofMask) (globalThis as any).__roofMaskForQA = roofMask;
         } else {
-          console.warn("[AUTONOMOUS_DSM_GRAPH] No GOOGLE_SOLAR_API_KEY configured");
+          console.warn(
+            "[AUTONOMOUS_DSM_GRAPH] No GOOGLE_SOLAR_API_KEY configured",
+          );
         }
       } catch (e) {
-        googleSolarMaskStageDebug.dsm_fetch_finished_at = googleSolarMaskStageDebug.dsm_fetch_finished_at ?? nowIso();
-        if (googleSolarMaskStageDebug.dsm_fetch_started_at && googleSolarMaskStageDebug.dsm_fetch_duration_ms == null) {
-          googleSolarMaskStageDebug.dsm_fetch_duration_ms =
-            Date.now() - Date.parse(googleSolarMaskStageDebug.dsm_fetch_started_at);
+        googleSolarMaskStageDebug.dsm_fetch_finished_at =
+          googleSolarMaskStageDebug.dsm_fetch_finished_at ?? nowIso();
+        if (
+          googleSolarMaskStageDebug.dsm_fetch_started_at &&
+          googleSolarMaskStageDebug.dsm_fetch_duration_ms == null
+        ) {
+          googleSolarMaskStageDebug.dsm_fetch_duration_ms = Date.now() -
+            Date.parse(googleSolarMaskStageDebug.dsm_fetch_started_at);
         }
         if (e instanceof StageTimeoutError) {
           googleSolarMaskStageDebug.google_solar_status = "timeout";
           googleSolarMaskStageDebug.google_solar_error = (e as Error).message;
         }
-        console.warn("[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed", (e as Error).message);
+        console.warn(
+          "[AUTONOMOUS_DSM_GRAPH] DSM/mask load failed",
+          (e as Error).message,
+        );
       }
       const dsmDiag = getLastDSMDiagnostics();
-      console.log(`[DSM_INGESTION] loaded=${!!dsmGrid} mask=${!!roofMask} diag=${JSON.stringify(dsmDiag)}`);
+      console.log(
+        `[DSM_INGESTION] loaded=${!!dsmGrid} mask=${!!roofMask} diag=${
+          JSON.stringify(dsmDiag)
+        }`,
+      );
 
       // Solver contract: use the final validated satellite-pixel footprint only.
       // Do not substitute selectedMaskContourGeo here; it is raw Solar mask
       // contour evidence and can be a different extent than the accepted roof
       // footprint, which inflates face areas and blocks report production.
       const footprintGeo = footprint.map((p) =>
-        pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp) as [number, number]
+        pxToLngLat(
+          p,
+          { lat: coords.lat, lng: coords.lng },
+          raster.width,
+          raster.height,
+          actualMpp,
+        ) as [number, number]
       );
 
       // ══════════ DSM COORDINATE MATCH GATE ══════════
@@ -4108,35 +5828,67 @@ async function processJob(input: any) {
           return { x: px, y: py };
         });
         const fpDsmBbox = bboxOf(fpDsmPx);
-        const dsmBboxRect = { minX: 0, minY: 0, maxX: dsmW, maxY: dsmH, width: dsmW, height: dsmH };
+        const dsmBboxRect = {
+          minX: 0,
+          minY: 0,
+          maxX: dsmW,
+          maxY: dsmH,
+          width: dsmW,
+          height: dsmH,
+        };
         const tolerance = 5; // px
-        const insideX = fpDsmBbox && fpDsmBbox.maxX > -tolerance && fpDsmBbox.minX < dsmW + tolerance;
-        const insideY = fpDsmBbox && fpDsmBbox.maxY > -tolerance && fpDsmBbox.minY < dsmH + tolerance;
-        const overlapArea = fpDsmBbox ? bboxIntersect(fpDsmBbox, { minX: 0, minY: 0, maxX: dsmW, maxY: dsmH }) : 0;
+        const insideX = fpDsmBbox && fpDsmBbox.maxX > -tolerance &&
+          fpDsmBbox.minX < dsmW + tolerance;
+        const insideY = fpDsmBbox && fpDsmBbox.maxY > -tolerance &&
+          fpDsmBbox.minY < dsmH + tolerance;
+        const overlapArea = fpDsmBbox
+          ? bboxIntersect(fpDsmBbox, {
+            minX: 0,
+            minY: 0,
+            maxX: dsmW,
+            maxY: dsmH,
+          })
+          : 0;
         const fpDsmArea = fpDsmBbox ? fpDsmBbox.area : 0;
         const overlapRatio = fpDsmArea > 0 ? overlapArea / fpDsmArea : 0;
         dsmCoordinateMatch = Boolean(insideX && insideY && overlapRatio > 0.5);
         dsmCoordinateMatchDebug = {
-          footprint_dsm_bbox: fpDsmBbox ? { minX: Math.round(fpDsmBbox.minX), minY: Math.round(fpDsmBbox.minY), maxX: Math.round(fpDsmBbox.maxX), maxY: Math.round(fpDsmBbox.maxY) } : null,
+          footprint_dsm_bbox: fpDsmBbox
+            ? {
+              minX: Math.round(fpDsmBbox.minX),
+              minY: Math.round(fpDsmBbox.minY),
+              maxX: Math.round(fpDsmBbox.maxX),
+              maxY: Math.round(fpDsmBbox.maxY),
+            }
+            : null,
           dsm_bbox: { width: dsmW, height: dsmH },
           overlap_ratio: Number(overlapRatio.toFixed(3)),
           inside_x: insideX,
           inside_y: insideY,
           match: dsmCoordinateMatch,
         };
-        console.log("[DSM_COORDINATE_MATCH]", JSON.stringify(dsmCoordinateMatchDebug));
+        console.log(
+          "[DSM_COORDINATE_MATCH]",
+          JSON.stringify(dsmCoordinateMatchDebug),
+        );
       }
 
       // HARD BLOCK: if footprint source is unknown, do NOT call solveAutonomousGraph.
       if (footprintSource === "none" || footprintSource === "unknown") {
         // Distinguish acquisition failure (no source data acquired at all)
         // from geometry failure (sources fetched but rejected by validators).
-        const noOSM = candidates.filter(c => c.source.startsWith("osm_overpass")).length === 0;
+        const noOSM = candidates.filter((c) =>
+          c.source.startsWith("osm_overpass")
+        ).length === 0;
         const noMask = !roofMaskForContour;
         const noDSM = !dsmGrid && !maskedDSM;
         const acquisitionFailed = noOSM && noMask && noDSM;
-        const failReason = acquisitionFailed ? "source_acquisition_failed" : "missing_valid_footprint";
-        console.error(`[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} reason=${failReason}`);
+        const failReason = acquisitionFailed
+          ? "source_acquisition_failed"
+          : "missing_valid_footprint";
+        console.error(
+          `[DSM_COORDINATE_GATE] FAIL: footprint_source=${footprintSource} reason=${failReason}`,
+        );
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -4148,24 +5900,50 @@ async function processJob(input: any) {
           coordinate_space_match: false,
           dsm_coordinate_match: dsmCoordinateMatchDebug,
           hard_fail_reason: failReason,
-          acquisition_failure: acquisitionFailed ? {
-            no_osm_candidates: noOSM,
-            no_solar_mask: noMask,
-            no_dsm: noDSM,
-            candidates_tried: candidates.length,
-            audit: acquisitionAudit,
-          } : null,
-          footprint_px: footprint.map(p => [p.x, p.y]),
+          acquisition_failure: acquisitionFailed
+            ? {
+              no_osm_candidates: noOSM,
+              no_solar_mask: noMask,
+              no_dsm: noDSM,
+              candidates_tried: candidates.length,
+              audit: acquisitionAudit,
+            }
+            : null,
+          footprint_px: footprint.map((p) => [p.x, p.y]),
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", acquisitionFailed ? "Source acquisition failed — OSM, Solar mask, and DSM all empty" : `Footprint validation failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", acquisitionFailed ? "Source acquisition failed" : `Footprint validation failed: ${failReason}`);
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          failReason,
+          debugPayload,
+          imageUrl,
+          actualMpp,
+        );
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          acquisitionFailed
+            ? "Source acquisition failed — OSM, Solar mask, and DSM all empty"
+            : `Footprint validation failed: ${failReason}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          acquisitionFailed
+            ? "Source acquisition failed"
+            : `Footprint validation failed: ${failReason}`,
+        );
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          source_context: { gate_reason: failReason, debug: debugPayload, acquisition_audit: acquisitionAudit },
+          source_context: {
+            gate_reason: failReason,
+            debug: debugPayload,
+            acquisition_audit: acquisitionAudit,
+          },
         }).eq("id", input.ai_measurement_job_id);
         return;
       }
@@ -4177,9 +5955,14 @@ async function processJob(input: any) {
         // stage-specific token (dsm_bounds_missing, dsm_center_out_of_bounds,
         // candidate_polygon_missing, candidate_does_not_contain_confirmed_center,
         // coordinate_space_mismatch, dsm_raster_overlap_failed).
-        const _confirmedLatLng = (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
-          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
-          : { lat: coords.lat, lng: coords.lng };
+        const _confirmedLatLng =
+          (input as any).confirmed_roof_center_lat != null &&
+            (input as any).confirmed_roof_center_lng != null
+            ? {
+              lat: Number((input as any).confirmed_roof_center_lat),
+              lng: Number((input as any).confirmed_roof_center_lng),
+            }
+            : { lat: coords.lat, lng: coords.lng };
         const _dsmReg = buildDsmRegistration({
           dsm_loaded: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
           mask_loaded: !!roofMaskForContour,
@@ -4187,22 +5970,31 @@ async function processJob(input: any) {
           roofMask: roofMaskForContour ?? null,
           dsmCoordinateMatchDebug: dsmCoordinateMatchDebug,
           confirmedCenterLatLng: _confirmedLatLng,
-          rasterMetersPerPixel: Number.isFinite(Number(actualMpp)) ? Number(actualMpp) : null,
+          rasterMetersPerPixel: Number.isFinite(Number(actualMpp))
+            ? Number(actualMpp)
+            : null,
         });
         const _dsmBoundsLL = _dsmReg.dsm_tile_bounds_lat_lng;
         const _dsmSizePx = _dsmReg.dsm_size_px;
         const _transformPkg = buildRegistrationTransformPackage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
-          zoom: Number.isFinite(Number((input as any).zoom)) ? Number((input as any).zoom) : 19,
-          size: { width: Number((input as any).logical_image_width || 640), height: Number((input as any).logical_image_height || 640) },
+          zoom: Number.isFinite(Number((input as any).zoom))
+            ? Number((input as any).zoom)
+            : 19,
+          size: {
+            width: Number((input as any).logical_image_width || 640),
+            height: Number((input as any).logical_image_height || 640),
+          },
           scale: Number((input as any).raster_scale || 2),
           dsm_tile_bounds_lat_lng: _dsmBoundsLL,
           dsm_size_px: _dsmSizePx,
           dsm_meters_per_pixel: _dsmReg.dsm_meters_per_pixel,
         });
         const _hoist = hoistSelectedCandidatePolygon({
-          fallback_footprint_px: footprint.map(p => [p.x, p.y] as [number, number]),
+          fallback_footprint_px: footprint.map((p) =>
+            [p.x, p.y] as [number, number]
+          ),
           fallback_footprint_source: String(footprintSource ?? "unknown"),
           fallback_area_sqft: Math.round(footprintAreaSqftVal),
           default_coordinate_space: "dsm_px",
@@ -4210,19 +6002,28 @@ async function processJob(input: any) {
         const _candidatePolygonPx = _hoist.selected_candidate_polygon_px;
         const _centroidThresholdPx = Math.max(
           100,
-          Math.round(0.30 * Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height))),
+          Math.round(
+            0.30 *
+              Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height)),
+          ),
         );
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
-          confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ?? null,
-          confirmed_roof_center_dsm_px: _transformPkg.confirmed_roof_center_dsm_px ?? null,
+          confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
+            null,
+          confirmed_roof_center_dsm_px:
+            _transformPkg.confirmed_roof_center_dsm_px ?? null,
           raster_size_px: { width: raster.width, height: raster.height },
           raster_bounds_lat_lng: _transformPkg.raster_bounds_lat_lng ?? null,
-          static_transform_succeeded: !!_transformPkg.geo_to_raster_transform && !!_transformPkg.confirmed_roof_center_px,
+          static_transform_succeeded: !!_transformPkg.geo_to_raster_transform &&
+            !!_transformPkg.confirmed_roof_center_px,
           geo_to_dsm_px_success: _transformPkg.geo_to_dsm_px_success === true,
-          dsm_pixel_transform_valid: _transformPkg.dsm_pixel_transform_valid === true,
-          dsm_tile_bounds_contain_confirmed_center: _transformPkg.dsm_tile_bounds_contain_confirmed_center === true,
-          dsm_to_raster_bounds_overlap: _transformPkg.dsm_to_raster_transform?.bounds_overlap ?? null,
+          dsm_pixel_transform_valid:
+            _transformPkg.dsm_pixel_transform_valid === true,
+          dsm_tile_bounds_contain_confirmed_center:
+            _transformPkg.dsm_tile_bounds_contain_confirmed_center === true,
+          dsm_to_raster_bounds_overlap:
+            _transformPkg.dsm_to_raster_transform?.bounds_overlap ?? null,
           dsm: {
             dsm_url_present: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
             dsm_loaded: _dsmReg.dsm_stage_attempted,
@@ -4242,35 +6043,61 @@ async function processJob(input: any) {
           },
         });
         const failReason = _stageReport.hard_fail_reason;
-        console.error(`[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`, JSON.stringify({ missing: _stageReport.missing_required_fields, mixed: _stageReport.coordinate_space_audit.mixed_space_detected, dsm_bounds_source: _dsmReg.dsm_bounds_source, dsm_size_source: _dsmReg.dsm_size_source, candidate_origin: _hoist.candidate_hoist_origin }));
+        console.error(
+          `[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`,
+          JSON.stringify({
+            missing: _stageReport.missing_required_fields,
+            mixed: _stageReport.coordinate_space_audit.mixed_space_detected,
+            dsm_bounds_source: _dsmReg.dsm_bounds_source,
+            dsm_size_source: _dsmReg.dsm_size_source,
+            candidate_origin: _hoist.candidate_hoist_origin,
+          }),
+        );
         const registrationGate = evaluateRegistrationGate({
           evaluation_stage: "candidate_final",
           candidate_selection_started: true,
-          user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
-          roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
+          user_confirmed_roof_target: Boolean(
+            (input as any).user_confirmed_roof_target,
+          ),
+          roof_target_admin_override: Boolean(
+            (input as any).roof_target_admin_override,
+          ),
           original_geocode_lat_lng:
-            (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
-              ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
+            (input as any).original_geocode_lat != null &&
+              (input as any).original_geocode_lng != null
+              ? {
+                lat: Number((input as any).original_geocode_lat),
+                lng: Number((input as any).original_geocode_lng),
+              }
               : null,
           confirmed_roof_center_lat_lng: _confirmedLatLng,
-          confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ?? null,
+          confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
+            null,
           geo_to_dsm_px_success: _transformPkg.geo_to_dsm_px_success === true,
-          dsm_pixel_transform_valid: _transformPkg.dsm_pixel_transform_valid === true,
-          dsm_to_raster_transform: _transformPkg.dsm_to_raster_transform ?? null,
+          dsm_pixel_transform_valid:
+            _transformPkg.dsm_pixel_transform_valid === true,
+          dsm_to_raster_transform: _transformPkg.dsm_to_raster_transform ??
+            null,
           raster_size_px: { width: raster.width, height: raster.height },
           dsm_size_px: _dsmSizePx,
           dsm_tile_bounds_lat_lng: _dsmBoundsLL,
         });
-        const skippedByRegistration = { version: "v1", executed: false, skipped_reason: "blocked_by_registration_gate" };
+        const skippedByRegistration = {
+          version: "v1",
+          executed: false,
+          skipped_reason: "blocked_by_registration_gate",
+        };
         const registrationBlock = {
           ...registrationGate.registration,
           failure: registrationGate.failure,
-          dsm_to_raster_transform_exists: !!_transformPkg.dsm_to_raster_transform,
+          dsm_to_raster_transform_exists: !!_transformPkg
+            .dsm_to_raster_transform,
           transform_builder_called: true,
           transform_callsite: "start-ai-measurement",
           transform_callsite_version: "must-run-transform-preflight-v1",
           transform_package_valid: _transformPkg.transform_package_valid,
-          transform_failure_reasons: validateRegistrationTransformPackage(_transformPkg).reasons,
+          transform_failure_reasons:
+            validateRegistrationTransformPackage(_transformPkg).reasons,
           stage_classifier_version: REGISTRATION_STAGE_CLASSIFIER_VERSION,
           stage_failure_stage: _stageReport.failure_stage,
           stage_hard_fail_reason: _stageReport.hard_fail_reason,
@@ -4294,23 +6121,29 @@ async function processJob(input: any) {
           dsm_tile_bounds_lat_lng: _dsmBoundsLL,
           dsm_size_px: _dsmSizePx,
           geo_to_dsm_transform: _transformPkg.geo_to_dsm_transform,
-          confirmed_roof_center_dsm_px: _transformPkg.confirmed_roof_center_dsm_px,
-          dsm_tile_bounds_contain_confirmed_center: _transformPkg.dsm_tile_bounds_contain_confirmed_center,
+          confirmed_roof_center_dsm_px:
+            _transformPkg.confirmed_roof_center_dsm_px,
+          dsm_tile_bounds_contain_confirmed_center:
+            _transformPkg.dsm_tile_bounds_contain_confirmed_center,
           dsm_to_raster_transform: _transformPkg.dsm_to_raster_transform,
           // Candidate hoist
           selected_candidate_polygon_px: _candidatePolygonPx,
           selected_candidate_polygon_geo: _hoist.selected_candidate_polygon_geo,
-          selected_candidate_polygon_point_count: _hoist.selected_candidate_polygon_point_count,
+          selected_candidate_polygon_point_count:
+            _hoist.selected_candidate_polygon_point_count,
           candidate_coordinate_space: _hoist.candidate_coordinate_space,
           candidate_source: _hoist.candidate_source,
           candidate_area_sqft: _hoist.candidate_area_sqft,
           candidate_centroid_px: _hoist.candidate_centroid_px,
           candidate_hoist_origin: _hoist.candidate_hoist_origin,
           candidate_centroid_offset_threshold_px: _centroidThresholdPx,
-          center_used_for_candidate_check: _stageReport.coordinate_space_audit.center_used_for_candidate_check,
-          confirmed_center_inside_candidate: _stageReport.candidate_proof.confirmed_center_inside_candidate,
+          center_used_for_candidate_check:
+            _stageReport.coordinate_space_audit.center_used_for_candidate_check,
+          confirmed_center_inside_candidate:
+            _stageReport.candidate_proof.confirmed_center_inside_candidate,
           candidate_centroid_offset_from_confirmed_center_px:
-            _stageReport.candidate_proof.candidate_centroid_offset_from_confirmed_center_px,
+            _stageReport.candidate_proof
+              .candidate_centroid_offset_from_confirmed_center_px,
         };
 
         const debugPayload = {
@@ -4340,19 +6173,44 @@ async function processJob(input: any) {
           raster_url: imageUrl,
           raster_size: { width: raster.width, height: raster.height },
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Footprint validation failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Footprint validation failed: ${failReason}`);
-        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          failReason,
+          debugPayload,
+          imageUrl,
+          actualMpp,
+        );
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          `Footprint validation failed: ${failReason}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          `Footprint validation failed: ${failReason}`,
+        );
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
         return;
       }
 
-
       // HARD BLOCK: if DSM completely unavailable (404 / no DataLayers), fail as no_dsm_coverage
       if (!dsmGrid && !maskedDSM) {
-        const dsmFailCode = dsmDiag?.failure_code || "google_solar_no_dsm_coverage";
-        const failReason = dsmFailCode === "google_solar_no_datalayers" ? "google_solar_no_dsm_coverage" : dsmFailCode;
-        console.error(`[DSM_AVAILABILITY_GATE] FAIL: No DSM data available — ${failReason}`, JSON.stringify(dsmDiag));
+        const dsmFailCode = dsmDiag?.failure_code ||
+          "google_solar_no_dsm_coverage";
+        const failReason = dsmFailCode === "google_solar_no_datalayers"
+          ? "google_solar_no_dsm_coverage"
+          : dsmFailCode;
+        console.error(
+          `[DSM_AVAILABILITY_GATE] FAIL: No DSM data available — ${failReason}`,
+          JSON.stringify(dsmDiag),
+        );
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -4364,10 +6222,30 @@ async function processJob(input: any) {
           dsm_diagnostics: dsmDiag,
           hard_fail_reason: failReason,
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM data unavailable: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM data unavailable: ${failReason}`);
-        await supabase.from("ai_measurement_jobs").update({ needs_review: true, report_blocked: true, source_context: { gate_reason: failReason, debug: debugPayload } }).eq("id", input.ai_measurement_job_id);
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          failReason,
+          debugPayload,
+          imageUrl,
+          actualMpp,
+        );
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          `DSM data unavailable: ${failReason}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          `DSM data unavailable: ${failReason}`,
+        );
+        await supabase.from("ai_measurement_jobs").update({
+          needs_review: true,
+          report_blocked: true,
+          source_context: { gate_reason: failReason, debug: debugPayload },
+        }).eq("id", input.ai_measurement_job_id);
         return;
       }
 
@@ -4378,21 +6256,26 @@ async function processJob(input: any) {
       let phase3A5Diagnostics: any = null;
       let phase3A5Result: PerimeterRefinementResult | null = null;
       let footprintGeoForSolver: [number, number][] = footprintGeo;
-      let phase3A5SelectedSource: string = (perimeterTopologySnapshot?.perimeter_source ?? footprintSource) as string;
+      let phase3A5SelectedSource: string =
+        (perimeterTopologySnapshot?.perimeter_source ??
+          footprintSource) as string;
       try {
         const dsmForRefine: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
         if (dsmForRefine) {
           const dsmW = dsmForRefine.width as number;
           const dsmH = dsmForRefine.height as number;
-          const mppRefine = (dsmForRefine.resolution as number) || actualMpp || 0.1;
+          const mppRefine = (dsmForRefine.resolution as number) || actualMpp ||
+            0.1;
           // Project Layer-1 perimeter (geo) → DSM pixel space.
           const rawPerimDsmPx: [number, number][] = footprintGeo.map((g) => {
             const [px, py] = geoToPixel(g as any, dsmForRefine);
             return [px, py] as [number, number];
           });
           // Centroid in DSM px.
-          const cX = rawPerimDsmPx.reduce((s, p) => s + p[0], 0) / Math.max(1, rawPerimDsmPx.length);
-          const cY = rawPerimDsmPx.reduce((s, p) => s + p[1], 0) / Math.max(1, rawPerimDsmPx.length);
+          const cX = rawPerimDsmPx.reduce((s, p) => s + p[0], 0) /
+            Math.max(1, rawPerimDsmPx.length);
+          const cY = rawPerimDsmPx.reduce((s, p) => s + p[1], 0) /
+            Math.max(1, rawPerimDsmPx.length);
 
           // ── v1.5 — Aerial RGBA acquisition ───────────────────────────────
           // Resample the already-decoded Google/Mapbox satellite tile into
@@ -4404,7 +6287,10 @@ async function processJob(input: any) {
           let aerialRgba: Uint8ClampedArray | null = null;
           let aerialResampleLog: any = { attempted: false };
           try {
-            if (raster?.data && raster.width && raster.height && raster.data.length >= raster.width * raster.height * 3) {
+            if (
+              raster?.data && raster.width && raster.height &&
+              raster.data.length >= raster.width * raster.height * 3
+            ) {
               const tileW = raster.width as number;
               const tileH = raster.height as number;
               const tileChannels = raster.data.length / (tileW * tileH);
@@ -4416,15 +6302,21 @@ async function processJob(input: any) {
                 for (let dx = 0; dx < dsmW; dx++) {
                   const [glng, glat] = pixelToGeo(dx, dy, dsmForRefine);
                   const tilePx = lngLatToPx(
-                    glat, glng,
+                    glat,
+                    glng,
                     { lat: coords.lat, lng: coords.lng },
-                    tileW, tileH, actualMpp,
+                    tileW,
+                    tileH,
+                    actualMpp,
                   );
                   const tx = Math.round(tilePx.x);
                   const ty = Math.round(tilePx.y);
                   const oi = (dy * dsmW + dx) * 4;
                   if (tx < 0 || tx >= tileW || ty < 0 || ty >= tileH) {
-                    out[oi] = 0; out[oi + 1] = 0; out[oi + 2] = 0; out[oi + 3] = 0;
+                    out[oi] = 0;
+                    out[oi + 1] = 0;
+                    out[oi + 2] = 0;
+                    out[oi + 3] = 0;
                     oob++;
                     continue;
                   }
@@ -4447,50 +6339,64 @@ async function processJob(input: any) {
                 coverage_pct: Number((sampled / (dsmW * dsmH)).toFixed(3)),
               };
             } else {
-              aerialResampleLog = { attempted: false, reason: 'no_decoded_aerial_raster_available' };
+              aerialResampleLog = {
+                attempted: false,
+                reason: "no_decoded_aerial_raster_available",
+              };
             }
           } catch (err) {
             aerialRgba = null;
-            aerialResampleLog = { attempted: true, failed: true, error: (err as Error).message };
+            aerialResampleLog = {
+              attempted: true,
+              failed: true,
+              error: (err as Error).message,
+            };
           }
-          console.log('[PHASE3A5_AERIAL_RGBA]', JSON.stringify(aerialResampleLog));
+          console.log(
+            "[PHASE3A5_AERIAL_RGBA]",
+            JSON.stringify(aerialResampleLog),
+          );
 
           phase3A5Result = refineTrueOuterRoofPerimeter({
             raw_perimeter_px: rawPerimDsmPx,
             raw_perimeter_source: phase3A5SelectedSource,
             dsm_grid: (dsmForRefine.data as Float32Array) || null,
-            target_mask_grid: (roofMask?.data as Uint8Array) || (maskedDSM?.mask as Uint8Array) || null,
+            target_mask_grid: (roofMask?.data as Uint8Array) ||
+              (maskedDSM?.mask as Uint8Array) || null,
             width: dsmW,
             height: dsmH,
             meters_per_pixel: mppRefine,
             rgba: aerialRgba,
             solar_segment_masks_px: null,
             roof_centroid_px: [cX, cY],
-            benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft
-              ?? (benchmarkForPerimeter as any)?.area_sqft
-              ?? null,
+            benchmark_area_sqft: perimeterPhase0Snapshot?.benchmark_area_sqft ??
+              (benchmarkForPerimeter as any)?.area_sqft ??
+              null,
             user_verified_perimeter: !!input.user_verified_perimeter,
           });
-          (phase3A5Result.diagnostics as any).aerial_rgba_resample = aerialResampleLog;
+          (phase3A5Result.diagnostics as any).aerial_rgba_resample =
+            aerialResampleLog;
           phase3A5Diagnostics = {
             ...phase3A5Result.diagnostics,
             enabled: true,
-            version: phase3A5Result.diagnostics.phase3A_5_perimeter_refinement_version ?? 'v1',
+            version: phase3A5Result.diagnostics
+              .phase3A_5_perimeter_refinement_version ?? "v1",
             executed: true,
             skipped_reason: null,
             phase3_5_perimeter_refinement_enabled: true,
-            refinement_iou: phase3A5Result.diagnostics.perimeter_vs_mask_iou ?? null,
+            refinement_iou: phase3A5Result.diagnostics.perimeter_vs_mask_iou ??
+              null,
             refined_perimeter_px: phase3A5Result.refined_perimeter_px,
           };
         } else {
           phase3A5Diagnostics = {
-            phase3A_5_perimeter_refinement_version: 'v1',
+            phase3A_5_perimeter_refinement_version: "v1",
             enabled: true,
-            version: 'v1',
+            version: "v1",
             executed: false,
-            skipped_reason: 'no_dsm_grid_available_for_refinement',
+            skipped_reason: "no_dsm_grid_available_for_refinement",
             perimeter_refinement_passed: false,
-            perimeter_refinement_reason: 'no_dsm_grid_available_for_refinement',
+            perimeter_refinement_reason: "no_dsm_grid_available_for_refinement",
             refinement_iou: null,
             perimeter_to_target_mask_ratio: null,
             refined_perimeter_vertex_count: 0,
@@ -4498,15 +6404,20 @@ async function processJob(input: any) {
           };
         }
       } catch (e) {
-        console.error('[PHASE3A5] refineTrueOuterRoofPerimeter threw:', (e as Error).message);
+        console.error(
+          "[PHASE3A5] refineTrueOuterRoofPerimeter threw:",
+          (e as Error).message,
+        );
         phase3A5Diagnostics = {
-          phase3A_5_perimeter_refinement_version: 'v1',
+          phase3A_5_perimeter_refinement_version: "v1",
           enabled: true,
-          version: 'v1',
+          version: "v1",
           executed: false,
           skipped_reason: `refinement_exception: ${(e as Error).message}`,
           perimeter_refinement_passed: false,
-          perimeter_refinement_reason: `refinement_exception: ${(e as Error).message}`,
+          perimeter_refinement_reason: `refinement_exception: ${
+            (e as Error).message
+          }`,
           refinement_iou: null,
           perimeter_to_target_mask_ratio: null,
           refined_perimeter_vertex_count: 0,
@@ -4515,20 +6426,30 @@ async function processJob(input: any) {
       }
 
       // HARD GATE: only fail if refinement failed AND no provisional raw fallback is ready.
-      const provisionalReady = !!(phase3A5Diagnostics as any)?.provisional_perimeter_ready;
-      const fallbackUsed = (phase3A5Diagnostics as any)?.refinement_fallback_used ?? null;
-      const selectedPerimeterLabel = (phase3A5Diagnostics as any)?.selected_perimeter_after_refinement ?? null;
-      const refinementRejected = !!(phase3A5Diagnostics as any)?.refinement_rejected;
+      const provisionalReady = !!(phase3A5Diagnostics as any)
+        ?.provisional_perimeter_ready;
+      const fallbackUsed =
+        (phase3A5Diagnostics as any)?.refinement_fallback_used ?? null;
+      const selectedPerimeterLabel =
+        (phase3A5Diagnostics as any)?.selected_perimeter_after_refinement ??
+          null;
+      const refinementRejected = !!(phase3A5Diagnostics as any)
+        ?.refinement_rejected;
 
       if (phase3A5Result && !phase3A5Result.passed && !provisionalReady) {
-        const failReason = phase3A5Result.hard_fail_reason || 'perimeter_refinement_failed';
-        console.error(`[PHASE3A5_GATE] FAIL: ${failReason}`,
-          JSON.stringify({ iou: phase3A5Diagnostics?.perimeter_vs_mask_iou,
-                           ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio,
-                           confidence: phase3A5Diagnostics?.perimeter_confidence,
-                           refinement_rejected: refinementRejected,
-                           fallback_used: fallbackUsed,
-                           selected: selectedPerimeterLabel }));
+        const failReason = phase3A5Result.hard_fail_reason ||
+          "perimeter_refinement_failed";
+        console.error(
+          `[PHASE3A5_GATE] FAIL: ${failReason}`,
+          JSON.stringify({
+            iou: phase3A5Diagnostics?.perimeter_vs_mask_iou,
+            ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio,
+            confidence: phase3A5Diagnostics?.perimeter_confidence,
+            refinement_rejected: refinementRejected,
+            fallback_used: fallbackUsed,
+            selected: selectedPerimeterLabel,
+          }),
+        );
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
@@ -4545,28 +6466,54 @@ async function processJob(input: any) {
           refinement_fallback_used: fallbackUsed,
           selected_perimeter_after_refinement: selectedPerimeterLabel,
           refinement_iou: phase3A5Diagnostics?.perimeter_vs_mask_iou ?? null,
-          perimeter_to_target_mask_ratio: phase3A5Diagnostics?.perimeter_to_target_mask_ratio ?? null,
-          tree_shadow_exclusion_regions: phase3A5Diagnostics?.tree_shadow_exclusion_regions ?? [],
-          patio_screen_exclusion_regions: phase3A5Diagnostics?.patio_screen_exclusion_regions ?? [],
+          perimeter_to_target_mask_ratio:
+            phase3A5Diagnostics?.perimeter_to_target_mask_ratio ?? null,
+          tree_shadow_exclusion_regions:
+            phase3A5Diagnostics?.tree_shadow_exclusion_regions ?? [],
+          patio_screen_exclusion_regions:
+            phase3A5Diagnostics?.patio_screen_exclusion_regions ?? [],
           refinement_diagnostics: phase3A5Diagnostics,
           hard_fail_reason: failReason,
-          block_customer_report_reason: 'perimeter_shape_not_accurate',
+          block_customer_report_reason: "perimeter_shape_not_accurate",
           customer_report_ready: false,
-          failure_stage: 'perimeter',
-          result_state: 'ai_failed_perimeter',
-          diagram_render_intent: 'rejected_only',
+          failure_stage: "perimeter",
+          result_state: "ai_failed_perimeter",
+          diagram_render_intent: "rejected_only",
           perimeter_phase0: perimeterPhase0Snapshot,
           perimeter_topology: perimeterTopologySnapshot,
         };
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, debugPayload, imageUrl, actualMpp);
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `Phase 3A.5 perimeter refinement failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `Phase 3A.5 perimeter refinement failed: ${failReason}`);
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          failReason,
+          debugPayload,
+          imageUrl,
+          actualMpp,
+        );
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          `Phase 3A.5 perimeter refinement failed: ${failReason}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          `Phase 3A.5 perimeter refinement failed: ${failReason}`,
+        );
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
-          result_state: normalizeResultStateForWrite('ai_failed_perimeter', debugPayload),
+          result_state: normalizeResultStateForWrite(
+            "ai_failed_perimeter",
+            debugPayload,
+          ),
           hard_fail_reason: failReason,
-          source_context: { gate_reason: failReason, hard_fail_reason: failReason, debug: debugPayload },
+          source_context: {
+            gate_reason: failReason,
+            hard_fail_reason: failReason,
+            debug: debugPayload,
+          },
         }).eq("id", input.ai_measurement_job_id);
 
         return;
@@ -4574,32 +6521,53 @@ async function processJob(input: any) {
 
       // GATE PASSED (or refinement rejected with provisional raw fallback).
       // Project the selected perimeter back to geo for the solver.
-      if (phase3A5Result && phase3A5Result.refined_perimeter_px.length >= 4 &&
-          (phase3A5Result.passed || provisionalReady)) {
+      if (
+        phase3A5Result && phase3A5Result.refined_perimeter_px.length >= 4 &&
+        (phase3A5Result.passed || provisionalReady)
+      ) {
         const dsmRef: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
         if (dsmRef) {
           const b = dsmRef.bounds;
-          const selectedGeo: [number, number][] = phase3A5Result.refined_perimeter_px.map(([px, py]) => {
-            const lng = b.minLng + (px / dsmRef.width) * (b.maxLng - b.minLng);
-            const lat = b.maxLat - (py / dsmRef.height) * (b.maxLat - b.minLat);
-            return [lng, lat] as [number, number];
-          });
+          const selectedGeo: [number, number][] = phase3A5Result
+            .refined_perimeter_px.map(([px, py]) => {
+              const lng = b.minLng +
+                (px / dsmRef.width) * (b.maxLng - b.minLng);
+              const lat = b.maxLat -
+                (py / dsmRef.height) * (b.maxLat - b.minLat);
+              return [lng, lat] as [number, number];
+            });
           if (selectedGeo.length >= 4) {
             footprintGeoForSolver = selectedGeo;
             // Label source honestly based on what was selected.
-            if (fallbackUsed === 'raw_perimeter' || selectedPerimeterLabel === 'raw_perimeter') {
-              phase3A5SelectedSource = 'raw_perimeter_after_destructive_refinement_rejected';
-              console.log(`[PHASE3A5_GATE] PROVISIONAL: refinement rejected (${(phase3A5Diagnostics as any)?.refinement_rejection_reason}); falling back to raw perimeter (${selectedGeo.length} verts, rawIoU=${(phase3A5Diagnostics as any)?.raw_iou_vs_target})`);
+            if (
+              fallbackUsed === "raw_perimeter" ||
+              selectedPerimeterLabel === "raw_perimeter"
+            ) {
+              phase3A5SelectedSource =
+                "raw_perimeter_after_destructive_refinement_rejected";
+              console.log(
+                `[PHASE3A5_GATE] PROVISIONAL: refinement rejected (${
+                  (phase3A5Diagnostics as any)?.refinement_rejection_reason
+                }); falling back to raw perimeter (${selectedGeo.length} verts, rawIoU=${
+                  (phase3A5Diagnostics as any)?.raw_iou_vs_target
+                })`,
+              );
             } else {
-              phase3A5SelectedSource = 'refined_true_outer_roof_perimeter';
-              console.log(`[PHASE3A5_GATE] PASS: replacing solver perimeter with refined (${selectedGeo.length} verts, iou=${phase3A5Diagnostics?.perimeter_vs_mask_iou}, ratio=${phase3A5Diagnostics?.perimeter_to_target_mask_ratio})`);
+              phase3A5SelectedSource = "refined_true_outer_roof_perimeter";
+              console.log(
+                `[PHASE3A5_GATE] PASS: replacing solver perimeter with refined (${selectedGeo.length} verts, iou=${phase3A5Diagnostics?.perimeter_vs_mask_iou}, ratio=${phase3A5Diagnostics?.perimeter_to_target_mask_ratio})`,
+              );
             }
           }
         }
       }
 
-
-      const perimeterEdges = footprintGeoForSolver.map((p, i) => [p, footprintGeoForSolver[(i + 1) % footprintGeoForSolver.length]] as [[number, number], [number, number]]);
+      const perimeterEdges = footprintGeoForSolver.map((p, i) =>
+        [p, footprintGeoForSolver[(i + 1) % footprintGeoForSolver.length]] as [
+          [number, number],
+          [number, number],
+        ]
+      );
       const graphInput: AutonomousGraphInput = {
         lat: coords.lat,
         lng: coords.lng,
@@ -4615,28 +6583,36 @@ async function processJob(input: any) {
       const graph = solveAutonomousGraph(graphInput);
       const phase3CBlock = buildPhase3CBlock(graph.logs || {});
       const phase3DBlock = buildPhase3DBlock(graph.logs || {});
-      const phase3EBlock = buildPhase3EBlock(graph.constraint_solver?.diagnostics || graph.logs || {});
+      const phase3EBlock = buildPhase3EBlock(
+        graph.constraint_solver?.diagnostics || graph.logs || {},
+      );
       const complexity = detectComplexRoof(solarSegments, footprintGeo);
       // Faces with valid plane fits should contribute to totals even if edge classification issues remain
-      const graphValidated = graph.validation_status === "validated" || 
+      const graphValidated = graph.validation_status === "validated" ||
         (graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5);
       const attemptedRidgeLf = Number(graph.totals?.ridge_ft || 0);
       const attemptedHipLf = Number(graph.totals?.hip_ft || 0);
       const attemptedValleyLf = Number(graph.totals?.valley_ft || 0);
-      const attemptedAreaTotal = Number(graph.logs?.attempted_area_total || graph.totals?.total_roof_area_sqft || 0);
+      const attemptedAreaTotal = Number(
+        graph.logs?.attempted_area_total ||
+          graph.totals?.total_roof_area_sqft || 0,
+      );
       autonomousDebug = {
         topology_source: REQUIRED_TOPOLOGY_SOURCE,
         facet_source: graph.facet_source || "dsm_planar_graph_faces",
         solver_version: "autonomous_graph_solver_v3_prune_first",
-        failure_category: graph.failure_category || 'validated',
+        failure_category: graph.failure_category || "validated",
         dominant_rejection: graph.dominant_rejection || null,
         fallback_used: false,
-        hard_fail_reason: graph.validation_status === "validated" ? null : graph.validation_status,
-         coordinate_space_input: "geo_from_selected_footprint",
-         coordinate_space_solver: graph.coordinate_space_solver || "geo",
-         coordinate_space_output: graph.coordinate_space_export || "geo",
-         coordinate_space_solver_internal: graph.coordinate_space_solver || "geo",
-         coordinate_space_renderer: "satellite_px",
+        hard_fail_reason: graph.validation_status === "validated"
+          ? null
+          : graph.validation_status,
+        coordinate_space_input: "geo_from_selected_footprint",
+        coordinate_space_solver: graph.coordinate_space_solver || "geo",
+        coordinate_space_output: graph.coordinate_space_export || "geo",
+        coordinate_space_solver_internal: graph.coordinate_space_solver ||
+          "geo",
+        coordinate_space_renderer: "satellite_px",
         dsm_pixel_transform_valid: Boolean(dsmCoordinateMatch),
         geo_to_dsm_px_success: Boolean(dsmCoordinateMatch),
         footprint_source: footprintSource,
@@ -4648,17 +6624,20 @@ async function processJob(input: any) {
         dsm_edge_coordinate_space: "pixel",
         coordinate_space_match: true,
         dsm_coordinate_match: dsmCoordinateMatchDebug,
-        footprint_px: footprint.map(p => [p.x, p.y]),
+        footprint_px: footprint.map((p) => [p.x, p.y]),
         dsm_loaded: !!dsmGrid,
         mask_loaded: !!roofMask,
         // v13: registration gate results
-        footprint_registration_passed: selected?.footprint_registration_passed ?? null,
+        footprint_registration_passed:
+          selected?.footprint_registration_passed ?? null,
         centroid_offset_px: selected?.centroid_offset_px ?? null,
         roof_image_overlap_score: selected?.roof_image_overlap_score ?? null,
         visible_roof_bbox_px: visibleRoofBboxPx,
         registration_gate: registrationDebug,
-        dsm_edges_detected: graph.logs?.dsm_edges_detected ?? ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
-        dsm_edges_accepted: graph.logs?.dsm_edges_accepted ?? (graph.logs?.fused_edges || 0),
+        dsm_edges_detected: graph.logs?.dsm_edges_detected ??
+          ((graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0)),
+        dsm_edges_accepted: graph.logs?.dsm_edges_accepted ??
+          (graph.logs?.fused_edges || 0),
         raw_edges: graph.logs?.dsm_edges_detected ?? 0,
         accepted_edges: graph.logs?.dsm_edges_accepted ?? 0,
         clustered_edges: graph.logs?.edge_count_after_cluster ?? 0,
@@ -4669,9 +6648,11 @@ async function processJob(input: any) {
         dangling_edges_removed: graph.logs?.dangling_edges_removed ?? 0,
         faces_extracted: graph.logs?.faces_extracted ?? graph.faces.length,
         faces_attempted: graph.logs?.faces_extracted ?? graph.faces.length,
-        faces_rejected: (graph.logs?.faces_rejected_by_plane_fit || 0) + (graph.logs?.faces_rejected_by_area || 0),
+        faces_rejected: (graph.logs?.faces_rejected_by_plane_fit || 0) +
+          (graph.logs?.faces_rejected_by_area || 0),
         rejection_reasons: graph.failure_reason ? [graph.failure_reason] : [],
-        attempted_faces: graph.logs?.attempted_face_count ?? graph.logs?.faces_extracted ?? graph.faces.length,
+        attempted_faces: graph.logs?.attempted_face_count ??
+          graph.logs?.faces_extracted ?? graph.faces.length,
         attempted_edges: graph.logs?.attempted_edge_count ?? graph.edges.length,
         attempted_area_total: Math.round(attemptedAreaTotal),
         attempted_ridge_lf: Number(attemptedRidgeLf.toFixed(2)),
@@ -4679,21 +6660,36 @@ async function processJob(input: any) {
         attempted_valley_lf: Number(attemptedValleyLf.toFixed(2)),
         validated_faces: graphValidated ? graph.faces.length : 0,
         validated_edges: graphValidated ? graph.edges.length : 0,
-        validated_ridge_lf: graphValidated ? Number(attemptedRidgeLf.toFixed(2)) : 0,
-        validated_hip_lf: graphValidated ? Number(attemptedHipLf.toFixed(2)) : 0,
-        validated_valley_lf: graphValidated ? Number(attemptedValleyLf.toFixed(2)) : 0,
-        face_rejection_table: graph.face_rejection_table || graph.logs?.face_rejection_table || [],
+        validated_ridge_lf: graphValidated
+          ? Number(attemptedRidgeLf.toFixed(2))
+          : 0,
+        validated_hip_lf: graphValidated
+          ? Number(attemptedHipLf.toFixed(2))
+          : 0,
+        validated_valley_lf: graphValidated
+          ? Number(attemptedValleyLf.toFixed(2))
+          : 0,
+        face_rejection_table: graph.face_rejection_table ||
+          graph.logs?.face_rejection_table || [],
         enriched_face_rejections: graph.enriched_face_rejections || [],
         edge_rejection_summary: graph.edge_rejection_summary || null,
         face_clipping_diagnostics: graph.face_clipping_diagnostics || [],
-        bbox_rescue_used_for_display_only: graph.bbox_rescue_used_for_display_only ?? false,
-        bbox_rescue_used_in_validation: graph.bbox_rescue_used_in_validation ?? false,
-        edge_filter_over_aggressive: graph.edge_rejection_summary?.edge_filter_over_aggressive ?? false,
-        edge_acceptance_ratio: graph.edge_rejection_summary?.acceptance_ratio ?? null,
-        edge_classification_debug: graph.logs?.edge_classification_debug || null,
-        valid_faces: graphValidated ? (graph.logs?.valid_faces ?? graph.faces.length) : 0,
+        bbox_rescue_used_for_display_only:
+          graph.bbox_rescue_used_for_display_only ?? false,
+        bbox_rescue_used_in_validation: graph.bbox_rescue_used_in_validation ??
+          false,
+        edge_filter_over_aggressive:
+          graph.edge_rejection_summary?.edge_filter_over_aggressive ?? false,
+        edge_acceptance_ratio: graph.edge_rejection_summary?.acceptance_ratio ??
+          null,
+        edge_classification_debug: graph.logs?.edge_classification_debug ||
+          null,
+        valid_faces: graphValidated
+          ? (graph.logs?.valid_faces ?? graph.faces.length)
+          : 0,
         face_coverage_ratio: graph.face_coverage_ratio,
-        edge_filter_count_before: (graph.logs?.dsm_ridges || 0) + (graph.logs?.dsm_valleys || 0),
+        edge_filter_count_before: (graph.logs?.dsm_ridges || 0) +
+          (graph.logs?.dsm_valleys || 0),
         edge_filter_count_after: graph.logs?.fused_edges || 0,
         snapped_vertex_count: graph.vertices.length,
         rejected_fake_intersections: graph.logs?.pruned_by_intersection || 0,
@@ -4706,7 +6702,7 @@ async function processJob(input: any) {
         status: graph.validation_status,
         complexity,
         // Debug overlay data: rejected edges and graph vertices in geo coords
-        rejected_edges_geo: (graph.rejected_edges || []).map(e => ({
+        rejected_edges_geo: (graph.rejected_edges || []).map((e) => ({
           start: e.start,
           end: e.end,
           score: e.score,
@@ -4715,57 +6711,84 @@ async function processJob(input: any) {
           length_ft: e.length_ft,
           rejection_stage: e.rejection_stage,
         })),
-        rejected_edges_dsm_px: effectiveDSMForMatch ? (graph.rejected_edges || []).map(e => ({
-          start: geoToPixel(e.start, effectiveDSMForMatch),
-          end: geoToPixel(e.end, effectiveDSMForMatch),
-          score: e.score,
-          type: e.type,
-          reason: e.reason,
-        })) : [],
-        graph_vertices_geo: graph.vertices.map(v => ({
+        rejected_edges_dsm_px: effectiveDSMForMatch
+          ? (graph.rejected_edges || []).map((e) => ({
+            start: geoToPixel(e.start, effectiveDSMForMatch),
+            end: geoToPixel(e.end, effectiveDSMForMatch),
+            score: e.score,
+            type: e.type,
+            reason: e.reason,
+          }))
+          : [],
+        graph_vertices_geo: graph.vertices.map((v) => ({
           position: v.position,
           type: v.type,
         })),
-        graph_vertices_dsm_px: effectiveDSMForMatch ? graph.vertices.map(v => ({
-          position: geoToPixel(v.position, effectiveDSMForMatch),
-          type: v.type,
-        })) : [],
-        accepted_edges_geo: graph.edges.map(e => ({
+        graph_vertices_dsm_px: effectiveDSMForMatch
+          ? graph.vertices.map((v) => ({
+            position: geoToPixel(v.position, effectiveDSMForMatch),
+            type: v.type,
+          }))
+          : [],
+        accepted_edges_geo: graph.edges.map((e) => ({
           start: e.start,
           end: e.end,
           type: e.type,
           confidence: e.confidence.final_confidence,
           source: e.source,
         })),
-        accepted_edges_dsm_px: effectiveDSMForMatch ? graph.edges.map(e => ({
-          start: geoToPixel(e.start, effectiveDSMForMatch),
-          end: geoToPixel(e.end, effectiveDSMForMatch),
-          type: e.type,
-          confidence: e.confidence.final_confidence,
-          source: e.source,
-        })) : [],
+        accepted_edges_dsm_px: effectiveDSMForMatch
+          ? graph.edges.map((e) => ({
+            start: geoToPixel(e.start, effectiveDSMForMatch),
+            end: geoToPixel(e.end, effectiveDSMForMatch),
+            type: e.type,
+            confidence: e.confidence.final_confidence,
+            source: e.source,
+          }))
+          : [],
         // ── PERIMETER PHASE 0 ──
-        perimeter_phase0: perimeterPhase0Snapshot || graph.perimeter_diagnostics || null,
-        perimeter_gate_passed: perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed ?? null,
-        perimeter_ready: (perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed) ? true : false,
-        perimeter_source: perimeterTopologySnapshot?.perimeter_source ?? graph.perimeter_topology?.perimeter_source ?? null,
-        perimeter_eave_ft: perimeterPhase0Snapshot?.eave_length_lf ?? graph.perimeter_gate?.diagnostics?.eave_length_lf ?? null,
-        perimeter_rake_ft: perimeterPhase0Snapshot?.rake_length_lf ?? graph.perimeter_gate?.diagnostics?.rake_length_lf ?? null,
-        perimeter_total_ft: perimeterPhase0Snapshot?.total_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? null,
-        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ?? graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? null,
-        perimeter_area_sqft: perimeterTopologySnapshot?.perimeter_area_sqft ?? perimeterPhase0Snapshot?.perimeter_area_sqft ?? graph.perimeter_topology?.perimeter_area_sqft ?? null,
-        perimeter_failure_reasons: perimeterGateSnapshot?.failure_reasons ?? graph.perimeter_gate?.failure_reasons ?? [],
-        phase3_5: phase3A5Diagnostics ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics }) : buildPhase3A5Block(null),
-        phase3A_5: phase3A5Diagnostics ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics }) : buildPhase3A5Block(null),
+        perimeter_phase0: perimeterPhase0Snapshot ||
+          graph.perimeter_diagnostics || null,
+        perimeter_gate_passed: perimeterGateSnapshot?.passed ??
+          graph.perimeter_gate?.passed ?? null,
+        perimeter_ready:
+          (perimeterGateSnapshot?.passed ?? graph.perimeter_gate?.passed)
+            ? true
+            : false,
+        perimeter_source: perimeterTopologySnapshot?.perimeter_source ??
+          graph.perimeter_topology?.perimeter_source ?? null,
+        perimeter_eave_ft: perimeterPhase0Snapshot?.eave_length_lf ??
+          graph.perimeter_gate?.diagnostics?.eave_length_lf ?? null,
+        perimeter_rake_ft: perimeterPhase0Snapshot?.rake_length_lf ??
+          graph.perimeter_gate?.diagnostics?.rake_length_lf ?? null,
+        perimeter_total_ft: perimeterPhase0Snapshot?.total_perimeter_lf ??
+          graph.perimeter_gate?.diagnostics?.total_perimeter_lf ?? null,
+        unknown_perimeter_lf: perimeterPhase0Snapshot?.unknown_perimeter_lf ??
+          graph.perimeter_gate?.diagnostics?.unknown_perimeter_lf ?? null,
+        perimeter_area_sqft: perimeterTopologySnapshot?.perimeter_area_sqft ??
+          perimeterPhase0Snapshot?.perimeter_area_sqft ??
+          graph.perimeter_topology?.perimeter_area_sqft ?? null,
+        perimeter_failure_reasons: perimeterGateSnapshot?.failure_reasons ??
+          graph.perimeter_gate?.failure_reasons ?? [],
+        phase3_5: phase3A5Diagnostics
+          ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics })
+          : buildPhase3A5Block(null),
+        phase3A_5: phase3A5Diagnostics
+          ? buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics })
+          : buildPhase3A5Block(null),
         phase3C: phase3CBlock,
         phase3D: phase3DBlock,
         phase3E: phase3EBlock,
-        phase3C_deferred_edges_version: 'v1',
-        phase3D_backbone_seed_version: 'v1',
-        phase3E_constraint_repair_version: 'v1',
-        target_mask_isolation: { ...targetMaskIsolation, target_mask_grid: undefined },
+        phase3C_deferred_edges_version: "v1",
+        phase3D_backbone_seed_version: "v1",
+        phase3E_constraint_repair_version: "v1",
+        target_mask_isolation: {
+          ...targetMaskIsolation,
+          target_mask_grid: undefined,
+        },
         // Full perimeter topology object (used for DB persistence: true_outer_roof_perimeter_*, eave_edges, rake_edges, corners)
-        perimeter_topology: perimeterTopologySnapshot ?? graph.perimeter_topology ?? null,
+        perimeter_topology: perimeterTopologySnapshot ??
+          graph.perimeter_topology ?? null,
       };
 
       // ═══════════════════════════════════════════════════════════════
@@ -4776,12 +6799,16 @@ async function processJob(input: any) {
       autonomousDebug.topology_fidelity = topologyFidelity;
       // Phase 3A.5 visibility — surface refinement diagnostics on the solver debug bag.
       if (phase3A5Diagnostics) {
-        autonomousDebug.phase3_5 = buildPhase3A5Block({ phase3A_5: phase3A5Diagnostics });
+        autonomousDebug.phase3_5 = buildPhase3A5Block({
+          phase3A_5: phase3A5Diagnostics,
+        });
         autonomousDebug.phase3A_5 = autonomousDebug.phase3_5;
         autonomousDebug.phase3_5_perimeter_refinement_enabled = true;
         autonomousDebug.refinement_passed = phase3A5Result?.passed ?? false;
-        autonomousDebug.refinement_iou = phase3A5Diagnostics.perimeter_vs_mask_iou ?? null;
-        autonomousDebug.perimeter_to_target_mask_ratio = phase3A5Diagnostics.perimeter_to_target_mask_ratio ?? null;
+        autonomousDebug.refinement_iou =
+          phase3A5Diagnostics.perimeter_vs_mask_iou ?? null;
+        autonomousDebug.perimeter_to_target_mask_ratio =
+          phase3A5Diagnostics.perimeter_to_target_mask_ratio ?? null;
         autonomousDebug.selected_perimeter_source = phase3A5SelectedSource;
       }
       // v19: Constraint solver diagnostics
@@ -4795,44 +6822,65 @@ async function processJob(input: any) {
           diagnostics: graph.constraint_solver.diagnostics,
         };
       }
-      console.log("[TOPOLOGY_FIDELITY]", JSON.stringify({
-        fidelity: topologyFidelity.topology_fidelity,
-        score: topologyFidelity.topology_fidelity_score,
-        facets: topologyFidelity.facet_count,
-        expected_min: topologyFidelity.expected_min_facets,
-        deficit: topologyFidelity.facet_deficit,
-        valley_to_ridge: topologyFidelity.valley_to_ridge_ratio,
-        ridge_to_eave: topologyFidelity.ridge_to_eave_ratio,
-        fan_collapse: topologyFidelity.fan_collapse_suspected,
-        central_node_deg: topologyFidelity.central_node_degree,
-        cross_roof_diags: topologyFidelity.diagonal_cross_roof_count,
-        dominant_plane: topologyFidelity.dominant_plane_ratio,
-        pitch_uniformity: topologyFidelity.pitch_uniformity_score,
-        issues: topologyFidelity.topology_issues,
-      }));
+      console.log(
+        "[TOPOLOGY_FIDELITY]",
+        JSON.stringify({
+          fidelity: topologyFidelity.topology_fidelity,
+          score: topologyFidelity.topology_fidelity_score,
+          facets: topologyFidelity.facet_count,
+          expected_min: topologyFidelity.expected_min_facets,
+          deficit: topologyFidelity.facet_deficit,
+          valley_to_ridge: topologyFidelity.valley_to_ridge_ratio,
+          ridge_to_eave: topologyFidelity.ridge_to_eave_ratio,
+          fan_collapse: topologyFidelity.fan_collapse_suspected,
+          central_node_deg: topologyFidelity.central_node_degree,
+          cross_roof_diags: topologyFidelity.diagonal_cross_roof_count,
+          dominant_plane: topologyFidelity.dominant_plane_ratio,
+          pitch_uniformity: topologyFidelity.pitch_uniformity_score,
+          issues: topologyFidelity.topology_issues,
+        }),
+      );
 
       // Failure waterfall — decoupled from edge classification when faces are validated
-      const hasValidFaces = graph.faces.length >= 2 && graph.face_coverage_ratio >= 0.5;
+      const hasValidFaces = graph.faces.length >= 2 &&
+        graph.face_coverage_ratio >= 0.5;
       // Post-solver sanity: if area is large but facets are too few, the footprint
       // likely included non-roof area (yard/trees) that merged into a single plane.
       const postSolverAreaSqft = graph.totals?.total_plan_area_sqft || 0;
-      const tooFewFacetsForArea = graph.faces.length < MIN_FACETS_FOR_LARGE_ROOF && postSolverAreaSqft > 3000;
+      const tooFewFacetsForArea =
+        graph.faces.length < MIN_FACETS_FOR_LARGE_ROOF &&
+        postSolverAreaSqft > 3000;
       const failReason = tooFewFacetsForArea
-        ? `invalid_roof_footprint:${graph.faces.length}_facets_for_${Math.round(postSolverAreaSqft)}sqft`
+        ? `invalid_roof_footprint:${graph.faces.length}_facets_for_${
+          Math.round(postSolverAreaSqft)
+        }sqft`
         : !hasValidFaces && graph.validation_status !== "validated"
-        ? (graph.faces.length > 0 ? "faces_extracted_but_rejected" : graph.validation_status)
+        ? (graph.faces.length > 0
+          ? "faces_extracted_but_rejected"
+          : graph.validation_status)
         : !hasValidFaces && complexity.isComplex && graph.faces.length <= 4
-          ? "ai_failed_complex_topology"
-          : graph.totals.ridge_ft === 0 && graph.faces.length >= 4 && complexity.isComplex
-            ? "ridge_network_missing"
-            : graph.totals.ridge_ft === 0 && graph.totals.valley_ft === 0 && graph.totals.hip_ft > 50 && complexity.isComplex
-              ? "invalid_edge_classification"
-              : null;
+        ? "ai_failed_complex_topology"
+        : graph.totals.ridge_ft === 0 && graph.faces.length >= 4 &&
+            complexity.isComplex
+        ? "ridge_network_missing"
+        : graph.totals.ridge_ft === 0 && graph.totals.valley_ft === 0 &&
+            graph.totals.hip_ft > 50 && complexity.isComplex
+        ? "invalid_edge_classification"
+        : null;
       if (failReason) {
         autonomousDebug.hard_fail_reason = failReason;
-        console.log(`[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`);
+        console.log(
+          `[AUTONOMOUS_DSM_GRAPH] DSM solver HARD FAIL (${failReason}). No legacy fallback.`,
+        );
         dsmFailReason = failReason;
-        const failedId = await insertFailedPreliminaryMeasurement(input, coords, failReason, autonomousDebug, imageUrl, actualMpp);
+        const failedId = await insertFailedPreliminaryMeasurement(
+          input,
+          coords,
+          failReason,
+          autonomousDebug,
+          imageUrl,
+          actualMpp,
+        );
 
         // ── ALWAYS-PERSIST DEBUG DIAGRAMS (Patent Parity Phase 2) ──
         // Even on hard failures, generate debug diagrams so internal report is viewable
@@ -4840,7 +6888,15 @@ async function processJob(input: any) {
           const failedPlanesPx = graph.faces.map((f: any, i: number) => ({
             plane_index: i + 1,
             polygon_px: f.polygon.map(([lng, lat]: [number, number]) =>
-              lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)),
+              lngLatToPx(
+                lat,
+                lng,
+                { lat: coords.lat, lng: coords.lng },
+                raster.width,
+                raster.height,
+                actualMpp,
+              )
+            ),
             pitch_degrees: f.pitch_degrees || 0,
             area_2d_sqft: f.plan_area_sqft || 0,
             area_pitch_adjusted_sqft: f.roof_area_sqft || 0,
@@ -4849,8 +6905,22 @@ async function processJob(input: any) {
           const failedEdgesPx = graph.edges.map((e: any) => ({
             edge_type: e.type,
             line_px: [
-              lngLatToPx(e.start[1], e.start[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
-              lngLatToPx(e.end[1], e.end[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+              lngLatToPx(
+                e.start[1],
+                e.start[0],
+                { lat: coords.lat, lng: coords.lng },
+                raster.width,
+                raster.height,
+                actualMpp,
+              ),
+              lngLatToPx(
+                e.end[1],
+                e.end[0],
+                { lat: coords.lat, lng: coords.lng },
+                raster.width,
+                raster.height,
+                actualMpp,
+              ),
             ],
             length_ft: e.length_ft || 0,
             confidence: e.confidence?.final_confidence || 0.3,
@@ -4870,9 +6940,13 @@ async function processJob(input: any) {
                 valley_length_ft: autonomousDebug.attempted_valley_lf || 0,
                 eave_length_ft: graph.totals?.eave_ft || 0,
                 rake_length_ft: graph.totals?.rake_ft || 0,
-                total_area_2d_sqft: graph.totals?.total_plan_area_sqft || autonomousDebug.attempted_area_total || 0,
-                total_area_pitch_adjusted_sqft: graph.totals?.total_roof_area_sqft || autonomousDebug.attempted_area_total || 0,
-                roof_square_count: (graph.totals?.total_roof_area_sqft || autonomousDebug.attempted_area_total || 0) / 100,
+                total_area_2d_sqft: graph.totals?.total_plan_area_sqft ||
+                  autonomousDebug.attempted_area_total || 0,
+                total_area_pitch_adjusted_sqft:
+                  graph.totals?.total_roof_area_sqft ||
+                  autonomousDebug.attempted_area_total || 0,
+                roof_square_count: (graph.totals?.total_roof_area_sqft ||
+                  autonomousDebug.attempted_area_total || 0) / 100,
                 waste_adjusted_squares: 0,
               },
               satelliteImageUrl: imageUrl,
@@ -4880,7 +6954,8 @@ async function processJob(input: any) {
               sourceImageHeight: raster.height,
               roofTargetBboxPx: null,
               overlayCalibration: null,
-              debugWatermarkText: "INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY",
+              debugWatermarkText:
+                "INTERNAL DEBUG — FAILED GEOMETRY — NOT CUSTOMER READY",
             });
             if (debugDiagrams.length > 0) {
               await supabase.from("ai_measurement_diagrams").insert(
@@ -4903,17 +6978,31 @@ async function processJob(input: any) {
                   render_version: "debug_failed_dsm_graph",
                   width: 850,
                   height: 1100,
-                }))
+                })),
               );
-              console.log(`[DEBUG_DIAGRAMS] Persisted ${debugDiagrams.length} debug diagrams for failed job`);
+              console.log(
+                `[DEBUG_DIAGRAMS] Persisted ${debugDiagrams.length} debug diagrams for failed job`,
+              );
             }
           }
         } catch (diagErr) {
-          console.warn("[DEBUG_DIAGRAMS] Failed to persist debug diagrams:", (diagErr as Error).message);
+          console.warn(
+            "[DEBUG_DIAGRAMS] Failed to persist debug diagrams:",
+            (diagErr as Error).message,
+          );
         }
 
-        await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${failReason}`, failedId);
-        await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${failReason}`);
+        await setMeasurementJobStatus(
+          input.measurement_job_id,
+          "failed",
+          `DSM graph failed: ${failReason}`,
+          failedId,
+        );
+        await setAiJobStatus(
+          input.ai_measurement_job_id,
+          "failed",
+          `DSM graph failed: ${failReason}`,
+        );
         await supabase.from("ai_measurement_jobs").update({
           needs_review: true,
           report_blocked: true,
@@ -4925,50 +7014,81 @@ async function processJob(input: any) {
         }).eq("id", input.ai_measurement_job_id);
         return;
       } else {
-
-      cleanPlanes = graph.faces.map((f, i) => ({
-        plane_index: i + 1,
-        polygon_px: f.polygon.map(([lng, lat]) => lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp)),
-        confidence: 0.9,
-        pitch: Math.tan((f.pitch_degrees * Math.PI) / 180) * 12,
-        pitch_degrees: f.pitch_degrees,
-        azimuth: f.azimuth_degrees,
-        source: REQUIRED_TOPOLOGY_SOURCE,
-      }));
-      cleanEdges = graph.edges.map((e) => ({
-        edge_type: e.type,
-        line_px: [
-          lngLatToPx(e.start[1], e.start[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
-          lngLatToPx(e.end[1], e.end[0], { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
-        ],
-        confidence: e.confidence.final_confidence,
-        source: REQUIRED_TOPOLOGY_SOURCE,
-      } as RoofEdge));
-      topologySource = REQUIRED_TOPOLOGY_SOURCE;
-      solverTopologyLocked = true;
-      constraintSolverEdges = [...cleanEdges];
-      ridgeSplitPlaneCount = cleanPlanes.length;
-      planeEdgeClassifierDebug = {
-        source: "dsm_planar_graph_faces",
-        classifier_skipped: true,
-        plane_count: cleanPlanes.length,
-        shared_edges: cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length,
-        exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length,
-        invalid_edges: 0,
-        counts: cleanEdges.reduce((acc: Record<string, number>, edge) => {
-          acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
-          return acc;
-        }, {}),
-      };
-      strictEdgeGraphDebug = {
-        total_edges: cleanEdges.length,
-        shared_edges: planeEdgeClassifierDebug.shared_edges,
-        exterior_edges: planeEdgeClassifierDebug.exterior_edges,
-        invalid_edges: 0,
-      };
-      (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
-      (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
-      console.log("[AUTONOMOUS_DSM_GRAPH] accepted", JSON.stringify(autonomousDebug));
+        cleanPlanes = graph.faces.map((f, i) => ({
+          plane_index: i + 1,
+          polygon_px: f.polygon.map(([lng, lat]) =>
+            lngLatToPx(
+              lat,
+              lng,
+              { lat: coords.lat, lng: coords.lng },
+              raster.width,
+              raster.height,
+              actualMpp,
+            )
+          ),
+          confidence: 0.9,
+          pitch: Math.tan((f.pitch_degrees * Math.PI) / 180) * 12,
+          pitch_degrees: f.pitch_degrees,
+          azimuth: f.azimuth_degrees,
+          source: REQUIRED_TOPOLOGY_SOURCE,
+        }));
+        cleanEdges = graph.edges.map((e) => ({
+          edge_type: e.type,
+          line_px: [
+            lngLatToPx(
+              e.start[1],
+              e.start[0],
+              { lat: coords.lat, lng: coords.lng },
+              raster.width,
+              raster.height,
+              actualMpp,
+            ),
+            lngLatToPx(
+              e.end[1],
+              e.end[0],
+              { lat: coords.lat, lng: coords.lng },
+              raster.width,
+              raster.height,
+              actualMpp,
+            ),
+          ],
+          confidence: e.confidence.final_confidence,
+          source: REQUIRED_TOPOLOGY_SOURCE,
+        } as RoofEdge));
+        topologySource = REQUIRED_TOPOLOGY_SOURCE;
+        solverTopologyLocked = true;
+        constraintSolverEdges = [...cleanEdges];
+        ridgeSplitPlaneCount = cleanPlanes.length;
+        planeEdgeClassifierDebug = {
+          source: "dsm_planar_graph_faces",
+          classifier_skipped: true,
+          plane_count: cleanPlanes.length,
+          shared_edges: cleanEdges.filter((e) =>
+            e.edge_type === "ridge" || e.edge_type === "hip" ||
+            e.edge_type === "valley"
+          ).length,
+          exterior_edges: cleanEdges.filter((e) =>
+            e.edge_type === "eave" || e.edge_type === "rake"
+          ).length,
+          invalid_edges: 0,
+          counts: cleanEdges.reduce((acc: Record<string, number>, edge) => {
+            acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+            return acc;
+          }, {}),
+        };
+        strictEdgeGraphDebug = {
+          total_edges: cleanEdges.length,
+          shared_edges: planeEdgeClassifierDebug.shared_edges,
+          exterior_edges: planeEdgeClassifierDebug.exterior_edges,
+          invalid_edges: 0,
+        };
+        (globalThis as any).__planeEdgeClassifierDebug =
+          planeEdgeClassifierDebug;
+        (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
+        console.log(
+          "[AUTONOMOUS_DSM_GRAPH] accepted",
+          JSON.stringify(autonomousDebug),
+        );
       } // end else (DSM solver succeeded)
     }
 
@@ -4980,26 +7100,70 @@ async function processJob(input: any) {
           const cLat = Number(seg?.center?.latitude);
           const cLng = Number(seg?.center?.longitude);
           if (!Number.isFinite(cLat) || !Number.isFinite(cLng)) return null;
-          const center = lngLatToPx(cLat, cLng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const center = lngLatToPx(
+            cLat,
+            cLng,
+            { lat: coords.lat, lng: coords.lng },
+            raster.width,
+            raster.height,
+            actualMpp,
+          );
           const az = Number(seg?.azimuthDegrees);
           const pitchDeg = Number(seg?.pitchDegrees);
           return { idx, center, az, pitchDeg };
         })
-        .filter(Boolean) as Array<{ idx: number; center: Point; az: number; pitchDeg: number }>;
+        .filter(Boolean) as Array<
+          { idx: number; center: Point; az: number; pitchDeg: number }
+        >;
       if (rawSegments.length < 2) return false;
-      const xs = rawSegments.map((s) => s.center.x), ys = rawSegments.map((s) => s.center.y);
-      const splitOnX = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
-      rawSegments.sort((a, b) => (splitOnX ? a.center.x - b.center.x : a.center.y - b.center.y));
+      const xs = rawSegments.map((s) => s.center.x),
+        ys = rawSegments.map((s) => s.center.y);
+      const splitOnX =
+        Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+      rawSegments.sort((
+        a,
+        b,
+      ) => (splitOnX ? a.center.x - b.center.x : a.center.y - b.center.y));
       const cuts = rawSegments.slice(0, -1).map((s, i) =>
-        ((splitOnX ? s.center.x : s.center.y) + (splitOnX ? rawSegments[i + 1].center.x : rawSegments[i + 1].center.y)) / 2,
+        ((splitOnX ? s.center.x : s.center.y) +
+          (splitOnX
+            ? rawSegments[i + 1].center.x
+            : rawSegments[i + 1].center.y)) / 2
       );
-      const bounds = [splitOnX ? bb.minX : bb.minY, ...cuts, splitOnX ? bb.maxX : bb.maxY];
+      const bounds = [
+        splitOnX ? bb.minX : bb.minY,
+        ...cuts,
+        splitOnX ? bb.maxX : bb.maxY,
+      ];
       const segments = rawSegments.map((seg, idx) => {
         const rect = splitOnX
-          ? { minX: bounds[idx], maxX: bounds[idx + 1], minY: bb.minY, maxY: bb.maxY }
-          : { minX: bb.minX, maxX: bb.maxX, minY: bounds[idx], maxY: bounds[idx + 1] };
-        const clipped = cleanPolygon(clipPolygonToRect(footprint, rect), raster.width, raster.height);
-        return clipped.length >= 3 ? { plane_index: idx + 1, polygon_px: clipped, confidence: 0.76, pitch_degrees: Number.isFinite(seg.pitchDeg) ? seg.pitchDeg : null, azimuth: Number.isFinite(seg.az) ? seg.az : null, source: "google_solar_segment_planes" } : null;
+          ? {
+            minX: bounds[idx],
+            maxX: bounds[idx + 1],
+            minY: bb.minY,
+            maxY: bb.maxY,
+          }
+          : {
+            minX: bb.minX,
+            maxX: bb.maxX,
+            minY: bounds[idx],
+            maxY: bounds[idx + 1],
+          };
+        const clipped = cleanPolygon(
+          clipPolygonToRect(footprint, rect),
+          raster.width,
+          raster.height,
+        );
+        return clipped.length >= 3
+          ? {
+            plane_index: idx + 1,
+            polygon_px: clipped,
+            confidence: 0.76,
+            pitch_degrees: Number.isFinite(seg.pitchDeg) ? seg.pitchDeg : null,
+            azimuth: Number.isFinite(seg.az) ? seg.az : null,
+            source: "google_solar_segment_planes",
+          }
+          : null;
       }).filter(Boolean) as RoofPlane[];
       if (segments.length < 2) return false;
       cleanPlanes = segments;
@@ -5008,7 +7172,15 @@ async function processJob(input: any) {
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI;
         const len = Math.min(bb.width, bb.height) * (0.35 - i * 0.04);
-        cleanEdges.push({ edge_type: i === 0 ? "ridge" : i === 1 ? "hip" : "valley", line_px: [{ x: cx - Math.cos(a) * len, y: cy - Math.sin(a) * len }, { x: cx + Math.cos(a) * len, y: cy + Math.sin(a) * len }], confidence: 0.68, source: "google_solar_segment_structure" });
+        cleanEdges.push({
+          edge_type: i === 0 ? "ridge" : i === 1 ? "hip" : "valley",
+          line_px: [{ x: cx - Math.cos(a) * len, y: cy - Math.sin(a) * len }, {
+            x: cx + Math.cos(a) * len,
+            y: cy + Math.sin(a) * len,
+          }],
+          confidence: 0.68,
+          source: "google_solar_segment_structure",
+        });
       }
       topologySource = "google_solar_segment_structure";
       return true;
@@ -5030,9 +7202,10 @@ async function processJob(input: any) {
 
     const lockSolverTopology = (solverUsed: string) => {
       solverTopologyLocked = true;
-      topologySource = solverUsed.includes("constraint") || solverUsed.includes("hybrid")
-        ? solverUsed
-        : `constraint_solver_topology:${solverUsed}`;
+      topologySource =
+        solverUsed.includes("constraint") || solverUsed.includes("hybrid")
+          ? solverUsed
+          : `constraint_solver_topology:${solverUsed}`;
       constraintSolverEdges = cleanEdges.map((edge) => ({
         ...edge,
         source: "constraint_solver_topology",
@@ -5049,7 +7222,9 @@ async function processJob(input: any) {
       if (!normalized.length) return 0;
       const clusters: number[] = [];
       for (const angle of normalized) {
-        const match = clusters.findIndex((c) => angleDiff180(c, angle) <= toleranceDeg);
+        const match = clusters.findIndex((c) =>
+          angleDiff180(c, angle) <= toleranceDeg
+        );
         if (match >= 0) clusters[match] = (clusters[match] + angle) / 2;
         else clusters.push(angle);
       }
@@ -5077,7 +7252,9 @@ async function processJob(input: any) {
       const planeAzimuthClusters = countAzimuthClusters(
         (cleanPlanes || []).map((p: any) => Number(p?.azimuth)),
       );
-      const diagonalLines = Number(hipRoofDetectorDebug?.diagonal_lines_kept ?? 0);
+      const diagonalLines = Number(
+        hipRoofDetectorDebug?.diagonal_lines_kept ?? 0,
+      );
       const hipEvidence = footprintSides >= 4 && (
         diagonalLines >= 2 ||
         solarAzimuthClusters > 2 ||
@@ -5085,7 +7262,10 @@ async function processJob(input: any) {
       );
       simpleRoofTypeDebug = {
         hip_roof: Boolean(simpleRoofTypeDebug.hip_roof || hipEvidence),
-        gable_roof: Boolean(!simpleRoofTypeDebug.hip_roof && !hipEvidence && planeAzimuthClusters <= 2),
+        gable_roof: Boolean(
+          !simpleRoofTypeDebug.hip_roof && !hipEvidence &&
+            planeAzimuthClusters <= 2,
+        ),
         rake_forced_zero: Boolean(simpleRoofTypeDebug.rake_forced_zero),
         stage,
         footprint_sides: footprintSides,
@@ -5118,12 +7298,20 @@ async function processJob(input: any) {
       const bb = bboxOf(footprint);
       if (bb) {
         const corners = [
-          { x: bb.minX, y: bb.minY }, { x: bb.minX, y: bb.maxY },
-          { x: bb.maxX, y: bb.minY }, { x: bb.maxX, y: bb.maxY },
+          { x: bb.minX, y: bb.minY },
+          { x: bb.minX, y: bb.maxY },
+          { x: bb.maxX, y: bb.minY },
+          { x: bb.maxX, y: bb.maxY },
         ];
         for (const c of corners) {
-          const ridgeEnd = Math.hypot(c.x - synthetic.ridgeLine.p1.x, c.y - synthetic.ridgeLine.p1.y) <
-            Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
+          const ridgeEnd = Math.hypot(
+              c.x - synthetic.ridgeLine.p1.x,
+              c.y - synthetic.ridgeLine.p1.y,
+            ) <
+              Math.hypot(
+                c.x - synthetic.ridgeLine.p2.x,
+                c.y - synthetic.ridgeLine.p2.y,
+              )
             ? synthetic.ridgeLine.p1
             : synthetic.ridgeLine.p2;
           syntheticEdges.push({
@@ -5138,8 +7326,16 @@ async function processJob(input: any) {
       topologySource = source;
       lockSolverTopology(source);
       ridgeSplitPlaneCount = cleanPlanes.length;
-      simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source };
-      console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({ planes: cleanPlanes.length, source }));
+      simpleRoofTypeDebug = {
+        ...simpleRoofTypeDebug,
+        hip_roof: true,
+        gable_roof: false,
+        source,
+      };
+      console.log(
+        "[HIP_ROOF_SYNTHETIC]",
+        JSON.stringify({ planes: cleanPlanes.length, source }),
+      );
       return true;
     };
 
@@ -5155,7 +7351,9 @@ async function processJob(input: any) {
       return angleDiff <= 30 ? "rake" : "eave";
     };
 
-    const ensureExteriorFootprintEdges = (source = "footprint_perimeter_forced") => {
+    const ensureExteriorFootprintEdges = (
+      source = "footprint_perimeter_forced",
+    ) => {
       const existingEdgeKeys = new Set(
         cleanEdges.map((e) => {
           const pts = e.line_px || [];
@@ -5188,23 +7386,35 @@ async function processJob(input: any) {
         const poly = p.polygon_px || [];
         return sum + (poly.length >= 3 ? polygonAreaPx(poly) : 0);
       }, 0);
-      const coverageRatio = selectedFootprintAreaPx > 0 ? solverPlaneAreaSumPx / selectedFootprintAreaPx : 0;
-      const isSinglePlaneFallback = cleanPlanes.length === 1 && cleanPlanes[0]?.source === "single_plane_fallback";
+      const coverageRatio = selectedFootprintAreaPx > 0
+        ? solverPlaneAreaSumPx / selectedFootprintAreaPx
+        : 0;
+      const isSinglePlaneFallback = cleanPlanes.length === 1 &&
+        cleanPlanes[0]?.source === "single_plane_fallback";
       // Solar segment planes come from Google Solar API — trust them with a
       // relaxed coverage threshold (0.85) instead of the strict 0.95–1.05 band.
       const isSolarSegmentSource = cleanPlanes.length >= 2 && cleanPlanes.every(
-        (p) => p.source === "google_solar_segment_planes" || p.source === "google_solar_segment_structure"
+        (p) =>
+          p.source === "google_solar_segment_planes" ||
+          p.source === "google_solar_segment_structure",
       );
       const coverageOk = isSolarSegmentSource
         ? coverageRatio >= 0.85 && coverageRatio <= 1.08
         : coverageRatio >= 0.95 && coverageRatio <= 1.05;
-      const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageOk;
+      const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback &&
+        coverageOk;
       const fallbackRequired = footprint.length >= 3 && !solverAccepted;
       footprintCoverageDebug = {
         stage,
-        selected_footprint_area: round(selectedFootprintAreaPx * actualFpp * actualFpp, 2),
+        selected_footprint_area: round(
+          selectedFootprintAreaPx * actualFpp * actualFpp,
+          2,
+        ),
         selected_footprint_area_px: round(selectedFootprintAreaPx, 2),
-        solver_plane_area_sum: round(solverPlaneAreaSumPx * actualFpp * actualFpp, 2),
+        solver_plane_area_sum: round(
+          solverPlaneAreaSumPx * actualFpp * actualFpp,
+          2,
+        ),
         solver_plane_area_sum_px: round(solverPlaneAreaSumPx, 2),
         coverage_ratio: round(coverageRatio, 3),
         input_plane_count: cleanPlanes.length,
@@ -5221,16 +7431,21 @@ async function processJob(input: any) {
             fallback_blocked_by_existing_hip_topology: true,
             topology_source_preserved: topologySource,
           };
-          console.log("[COVERAGE_GATE] Preserving existing hip-roof topology, blocking single-plane fallback");
+          console.log(
+            "[COVERAGE_GATE] Preserving existing hip-roof topology, blocking single-plane fallback",
+          );
           return false;
         }
 
         refreshSimpleRoofType("coverage_gate_before_fallback");
 
         // Try the new hip-roof generator FIRST (upstream, not downstream)
-        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
-        const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
-        const isLargePitchedRoof = footprintAreaSqft > 1200 && pitchRise !== null && pitchRise > 2;
+        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp *
+          actualFpp;
+        const pitchRise = parsePitchOverride(input.pitch_override) ??
+          dominantSolarPitchRise(solarData) ?? null;
+        const isLargePitchedRoof = footprintAreaSqft > 1200 &&
+          pitchRise !== null && pitchRise > 2;
 
         if (simpleRoofTypeDebug.hip_roof || isLargePitchedRoof) {
           // Use the new upstream hip-roof generator
@@ -5250,17 +7465,30 @@ async function processJob(input: any) {
             topologySource = "hybrid_roof_solver";
             lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
-            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hybrid_roof_solver" };
+            simpleRoofTypeDebug = {
+              ...simpleRoofTypeDebug,
+              hip_roof: true,
+              gable_roof: false,
+              source: "hybrid_roof_solver",
+            };
             footprintCoverageDebug = {
               ...footprintCoverageDebug,
               fallback_replaced_by_hip_generator: true,
               hip_generator_planes: cleanPlanes.length,
             };
-            console.log("[COVERAGE_GATE] Hip-roof generator replaced fallback", JSON.stringify({ planes: cleanPlanes.length, edges: cleanEdges.length }));
+            console.log(
+              "[COVERAGE_GATE] Hip-roof generator replaced fallback",
+              JSON.stringify({
+                planes: cleanPlanes.length,
+                edges: cleanEdges.length,
+              }),
+            );
             return false;
           }
           // If generator failed, try the legacy synthetic approach
-          const recovered = applySyntheticHipRoofTopology("hip_roof_synthetic_coverage_recovery");
+          const recovered = applySyntheticHipRoofTopology(
+            "hip_roof_synthetic_coverage_recovery",
+          );
           footprintCoverageDebug = {
             ...footprintCoverageDebug,
             fallback_blocked_by_hip_roof: true,
@@ -5291,8 +7519,16 @@ async function processJob(input: any) {
             topologySource = "hip_roof_generator_last_resort";
             lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
-            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator_last_resort" };
-            console.log("[COVERAGE_GATE] Hip-roof generator last resort", JSON.stringify({ planes: lastResort.planes.length }));
+            simpleRoofTypeDebug = {
+              ...simpleRoofTypeDebug,
+              hip_roof: true,
+              gable_roof: false,
+              source: "hip_roof_generator_last_resort",
+            };
+            console.log(
+              "[COVERAGE_GATE] Hip-roof generator last resort",
+              JSON.stringify({ planes: lastResort.planes.length }),
+            );
           }
           return false;
         }
@@ -5310,12 +7546,15 @@ async function processJob(input: any) {
         }];
         topologySource = "single_plane_fallback";
       }
-      console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
-        ...footprintCoverageDebug,
-        plane_count: cleanPlanes.length,
-        exterior_edges_created: 0,
-        shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
-      }));
+      console.log(
+        "[FOOTPRINT_COVERAGE_SOLVER]",
+        JSON.stringify({
+          ...footprintCoverageDebug,
+          plane_count: cleanPlanes.length,
+          exterior_edges_created: 0,
+          shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
+        }),
+      );
       return fallbackRequired;
     };
 
@@ -5325,12 +7564,18 @@ async function processJob(input: any) {
     let hybridSolverAccepted = false;
 
     if (footprint.length >= 3 && topologySource !== REQUIRED_TOPOLOGY_SOURCE) {
-      await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "running",
+        "Running deterministic topology engine",
+      );
 
       // ── 5-PRE. UPSTREAM SKELETON — run straight skeleton FIRST so
       //    solvePlanesFromFootprint has real structural ridges to decompose
       //    the footprint into sub-regions before image ridge detection.
-      let upstreamSkeletonSegments: Array<{ p1: Point; p2: Point; type: string }> = [];
+      let upstreamSkeletonSegments: Array<
+        { p1: Point; p2: Point; type: string }
+      > = [];
       let upstreamSkeletonRan = false;
       try {
         const skEdges = computeStraightSkeleton(
@@ -5346,16 +7591,29 @@ async function processJob(input: any) {
             const by = Array.isArray(b) ? b[1] : b?.y;
             if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
               const t = String(se.type || "ridge").toLowerCase();
-              upstreamSkeletonSegments.push({ p1: { x: ax, y: ay }, p2: { x: bx, y: by }, type: t });
+              upstreamSkeletonSegments.push({
+                p1: { x: ax, y: ay },
+                p2: { x: bx, y: by },
+                type: t,
+              });
             }
           }
           upstreamSkeletonRan = true;
-          console.log("[UPSTREAM_SKELETON]", JSON.stringify({
-            total_segments: upstreamSkeletonSegments.length,
-            ridges: upstreamSkeletonSegments.filter(s => s.type === "ridge").length,
-            hips: upstreamSkeletonSegments.filter(s => s.type === "hip").length,
-            valleys: upstreamSkeletonSegments.filter(s => s.type === "valley").length,
-          }));
+          console.log(
+            "[UPSTREAM_SKELETON]",
+            JSON.stringify({
+              total_segments: upstreamSkeletonSegments.length,
+              ridges: upstreamSkeletonSegments.filter((s) =>
+                s.type === "ridge"
+              ).length,
+              hips: upstreamSkeletonSegments.filter((s) =>
+                s.type === "hip"
+              ).length,
+              valleys: upstreamSkeletonSegments.filter((s) =>
+                s.type === "valley"
+              ).length,
+            }),
+          );
 
           // Attempt to decompose footprint using skeleton segments BEFORE
           // image ridge detection. This gives the solver real geometry so
@@ -5364,9 +7622,15 @@ async function processJob(input: any) {
             footprint,
             upstreamSkeletonSegments.map((s) => ({ p1: s.p1, p2: s.p2 })),
           );
-          console.log("[UPSTREAM_SKELETON_DECOMP]", JSON.stringify(skeletonDecomp.stats));
+          console.log(
+            "[UPSTREAM_SKELETON_DECOMP]",
+            JSON.stringify(skeletonDecomp.stats),
+          );
 
-          if (skeletonDecomp.planes.length >= 2 && skeletonDecomp.adjacency.shared_boundary_count > 0) {
+          if (
+            skeletonDecomp.planes.length >= 2 &&
+            skeletonDecomp.adjacency.shared_boundary_count > 0
+          ) {
             cleanPlanes = skeletonDecomp.planes.map((p, i) => ({
               plane_index: i + 1,
               polygon_px: p.polygon,
@@ -5380,7 +7644,10 @@ async function processJob(input: any) {
             ridgeSplitPlaneCount = cleanPlanes.length;
             // Also inject the skeleton edges into cleanEdges
             for (const seg of upstreamSkeletonSegments) {
-              const edgeType = (seg.type === "hip" || seg.type === "valley" || seg.type === "ridge") ? seg.type as any : "ridge";
+              const edgeType = (seg.type === "hip" || seg.type === "valley" ||
+                  seg.type === "ridge")
+                ? seg.type as any
+                : "ridge";
               cleanEdges.push({
                 edge_type: edgeType,
                 line_px: [seg.p1, seg.p2],
@@ -5388,9 +7655,15 @@ async function processJob(input: any) {
                 source: "upstream_skeleton",
               });
             }
-            console.log("[UPSTREAM_SKELETON_DECOMP] Accepted", cleanPlanes.length, "planes —",
-              "ridges:", upstreamSkeletonSegments.filter(s => s.type === "ridge").length,
-              "hips:", upstreamSkeletonSegments.filter(s => s.type === "hip").length);
+            console.log(
+              "[UPSTREAM_SKELETON_DECOMP] Accepted",
+              cleanPlanes.length,
+              "planes —",
+              "ridges:",
+              upstreamSkeletonSegments.filter((s) => s.type === "ridge").length,
+              "hips:",
+              upstreamSkeletonSegments.filter((s) => s.type === "hip").length,
+            );
           }
         }
       } catch (e) {
@@ -5404,14 +7677,21 @@ async function processJob(input: any) {
       hybridSolverAccepted = false;
       {
         refreshSimpleRoofType("pre_hybrid_solver");
-        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
-        const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
-        const isLargePitchedRoof = footprintAreaSqft > 800 && pitchRise !== null && pitchRise > 2;
+        const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp *
+          actualFpp;
+        const pitchRise = parsePitchOverride(input.pitch_override) ??
+          dominantSolarPitchRise(solarData) ?? null;
+        const isLargePitchedRoof = footprintAreaSqft > 800 &&
+          pitchRise !== null && pitchRise > 2;
         const isHipRoof = simpleRoofTypeDebug.hip_roof;
 
         if (isHipRoof || isLargePitchedRoof) {
           // ── STEP 1: Try to detect ridges from imagery FIRST ──
-          let earlyRidgeHints: { p1: { x: number; y: number }; p2: { x: number; y: number }; score?: number }[] = [];
+          let earlyRidgeHints: {
+            p1: { x: number; y: number };
+            p2: { x: number; y: number };
+            score?: number;
+          }[] = [];
           try {
             const solarAzimuths: number[] = (solarSegments || [])
               .map((s: any) => Number(s?.azimuthDegrees))
@@ -5435,13 +7715,19 @@ async function processJob(input: any) {
                 p2: r.p2,
                 score: r.score ?? 0,
               }));
-              console.log("[EARLY_RIDGE_DETECTION]", JSON.stringify({
-                detected: earlyDetection.lines.length,
-                kept: earlyRidgeHints.length,
-              }));
+              console.log(
+                "[EARLY_RIDGE_DETECTION]",
+                JSON.stringify({
+                  detected: earlyDetection.lines.length,
+                  kept: earlyRidgeHints.length,
+                }),
+              );
             }
           } catch (e) {
-            console.warn("[EARLY_RIDGE_DETECTION] failed:", (e as Error).message);
+            console.warn(
+              "[EARLY_RIDGE_DETECTION] failed:",
+              (e as Error).message,
+            );
           }
 
           // ── STEP 2: FOOTPRINT PARTITIONER (primary) ──
@@ -5453,11 +7739,20 @@ async function processJob(input: any) {
           if (earlyRidgeHints.length > 0) {
             try {
               // Convert footprint to {x,y} points
-              const fpPts = footprint.map((p: any) => ({ x: Number(p.x ?? p[0]), y: Number(p.y ?? p[1]) }));
+              const fpPts = footprint.map((p: any) => ({
+                x: Number(p.x ?? p[0]),
+                y: Number(p.y ?? p[1]),
+              }));
               // Convert ridge hints to edges
               const ridgeEdges = earlyRidgeHints.map((r: any) => ({
-                a: { x: Number(r.p1?.[0] ?? r.x1 ?? r.start?.[0]), y: Number(r.p1?.[1] ?? r.y1 ?? r.start?.[1]) },
-                b: { x: Number(r.p2?.[0] ?? r.x2 ?? r.end?.[0]), y: Number(r.p2?.[1] ?? r.y2 ?? r.end?.[1]) },
+                a: {
+                  x: Number(r.p1?.[0] ?? r.x1 ?? r.start?.[0]),
+                  y: Number(r.p1?.[1] ?? r.y1 ?? r.start?.[1]),
+                },
+                b: {
+                  x: Number(r.p2?.[0] ?? r.x2 ?? r.end?.[0]),
+                  y: Number(r.p2?.[1] ?? r.y2 ?? r.end?.[1]),
+                },
               }));
 
               const faces = partitionFootprint(fpPts, ridgeEdges);
@@ -5467,19 +7762,26 @@ async function processJob(input: any) {
                 // Build planes and edges from faces
                 const partPlanes = faces.map((f, i) => ({
                   plane_index: i + 1,
-                  polygon_px: f.polygon.map(p => [p.x, p.y]),
+                  polygon_px: f.polygon.map((p) => [p.x, p.y]),
                   confidence: 0.85,
                   source: "footprint_partitioner",
                 }));
 
                 // Derive edges: shared boundaries = ridges/hips, unshared = eaves
-                const edgeCount = new Map<string, { a: any; b: any; faces: number[] }>();
+                const edgeCount = new Map<
+                  string,
+                  { a: any; b: any; faces: number[] }
+                >();
                 for (const f of faces) {
                   for (let j = 0; j < f.polygon.length; j++) {
                     const a = f.polygon[j];
                     const b = f.polygon[(j + 1) % f.polygon.length];
-                    const k = [`${a.x}:${a.y}`, `${b.x}:${b.y}`].sort().join('|');
-                    if (!edgeCount.has(k)) edgeCount.set(k, { a, b, faces: [] });
+                    const k = [`${a.x}:${a.y}`, `${b.x}:${b.y}`].sort().join(
+                      "|",
+                    );
+                    if (!edgeCount.has(k)) {
+                      edgeCount.set(k, { a, b, faces: [] });
+                    }
                     edgeCount.get(k)!.faces.push(f.id);
                   }
                 }
@@ -5496,18 +7798,36 @@ async function processJob(input: any) {
                   });
                 }
 
-                solverResult = { planes: partPlanes, edges: partEdges, debug: { method: "footprint_partitioner", faces: faces.length } };
+                solverResult = {
+                  planes: partPlanes,
+                  edges: partEdges,
+                  debug: {
+                    method: "footprint_partitioner",
+                    faces: faces.length,
+                  },
+                };
                 partitionerUsed = true;
-                console.log("[FOOTPRINT_PARTITIONER] ACCEPTED — planes:", partPlanes.length, "edges:", partEdges.length);
+                console.log(
+                  "[FOOTPRINT_PARTITIONER] ACCEPTED — planes:",
+                  partPlanes.length,
+                  "edges:",
+                  partEdges.length,
+                );
               }
             } catch (partErr) {
-              console.warn("[FOOTPRINT_PARTITIONER] failed:", (partErr as Error).message);
+              console.warn(
+                "[FOOTPRINT_PARTITIONER] failed:",
+                (partErr as Error).message,
+              );
             }
           }
 
           // ── STEP 2b: Fallback to multi-structure solver ──
           if (!solverResult && earlyRidgeHints.length > 0) {
-            const multiResult = solveMultiStructureRoof(footprint, earlyRidgeHints);
+            const multiResult = solveMultiStructureRoof(
+              footprint,
+              earlyRidgeHints,
+            );
             if (multiResult.planes.length >= 3) {
               solverResult = multiResult;
               console.log("[MULTI_STRUCTURE_SOLVER] FALLBACK ACCEPTED");
@@ -5519,7 +7839,9 @@ async function processJob(input: any) {
             const hybridResult = solveHybridRoof(footprint);
             if (hybridResult.planes.length >= 3) {
               solverResult = hybridResult;
-              console.log("[HYBRID_SOLVER] FALLBACK to OBB-based solver (no ridge hints)");
+              console.log(
+                "[HYBRID_SOLVER] FALLBACK to OBB-based solver (no ridge hints)",
+              );
             }
           }
 
@@ -5530,20 +7852,24 @@ async function processJob(input: any) {
 
             cleanPlanes = solverResult.planes.map((p: any) => ({
               ...p,
-              confidence: partitionerUsed ? 0.88 : (earlyRidgeHints.length > 0 ? 0.82 : 0.78),
+              confidence: partitionerUsed
+                ? 0.88
+                : (earlyRidgeHints.length > 0 ? 0.82 : 0.78),
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
             }));
             cleanEdges = solverResult.edges.map((e: any) => ({
               ...e,
-              confidence: partitionerUsed ? 0.88 : (earlyRidgeHints.length > 0 ? 0.82 : 0.78),
+              confidence: partitionerUsed
+                ? 0.88
+                : (earlyRidgeHints.length > 0 ? 0.82 : 0.78),
             }));
             topologySource = partitionerUsed
               ? "footprint_partitioner_primary"
               : earlyRidgeHints.length > 0
-                ? "multi_structure_solver_primary"
-                : "hybrid_roof_solver_primary";
+              ? "multi_structure_solver_primary"
+              : "hybrid_roof_solver_primary";
             lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = {
@@ -5554,12 +7880,20 @@ async function processJob(input: any) {
             };
             singlePlaneFallbackForbidden = true;
             hybridSolverAccepted = true;
-            console.log("[SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length,
-              "edges:", cleanEdges.length,
-              "source:", topologySource,
-              "partitioner:", partitionerUsed,
-              "ridge_hints:", earlyRidgeHints.length,
-              "debug:", JSON.stringify(solverResult.debug));
+            console.log(
+              "[SOLVER] ACCEPTED as primary — planes:",
+              cleanPlanes.length,
+              "edges:",
+              cleanEdges.length,
+              "source:",
+              topologySource,
+              "partitioner:",
+              partitionerUsed,
+              "ridge_hints:",
+              earlyRidgeHints.length,
+              "debug:",
+              JSON.stringify(solverResult.debug),
+            );
           }
         }
       }
@@ -5567,235 +7901,315 @@ async function processJob(input: any) {
       // 5a. STRUCTURE EXTRACTION — image-based ridge detection + recursive plane split.
       // SKIP entirely if hybrid solver already produced valid topology.
       const splitRidgeEdges: RoofEdge[] = [];
-      if (!hybridSolverAccepted) try {
-        const solarAzimuths: number[] = (solarSegments || [])
-          .map((s: any) => Number(s?.azimuthDegrees))
-          .filter((n: number) => Number.isFinite(n));
+      if (!hybridSolverAccepted) {
+        try {
+          const solarAzimuths: number[] = (solarSegments || [])
+            .map((s: any) => Number(s?.azimuthDegrees))
+            .filter((n: number) => Number.isFinite(n));
 
-        const detect = (poly: Point[]): RidgeLine[] => {
-          const r = detectRidgesInPolygon({
-            raster,
-            polygon: poly,
-            solarAzimuthsDeg: solarAzimuths,
-            maxRidges: 3,
-          });
-          return r.lines as RidgeLine[];
-        };
-
-        // Run a single top-level detection pass for logging/QA purposes.
-        // NOTE: maxRidges raised from 4 → 12 — complex multi-wing roofs
-        // (Montelluna-style) have multiple independent ridge systems and
-        // need many ridges so the regional splitter can cluster them.
-        const topLevel = detectRidgesInPolygon({
-          raster,
-          polygon: footprint,
-          solarAzimuthsDeg: solarAzimuths,
-          maxRidges: 12,
-        });
-        ridgeDetectionRan = true;
-        ridgeDetectedCount = topLevel.lines.length;
-
-        // RIDGE FILTERING — keep only top 1–3 structural ridges.
-        const filtered = filterRidges(
-          topLevel.lines as FilterRidgeLine[],
-          footprint,
-          solarAzimuths,
-        );
-        topLevelFilteredRidges = filtered.kept as any[];
-        console.log("[RIDGE_FILTER]", JSON.stringify({
-          detected: filtered.detected,
-          kept: filtered.kept.length,
-          discarded: filtered.discarded,
-          reasons: filtered.reasons,
-        }));
-        console.log("[RIDGE_DETECTION]", JSON.stringify({
-          ridge_count: topLevel.lines.length,
-          ridge_scores: topLevel.debug.scores,
-          azimuth_targets_deg: topLevel.debug.azimuth_targets_deg,
-          raw_line_count: topLevel.debug.raw_line_count,
-          filtered_line_count: topLevel.debug.filtered_line_count,
-          roi: topLevel.debug.roi,
-        }));
-
-        if (filtered.kept.length > 0) {
-          // Wrap detect to also pass through the filter on every recursion
-          // (used as the inner-region fallback detector).
-          const detectFiltered = (poly: Point[]): RidgeLine[] => {
-            const sub = detectRidgesInPolygon({
+          const detect = (poly: Point[]): RidgeLine[] => {
+            const r = detectRidgesInPolygon({
               raster,
               polygon: poly,
               solarAzimuthsDeg: solarAzimuths,
               maxRidges: 3,
             });
-            const f = filterRidges(sub.lines as FilterRidgeLine[], poly, solarAzimuths);
-            return f.kept as RidgeLine[];
+            return r.lines as RidgeLine[];
           };
 
-          // ── REGIONAL RIDGE CLUSTERING + LOCAL SPLIT ──────────────────────
-          // Replaces the previous global splitter, which split the ENTIRE
-          // footprint along every ridge and produced giant rectangles on
-          // multi-wing roofs. The regional splitter clusters ridges by angle
-          // (≤20°) and midpoint proximity (≤50 px), assigns each cluster a
-          // local region bbox (padded 25 px), and only splits geometry that
-          // lies inside that region with that cluster's ridges.
-          const clusterInput = (filtered.kept as any[]).map((r, idx) => {
-            const ridgeId = String(r.ridge_id ?? r.id ?? `ridge-${idx}`);
-            r.__cluster_ridge_id = ridgeId;
-            return ({
-            id: ridgeId,
-            ridge_id: ridgeId,
-            p1: r.p1,
-            p2: r.p2,
-            score: r.score ?? 0.5,
-            angleDeg: typeof r.angleDeg === "number"
-              ? r.angleDeg
-              : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
+          // Run a single top-level detection pass for logging/QA purposes.
+          // NOTE: maxRidges raised from 4 → 12 — complex multi-wing roofs
+          // (Montelluna-style) have multiple independent ridge systems and
+          // need many ridges so the regional splitter can cluster them.
+          const topLevel = detectRidgesInPolygon({
+            raster,
+            polygon: footprint,
+            solarAzimuthsDeg: solarAzimuths,
+            maxRidges: 12,
           });
-          });
+          ridgeDetectionRan = true;
+          ridgeDetectedCount = topLevel.lines.length;
 
-          const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
-          const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
-          const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
-
-          const regional = splitPlanesByRidgeClusters({
+          // RIDGE FILTERING — keep only top 1–3 structural ridges.
+          const filtered = filterRidges(
+            topLevel.lines as FilterRidgeLine[],
             footprint,
-            ridges: clusterInput,
-            angleToleranceDeg: 20,
-            midpointDistPx: 50,
-            regionPadPx: 25,
-            detectRidgesFn: detectFiltered,
-            recursionMaxDepth: 3,
-          });
+            solarAzimuths,
+          );
+          topLevelFilteredRidges = filtered.kept as any[];
+          console.log(
+            "[RIDGE_FILTER]",
+            JSON.stringify({
+              detected: filtered.detected,
+              kept: filtered.kept.length,
+              discarded: filtered.discarded,
+              reasons: filtered.reasons,
+            }),
+          );
+          console.log(
+            "[RIDGE_DETECTION]",
+            JSON.stringify({
+              ridge_count: topLevel.lines.length,
+              ridge_scores: topLevel.debug.scores,
+              azimuth_targets_deg: topLevel.debug.azimuth_targets_deg,
+              raw_line_count: topLevel.debug.raw_line_count,
+              filtered_line_count: topLevel.debug.filtered_line_count,
+              roi: topLevel.debug.roi,
+            }),
+          );
 
-          console.log("[RIDGE_CLUSTERING]", JSON.stringify({
-            total_ridges: regional.debug.total_ridges,
-            clusters: regional.debug.cluster_count,
-            cluster_sizes: regional.debug.cluster_sizes,
-            region_planes_per_cluster: regional.debug.region_planes_per_cluster,
-            fallback_used: regional.debug.fallback_used,
-            reason: regional.debug.reason,
-          }));
-
-          // Stash for debug payload.
-          (globalThis as any).__ridgeClustersDebug = {
-            total_ridges: regional.debug.total_ridges,
-            cluster_count: regional.debug.cluster_count,
-            cluster_sizes: regional.debug.cluster_sizes,
-            region_planes_per_cluster: regional.debug.region_planes_per_cluster,
-            fallback_used: regional.debug.fallback_used,
-            clusters: regional.clusters.map((c) => ({
-              cluster_index: c.cluster_index,
-              angle_deg: Math.round(c.angle_deg * 10) / 10,
-              ridge_count: c.ridge_count,
-              region_bbox: c.region_bbox,
-            })),
-          };
-
-          // ── FOOTPRINT-FIRST SOLVER (primary) ──
-          // Footprint defines geometry; ridges are validators/hints only.
-          const solverInput = clusterInput.map((r) => ({
-            p1: r.p1,
-            p2: r.p2,
-            score: r.score,
-          }));
-          const solverResult = solvePlanesFromFootprint(footprint, solverInput);
-          console.log("[FOOTPRINT_SOLVER]", JSON.stringify(solverResult.stats));
-          (globalThis as any).__footprintSolverDebug = solverResult.stats;
-
-          // Selection priority:
-          //   1) footprint solver (≥2 planes, not rejected, full-footprint coverage)
-          //   2) regional clustering ONLY when it covers the full footprint
-          //   3) global recursive splitter — last-resort fallback, coverage-gated
-          type PlaneAreaCandidate = { polygon?: Point[]; polygon_px?: Point[] };
-          const planeAreaRatio = (planes: PlaneAreaCandidate[]) => {
-            const footprintArea = Math.max(1, polygonAreaPx(footprint));
-            const planeArea = planes.reduce((sum, p) => {
-              const poly = p.polygon || p.polygon_px || [];
-              return sum + (poly.length >= 3 ? polygonAreaPx(poly) : 0);
-            }, 0);
-            return planeArea / footprintArea;
-          };
-          let splitPlanes: PlaneAreaCandidate[];
-          let solverMode: string;
-          const solverPlanes = solverResult.planes
-            .filter((p) => p.polygon.length >= 3)
-            .map((p) => ({ polygon: p.polygon }));
-          const solverCoverageRatio = solverPlanes.length >= 2 ? planeAreaRatio(solverPlanes) : 0;
-          const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes) : 0;
-          if (solverPlanes.length >= 2 && !solverResult.stats.rejected && solverCoverageRatio >= 0.85) {
-            splitPlanes = solverPlanes;
-            solverMode = "footprint_solver";
-          } else if (regional.planes.length >= 2 && regionalCoverageRatio >= 0.85) {
-            splitPlanes = regional.planes;
-            solverMode = "regional_clustered";
-          } else {
-            const fallbackPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
-            const fallbackCoverageRatio = fallbackPlanes.length >= 2 ? planeAreaRatio(fallbackPlanes) : 0;
-            if (fallbackPlanes.length >= 2 && fallbackCoverageRatio >= 0.85) {
-              splitPlanes = fallbackPlanes;
-              solverMode = "global_fallback";
-            } else {
-              splitPlanes = [];
-              solverMode = "single_plane_coverage_fallback";
-            }
-          }
-          ridgeSplitPlaneCount = splitPlanes.length;
-          console.log("[RIDGE_SPLIT]", JSON.stringify({
-            initial_planes: 1,
-            final_planes: splitPlanes.length,
-            split_success: splitPlanes.length >= 2,
-            mode: solverMode,
-            solver_coverage_ratio: Number(solverCoverageRatio.toFixed(3)),
-            regional_coverage_ratio: Number(regionalCoverageRatio.toFixed(3)),
-            max_depth: 3,
-          }));
-
-          if (splitPlanes.length >= 2) {
-            cleanPlanes = splitPlanes.map((sp, i) => ({
-              plane_index: i + 1,
-              polygon_px: sp.polygon,
-              confidence: 0.72,
-              pitch: pitchFromSolar,
-              pitch_degrees: pitchDegFromSolar,
-              azimuth: azimuthFromSolar,
-              source: solverMode === "footprint_solver" ? "footprint_solver" : "ridge_split_recursive",
-              cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
-              ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
-              region_bbox: sp.region_bbox ?? null,
-              source_ridge_ids: sp.source_ridge_ids ?? [],
-            }));
-            for (const r of filtered.kept as any[]) {
-              const ridgeId = String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? "");
-              const assignedCluster = regional.clusters.find((c) => c.ridges.some((cr: any) => String(cr.ridge_id ?? cr.id ?? "") === ridgeId));
-              const ridgeIds = assignedCluster?.ridges.map((cr: any, idx: number) => String(cr.ridge_id ?? cr.id ?? `${assignedCluster.cluster_index}:${idx}`)) || [];
-              if (assignedCluster && !lineWithinBBox([r.p1, r.p2], assignedCluster.region_bbox, 2)) {
-                console.log("[RIDGE_REJECTED]", JSON.stringify({ reason: "ridge_outside_assigned_cluster_bbox", cluster_id: assignedCluster.cluster_index }));
-                continue;
-              }
-              splitRidgeEdges.push({
-                edge_type: "ridge",
-                line_px: [r.p1, r.p2],
-                confidence: Math.min(0.9, 0.55 + (r.score ?? 0.5) * 0.4),
-                source: "image_ridge_detector",
-                cluster_id: assignedCluster?.cluster_index ?? null,
-                ridge_group_id: assignedCluster?.cluster_index ?? null,
-                region_bbox: assignedCluster?.region_bbox ?? null,
-                source_ridge_ids: ridgeIds,
+          if (filtered.kept.length > 0) {
+            // Wrap detect to also pass through the filter on every recursion
+            // (used as the inner-region fallback detector).
+            const detectFiltered = (poly: Point[]): RidgeLine[] => {
+              const sub = detectRidgesInPolygon({
+                raster,
+                polygon: poly,
+                solarAzimuthsDeg: solarAzimuths,
+                maxRidges: 3,
               });
+              const f = filterRidges(
+                sub.lines as FilterRidgeLine[],
+                poly,
+                solarAzimuths,
+              );
+              return f.kept as RidgeLine[];
+            };
+
+            // ── REGIONAL RIDGE CLUSTERING + LOCAL SPLIT ──────────────────────
+            // Replaces the previous global splitter, which split the ENTIRE
+            // footprint along every ridge and produced giant rectangles on
+            // multi-wing roofs. The regional splitter clusters ridges by angle
+            // (≤20°) and midpoint proximity (≤50 px), assigns each cluster a
+            // local region bbox (padded 25 px), and only splits geometry that
+            // lies inside that region with that cluster's ridges.
+            const clusterInput = (filtered.kept as any[]).map((r, idx) => {
+              const ridgeId = String(r.ridge_id ?? r.id ?? `ridge-${idx}`);
+              r.__cluster_ridge_id = ridgeId;
+              return ({
+                id: ridgeId,
+                ridge_id: ridgeId,
+                p1: r.p1,
+                p2: r.p2,
+                score: r.score ?? 0.5,
+                angleDeg: typeof r.angleDeg === "number"
+                  ? r.angleDeg
+                  : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 /
+                    Math.PI,
+              });
+            });
+
+            const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
+            const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
+            const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
+
+            const regional = splitPlanesByRidgeClusters({
+              footprint,
+              ridges: clusterInput,
+              angleToleranceDeg: 20,
+              midpointDistPx: 50,
+              regionPadPx: 25,
+              detectRidgesFn: detectFiltered,
+              recursionMaxDepth: 3,
+            });
+
+            console.log(
+              "[RIDGE_CLUSTERING]",
+              JSON.stringify({
+                total_ridges: regional.debug.total_ridges,
+                clusters: regional.debug.cluster_count,
+                cluster_sizes: regional.debug.cluster_sizes,
+                region_planes_per_cluster:
+                  regional.debug.region_planes_per_cluster,
+                fallback_used: regional.debug.fallback_used,
+                reason: regional.debug.reason,
+              }),
+            );
+
+            // Stash for debug payload.
+            (globalThis as any).__ridgeClustersDebug = {
+              total_ridges: regional.debug.total_ridges,
+              cluster_count: regional.debug.cluster_count,
+              cluster_sizes: regional.debug.cluster_sizes,
+              region_planes_per_cluster:
+                regional.debug.region_planes_per_cluster,
+              fallback_used: regional.debug.fallback_used,
+              clusters: regional.clusters.map((c) => ({
+                cluster_index: c.cluster_index,
+                angle_deg: Math.round(c.angle_deg * 10) / 10,
+                ridge_count: c.ridge_count,
+                region_bbox: c.region_bbox,
+              })),
+            };
+
+            // ── FOOTPRINT-FIRST SOLVER (primary) ──
+            // Footprint defines geometry; ridges are validators/hints only.
+            const solverInput = clusterInput.map((r) => ({
+              p1: r.p1,
+              p2: r.p2,
+              score: r.score,
+            }));
+            const solverResult = solvePlanesFromFootprint(
+              footprint,
+              solverInput,
+            );
+            console.log(
+              "[FOOTPRINT_SOLVER]",
+              JSON.stringify(solverResult.stats),
+            );
+            (globalThis as any).__footprintSolverDebug = solverResult.stats;
+
+            // Selection priority:
+            //   1) footprint solver (≥2 planes, not rejected, full-footprint coverage)
+            //   2) regional clustering ONLY when it covers the full footprint
+            //   3) global recursive splitter — last-resort fallback, coverage-gated
+            type PlaneAreaCandidate = {
+              polygon?: Point[];
+              polygon_px?: Point[];
+            };
+            const planeAreaRatio = (planes: PlaneAreaCandidate[]) => {
+              const footprintArea = Math.max(1, polygonAreaPx(footprint));
+              const planeArea = planes.reduce((sum, p) => {
+                const poly = p.polygon || p.polygon_px || [];
+                return sum + (poly.length >= 3 ? polygonAreaPx(poly) : 0);
+              }, 0);
+              return planeArea / footprintArea;
+            };
+            let splitPlanes: PlaneAreaCandidate[];
+            let solverMode: string;
+            const solverPlanes = solverResult.planes
+              .filter((p) => p.polygon.length >= 3)
+              .map((p) => ({ polygon: p.polygon }));
+            const solverCoverageRatio = solverPlanes.length >= 2
+              ? planeAreaRatio(solverPlanes)
+              : 0;
+            const regionalCoverageRatio = regional.planes.length >= 2
+              ? planeAreaRatio(regional.planes)
+              : 0;
+            if (
+              solverPlanes.length >= 2 && !solverResult.stats.rejected &&
+              solverCoverageRatio >= 0.85
+            ) {
+              splitPlanes = solverPlanes;
+              solverMode = "footprint_solver";
+            } else if (
+              regional.planes.length >= 2 && regionalCoverageRatio >= 0.85
+            ) {
+              splitPlanes = regional.planes;
+              solverMode = "regional_clustered";
+            } else {
+              const fallbackPlanes = splitPlanesFromRidges(
+                footprint,
+                detectFiltered,
+                0,
+                3,
+              );
+              const fallbackCoverageRatio = fallbackPlanes.length >= 2
+                ? planeAreaRatio(fallbackPlanes)
+                : 0;
+              if (fallbackPlanes.length >= 2 && fallbackCoverageRatio >= 0.85) {
+                splitPlanes = fallbackPlanes;
+                solverMode = "global_fallback";
+              } else {
+                splitPlanes = [];
+                solverMode = "single_plane_coverage_fallback";
+              }
             }
-            cleanEdges.push(...splitRidgeEdges);
-            topologySource = solverMode === "footprint_solver" ? "footprint_solver" : "ridge_split_recursive";
+            ridgeSplitPlaneCount = splitPlanes.length;
+            console.log(
+              "[RIDGE_SPLIT]",
+              JSON.stringify({
+                initial_planes: 1,
+                final_planes: splitPlanes.length,
+                split_success: splitPlanes.length >= 2,
+                mode: solverMode,
+                solver_coverage_ratio: Number(solverCoverageRatio.toFixed(3)),
+                regional_coverage_ratio: Number(
+                  regionalCoverageRatio.toFixed(3),
+                ),
+                max_depth: 3,
+              }),
+            );
+
+            if (splitPlanes.length >= 2) {
+              cleanPlanes = splitPlanes.map((sp, i) => ({
+                plane_index: i + 1,
+                polygon_px: sp.polygon,
+                confidence: 0.72,
+                pitch: pitchFromSolar,
+                pitch_degrees: pitchDegFromSolar,
+                azimuth: azimuthFromSolar,
+                source: solverMode === "footprint_solver"
+                  ? "footprint_solver"
+                  : "ridge_split_recursive",
+                cluster_id: sp.cluster_id ??
+                  (regional.planes.length >= 2 ? null : "global_fallback"),
+                ridge_group_id: sp.ridge_group_id ??
+                  (regional.planes.length >= 2 ? null : "global_fallback"),
+                region_bbox: sp.region_bbox ?? null,
+                source_ridge_ids: sp.source_ridge_ids ?? [],
+              }));
+              for (const r of filtered.kept as any[]) {
+                const ridgeId = String(
+                  r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? "",
+                );
+                const assignedCluster = regional.clusters.find((c) =>
+                  c.ridges.some((cr: any) =>
+                    String(cr.ridge_id ?? cr.id ?? "") === ridgeId
+                  )
+                );
+                const ridgeIds =
+                  assignedCluster?.ridges.map((cr: any, idx: number) =>
+                    String(
+                      cr.ridge_id ?? cr.id ??
+                        `${assignedCluster.cluster_index}:${idx}`,
+                    )
+                  ) || [];
+                if (
+                  assignedCluster &&
+                  !lineWithinBBox([r.p1, r.p2], assignedCluster.region_bbox, 2)
+                ) {
+                  console.log(
+                    "[RIDGE_REJECTED]",
+                    JSON.stringify({
+                      reason: "ridge_outside_assigned_cluster_bbox",
+                      cluster_id: assignedCluster.cluster_index,
+                    }),
+                  );
+                  continue;
+                }
+                splitRidgeEdges.push({
+                  edge_type: "ridge",
+                  line_px: [r.p1, r.p2],
+                  confidence: Math.min(0.9, 0.55 + (r.score ?? 0.5) * 0.4),
+                  source: "image_ridge_detector",
+                  cluster_id: assignedCluster?.cluster_index ?? null,
+                  ridge_group_id: assignedCluster?.cluster_index ?? null,
+                  region_bbox: assignedCluster?.region_bbox ?? null,
+                  source_ridge_ids: ridgeIds,
+                });
+              }
+              cleanEdges.push(...splitRidgeEdges);
+              topologySource = solverMode === "footprint_solver"
+                ? "footprint_solver"
+                : "ridge_split_recursive";
+            }
           }
+        } catch (e) {
+          console.warn("[RIDGE_SPLIT] failed:", (e as Error).message);
         }
-      } catch (e) {
-        console.warn("[RIDGE_SPLIT] failed:", (e as Error).message);
       }
 
       // ── CLUSTER-AWARE PLANE MERGE — Montelluna guardrail: never merge
       //    across independent ridge clusters/wings/valley boundaries.
-      if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
+      if (
+        topologySource === "ridge_split_recursive" && cleanPlanes.length > 1
+      ) {
         try {
-          const ridgeCatalog = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
+          const ridgeCatalog = (topLevelFilteredRidges ?? []).map((
+            r: any,
+            i: number,
+          ) => ({
             id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
             ridge_id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
             p1: r.p1,
@@ -5820,11 +8234,21 @@ async function processJob(input: any) {
             feetPerPixel: actualFpp,
           });
           planeMergeDebug = mergeResult.debug;
-          const footprintAreaSqftForMerge = polygonAreaPx(footprint) * actualFpp * actualFpp;
+          const footprintAreaSqftForMerge = polygonAreaPx(footprint) *
+            actualFpp * actualFpp;
           const postMergeArea = Number(mergeResult.debug?.post_merge_area ?? 0);
-          if (footprintAreaSqftForMerge > 0 && postMergeArea > footprintAreaSqftForMerge * 1.08) {
-            planeMergeDebug = { ...mergeResult.debug, rejected: "merge_area_gt_footprint_1_08" };
-            console.warn("[PLANE_MERGE_REJECTED]", JSON.stringify(planeMergeDebug));
+          if (
+            footprintAreaSqftForMerge > 0 &&
+            postMergeArea > footprintAreaSqftForMerge * 1.08
+          ) {
+            planeMergeDebug = {
+              ...mergeResult.debug,
+              rejected: "merge_area_gt_footprint_1_08",
+            };
+            console.warn(
+              "[PLANE_MERGE_REJECTED]",
+              JSON.stringify(planeMergeDebug),
+            );
           } else {
             cleanPlanes = mergeResult.planes.map((p: any, i: number) => ({
               plane_index: i + 1,
@@ -5842,7 +8266,10 @@ async function processJob(input: any) {
             })) as any;
           }
         } catch (e) {
-          console.warn("[CLUSTER_AWARE_PLANE_MERGE] failed:", (e as Error).message);
+          console.warn(
+            "[CLUSTER_AWARE_PLANE_MERGE] failed:",
+            (e as Error).message,
+          );
         }
       }
 
@@ -5855,7 +8282,9 @@ async function processJob(input: any) {
             footprint.map((p) => [p.x, p.y] as [number, number]),
           );
           if (skeletonEdges && skeletonEdges.length > 0) {
-            const parsedSegments: Array<{ p1: Point; p2: Point; type: string }> = [];
+            const parsedSegments: Array<
+              { p1: Point; p2: Point; type: string }
+            > = [];
             for (const se of skeletonEdges as any[]) {
               const a = se.a ?? se.p1 ?? se.start ?? se[0];
               const b = se.b ?? se.p2 ?? se.end ?? se[1];
@@ -5865,9 +8294,15 @@ async function processJob(input: any) {
               const by = Array.isArray(b) ? b[1] : b?.y;
               if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
                 const t = String(se.type || "ridge").toLowerCase();
-                parsedSegments.push({ p1: { x: ax, y: ay }, p2: { x: bx, y: by }, type: t });
+                parsedSegments.push({
+                  p1: { x: ax, y: ay },
+                  p2: { x: bx, y: by },
+                  type: t,
+                });
                 cleanEdges.push({
-                  edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
+                  edge_type: (t === "hip" || t === "valley" || t === "ridge")
+                    ? t as any
+                    : "ridge",
                   line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
                   confidence: 0.7,
                   source: "topology_engine_v2_skeleton",
@@ -5882,28 +8317,53 @@ async function processJob(input: any) {
                   footprint,
                   parsedSegments.map((s) => ({ p1: s.p1, p2: s.p2 })),
                 );
-                console.log("[SKELETON_PLANE_REBUILD]", JSON.stringify(skeletonRebuild.stats));
-                if (skeletonRebuild.planes.length >= 2 && skeletonRebuild.adjacency.shared_boundary_count > 0) {
+                console.log(
+                  "[SKELETON_PLANE_REBUILD]",
+                  JSON.stringify(skeletonRebuild.stats),
+                );
+                if (
+                  skeletonRebuild.planes.length >= 2 &&
+                  skeletonRebuild.adjacency.shared_boundary_count > 0
+                ) {
                   cleanPlanes = skeletonRebuild.planes.map((p, i) => ({
                     plane_index: i + 1,
                     polygon_px: p.polygon,
                     confidence: 0.72,
-                    pitch: null, pitch_degrees: null, azimuth: null,
+                    pitch: null,
+                    pitch_degrees: null,
+                    azimuth: null,
                     source: "skeleton_plane_rebuild",
                   }));
                   topologySource = "skeleton_plane_rebuild";
-                  console.log("[SKELETON_PLANE_REBUILD] accepted", cleanPlanes.length, "planes");
+                  console.log(
+                    "[SKELETON_PLANE_REBUILD] accepted",
+                    cleanPlanes.length,
+                    "planes",
+                  );
                 }
               } catch (e) {
-                console.warn("[SKELETON_PLANE_REBUILD] failed:", (e as Error).message);
+                console.warn(
+                  "[SKELETON_PLANE_REBUILD] failed:",
+                  (e as Error).message,
+                );
               }
             }
           }
-        } else if (cleanPlanes.length < 2 && upstreamSkeletonRan && upstreamSkeletonSegments.length > 0) {
+        } else if (
+          cleanPlanes.length < 2 && upstreamSkeletonRan &&
+          upstreamSkeletonSegments.length > 0
+        ) {
           // Upstream skeleton ran but didn't produce ≥2 planes. Add its edges anyway.
           for (const seg of upstreamSkeletonSegments) {
-            const edgeType = (seg.type === "hip" || seg.type === "valley" || seg.type === "ridge") ? seg.type as any : "ridge";
-            if (!cleanEdges.some(e => e.source === "upstream_skeleton" && e.edge_type === edgeType)) {
+            const edgeType = (seg.type === "hip" || seg.type === "valley" ||
+                seg.type === "ridge")
+              ? seg.type as any
+              : "ridge";
+            if (
+              !cleanEdges.some((e) =>
+                e.source === "upstream_skeleton" && e.edge_type === edgeType
+              )
+            ) {
               cleanEdges.push({
                 edge_type: edgeType,
                 line_px: [seg.p1, seg.p2],
@@ -5933,16 +8393,32 @@ async function processJob(input: any) {
           }
         }
       } catch (e) {
-        console.warn("[geometry-first] topology engine failed:", (e as Error).message);
+        console.warn(
+          "[geometry-first] topology engine failed:",
+          (e as Error).message,
+        );
       }
 
       // ── FALLBACK HIERARCHY (ordered A→D) ──
       // A. Solar segment planes if >1 segment
-      if (cleanPlanes.length < 2 || !cleanEdges.some((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley")) {
+      if (
+        cleanPlanes.length < 2 ||
+        !cleanEdges.some((e) =>
+          e.edge_type === "ridge" || e.edge_type === "hip" ||
+          e.edge_type === "valley"
+        )
+      ) {
         const solarStructured = addSolarSegmentStructure();
         if (solarStructured) {
           ridgeSplitPlaneCount = cleanPlanes.length;
-          console.log("[SOLAR_SEGMENT_STRUCTURE]", JSON.stringify({ planes: cleanPlanes.length, edges: cleanEdges.length, topology_source: topologySource }));
+          console.log(
+            "[SOLAR_SEGMENT_STRUCTURE]",
+            JSON.stringify({
+              planes: cleanPlanes.length,
+              edges: cleanEdges.length,
+              topology_source: topologySource,
+            }),
+          );
         }
       }
 
@@ -5951,12 +8427,17 @@ async function processJob(input: any) {
       //    from footprint corners + center ridge. No fallback to single plane.
       if (cleanPlanes.length < 2) {
         try {
-          const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
+          const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp *
+            actualFpp;
           const solarPitchDeg = (() => {
             const segs = (solarSegments || []) as any[];
             if (segs.length === 0) return null;
-            const pitches = segs.map((s: any) => Number(s?.pitchDegrees)).filter(Number.isFinite);
-            return pitches.length > 0 ? pitches.reduce((a: number, b: number) => a + b, 0) / pitches.length : null;
+            const pitches = segs.map((s: any) => Number(s?.pitchDegrees))
+              .filter(Number.isFinite);
+            return pitches.length > 0
+              ? pitches.reduce((a: number, b: number) => a + b, 0) /
+                pitches.length
+              : null;
           })();
 
           // Run hip-roof detector for evidence
@@ -5967,12 +8448,20 @@ async function processJob(input: any) {
             footprintAreaSqft,
           });
           hipRoofDetectorDebug = hipDetectResult.debug;
-          console.log("[HIP_ROOF_DETECTOR]", JSON.stringify(hipDetectResult.debug));
+          console.log(
+            "[HIP_ROOF_DETECTOR]",
+            JSON.stringify(hipDetectResult.debug),
+          );
 
-          const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
-          const isLargePitchedRoof = footprintAreaSqft > 1200 && pitchRise !== null && pitchRise > 2;
+          const pitchRise = parsePitchOverride(input.pitch_override) ??
+            dominantSolarPitchRise(solarData) ?? null;
+          const isLargePitchedRoof = footprintAreaSqft > 1200 &&
+            pitchRise !== null && pitchRise > 2;
 
-          if (hipDetectResult.blockedSinglePlane || hipDetectResult.isHipCandidate || isLargePitchedRoof) {
+          if (
+            hipDetectResult.blockedSinglePlane ||
+            hipDetectResult.isHipCandidate || isLargePitchedRoof
+          ) {
             // USE NEW HIP-ROOF GENERATOR (upstream, geometry-based)
             const generated = solveHybridRoof(footprint);
             if (generated.planes.length >= 3) {
@@ -5994,20 +8483,27 @@ async function processJob(input: any) {
                 ...simpleRoofTypeDebug,
                 hip_roof: true,
                 gable_roof: false,
-                source: hipDetectResult.isHipCandidate ? "hip_roof_diagonal_detector" : "hip_roof_generator",
+                source: hipDetectResult.isHipCandidate
+                  ? "hip_roof_diagonal_detector"
+                  : "hip_roof_generator",
               };
-              console.log("[HIP_ROOF_GENERATOR] Upstream replacement applied", JSON.stringify({
-                planes: cleanPlanes.length,
-                edges: cleanEdges.length,
-                method: generated.debug.method,
-              }));
+              console.log(
+                "[HIP_ROOF_GENERATOR] Upstream replacement applied",
+                JSON.stringify({
+                  planes: cleanPlanes.length,
+                  edges: cleanEdges.length,
+                  method: generated.debug.method,
+                }),
+              );
             } else {
               // Fallback to legacy synthetic
               simpleRoofTypeDebug = {
                 ...simpleRoofTypeDebug,
                 hip_roof: true,
                 gable_roof: false,
-                source: hipDetectResult.isHipCandidate ? "hip_roof_diagonal_detector" : "large_pitched_roof_hip_guard",
+                source: hipDetectResult.isHipCandidate
+                  ? "hip_roof_diagonal_detector"
+                  : "large_pitched_roof_hip_guard",
               };
               applySyntheticHipRoofTopology("hip_roof_synthetic");
             }
@@ -6033,7 +8529,12 @@ async function processJob(input: any) {
 
     // ── PLANE CONSOLIDATION — drop tiny noise planes, merge near-duplicates,
     //    cap at maxPlanes. This collapses 47-plane over-splits into 4–10.
-    let planeConsolidationStats: { before: number; after: number; dropped: number; merged: number } | null = null;
+    let planeConsolidationStats: {
+      before: number;
+      after: number;
+      dropped: number;
+      merged: number;
+    } | null = null;
     if (cleanPlanes.length > 0 && !solverTopologyLocked) {
       const consolidated = consolidatePlanes(cleanPlanes, {
         minAreaPx: 400,
@@ -6065,51 +8566,65 @@ async function processJob(input: any) {
           overall_rejected: false,
         };
       } else {
-      const fcRidgeInput = (cleanEdges as any[])
-        .filter((e) => e && (e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"))
-        .map((e, i) => ({
-          id: e.id ?? `edge_${i}`,
-          edge_type: e.edge_type,
-          line_px: e.line_px,
-          p1: e.line_px?.[0],
-          p2: e.line_px?.[e.line_px?.length - 1],
-          cluster_id: e.cluster_id ?? null,
-          region_bbox: e.region_bbox ?? null,
-        }));
-      const fcResult = validateFootprintConstraints(
-        footprint as any,
-        cleanPlanes as any,
-        fcRidgeInput as any,
-        { planeOutsideToleranceRatio: 0.10, maxRidgeLengthRatio: 0.60, totalAreaMultiplier: 1.08 },
-      );
-      footprintConstraintStats = fcResult.stats;
-      console.log("[GEOMETRY_VALIDATION]", JSON.stringify({
-        ...fcResult.stats,
-        rejected_planes: fcResult.rejectedPlanes.slice(0, 20),
-        rejected_ridges: fcResult.rejectedRidges.slice(0, 20),
-      }));
+        const fcRidgeInput = (cleanEdges as any[])
+          .filter((e) =>
+            e &&
+            (e.edge_type === "ridge" || e.edge_type === "hip" ||
+              e.edge_type === "valley")
+          )
+          .map((e, i) => ({
+            id: e.id ?? `edge_${i}`,
+            edge_type: e.edge_type,
+            line_px: e.line_px,
+            p1: e.line_px?.[0],
+            p2: e.line_px?.[e.line_px?.length - 1],
+            cluster_id: e.cluster_id ?? null,
+            region_bbox: e.region_bbox ?? null,
+          }));
+        const fcResult = validateFootprintConstraints(
+          footprint as any,
+          cleanPlanes as any,
+          fcRidgeInput as any,
+          {
+            planeOutsideToleranceRatio: 0.10,
+            maxRidgeLengthRatio: 0.60,
+            totalAreaMultiplier: 1.08,
+          },
+        );
+        footprintConstraintStats = fcResult.stats;
+        console.log(
+          "[GEOMETRY_VALIDATION]",
+          JSON.stringify({
+            ...fcResult.stats,
+            rejected_planes: fcResult.rejectedPlanes.slice(0, 20),
+            rejected_ridges: fcResult.rejectedRidges.slice(0, 20),
+          }),
+        );
 
-      if (fcResult.acceptedPlanes.length > 0 && !fcResult.stats.overall_rejected) {
-        cleanPlanes = fcResult.acceptedPlanes as RoofPlane[];
-      }
+        if (
+          fcResult.acceptedPlanes.length > 0 && !fcResult.stats.overall_rejected
+        ) {
+          cleanPlanes = fcResult.acceptedPlanes as RoofPlane[];
+        }
 
-      const rejectedRidgeIds = new Set(
-        fcResult.rejectedRidges
-          .map((r) => (r.id == null ? null : String(r.id)))
-          .filter((x): x is string => !!x),
-      );
-      if (rejectedRidgeIds.size > 0) {
-        cleanEdges = (cleanEdges as any[]).filter((e, i) => {
-          const eid = e.id != null ? String(e.id) : `edge_${i}`;
-          return !rejectedRidgeIds.has(eid);
-        }) as typeof cleanEdges;
-      }
+        const rejectedRidgeIds = new Set(
+          fcResult.rejectedRidges
+            .map((r) => (r.id == null ? null : String(r.id)))
+            .filter((x): x is string => !!x),
+        );
+        if (rejectedRidgeIds.size > 0) {
+          cleanEdges = (cleanEdges as any[]).filter((e, i) => {
+            const eid = e.id != null ? String(e.id) : `edge_${i}`;
+            return !rejectedRidgeIds.has(eid);
+          }) as typeof cleanEdges;
+        }
       }
     } catch (e) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
-    const preCoveragePitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
+    const preCoveragePitchRise = parsePitchOverride(input.pitch_override) ??
+      dominantSolarPitchRise(solarData) ?? null;
     singlePlaneFallbackForbidden =
       polygonAreaPx(footprint) * actualFpp * actualFpp > 1200 &&
       preCoveragePitchRise !== null &&
@@ -6126,9 +8641,13 @@ async function processJob(input: any) {
     if (!hybridSolverAccepted && topologySource !== REQUIRED_TOPOLOGY_SOURCE) {
       applyFootprintCoverageGate("pre_edge_classification");
     } else if (topologySource === REQUIRED_TOPOLOGY_SOURCE) {
-      console.log("[COVERAGE_GATE] Skipped — autonomous DSM graph already accepted as canonical");
+      console.log(
+        "[COVERAGE_GATE] Skipped — autonomous DSM graph already accepted as canonical",
+      );
     } else {
-      console.log("[COVERAGE_GATE] Skipped — hybrid solver already accepted as primary");
+      console.log(
+        "[COVERAGE_GATE] Skipped — hybrid solver already accepted as primary",
+      );
     }
     refreshSimpleRoofType("pre_edge_classification");
 
@@ -6141,14 +8660,24 @@ async function processJob(input: any) {
     try {
       if (cleanPlanes.length > 0) {
         if (solverTopologyLocked || isSolverTopologySource()) {
-          const solverCounts = cleanEdges.reduce((acc: Record<string, number>, edge) => {
-            acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
-            return acc;
-          }, {});
-          const solverShared = cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley").length;
-          const solverExterior = cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length;
+          const solverCounts = cleanEdges.reduce(
+            (acc: Record<string, number>, edge) => {
+              acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+              return acc;
+            },
+            {},
+          );
+          const solverShared = cleanEdges.filter((e) =>
+            e.edge_type === "ridge" || e.edge_type === "hip" ||
+            e.edge_type === "valley"
+          ).length;
+          const solverExterior = cleanEdges.filter((e) =>
+            e.edge_type === "eave" || e.edge_type === "rake"
+          ).length;
           planeEdgeClassifierDebug = {
-            source: topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : "constraint_solver_topology",
+            source: topologySource === REQUIRED_TOPOLOGY_SOURCE
+              ? "dsm_planar_graph_faces"
+              : "constraint_solver_topology",
             classifier_skipped: true,
             plane_count: cleanPlanes.length,
             shared_edges: solverShared,
@@ -6162,107 +8691,153 @@ async function processJob(input: any) {
             exterior_edges: solverExterior,
             invalid_edges: 0,
           };
-          (globalThis as any).__planeEdgeClassifierDebug = planeEdgeClassifierDebug;
+          (globalThis as any).__planeEdgeClassifierDebug =
+            planeEdgeClassifierDebug;
           (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
-          console.log("[PLANE_EDGE_CLASSIFIER] Bypassed — using locked solver topology as final authority");
-          console.log("[FINAL_TOPOLOGY_SOURCE]", JSON.stringify({
-            solver_used: topologySource,
-            classifier_used: false,
-            edges_from_solver: cleanEdges.length,
-            edges_from_classifier: 0,
-          }));
+          console.log(
+            "[PLANE_EDGE_CLASSIFIER] Bypassed — using locked solver topology as final authority",
+          );
+          console.log(
+            "[FINAL_TOPOLOGY_SOURCE]",
+            JSON.stringify({
+              solver_used: topologySource,
+              classifier_used: false,
+              edges_from_solver: cleanEdges.length,
+              edges_from_classifier: 0,
+            }),
+          );
         } else {
-        // ── POLYGON NORMALIZATION — snap shared vertices, insert boundary
-        //    points, and ensure consistent winding BEFORE classification.
-        //    This fixes the "planes=N edges=0" bug where ridge splitting
-        //    produces polygons with close-but-not-identical boundary vertices.
-        try {
-          const rawPolys = (cleanPlanes as any[]).map((p) => (p.polygon_px || []) as { x: number; y: number }[]);
-          console.log("[PLANE_GRAPH_PRE_SNAP]", JSON.stringify({
-            plane_count: rawPolys.length,
-            plane_ids: (cleanPlanes as any[]).map((p, i) => p.plane_index ?? i),
-            polygon_vertex_counts: rawPolys.map((p) => p.length),
-          }));
+          // ── POLYGON NORMALIZATION — snap shared vertices, insert boundary
+          //    points, and ensure consistent winding BEFORE classification.
+          //    This fixes the "planes=N edges=0" bug where ridge splitting
+          //    produces polygons with close-but-not-identical boundary vertices.
+          try {
+            const rawPolys = (cleanPlanes as any[]).map((p) =>
+              (p.polygon_px || []) as { x: number; y: number }[]
+            );
+            console.log(
+              "[PLANE_GRAPH_PRE_SNAP]",
+              JSON.stringify({
+                plane_count: rawPolys.length,
+                plane_ids: (cleanPlanes as any[]).map((p, i) =>
+                  p.plane_index ?? i
+                ),
+                polygon_vertex_counts: rawPolys.map((p) => p.length),
+              }),
+            );
 
-          // ALWAYS normalize — grid-snap forces topological connectivity
-          const normResult = normalizeAdjacentPlanes(rawPolys);
-          polygonNormalizeDebug = normResult.debug;
-          console.log("[POLYGON_NORMALIZE]", JSON.stringify(normResult.debug));
+            // ALWAYS normalize — grid-snap forces topological connectivity
+            const normResult = normalizeAdjacentPlanes(rawPolys);
+            polygonNormalizeDebug = normResult.debug;
+            console.log(
+              "[POLYGON_NORMALIZE]",
+              JSON.stringify(normResult.debug),
+            );
 
-          // Apply normalized polygons back
-          for (let i = 0; i < cleanPlanes.length && i < normResult.polygons.length; i++) {
-            (cleanPlanes as any[])[i].polygon_px = normResult.polygons[i];
+            // Apply normalized polygons back
+            for (
+              let i = 0;
+              i < cleanPlanes.length && i < normResult.polygons.length;
+              i++
+            ) {
+              (cleanPlanes as any[])[i].polygon_px = normResult.polygons[i];
+            }
+          } catch (e) {
+            console.warn("[POLYGON_NORMALIZE] failed:", (e as Error).message);
           }
-        } catch (e) {
-          console.warn("[POLYGON_NORMALIZE] failed:", (e as Error).message);
-        }
 
-        const ridgeHintsForClassifier = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
-          id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
-          p1: r.p1,
-          p2: r.p2,
-          score: typeof r.score === "number" ? r.score : undefined,
-        }));
-        const planesForClassifier = (cleanPlanes as any[]).map((p, i) => ({
-          id: p.plane_index ?? i,
-          plane_index: p.plane_index ?? i,
-          polygon_px: p.polygon_px,
-          pitch: p.pitch ?? null,
-          pitch_degrees: p.pitch_degrees ?? null,
-          azimuth: p.azimuth ?? null,
-        }));
-        // When hybrid solver is the source, its edges already have correct
-        // ridge/hip/eave classification. Skip the generic classifier which
-        // would destroy those labels and reclassify everything as eave.
-        if (topologySource.startsWith("hybrid_roof_solver")) {
-          console.log("[PLANE_EDGE_CLASSIFIER] Skipped — hybrid solver edges preserved");
-          // Still ensure perimeter eaves exist
-          const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
-          strictEdgeGraphDebug = {
-            total_edges: cleanEdges.length,
-            shared_edges: cleanEdges.filter((e) => e.edge_type === "ridge" || e.edge_type === "hip").length,
-            exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave").length,
-            invalid_edges: 0,
-          };
-        } else {
-        const edgeResult = classifyPlaneEdges({
-          planes: planesForClassifier,
-          ridgeHints: ridgeHintsForClassifier,
-          footprintPoly: footprint.map(p => ({ x: p.x ?? (p as any)[0] ?? 0, y: p.y ?? (p as any)[1] ?? 0 })),
-        });
-        planeEdgeClassifierDebug = edgeResult.debug;
-        (globalThis as any).__planeEdgeClassifierDebug = edgeResult.debug;
+          const ridgeHintsForClassifier = (topLevelFilteredRidges ?? []).map((
+            r: any,
+            i: number,
+          ) => ({
+            id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
+            p1: r.p1,
+            p2: r.p2,
+            score: typeof r.score === "number" ? r.score : undefined,
+          }));
+          const planesForClassifier = (cleanPlanes as any[]).map((p, i) => ({
+            id: p.plane_index ?? i,
+            plane_index: p.plane_index ?? i,
+            polygon_px: p.polygon_px,
+            pitch: p.pitch ?? null,
+            pitch_degrees: p.pitch_degrees ?? null,
+            azimuth: p.azimuth ?? null,
+          }));
+          // When hybrid solver is the source, its edges already have correct
+          // ridge/hip/eave classification. Skip the generic classifier which
+          // would destroy those labels and reclassify everything as eave.
+          if (topologySource.startsWith("hybrid_roof_solver")) {
+            console.log(
+              "[PLANE_EDGE_CLASSIFIER] Skipped — hybrid solver edges preserved",
+            );
+            // Still ensure perimeter eaves exist
+            const perimeterEdgesAdded = ensureExteriorFootprintEdges(
+              "footprint_perimeter_forced",
+            );
+            strictEdgeGraphDebug = {
+              total_edges: cleanEdges.length,
+              shared_edges: cleanEdges.filter((e) =>
+                e.edge_type === "ridge" || e.edge_type === "hip"
+              ).length,
+              exterior_edges: cleanEdges.filter((e) =>
+                e.edge_type === "eave"
+              ).length,
+              invalid_edges: 0,
+            };
+          } else {
+            const edgeResult = classifyPlaneEdges({
+              planes: planesForClassifier,
+              ridgeHints: ridgeHintsForClassifier,
+              footprintPoly: footprint.map((p) => ({
+                x: p.x ?? (p as any)[0] ?? 0,
+                y: p.y ?? (p as any)[1] ?? 0,
+              })),
+            });
+            planeEdgeClassifierDebug = edgeResult.debug;
+            (globalThis as any).__planeEdgeClassifierDebug = edgeResult.debug;
 
-        const reclassified = edgeResult.edges.map((e) => ({
-          id: e.id,
-          edge_type: e.edge_type,
-          line_px: e.line_px,
-          confidence: e.confidence,
-          source: e.source,
-          adjacent_plane_ids: e.adjacent_plane_ids,
-          debug_reason: e.debug_reason,
-        }));
-        cleanEdges = reclassified as typeof cleanEdges;
+            const reclassified = edgeResult.edges.map((e) => ({
+              id: e.id,
+              edge_type: e.edge_type,
+              line_px: e.line_px,
+              confidence: e.confidence,
+              source: e.source,
+              adjacent_plane_ids: e.adjacent_plane_ids,
+              debug_reason: e.debug_reason,
+            }));
+            cleanEdges = reclassified as typeof cleanEdges;
 
-        const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
-        strictEdgeGraphDebug = {
-          total_edges: edgeResult.debug?.total_edges_in_map ?? cleanEdges.length,
-          shared_edges: edgeResult.debug?.shared_edges ?? 0,
-          exterior_edges: edgeResult.debug?.exterior_edges ?? 0,
-          invalid_edges: edgeResult.debug?.invalid_edges ?? 0,
-        };
-        (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
-        console.log("[STRICT_EDGE_GRAPH]", JSON.stringify(strictEdgeGraphDebug));
+            const perimeterEdgesAdded = ensureExteriorFootprintEdges(
+              "footprint_perimeter_forced",
+            );
+            strictEdgeGraphDebug = {
+              total_edges: edgeResult.debug?.total_edges_in_map ??
+                cleanEdges.length,
+              shared_edges: edgeResult.debug?.shared_edges ?? 0,
+              exterior_edges: edgeResult.debug?.exterior_edges ?? 0,
+              invalid_edges: edgeResult.debug?.invalid_edges ?? 0,
+            };
+            (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
+            console.log(
+              "[STRICT_EDGE_GRAPH]",
+              JSON.stringify(strictEdgeGraphDebug),
+            );
 
-        console.log("[PERIMETER_EDGE_FORCE]", JSON.stringify({
-          footprint_segments: footprint.length,
-          perimeter_edges_added: perimeterEdgesAdded,
-          total_edges_after: cleanEdges.length,
-          eave_count: cleanEdges.filter((e) => e.edge_type === "eave").length,
-          rake_count: cleanEdges.filter((e) => e.edge_type === "rake").length,
-        }));
-
-        } // end else (non-hybrid classifier path)
+            console.log(
+              "[PERIMETER_EDGE_FORCE]",
+              JSON.stringify({
+                footprint_segments: footprint.length,
+                perimeter_edges_added: perimeterEdgesAdded,
+                total_edges_after: cleanEdges.length,
+                eave_count: cleanEdges.filter((e) =>
+                  e.edge_type === "eave"
+                ).length,
+                rake_count: cleanEdges.filter((e) =>
+                  e.edge_type === "rake"
+                ).length,
+              }),
+            );
+          } // end else (non-hybrid classifier path)
         } // end solver-topology bypass else
       }
     } catch (e) {
@@ -6287,14 +8862,25 @@ async function processJob(input: any) {
 
       const ridgeCandidates = (topLevelFilteredRidges ?? [])
         .map((r: any) => ({ p1: r.p1 as Point, p2: r.p2 as Point }))
-        .filter((r: any) => r.p1 && r.p2 && Number.isFinite(r.p1.x) && Number.isFinite(r.p1.y) && Number.isFinite(r.p2.x) && Number.isFinite(r.p2.y));
+        .filter((r: any) =>
+          r.p1 && r.p2 && Number.isFinite(r.p1.x) && Number.isFinite(r.p1.y) &&
+          Number.isFinite(r.p2.x) && Number.isFinite(r.p2.y)
+        );
       const solarAxis = dominantSolarAzimuth(solarData);
       const roofBbox = bboxOf(footprint);
-      const roofCenter = roofBbox ? { x: (roofBbox.minX + roofBbox.maxX) / 2, y: (roofBbox.minY + roofBbox.maxY) / 2 } : null;
-      const canonicalVertexKey = (p: Point) => `${Math.round(p.x / 2) * 2}:${Math.round(p.y / 2) * 2}`;
+      const roofCenter = roofBbox
+        ? {
+          x: (roofBbox.minX + roofBbox.maxX) / 2,
+          y: (roofBbox.minY + roofBbox.maxY) / 2,
+        }
+        : null;
+      const canonicalVertexKey = (p: Point) =>
+        `${Math.round(p.x / 2) * 2}:${Math.round(p.y / 2) * 2}`;
       const canonicalGraphVertices = new Set<string>();
       for (const plane of cleanPlanes) {
-        for (const pt of plane.polygon_px || []) canonicalGraphVertices.add(canonicalVertexKey(pt));
+        for (const pt of plane.polygon_px || []) {
+          canonicalGraphVertices.add(canonicalVertexKey(pt));
+        }
       }
       const segmentInsideFootprint = (a: Point, b: Point) => {
         if (!footprint || footprint.length < 3) return false;
@@ -6304,25 +8890,38 @@ async function processJob(input: any) {
         }));
         return samples.every((pt) => pointInPolygon(pt, footprint));
       };
-      const ridgeEdgesBefore = cleanEdges.filter((e) => e.edge_type === "ridge").length;
+      const ridgeEdgesBefore = cleanEdges.filter((e) =>
+        e.edge_type === "ridge"
+      ).length;
       let rejectedFuzzyRidges = 0;
       let rejectedMisalignedRidges = 0;
       const ridgeEdgeChecks: any[] = [];
 
       cleanEdges = cleanEdges.map((edge) => {
-        const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
+        const isStructural = edge.edge_type === "ridge" ||
+          edge.edge_type === "hip" || edge.edge_type === "valley";
         if (!isStructural) return edge;
         // Constraint solver edges are geometrically guaranteed — do not let
         // visual-hint QA or plane_edge_classifier_v1 reject final topology.
-        if (solverTopologyLocked || String(edge.source || "").includes("constraint_solver_topology")) return edge;
+        if (
+          solverTopologyLocked ||
+          String(edge.source || "").includes("constraint_solver_topology")
+        ) return edge;
         const source = String(edge.source || "");
         const sourceIsFuzzy = source.toLowerCase().includes("fuzzy");
-        const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
+        const adjacentCount = Array.isArray(edge.adjacent_plane_ids)
+          ? edge.adjacent_plane_ids.length
+          : 0;
         const p1 = edge.line_px?.[0];
         const p2 = edge.line_px?.[edge.line_px.length - 1];
-        const mid = p1 && p2 ? { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } : null;
-        const hasCanonicalEndpoints = !!p1 && !!p2 && canonicalGraphVertices.has(canonicalVertexKey(p1)) && canonicalGraphVertices.has(canonicalVertexKey(p2));
-        const strictShared = source === "plane_edge_classifier_v1" && adjacentCount === 2 && hasCanonicalEndpoints;
+        const mid = p1 && p2
+          ? { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
+          : null;
+        const hasCanonicalEndpoints = !!p1 && !!p2 &&
+          canonicalGraphVertices.has(canonicalVertexKey(p1)) &&
+          canonicalGraphVertices.has(canonicalVertexKey(p2));
+        const strictShared = source === "plane_edge_classifier_v1" &&
+          adjacentCount === 2 && hasCanonicalEndpoints;
         const insideFootprint = !!p1 && !!p2 && segmentInsideFootprint(p1, p2);
         if (sourceIsFuzzy || !strictShared || !insideFootprint) {
           if (edge.edge_type === "ridge") rejectedFuzzyRidges++;
@@ -6330,7 +8929,9 @@ async function processJob(input: any) {
             ...edge,
             edge_type: "unknown_interior" as const,
             confidence: Math.min(edge.confidence, 0.25),
-            debug_reason: sourceIsFuzzy ? "fuzzy_edge_excluded_from_structural_totals" : "not_strict_two_plane_graph_edge",
+            debug_reason: sourceIsFuzzy
+              ? "fuzzy_edge_excluded_from_structural_totals"
+              : "not_strict_two_plane_graph_edge",
           };
         }
         if (edge.edge_type !== "ridge" || !p1 || !p2) return edge;
@@ -6342,11 +8943,21 @@ async function processJob(input: any) {
           const cAngle = lineAngle180(candidate.p1, candidate.p2);
           const d1 = pointToSegmentDistancePx(p1, candidate.p1, candidate.p2);
           const d2 = pointToSegmentDistancePx(p2, candidate.p1, candidate.p2);
-          const midDist = mid ? pointToSegmentDistancePx(mid, candidate.p1, candidate.p2) : Number.POSITIVE_INFINITY;
-          candidateDistance = Math.min(candidateDistance, Math.min(Math.max(d1, d2), midDist));
-          candidateAngleDelta = Math.min(candidateAngleDelta, angleDiff180(edgeAngle, cAngle));
+          const midDist = mid
+            ? pointToSegmentDistancePx(mid, candidate.p1, candidate.p2)
+            : Number.POSITIVE_INFINITY;
+          candidateDistance = Math.min(
+            candidateDistance,
+            Math.min(Math.max(d1, d2), midDist),
+          );
+          candidateAngleDelta = Math.min(
+            candidateAngleDelta,
+            angleDiff180(edgeAngle, cAngle),
+          );
         }
-        const solarAngleDelta = solarAxis == null ? Number.POSITIVE_INFINITY : angleDiff180(edgeAngle, ((solarAxis % 180) + 180) % 180);
+        const solarAngleDelta = solarAxis == null
+          ? Number.POSITIVE_INFINITY
+          : angleDiff180(edgeAngle, ((solarAxis % 180) + 180) % 180);
         const bestAxisDelta = Math.min(candidateAngleDelta, solarAngleDelta);
         const hasVisualCandidate = ridgeCandidates.length > 0;
         const distanceOk = hasVisualCandidate && candidateDistance <= 20;
@@ -6355,21 +8966,39 @@ async function processJob(input: any) {
         if (roofBbox && roofCenter && mid) {
           const horizontalDelta = Math.min(edgeAngle, 180 - edgeAngle);
           const verticalDelta = Math.abs(edgeAngle - 90);
-          if (horizontalDelta <= 45) centerOffset = Math.abs(mid.y - roofCenter.y) / Math.max(roofBbox.height, 1);
-          else if (verticalDelta <= 45) centerOffset = Math.abs(mid.x - roofCenter.x) / Math.max(roofBbox.width, 1);
-          else centerOffset = Math.hypot(mid.x - roofCenter.x, mid.y - roofCenter.y) / Math.max(roofBbox.width, roofBbox.height, 1);
+          if (horizontalDelta <= 45) {
+            centerOffset = Math.abs(mid.y - roofCenter.y) /
+              Math.max(roofBbox.height, 1);
+          } else if (verticalDelta <= 45) {
+            centerOffset = Math.abs(mid.x - roofCenter.x) /
+              Math.max(roofBbox.width, 1);
+          } else {centerOffset =
+              Math.hypot(mid.x - roofCenter.x, mid.y - roofCenter.y) /
+              Math.max(roofBbox.width, roofBbox.height, 1);}
         }
         ridgeEdgeChecks.push({
           edge_id: edge.id ?? null,
-          ridge_to_visual_candidate_distance_px: Number.isFinite(candidateDistance) ? round(candidateDistance, 2) : null,
-          ridge_angle_delta_to_solar_axis: Number.isFinite(solarAngleDelta) ? round(solarAngleDelta, 2) : null,
-          ridge_angle_delta_to_visual_axis: Number.isFinite(candidateAngleDelta) ? round(candidateAngleDelta, 2) : null,
+          ridge_to_visual_candidate_distance_px:
+            Number.isFinite(candidateDistance)
+              ? round(candidateDistance, 2)
+              : null,
+          ridge_angle_delta_to_solar_axis: Number.isFinite(solarAngleDelta)
+            ? round(solarAngleDelta, 2)
+            : null,
+          ridge_angle_delta_to_visual_axis: Number.isFinite(candidateAngleDelta)
+            ? round(candidateAngleDelta, 2)
+            : null,
           ridge_center_offset_from_roof_centerline: round(centerOffset, 3),
           source,
         });
         if (!distanceOk || !angleOk || centerOffset > 0.35) {
           rejectedMisalignedRidges++;
-          return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.35), debug_reason: "ridge_edges_not_aligned_to_roof_structure" };
+          return {
+            ...edge,
+            edge_type: "unknown_interior" as const,
+            confidence: Math.min(edge.confidence, 0.35),
+            debug_reason: "ridge_edges_not_aligned_to_roof_structure",
+          };
         }
         return edge;
       });
@@ -6379,7 +9008,9 @@ async function processJob(input: any) {
         .reduce((sum, e) => sum + polylineLengthPx(e.line_px || []), 0);
       ridgeAlignmentDebug = {
         ridge_edges_before: ridgeEdgesBefore,
-        ridge_edges_after: cleanEdges.filter((e) => e.edge_type === "ridge").length,
+        ridge_edges_after: cleanEdges.filter((e) =>
+          e.edge_type === "ridge"
+        ).length,
         rejected_fuzzy_ridges: rejectedFuzzyRidges,
         rejected_misaligned_ridges: rejectedMisalignedRidges,
         final_ridge_ft: round(finalRidgePx * actualFpp, 2),
@@ -6395,23 +9026,31 @@ async function processJob(input: any) {
 
     // Skip final coverage gate if edge classification already ran — it would
     // wipe cleanEdges via fallback.  Only ensure perimeter edges exist.
-    const finalExteriorEdgesCreated = solverTopologyLocked ? 0 : ensureExteriorFootprintEdges("footprint_perimeter_final");
+    const finalExteriorEdgesCreated = solverTopologyLocked
+      ? 0
+      : ensureExteriorFootprintEdges("footprint_perimeter_final");
 
     // ── FINAL SIMPLE-GABLE AUTHORITY OVERRIDE ──
     // This runs after classifier output, dedupe, strict QA, and perimeter edge
     // forcing. When a roof is a simple gable, this final edge set is the only
     // source used by totals, persistence, and rendering.
     {
-      const countEdges = (edges: RoofEdge[]) => edges.reduce((acc: Record<string, number>, edge) => {
-        acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
-        return acc;
-      }, {});
+      const countEdges = (edges: RoofEdge[]) =>
+        edges.reduce((acc: Record<string, number>, edge) => {
+          acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+          return acc;
+        }, {});
       const beforeCounts = countEdges(cleanEdges);
       const roofBbox = bboxOf(footprint);
       const footprintAreaPx = polygonAreaPx(footprint);
-      const footprintFillRatio = roofBbox?.area ? footprintAreaPx / roofBbox.area : 0;
-      const planeById = new Map((cleanPlanes as any[]).map((p, i) => [String(p.plane_index ?? i), p]));
-      const snapKey = (p: Point) => `${Math.round(p.x / 4) * 4}:${Math.round(p.y / 4) * 4}`;
+      const footprintFillRatio = roofBbox?.area
+        ? footprintAreaPx / roofBbox.area
+        : 0;
+      const planeById = new Map(
+        (cleanPlanes as any[]).map((p, i) => [String(p.plane_index ?? i), p]),
+      );
+      const snapKey = (p: Point) =>
+        `${Math.round(p.x / 4) * 4}:${Math.round(p.y / 4) * 4}`;
       const vertexPlanes = new Map<string, Set<string>>();
       for (const plane of cleanPlanes as any[]) {
         const planeId = String(plane.plane_index ?? plane.id ?? "");
@@ -6421,7 +9060,8 @@ async function processJob(input: any) {
           vertexPlanes.get(key)!.add(planeId);
         }
       }
-      const threePlaneNodeCount = Array.from(vertexPlanes.values()).filter((ids) => ids.size >= 3).length;
+      const threePlaneNodeCount =
+        Array.from(vertexPlanes.values()).filter((ids) => ids.size >= 3).length;
       const countMeaningfulReflexCorners = (poly: Point[]) => {
         if (!poly || poly.length < 4) return 0;
         let signedArea = 0;
@@ -6437,7 +9077,10 @@ async function processJob(input: any) {
           const next = poly[(i + 1) % poly.length];
           const v1 = { x: cur.x - prev.x, y: cur.y - prev.y };
           const v2 = { x: next.x - cur.x, y: next.y - cur.y };
-          const minLeg = Math.min(Math.hypot(v1.x, v1.y), Math.hypot(v2.x, v2.y));
+          const minLeg = Math.min(
+            Math.hypot(v1.x, v1.y),
+            Math.hypot(v2.x, v2.y),
+          );
           if (minLeg < 8) continue;
           const cross = v1.x * v2.y - v1.y * v2.x;
           if ((ccw && cross < -1e-6) || (!ccw && cross > 1e-6)) reflex++;
@@ -6448,8 +9091,13 @@ async function processJob(input: any) {
         const d = Math.abs(a - b) % 360;
         return Math.min(d, 360 - d);
       };
-      const isOpposingAz = (a: number | null | undefined, b: number | null | undefined) => {
-        if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return false;
+      const isOpposingAz = (
+        a: number | null | undefined,
+        b: number | null | undefined,
+      ) => {
+        if (
+          !Number.isFinite(Number(a)) || !Number.isFinite(Number(b))
+        ) return false;
         const d = normalizedAzDiff(Number(a), Number(b));
         return d >= 140 && d <= 220;
       };
@@ -6459,7 +9107,9 @@ async function processJob(input: any) {
       let opposingSlopePairs = 0;
       for (let i = 0; i < solarAzimuths.length; i++) {
         for (let j = i + 1; j < solarAzimuths.length; j++) {
-          if (isOpposingAz(solarAzimuths[i], solarAzimuths[j])) opposingSlopePairs++;
+          if (
+            isOpposingAz(solarAzimuths[i], solarAzimuths[j])
+          ) opposingSlopePairs++;
         }
       }
       if (opposingSlopePairs === 0) {
@@ -6474,42 +9124,57 @@ async function processJob(input: any) {
       }
       const cleanCandidateEdge = (edge: RoofEdge) => {
         const source = String(edge.source || "").toLowerCase();
-        const debugSource = String((edge as any).debug_source || edge.debug_reason || "").toLowerCase();
-        return !debugSource.includes("bunched_right_side") && !source.includes("fuzzy") && edge.edge_type !== "unknown_interior";
+        const debugSource = String(
+          (edge as any).debug_source || edge.debug_reason || "",
+        ).toLowerCase();
+        return !debugSource.includes("bunched_right_side") &&
+          !source.includes("fuzzy") && edge.edge_type !== "unknown_interior";
       };
       const reflexCorners = countMeaningfulReflexCorners(footprint);
       const mostlyRectangular = footprintFillRatio >= 0.55;
       const ridgeEvidenceCount = Math.max(
         Number(ridgeDetectedCount || 0),
-        Array.isArray(topLevelFilteredRidges) ? topLevelFilteredRidges.length : 0,
+        Array.isArray(topLevelFilteredRidges)
+          ? topLevelFilteredRidges.length
+          : 0,
       );
       const noisyReflexOnly = Boolean(
         roofBbox &&
-        reflexCorners > 0 &&
-        footprintFillRatio >= 0.72 &&
-        cleanPlanes.length <= 8 &&
-        ridgeEvidenceCount > 0
+          reflexCorners > 0 &&
+          footprintFillRatio >= 0.72 &&
+          cleanPlanes.length <= 8 &&
+          ridgeEvidenceCount > 0,
       );
       const validValleyGraph = cleanEdges.some((edge) => {
-        if (edge.edge_type !== "valley" || !cleanCandidateEdge(edge)) return false;
-        const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
-        const p1 = edge.line_px?.[0], p2 = edge.line_px?.[edge.line_px.length - 1];
+        if (
+          edge.edge_type !== "valley" || !cleanCandidateEdge(edge)
+        ) return false;
+        const adjacentCount = Array.isArray(edge.adjacent_plane_ids)
+          ? edge.adjacent_plane_ids.length
+          : 0;
+        const p1 = edge.line_px?.[0],
+          p2 = edge.line_px?.[edge.line_px.length - 1];
         if (!roofBbox || adjacentCount !== 2 || !p1 || !p2) return false;
         const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-        const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
-        const sideInsetRatio = sideInset / Math.max(Math.min(roofBbox.width, roofBbox.height), 1);
-        return sideInsetRatio > 0.22 && pointInPolygon(mid, footprint) && threePlaneNodeCount > 0 && !noisyReflexOnly;
+        const sideInset = Math.min(
+          mid.x - roofBbox.minX,
+          roofBbox.maxX - mid.x,
+        );
+        const sideInsetRatio = sideInset /
+          Math.max(Math.min(roofBbox.width, roofBbox.height), 1);
+        return sideInsetRatio > 0.22 && pointInPolygon(mid, footprint) &&
+          threePlaneNodeCount > 0 && !noisyReflexOnly;
       });
       const simpleGableEnabled = Boolean(
         roofBbox &&
-        !solverTopologyLocked &&
-        !simpleRoofTypeDebug.hip_roof &&
-        cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
-        (reflexCorners === 0 || noisyReflexOnly) &&
-        mostlyRectangular &&
-        (opposingSlopePairs > 0 || ridgeEvidenceCount > 0) &&
-        (threePlaneNodeCount === 0 || noisyReflexOnly) &&
-        !validValleyGraph
+          !solverTopologyLocked &&
+          !simpleRoofTypeDebug.hip_roof &&
+          cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
+          (reflexCorners === 0 || noisyReflexOnly) &&
+          mostlyRectangular &&
+          (opposingSlopePairs > 0 || ridgeEvidenceCount > 0) &&
+          (threePlaneNodeCount === 0 || noisyReflexOnly) &&
+          !validValleyGraph,
       );
 
       let selectedRidge: any = null;
@@ -6519,31 +9184,59 @@ async function processJob(input: any) {
 
       if (simpleGableEnabled && roofBbox) {
         const longAxisAngle = roofBbox.width >= roofBbox.height ? 0 : 90;
-        const center = { x: (roofBbox.minX + roofBbox.maxX) / 2, y: (roofBbox.minY + roofBbox.maxY) / 2 };
+        const center = {
+          x: (roofBbox.minX + roofBbox.maxX) / 2,
+          y: (roofBbox.minY + roofBbox.maxY) / 2,
+        };
         const scored = cleanEdges
           .filter(cleanCandidateEdge)
-          .filter((edge) => Array.isArray(edge.adjacent_plane_ids) && edge.adjacent_plane_ids.length === 2)
+          .filter((edge) =>
+            Array.isArray(edge.adjacent_plane_ids) &&
+            edge.adjacent_plane_ids.length === 2
+          )
           .map((edge) => {
-            const p1 = edge.line_px?.[0], p2 = edge.line_px?.[edge.line_px.length - 1];
+            const p1 = edge.line_px?.[0],
+              p2 = edge.line_px?.[edge.line_px.length - 1];
             if (!p1 || !p2) return null;
             const ids = edge.adjacent_plane_ids || [];
             const planeA = planeById.get(String(ids[0]));
             const planeB = planeById.get(String(ids[1]));
-            const opposing = isOpposingAz(Number(planeA?.azimuth), Number(planeB?.azimuth));
+            const opposing = isOpposingAz(
+              Number(planeA?.azimuth),
+              Number(planeB?.azimuth),
+            );
             const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-            const angleDelta = angleDiff180(lineAngle180(p1, p2), longAxisAngle);
-            const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
-            const centerOffsetPx = longAxisAngle === 0 ? Math.abs(mid.y - center.y) : Math.abs(mid.x - center.x);
-            const centerOffsetRatio = centerOffsetPx / Math.max(longAxisAngle === 0 ? roofBbox.height : roofBbox.width, 1);
+            const angleDelta = angleDiff180(
+              lineAngle180(p1, p2),
+              longAxisAngle,
+            );
+            const sideInset = Math.min(
+              mid.x - roofBbox.minX,
+              roofBbox.maxX - mid.x,
+            );
+            const centerOffsetPx = longAxisAngle === 0
+              ? Math.abs(mid.y - center.y)
+              : Math.abs(mid.x - center.x);
+            const centerOffsetRatio = centerOffsetPx /
+              Math.max(
+                longAxisAngle === 0 ? roofBbox.height : roofBbox.width,
+                1,
+              );
             const inside = pointInPolygon(mid, footprint);
-            const bounded = p1.x >= roofBbox.minX - 8 && p1.x <= roofBbox.maxX + 8 && p2.x >= roofBbox.minX - 8 && p2.x <= roofBbox.maxX + 8 && p1.y >= roofBbox.minY - 8 && p1.y <= roofBbox.maxY + 8 && p2.y >= roofBbox.minY - 8 && p2.y <= roofBbox.maxY + 8;
+            const bounded = p1.x >= roofBbox.minX - 8 &&
+              p1.x <= roofBbox.maxX + 8 && p2.x >= roofBbox.minX - 8 &&
+              p2.x <= roofBbox.maxX + 8 && p1.y >= roofBbox.minY - 8 &&
+              p1.y <= roofBbox.maxY + 8 && p2.y >= roofBbox.minY - 8 &&
+              p2.y <= roofBbox.maxY + 8;
             const rejectSide = sideInset <= 15;
-            const rejected = !inside || !bounded || rejectSide || angleDelta > 35 || centerOffsetRatio > 0.40 || !opposing;
+            const rejected = !inside || !bounded || rejectSide ||
+              angleDelta > 35 || centerOffsetRatio > 0.40 || !opposing;
             return {
               edge,
               rejected,
               rejectSide,
-              score: centerOffsetRatio * 100 + angleDelta + (edge.edge_type === "ridge" ? 0 : 12),
+              score: centerOffsetRatio * 100 + angleDelta +
+                (edge.edge_type === "ridge" ? 0 : 12),
               centerOffsetRatio,
               angleDelta,
               sideInset,
@@ -6551,17 +9244,28 @@ async function processJob(input: any) {
           })
           .filter(Boolean) as any[];
         removedBunchedEdges = scored.filter((s) => s.rejectSide).length;
-        const best = scored.filter((s) => !s.rejected).sort((a, b) => a.score - b.score)[0];
+        const best =
+          scored.filter((s) => !s.rejected).sort((a, b) =>
+            a.score - b.score
+          )[0];
         if (best) {
           selectedRidge = {
             ...best.edge,
             edge_type: "ridge" as const,
             source: "plane_edge_classifier_v1",
             confidence: Math.max(0.82, Number(best.edge.confidence || 0.82)),
-            debug_reason: `simple_gable_final_override:selected_centerline_ridge offset=${round(best.centerOffsetRatio, 3)} angle_delta=${round(best.angleDelta, 1)}; ${best.edge.debug_reason || ""}`,
+            debug_reason:
+              `simple_gable_final_override:selected_centerline_ridge offset=${
+                round(best.centerOffsetRatio, 3)
+              } angle_delta=${round(best.angleDelta, 1)}; ${
+                best.edge.debug_reason || ""
+              }`,
           } as RoofEdge;
         } else {
-          const inset = Math.max(15, Math.min(roofBbox.width, roofBbox.height) * 0.08);
+          const inset = Math.max(
+            15,
+            Math.min(roofBbox.width, roofBbox.height) * 0.08,
+          );
           const p1 = longAxisAngle === 0
             ? { x: roofBbox.minX + inset, y: center.y }
             : { x: center.x, y: roofBbox.minY + inset };
@@ -6575,21 +9279,31 @@ async function processJob(input: any) {
             adjacent_plane_ids: [],
             confidence: 0.45,
             source: "simple_gable_centerline_candidate",
-            debug_reason: "simple_gable_final_override:synthesized_review_only_centerline_ridge",
+            debug_reason:
+              "simple_gable_final_override:synthesized_review_only_centerline_ridge",
             validation_status: "needs_internal_review",
           } as RoofEdge;
         }
 
-        removedHips = cleanEdges.filter((edge) => edge.edge_type === "hip").length;
-        removedValleys = cleanEdges.filter((edge) => edge.edge_type === "valley").length;
+        removedHips =
+          cleanEdges.filter((edge) => edge.edge_type === "hip").length;
+        removedValleys =
+          cleanEdges.filter((edge) => edge.edge_type === "valley").length;
         removedBunchedEdges = cleanEdges.filter((edge) => {
-          const p1 = edge.line_px?.[0], p2 = edge.line_px?.[edge.line_px.length - 1];
+          const p1 = edge.line_px?.[0],
+            p2 = edge.line_px?.[edge.line_px.length - 1];
           if (!p1 || !p2) return true;
           const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-          const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
-          const sideInsetRatio = sideInset / Math.max(Math.min(roofBbox.width, roofBbox.height), 1);
+          const sideInset = Math.min(
+            mid.x - roofBbox.minX,
+            roofBbox.maxX - mid.x,
+          );
+          const sideInsetRatio = sideInset /
+            Math.max(Math.min(roofBbox.width, roofBbox.height), 1);
           const source = String(edge.source || "").toLowerCase();
-          return edge.edge_type === "unknown" || edge.edge_type === "unknown_interior" || source.includes("fuzzy") || sideInsetRatio <= 0.18;
+          return edge.edge_type === "unknown" ||
+            edge.edge_type === "unknown_interior" || source.includes("fuzzy") ||
+            sideInsetRatio <= 0.18;
         }).length;
 
         const perimeterEdges: RoofEdge[] = [];
@@ -6609,24 +9323,38 @@ async function processJob(input: any) {
             debug_reason: "simple_gable_final_override:perimeter_only",
           });
         }
-        cleanEdges = selectedRidge ? [...perimeterEdges, selectedRidge] : perimeterEdges;
+        cleanEdges = selectedRidge
+          ? [...perimeterEdges, selectedRidge]
+          : perimeterEdges;
 
         const failures = (globalThis as any).__strictTopologyFailures;
         if (Array.isArray(failures)) {
-          (globalThis as any).__strictTopologyFailures = failures.filter((f: string) =>
+          (globalThis as any).__strictTopologyFailures = failures.filter((
+            f: string,
+          ) =>
             selectedRidge?.source === "simple_gable_centerline_candidate"
               ? f !== "no_ridge_hip_valley_on_pitched_roof"
-              : f !== "ridge_edges_not_aligned_to_roof_structure" && f !== "no_ridge_hip_valley_on_pitched_roof"
+              : f !== "ridge_edges_not_aligned_to_roof_structure" &&
+                f !== "no_ridge_hip_valley_on_pitched_roof"
           );
           if (selectedRidge?.source === "simple_gable_centerline_candidate") {
-            (globalThis as any).__strictTopologyFailures.push("simple_gable_centerline_candidate_needs_internal_review");
+            (globalThis as any).__strictTopologyFailures.push(
+              "simple_gable_centerline_candidate_needs_internal_review",
+            );
           }
         }
         ridgeAlignmentDebug = {
           ...(ridgeAlignmentDebug || {}),
           simple_gable_final_override: true,
-          ridge_edges_after: cleanEdges.filter((e) => e.edge_type === "ridge").length,
-          final_ridge_ft: round(cleanEdges.filter((e) => e.edge_type === "ridge").reduce((sum, e) => sum + polylineLengthPx(e.line_px || []), 0) * actualFpp, 2),
+          ridge_edges_after:
+            cleanEdges.filter((e) => e.edge_type === "ridge").length,
+          final_ridge_ft: round(
+            cleanEdges.filter((e) => e.edge_type === "ridge").reduce(
+              (sum, e) => sum + polylineLengthPx(e.line_px || []),
+              0,
+            ) * actualFpp,
+            2,
+          ),
         };
         (globalThis as any).__ridgeAlignmentDebug = ridgeAlignmentDebug;
       } else {
@@ -6638,12 +9366,15 @@ async function processJob(input: any) {
         enabled: simpleGableEnabled,
         before_counts: beforeCounts,
         after_counts: afterCounts,
-        selected_ridge: selectedRidge ? {
-          id: selectedRidge.id ?? null,
-          source: selectedRidge.source,
-          length_px: round(polylineLengthPx(selectedRidge.line_px || []), 2),
-          validation_status: (selectedRidge as any).validation_status || "validated",
-        } : null,
+        selected_ridge: selectedRidge
+          ? {
+            id: selectedRidge.id ?? null,
+            source: selectedRidge.source,
+            length_px: round(polylineLengthPx(selectedRidge.line_px || []), 2),
+            validation_status: (selectedRidge as any).validation_status ||
+              "validated",
+          }
+          : null,
         removed_hips: removedHips,
         removed_valleys: removedValleys,
         removed_bunched_edges: removedBunchedEdges,
@@ -6657,7 +9388,10 @@ async function processJob(input: any) {
         ridge_evidence_count: ridgeEvidenceCount,
       };
       (globalThis as any).__simpleGableFinalOverride = simpleGableFinalDebug;
-      console.log("[SIMPLE_GABLE_FINAL_OVERRIDE]", JSON.stringify(simpleGableFinalDebug));
+      console.log(
+        "[SIMPLE_GABLE_FINAL_OVERRIDE]",
+        JSON.stringify(simpleGableFinalDebug),
+      );
     }
 
     refreshSimpleRoofType("final_roof_type_authority");
@@ -6667,16 +9401,18 @@ async function processJob(input: any) {
         refreshSimpleRoofType("final_roof_type_recovered");
       }
       let convertedRakes = 0;
-      cleanEdges = (solverTopologyLocked ? constraintSolverEdges : cleanEdges).map((edge) => {
-        if (edge.edge_type !== "rake") return edge;
-        convertedRakes++;
-        return {
-          ...edge,
-          edge_type: "eave" as const,
-          source: edge.source || "hip_roof_rake_zero_guard",
-          debug_reason: [edge.debug_reason, "hip_roof_rake_forced_to_eave"].filter(Boolean).join("; "),
-        };
-      });
+      cleanEdges = (solverTopologyLocked ? constraintSolverEdges : cleanEdges)
+        .map((edge) => {
+          if (edge.edge_type !== "rake") return edge;
+          convertedRakes++;
+          return {
+            ...edge,
+            edge_type: "eave" as const,
+            source: edge.source || "hip_roof_rake_zero_guard",
+            debug_reason: [edge.debug_reason, "hip_roof_rake_forced_to_eave"]
+              .filter(Boolean).join("; "),
+          };
+        });
       if (solverTopologyLocked) constraintSolverEdges = [...cleanEdges];
       simpleRoofTypeDebug = {
         ...simpleRoofTypeDebug,
@@ -6690,87 +9426,127 @@ async function processJob(input: any) {
 
     // Hard-fail log if edges are still 0 after all classification
     if (cleanEdges.length === 0 && footprint.length >= 3) {
-      console.error("[EDGE_CLASSIFIER_NOT_RUN] planes=" + cleanPlanes.length +
-        " edges=0 footprint=" + footprint.length +
-        " — edge classification produced no results");
+      console.error(
+        "[EDGE_CLASSIFIER_NOT_RUN] planes=" + cleanPlanes.length +
+          " edges=0 footprint=" + footprint.length +
+          " — edge classification produced no results",
+      );
     }
 
     // Log edge classifier result
     {
       const byType: Record<string, number> = {};
-      for (const e of cleanEdges) byType[e.edge_type] = (byType[e.edge_type] || 0) + 1;
-      console.log("[EDGE_CLASSIFIER_RESULT]", JSON.stringify({
-        planes: cleanPlanes.length,
-        edges: cleanEdges.length,
-        ridge: byType.ridge ?? 0,
-        hip: byType.hip ?? 0,
-        valley: byType.valley ?? 0,
-        eave: byType.eave ?? 0,
-        rake: byType.rake ?? 0,
-        perimeter_edges_added: finalExteriorEdgesCreated,
-      }));
+      for (const e of cleanEdges) {
+        byType[e.edge_type] = (byType[e.edge_type] || 0) + 1;
+      }
+      console.log(
+        "[EDGE_CLASSIFIER_RESULT]",
+        JSON.stringify({
+          planes: cleanPlanes.length,
+          edges: cleanEdges.length,
+          ridge: byType.ridge ?? 0,
+          hip: byType.hip ?? 0,
+          valley: byType.valley ?? 0,
+          eave: byType.eave ?? 0,
+          rake: byType.rake ?? 0,
+          perimeter_edges_added: finalExteriorEdgesCreated,
+        }),
+      );
     }
 
     // ── FINAL EDGE TOPOLOGY DEBUG LOG ──
     {
       const edgeCounts: Record<string, number> = {};
-      for (const e of cleanEdges) edgeCounts[e.edge_type] = (edgeCounts[e.edge_type] || 0) + 1;
+      for (const e of cleanEdges) {
+        edgeCounts[e.edge_type] = (edgeCounts[e.edge_type] || 0) + 1;
+      }
       const sharedEdges = planeEdgeClassifierDebug?.shared_edges ?? 0;
       const exteriorEdges = planeEdgeClassifierDebug?.exterior_edges ?? 0;
       const invalidEdges = planeEdgeClassifierDebug?.invalid_edges ?? 0;
-      console.log("[EDGE_TOPOLOGY_FINAL]", JSON.stringify({
-        final_planes_count: cleanPlanes.length,
-        final_edges_count: cleanEdges.length,
-        shared_edge_count: sharedEdges,
-        exterior_edge_count: exteriorEdges,
-        invalid_edge_count: invalidEdges,
-        classified_ridge_count: edgeCounts.ridge ?? 0,
-        classified_hip_count: edgeCounts.hip ?? 0,
-        classified_valley_count: edgeCounts.valley ?? 0,
-        classified_eave_count: edgeCounts.eave ?? 0,
-        classified_rake_count: edgeCounts.rake ?? 0,
-        topology_source: topologySource,
-        plane_graph_connected: sharedEdges > 0 || cleanPlanes.length <= 1,
-      }));
+      console.log(
+        "[EDGE_TOPOLOGY_FINAL]",
+        JSON.stringify({
+          final_planes_count: cleanPlanes.length,
+          final_edges_count: cleanEdges.length,
+          shared_edge_count: sharedEdges,
+          exterior_edge_count: exteriorEdges,
+          invalid_edge_count: invalidEdges,
+          classified_ridge_count: edgeCounts.ridge ?? 0,
+          classified_hip_count: edgeCounts.hip ?? 0,
+          classified_valley_count: edgeCounts.valley ?? 0,
+          classified_eave_count: edgeCounts.eave ?? 0,
+          classified_rake_count: edgeCounts.rake ?? 0,
+          topology_source: topologySource,
+          plane_graph_connected: sharedEdges > 0 || cleanPlanes.length <= 1,
+        }),
+      );
 
       // QA REQUIREMENT: planes > 1 AND edges = 0 is an error
       if (cleanPlanes.length > 1 && cleanEdges.length === 0) {
-        console.error("[QA_FAIL] edge_classifier_not_executed_or_failed: planes=" +
-          cleanPlanes.length + " edges=0");
+        console.error(
+          "[QA_FAIL] edge_classifier_not_executed_or_failed: planes=" +
+            cleanPlanes.length + " edges=0",
+        );
       }
     }
-
 
     // ── OVERLAY CALIBRATION — fit measured geometry to the detected roof target,
     // not to the full raster center. This is rendering-only and does not change
     // physical measurements calculated from original pixel geometry.
-    let overlayCalibration: ReturnType<typeof computeOverlayTransform> | null = null;
+    let overlayCalibration: ReturnType<typeof computeOverlayTransform> | null =
+      null;
     let roofTargetBboxPx: any = null;
     let roofTargetSource: string | null = null;
     try {
-      const hullBbox = candidates.find((c) => c.source === "google_solar_segments_hull" && c.bbox_px)?.bbox_px || null;
-      const unionBbox = candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px || null;
-      const unetBbox = candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px || null;
+      const hullBbox = candidates.find((c) =>
+        c.source === "google_solar_segments_hull" && c.bbox_px
+      )?.bbox_px || null;
+      const unionBbox = candidates.find((c) =>
+        c.source === "google_solar_segments_union" && c.bbox_px
+      )?.bbox_px || null;
+      const unetBbox = candidates.find((c) =>
+        c.source === "imagery_unet_mask" && c.bbox_px
+      )?.bbox_px || null;
       const buildingBbox = solarBboxPx;
       const geometryPoints = [
-        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
+        ...cleanPlanes.flatMap((p) =>
+          p.polygon_px || []
+        ),
         ...cleanEdges.flatMap((e) => e.line_px || []),
       ];
       const geometryBboxForTarget = bboxOf(geometryPoints);
 
-      const areaOf = (b: any) => (b && b.width > 0 && b.height > 0 ? b.width * b.height : 0);
+      const areaOf = (
+        b: any,
+      ) => (b && b.width > 0 && b.height > 0 ? b.width * b.height : 0);
       const buildingArea = areaOf(buildingBbox);
       const hullArea = areaOf(hullBbox);
       const unionArea = areaOf(unionBbox);
       const snappedArea = areaOf(snappedFootprintBboxPx);
-      const hullToBuildingRatio = buildingArea > 0 && hullArea > 0 ? hullArea / buildingArea : null;
-      const snappedCoverageRatio = buildingArea > 0 && snappedArea > 0 ? snappedArea / buildingArea : null;
+      const hullToBuildingRatio = buildingArea > 0 && hullArea > 0
+        ? hullArea / buildingArea
+        : null;
+      const snappedCoverageRatio = buildingArea > 0 && snappedArea > 0
+        ? snappedArea / buildingArea
+        : null;
       const snappedIsBasicallySelectedGeometry =
         snappedFootprintBboxPx && geometryBboxForTarget
-          ? Math.abs((snappedFootprintBboxPx.minX || 0) - (geometryBboxForTarget.minX || 0)) < 2 &&
-            Math.abs((snappedFootprintBboxPx.minY || 0) - (geometryBboxForTarget.minY || 0)) < 2 &&
-            Math.abs((snappedFootprintBboxPx.maxX || 0) - (geometryBboxForTarget.maxX || 0)) < 2 &&
-            Math.abs((snappedFootprintBboxPx.maxY || 0) - (geometryBboxForTarget.maxY || 0)) < 2
+          ? Math.abs(
+                (snappedFootprintBboxPx.minX || 0) -
+                  (geometryBboxForTarget.minX || 0),
+              ) < 2 &&
+            Math.abs(
+                (snappedFootprintBboxPx.minY || 0) -
+                  (geometryBboxForTarget.minY || 0),
+              ) < 2 &&
+            Math.abs(
+                (snappedFootprintBboxPx.maxX || 0) -
+                  (geometryBboxForTarget.maxX || 0),
+              ) < 2 &&
+            Math.abs(
+                (snappedFootprintBboxPx.maxY || 0) -
+                  (geometryBboxForTarget.maxY || 0),
+              ) < 2
           : false;
 
       // Selection priority per spec:
@@ -6782,17 +9558,27 @@ async function processJob(input: any) {
       if (
         snappedFootprintBboxPx &&
         !snappedIsBasicallySelectedGeometry &&
-        (buildingArea === 0 || (snappedCoverageRatio != null && snappedCoverageRatio >= 0.75))
+        (buildingArea === 0 ||
+          (snappedCoverageRatio != null && snappedCoverageRatio >= 0.75))
       ) {
-        ordered.push({ source: "snapped_eave_bbox", bbox: snappedFootprintBboxPx });
+        ordered.push({
+          source: "snapped_eave_bbox",
+          bbox: snappedFootprintBboxPx,
+        });
       }
       if (buildingBbox && buildingArea > 0) {
         ordered.push({ source: "solar_building_bbox", bbox: buildingBbox });
       }
       if (unionBbox && unionArea > 0) {
-        ordered.push({ source: "google_solar_segments_union", bbox: unionBbox });
+        ordered.push({
+          source: "google_solar_segments_union",
+          bbox: unionBbox,
+        });
       }
-      if (hullBbox && hullArea > 0 && (hullToBuildingRatio == null || hullToBuildingRatio >= 0.70)) {
+      if (
+        hullBbox && hullArea > 0 &&
+        (hullToBuildingRatio == null || hullToBuildingRatio >= 0.70)
+      ) {
         ordered.push({ source: "google_solar_segments_hull", bbox: hullBbox });
       }
       if (unetBbox) {
@@ -6803,18 +9589,27 @@ async function processJob(input: any) {
       roofTargetBboxPx = preferred?.bbox || null;
       roofTargetSource = preferred?.source || null;
 
-      console.log("[ROOF_TARGET_BBOX_SELECTION]", JSON.stringify({
-        solar_building_bbox_area: Math.round(buildingArea),
-        solar_segments_hull_bbox_area: Math.round(hullArea),
-        solar_segments_union_bbox_area: Math.round(unionArea),
-        snapped_eave_bbox_area: Math.round(snappedArea),
-        snapped_coverage_ratio: snappedCoverageRatio == null ? null : Number(snappedCoverageRatio.toFixed(3)),
-        snapped_rejected_self_target: Boolean(snappedIsBasicallySelectedGeometry),
-        hull_to_building_ratio: hullToBuildingRatio == null ? null : Number(hullToBuildingRatio.toFixed(3)),
-        selected_target_source: roofTargetSource,
-        selected_target_bbox: roofTargetBboxPx,
-        candidates_considered: ordered.map((o) => o.source),
-      }));
+      console.log(
+        "[ROOF_TARGET_BBOX_SELECTION]",
+        JSON.stringify({
+          solar_building_bbox_area: Math.round(buildingArea),
+          solar_segments_hull_bbox_area: Math.round(hullArea),
+          solar_segments_union_bbox_area: Math.round(unionArea),
+          snapped_eave_bbox_area: Math.round(snappedArea),
+          snapped_coverage_ratio: snappedCoverageRatio == null
+            ? null
+            : Number(snappedCoverageRatio.toFixed(3)),
+          snapped_rejected_self_target: Boolean(
+            snappedIsBasicallySelectedGeometry,
+          ),
+          hull_to_building_ratio: hullToBuildingRatio == null
+            ? null
+            : Number(hullToBuildingRatio.toFixed(3)),
+          selected_target_source: roofTargetSource,
+          selected_target_bbox: roofTargetBboxPx,
+          candidates_considered: ordered.map((o) => o.source),
+        }),
+      );
 
       overlayCalibration = computeOverlayTransform({
         rasterSize: { width: raster.width, height: raster.height },
@@ -6845,39 +9640,47 @@ async function processJob(input: any) {
       const ctrErr = Number(overlayCalibration.center_error_px || 0);
       const overlayFailures: string[] = [];
       if (cov > 0 && cov < 0.75) {
-        overlayFailures.push(`overlay_coverage_${Math.round(cov * 100)}pct_lt_75pct`);
+        overlayFailures.push(
+          `overlay_coverage_${Math.round(cov * 100)}pct_lt_75pct`,
+        );
       }
       if (ctrErr > 60) {
-        overlayFailures.push(`overlay_center_error_${Math.round(ctrErr)}px_gt_60px`);
+        overlayFailures.push(
+          `overlay_center_error_${Math.round(ctrErr)}px_gt_60px`,
+        );
       }
       if (registrationResult.block_reason) {
-        overlayFailures.push(`registration_gate:${registrationResult.block_reason}`);
+        overlayFailures.push(
+          `registration_gate:${registrationResult.block_reason}`,
+        );
       }
       (globalThis as any).__overlaySanityFailures = overlayFailures;
 
-      console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
-        roof_target_source: roofTargetSource,
-        geometry_bbox_px: overlayCalibration.geometry_bbox_px,
-        roof_target_bbox_px: overlayCalibration.roof_target_bbox_px,
-        uniform_scale: overlayCalibration.uniform_scale,
-        translate_x: overlayCalibration.translate_x,
-        translate_y: overlayCalibration.translate_y,
-        coverage_ratio_width: overlayCalibration.coverage_ratio_width,
-        coverage_ratio_height: overlayCalibration.coverage_ratio_height,
-        center_error_px: overlayCalibration.center_error_px,
-        registration: {
-          rms_px: registrationResult.rms_px,
-          max_error_px: registrationResult.max_error_px,
-          mask_iou: registrationResult.mask_iou,
-          coverage_ratio: registrationResult.coverage_ratio,
-          publish_allowed: registrationResult.publish_allowed,
-          block_reason: registrationResult.block_reason,
-        },
-      }));
+      console.log(
+        "[OVERLAY_TRANSFORM]",
+        JSON.stringify({
+          roof_target_source: roofTargetSource,
+          geometry_bbox_px: overlayCalibration.geometry_bbox_px,
+          roof_target_bbox_px: overlayCalibration.roof_target_bbox_px,
+          uniform_scale: overlayCalibration.uniform_scale,
+          translate_x: overlayCalibration.translate_x,
+          translate_y: overlayCalibration.translate_y,
+          coverage_ratio_width: overlayCalibration.coverage_ratio_width,
+          coverage_ratio_height: overlayCalibration.coverage_ratio_height,
+          center_error_px: overlayCalibration.center_error_px,
+          registration: {
+            rms_px: registrationResult.rms_px,
+            max_error_px: registrationResult.max_error_px,
+            mask_iou: registrationResult.mask_iou,
+            coverage_ratio: registrationResult.coverage_ratio,
+            publish_allowed: registrationResult.publish_allowed,
+            block_reason: registrationResult.block_reason,
+          },
+        }),
+      );
     } catch (e) {
       console.warn("[OVERLAY_TRANSFORM] failed:", (e as Error).message);
     }
-
 
     // Enhanced candidate diagnostics per plan item 6 — includes spillover
     // and solar-bbox ratio fields so failed runs explain why a candidate was rejected.
@@ -6885,23 +9688,36 @@ async function processJob(input: any) {
       ? solarBboxPx.area * sqftPerPx2
       : null;
     const footprintCandidatesForReport = candidates.map((c) => {
-      const candidateAreaPx = c.polygon.length >= 3 ? polygonAreaPx(c.polygon) : 0;
+      const candidateAreaPx = c.polygon.length >= 3
+        ? polygonAreaPx(c.polygon)
+        : 0;
       const overlapPx = (solarBboxPx && c.polygon.length >= 3)
         ? polygonAreaPx(clipPolygonToRect(c.polygon, solarBboxPx))
         : 0;
       const outsideSolarBboxAreaPx = candidateAreaPx - overlapPx;
-      const exteriorSpilloverRatio = candidateAreaPx > 0 ? outsideSolarBboxAreaPx / candidateAreaPx : 0;
-      const candidateToSolarBboxRatio = solarBboxAreaSqftForReport != null && solarBboxAreaSqftForReport > 0
-        ? c.area_sqft / solarBboxAreaSqftForReport
-        : null;
+      const exteriorSpilloverRatio = candidateAreaPx > 0
+        ? outsideSolarBboxAreaPx / candidateAreaPx
+        : 0;
+      const candidateToSolarBboxRatio =
+        solarBboxAreaSqftForReport != null && solarBboxAreaSqftForReport > 0
+          ? c.area_sqft / solarBboxAreaSqftForReport
+          : null;
       return {
         source: c.source,
         candidate_area_sqft: Math.round(c.area_sqft),
-        solar_bbox_area_sqft: solarBboxAreaSqftForReport != null ? Math.round(solarBboxAreaSqftForReport) : null,
-        candidate_to_solar_bbox_ratio: candidateToSolarBboxRatio != null ? Number(candidateToSolarBboxRatio.toFixed(3)) : null,
+        solar_bbox_area_sqft: solarBboxAreaSqftForReport != null
+          ? Math.round(solarBboxAreaSqftForReport)
+          : null,
+        candidate_to_solar_bbox_ratio: candidateToSolarBboxRatio != null
+          ? Number(candidateToSolarBboxRatio.toFixed(3))
+          : null,
         outside_solar_bbox_ratio: Number(exteriorSpilloverRatio.toFixed(3)),
-        outside_solar_bbox_area_sqft: Math.round(outsideSolarBboxAreaPx * sqftPerPx2),
-        coverage_ratio_vs_solar_bbox: c.coverage_ratio_vs_solar_bbox != null ? Number(c.coverage_ratio_vs_solar_bbox.toFixed(3)) : null,
+        outside_solar_bbox_area_sqft: Math.round(
+          outsideSolarBboxAreaPx * sqftPerPx2,
+        ),
+        coverage_ratio_vs_solar_bbox: c.coverage_ratio_vs_solar_bbox != null
+          ? Number(c.coverage_ratio_vs_solar_bbox.toFixed(3))
+          : null,
         overlap_with_solar_bbox: Math.round(c.overlap_with_solar_bbox),
         center_distance_px: Math.round(c.bbox_center_distance_from_geocode_px),
         vertex_count: c.vertex_count,
@@ -6915,32 +9731,43 @@ async function processJob(input: any) {
         },
       };
     });
-    const selectedFootprintForReport = selected ? {
-      source: selected.source,
-      area_sqft: Math.round(selected.area_sqft),
-      validity_score: Number(selected.validity_score.toFixed(3)),
-    } : null;
+    const selectedFootprintForReport = selected
+      ? {
+        source: selected.source,
+        area_sqft: Math.round(selected.area_sqft),
+        validity_score: Number(selected.validity_score.toFixed(3)),
+      }
+      : null;
 
-    console.log("[GEOMETRY_SOURCE_DECISION]", JSON.stringify({
-      has_unet_endpoint: !!UNET_ENDPOINT,
-      used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
-      used_solar_bbox_as_crop_only: usedSolarBboxAsCropOnly,
-      used_synthetic_debug_rectangle: usedSyntheticDebugRectangle,
-      used_deterministic_topology: topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
-      footprint_source: footprintSource,
-      topology_source: topologySource,
-      final_plane_count: cleanPlanes.length,
-      final_edge_count: cleanEdges.length,
-    }));
+    console.log(
+      "[GEOMETRY_SOURCE_DECISION]",
+      JSON.stringify({
+        has_unet_endpoint: !!UNET_ENDPOINT,
+        used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
+        used_solar_bbox_as_crop_only: usedSolarBboxAsCropOnly,
+        used_synthetic_debug_rectangle: usedSyntheticDebugRectangle,
+        used_deterministic_topology:
+          topologySource === "ridge_split_recursive" ||
+          topologySource === "straight_skeleton" ||
+          topologySource === "triangulation" ||
+          topologySource === "google_solar_segment_structure",
+        footprint_source: footprintSource,
+        topology_source: topologySource,
+        final_plane_count: cleanPlanes.length,
+        final_edge_count: cleanEdges.length,
+      }),
+    );
 
     // Hard guard: a real footprint is required to publish a customer measurement.
     // Reject if NO candidate passed validity scoring.
     if (footprintSelectionFailed || footprint.length < 3) {
       throw new Error(
         "no_valid_full_roof_footprint: " +
-        `${candidates.length} candidate(s) evaluated, none passed validity gates ` +
-        `(min_area=${RESIDENTIAL_MIN_SQFT}sqft, min_solar_coverage=${Math.round(MIN_COVERAGE_RATIO * 100)}%). ` +
-        "See [FOOTPRINT_SOURCE_SELECTION] log for per-candidate rejection reasons.",
+          `${candidates.length} candidate(s) evaluated, none passed validity gates ` +
+          `(min_area=${RESIDENTIAL_MIN_SQFT}sqft, min_solar_coverage=${
+            Math.round(MIN_COVERAGE_RATIO * 100)
+          }%). ` +
+          "See [FOOTPRINT_SOURCE_SELECTION] log for per-candidate rejection reasons.",
       );
     }
 
@@ -6980,7 +9807,10 @@ async function processJob(input: any) {
           if (valid[j].edge_type !== valid[i].edge_type) continue;
           const angJ = edgeAngle(valid[j]);
           const midJ = edgeMidpoint(valid[j]);
-          const angDiff = Math.min(Math.abs(angI - angJ), 180 - Math.abs(angI - angJ));
+          const angDiff = Math.min(
+            Math.abs(angI - angJ),
+            180 - Math.abs(angI - angJ),
+          );
           const midDist = Math.hypot(midI.x - midJ.x, midI.y - midJ.y);
           if (angDiff <= 5 && midDist < 6) {
             group.push(valid[j]);
@@ -6991,13 +9821,20 @@ async function processJob(input: any) {
       }
       // Keep longest from each group
       const result = groups.map((g) =>
-        g.reduce((best, e) => polylineLengthPx(e.line_px) > polylineLengthPx(best.line_px) ? e : best)
+        g.reduce((best, e) =>
+          polylineLengthPx(e.line_px) > polylineLengthPx(best.line_px)
+            ? e
+            : best
+        )
       );
-      console.log("[EDGE_DEDUPE]", JSON.stringify({
-        before: valid.length,
-        after: result.length,
-        removed: valid.length - result.length,
-      }));
+      console.log(
+        "[EDGE_DEDUPE]",
+        JSON.stringify({
+          before: valid.length,
+          after: result.length,
+          removed: valid.length - result.length,
+        }),
+      );
       return result;
     };
 
@@ -7021,10 +9858,16 @@ async function processJob(input: any) {
             const dx = fb.x - fa.x, dy = fb.y - fa.y;
             const len2 = dx * dx + dy * dy;
             if (len2 === 0) continue;
-            const t = Math.max(0, Math.min(1, ((p.x - fa.x) * dx + (p.y - fa.y) * dy) / len2));
+            const t = Math.max(
+              0,
+              Math.min(1, ((p.x - fa.x) * dx + (p.y - fa.y) * dy) / len2),
+            );
             const proj = { x: fa.x + t * dx, y: fa.y + t * dy };
             const d = Math.hypot(proj.x - p.x, proj.y - p.y);
-            if (d < bestDist) { bestDist = d; best = proj; }
+            if (d < bestDist) {
+              bestDist = d;
+              best = proj;
+            }
           }
           return best;
         };
@@ -7037,10 +9880,15 @@ async function processJob(input: any) {
 
     const finalEdges: RoofEdge[] = (() => {
       if (!solverTopologyLocked) return smartDedupEdges(cleanEdges);
-      const solverEdges = constraintSolverEdges.length ? constraintSolverEdges : cleanEdges;
-      if (!simpleRoofTypeDebug.hip_roof) return smartDedupEdges(clipRidgeToFootprint(solverEdges));
+      const solverEdges = constraintSolverEdges.length
+        ? constraintSolverEdges
+        : cleanEdges;
+      if (!simpleRoofTypeDebug.hip_roof) {
+        return smartDedupEdges(clipRidgeToFootprint(solverEdges));
+      }
       const structuralEdges = solverEdges.filter((edge) =>
-        edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley"
+        edge.edge_type === "ridge" || edge.edge_type === "hip" ||
+        edge.edge_type === "valley"
       );
       const perimeterEaves = footprint.map((a, i) => {
         const b = footprint[(i + 1) % footprint.length];
@@ -7052,11 +9900,17 @@ async function processJob(input: any) {
           debug_reason: "hip_roof_final_write:deduped_footprint_perimeter_eave",
         } as RoofEdge;
       }).filter((edge) => polylineLengthPx(edge.line_px || []) >= 4);
-      return smartDedupEdges(clipRidgeToFootprint([...structuralEdges, ...perimeterEaves]));
+      return smartDedupEdges(
+        clipRidgeToFootprint([...structuralEdges, ...perimeterEaves]),
+      );
     })();
     cleanEdges = finalEdges;
     const finalEdgeSource = finalEdges[0]?.source || "none";
-    if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdgeSource !== "constraint_solver_topology") {
+    if (
+      (topologySource.includes("constraint") ||
+        topologySource.includes("hybrid")) &&
+      finalEdgeSource !== "constraint_solver_topology"
+    ) {
       throw new Error("WRONG_FINAL_EDGE_SOURCE");
     }
 
@@ -7085,7 +9939,11 @@ async function processJob(input: any) {
       feetPerPixelActual: actualFpp,
     });
 
-    const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+    const totals = calculateTotals(
+      planeRows,
+      edgeRows,
+      Number(input.waste_factor_percent),
+    );
 
     // ══════════ PITCH CORRECTION — prevent nonsense pitch from collapsed topology ══════════
     // If topology fidelity is low or faces ≤ 3 with collapsed structure,
@@ -7093,34 +9951,48 @@ async function processJob(input: any) {
     let pitchSource = "dsm_plane_fit";
     let pitchValid = true;
     const rawDominantPitch = totals.dominant_pitch;
-    const topoFidelityForPitch = topologyFidelity?.topology_fidelity ?? 'high';
-    const fanCollapseForPitch = topologyFidelity?.fan_collapse_suspected ?? false;
-    const facetCountForPitch = topologyFidelity?.facet_count ?? planeRows.length;
-    const expectedMinFacetsForPitch = topologyFidelity?.expected_min_facets ?? 4;
+    const topoFidelityForPitch = topologyFidelity?.topology_fidelity ?? "high";
+    const fanCollapseForPitch = topologyFidelity?.fan_collapse_suspected ??
+      false;
+    const facetCountForPitch = topologyFidelity?.facet_count ??
+      planeRows.length;
+    const expectedMinFacetsForPitch = topologyFidelity?.expected_min_facets ??
+      4;
     const facetDeficitForPitch = topologyFidelity?.facet_deficit ?? 0;
-    const isBadTopology = topoFidelityForPitch === 'low' || topoFidelityForPitch === 'medium'
-      || fanCollapseForPitch || facetCountForPitch <= 3
-      || (facetDeficitForPitch > 2 && facetCountForPitch < expectedMinFacetsForPitch);
+    const isBadTopology = topoFidelityForPitch === "low" ||
+      topoFidelityForPitch === "medium" ||
+      fanCollapseForPitch || facetCountForPitch <= 3 ||
+      (facetDeficitForPitch > 2 &&
+        facetCountForPitch < expectedMinFacetsForPitch);
     // Any pitch below 2/12 on a non-flat residential roof is nonsense from collapsed planes
-    const isNonsensePitch = rawDominantPitch != null && (rawDominantPitch < 2 || rawDominantPitch > 24);
+    const isNonsensePitch = rawDominantPitch != null &&
+      (rawDominantPitch < 2 || rawDominantPitch > 24);
 
     if (isBadTopology || isNonsensePitch) {
       // Try Solar roofSegmentStats pitchDegrees as authoritative source
       const solarPitchRise = dominantSolarPitchRise(solarData);
-      if (solarPitchRise != null && solarPitchRise >= 1 && solarPitchRise <= 24) {
+      if (
+        solarPitchRise != null && solarPitchRise >= 1 && solarPitchRise <= 24
+      ) {
         totals.dominant_pitch = solarPitchRise;
         pitchSource = "google_solar_roofSegmentStats";
-        console.log(`[PITCH_CORRECTION] Overrode DSM pitch ${rawDominantPitch}/12 with Solar ${solarPitchRise}/12 (bad topology: fidelity=${topoFidelityForPitch}, fan_collapse=${fanCollapseForPitch}, facets=${facetCountForPitch})`);
+        console.log(
+          `[PITCH_CORRECTION] Overrode DSM pitch ${rawDominantPitch}/12 with Solar ${solarPitchRise}/12 (bad topology: fidelity=${topoFidelityForPitch}, fan_collapse=${fanCollapseForPitch}, facets=${facetCountForPitch})`,
+        );
       } else {
         // No valid Solar pitch — set to null (unavailable)
         totals.dominant_pitch = null;
         pitchSource = "unavailable";
         pitchValid = false;
-        console.log(`[PITCH_CORRECTION] Set pitch to unavailable — no valid source (DSM=${rawDominantPitch}/12, Solar=${solarPitchRise}, topology=${topoFidelityForPitch})`);
+        console.log(
+          `[PITCH_CORRECTION] Set pitch to unavailable — no valid source (DSM=${rawDominantPitch}/12, Solar=${solarPitchRise}, topology=${topoFidelityForPitch})`,
+        );
       }
     }
 
-    const legacyHardFailReason = topologySource !== REQUIRED_TOPOLOGY_SOURCE ? "legacy_topology_blocked" : null;
+    const legacyHardFailReason = topologySource !== REQUIRED_TOPOLOGY_SOURCE
+      ? "legacy_topology_blocked"
+      : null;
     if (legacyHardFailReason) {
       const failedDebug = {
         ...(autonomousDebug || {}),
@@ -7130,15 +10002,33 @@ async function processJob(input: any) {
         hard_fail_reason: legacyHardFailReason,
         dsm_loaded: Boolean(autonomousDebug?.dsm_loaded),
         mask_loaded: Boolean(autonomousDebug?.mask_loaded),
-        edge_filter_count_before: autonomousDebug?.edge_filter_count_before ?? 0,
+        edge_filter_count_before: autonomousDebug?.edge_filter_count_before ??
+          0,
         edge_filter_count_after: autonomousDebug?.edge_filter_count_after ?? 0,
         snapped_vertex_count: autonomousDebug?.snapped_vertex_count ?? 0,
-        rejected_fake_intersections: autonomousDebug?.rejected_fake_intersections ?? 0,
+        rejected_fake_intersections:
+          autonomousDebug?.rejected_fake_intersections ?? 0,
         facet_validation_errors: autonomousDebug?.facet_validation_errors ?? 0,
       };
-      const failedId = await insertFailedPreliminaryMeasurement(input, coords, legacyHardFailReason, failedDebug, imageUrl, actualMpp);
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", `DSM graph failed: ${legacyHardFailReason}`, failedId);
-      await setAiJobStatus(input.ai_measurement_job_id, "failed", `DSM graph failed: ${legacyHardFailReason}`);
+      const failedId = await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        legacyHardFailReason,
+        failedDebug,
+        imageUrl,
+        actualMpp,
+      );
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        `DSM graph failed: ${legacyHardFailReason}`,
+        failedId,
+      );
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "failed",
+        `DSM graph failed: ${legacyHardFailReason}`,
+      );
       return;
     }
     const finalWriteLog = {
@@ -7167,16 +10057,20 @@ async function processJob(input: any) {
       // Match by tenant_id and address proximity.
       const { data: vendorReports } = await supabase
         .from("measurement_ground_truth")
-        .select("id, source, total_area_sqft, facet_count, ridge_total_ft, hip_total_ft, valley_total_ft, eave_total_ft, rake_total_ft, pitch, raw_report_data, address")
+        .select(
+          "id, source, total_area_sqft, facet_count, ridge_total_ft, hip_total_ft, valley_total_ft, eave_total_ft, rake_total_ft, pitch, raw_report_data, address",
+        )
         .eq("tenant_id", input.tenant_id)
         .order("created_at", { ascending: false })
         .limit(10);
 
       // Find a report matching this address (fuzzy: normalize and compare)
-      const normalizeAddr = (a: string) => (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normalizeAddr = (a: string) =>
+        (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       const targetAddr = normalizeAddr(input.property_address || "");
       const vendorReport = (vendorReports || []).find((r: any) =>
-        targetAddr && normalizeAddr(r.address || "").includes(targetAddr.slice(0, 20))
+        targetAddr &&
+        normalizeAddr(r.address || "").includes(targetAddr.slice(0, 20))
       ) ?? (vendorReports || [])[0] ?? null;
 
       if (vendorReport) {
@@ -7198,56 +10092,74 @@ async function processJob(input: any) {
           eave: Number(totals.eave_length_ft) || 0,
           rake: Number(totals.rake_length_ft) || 0,
         };
-        const pctDelta = (a: number, b: number) => b > 0 ? Math.abs(a - b) / b * 100 : null;
+        const pctDelta = (a: number, b: number) =>
+          b > 0 ? Math.abs(a - b) / b * 100 : null;
         const blocked_reasons: string[] = [];
 
         // Rule 2: Block 4-plane synthetic when vendor shows complex roof
         if (vendor.facets >= 8 && ai.facets <= 4) {
-          blocked_reasons.push("synthetic_template_undersegmented_complex_roof");
-          finalWriteSanityFailures.push("synthetic_template_undersegmented_complex_roof");
+          blocked_reasons.push(
+            "synthetic_template_undersegmented_complex_roof",
+          );
+          finalWriteSanityFailures.push(
+            "synthetic_template_undersegmented_complex_roof",
+          );
         }
 
         // Rule 3: Do not allow hip_synthetic_coverage_recovery to pass as validated
         if (
           vendor.facets >= 8 &&
-          (topologySource.includes("hip_roof_synthetic") || topologySource.includes("hip_roof_generator_last_resort"))
+          (topologySource.includes("hip_roof_synthetic") ||
+            topologySource.includes("hip_roof_generator_last_resort"))
         ) {
-          blocked_reasons.push("synthetic_topology_invalid_for_complex_vendor_roof");
-          finalWriteSanityFailures.push("synthetic_topology_invalid_for_complex_vendor_roof");
+          blocked_reasons.push(
+            "synthetic_topology_invalid_for_complex_vendor_roof",
+          );
+          finalWriteSanityFailures.push(
+            "synthetic_topology_invalid_for_complex_vendor_roof",
+          );
         }
 
         // Rule 4: Multi-wing requirement
-        const solarSegCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
+        const solarSegCount =
+          (solarData?.solarPotential?.roofSegmentStats || []).length;
         const footprintVerts = footprint.length;
         const reflexCorners = (() => {
           let count = 0;
           for (let i = 0; i < footprint.length; i++) {
-            const prev = footprint[(i - 1 + footprint.length) % footprint.length];
+            const prev =
+              footprint[(i - 1 + footprint.length) % footprint.length];
             const curr = footprint[i];
             const next = footprint[(i + 1) % footprint.length];
-            const cross = (curr.x - prev.x) * (next.y - curr.y) - (curr.y - prev.y) * (next.x - curr.x);
-            if (cross < 0) count++;
+            const cross = (curr.x - prev.x) * (next.y - curr.y) -
+              (curr.y - prev.y) * (next.x - curr.x);
+            if (cross < 0) {
+              count++;
+            }
           }
           return count;
         })();
-        const needsMultiWing =
-          solarSegCount >= 8 || footprintVerts >= 12 || reflexCorners >= 4 || vendor.facets >= 8;
+        const needsMultiWing = solarSegCount >= 8 || footprintVerts >= 12 ||
+          reflexCorners >= 4 || vendor.facets >= 8;
         if (needsMultiWing && ai.facets < 8) {
           blocked_reasons.push("multi_wing_required_facets_insufficient");
           if (ai.valley === 0 && vendor.valley > 10) {
             blocked_reasons.push("valleys_required_but_missing");
           }
-          finalWriteSanityFailures.push("multi_wing_required_but_undersegmented");
+          finalWriteSanityFailures.push(
+            "multi_wing_required_but_undersegmented",
+          );
         }
 
         // Rule 6: QA delta checks
         const area_delta = pctDelta(ai.area, vendor.area);
         const ridge_delta = pctDelta(ai.ridge, vendor.ridge);
         const hip_delta = pctDelta(ai.hip, vendor.hip);
-        const valley_delta = vendor.valley > 0 ? pctDelta(ai.valley, vendor.valley) : null;
+        const valley_delta = vendor.valley > 0
+          ? pctDelta(ai.valley, vendor.valley)
+          : null;
         const facet_delta = Math.abs(ai.facets - vendor.facets);
-        const qaFailed =
-          (area_delta !== null && area_delta > 10) ||
+        const qaFailed = (area_delta !== null && area_delta > 10) ||
           (ridge_delta !== null && ridge_delta > 35) ||
           (hip_delta !== null && hip_delta > 35) ||
           (valley_delta !== null && valley_delta > 35) ||
@@ -7273,43 +10185,81 @@ async function processJob(input: any) {
           ai_eave: ai.eave,
           vendor_rake: vendor.rake,
           ai_rake: ai.rake,
-          deltas: { area_delta, ridge_delta, hip_delta, valley_delta, facet_delta },
+          deltas: {
+            area_delta,
+            ridge_delta,
+            hip_delta,
+            valley_delta,
+            facet_delta,
+          },
           blocked_reasons,
           needs_internal_review: qaFailed,
         };
-        console.log("[VENDOR_TRUTH_COMPARISON]", JSON.stringify(vendorTruthComparison));
+        console.log(
+          "[VENDOR_TRUTH_COMPARISON]",
+          JSON.stringify(vendorTruthComparison),
+        );
       }
     } catch (vendorErr) {
-      console.warn("[VENDOR_TRUTH_COMPARISON] lookup failed:", (vendorErr as Error).message);
+      console.warn(
+        "[VENDOR_TRUTH_COMPARISON] lookup failed:",
+        (vendorErr as Error).message,
+      );
     }
 
-    if (simpleRoofTypeDebug.hip_roof && finalWriteLog.eave_ft > footprintPerimeterFt * 1.15) {
+    if (
+      simpleRoofTypeDebug.hip_roof &&
+      finalWriteLog.eave_ft > footprintPerimeterFt * 1.15
+    ) {
       finalWriteSanityFailures.push("eave_length_inflated");
     }
     // Area conservation: sum of plane 2D areas should match footprint area within 5%
-    const footprintAreaSqft = Math.abs(footprint.reduce((sum, a, i) => {
-      const b = footprint[(i + 1) % footprint.length];
-      return sum + (a.x * b.y - b.x * a.y);
-    }, 0) / 2) * actualFpp * actualFpp;
-    const sumPlaneArea = planeRows.reduce((s, p) => s + Number(p.area_2d_sqft || 0), 0);
+    const footprintAreaSqft = Math.abs(
+      footprint.reduce((sum, a, i) => {
+        const b = footprint[(i + 1) % footprint.length];
+        return sum + (a.x * b.y - b.x * a.y);
+      }, 0) / 2,
+    ) * actualFpp * actualFpp;
+    const sumPlaneArea = planeRows.reduce(
+      (s, p) => s + Number(p.area_2d_sqft || 0),
+      0,
+    );
     if (sumPlaneArea > 0 && footprintAreaSqft > 0) {
       const areaRatio = sumPlaneArea / footprintAreaSqft;
-      console.log("[AREA_CONSERVATION]", JSON.stringify({
-        footprint_area_sqft: round(footprintAreaSqft, 2),
-        sum_plane_area_sqft: round(sumPlaneArea, 2),
-        ratio: round(areaRatio, 4),
-      }));
+      console.log(
+        "[AREA_CONSERVATION]",
+        JSON.stringify({
+          footprint_area_sqft: round(footprintAreaSqft, 2),
+          sum_plane_area_sqft: round(sumPlaneArea, 2),
+          ratio: round(areaRatio, 4),
+        }),
+      );
       if (areaRatio < 0.95 || areaRatio > 1.05) {
         finalWriteSanityFailures.push("area_not_conserved");
       }
     }
 
     // Wipe any prior detail rows for this job (idempotency on retries)
-    await supabase.from("ai_measurement_images").delete().eq("job_id", input.ai_measurement_job_id);
-    await supabase.from("ai_roof_planes").delete().eq("job_id", input.ai_measurement_job_id);
-    await supabase.from("ai_roof_edges").delete().eq("job_id", input.ai_measurement_job_id);
-    await supabase.from("ai_measurement_results").delete().eq("job_id", input.ai_measurement_job_id);
-    await supabase.from("ai_measurement_quality_checks").delete().eq("job_id", input.ai_measurement_job_id);
+    await supabase.from("ai_measurement_images").delete().eq(
+      "job_id",
+      input.ai_measurement_job_id,
+    );
+    await supabase.from("ai_roof_planes").delete().eq(
+      "job_id",
+      input.ai_measurement_job_id,
+    );
+    await supabase.from("ai_roof_edges").delete().eq(
+      "job_id",
+      input.ai_measurement_job_id,
+    );
+    await supabase.from("ai_measurement_results").delete().eq(
+      "job_id",
+      input.ai_measurement_job_id,
+    );
+    await supabase.from("ai_measurement_quality_checks").delete().eq(
+      "job_id",
+      input.ai_measurement_job_id,
+    );
 
     await supabase.from("ai_measurement_images").insert({
       job_id: input.ai_measurement_job_id,
@@ -7335,13 +10285,16 @@ async function processJob(input: any) {
     await supabase.from("ai_roof_planes").insert(planeRows);
     if (edgeRows.length) await supabase.from("ai_roof_edges").insert(edgeRows);
 
-    const ridgeQa = ((globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug) || null;
+    const ridgeQa =
+      ((globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug) ||
+      null;
     const ridgeStructureReviewReason =
-      ridgeQa && Number(ridgeQa.ridge_edges_before || 0) > 0 && Number(ridgeQa.ridge_edges_after || 0) === 0
+      ridgeQa && Number(ridgeQa.ridge_edges_before || 0) > 0 &&
+        Number(ridgeQa.ridge_edges_after || 0) === 0
         ? "ridge_edges_not_aligned_to_roof_structure"
         : null;
-    const usedSinglePlaneFallback =
-      planeRows.length === 1 && planeRows[0].source === "single_plane_fallback";
+    const usedSinglePlaneFallback = planeRows.length === 1 &&
+      planeRows[0].source === "single_plane_fallback";
 
     // ───────── GEOMETRY SANITY GATE ─────────
     // Compute coverage/structural metrics, then block the customer report if
@@ -7361,22 +10314,32 @@ async function processJob(input: any) {
     const rakeFt = Number(totals.rake_length_ft) || 0;
     const dominantPitchRise = Number(totals.dominant_pitch) || 0;
     const isFlatRoof = dominantPitchRise > 0 && dominantPitchRise < 1.5;
-    const resolvedGeometrySource =
-      topologySource === REQUIRED_TOPOLOGY_SOURCE ? "autonomous_dsm_graph_solver"
-      : topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
-      : topologySource === "google_solar_segment_structure" ? "google_solar_segment_structure"
-      : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
-      : topologySource === "triangulation" ? "deterministic_triangulation"
-      : topologySource === "unet_planes" ? "unet_optional_helper"
+    const resolvedGeometrySource = topologySource === REQUIRED_TOPOLOGY_SOURCE
+      ? "autonomous_dsm_graph_solver"
+      : topologySource === "ridge_split_recursive"
+      ? "deterministic_ridge_split"
+      : topologySource === "google_solar_segment_structure"
+      ? "google_solar_segment_structure"
+      : topologySource === "straight_skeleton"
+      ? "deterministic_straight_skeleton"
+      : topologySource === "triangulation"
+      ? "deterministic_triangulation"
+      : topologySource === "unet_planes"
+      ? "unet_optional_helper"
       : "footprint_only";
 
     // Geometry bbox vs footprint bbox (overlay coverage of the roof target).
     const geometryUnionPoints: Point[] = [];
-    for (const p of cleanPlanes) for (const pt of p.polygon_px || []) geometryUnionPoints.push(pt);
-    for (const e of cleanEdges) for (const pt of e.line_px || []) geometryUnionPoints.push(pt);
+    for (const p of cleanPlanes) {
+      for (const pt of p.polygon_px || []) geometryUnionPoints.push(pt);
+    }
+    for (const e of cleanEdges) {
+      for (const pt of e.line_px || []) geometryUnionPoints.push(pt);
+    }
     const finalGeometryBboxPx = bboxOf(geometryUnionPoints);
     const geometryVsFootprintRatio =
-      finalGeometryBboxPx && finalFootprintBboxPx && finalFootprintBboxPx.area > 0
+      finalGeometryBboxPx && finalFootprintBboxPx &&
+        finalFootprintBboxPx.area > 0
         ? finalGeometryBboxPx.area / finalFootprintBboxPx.area
         : null;
 
@@ -7384,8 +10347,11 @@ async function processJob(input: any) {
     {
       const stashed = (globalThis as any).__overlaySanityFailures;
       if (Array.isArray(stashed)) sanityFailures.push(...stashed);
-      const strictTopologyFailures = (globalThis as any).__strictTopologyFailures;
-      if (Array.isArray(strictTopologyFailures)) sanityFailures.push(...strictTopologyFailures);
+      const strictTopologyFailures =
+        (globalThis as any).__strictTopologyFailures;
+      if (Array.isArray(strictTopologyFailures)) {
+        sanityFailures.push(...strictTopologyFailures);
+      }
       sanityFailures.push(...finalWriteSanityFailures);
 
       // ── SOURCE TAGGING PUBLISH GATE (Phase 5) ──
@@ -7401,21 +10367,31 @@ async function processJob(input: any) {
       }
     }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
-      sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
+      sanityFailures.push(
+        `roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`,
+      );
     }
     if (roofBboxCoverageRatio != null && roofBboxCoverageRatio < 0.4) {
-      sanityFailures.push(`footprint_covers_only_${Math.round(roofBboxCoverageRatio * 100)}pct_of_solar_bbox`);
+      sanityFailures.push(
+        `footprint_covers_only_${
+          Math.round(roofBboxCoverageRatio * 100)
+        }pct_of_solar_bbox`,
+      );
     }
     // Explicit edges=0 block: planes exist but no classified edges at all
     {
       const totalEdges = cleanEdges.length;
       const structEdges = cleanEdges.filter((e) =>
-        e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"
+        e.edge_type === "ridge" || e.edge_type === "hip" ||
+        e.edge_type === "valley"
       ).length;
       if (planeRows.length > 1 && totalEdges === 0) {
         sanityFailures.push("plane_graph_has_no_classified_edges");
       }
-      if (planeRows.length >= 4 && totalEdges === 0 && (solverTopologyLocked || isSolverTopologySource())) {
+      if (
+        planeRows.length >= 4 && totalEdges === 0 &&
+        (solverTopologyLocked || isSolverTopologySource())
+      ) {
         sanityFailures.push("solver_output_not_used");
       }
       if (planeRows.length > 1 && structEdges === 0 && !isFlatRoof) {
@@ -7427,11 +10403,16 @@ async function processJob(input: any) {
     }
     // Footprint underfill: footprint area vs selected target bbox area
     if (roofTargetBboxPx) {
-      const targetArea = (roofTargetBboxPx.maxX - roofTargetBboxPx.minX) * (roofTargetBboxPx.maxY - roofTargetBboxPx.minY);
+      const targetArea = (roofTargetBboxPx.maxX - roofTargetBboxPx.minX) *
+        (roofTargetBboxPx.maxY - roofTargetBboxPx.minY);
       if (targetArea > 0 && finalFootprintAreaPx > 0) {
         const underfillRatio = finalFootprintAreaPx / targetArea;
         if (underfillRatio < 0.65) {
-          sanityFailures.push(`footprint_underfills_target_bbox_${Math.round(underfillRatio * 100)}pct`);
+          sanityFailures.push(
+            `footprint_underfills_target_bbox_${
+              Math.round(underfillRatio * 100)
+            }pct`,
+          );
         }
       }
     }
@@ -7463,7 +10444,8 @@ async function processJob(input: any) {
     // with single plane — hard block.
     if (
       hipRoofDetectorDebug?.enabled &&
-      (hipRoofDetectorDebug?.diagonal_lines_kept >= 2 || hipRoofDetectorDebug?.reason?.includes("large_pitched")) &&
+      (hipRoofDetectorDebug?.diagonal_lines_kept >= 2 ||
+        hipRoofDetectorDebug?.reason?.includes("large_pitched")) &&
       planeRows.length < 2
     ) {
       if (!sanityFailures.includes("hip_roof_detected_but_single_plane")) {
@@ -7477,22 +10459,37 @@ async function processJob(input: any) {
       sanityFailures.push("hip_roof_has_invalid_rake");
     }
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
-      sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
+      sanityFailures.push(
+        `geometry_covers_only_${
+          Math.round(geometryVsFootprintRatio * 100)
+        }pct_of_footprint`,
+      );
     }
-    if (solarRoofAreaSqft != null && solarRoofAreaSqft > 0 && finalRoofAreaSqft > solarRoofAreaSqft * 1.25) {
+    if (
+      solarRoofAreaSqft != null && solarRoofAreaSqft > 0 &&
+      finalRoofAreaSqft > solarRoofAreaSqft * 1.25
+    ) {
       sanityFailures.push("area_inflation_after_merge");
     }
     const _planeMergeDebug = planeMergeDebug ?? null;
-    if (_planeMergeDebug?.pre_merge_area > 0 && _planeMergeDebug.post_merge_area > _planeMergeDebug.pre_merge_area * 1.10) {
+    if (
+      _planeMergeDebug?.pre_merge_area > 0 &&
+      _planeMergeDebug.post_merge_area > _planeMergeDebug.pre_merge_area * 1.10
+    ) {
       sanityFailures.push("area_inflation_after_merge");
     }
     // Footprint-as-law QA: total plane area must not exceed footprint*1.08.
-    if (finalRoofAreaSqft > 0 && finalFootprintAreaSqft > 0 && finalRoofAreaSqft > finalFootprintAreaSqft * 1.08) {
+    if (
+      finalRoofAreaSqft > 0 && finalFootprintAreaSqft > 0 &&
+      finalRoofAreaSqft > finalFootprintAreaSqft * 1.08
+    ) {
       sanityFailures.push("area_inflation_after_merge");
     }
     if (footprintConstraintStats?.overall_rejected) {
       sanityFailures.push(
-        `footprint_constraint_violated:${footprintConstraintStats.rejection_reason || "area_ratio_exceeded"}`,
+        `footprint_constraint_violated:${
+          footprintConstraintStats.rejection_reason || "area_ratio_exceeded"
+        }`,
       );
     }
     // Plane-edge classifier QA: ridge hints must be supported by actual plane
@@ -7516,21 +10513,26 @@ async function processJob(input: any) {
       // the graph is disconnected and ridges/hips/valleys can never form.
       try {
         const adj = planeAdjacencyStats(
-          (cleanPlanes as any[]).map((p) => p.polygon_px || []),
+          (cleanPlanes as any[]).map((p) =>
+            p.polygon_px || []
+          ),
         );
         const ridgeHintCount = (topLevelFilteredRidges ?? []).length;
         const ridgeHintsMatching = Math.max(
           0,
           ridgeHintCount - Number(pec?.invalid_ridge_hints_count ?? 0),
         );
-        console.log("[PLANE_ADJACENCY_DEBUG]", JSON.stringify({
-          plane_count: adj.plane_count,
-          shared_boundary_count: adj.shared_boundary_count,
-          two_plane_boundary_count: adj.two_plane_boundary_count,
-          ridge_hint_count: ridgeHintCount,
-          ridge_hints_matching_shared_boundary: ridgeHintsMatching,
-          rejected_ridge_hints: Number(pec?.invalid_ridge_hints_count ?? 0),
-        }));
+        console.log(
+          "[PLANE_ADJACENCY_DEBUG]",
+          JSON.stringify({
+            plane_count: adj.plane_count,
+            shared_boundary_count: adj.shared_boundary_count,
+            two_plane_boundary_count: adj.two_plane_boundary_count,
+            ridge_hint_count: ridgeHintCount,
+            ridge_hints_matching_shared_boundary: ridgeHintsMatching,
+            rejected_ridge_hints: Number(pec?.invalid_ridge_hints_count ?? 0),
+          }),
+        );
         if (adj.plane_count > 1 && adj.shared_boundary_count === 0) {
           sanityFailures.push("planes_disconnected_no_shared_boundaries");
         }
@@ -7546,14 +10548,20 @@ async function processJob(input: any) {
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
       sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
-    } else if (planeRows.length < 2 && finalFootprintAreaSqft > 800 && !sanityFailures.some((s) => s.includes("plane"))) {
+    } else if (
+      planeRows.length < 2 && finalFootprintAreaSqft > 800 &&
+      !sanityFailures.some((s) => s.includes("plane"))
+    ) {
       sanityFailures.push("too_few_planes_lt_2");
     }
     if (!overlayCalibration?.calibrated) {
       sanityFailures.push("overlay_alignment_failed");
     }
     if (overlayCalibration?.calibrated) {
-      if (overlayCalibration.coverage_ratio_width < 0.65 || overlayCalibration.coverage_ratio_height < 0.65) {
+      if (
+        overlayCalibration.coverage_ratio_width < 0.65 ||
+        overlayCalibration.coverage_ratio_height < 0.65
+      ) {
         sanityFailures.push("overlay_alignment_failed");
       }
       if (overlayCalibration.center_error_px > 80) {
@@ -7575,9 +10583,16 @@ async function processJob(input: any) {
         sanityFailures.push("LOW_COVERAGE");
       }
     }
-    const computedValidatedFaces = Number(autonomousDebug?.validated_faces ?? planeRows.length);
-    const computedTotalFaces = Number(autonomousDebug?.attempted_faces ?? planeRows.length);
-    if (computedTotalFaces === 0 || computedValidatedFaces < computedTotalFaces * 0.7) {
+    const computedValidatedFaces = Number(
+      autonomousDebug?.validated_faces ?? planeRows.length,
+    );
+    const computedTotalFaces = Number(
+      autonomousDebug?.attempted_faces ?? planeRows.length,
+    );
+    if (
+      computedTotalFaces === 0 ||
+      computedValidatedFaces < computedTotalFaces * 0.7
+    ) {
       if (!sanityFailures.includes("INVALID_FACES")) {
         sanityFailures.push("INVALID_FACES");
       }
@@ -7598,7 +10613,19 @@ async function processJob(input: any) {
       eave_delta_pct: number | null;
       topology_score_vs_vendor: number | null;
       block_reason: string | null;
-    } = { matched: false, benchmark_address: null, area_delta_pct: null, facet_delta: null, pitch_delta: null, ridge_delta_pct: null, hip_delta_pct: null, valley_delta_pct: null, eave_delta_pct: null, topology_score_vs_vendor: null, block_reason: null };
+    } = {
+      matched: false,
+      benchmark_address: null,
+      area_delta_pct: null,
+      facet_delta: null,
+      pitch_delta: null,
+      ridge_delta_pct: null,
+      hip_delta_pct: null,
+      valley_delta_pct: null,
+      eave_delta_pct: null,
+      topology_score_vs_vendor: null,
+      block_reason: null,
+    };
 
     try {
       const { data: benchmarks } = await supabase
@@ -7606,9 +10633,12 @@ async function processJob(input: any) {
         .select("*")
         .limit(50);
       if (benchmarks && benchmarks.length > 0) {
-        const normalizeAddr = (a: string) => (a || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const inputAddr = normalizeAddr(input.property_address || '');
-        const match = benchmarks.find(b => inputAddr.includes(normalizeAddr(b.address)));
+        const normalizeAddr = (a: string) =>
+          (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const inputAddr = normalizeAddr(input.property_address || "");
+        const match = benchmarks.find((b) =>
+          inputAddr.includes(normalizeAddr(b.address))
+        );
         if (match) {
           const aiArea = finalRoofAreaSqft || 0;
           const aiFacets = planeRows.length;
@@ -7618,10 +10648,13 @@ async function processJob(input: any) {
           const aiValley = Number(totals.valley_length_ft) || 0;
           const aiEave = Number(totals.eave_length_ft) || 0;
 
-          const deltaPct = (ai: number, vendor: number) => vendor > 0 ? Math.abs(ai - vendor) / vendor * 100 : null;
+          const deltaPct = (ai: number, vendor: number) =>
+            vendor > 0 ? Math.abs(ai - vendor) / vendor * 100 : null;
           const areaDelta = deltaPct(aiArea, Number(match.area_sqft) || 0);
           const facetDelta = aiFacets - (match.facets || 0);
-          const pitchDelta = Math.abs(aiPitch - (Number(match.pitch_rise_per_12) || 0));
+          const pitchDelta = Math.abs(
+            aiPitch - (Number(match.pitch_rise_per_12) || 0),
+          );
           const ridgeDelta = deltaPct(aiRidge, Number(match.ridge_lf) || 0);
           const hipDelta = deltaPct(aiHip, Number(match.hip_lf) || 0);
           const valleyDelta = deltaPct(aiValley, Number(match.valley_lf) || 0);
@@ -7629,78 +10662,134 @@ async function processJob(input: any) {
 
           // Topology score: weighted composite (0-100)
           let topoScore = 100;
-          if (areaDelta != null && areaDelta > 10) topoScore -= Math.min(25, areaDelta);
-          if (Math.abs(facetDelta) > 2) topoScore -= Math.min(30, Math.abs(facetDelta) * 5);
-          if (pitchDelta > 1) topoScore -= Math.min(20, pitchDelta * 5);
-          if (ridgeDelta != null && ridgeDelta > 25) topoScore -= Math.min(15, ridgeDelta * 0.3);
-          if (hipDelta != null && hipDelta > 25) topoScore -= Math.min(10, hipDelta * 0.2);
+          if (areaDelta != null && areaDelta > 10) {
+            topoScore -= Math.min(25, areaDelta);
+          }
+          if (Math.abs(facetDelta) > 2) {
+            topoScore -= Math.min(30, Math.abs(facetDelta) * 5);
+          }
+          if (pitchDelta > 1) {
+            topoScore -= Math.min(20, pitchDelta * 5);
+          }
+          if (ridgeDelta != null && ridgeDelta > 25) {
+            topoScore -= Math.min(15, ridgeDelta * 0.3);
+          }
+          if (hipDelta != null && hipDelta > 25) {
+            topoScore -= Math.min(10, hipDelta * 0.2);
+          }
           topoScore = Math.max(0, Math.min(100, topoScore));
 
           // Determine block reasons
           const benchBlockReasons: string[] = [];
-          if (match.facets && Math.abs(facetDelta) / match.facets > 0.25) benchBlockReasons.push(`facet_off_${Math.abs(facetDelta)}`);
-          if (pitchDelta > 1) benchBlockReasons.push(`pitch_off_${pitchDelta.toFixed(1)}`);
-          if (ridgeDelta != null && ridgeDelta > 25) benchBlockReasons.push(`ridge_off_${ridgeDelta.toFixed(0)}pct`);
-          if (hipDelta != null && hipDelta > 25) benchBlockReasons.push(`hip_off_${hipDelta.toFixed(0)}pct`);
-          if (valleyDelta != null && valleyDelta > 25) benchBlockReasons.push(`valley_off_${valleyDelta.toFixed(0)}pct`);
-          if (aiRidge === 0 && (match.ridge_lf || 0) > 5) benchBlockReasons.push('ridge_lf_zero_on_complex');
-          if (topoScore < 80) benchBlockReasons.push(`topology_score_${topoScore.toFixed(0)}`);
+          if (
+            match.facets && Math.abs(facetDelta) / match.facets > 0.25
+          ) {
+            benchBlockReasons.push(`facet_off_${Math.abs(facetDelta)}`);
+          }
+          if (pitchDelta > 1) {
+            benchBlockReasons.push(`pitch_off_${pitchDelta.toFixed(1)}`);
+          }
+          if (ridgeDelta != null && ridgeDelta > 25) {
+            benchBlockReasons.push(`ridge_off_${ridgeDelta.toFixed(0)}pct`);
+          }
+          if (hipDelta != null && hipDelta > 25) {
+            benchBlockReasons.push(`hip_off_${hipDelta.toFixed(0)}pct`);
+          }
+          if (valleyDelta != null && valleyDelta > 25) {
+            benchBlockReasons.push(`valley_off_${valleyDelta.toFixed(0)}pct`);
+          }
+          if (aiRidge === 0 && (match.ridge_lf || 0) > 5) {
+            benchBlockReasons.push("ridge_lf_zero_on_complex");
+          }
+          if (topoScore < 80) {
+            benchBlockReasons.push(`topology_score_${topoScore.toFixed(0)}`);
+          }
 
           vendorBenchmarkResult = {
             matched: true,
             benchmark_address: match.address,
-            area_delta_pct: areaDelta != null ? Number(areaDelta.toFixed(1)) : null,
+            area_delta_pct: areaDelta != null
+              ? Number(areaDelta.toFixed(1))
+              : null,
             facet_delta: facetDelta,
             pitch_delta: Number(pitchDelta.toFixed(2)),
-            ridge_delta_pct: ridgeDelta != null ? Number(ridgeDelta.toFixed(1)) : null,
-            hip_delta_pct: hipDelta != null ? Number(hipDelta.toFixed(1)) : null,
-            valley_delta_pct: valleyDelta != null ? Number(valleyDelta.toFixed(1)) : null,
-            eave_delta_pct: eaveDelta != null ? Number(eaveDelta.toFixed(1)) : null,
+            ridge_delta_pct: ridgeDelta != null
+              ? Number(ridgeDelta.toFixed(1))
+              : null,
+            hip_delta_pct: hipDelta != null
+              ? Number(hipDelta.toFixed(1))
+              : null,
+            valley_delta_pct: valleyDelta != null
+              ? Number(valleyDelta.toFixed(1))
+              : null,
+            eave_delta_pct: eaveDelta != null
+              ? Number(eaveDelta.toFixed(1))
+              : null,
             topology_score_vs_vendor: Number(topoScore.toFixed(1)),
-            block_reason: benchBlockReasons.length > 0 ? benchBlockReasons.join('|') : null,
+            block_reason: benchBlockReasons.length > 0
+              ? benchBlockReasons.join("|")
+              : null,
           };
 
-          console.log("[VENDOR_BENCHMARK]", JSON.stringify(vendorBenchmarkResult));
+          console.log(
+            "[VENDOR_BENCHMARK]",
+            JSON.stringify(vendorBenchmarkResult),
+          );
         }
       }
     } catch (benchErr) {
-      console.warn("[VENDOR_BENCHMARK] Failed to check benchmarks:", (benchErr as Error).message);
+      console.warn(
+        "[VENDOR_BENCHMARK] Failed to check benchmarks:",
+        (benchErr as Error).message,
+      );
     }
 
-    const vendorBenchmarkBlockReason = vendorBenchmarkResult.block_reason ? `vendor_benchmark_fail:${vendorBenchmarkResult.block_reason}` : null;
+    const vendorBenchmarkBlockReason = vendorBenchmarkResult.block_reason
+      ? `vendor_benchmark_fail:${vendorBenchmarkResult.block_reason}`
+      : null;
 
-    const blockCustomerReportReason: string | null =
-      dsmFailReason ? dsmFailReason
-        : (sanityFailures.length > 0 ? sanityFailures.join("|")
-          : vendorBenchmarkBlockReason ? vendorBenchmarkBlockReason
-            : ridgeStructureReviewReason);
-    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure")
-      || vendorTruthComparison?.needs_internal_review === true
-      || !!vendorBenchmarkBlockReason;
+    const blockCustomerReportReason: string | null = dsmFailReason
+      ? dsmFailReason
+      : (sanityFailures.length > 0
+        ? sanityFailures.join("|")
+        : vendorBenchmarkBlockReason
+        ? vendorBenchmarkBlockReason
+        : ridgeStructureReviewReason);
+    const needsInternalReview = !!blockCustomerReportReason?.includes(
+      "ridge_edges_not_aligned_to_roof_structure",
+    ) ||
+      vendorTruthComparison?.needs_internal_review === true ||
+      !!vendorBenchmarkBlockReason;
 
-    console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
-      final_roof_area_sqft: finalRoofAreaSqft,
-      solar_roof_area_sqft: solarRoofAreaSqft,
-      final_footprint_area_sqft: finalFootprintAreaSqft,
-      roof_bbox_coverage_ratio: roofBboxCoverageRatio,
-      geometry_vs_footprint_ratio: geometryVsFootprintRatio,
-      plane_count: planeRows.length,
+    console.log(
+      "[GEOMETRY_SANITY_CHECK]",
+      JSON.stringify({
+        final_roof_area_sqft: finalRoofAreaSqft,
+        solar_roof_area_sqft: solarRoofAreaSqft,
+        final_footprint_area_sqft: finalFootprintAreaSqft,
+        roof_bbox_coverage_ratio: roofBboxCoverageRatio,
+        geometry_vs_footprint_ratio: geometryVsFootprintRatio,
+        plane_count: planeRows.length,
         edge_counts: {
-        ridge: ridgeFt, hip: hipFt, valley: valleyFt,
-        eave: Number(totals.eave_length_ft) || 0, rake: Number(totals.rake_length_ft) || 0,
-      },
+          ridge: ridgeFt,
+          hip: hipFt,
+          valley: valleyFt,
+          eave: Number(totals.eave_length_ft) || 0,
+          rake: Number(totals.rake_length_ft) || 0,
+        },
         ridge_alignment_qa: ridgeQa,
-      blocked: !!blockCustomerReportReason,
-      reason: blockCustomerReportReason,
-      ridge_detection_ran: ridgeDetectionRan,
-      ridges_detected: ridgeDetectedCount,
-      ridge_split_planes: ridgeSplitPlaneCount,
-      plane_merge: _planeMergeDebug,
-      plane_consolidation: planeConsolidationStats,
-      overlay_calibration: overlayCalibration,
-      hip_roof_detector: hipRoofDetectorDebug,
-      simple_roof_type: simpleRoofTypeDebug,
-    }));
+        blocked: !!blockCustomerReportReason,
+        reason: blockCustomerReportReason,
+        ridge_detection_ran: ridgeDetectionRan,
+        ridges_detected: ridgeDetectedCount,
+        ridge_split_planes: ridgeSplitPlaneCount,
+        plane_merge: _planeMergeDebug,
+        plane_consolidation: planeConsolidationStats,
+        overlay_calibration: overlayCalibration,
+        hip_roof_detector: hipRoofDetectorDebug,
+        simple_roof_type: simpleRoofTypeDebug,
+      }),
+    );
 
     const quality = scoreQuality({
       geocode_location_type: coords.geocode_location_type,
@@ -7734,14 +10823,22 @@ async function processJob(input: any) {
       geometry_quality_score: quality.geometry_score,
       measurement_quality_score: quality.measurement_score,
       geometry_source: resolvedGeometrySource,
-      edge_source: edgeRows.length ? (cleanEdges[0]?.source || resolvedGeometrySource) : "none",
+      edge_source: edgeRows.length
+        ? (cleanEdges[0]?.source || resolvedGeometrySource)
+        : "none",
       report_json: {
         source_button: input.source_button,
-        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+        engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+        ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+        perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+        phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+        git_commit_sha: GIT_COMMIT_SHA,
+        runtime_deployed_at: DEPLOYED_AT,
         footprint_source: footprintSource,
         topology_source: topologySource,
         simple_roof_type: simpleRoofTypeDebug,
-        unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+        unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) ||
+          cleanEdges.some((e) => e.source.startsWith("unet")),
         block_customer_report_reason: blockCustomerReportReason,
         calibration: {
           logical_meters_per_pixel: logicalMpp,
@@ -7754,7 +10851,9 @@ async function processJob(input: any) {
       },
       // ── Validation columns ──
       is_valid: measurementIsValid,
-      fail_reasons: sanityFailures.length > 0 ? sanityFailures : (dsmFailReason ? [dsmFailReason] : null),
+      fail_reasons: sanityFailures.length > 0
+        ? sanityFailures
+        : (dsmFailReason ? [dsmFailReason] : null),
       area_ratio: computedAreaRatio,
       coverage: computedCoverage,
       validated_face_count: computedValidatedFaces,
@@ -7762,7 +10861,8 @@ async function processJob(input: any) {
       footprint_confidence: autonomousDebug?.footprint_valid ? 1.0 : 0.5,
       report_blocked: !!blockCustomerReportReason,
       blocked_reason: blockCustomerReportReason,
-      needs_review: needsInternalReview || !!blockCustomerReportReason || quality.overall_score < 0.80,
+      needs_review: needsInternalReview || !!blockCustomerReportReason ||
+        quality.overall_score < 0.80,
     });
 
     if (quality.checks.length) {
@@ -7773,14 +10873,16 @@ async function processJob(input: any) {
           passed: check.passed,
           score: check.score,
           details: check.details,
-        }))
+        })),
       );
     }
 
     // Pixel-space geometry for the dev raster overlay debug view.
     // planes_px / edges_px are transformed into calibrated raster pixel space.
     const toCalibratedPoint = (pt: Point): Point =>
-      overlayCalibration?.calibrated ? transformOverlayPoint(pt, overlayCalibration) : pt;
+      overlayCalibration?.calibrated
+        ? transformOverlayPoint(pt, overlayCalibration)
+        : pt;
     const planes_px = cleanPlanes
       .map((p) => ({
         polygon: (p.polygon_px || []).map((pt: any) => {
@@ -7844,7 +10946,8 @@ async function processJob(input: any) {
         total_face_area_sqft: finalRoofAreaSqft,
         footprint_area_sqft: finalFootprintAreaSqft,
         ratio: geometryVsFootprintRatio,
-        passed: finalFootprintAreaSqft <= 0 || finalRoofAreaSqft <= finalFootprintAreaSqft * 1.08,
+        passed: finalFootprintAreaSqft <= 0 ||
+          finalRoofAreaSqft <= finalFootprintAreaSqft * 1.08,
       },
       // 4. Publication gate — failed geometry never becomes a customer report.
       publication_gate: {
@@ -7868,17 +10971,31 @@ async function processJob(input: any) {
       raster_size,
       raster_image_url: imageUrl,
       topology_source: topologySource,
-      facet_source: autonomousDebug?.facet_source ?? (topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : null),
-      fallback_used: autonomousDebug?.fallback_used ?? (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
-      hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
-      coordinate_space_input: autonomousDebug?.coordinate_space_input || "geo_from_selected_footprint",
-      coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "geo",
+      facet_source: autonomousDebug?.facet_source ??
+        (topologySource === REQUIRED_TOPOLOGY_SOURCE
+          ? "dsm_planar_graph_faces"
+          : null),
+      fallback_used: autonomousDebug?.fallback_used ??
+        (topologySource !== REQUIRED_TOPOLOGY_SOURCE),
+      hard_fail_reason: autonomousDebug?.hard_fail_reason ??
+        blockCustomerReportReason ?? null,
+      coordinate_space_input: autonomousDebug?.coordinate_space_input ||
+        "geo_from_selected_footprint",
+      coordinate_space_solver: autonomousDebug?.coordinate_space_solver ||
+        "geo",
       coordinate_space_renderer: "satellite_px",
-      dsm_pixel_transform_valid: Boolean(autonomousDebug?.dsm_pixel_transform_valid ?? dsmCoordinateMatchDebug?.match ?? true),
-      geo_to_dsm_px_success: Boolean(autonomousDebug?.geo_to_dsm_px_success ?? dsmCoordinateMatchDebug?.match ?? true),
+      dsm_pixel_transform_valid: Boolean(
+        autonomousDebug?.dsm_pixel_transform_valid ??
+          dsmCoordinateMatchDebug?.match ?? true,
+      ),
+      geo_to_dsm_px_success: Boolean(
+        autonomousDebug?.geo_to_dsm_px_success ??
+          dsmCoordinateMatchDebug?.match ?? true,
+      ),
       attempted_faces: autonomousDebug?.attempted_faces ?? planeRows.length,
       attempted_edges: autonomousDebug?.attempted_edges ?? edgeRows.length,
-      attempted_area_total: autonomousDebug?.attempted_area_total ?? Number(totals.total_area_pitch_adjusted_sqft || 0),
+      attempted_area_total: autonomousDebug?.attempted_area_total ??
+        Number(totals.total_area_pitch_adjusted_sqft || 0),
       attempted_ridge_lf: autonomousDebug?.attempted_ridge_lf ?? ridgeFt,
       attempted_hip_lf: autonomousDebug?.attempted_hip_lf ?? hipFt,
       attempted_valley_lf: autonomousDebug?.attempted_valley_lf ?? valleyFt,
@@ -7888,15 +11005,18 @@ async function processJob(input: any) {
       validated_hip_lf: blockCustomerReportReason ? 0 : hipFt,
       validated_valley_lf: blockCustomerReportReason ? 0 : valleyFt,
       face_rejection_table: autonomousDebug?.face_rejection_table || [],
-      edge_classification_debug: autonomousDebug?.edge_classification_debug || null,
+      edge_classification_debug: autonomousDebug?.edge_classification_debug ||
+        null,
       footprint_source: footprintSource,
       footprint_valid: true,
       footprint_point_count: footprint.length,
       footprint_area_sqft: Math.round(footprintAreaSqftVal),
       dsm_coordinate_match: dsmCoordinateMatchDebug,
       inference_source: resolvedGeometrySource,
-      used_deterministic_topology:
-        topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
+      used_deterministic_topology: topologySource === "ridge_split_recursive" ||
+        topologySource === "straight_skeleton" ||
+        topologySource === "triangulation" ||
+        topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
       // ── Phase 0: Perimeter-First Topology Contract ──
@@ -7909,9 +11029,14 @@ async function processJob(input: any) {
       perimeter_total_ft: autonomousDebug?.perimeter_total_ft ?? null,
       unknown_perimeter_lf: autonomousDebug?.unknown_perimeter_lf ?? null,
       perimeter_area_sqft: autonomousDebug?.perimeter_area_sqft ?? null,
-      perimeter_failure_reasons: autonomousDebug?.perimeter_failure_reasons ?? [],
+      perimeter_failure_reasons: autonomousDebug?.perimeter_failure_reasons ??
+        [],
       vendor_truth_comparison: vendorTruthComparison,
-       status: needsInternalReview ? "needs_internal_review" : (Boolean(blockCustomerReportReason) || quality.overall_score < 0.80) ? "needs_review" : "completed",
+      status: needsInternalReview
+        ? "needs_internal_review"
+        : (Boolean(blockCustomerReportReason) || quality.overall_score < 0.80)
+        ? "needs_review"
+        : "completed",
       reason: blockCustomerReportReason,
       pdf_source_signature: pdfSourceSignature,
       overlay_calibration: overlayCalibration,
@@ -7930,7 +11055,8 @@ async function processJob(input: any) {
         meters_per_pixel: actualMpp,
         feet_per_pixel: actualFpp,
         decision_log: imageryDecisionLog,
-        notes: "Google 3D Photorealistic Tiles are reserved for visual QA/debug until mesh-to-plane extraction is implemented.",
+        notes:
+          "Google 3D Photorealistic Tiles are reserved for visual QA/debug until mesh-to-plane extraction is implemented.",
       },
       debug_geometry: {
         raster_size,
@@ -7946,11 +11072,17 @@ async function processJob(input: any) {
         plane_count: planeRows.length,
         edge_count: edgeRows.length,
         edge_counts: {
-          ridge_ft: ridgeFt, hip_ft: hipFt, valley_ft: valleyFt,
-          eave_ft: Number(totals.eave_length_ft) || 0, rake_ft: Number(totals.rake_length_ft) || 0,
+          ridge_ft: ridgeFt,
+          hip_ft: hipFt,
+          valley_ft: valleyFt,
+          eave_ft: Number(totals.eave_length_ft) || 0,
+          rake_ft: Number(totals.rake_length_ft) || 0,
         },
         topology_source: topologySource,
-        facet_source: autonomousDebug?.facet_source ?? (topologySource === REQUIRED_TOPOLOGY_SOURCE ? "dsm_planar_graph_faces" : null),
+        facet_source: autonomousDebug?.facet_source ??
+          (topologySource === REQUIRED_TOPOLOGY_SOURCE
+            ? "dsm_planar_graph_faces"
+            : null),
         dsm_edges_detected: autonomousDebug?.dsm_edges_detected ?? 0,
         dsm_edges_accepted: autonomousDebug?.dsm_edges_accepted ?? 0,
         interior_lines_used: autonomousDebug?.interior_lines_used ?? 0,
@@ -7961,18 +11093,23 @@ async function processJob(input: any) {
         faces_extracted: autonomousDebug?.faces_extracted ?? 0,
         valid_faces: autonomousDebug?.valid_faces ?? planeRows.length,
         face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
-        hard_fail_reason: autonomousDebug?.hard_fail_reason ?? blockCustomerReportReason ?? null,
+        hard_fail_reason: autonomousDebug?.hard_fail_reason ??
+          blockCustomerReportReason ?? null,
         footprint_source: footprintSource,
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
-        plane_edge_classifier: (globalThis as any).__planeEdgeClassifierDebug ?? null,
-        strict_edge_graph: (globalThis as any).__strictEdgeGraphDebug ?? strictEdgeGraphDebug,
-        ridge_alignment_qa: (globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug,
+        plane_edge_classifier: (globalThis as any).__planeEdgeClassifierDebug ??
+          null,
+        strict_edge_graph: (globalThis as any).__strictEdgeGraphDebug ??
+          strictEdgeGraphDebug,
+        ridge_alignment_qa: (globalThis as any).__ridgeAlignmentDebug ??
+          ridgeAlignmentDebug,
       },
       overlay_debug: {
         coordinate_space: "satellite_px",
-        coordinate_space_solver: autonomousDebug?.coordinate_space_solver || "geo",
+        coordinate_space_solver: autonomousDebug?.coordinate_space_solver ||
+          "geo",
         coordinate_space_renderer: "satellite_px",
         raster_url: imageUrl,
         raster_size,
@@ -8011,22 +11148,47 @@ async function processJob(input: any) {
       confidence: edge.confidence,
     })).filter((feature: any) => feature.wkt);
     const footprintVerticesGeo = footprint.map((p) => {
-      const [lng, lat] = pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      const [lng, lat] = pxToLngLat(
+        p,
+        { lat: coords.lat, lng: coords.lng },
+        raster.width,
+        raster.height,
+        actualMpp,
+      );
       return { lng, lat };
     });
-    const perimeterWkt = footprintVerticesGeo.length >= 3 ? polygonVerticesToWKT(footprintVerticesGeo) : null;
-    const imageBounds = imageBoundsFromRaster({ lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
-    const reviewRequired = Boolean(blockCustomerReportReason) || quality.overall_score < 0.80;
-    const dbFootprintSource = normalizeRoofMeasurementFootprintSource(footprintSource);
+    const perimeterWkt = footprintVerticesGeo.length >= 3
+      ? polygonVerticesToWKT(footprintVerticesGeo)
+      : null;
+    const imageBounds = imageBoundsFromRaster(
+      { lat: coords.lat, lng: coords.lng },
+      raster.width,
+      raster.height,
+      actualMpp,
+    );
+    const reviewRequired = Boolean(blockCustomerReportReason) ||
+      quality.overall_score < 0.80;
+    const dbFootprintSource = normalizeRoofMeasurementFootprintSource(
+      footprintSource,
+    );
     const aiDetectionData = {
       source_button: input.source_button,
-      engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
+      engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+      ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+      perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+      phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+      git_commit_sha: GIT_COMMIT_SHA,
+      runtime_deployed_at: DEPLOYED_AT,
       geometry_source: resolvedGeometrySource,
       final_edge_source: finalEdgeSource,
       footprint_source: footprintSource,
       topology_source: topologySource,
       block_customer_report_reason: blockCustomerReportReason,
-      status: needsInternalReview ? "needs_internal_review" : reviewRequired ? "needs_review" : "completed",
+      status: needsInternalReview
+        ? "needs_internal_review"
+        : reviewRequired
+        ? "needs_review"
+        : "completed",
       reason: blockCustomerReportReason,
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
@@ -8041,7 +11203,8 @@ async function processJob(input: any) {
         raster_scale: input.raster_scale,
       },
       solar_used: !!solarData,
-      unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+      unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) ||
+        cleanEdges.some((e) => e.source.startsWith("unet")),
       // ── DEBUG-ONLY bbox-fit overlay — NOT geospatial registration ──
       _debug_only_planes_px: planes_px,
       _debug_only_edges_px: edges_px,
@@ -8066,8 +11229,15 @@ async function processJob(input: any) {
       eave_ft: Number(totals.eave_length_ft) || 0,
       rake_ft: Number(totals.rake_length_ft) || 0,
     };
-    console.log("[FINAL_WRITE_SOURCE_ASSERT]", JSON.stringify(finalWriteSourceAssert));
-    if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdges?.[0]?.source !== "constraint_solver_topology") {
+    console.log(
+      "[FINAL_WRITE_SOURCE_ASSERT]",
+      JSON.stringify(finalWriteSourceAssert),
+    );
+    if (
+      (topologySource.includes("constraint") ||
+        topologySource.includes("hybrid")) &&
+      finalEdges?.[0]?.source !== "constraint_solver_topology"
+    ) {
       throw new Error("WRONG_FINAL_EDGE_SOURCE");
     }
 
@@ -8080,27 +11250,73 @@ async function processJob(input: any) {
     const facesValidated = Number(autonomousDebug?.validated_faces || 0);
     const coordSpace = autonomousDebug?.coordinate_space_solver;
     const coverageRatio = autonomousDebug?.face_coverage_ratio ?? null;
-    const outsideFootprintCount = Number(autonomousDebug?.outside_footprint_count || autonomousDebug?.rejected_by_footprint || 0);
-    const duplicateEdgeCount = Number(autonomousDebug?.duplicate_edge_count || 0);
+    const outsideFootprintCount = Number(
+      autonomousDebug?.outside_footprint_count ||
+        autonomousDebug?.rejected_by_footprint || 0,
+    );
+    const duplicateEdgeCount = Number(
+      autonomousDebug?.duplicate_edge_count || 0,
+    );
     const danglingEdgeCount = Number(autonomousDebug?.dangling_edge_count || 0);
-    const bboxRescueUsed = Boolean(autonomousDebug?.bbox_rescue_used_in_validation);
+    const bboxRescueUsed = Boolean(
+      autonomousDebug?.bbox_rescue_used_in_validation,
+    );
     const maskIou = autonomousDebug?.mask_iou ?? null;
     const maskLoaded = Boolean(autonomousDebug?.mask_loaded);
-    const clipperFailureCount = Number(autonomousDebug?.polygon_clipper_failure_count || autonomousDebug?.clipper_degenerate_output || 0);
-    const invalidEdgeClass = Boolean(autonomousDebug?.invalid_edge_classification);
+    const clipperFailureCount = Number(
+      autonomousDebug?.polygon_clipper_failure_count ||
+        autonomousDebug?.clipper_degenerate_output || 0,
+    );
+    const invalidEdgeClass = Boolean(
+      autonomousDebug?.invalid_edge_classification,
+    );
 
-    if (solverStatus !== "validated") promotionGateFailedReasons.push(`status=${solverStatus}`);
-    if (facesValidated < 2) promotionGateFailedReasons.push(`faces_validated=${facesValidated}<2`);
-    if (coordSpace !== "dsm_px") promotionGateFailedReasons.push(`coord_space=${coordSpace}`);
-    if (coverageRatio != null && (coverageRatio < 0.95 || coverageRatio > 1.05)) promotionGateFailedReasons.push(`coverage=${coverageRatio}`);
-    if (outsideFootprintCount > 0) promotionGateFailedReasons.push(`outside_footprint=${outsideFootprintCount}`);
-    if (duplicateEdgeCount > 0) promotionGateFailedReasons.push(`duplicate_edges=${duplicateEdgeCount}`);
-    if (danglingEdgeCount > 0) promotionGateFailedReasons.push(`dangling_edges=${danglingEdgeCount}`);
+    if (solverStatus !== "validated") {
+      promotionGateFailedReasons.push(`status=${solverStatus}`);
+    }
+    if (facesValidated < 2) {
+      promotionGateFailedReasons.push(`faces_validated=${facesValidated}<2`);
+    }
+    if (coordSpace !== "dsm_px") {
+      promotionGateFailedReasons.push(`coord_space=${coordSpace}`);
+    }
+    if (
+      coverageRatio != null && (coverageRatio < 0.95 || coverageRatio > 1.05)
+    ) promotionGateFailedReasons.push(`coverage=${coverageRatio}`);
+    if (outsideFootprintCount > 0) {
+      promotionGateFailedReasons.push(
+        `outside_footprint=${outsideFootprintCount}`,
+      );
+    }
+    if (duplicateEdgeCount > 0) {
+      promotionGateFailedReasons.push(
+        `duplicate_edges=${duplicateEdgeCount}`,
+      );
+    }
+    if (danglingEdgeCount > 0) {
+      promotionGateFailedReasons.push(
+        `dangling_edges=${danglingEdgeCount}`,
+      );
+    }
     if (bboxRescueUsed) promotionGateFailedReasons.push("bbox_rescue_used");
-    if (maskIou != null && maskIou < 0.85) promotionGateFailedReasons.push(`mask_iou=${maskIou}<0.85`);
-    if (!maskLoaded && maskIou == null) promotionGateFailedReasons.push("mask_not_loaded_and_no_iou");
-    if (clipperFailureCount > 0) promotionGateFailedReasons.push(`clipper_failures=${clipperFailureCount}`);
-    if (invalidEdgeClass) promotionGateFailedReasons.push("invalid_edge_classification");
+    if (maskIou != null && maskIou < 0.85) {
+      promotionGateFailedReasons.push(
+        `mask_iou=${maskIou}<0.85`,
+      );
+    }
+    if (!maskLoaded && maskIou == null) {
+      promotionGateFailedReasons.push(
+        "mask_not_loaded_and_no_iou",
+      );
+    }
+    if (clipperFailureCount > 0) {
+      promotionGateFailedReasons.push(
+        `clipper_failures=${clipperFailureCount}`,
+      );
+    }
+    if (invalidEdgeClass) {
+      promotionGateFailedReasons.push("invalid_edge_classification");
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // TOPOLOGY FIDELITY GATE — block promotion when the solved graph
@@ -8108,33 +11324,54 @@ async function processJob(input: any) {
     // even if all geometric contracts pass.
     // ═══════════════════════════════════════════════════════════════
     const topoFidelityScore = topologyFidelity?.topology_fidelity_score ?? 100;
-    const topoFidelityRating = topologyFidelity?.topology_fidelity ?? 'high';
+    const topoFidelityRating = topologyFidelity?.topology_fidelity ?? "high";
     const topoIssues = topologyFidelity?.topology_issues ?? [];
     const topologyBlockReasons: string[] = [];
 
-    if (topoFidelityRating === 'low') {
-      topologyBlockReasons.push(`topology_fidelity=low(score=${topoFidelityScore})`);
+    if (topoFidelityRating === "low") {
+      topologyBlockReasons.push(
+        `topology_fidelity=low(score=${topoFidelityScore})`,
+      );
     }
     if (topologyFidelity?.fan_collapse_suspected) {
-      topologyBlockReasons.push(`fan_collapse:central_degree=${topologyFidelity.central_node_degree}`);
+      topologyBlockReasons.push(
+        `fan_collapse:central_degree=${topologyFidelity.central_node_degree}`,
+      );
     }
     if ((topologyFidelity?.facet_deficit ?? 0) > 4) {
-      topologyBlockReasons.push(`severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${topologyFidelity!.expected_min_facets}`);
+      topologyBlockReasons.push(
+        `severe_facet_deficit:${topologyFidelity!.facet_count}_vs_min_${
+          topologyFidelity!.expected_min_facets
+        }`,
+      );
     }
     if (topologyFidelity?.valley_collapse_suspected) {
-      topologyBlockReasons.push(`valley_collapse:ratio=${topologyFidelity.valley_to_ridge_ratio},valley_ft=${topologyFidelity.valley_total_ft}`);
+      topologyBlockReasons.push(
+        `valley_collapse:ratio=${topologyFidelity.valley_to_ridge_ratio},valley_ft=${topologyFidelity.valley_total_ft}`,
+      );
     }
     if (topologyFidelity?.ridge_inflation_suspected) {
-      topologyBlockReasons.push(`ridge_inflation:ridge_ft=${topologyFidelity.ridge_total_ft},ridge_to_valley=${topologyFidelity.ridge_to_valley_ratio}`);
+      topologyBlockReasons.push(
+        `ridge_inflation:ridge_ft=${topologyFidelity.ridge_total_ft},ridge_to_valley=${topologyFidelity.ridge_to_valley_ratio}`,
+      );
     }
-    if ((topologyFidelity?.diagonal_span_ratio ?? 0) > 0.50 || (topologyFidelity?.diagonal_cross_roof_count ?? 0) > 0) {
-      topologyBlockReasons.push(`cross_roof_diagonal:span_ratio=${topologyFidelity?.diagonal_span_ratio},count=${topologyFidelity?.diagonal_cross_roof_count}`);
+    if (
+      (topologyFidelity?.diagonal_span_ratio ?? 0) > 0.50 ||
+      (topologyFidelity?.diagonal_cross_roof_count ?? 0) > 0
+    ) {
+      topologyBlockReasons.push(
+        `cross_roof_diagonal:span_ratio=${topologyFidelity?.diagonal_span_ratio},count=${topologyFidelity?.diagonal_cross_roof_count}`,
+      );
     }
     if (topologyFidelity?.planes_need_refinement) {
-      topologyBlockReasons.push(`plane_refinement_required:max_plane_ratio=${topologyFidelity.max_plane_area_ratio}`);
+      topologyBlockReasons.push(
+        `plane_refinement_required:max_plane_ratio=${topologyFidelity.max_plane_area_ratio}`,
+      );
     }
     if (topologyFidelity?.pitch_fragmentation_suspected) {
-      topologyBlockReasons.push(`pitch_fragmentation:range=${topologyFidelity.pitch_range},uniformity=${topologyFidelity.pitch_uniformity_score}`);
+      topologyBlockReasons.push(
+        `pitch_fragmentation:range=${topologyFidelity.pitch_range},uniformity=${topologyFidelity.pitch_uniformity_score}`,
+      );
     }
     promotionGateFailedReasons.push(...topologyBlockReasons);
     const topologyMismatch = topologyBlockReasons.length > 0;
@@ -8142,36 +11379,58 @@ async function processJob(input: any) {
     const promotionGatePassed = promotionGateFailedReasons.length === 0;
     // Geometry source remains dsm_validated if geometric contracts pass
     // but customer_report_ready is blocked if topology fidelity is low
-    const geometricContractsPassed = promotionGateFailedReasons.every(r => 
-      r.startsWith('topology_fidelity') || r.startsWith('fan_collapse') || 
-      r.startsWith('severe_facet_deficit') || r.startsWith('valley_collapse') ||
-      r.startsWith('ridge_inflation') || r.startsWith('cross_roof_diagonal') ||
-      r.startsWith('plane_refinement_required') || r.startsWith('pitch_fragmentation')
+    const geometricContractsPassed = promotionGateFailedReasons.every((r) =>
+      r.startsWith("topology_fidelity") || r.startsWith("fan_collapse") ||
+      r.startsWith("severe_facet_deficit") || r.startsWith("valley_collapse") ||
+      r.startsWith("ridge_inflation") || r.startsWith("cross_roof_diagonal") ||
+      r.startsWith("plane_refinement_required") ||
+      r.startsWith("pitch_fragmentation")
     ) && promotionGateFailedReasons.length > 0;
-    
-    const promotedGeometrySource = promotionGatePassed 
-      ? "dsm_validated" 
-      : geometricContractsPassed 
-        ? "dsm_validated"  // Geometry is valid, topology is suspect
-        : "heuristic_estimate";
+
+    const promotedGeometrySource = promotionGatePassed
+      ? "dsm_validated"
+      : geometricContractsPassed
+      ? "dsm_validated" // Geometry is valid, topology is suspect
+      : "heuristic_estimate";
     const promotedCustomerReportReady = promotionGatePassed; // Only true if ALL gates pass including topology
 
-    console.log("[DSM_PROMOTION_GATE]", JSON.stringify({
-      passed: promotionGatePassed,
-      geometry_source: promotedGeometrySource,
-      customer_report_ready: promotedCustomerReportReady,
-      status: topologyMismatch ? "topology_mismatch" : (promotionGatePassed ? "completed" : "needs_review"),
-      topology_fidelity: topoFidelityRating,
-      topology_score: topoFidelityScore,
-      topology_issues: topoIssues,
-      failed_reasons: promotionGateFailedReasons,
-      inputs: { solverStatus, facesValidated, coordSpace, coverageRatio, outsideFootprintCount, duplicateEdgeCount, danglingEdgeCount, bboxRescueUsed, maskIou, maskLoaded, clipperFailureCount, invalidEdgeClass },
-    }));
+    console.log(
+      "[DSM_PROMOTION_GATE]",
+      JSON.stringify({
+        passed: promotionGatePassed,
+        geometry_source: promotedGeometrySource,
+        customer_report_ready: promotedCustomerReportReady,
+        status: topologyMismatch
+          ? "topology_mismatch"
+          : (promotionGatePassed ? "completed" : "needs_review"),
+        topology_fidelity: topoFidelityRating,
+        topology_score: topoFidelityScore,
+        topology_issues: topoIssues,
+        failed_reasons: promotionGateFailedReasons,
+        inputs: {
+          solverStatus,
+          facesValidated,
+          coordSpace,
+          coverageRatio,
+          outsideFootprintCount,
+          duplicateEdgeCount,
+          danglingEdgeCount,
+          bboxRescueUsed,
+          maskIou,
+          maskLoaded,
+          clipperFailureCount,
+          invalidEdgeClass,
+        },
+      }),
+    );
 
     if (topologyMismatch) {
       geometryReportJson.status = "topology_mismatch";
-      geometryReportJson.reason = `topology_mismatch:${topologyBlockReasons.join(",")}`;
-      geometryReportJson.block_customer_report_reason = geometryReportJson.reason;
+      geometryReportJson.reason = `topology_mismatch:${
+        topologyBlockReasons.join(",")
+      }`;
+      geometryReportJson.block_customer_report_reason =
+        geometryReportJson.reason;
       geometryReportJson.topology_fidelity = topologyFidelity;
       aiDetectionData.status = "topology_mismatch";
       aiDetectionData.reason = geometryReportJson.reason;
@@ -8179,147 +11438,205 @@ async function processJob(input: any) {
       aiDetectionData.topology_fidelity = topologyFidelity;
     }
 
-    const preInsertPhase3A = buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null);
-    const preInsertResultState: ResultState = preInsertPhase3A.perimeter_classification_invalid
-      ? 'ai_failed_perimeter'
-      : promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review && !topologyMismatch
-        ? 'customer_report_ready'
+    const preInsertPhase3A = buildPhase3ABlock(
+      autonomousDebug?.perimeter_phase0 ?? null,
+    );
+    const preInsertResultState: ResultState =
+      preInsertPhase3A.perimeter_classification_invalid
+        ? "ai_failed_perimeter"
+        : promotedCustomerReportReady && !reviewRequired &&
+            !vendorTruthComparison?.needs_internal_review && !topologyMismatch
+        ? "customer_report_ready"
         : autonomousDebug?.perimeter_gate_passed === true
-          ? (topologyMismatch ? 'ai_failed_topology' : 'perimeter_only')
-          : normalizeResultStateForWrite(blockCustomerReportReason ?? geometryReportJson.block_customer_report_reason ?? 'ai_failed_unknown', geometryReportJson as any);
-    const preInsertDiagramIntent = String(preInsertResultState).startsWith('ai_failed_')
-      ? 'rejected_only'
-      : deriveDiagramRenderIntent(preInsertResultState, autonomousDebug?.perimeter_gate_passed === true && !preInsertPhase3A.perimeter_classification_invalid);
+        ? (topologyMismatch ? "ai_failed_topology" : "perimeter_only")
+        : normalizeResultStateForWrite(
+          blockCustomerReportReason ??
+            geometryReportJson.block_customer_report_reason ??
+            "ai_failed_unknown",
+          geometryReportJson as any,
+        );
+    const preInsertDiagramIntent =
+      String(preInsertResultState).startsWith("ai_failed_")
+        ? "rejected_only"
+        : deriveDiagramRenderIntent(
+          preInsertResultState,
+          autonomousDebug?.perimeter_gate_passed === true &&
+            !preInsertPhase3A.perimeter_classification_invalid,
+        );
     Object.assign(geometryReportJson, {
       ...PHASE3_VERSION_BLOCK,
       route_provenance: { ...CANONICAL_ROUTE_PROVENANCE },
       phase3A: preInsertPhase3A,
       phase3B: buildPhase3BBlock(edgeRows),
-      result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
+      result_state: normalizeResultStateForWrite(
+        preInsertResultState,
+        geometryReportJson as any,
+      ),
       diagram_render_intent: preInsertDiagramIntent,
-      customer_report_ready: preInsertResultState === 'customer_report_ready',
-      ...(preInsertPhase3A.perimeter_classification_invalid ? {
-        hard_fail_reason: 'perimeter_classification_invalid',
-        block_customer_report_reason: 'perimeter_classification_invalid',
-        failure_stage: 'perimeter',
-      } : {}),
+      customer_report_ready: preInsertResultState === "customer_report_ready",
+      ...(preInsertPhase3A.perimeter_classification_invalid
+        ? {
+          hard_fail_reason: "perimeter_classification_invalid",
+          block_customer_report_reason: "perimeter_classification_invalid",
+          failure_stage: "perimeter",
+        }
+        : {}),
     });
 
     const roofMeasurementPayload = {
-        tenant_id: input.tenant_id,
-        customer_id: input.lead_id || null,
-        lead_id: input.lead_id,
-        project_id: input.project_id,
-        source_record_type: input.source_record_type,
-        source_record_id: input.source_record_id,
-        ai_measurement_job_id: input.ai_measurement_job_id,
-        property_address: input.property_address,
-        gps_coordinates: { lat: coords.lat, lng: coords.lng },
-        target_lat: coords.lat,
-        target_lng: coords.lng,
-        mapbox_image_url: imageUrl,
-        meters_per_pixel: actualMpp,
-        ai_detection_data: aiDetectionData,
-        ai_analysis: aiDetectionData,
-        ai_model_version: "geometry_first_v2",
-        detection_timestamp: new Date().toISOString(),
-        detection_confidence: quality.overall_score,
-        total_area_flat_sqft: totals.total_area_2d_sqft,
-        total_area_adjusted_sqft: totals.total_area_pitch_adjusted_sqft,
-        total_squares: totals.roof_square_count,
-        waste_factor_percent: Number(input.waste_factor_percent),
-        total_squares_with_waste: totals.waste_adjusted_squares,
-        predominant_pitch: totals.dominant_pitch ? `${totals.dominant_pitch}/12` : null,
-        total_ridge_length: totals.ridge_length_ft,
-        total_hip_length: totals.hip_length_ft,
-        total_valley_length: totals.valley_length_ft,
-        total_eave_length: totals.eave_length_ft,
-        total_rake_length: totals.rake_length_ft,
-        measurement_confidence: quality.overall_score * 100,
-        geometry_quality_score: quality.geometry_score,
-        measurement_quality_score: quality.measurement_score,
-        requires_manual_review: reviewRequired,
-        manual_review_recommended: reviewRequired,
-        validation_status: preInsertResultState === 'customer_report_ready' ? "validated" : topologyMismatch ? "needs_internal_review" : vendorTruthComparison?.needs_internal_review ? "needs_internal_review" : reviewRequired ? "flagged" : "failed",
-        customer_report_ready: preInsertResultState === 'customer_report_ready',
-        internal_debug_report_ready: preInsertResultState !== 'customer_report_ready' || topologyMismatch || reviewRequired || Boolean(blockCustomerReportReason) || Boolean(vendorTruthComparison?.needs_internal_review),
-        validation_notes: vendorTruthComparison?.blocked_reasons?.length
-          ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
-          : topologyMismatch
-            ? `topology_mismatch:${topologyBlockReasons.join(",")}`
-            : (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason,
-        result_state: normalizeResultStateForWrite(preInsertResultState, geometryReportJson as any),
-        diagram_render_intent: preInsertDiagramIntent,
-        ...getPhase3DbColumns(),
-        block_customer_report_reason: (geometryReportJson as any).block_customer_report_reason ?? blockCustomerReportReason ?? null,
-        facet_count: planeRows.length,
-        edge_count: edgeRows.length,
-        geometry_report_json: geometryReportJson,
-        _registration_preflight: input._registration_preflight,
-        quality_checks: quality,
-        metadata: aiDetectionData,
-        plane_breakdown: totals.plane_breakdown,
-        edge_breakdown: totals.line_breakdown,
-        linear_features_wkt: linearFeaturesWkt,
-        perimeter_wkt: perimeterWkt,
-        footprint_vertices_geo: footprintVerticesGeo,
-        footprint_source: dbFootprintSource,
-        footprint_confidence: quality.geometry_score,
-        footprint_requires_review: reviewRequired,
-        analysis_zoom: Number(input.zoom),
-        analysis_image_size: {
-          width: raster.width,
-          height: raster.height,
-          logicalWidth: Number(input.logical_image_width),
-          logicalHeight: Number(input.logical_image_height),
-          rasterScale: Number(input.raster_scale),
-        },
-        image_bounds: imageBounds,
-        bounding_box: imageBounds,
-        gate_decision: reviewRequired ? "needs_review" : "approved",
-        gate_reason: blockCustomerReportReason,
-        source_button: input.source_button,
-        engine_version: AI_MEASUREMENT_ENGINE_VERSION, ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION, perimeter_contract_version: PERIMETER_CONTRACT_VERSION, phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION, git_commit_sha: GIT_COMMIT_SHA, runtime_deployed_at: DEPLOYED_AT,
-        engine_used: "geometry_first_v2",
-        inference_source: resolvedGeometrySource,
-        geometry_source: promotedGeometrySource,
-        dsm_contract_debug: {
-          footprint_source: footprintSource,
-          footprint_valid: true,
-          footprint_area_sqft: Math.round(footprintAreaSqftVal),
-          coordinate_space_solver: autonomousDebug?.coordinate_space_solver || 'geo',
-          dsm_loaded: !!autonomousDebug?.dsm_loaded,
-          mask_loaded: !!autonomousDebug?.mask_loaded,
-          raw_dsm_edge_count: Number(autonomousDebug?.raw_edges || autonomousDebug?.dsm_edges_detected || 0),
-          accepted_dsm_edge_count: Number(autonomousDebug?.accepted_edges || autonomousDebug?.dsm_edges_accepted || 0),
-          faces_attempted: Number(autonomousDebug?.faces_attempted || 0),
-          faces_validated: Number(autonomousDebug?.validated_faces || 0),
-          solver_failed: false,
-          solver_validation_status: autonomousDebug?.status || 'validated',
-          failure_classification: 'none',
-          face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
-          // Enriched diagnostics
-          edge_rejection_summary: autonomousDebug?.edge_rejection_summary || null,
-          enriched_face_rejections: autonomousDebug?.enriched_face_rejections || [],
-          face_clipping_diagnostics: autonomousDebug?.face_clipping_diagnostics || [],
-          edge_filter_over_aggressive: autonomousDebug?.edge_filter_over_aggressive ?? false,
-          edge_acceptance_ratio: autonomousDebug?.edge_acceptance_ratio ?? null,
-          bbox_rescue_used_in_validation: autonomousDebug?.bbox_rescue_used_in_validation ?? false,
-          face_rejection_table: autonomousDebug?.face_rejection_table || [],
-          failure_category: autonomousDebug?.failure_category || null,
-          dominant_rejection: autonomousDebug?.dominant_rejection || null,
-          // DSM promotion gate
-          promotion_gate_passed: promotionGatePassed,
-          promotion_gate_failed_reasons: promotionGateFailedReasons,
-          promoted_geometry_source: promotedGeometrySource,
-          promoted_customer_report_ready: promotedCustomerReportReady && !reviewRequired && !vendorTruthComparison?.needs_internal_review,
-          // Topology fidelity analysis
-          topology_fidelity: topoFidelityRating,
-          topology_fidelity_score: topoFidelityScore,
-          topology_issues: topoIssues,
-          topology_mismatch: topologyMismatch,
-          topology_block_reasons: topologyBlockReasons,
-          topology_metrics: topologyFidelity ? {
+      tenant_id: input.tenant_id,
+      customer_id: input.lead_id || null,
+      lead_id: input.lead_id,
+      project_id: input.project_id,
+      source_record_type: input.source_record_type,
+      source_record_id: input.source_record_id,
+      ai_measurement_job_id: input.ai_measurement_job_id,
+      property_address: input.property_address,
+      gps_coordinates: { lat: coords.lat, lng: coords.lng },
+      target_lat: coords.lat,
+      target_lng: coords.lng,
+      mapbox_image_url: imageUrl,
+      meters_per_pixel: actualMpp,
+      ai_detection_data: aiDetectionData,
+      ai_analysis: aiDetectionData,
+      ai_model_version: "geometry_first_v2",
+      detection_timestamp: new Date().toISOString(),
+      detection_confidence: quality.overall_score,
+      total_area_flat_sqft: totals.total_area_2d_sqft,
+      total_area_adjusted_sqft: totals.total_area_pitch_adjusted_sqft,
+      total_squares: totals.roof_square_count,
+      waste_factor_percent: Number(input.waste_factor_percent),
+      total_squares_with_waste: totals.waste_adjusted_squares,
+      predominant_pitch: totals.dominant_pitch
+        ? `${totals.dominant_pitch}/12`
+        : null,
+      total_ridge_length: totals.ridge_length_ft,
+      total_hip_length: totals.hip_length_ft,
+      total_valley_length: totals.valley_length_ft,
+      total_eave_length: totals.eave_length_ft,
+      total_rake_length: totals.rake_length_ft,
+      measurement_confidence: quality.overall_score * 100,
+      geometry_quality_score: quality.geometry_score,
+      measurement_quality_score: quality.measurement_score,
+      requires_manual_review: reviewRequired,
+      manual_review_recommended: reviewRequired,
+      validation_status: preInsertResultState === "customer_report_ready"
+        ? "validated"
+        : topologyMismatch
+        ? "needs_internal_review"
+        : vendorTruthComparison?.needs_internal_review
+        ? "needs_internal_review"
+        : reviewRequired
+        ? "flagged"
+        : "failed",
+      customer_report_ready: preInsertResultState === "customer_report_ready",
+      internal_debug_report_ready:
+        preInsertResultState !== "customer_report_ready" || topologyMismatch ||
+        reviewRequired || Boolean(blockCustomerReportReason) ||
+        Boolean(vendorTruthComparison?.needs_internal_review),
+      validation_notes: vendorTruthComparison?.blocked_reasons?.length
+        ? `${blockCustomerReportReason || ""}|vendor_truth:${
+          vendorTruthComparison.blocked_reasons.join(",")
+        }`
+        : topologyMismatch
+        ? `topology_mismatch:${topologyBlockReasons.join(",")}`
+        : (geometryReportJson as any).block_customer_report_reason ??
+          blockCustomerReportReason,
+      result_state: normalizeResultStateForWrite(
+        preInsertResultState,
+        geometryReportJson as any,
+      ),
+      diagram_render_intent: preInsertDiagramIntent,
+      ...getPhase3DbColumns(),
+      block_customer_report_reason:
+        (geometryReportJson as any).block_customer_report_reason ??
+          blockCustomerReportReason ?? null,
+      facet_count: planeRows.length,
+      edge_count: edgeRows.length,
+      geometry_report_json: geometryReportJson,
+      _registration_preflight: input._registration_preflight,
+      quality_checks: quality,
+      metadata: aiDetectionData,
+      plane_breakdown: totals.plane_breakdown,
+      edge_breakdown: totals.line_breakdown,
+      linear_features_wkt: linearFeaturesWkt,
+      perimeter_wkt: perimeterWkt,
+      footprint_vertices_geo: footprintVerticesGeo,
+      footprint_source: dbFootprintSource,
+      footprint_confidence: quality.geometry_score,
+      footprint_requires_review: reviewRequired,
+      analysis_zoom: Number(input.zoom),
+      analysis_image_size: {
+        width: raster.width,
+        height: raster.height,
+        logicalWidth: Number(input.logical_image_width),
+        logicalHeight: Number(input.logical_image_height),
+        rasterScale: Number(input.raster_scale),
+      },
+      image_bounds: imageBounds,
+      bounding_box: imageBounds,
+      gate_decision: reviewRequired ? "needs_review" : "approved",
+      gate_reason: blockCustomerReportReason,
+      source_button: input.source_button,
+      engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+      ai_measurement_engine_version: AI_MEASUREMENT_ENGINE_VERSION,
+      perimeter_contract_version: PERIMETER_CONTRACT_VERSION,
+      phase0_control_flow_version: PHASE0_CONTROL_FLOW_VERSION,
+      git_commit_sha: GIT_COMMIT_SHA,
+      runtime_deployed_at: DEPLOYED_AT,
+      engine_used: "geometry_first_v2",
+      inference_source: resolvedGeometrySource,
+      geometry_source: promotedGeometrySource,
+      dsm_contract_debug: {
+        footprint_source: footprintSource,
+        footprint_valid: true,
+        footprint_area_sqft: Math.round(footprintAreaSqftVal),
+        coordinate_space_solver: autonomousDebug?.coordinate_space_solver ||
+          "geo",
+        dsm_loaded: !!autonomousDebug?.dsm_loaded,
+        mask_loaded: !!autonomousDebug?.mask_loaded,
+        raw_dsm_edge_count: Number(
+          autonomousDebug?.raw_edges || autonomousDebug?.dsm_edges_detected ||
+            0,
+        ),
+        accepted_dsm_edge_count: Number(
+          autonomousDebug?.accepted_edges ||
+            autonomousDebug?.dsm_edges_accepted || 0,
+        ),
+        faces_attempted: Number(autonomousDebug?.faces_attempted || 0),
+        faces_validated: Number(autonomousDebug?.validated_faces || 0),
+        solver_failed: false,
+        solver_validation_status: autonomousDebug?.status || "validated",
+        failure_classification: "none",
+        face_coverage_ratio: autonomousDebug?.face_coverage_ratio ?? null,
+        // Enriched diagnostics
+        edge_rejection_summary: autonomousDebug?.edge_rejection_summary || null,
+        enriched_face_rejections: autonomousDebug?.enriched_face_rejections ||
+          [],
+        face_clipping_diagnostics: autonomousDebug?.face_clipping_diagnostics ||
+          [],
+        edge_filter_over_aggressive:
+          autonomousDebug?.edge_filter_over_aggressive ?? false,
+        edge_acceptance_ratio: autonomousDebug?.edge_acceptance_ratio ?? null,
+        bbox_rescue_used_in_validation:
+          autonomousDebug?.bbox_rescue_used_in_validation ?? false,
+        face_rejection_table: autonomousDebug?.face_rejection_table || [],
+        failure_category: autonomousDebug?.failure_category || null,
+        dominant_rejection: autonomousDebug?.dominant_rejection || null,
+        // DSM promotion gate
+        promotion_gate_passed: promotionGatePassed,
+        promotion_gate_failed_reasons: promotionGateFailedReasons,
+        promoted_geometry_source: promotedGeometrySource,
+        promoted_customer_report_ready: promotedCustomerReportReady &&
+          !reviewRequired && !vendorTruthComparison?.needs_internal_review,
+        // Topology fidelity analysis
+        topology_fidelity: topoFidelityRating,
+        topology_fidelity_score: topoFidelityScore,
+        topology_issues: topoIssues,
+        topology_mismatch: topologyMismatch,
+        topology_block_reasons: topologyBlockReasons,
+        topology_metrics: topologyFidelity
+          ? {
             facet_count: topologyFidelity.facet_count,
             expected_min_facets: topologyFidelity.expected_min_facets,
             facet_deficit: topologyFidelity.facet_deficit,
@@ -8337,63 +11654,90 @@ async function processJob(input: any) {
             local_cluster_count: topologyFidelity.local_cluster_count,
             fan_collapse_suspected: topologyFidelity.fan_collapse_suspected,
             central_node_degree: topologyFidelity.central_node_degree,
-            diagonal_cross_roof_count: topologyFidelity.diagonal_cross_roof_count,
+            diagonal_cross_roof_count:
+              topologyFidelity.diagonal_cross_roof_count,
             diagonal_span_ratio: topologyFidelity.diagonal_span_ratio,
-            valley_collapse_suspected: topologyFidelity.valley_collapse_suspected,
-            ridge_inflation_suspected: topologyFidelity.ridge_inflation_suspected,
-            oversized_continuous_plane_suspected: topologyFidelity.oversized_continuous_plane_suspected,
+            valley_collapse_suspected:
+              topologyFidelity.valley_collapse_suspected,
+            ridge_inflation_suspected:
+              topologyFidelity.ridge_inflation_suspected,
+            oversized_continuous_plane_suspected:
+              topologyFidelity.oversized_continuous_plane_suspected,
             planes_need_refinement: topologyFidelity.planes_need_refinement,
-            pitch_fragmentation_suspected: topologyFidelity.pitch_fragmentation_suspected,
+            pitch_fragmentation_suspected:
+              topologyFidelity.pitch_fragmentation_suspected,
             pitch_uniformity_score: topologyFidelity.pitch_uniformity_score,
             pitch_range: topologyFidelity.pitch_range,
-          } : null,
-        },
-        // ── Perimeter-First Contract: persisted true outer perimeter ──
-        true_outer_roof_perimeter_px: autonomousDebug?.perimeter_topology?.perimeter_ring_px ?? null,
-        true_outer_roof_perimeter_geo: autonomousDebug?.perimeter_topology?.perimeter_ring_geo ?? footprintVerticesGeo ?? null,
-        eave_edges: autonomousDebug?.perimeter_topology?.eave_edges ?? null,
-        rake_edges: autonomousDebug?.perimeter_topology?.rake_edges ?? null,
-        roof_corners: autonomousDebug?.perimeter_topology?.corner_nodes ?? null,
-        missed_roof_regions: autonomousDebug?.perimeter_phase0?.missed_roof_regions ?? null,
-        perimeter_confidence: autonomousDebug?.perimeter_topology?.perimeter_confidence ?? null,
-        perimeter_source: autonomousDebug?.perimeter_source ?? autonomousDebug?.perimeter_topology?.perimeter_source ?? null,
-        perimeter_hints: autonomousDebug?.perimeter_phase0?.perimeter_candidate_table ?? null,
-        perimeter_gate_metrics: autonomousDebug?.perimeter_phase0 ?? null,
-        perimeter_status: autonomousDebug?.perimeter_gate_passed === true
-          ? 'pass'
-          : autonomousDebug?.perimeter_gate_passed === false
-            ? 'fail'
-            : 'not_run',
-        // ── Acceptance metrics (perimeter-first checkpoint v1) ──
-        perimeter_area_sqft: autonomousDebug?.perimeter_topology?.perimeter_area_sqft
-          ?? autonomousDebug?.perimeter_phase0?.perimeter_area_sqft
-          ?? null,
-        perimeter_total_lf: autonomousDebug?.perimeter_phase0?.total_perimeter_lf
-          ?? autonomousDebug?.perimeter_total_ft
-          ?? null,
-        eave_lf: autonomousDebug?.perimeter_phase0?.eave_length_lf
-          ?? autonomousDebug?.perimeter_eave_ft
-          ?? null,
-        rake_lf: autonomousDebug?.perimeter_phase0?.rake_length_lf
-          ?? autonomousDebug?.perimeter_rake_ft
-          ?? null,
-        perimeter_vs_mask_iou: autonomousDebug?.perimeter_phase0?.perimeter_vs_mask_iou
-          ?? autonomousDebug?.perimeter_phase0?.perimeter_overlap_score
-          ?? null,
-        missed_roof_area_pct: autonomousDebug?.perimeter_phase0?.missed_roof_area_pct ?? null,
-        centroid_offset_px: autonomousDebug?.perimeter_phase0?.perimeter_centroid_offset_px
-          ?? autonomousDebug?.centroid_offset_px
-          ?? null,
-        perimeter_gate_passed: autonomousDebug?.perimeter_gate_passed ?? null,
-        // ── Phase 2A: classification debug ──
-        eave_candidate_lf: autonomousDebug?.perimeter_phase0?.eave_candidate_lf ?? null,
-        rake_candidate_lf: autonomousDebug?.perimeter_phase0?.rake_candidate_lf ?? null,
-        unknown_perimeter_lf: autonomousDebug?.perimeter_phase0?.unknown_perimeter_lf ?? null,
-        eave_rake_confidence: autonomousDebug?.perimeter_phase0?.eave_rake_confidence ?? null,
-        archetype_debug: autonomousDebug?.perimeter_phase0?.archetype_debug ?? null,
-        eave_rake_classification_debug: autonomousDebug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
-        perimeter_edge_pitch_relation: autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
-      };
+          }
+          : null,
+      },
+      // ── Perimeter-First Contract: persisted true outer perimeter ──
+      true_outer_roof_perimeter_px:
+        autonomousDebug?.perimeter_topology?.perimeter_ring_px ?? null,
+      true_outer_roof_perimeter_geo:
+        autonomousDebug?.perimeter_topology?.perimeter_ring_geo ??
+          footprintVerticesGeo ?? null,
+      eave_edges: autonomousDebug?.perimeter_topology?.eave_edges ?? null,
+      rake_edges: autonomousDebug?.perimeter_topology?.rake_edges ?? null,
+      roof_corners: autonomousDebug?.perimeter_topology?.corner_nodes ?? null,
+      missed_roof_regions:
+        autonomousDebug?.perimeter_phase0?.missed_roof_regions ?? null,
+      perimeter_confidence:
+        autonomousDebug?.perimeter_topology?.perimeter_confidence ?? null,
+      perimeter_source: autonomousDebug?.perimeter_source ??
+        autonomousDebug?.perimeter_topology?.perimeter_source ?? null,
+      perimeter_hints:
+        autonomousDebug?.perimeter_phase0?.perimeter_candidate_table ?? null,
+      perimeter_gate_metrics: autonomousDebug?.perimeter_phase0 ?? null,
+      perimeter_status: autonomousDebug?.perimeter_gate_passed === true
+        ? "pass"
+        : autonomousDebug?.perimeter_gate_passed === false
+        ? "fail"
+        : "not_run",
+      // ── Acceptance metrics (perimeter-first checkpoint v1) ──
+      perimeter_area_sqft:
+        autonomousDebug?.perimeter_topology?.perimeter_area_sqft ??
+          autonomousDebug?.perimeter_phase0?.perimeter_area_sqft ??
+          null,
+      perimeter_total_lf:
+        autonomousDebug?.perimeter_phase0?.total_perimeter_lf ??
+          autonomousDebug?.perimeter_total_ft ??
+          null,
+      eave_lf: autonomousDebug?.perimeter_phase0?.eave_length_lf ??
+        autonomousDebug?.perimeter_eave_ft ??
+        null,
+      rake_lf: autonomousDebug?.perimeter_phase0?.rake_length_lf ??
+        autonomousDebug?.perimeter_rake_ft ??
+        null,
+      perimeter_vs_mask_iou:
+        autonomousDebug?.perimeter_phase0?.perimeter_vs_mask_iou ??
+          autonomousDebug?.perimeter_phase0?.perimeter_overlap_score ??
+          null,
+      missed_roof_area_pct:
+        autonomousDebug?.perimeter_phase0?.missed_roof_area_pct ?? null,
+      centroid_offset_px:
+        autonomousDebug?.perimeter_phase0?.perimeter_centroid_offset_px ??
+          autonomousDebug?.centroid_offset_px ??
+          null,
+      perimeter_gate_passed: autonomousDebug?.perimeter_gate_passed ?? null,
+      // ── Phase 2A: classification debug ──
+      eave_candidate_lf: autonomousDebug?.perimeter_phase0?.eave_candidate_lf ??
+        null,
+      rake_candidate_lf: autonomousDebug?.perimeter_phase0?.rake_candidate_lf ??
+        null,
+      unknown_perimeter_lf:
+        autonomousDebug?.perimeter_phase0?.unknown_perimeter_lf ?? null,
+      eave_rake_confidence:
+        autonomousDebug?.perimeter_phase0?.eave_rake_confidence ?? null,
+      archetype_debug: autonomousDebug?.perimeter_phase0?.archetype_debug ??
+        null,
+      eave_rake_classification_debug:
+        autonomousDebug?.perimeter_phase0?.eave_rake_classification_debug ??
+          null,
+      perimeter_edge_pitch_relation:
+        autonomousDebug?.perimeter_phase0?.perimeter_edge_pitch_relation ??
+          null,
+    };
 
     // Registration Gate v2.2 — attach gate input so prepareRoofMeasurementPayload
     // can evaluate and persist geometry_report_json.registration at the
@@ -8402,83 +11746,111 @@ async function processJob(input: any) {
     // be real, and we refuse to publish a registration block that claims
     // pass with null evidence. See _shared/registration-gate.ts.
     try {
-      const selectedFootprintPolygonPx = Array.isArray(footprint) && footprint.length >= 3
-        ? footprint.map((p: any) => [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number])
-        : null;
+      const selectedFootprintPolygonPx =
+        Array.isArray(footprint) && footprint.length >= 3
+          ? footprint.map((p: any) =>
+            [Number(p.x ?? p[0]), Number(p.y ?? p[1])] as [number, number]
+          )
+          : null;
       const mppFinite = Number.isFinite(actualMpp) && (actualMpp as number) > 0;
       const tileExtentM = mppFinite ? raster.width * (actualMpp as number) : 0;
       const tileHalfDeg = mppFinite ? tileExtentM / 111320 : 0;
       const rasterBoundsLatLng = mppFinite
         ? {
-            sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
-            ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
-          }
+          sw: { lat: coords.lat - tileHalfDeg, lng: coords.lng - tileHalfDeg },
+          ne: { lat: coords.lat + tileHalfDeg, lng: coords.lng + tileHalfDeg },
+        }
         : null;
       // Real (not synthetic) transform records. Only emit when we have the
       // numeric evidence; otherwise leave null so v2.2 strict mode hard-fails
       // honestly rather than passing on placeholders.
       const geoToRasterTransform = mppFinite
         ? {
-            kind: "linear_meters_per_pixel",
-            center_lat: coords.lat,
-            center_lng: coords.lng,
-            raster_width_px: raster.width,
-            raster_height_px: raster.height,
-            meters_per_pixel: actualMpp,
-          }
+          kind: "linear_meters_per_pixel",
+          center_lat: coords.lat,
+          center_lng: coords.lng,
+          raster_width_px: raster.width,
+          raster_height_px: raster.height,
+          meters_per_pixel: actualMpp,
+        }
         : null;
-      const dsmRef: any = (typeof effectiveDSMForMatch !== "undefined" && effectiveDSMForMatch)
-        ? effectiveDSMForMatch
-        : (typeof dsmGrid !== "undefined" && dsmGrid)
+      const dsmRef: any =
+        (typeof effectiveDSMForMatch !== "undefined" && effectiveDSMForMatch)
+          ? effectiveDSMForMatch
+          : (typeof dsmGrid !== "undefined" && dsmGrid)
           ? dsmGrid
           : null;
       const geoToDsmTransform = dsmRef
         ? {
-            kind: "dsm_grid_geo_affine",
-            dsm_width_px: dsmRef.width,
-            dsm_height_px: dsmRef.height,
-            resolution_m: dsmRef.resolution ?? null,
-            bounds: dsmRef.bounds ?? null,
-          }
+          kind: "dsm_grid_geo_affine",
+          dsm_width_px: dsmRef.width,
+          dsm_height_px: dsmRef.height,
+          resolution_m: dsmRef.resolution ?? null,
+          bounds: dsmRef.bounds ?? null,
+        }
         : null;
       const dsmTileBoundsLatLng = dsmRef?.bounds
         ? {
-            sw: { lat: dsmRef.bounds.minLat, lng: dsmRef.bounds.minLng },
-            ne: { lat: dsmRef.bounds.maxLat, lng: dsmRef.bounds.maxLng },
-          }
+          sw: { lat: dsmRef.bounds.minLat, lng: dsmRef.bounds.minLng },
+          ne: { lat: dsmRef.bounds.maxLat, lng: dsmRef.bounds.maxLng },
+        }
         : null;
-      const dsmSizePx = dsmRef ? { width: dsmRef.width, height: dsmRef.height } : null;
+      const dsmSizePx = dsmRef
+        ? { width: dsmRef.width, height: dsmRef.height }
+        : null;
       const dsmToRasterTransform = (mppFinite && dsmRef)
         ? {
-            kind: "dsm_to_raster_resample",
-            meters_per_pixel: actualMpp,
-            dsm_resolution_m: dsmRef.resolution ?? null,
-          }
+          kind: "dsm_to_raster_resample",
+          meters_per_pixel: actualMpp,
+          dsm_resolution_m: dsmRef.resolution ?? null,
+        }
         : null;
       const footprintBBoxDiagPx = selectedFootprintPolygonPx
         ? (() => {
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            for (const [x, y] of selectedFootprintPolygonPx) {
-              if (x < minX) minX = x; if (x > maxX) maxX = x;
-              if (y < minY) minY = y; if (y > maxY) maxY = y;
+          let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
+          for (const [x, y] of selectedFootprintPolygonPx) {
+            if (x < minX) {
+              minX = x;
             }
-            return Number.isFinite(minX)
-              ? Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2)
-              : null;
-          })()
+            if (x > maxX) {
+              maxX = x;
+            }
+            if (y < minY) {
+              minY = y;
+            }
+            if (y > maxY) {
+              maxY = y;
+            }
+          }
+          return Number.isFinite(minX)
+            ? Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2)
+            : null;
+        })()
         : null;
       // Source Registration Transform Builder v1 — derive confirmed pixel
       // coords and all transform fields from real Web-Mercator math so the
       // gate has real evidence (the client never sends confirmed_roof_center_px).
       const confirmedLatLngFinal =
-        (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
-          ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
+        (input as any).confirmed_roof_center_lat != null &&
+          (input as any).confirmed_roof_center_lng != null
+          ? {
+            lat: Number((input as any).confirmed_roof_center_lat),
+            lng: Number((input as any).confirmed_roof_center_lng),
+          }
           : { lat: coords.lat, lng: coords.lng };
       const transformPkgFinal = buildRegistrationTransformPackage({
         confirmed_roof_center_lat_lng: confirmedLatLngFinal,
         static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
-        zoom: typeof effectiveZoom === "number" ? effectiveZoom : Number((input as any).zoom),
-        size: { width: Number((input as any).logical_image_width), height: Number((input as any).logical_image_height) },
+        zoom: typeof effectiveZoom === "number"
+          ? effectiveZoom
+          : Number((input as any).zoom),
+        size: {
+          width: Number((input as any).logical_image_width),
+          height: Number((input as any).logical_image_height),
+        },
         scale: Number((input as any).raster_scale),
         dsm_tile_bounds_lat_lng: dsmTileBoundsLatLng,
         dsm_size_px: dsmSizePx,
@@ -8487,45 +11859,85 @@ async function processJob(input: any) {
       (roofMeasurementPayload as any)._registration_gate_input = {
         candidate_selection_started: true,
         evaluation_stage: "candidate_final",
-        user_confirmed_roof_target: Boolean((input as any).user_confirmed_roof_target),
-        roof_target_admin_override: Boolean((input as any).roof_target_admin_override),
-        original_geocode_lat_lng:
-          (input as any).original_geocode_lat != null && (input as any).original_geocode_lng != null
-            ? { lat: Number((input as any).original_geocode_lat), lng: Number((input as any).original_geocode_lng) }
-            : null,
+        user_confirmed_roof_target: Boolean(
+          (input as any).user_confirmed_roof_target,
+        ),
+        roof_target_admin_override: Boolean(
+          (input as any).roof_target_admin_override,
+        ),
+        original_geocode_lat_lng: (input as any).original_geocode_lat != null &&
+            (input as any).original_geocode_lng != null
+          ? {
+            lat: Number((input as any).original_geocode_lat),
+            lng: Number((input as any).original_geocode_lng),
+          }
+          : null,
         confirmed_roof_center_lat_lng: confirmedLatLngFinal,
-        confirmed_roof_center_px: transformPkgFinal.confirmed_roof_center_px ?? null,
-        confirmed_roof_center_dsm_px: transformPkgFinal.confirmed_roof_center_dsm_px ?? null,
+        confirmed_roof_center_px: transformPkgFinal.confirmed_roof_center_px ??
+          null,
+        confirmed_roof_center_dsm_px:
+          transformPkgFinal.confirmed_roof_center_dsm_px ?? null,
         geo_to_dsm_px_success: transformPkgFinal.geo_to_dsm_px_success === true,
-        dsm_pixel_transform_valid: transformPkgFinal.dsm_pixel_transform_valid === true,
-        dsm_to_raster_transform: transformPkgFinal.dsm_to_raster_transform ?? null,
-        geo_to_raster_transform: transformPkgFinal.geo_to_raster_transform ?? null,
+        dsm_pixel_transform_valid:
+          transformPkgFinal.dsm_pixel_transform_valid === true,
+        dsm_to_raster_transform: transformPkgFinal.dsm_to_raster_transform ??
+          null,
+        geo_to_raster_transform: transformPkgFinal.geo_to_raster_transform ??
+          null,
         geo_to_dsm_transform: transformPkgFinal.geo_to_dsm_transform ?? null,
         raster_bounds_lat_lng: transformPkgFinal.raster_bounds_lat_lng ?? null,
-        dsm_tile_bounds_lat_lng: transformPkgFinal.dsm_tile_bounds_lat_lng ?? dsmTileBoundsLatLng,
-        raster_size_px: transformPkgFinal.raster_size_px ?? { width: raster.width, height: raster.height },
+        dsm_tile_bounds_lat_lng: transformPkgFinal.dsm_tile_bounds_lat_lng ??
+          dsmTileBoundsLatLng,
+        raster_size_px: transformPkgFinal.raster_size_px ??
+          { width: raster.width, height: raster.height },
         dsm_size_px: transformPkgFinal.dsm_size_px ?? dsmSizePx,
         meters_per_pixel: mppFinite ? actualMpp : null,
-        static_map_center_lat_lng: transformPkgFinal.static_map_center_lat_lng ?? { lat: coords.lat, lng: coords.lng },
+        static_map_center_lat_lng:
+          transformPkgFinal.static_map_center_lat_lng ??
+            { lat: coords.lat, lng: coords.lng },
         selected_candidate_polygon_px: selectedFootprintPolygonPx,
         selected_candidate_polygon_geo: selectedFootprintPolygonPx
-          ? selectedFootprintPolygonPx.map(([x, y]) => pxToLngLat({ x, y }, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp))
+          ? selectedFootprintPolygonPx.map(([x, y]) =>
+            pxToLngLat(
+              { x, y },
+              { lat: coords.lat, lng: coords.lng },
+              raster.width,
+              raster.height,
+              actualMpp,
+            )
+          )
           : null,
         candidate_coordinate_space: "raster_px",
-        candidate_distance_rank: selected ? validCandidates.findIndex((c) => c === selected) + 1 : null,
+        candidate_distance_rank: selected
+          ? validCandidates.findIndex((c) =>
+            c === selected
+          ) + 1
+          : null,
         rejection_reason: selected?.rejected_reason ?? null,
         footprint_bbox_diagonal_px: footprintBBoxDiagPx,
       };
       // Stash the package so prepareRoofMeasurementPayload merges it into the
       // persisted registration block (truth-from-math reference for the UI).
-      (roofMeasurementPayload as any)._registration_transform_package = transformPkgFinal;
-      (roofMeasurementPayload as any)._registration_transform_build_stage = transformPkgFinal.dsm_tile_bounds_lat_lng ? "dsm" : "static_map";
-      console.log("VTRACE_TRANSFORM_MERGED_INTO_FINAL_PAYLOAD", JSON.stringify({ stage: (roofMeasurementPayload as any)._registration_transform_build_stage }));
+      (roofMeasurementPayload as any)._registration_transform_package =
+        transformPkgFinal;
+      (roofMeasurementPayload as any)._registration_transform_build_stage =
+        transformPkgFinal.dsm_tile_bounds_lat_lng ? "dsm" : "static_map";
+      console.log(
+        "VTRACE_TRANSFORM_MERGED_INTO_FINAL_PAYLOAD",
+        JSON.stringify({
+          stage:
+            (roofMeasurementPayload as any)._registration_transform_build_stage,
+        }),
+      );
     } catch (e) {
-      console.warn("[REGISTRATION_GATE] failed to build _registration_gate_input", e);
+      console.warn(
+        "[REGISTRATION_GATE] failed to build _registration_gate_input",
+        e,
+      );
     }
 
-    const { data: roofMeasurement, error: publishError } = await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
+    const { data: roofMeasurement, error: publishError } =
+      await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
     if (publishError) throw publishError;
 
@@ -8535,7 +11947,9 @@ async function processJob(input: any) {
     // Rule 1 (target confirmation) is enforced upstream at function entry.
     // ═══════════════════════════════════════════════════════════════
     const measurementId: string | null = roofMeasurement?.id ?? null;
-    const patentLog: Record<string, unknown> = { measurement_id: measurementId };
+    const patentLog: Record<string, unknown> = {
+      measurement_id: measurementId,
+    };
     let patentBlockReason: string | null = null;
     let typedRoofLines: RoofLine[] = [];
 
@@ -8545,40 +11959,42 @@ async function processJob(input: any) {
         autonomousDebug?.perimeter_topology?.perimeter_ring_px ?? null;
       const perimRingGeo: Array<{ lat: number; lng: number }> | null =
         autonomousDebug?.perimeter_topology?.perimeter_ring_geo ?? null;
-      const rawPerimSource: string =
-        autonomousDebug?.perimeter_source
-          ?? autonomousDebug?.perimeter_topology?.perimeter_source
-          ?? 'unknown';
+      const rawPerimSource: string = autonomousDebug?.perimeter_source ??
+        autonomousDebug?.perimeter_topology?.perimeter_source ??
+        "unknown";
       const layer1 = perimRingPx && perimRingPx.length >= 3
         ? classifyLayer1(rawPerimSource, perimRingPx, {
-            geometry_geo: perimRingGeo,
-            confidence: Number(autonomousDebug?.perimeter_topology?.perimeter_confidence ?? 0),
-          })
+          geometry_geo: perimRingGeo,
+          confidence: Number(
+            autonomousDebug?.perimeter_topology?.perimeter_confidence ?? 0,
+          ),
+        })
         : null;
       patentLog.layer1 = layer1
         ? {
-            source: layer1.source,
-            is_valid: layer1.is_valid,
-            closed: layer1.closed,
-            self_intersections: layer1.self_intersections,
-            forbidden_source_rejected_reasons: layer1.forbidden_source_rejected_reasons,
-          }
+          source: layer1.source,
+          is_valid: layer1.is_valid,
+          closed: layer1.closed,
+          self_intersections: layer1.self_intersections,
+          forbidden_source_rejected_reasons:
+            layer1.forbidden_source_rejected_reasons,
+        }
         : { absent: true };
 
       // ── Rule 3: typed roof_lines ──
       // Layer 2 (structural) — derived from cleanEdges.
-      const eaveSet = new Set(['eave']);
-      const rakeSet = new Set(['rake']);
-      const ridgeHipValleySet = new Set(['ridge', 'hip', 'valley']);
-      const wallFlashSet = new Set(['wall_flashing', 'wall']);
-      const stepFlashSet = new Set(['step_flashing']);
+      const eaveSet = new Set(["eave"]);
+      const rakeSet = new Set(["rake"]);
+      const ridgeHipValleySet = new Set(["ridge", "hip", "valley"]);
+      const wallFlashSet = new Set(["wall_flashing", "wall"]);
+      const stepFlashSet = new Set(["step_flashing"]);
       const mapEdgeAttr = (raw: string): RoofLineAttribute => {
-        if (eaveSet.has(raw)) return 'eave';
-        if (rakeSet.has(raw)) return 'rake';
+        if (eaveSet.has(raw)) return "eave";
+        if (rakeSet.has(raw)) return "rake";
         if (ridgeHipValleySet.has(raw)) return raw as RoofLineAttribute;
-        if (wallFlashSet.has(raw)) return 'wall_flashing';
-        if (stepFlashSet.has(raw)) return 'step_flashing';
-        return 'unknown';
+        if (wallFlashSet.has(raw)) return "wall_flashing";
+        if (stepFlashSet.has(raw)) return "step_flashing";
+        return "unknown";
       };
 
       // Layer 1 line (single closed perimeter polyline) — only when valid.
@@ -8587,17 +12003,25 @@ async function processJob(input: any) {
         typedRoofLines.push(buildRoofLine({
           id: crypto.randomUUID(),
           measurement_id: measurementId,
-          layer_id: 'layer1_perimeter',
+          layer_id: "layer1_perimeter",
           geometry_px: (layer1.geometry_px as any).map((p: any) => [p.x, p.y]),
-          geometry_geo: (layer1.geometry_geo as any)?.map((p: any) => [p.lng ?? p[0], p.lat ?? p[1]]) ?? null,
+          geometry_geo: (layer1.geometry_geo as any)?.map((
+            p: any,
+          ) => [p.lng ?? p[0], p.lat ?? p[1]]) ?? null,
           length_lf: round(lenLf, 2),
-          non_dimensional_attribute: 'perimeter',
-          source: rawPerimSource.includes('dsm') ? 'dsm'
-                : rawPerimSource.includes('mask') ? 'mask_contour'
-                : rawPerimSource.includes('vendor') ? 'vendor'
-                : rawPerimSource.includes('user') ? 'user_override'
-                : 'inferred',
-          confidence: Number(autonomousDebug?.perimeter_topology?.perimeter_confidence ?? 0.7),
+          non_dimensional_attribute: "perimeter",
+          source: rawPerimSource.includes("dsm")
+            ? "dsm"
+            : rawPerimSource.includes("mask")
+            ? "mask_contour"
+            : rawPerimSource.includes("vendor")
+            ? "vendor"
+            : rawPerimSource.includes("user")
+            ? "user_override"
+            : "inferred",
+          confidence: Number(
+            autonomousDebug?.perimeter_topology?.perimeter_confidence ?? 0.7,
+          ),
           adjacent_plane_ids: [],
         }));
       }
@@ -8609,18 +12033,23 @@ async function processJob(input: any) {
           if (!pts.length) continue;
           const lenLf = polylineLengthPx(pts) * actualFpp;
           if (lenLf <= 0) continue;
-          const attr = mapEdgeAttr(String(e.edge_type || 'unknown'));
-          const srcRaw = String(e.source || '');
-          const src = srcRaw.includes('dsm') ? 'dsm'
-                    : srcRaw.includes('solar') ? 'solar'
-                    : srcRaw.includes('mask') ? 'mask_contour'
-                    : srcRaw.includes('vendor') ? 'vendor'
-                    : srcRaw.includes('override') || srcRaw.includes('user') ? 'user_override'
-                    : 'inferred';
+          const attr = mapEdgeAttr(String(e.edge_type || "unknown"));
+          const srcRaw = String(e.source || "");
+          const src = srcRaw.includes("dsm")
+            ? "dsm"
+            : srcRaw.includes("solar")
+            ? "solar"
+            : srcRaw.includes("mask")
+            ? "mask_contour"
+            : srcRaw.includes("vendor")
+            ? "vendor"
+            : srcRaw.includes("override") || srcRaw.includes("user")
+            ? "user_override"
+            : "inferred";
           typedRoofLines.push(buildRoofLine({
             id: crypto.randomUUID(),
             measurement_id: measurementId,
-            layer_id: 'layer2_structural',
+            layer_id: "layer2_structural",
             geometry_px: pts.map((p) => [p.x, p.y]),
             geometry_geo: null,
             length_lf: round(lenLf, 2),
@@ -8651,32 +12080,41 @@ async function processJob(input: any) {
       // dominant pitch was unavailable; if isBadTopology was true the DSM
       // plane fit was rejected and replaced with Solar — mark per-plane
       // sources accordingly so the customer-ready gate sees the truth.
-      const perPlanePitchSources: string[] = (planeRows as any[]).map((p: any) => {
-        if (!pitchValid) return 'unavailable';
-        if (p.pitch == null) return 'unavailable';
-        if (isBadTopology) {
-          // Geometry was collapsed; only Solar fallback is acceptable.
-          return pitchSource === 'google_solar_roofSegmentStats' ? 'solar_fallback' : 'collapsed_plane_fit';
-        }
-        return pitchSource;
-      });
+      const perPlanePitchSources: string[] = (planeRows as any[]).map(
+        (p: any) => {
+          if (!pitchValid) return "unavailable";
+          if (p.pitch == null) return "unavailable";
+          if (isBadTopology) {
+            // Geometry was collapsed; only Solar fallback is acceptable.
+            return pitchSource === "google_solar_roofSegmentStats"
+              ? "solar_fallback"
+              : "collapsed_plane_fit";
+          }
+          return pitchSource;
+        },
+      );
       patentLog.pitch_source = pitchSource;
       patentLog.pitch_valid = pitchValid;
-      patentLog.per_plane_pitch_sources_summary = perPlanePitchSources.reduce<Record<string, number>>((acc, s) => {
+      patentLog.per_plane_pitch_sources_summary = perPlanePitchSources.reduce<
+        Record<string, number>
+      >((acc, s) => {
         acc[s] = (acc[s] || 0) + 1;
         return acc;
       }, {});
 
       // ── Rule 5: cross-cutting customer-ready gate ──
-      const aiGatesPassed = promotionGatePassed
-        && !blockCustomerReportReason
-        && !topologyMismatch
-        && !vendorTruthComparison?.needs_internal_review;
+      const aiGatesPassed = promotionGatePassed &&
+        !blockCustomerReportReason &&
+        !topologyMismatch &&
+        !vendorTruthComparison?.needs_internal_review;
       const ready = assertCustomerReportReady({
         user_confirmed_roof_target: true, // enforced upstream (HTTP 412)
         roof_target_admin_override: false,
         layer1_present: !!(layer1 && layer1.is_valid),
-        layer1_source_allowed: !!(layer1 && (ALLOWED_LAYER1_SOURCES as readonly string[]).includes(layer1.source)),
+        layer1_source_allowed: !!(layer1 &&
+          (ALLOWED_LAYER1_SOURCES as readonly string[]).includes(
+            layer1.source,
+          )),
         roof_lines_count: typedRoofLines.length,
         reportable_totals_have_typed_backing: backing.ok,
         per_plane_pitch_sources: perPlanePitchSources,
@@ -8684,7 +12122,9 @@ async function processJob(input: any) {
         override_validation_status: null,
       });
       patentLog.customer_ready = ready;
-      if (!ready.ready) patentBlockReason = `patent_gate:${ready.failures.join('|')}`;
+      if (!ready.ready) {
+        patentBlockReason = `patent_gate:${ready.failures.join("|")}`;
+      }
 
       // ── Persist typed lines ──
       if (typedRoofLines.length && measurementId) {
@@ -8702,9 +12142,9 @@ async function processJob(input: any) {
           adjacent_plane_ids: l.adjacent_plane_ids,
           can_be_customer_reported: l.can_be_customer_reported,
         }));
-        const { error: rlErr } = await supabase.from('roof_lines').insert(rows);
+        const { error: rlErr } = await supabase.from("roof_lines").insert(rows);
         if (rlErr) {
-          console.warn('[PATENT_GATE] roof_lines insert failed', rlErr.message);
+          console.warn("[PATENT_GATE] roof_lines insert failed", rlErr.message);
           patentLog.roof_lines_insert_error = rlErr.message;
         } else {
           patentLog.roof_lines_inserted = rows.length;
@@ -8720,38 +12160,52 @@ async function processJob(input: any) {
       // gate will mark the row as not customer-ready anyway.
       const _typedBackingOk = (patentLog as any).typed_backing?.ok === true;
       const _gateReady = (patentLog as any).customer_ready?.ready === true;
-      patentLog.totals_source = (_typedBackingOk && _gateReady && typedRoofLines.length > 0)
-        ? 'typed_roof_lines'
-        : 'solver_generic';
-      if (patentLog.totals_source === 'typed_roof_lines' && measurementId) {
+      patentLog.totals_source =
+        (_typedBackingOk && _gateReady && typedRoofLines.length > 0)
+          ? "typed_roof_lines"
+          : "solver_generic";
+      if (patentLog.totals_source === "typed_roof_lines" && measurementId) {
         const tt = (patentLog as any).typed_totals as {
-          ridges_lf: number; hips_lf: number; valleys_lf: number;
-          eaves_lf: number; rakes_lf: number;
-          step_flashing_lf: number; wall_flashing_lf: number; unknown_lf: number;
+          ridges_lf: number;
+          hips_lf: number;
+          valleys_lf: number;
+          eaves_lf: number;
+          rakes_lf: number;
+          step_flashing_lf: number;
+          wall_flashing_lf: number;
+          unknown_lf: number;
         };
-        const { error: ttErr } = await updateRoofMeasurementWithSchemaGuard(measurementId, {
-          total_ridge_length: tt.ridges_lf,
-          total_hip_length: tt.hips_lf,
-          total_valley_length: tt.valleys_lf,
-          total_eave_length: tt.eaves_lf,
-          total_rake_length: tt.rakes_lf,
-          total_wall_flashing_length: tt.wall_flashing_lf,
-          total_step_flashing_length: tt.step_flashing_lf,
-          total_unspecified_length: tt.unknown_lf,
-        });
+        const { error: ttErr } = await updateRoofMeasurementWithSchemaGuard(
+          measurementId,
+          {
+            total_ridge_length: tt.ridges_lf,
+            total_hip_length: tt.hips_lf,
+            total_valley_length: tt.valleys_lf,
+            total_eave_length: tt.eaves_lf,
+            total_rake_length: tt.rakes_lf,
+            total_wall_flashing_length: tt.wall_flashing_lf,
+            total_step_flashing_length: tt.step_flashing_lf,
+            total_unspecified_length: tt.unknown_lf,
+          },
+        );
         if (ttErr) {
-          console.warn('[PATENT_GATE] typed totals write-back failed', ttErr.message);
+          console.warn(
+            "[PATENT_GATE] typed totals write-back failed",
+            ttErr.message,
+          );
           patentLog.totals_writeback_error = ttErr.message;
         } else {
           patentLog.totals_writeback_ok = true;
         }
       }
     } catch (patentErr) {
-      console.error('[PATENT_GATE] threw', (patentErr as Error).message);
-      patentBlockReason = `patent_gate_exception:${(patentErr as Error).message}`;
+      console.error("[PATENT_GATE] threw", (patentErr as Error).message);
+      patentBlockReason = `patent_gate_exception:${
+        (patentErr as Error).message
+      }`;
       patentLog.exception = (patentErr as Error).message;
     }
-    console.log('[PATENT_GATE]', JSON.stringify(patentLog));
+    console.log("[PATENT_GATE]", JSON.stringify(patentLog));
 
     // ── Perimeter-First Contract: derive the 3-state result_state ──
     // customer_report_ready  → all gates pass (including patent gate)
@@ -8762,83 +12216,98 @@ async function processJob(input: any) {
     // a low visual_edge_alignment / aerial_edge_support / corner_snap score
     // (or any long-segment cutoff / non-roof crossing) forces a human review
     // before the customer report is allowed.
-    const _phase3_5Block: any = (geometryReportJson as any)?.phase3_5
-      ?? (geometryReportJson as any)?.phase3A_5
-      ?? (autonomousDebug as any)?.phase3_5
-      ?? null;
+    const _phase3_5Block: any = (geometryReportJson as any)?.phase3_5 ??
+      (geometryReportJson as any)?.phase3A_5 ??
+      (autonomousDebug as any)?.phase3_5 ??
+      null;
     const _perimeterVisualReviewRequired =
-      !!_phase3_5Block?.perimeter_visual_review_required
-      && !_phase3_5Block?.user_verified_perimeter;
+      !!_phase3_5Block?.perimeter_visual_review_required &&
+      !_phase3_5Block?.user_verified_perimeter;
     const _userVerifiedPerimeter = !!_phase3_5Block?.user_verified_perimeter;
-    const _customerReady = promotedCustomerReportReady
-      && !reviewRequired
-      && !vendorTruthComparison?.needs_internal_review
-      && !patentBlockReason
-      && !_perimeterVisualReviewRequired;
+    const _customerReady = promotedCustomerReportReady &&
+      !reviewRequired &&
+      !vendorTruthComparison?.needs_internal_review &&
+      !patentBlockReason &&
+      !_perimeterVisualReviewRequired;
     let _resultState: ResultState;
     if (_customerReady) {
-      _resultState = 'customer_report_ready';
+      _resultState = "customer_report_ready";
     } else if (_perimeterPassed) {
-      _resultState = 'perimeter_only';
+      _resultState = "perimeter_only";
     } else {
-      const _stage = patentBlockReason ? 'patent'
-        : topologyMismatch ? 'topology'
-        : (autonomousDebug?.perimeter_gate_passed === false ? 'perimeter' : 'gate');
+      const _stage = patentBlockReason
+        ? "patent"
+        : topologyMismatch
+        ? "topology"
+        : (autonomousDebug?.perimeter_gate_passed === false
+          ? "perimeter"
+          : "gate");
       _resultState = normalizeResultState(`ai_failed_${_stage}`);
     }
     // Surface visual-review block reason for downstream persistence.
     if (_perimeterVisualReviewRequired) {
-      const failedMetrics = (_phase3_5Block?.visual_review_gate?.failed_metrics ?? []).join(',');
+      const failedMetrics =
+        (_phase3_5Block?.visual_review_gate?.failed_metrics ?? []).join(",");
       blockCustomerReportReason = blockCustomerReportReason
         ? `${blockCustomerReportReason}|perimeter_visual_review_required:${failedMetrics}`
         : `perimeter_visual_review_required:${failedMetrics}`;
       (geometryReportJson as any).perimeter_visual_review_required = true;
-      (geometryReportJson as any).block_customer_report_reason = blockCustomerReportReason;
+      (geometryReportJson as any).block_customer_report_reason =
+        blockCustomerReportReason;
     }
     if (_userVerifiedPerimeter) {
-      (geometryReportJson as any).perimeter_source = _phase3_5Block?.perimeter_source_locked
-        ?? 'user_verified_perimeter';
+      (geometryReportJson as any).perimeter_source =
+        _phase3_5Block?.perimeter_source_locked ??
+          "user_verified_perimeter";
     }
 
     // ── Phase 3A hard sanity gate ──
     // If the eave/rake classifier collapsed (eave=0 on long perimeter, etc.)
     // force ai_failed_perimeter — never let downstream "perimeter_only"
     // mask a classification collapse.
-    const _phase3A = buildPhase3ABlock(autonomousDebug?.perimeter_phase0 ?? null);
+    const _phase3A = buildPhase3ABlock(
+      autonomousDebug?.perimeter_phase0 ?? null,
+    );
     if (_phase3A.perimeter_classification_invalid) {
-      _resultState = 'ai_failed_perimeter';
+      _resultState = "ai_failed_perimeter";
     }
 
     // ── Phase 3G: derive diagram_render_intent ──
     // Failed geometry must NOT be rendered as the official measured diagram.
-    const _perimeterPassedFinal = _perimeterPassed && !_phase3A.perimeter_classification_invalid;
-    const _diagramRenderIntent = String(_resultState).startsWith('ai_failed_')
-      ? 'rejected_only'
+    const _perimeterPassedFinal = _perimeterPassed &&
+      !_phase3A.perimeter_classification_invalid;
+    const _diagramRenderIntent = String(_resultState).startsWith("ai_failed_")
+      ? "rejected_only"
       : deriveDiagramRenderIntent(_resultState, _perimeterPassedFinal);
-    const _customerReadyFinal = _resultState === 'customer_report_ready';
+    const _customerReadyFinal = _resultState === "customer_report_ready";
     try {
       (geometryReportJson as any).diagram_render_intent = _diagramRenderIntent;
       (geometryReportJson as any).result_state = _resultState;
       (geometryReportJson as any).phase3A = _phase3A;
       if (_phase3A.perimeter_classification_invalid) {
         (geometryReportJson as any).hard_fail_reason =
-          (geometryReportJson as any).hard_fail_reason
-          || `perimeter_classification_invalid:${_phase3A.eave_rake_failure_reason}`;
+          (geometryReportJson as any).hard_fail_reason ||
+          `perimeter_classification_invalid:${_phase3A.eave_rake_failure_reason}`;
       }
     } catch { /* best-effort */ }
 
     // Persist patent gate outcome onto the measurement row.
     if (measurementId && (patentBlockReason || typedRoofLines.length)) {
       const mergedBlockReason = blockCustomerReportReason
-        ? (patentBlockReason ? `${blockCustomerReportReason}|${patentBlockReason}` : blockCustomerReportReason)
+        ? (patentBlockReason
+          ? `${blockCustomerReportReason}|${patentBlockReason}`
+          : blockCustomerReportReason)
         : patentBlockReason;
       await updateRoofMeasurementWithSchemaGuard(measurementId, {
         block_customer_report_reason: mergedBlockReason,
-        override_validation_status: patentBlockReason ? 'pending' : null,
+        override_validation_status: patentBlockReason ? "pending" : null,
         report_blocked: !_customerReadyFinal,
         needs_review: !_customerReadyFinal,
         customer_report_ready: _customerReadyFinal,
-        result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
+        result_state: normalizeResultStateForWrite(
+          _resultState,
+          geometryReportJson as any,
+        ),
         diagram_render_intent: _diagramRenderIntent,
         geometry_report_json: geometryReportJson,
         ...getPhase3DbColumns(),
@@ -8862,10 +12331,13 @@ async function processJob(input: any) {
       },
       report_blocked: !_customerReadyFinal,
       needs_review: !_customerReadyFinal,
-      result_state: normalizeResultStateForWrite(_resultState, geometryReportJson as any),
+      result_state: normalizeResultStateForWrite(
+        _resultState,
+        geometryReportJson as any,
+      ),
       perimeter_visual_review_required: _perimeterVisualReviewRequired,
       perimeter_source_locked: _userVerifiedPerimeter
-        ? (_phase3_5Block?.perimeter_source_locked ?? 'user_verified_perimeter')
+        ? (_phase3_5Block?.perimeter_source_locked ?? "user_verified_perimeter")
         : null,
     }).eq("id", input.ai_measurement_job_id);
 
@@ -8873,11 +12345,20 @@ async function processJob(input: any) {
     // The geometry-first rewrite still saved totals/planes, but no longer wrote
     // ai_measurement_diagrams, which made the report dialog show "No diagrams available".
     try {
-      if (!blockCustomerReportReason && !topologyMismatch && planeRows.length > 0) {
+      if (
+        !blockCustomerReportReason && !topologyMismatch && planeRows.length > 0
+      ) {
         // ── AERIAL STRUCTURAL DIAGRAM QA ──
         const diagramQA = validateAerialStructuralMatch({
-          solverPlanes: planeRows.map((p: any) => ({ polygon_px: p.polygon_px, source: p.source })),
-          solverEdges: edgeRows.map((e: any) => ({ line_px: e.line_px, edge_type: e.edge_type, source: e.source })),
+          solverPlanes: planeRows.map((p: any) => ({
+            polygon_px: p.polygon_px,
+            source: p.source,
+          })),
+          solverEdges: edgeRows.map((e: any) => ({
+            line_px: e.line_px,
+            edge_type: e.edge_type,
+            source: e.source,
+          })),
           footprintPx: footprint,
           rasterWidth: raster.width,
           rasterHeight: raster.height,
@@ -8965,7 +12446,9 @@ async function processJob(input: any) {
         "roof.total_sqft": totals.total_area_pitch_adjusted_sqft,
         "roof.flat_sqft": totals.total_area_2d_sqft,
         "roof.squares": totals.roof_square_count,
-        "roof.predominant_pitch": totals.dominant_pitch ? `${totals.dominant_pitch}/12` : null,
+        "roof.predominant_pitch": totals.dominant_pitch
+          ? `${totals.dominant_pitch}/12`
+          : null,
         "lf.ridge": totals.ridge_length_ft,
         "lf.hip": totals.hip_length_ft,
         "lf.valley": totals.valley_length_ft,
@@ -8986,8 +12469,10 @@ async function processJob(input: any) {
       ? "needs_internal_review"
       : blockCustomerReportReason
       ? "needs_review"
-      : quality.overall_score >= 0.80 ? "completed"
-      : quality.overall_score >= 0.60 ? "needs_review"
+      : quality.overall_score >= 0.80
+      ? "completed"
+      : quality.overall_score >= 0.60
+      ? "needs_review"
       : "needs_manual_measurement";
 
     // measurement_jobs is the legacy UI polling table and its CHECK constraint only
@@ -8995,7 +12480,9 @@ async function processJob(input: any) {
     // ai_measurement_jobs, but stop the UI spinner by marking the legacy job complete.
     const finalJobStatus = "completed";
     const finalJobMessage = topologyMismatch
-      ? `Measurement blocked — topology mismatch (${topologyBlockReasons.join(", ")})`
+      ? `Measurement blocked — topology mismatch (${
+        topologyBlockReasons.join(", ")
+      })`
       : blockCustomerReportReason
       ? `Measurement needs review — geometry covered only part of the roof. (${blockCustomerReportReason})`
       : "Measurement complete";
@@ -9006,7 +12493,12 @@ async function processJob(input: any) {
       finalJobMessage,
       roofMeasurement.id,
     );
-    await setAiJobStatus(input.ai_measurement_job_id, finalAiStatus, finalJobMessage, quality);
+    await setAiJobStatus(
+      input.ai_measurement_job_id,
+      finalAiStatus,
+      finalJobMessage,
+      quality,
+    );
 
     // Produce the persisted PDF URL immediately after a validated measurement
     // completes. The UI can still render diagrams directly, but report history
@@ -9014,20 +12506,32 @@ async function processJob(input: any) {
     // server call.
     if (finalAiStatus === "completed") {
       try {
-        const pdfResponse = await fetch(`${SUPABASE_URL}/functions/v1/render-measurement-pdf`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${SERVICE_ROLE}`,
-            "apikey": SERVICE_ROLE,
+        const pdfResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/render-measurement-pdf`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${SERVICE_ROLE}`,
+              "apikey": SERVICE_ROLE,
+            },
+            body: JSON.stringify({
+              ai_measurement_job_id: input.ai_measurement_job_id,
+            }),
           },
-          body: JSON.stringify({ ai_measurement_job_id: input.ai_measurement_job_id }),
-        });
+        );
         if (!pdfResponse.ok) {
           const detail = await pdfResponse.text().catch(() => "");
-          console.warn("[REPORT_PDF_AUTO_RENDER] failed", pdfResponse.status, detail.slice(0, 500));
+          console.warn(
+            "[REPORT_PDF_AUTO_RENDER] failed",
+            pdfResponse.status,
+            detail.slice(0, 500),
+          );
         } else {
-          console.log("[REPORT_PDF_AUTO_RENDER] complete", await pdfResponse.text().catch(() => ""));
+          console.log(
+            "[REPORT_PDF_AUTO_RENDER] complete",
+            await pdfResponse.text().catch(() => ""),
+          );
         }
       } catch (pdfError) {
         console.warn("[REPORT_PDF_AUTO_RENDER] error", pdfError);
@@ -9035,6 +12539,7 @@ async function processJob(input: any) {
     }
   } catch (error) {
     const message = getErrorMessage(error);
+    const failureReason = AI_RUNTIME_UNHANDLED_FAILURE_REASON;
     console.error("processJob error:", error);
 
     // ── GUARANTEED DEBUG PERSISTENCE (Patent Parity Phase 2) ──
@@ -9042,32 +12547,226 @@ async function processJob(input: any) {
     // marking the job failed. Without this, hard crashes leave zero
     // diagnosable artifacts and the UI shows a stale "Processing" state.
     try {
-      const coords: GeoPoint = { lat: Number(input.latitude || 0), lng: Number(input.longitude || 0) };
+      const coords: GeoPoint = {
+        lat: Number(input.latitude || 0),
+        lng: Number(input.longitude || 0),
+      };
       const failedId = await insertFailedPreliminaryMeasurement(
         input,
         coords,
-        `processJob_crash: ${message}`,
+        failureReason,
         {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           solver_version: "autonomous_graph_solver_v3_prune_first",
           fallback_used: false,
-          hard_fail_reason: `processJob_crash: ${message}`,
+          failure_stage: "processJob_outer_catch",
+          unhandled_error_message: message,
+          result_state: "ai_failed_source_acquisition",
+          hard_fail_reason: failureReason,
+          block_customer_report_reason: failureReason,
+          customer_report_ready: false,
+          diagram_render_intent: "debug_only",
+          roof_lines_count: 0,
           dsm_loaded: false,
           mask_loaded: false,
         },
         null,
         0,
       );
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", message, failedId);
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        failureReason,
+        failedId,
+      );
     } catch (persistErr) {
-      console.error("Failed to persist debug measurement on outer catch:", persistErr);
-      await setMeasurementJobStatus(input.measurement_job_id, "failed", message);
+      console.error(
+        "Failed to persist debug measurement on outer catch:",
+        persistErr,
+      );
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "failed",
+        failureReason,
+      );
     }
-    await setAiJobStatus(input.ai_measurement_job_id, "failed", message);
+    await setAiJobStatus(input.ai_measurement_job_id, "failed", failureReason);
+    await supabase.from("ai_measurement_jobs").update({
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: failureReason,
+      report_blocked: true,
+      needs_review: true,
+      source_context: {
+        hard_fail_reason: failureReason,
+        block_customer_report_reason: failureReason,
+        unhandled_error_message: message,
+      },
+    }).eq("id", input.ai_measurement_job_id);
   }
 }
 
-async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | null; project_id: string | null }) {
+async function ensureTerminalStatusWritten(
+  input: any,
+  failureReason: string,
+): Promise<boolean> {
+  if (!input?.measurement_job_id || !input?.ai_measurement_job_id) return false;
+
+  try {
+    const [{ data: aiJob }, { data: measurementJob }] = await Promise.all([
+      supabase
+        .from("ai_measurement_jobs")
+        .select("id,status,status_message,result_state,hard_fail_reason")
+        .eq("id", input.ai_measurement_job_id)
+        .maybeSingle(),
+      supabase
+        .from("measurement_jobs")
+        .select("id,status,measurement_id")
+        .eq("id", input.measurement_job_id)
+        .maybeSingle(),
+    ]);
+
+    if (
+      AI_TERMINAL_STATUSES.has(String(aiJob?.status || "")) ||
+      LEGACY_TERMINAL_STATUSES.has(String(measurementJob?.status || ""))
+    ) {
+      return true;
+    }
+
+    const coords: GeoPoint = {
+      lat: Number(input.latitude || 0),
+      lng: Number(input.longitude || 0),
+    };
+    const debugPayload = {
+      topology_source: REQUIRED_TOPOLOGY_SOURCE,
+      solver_version: "autonomous_graph_solver_v3_prune_first",
+      fallback_used: false,
+      failure_stage: "top_level_terminal_write_guard",
+      terminal_write_guard_triggered: true,
+      prior_ai_job_status: aiJob?.status ?? null,
+      prior_measurement_job_status: measurementJob?.status ?? null,
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: failureReason,
+      block_customer_report_reason: failureReason,
+      customer_report_ready: false,
+      diagram_render_intent: "debug_only",
+      roof_lines_count: 0,
+      dsm_loaded: false,
+      mask_loaded: false,
+    };
+
+    let failedId: string | null = null;
+    try {
+      failedId = await insertFailedPreliminaryMeasurement(
+        input,
+        coords,
+        failureReason,
+        debugPayload,
+        null,
+        0,
+      );
+    } catch (insertError) {
+      console.error(
+        "[AI_MEASUREMENT_TERMINAL_GUARD] failed to persist debug row",
+        insertError,
+      );
+    }
+
+    await setMeasurementJobStatus(
+      input.measurement_job_id,
+      "failed",
+      failureReason,
+      failedId,
+    );
+    await setAiJobStatus(input.ai_measurement_job_id, "failed", failureReason);
+    await supabase.from("ai_measurement_jobs").update({
+      status: "failed",
+      status_message: failureReason,
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: failureReason,
+      report_blocked: true,
+      needs_review: true,
+      completed_at: new Date().toISOString(),
+      source_context: {
+        terminal_write_guard_triggered: true,
+        hard_fail_reason: failureReason,
+        block_customer_report_reason: failureReason,
+        prior_ai_job_status: aiJob?.status ?? null,
+        prior_measurement_job_status: measurementJob?.status ?? null,
+      },
+    }).eq("id", input.ai_measurement_job_id);
+    return true;
+  } catch (error) {
+    console.error("[AI_MEASUREMENT_TERMINAL_GUARD] failed", error);
+    return false;
+  }
+}
+
+async function runAiMeasurementWatchdog() {
+  const cutoffIso = new Date(Date.now() - AI_MEASUREMENT_STALE_RUNNING_MS)
+    .toISOString();
+  const { data: staleJobs, error } = await supabase
+    .from("ai_measurement_jobs")
+    .select(
+      "id,legacy_measurement_job_id,status,status_message,updated_at,created_at",
+    )
+    .eq("status", "running")
+    .lt("updated_at", cutoffIso)
+    .limit(100);
+
+  if (error) throw error;
+
+  const marked: Array<
+    { ai_measurement_job_id: string; legacy_measurement_job_id: string | null }
+  > = [];
+  for (const job of staleJobs || []) {
+    await supabase.from("ai_measurement_jobs").update({
+      status: "failed",
+      status_message: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+      failure_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+      report_blocked: true,
+      needs_review: true,
+      completed_at: new Date().toISOString(),
+      source_context: {
+        watchdog_triggered: true,
+        stale_running_cutoff_iso: cutoffIso,
+        hard_fail_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+        block_customer_report_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+        prior_status_message: job.status_message ?? null,
+      },
+    }).eq("id", job.id);
+
+    if (job.legacy_measurement_job_id) {
+      await setMeasurementJobStatus(
+        job.legacy_measurement_job_id,
+        "failed",
+        AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+        null,
+      );
+    }
+
+    marked.push({
+      ai_measurement_job_id: job.id,
+      legacy_measurement_job_id: job.legacy_measurement_job_id ?? null,
+    });
+  }
+
+  return {
+    ok: true,
+    stale_running_threshold_ms: AI_MEASUREMENT_STALE_RUNNING_MS,
+    hard_fail_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
+    marked_failed_count: marked.length,
+    marked,
+  };
+}
+
+async function resolveSourceRecord(
+  { lead_id, project_id }: {
+    lead_id: string | null;
+    project_id: string | null;
+  },
+) {
   if (lead_id) {
     const { data, error } = await supabase
       .from("pipeline_entries")
@@ -9091,9 +12790,15 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
       console.warn("resolveSourceRecord lead lookup failed", error);
     }
     if (data) {
-      const contact = Array.isArray((data as any).contacts) ? (data as any).contacts[0] : (data as any).contacts;
-      const contact_lat = contact?.latitude != null ? Number(contact.latitude) : null;
-      const contact_lng = contact?.longitude != null ? Number(contact.longitude) : null;
+      const contact = Array.isArray((data as any).contacts)
+        ? (data as any).contacts[0]
+        : (data as any).contacts;
+      const contact_lat = contact?.latitude != null
+        ? Number(contact.latitude)
+        : null;
+      const contact_lng = contact?.longitude != null
+        ? Number(contact.longitude)
+        : null;
       const verified = contact?.verified_address || null;
       const verified_lat = verified?.lat != null ? Number(verified.lat) : null;
       const verified_lng = verified?.lng != null ? Number(verified.lng) : null;
@@ -9102,10 +12807,18 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
         tenant_id: data.tenant_id,
         company_id: null,
         address: buildContactAddress(contact),
-        contact_lat: Number.isFinite(contact_lat as number) ? contact_lat : null,
-        contact_lng: Number.isFinite(contact_lng as number) ? contact_lng : null,
-        verified_lat: Number.isFinite(verified_lat as number) ? verified_lat : null,
-        verified_lng: Number.isFinite(verified_lng as number) ? verified_lng : null,
+        contact_lat: Number.isFinite(contact_lat as number)
+          ? contact_lat
+          : null,
+        contact_lng: Number.isFinite(contact_lng as number)
+          ? contact_lng
+          : null,
+        verified_lat: Number.isFinite(verified_lat as number)
+          ? verified_lat
+          : null,
+        verified_lng: Number.isFinite(verified_lng as number)
+          ? verified_lng
+          : null,
       };
     }
   }
@@ -9119,10 +12832,24 @@ async function resolveSourceRecord({ lead_id, project_id }: { lead_id: string | 
       console.warn("resolveSourceRecord project lookup failed", error);
     }
     if ((data as any)?.pipeline_entry_id) {
-      const linkedLead = await resolveSourceRecord({ lead_id: (data as any).pipeline_entry_id, project_id: null });
+      const linkedLead = await resolveSourceRecord({
+        lead_id: (data as any).pipeline_entry_id,
+        project_id: null,
+      });
       if (linkedLead) return linkedLead;
     }
-    if (data) return { id: data.id, tenant_id: data.tenant_id, company_id: null, address: null, contact_lat: null, contact_lng: null, verified_lat: null, verified_lng: null };
+    if (data) {
+      return {
+        id: data.id,
+        tenant_id: data.tenant_id,
+        company_id: null,
+        address: null,
+        contact_lat: null,
+        contact_lng: null,
+        verified_lat: null,
+        verified_lng: null,
+      };
+    }
   }
   return null;
 }
@@ -9136,11 +12863,23 @@ async function gatherCoordinateCandidates(args: {
   property_address: string | null;
   input_lat: number | null;
   input_lng: number | null;
-}): Promise<Array<{ lat: number; lng: number; source: string; distance_from_input_ft: number | null }>> {
+}): Promise<
+  Array<
+    {
+      lat: number;
+      lng: number;
+      source: string;
+      distance_from_input_ft: number | null;
+    }
+  >
+> {
   const out: Array<{ lat: number; lng: number; source: string }> = [];
   const seen = new Set<string>();
   const push = (lat: number | null, lng: number | null, source: string) => {
-    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (
+      lat == null || lng == null || !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) return;
     const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -9155,19 +12894,28 @@ async function gatherCoordinateCandidates(args: {
     try {
       const { data } = await supabase
         .from("pipeline_entries")
-        .select("contacts!pipeline_entries_contact_id_fkey(latitude,longitude,verified_address)")
+        .select(
+          "contacts!pipeline_entries_contact_id_fkey(latitude,longitude,verified_address)",
+        )
         .eq("id", args.lead_id)
         .maybeSingle();
-      const contact = Array.isArray((data as any)?.contacts) ? (data as any).contacts[0] : (data as any)?.contacts;
+      const contact = Array.isArray((data as any)?.contacts)
+        ? (data as any).contacts[0]
+        : (data as any)?.contacts;
       const v = contact?.verified_address || null;
       const vLat = v?.lat != null ? Number(v.lat) : null;
       const vLng = v?.lng != null ? Number(v.lng) : null;
       push(vLat, vLng, "contact_verified_address");
       const cLat = contact?.latitude != null ? Number(contact.latitude) : null;
-      const cLng = contact?.longitude != null ? Number(contact.longitude) : null;
+      const cLng = contact?.longitude != null
+        ? Number(contact.longitude)
+        : null;
       push(cLat, cLng, "contact_record");
     } catch (e) {
-      console.warn("[ACQUISITION_AUDIT] contact lookup failed", (e as Error).message);
+      console.warn(
+        "[ACQUISITION_AUDIT] contact lookup failed",
+        (e as Error).message,
+      );
     }
 
     // 3. Most recent successful roof_measurement for the same lead
@@ -9179,12 +12927,17 @@ async function gatherCoordinateCandidates(args: {
         .order("created_at", { ascending: false })
         .limit(5);
       for (const row of (prior as any[] | null) || []) {
-        push(row?.target_lat != null ? Number(row.target_lat) : null,
-             row?.target_lng != null ? Number(row.target_lng) : null,
-             "previous_measurement");
+        push(
+          row?.target_lat != null ? Number(row.target_lat) : null,
+          row?.target_lng != null ? Number(row.target_lng) : null,
+          "previous_measurement",
+        );
       }
     } catch (e) {
-      console.warn("[ACQUISITION_AUDIT] previous measurement lookup failed", (e as Error).message);
+      console.warn(
+        "[ACQUISITION_AUDIT] previous measurement lookup failed",
+        (e as Error).message,
+      );
     }
   }
 
@@ -9203,36 +12956,51 @@ async function gatherCoordinateCandidates(args: {
   const inputLng = args.input_lng;
   return out.map((c) => ({
     ...c,
-    distance_from_input_ft: (inputLat != null && inputLng != null && Number.isFinite(inputLat) && Number.isFinite(inputLng))
-      ? Math.round(haversineFt(inputLat, inputLng, c.lat, c.lng))
-      : null,
+    distance_from_input_ft:
+      (inputLat != null && inputLng != null && Number.isFinite(inputLat) &&
+          Number.isFinite(inputLng))
+        ? Math.round(haversineFt(inputLat, inputLng, c.lat, c.lng))
+        : null,
   }));
 }
 
-function haversineFt(lat1: number, lng1: number, lat2: number, lng2: number): number {
+function haversineFt(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
   const R = 6371000; // meters
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2;
+      Math.sin(dLng / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c * 3.280839895; // m → ft
 }
 
-
-
 function buildContactAddress(contact: any): string | null {
   const formatted = contact?.verified_address?.formatted_address;
-  if (typeof formatted === "string" && formatted.trim()) return formatted.trim();
-  const parts = [contact?.address_street, contact?.address_city, contact?.address_state, contact?.address_zip]
+  if (typeof formatted === "string" && formatted.trim()) {
+    return formatted.trim();
+  }
+  const parts = [
+    contact?.address_street,
+    contact?.address_city,
+    contact?.address_state,
+    contact?.address_zip,
+  ]
     .filter((part) => typeof part === "string" && part.trim())
     .map((part) => part.trim());
   return parts.length ? parts.join(", ") : null;
 }
 
 function sniffRasterFormat(buf: Uint8Array): "png" | "jpeg" | "unknown" {
-  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "png";
+  if (
+    buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) return "png";
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8) return "jpeg";
   return "unknown";
 }
@@ -9243,12 +13011,17 @@ function readUInt32BE(data: Uint8Array | ArrayBuffer, offset: number): number {
   return view.getUint32(offset, false);
 }
 
-async function decodeRaster(buf: Uint8Array, contentType?: string | null, provider = "unknown"): Promise<DecodedRaster> {
+async function decodeRaster(
+  buf: Uint8Array,
+  contentType?: string | null,
+  provider = "unknown",
+): Promise<DecodedRaster> {
   const ct = String(contentType || "").toLowerCase();
-  const format =
-    ct.includes("png") ? "png" :
-    ct.includes("jpeg") || ct.includes("jpg") ? "jpeg" :
-    sniffRasterFormat(buf);
+  const format = ct.includes("png")
+    ? "png"
+    : ct.includes("jpeg") || ct.includes("jpg")
+    ? "jpeg"
+    : sniffRasterFormat(buf);
 
   console.log("[RASTER_DECODE_START]", {
     provider,
@@ -9261,26 +13034,49 @@ async function decodeRaster(buf: Uint8Array, contentType?: string | null, provid
       const { PNG } = await import("npm:pngjs@7.0.0");
       const nodeBuffer = Buffer.from(buf);
       const png = (PNG as any).sync.read(nodeBuffer);
-      const raster = { width: png.width, height: png.height, data: png.data as Uint8Array };
-      console.log("[RASTER_DECODE_SUCCESS]", { width: raster.width, height: raster.height, format });
+      const raster = {
+        width: png.width,
+        height: png.height,
+        data: png.data as Uint8Array,
+      };
+      console.log("[RASTER_DECODE_SUCCESS]", {
+        width: raster.width,
+        height: raster.height,
+        format,
+      });
       return raster;
     }
     if (format === "jpeg") {
       const jpeg = await import("npm:jpeg-js@0.4.4");
       const nodeBuffer = Buffer.from(buf);
       const decoded = (jpeg as any).decode(nodeBuffer, { useTArray: true });
-      if (!decoded?.width || !decoded?.height || !decoded?.data) throw new Error("JPEG decode failed");
-      const raster = { width: decoded.width, height: decoded.height, data: decoded.data as Uint8Array };
-      console.log("[RASTER_DECODE_SUCCESS]", { width: raster.width, height: raster.height, format });
+      if (!decoded?.width || !decoded?.height || !decoded?.data) {
+        throw new Error("JPEG decode failed");
+      }
+      const raster = {
+        width: decoded.width,
+        height: decoded.height,
+        data: decoded.data as Uint8Array,
+      };
+      console.log("[RASTER_DECODE_SUCCESS]", {
+        width: raster.width,
+        height: raster.height,
+        format,
+      });
       return raster;
     }
     throw new Error(`Unsupported raster format: ${contentType || "unknown"}`);
   } catch (error) {
-    throw new Error("Raster decode failed: " + (error instanceof Error ? error.message : String(error)));
+    throw new Error(
+      "Raster decode failed: " +
+        (error instanceof Error ? error.message : String(error)),
+    );
   }
 }
 
-async function geocodeAddress(address: string): Promise<(GeoPoint & { geocode_location_type: string }) | null> {
+async function geocodeAddress(
+  address: string,
+): Promise<(GeoPoint & { geocode_location_type: string }) | null> {
   if (!GOOGLE_MAPS_API_KEY) return null;
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   url.searchParams.set("address", address);
@@ -9297,7 +13093,15 @@ async function geocodeAddress(address: string): Promise<(GeoPoint & { geocode_lo
   };
 }
 
-function buildMapboxStaticImageUrl(args: { lng: number; lat: number; zoom: number; width: number; height: number }) {
+function buildMapboxStaticImageUrl(
+  args: {
+    lng: number;
+    lat: number;
+    zoom: number;
+    width: number;
+    height: number;
+  },
+) {
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${args.lng},${args.lat},${args.zoom},0,0/${args.width}x${args.height}@2x?access_token=${MAPBOX_TOKEN}`;
 }
 
@@ -9305,7 +13109,15 @@ function buildMapboxStaticImageUrl(args: { lng: number; lat: number; zoom: numbe
 // Used as the PRIMARY measurement imagery when available because Google's
 // satellite tiles are typically sharper than Mapbox in US suburban markets,
 // which improves Sobel/Hough ridge detection. Falls back to Mapbox on failure.
-function buildGoogleStaticSatelliteUrl(args: { lng: number; lat: number; zoom: number; width: number; height: number }) {
+function buildGoogleStaticSatelliteUrl(
+  args: {
+    lng: number;
+    lat: number;
+    zoom: number;
+    width: number;
+    height: number;
+  },
+) {
   // scale=2 → returns 2x pixel density (matches Mapbox @2x).
   // maxsize for free tier is 640x640 logical; with scale=2 effective px = 1280x1280.
   const w = Math.min(args.width, 640);
@@ -9336,7 +13148,15 @@ interface ImageryFetchResult {
   };
 }
 
-async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number; width: number; height: number }): Promise<ImageryFetchResult> {
+async function fetchAerialImagery(
+  args: {
+    lng: number;
+    lat: number;
+    zoom: number;
+    width: number;
+    height: number;
+  },
+): Promise<ImageryFetchResult> {
   const googleAvailable = Boolean(GOOGLE_MAPS_API_KEY);
   const mapboxAvailable = Boolean(MAPBOX_TOKEN);
 
@@ -9350,13 +13170,16 @@ async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number
         const buf = new Uint8Array(await resp.arrayBuffer());
         // Sanity: Google returns ~tiny error tiles on quota/billing issues.
         if (buf.byteLength >= 20_000 && ct.startsWith("image/")) {
-          console.log("[IMAGERY_PROVIDER_SELECTION]", JSON.stringify({
-            google_2d_available: true,
-            mapbox_available: mapboxAvailable,
-            selected_provider: "google_2d_satellite",
-            bytes: buf.byteLength,
-            reason: "google_2d_preferred_for_edge_detection",
-          }));
+          console.log(
+            "[IMAGERY_PROVIDER_SELECTION]",
+            JSON.stringify({
+              google_2d_available: true,
+              mapbox_available: mapboxAvailable,
+              selected_provider: "google_2d_satellite",
+              bytes: buf.byteLength,
+              reason: "google_2d_preferred_for_edge_detection",
+            }),
+          );
           return {
             buffer: buf,
             contentType: ct,
@@ -9372,32 +13195,50 @@ async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number
             },
           };
         } else {
-          console.warn("[IMAGERY_PROVIDER_SELECTION] google rejected — bytes=", buf.byteLength, "ct=", ct);
+          console.warn(
+            "[IMAGERY_PROVIDER_SELECTION] google rejected — bytes=",
+            buf.byteLength,
+            "ct=",
+            ct,
+          );
         }
       } else {
-        console.warn("[IMAGERY_PROVIDER_SELECTION] google fetch failed:", resp.status);
+        console.warn(
+          "[IMAGERY_PROVIDER_SELECTION] google fetch failed:",
+          resp.status,
+        );
       }
     } catch (e) {
-      console.warn("[IMAGERY_PROVIDER_SELECTION] google error:", (e as Error).message);
+      console.warn(
+        "[IMAGERY_PROVIDER_SELECTION] google error:",
+        (e as Error).message,
+      );
     }
   }
 
   // Fallback: Mapbox Satellite.
   if (!mapboxAvailable) {
-    throw new Error("No imagery provider available: GOOGLE_MAPS_API_KEY and MAPBOX_PUBLIC_TOKEN are both unset.");
+    throw new Error(
+      "No imagery provider available: GOOGLE_MAPS_API_KEY and MAPBOX_PUBLIC_TOKEN are both unset.",
+    );
   }
   const url = buildMapboxStaticImageUrl(args);
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Mapbox fetch failed: ${resp.status}`);
   const ct = resp.headers.get("content-type") || "";
   const buf = new Uint8Array(await resp.arrayBuffer());
-  console.log("[IMAGERY_PROVIDER_SELECTION]", JSON.stringify({
-    google_2d_available: googleAvailable,
-    mapbox_available: true,
-    selected_provider: "mapbox_satellite",
-    bytes: buf.byteLength,
-    reason: googleAvailable ? "google_unavailable_or_invalid_fallback_to_mapbox" : "google_key_missing",
-  }));
+  console.log(
+    "[IMAGERY_PROVIDER_SELECTION]",
+    JSON.stringify({
+      google_2d_available: googleAvailable,
+      mapbox_available: true,
+      selected_provider: "mapbox_satellite",
+      bytes: buf.byteLength,
+      reason: googleAvailable
+        ? "google_unavailable_or_invalid_fallback_to_mapbox"
+        : "google_key_missing",
+    }),
+  );
   return {
     buffer: buf,
     contentType: ct,
@@ -9408,7 +13249,9 @@ async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number
       mapbox_available: true,
       selected_provider: "mapbox_satellite",
       bytes: buf.byteLength,
-      reason: googleAvailable ? "google_unavailable_or_invalid_fallback_to_mapbox" : "google_key_missing",
+      reason: googleAvailable
+        ? "google_unavailable_or_invalid_fallback_to_mapbox"
+        : "google_key_missing",
       google_3d_debug_available: googleAvailable,
     },
   };
@@ -9417,7 +13260,9 @@ async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number
 async function fetchGoogleSolar(lat: number, lng: number) {
   (globalThis as any).__solarInsightsDebug = null;
   if (!GOOGLE_SOLAR_API_KEY) return null;
-  const url = new URL("https://solar.googleapis.com/v1/buildingInsights:findClosest");
+  const url = new URL(
+    "https://solar.googleapis.com/v1/buildingInsights:findClosest",
+  );
   url.searchParams.set("location.latitude", String(lat));
   url.searchParams.set("location.longitude", String(lng));
   url.searchParams.set("requiredQuality", "LOW");
@@ -9436,7 +13281,9 @@ async function fetchGoogleSolar(lat: number, lng: number) {
   try {
     return JSON.parse(body);
   } catch (e) {
-    console.warn(`[GOOGLE_SOLAR_INSIGHTS] invalid_json: ${(e as Error).message}`);
+    console.warn(
+      `[GOOGLE_SOLAR_INSIGHTS] invalid_json: ${(e as Error).message}`,
+    );
     return null;
   }
 }
@@ -9479,18 +13326,37 @@ function polygonAreaSqft(points: Point[], feetPerPixel: number) {
 }
 function polylineLengthPx(points: Point[]) {
   let t = 0;
-  for (let i = 1; i < points.length; i++) t += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  for (let i = 1; i < points.length; i++) {
+    t += Math.hypot(
+      points[i].x - points[i - 1].x,
+      points[i].y - points[i - 1].y,
+    );
+  }
   return t;
 }
-function pxToLngLat(p: Point, c: GeoPoint, w: number, h: number, mppActual: number) {
+function pxToLngLat(
+  p: Point,
+  c: GeoPoint,
+  w: number,
+  h: number,
+  mppActual: number,
+) {
   const R = 6378137;
   const dxM = (p.x - w / 2) * mppActual;
   const dyM = (p.y - h / 2) * mppActual;
   const dLat = -(dyM / R) * (180 / Math.PI);
-  const dLng = (dxM / (R * Math.cos((c.lat * Math.PI) / 180))) * (180 / Math.PI);
+  const dLng = (dxM / (R * Math.cos((c.lat * Math.PI) / 180))) *
+    (180 / Math.PI);
   return [c.lng + dLng, c.lat + dLat];
 }
-function lngLatToPx(lat: number, lng: number, c: GeoPoint, w: number, h: number, mppActual: number): Point {
+function lngLatToPx(
+  lat: number,
+  lng: number,
+  c: GeoPoint,
+  w: number,
+  h: number,
+  mppActual: number,
+): Point {
   const R = 6378137;
   const dLat = (lat - c.lat) * (Math.PI / 180);
   const dLng = (lng - c.lng) * (Math.PI / 180);
@@ -9521,7 +13387,11 @@ function footprintFromSolarBoundingBox(
     { x: minX, y: maxY },
   ];
 }
-function syntheticCenteredFootprint(w: number, h: number, feetPerPixelActual: number): Point[] {
+function syntheticCenteredFootprint(
+  w: number,
+  h: number,
+  feetPerPixelActual: number,
+): Point[] {
   // ~40ft x 30ft default house footprint, centered.
   const halfW = (40 / 2) / feetPerPixelActual;
   const halfH = (30 / 2) / feetPerPixelActual;
@@ -9534,10 +13404,20 @@ function syntheticCenteredFootprint(w: number, h: number, feetPerPixelActual: nu
     { x: cx - halfW, y: cy + halfH },
   ];
 }
-function polygonPxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, mpp: number) {
+function polygonPxToGeoJSON(
+  points: Point[],
+  c: GeoPoint,
+  w: number,
+  h: number,
+  mpp: number,
+) {
   const ring = points.map((p) => pxToLngLat(p, c, w, h, mpp));
   if (ring.length) ring.push(ring[0]);
-  return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
+  return {
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [ring] },
+    properties: {},
+  };
 }
 function polygonVerticesToWKT(vertices: Array<{ lng: number; lat: number }>) {
   const ring = [...vertices, vertices[0]];
@@ -9546,17 +13426,33 @@ function polygonVerticesToWKT(vertices: Array<{ lng: number; lat: number }>) {
 function lineGeoJSONToWKT(feature: any) {
   const coords = feature?.geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return null;
-  return `LINESTRING(${coords.map((p: any) => `${Number(p[0])} ${Number(p[1])}`).join(", ")})`;
+  return `LINESTRING(${
+    coords.map((p: any) => `${Number(p[0])} ${Number(p[1])}`).join(", ")
+  })`;
 }
-function imageBoundsFromRaster(c: GeoPoint, w: number, h: number, mpp: number): [number, number, number, number] {
+function imageBoundsFromRaster(
+  c: GeoPoint,
+  w: number,
+  h: number,
+  mpp: number,
+): [number, number, number, number] {
   const [west, north] = pxToLngLat({ x: 0, y: 0 }, c, w, h, mpp);
   const [east, south] = pxToLngLat({ x: w, y: h }, c, w, h, mpp);
   return [west, south, east, north];
 }
-function linePxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, mpp: number) {
+function linePxToGeoJSON(
+  points: Point[],
+  c: GeoPoint,
+  w: number,
+  h: number,
+  mpp: number,
+) {
   return {
     type: "Feature",
-    geometry: { type: "LineString", coordinates: points.map((p) => pxToLngLat(p, c, w, h, mpp)) },
+    geometry: {
+      type: "LineString",
+      coordinates: points.map((p) => pxToLngLat(p, c, w, h, mpp)),
+    },
     properties: {},
   };
 }
@@ -9584,7 +13480,9 @@ function polygonsSelfIntersect(points: Point[]) {
   for (let i = 0; i < points.length; i++) {
     const a1 = points[i], a2 = points[(i + 1) % points.length];
     for (let j = i + 1; j < points.length; j++) {
-      if (Math.abs(i - j) <= 1 || (i === 0 && j === points.length - 1)) continue;
+      if (Math.abs(i - j) <= 1 || (i === 0 && j === points.length - 1)) {
+        continue;
+      }
       const b1 = points[j], b2 = points[(j + 1) % points.length];
       if (segmentsIntersect(a1, a2, b1, b2)) return true;
     }
@@ -9592,7 +13490,8 @@ function polygonsSelfIntersect(points: Point[]) {
   return false;
 }
 function segmentsIntersect(p1: Point, p2: Point, q1: Point, q2: Point) {
-  const o = (a: Point, b: Point, c: Point) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+  const o = (a: Point, b: Point, c: Point) =>
+    Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
   return o(p1, p2, q1) !== o(p1, p2, q2) && o(q1, q2, p1) !== o(q1, q2, p2);
 }
 function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
@@ -9608,12 +13507,29 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
 // roof_measurements_footprint_source_check constraint. Anything not in this
 // list MUST be mapped (or fall through to 'unknown') so inserts never fail.
 const ALLOWED_FOOTPRINT_SOURCES = new Set<string>([
-  "mapbox_vector", "regrid_parcel", "osm_overpass", "microsoft_buildings",
-  "solar_api_footprint", "solar_bbox_fallback", "manual_trace", "manual_entry",
-  "imported", "user_drawn", "ai_detection", "esri_buildings", "google_solar_api",
-  "osm", "google_maps", "satellite", "unknown",
-  "google_solar_bbox", "google_solar_segments", "google_solar_segments_hull",
-  "unet_mask", "alpha_hull", "convex_hull",
+  "mapbox_vector",
+  "regrid_parcel",
+  "osm_overpass",
+  "microsoft_buildings",
+  "solar_api_footprint",
+  "solar_bbox_fallback",
+  "manual_trace",
+  "manual_entry",
+  "imported",
+  "user_drawn",
+  "ai_detection",
+  "esri_buildings",
+  "google_solar_api",
+  "osm",
+  "google_maps",
+  "satellite",
+  "unknown",
+  "google_solar_bbox",
+  "google_solar_segments",
+  "google_solar_segments_hull",
+  "unet_mask",
+  "alpha_hull",
+  "convex_hull",
 ]);
 
 function normalizeRoofMeasurementFootprintSource(source: string) {
@@ -9643,10 +13559,17 @@ function normalizeRoofMeasurementFootprintSource(source: string) {
   if (lower.includes("hull")) return "convex_hull";
   if (lower.includes("unet") || lower.includes("ai")) return "ai_detection";
   if (lower.includes("manual")) return "manual_trace";
-  console.warn(`[footprint_source] Unknown source '${raw}' — coercing to 'unknown'`);
+  console.warn(
+    `[footprint_source] Unknown source '${raw}' — coercing to 'unknown'`,
+  );
   return "unknown";
 }
-function cleanPlane(plane: any, idx: number, w: number, h: number): RoofPlane | null {
+function cleanPlane(
+  plane: any,
+  idx: number,
+  w: number,
+  h: number,
+): RoofPlane | null {
   const polygon = cleanPolygon(plane?.polygon_px || [], w, h);
   if (polygon.length < 3) return null;
   if (polygonsSelfIntersect(polygon)) return null;
@@ -9655,7 +13578,9 @@ function cleanPlane(plane: any, idx: number, w: number, h: number): RoofPlane | 
     polygon_px: polygon,
     confidence: Number(plane.confidence || 0),
     pitch: plane.pitch != null ? Number(plane.pitch) : null,
-    pitch_degrees: plane.pitch_degrees != null ? Number(plane.pitch_degrees) : null,
+    pitch_degrees: plane.pitch_degrees != null
+      ? Number(plane.pitch_degrees)
+      : null,
     azimuth: plane.azimuth != null ? Number(plane.azimuth) : null,
     source: String(plane.source || "unet"),
   };
@@ -9681,15 +13606,26 @@ function dominantSolarPitchRise(solarData: any): number | null {
 function estimateSolarRoofAreaSqft(solarData: any): number | null {
   const segs = solarData?.solarPotential?.roofSegmentStats || [];
   const areasM2 = segs
-    .map((s: any) => Number(s?.stats?.areaMeters2 ?? s?.stats?.groundAreaMeters2))
+    .map((s: any) =>
+      Number(s?.stats?.areaMeters2 ?? s?.stats?.groundAreaMeters2)
+    )
     .filter((n: number) => Number.isFinite(n) && n > 0);
-  if (areasM2.length > 0) return areasM2.reduce((sum: number, n: number) => sum + n, 0) * 10.7639;
-  const wholeRoof = Number(solarData?.solarPotential?.wholeRoofStats?.areaMeters2 ?? solarData?.solarPotential?.wholeRoofStats?.groundAreaMeters2);
-  return Number.isFinite(wholeRoof) && wholeRoof > 0 ? wholeRoof * 10.7639 : null;
+  if (areasM2.length > 0) {
+    return areasM2.reduce((sum: number, n: number) => sum + n, 0) * 10.7639;
+  }
+  const wholeRoof = Number(
+    solarData?.solarPotential?.wholeRoofStats?.areaMeters2 ??
+      solarData?.solarPotential?.wholeRoofStats?.groundAreaMeters2,
+  );
+  return Number.isFinite(wholeRoof) && wholeRoof > 0
+    ? wholeRoof * 10.7639
+    : null;
 }
 function dominantSolarAzimuth(solarData: any): number | null {
   const segs = solarData?.solarPotential?.roofSegmentStats || [];
-  const az = segs.map((s: any) => Number(s.azimuthDegrees)).filter((n: number) => Number.isFinite(n));
+  const az = segs.map((s: any) => Number(s.azimuthDegrees)).filter((
+    n: number,
+  ) => Number.isFinite(n));
   return az.length ? average(az) : null;
 }
 function parsePitchOverride(po: string | null): number | null {
@@ -9704,8 +13640,10 @@ function buildPlaneRows(args: {
   solarData: any;
   pitchOverride: string | null;
   center: GeoPoint;
-  width: number; height: number;
-  metersPerPixelActual: number; feetPerPixelActual: number;
+  width: number;
+  height: number;
+  metersPerPixelActual: number;
+  feetPerPixelActual: number;
 }) {
   const overrideRise = parsePitchOverride(args.pitchOverride);
   const solarRise = dominantSolarPitchRise(args.solarData);
@@ -9715,36 +13653,59 @@ function buildPlaneRows(args: {
   const inputPlanes: RoofPlane[] = args.planes.length
     ? args.planes
     : args.fallbackFootprint.length >= 3
-      ? [{
-          plane_index: 1,
-          polygon_px: args.fallbackFootprint,
-          confidence: 0.45,
-          source: "single_plane_fallback",
-          pitch: null, pitch_degrees: null, azimuth: null,
-        }]
-      : [];
+    ? [{
+      plane_index: 1,
+      polygon_px: args.fallbackFootprint,
+      confidence: 0.45,
+      source: "single_plane_fallback",
+      pitch: null,
+      pitch_degrees: null,
+      azimuth: null,
+    }]
+    : [];
 
   // Max residential pitch: 24/12 rise (~63°). Anything above is noise.
   const MAX_RISE_PER_12 = 24;
   return inputPlanes.map((plane) => {
-    if (plane.pitch_degrees != null && plane.pitch_degrees > WALL_LIKE_PITCH_DEG) {
-      throw new Error(`WALL_LIKE_DSM_FACE plane=${plane.plane_index} pitch=${plane.pitch_degrees.toFixed(2)}deg`);
+    if (
+      plane.pitch_degrees != null && plane.pitch_degrees > WALL_LIKE_PITCH_DEG
+    ) {
+      throw new Error(
+        `WALL_LIKE_DSM_FACE plane=${plane.plane_index} pitch=${
+          plane.pitch_degrees.toFixed(2)
+        }deg`,
+      );
     }
     let rise = overrideRise ?? plane.pitch ??
-      (plane.pitch_degrees != null ? Math.tan((plane.pitch_degrees * Math.PI) / 180) * 12 : null) ??
+      (plane.pitch_degrees != null
+        ? Math.tan((plane.pitch_degrees * Math.PI) / 180) * 12
+        : null) ??
       solarRise ?? 6;
     if (risePer12ToDegrees(rise) > WALL_LIKE_PITCH_DEG) {
-      throw new Error(`WALL_LIKE_DSM_FACE plane=${plane.plane_index} rise=${rise.toFixed(2)}/12`);
+      throw new Error(
+        `WALL_LIKE_DSM_FACE plane=${plane.plane_index} rise=${
+          rise.toFixed(2)
+        }/12`,
+      );
     }
     if (rise > MAX_RISE_PER_12) {
-      console.warn(`[BUILD_PLANES] Clamping rise ${rise.toFixed(1)}/12 → ${MAX_RISE_PER_12}/12 for plane ${plane.plane_index}`);
+      console.warn(
+        `[BUILD_PLANES] Clamping rise ${
+          rise.toFixed(1)
+        }/12 → ${MAX_RISE_PER_12}/12 for plane ${plane.plane_index}`,
+      );
       rise = MAX_RISE_PER_12;
     }
     const pitchDegrees = plane.pitch_degrees != null
       ? Math.min(plane.pitch_degrees, 63)
       : risePer12ToDegrees(rise);
-    const area2d = Array.isArray((plane as any).multi_part_px) && (plane as any).multi_part_px.length
-      ? (plane as any).multi_part_px.reduce((sum: number, part: Point[]) => sum + polygonAreaSqft(part, args.feetPerPixelActual), 0)
+    const area2d = Array.isArray((plane as any).multi_part_px) &&
+        (plane as any).multi_part_px.length
+      ? (plane as any).multi_part_px.reduce(
+        (sum: number, part: Point[]) =>
+          sum + polygonAreaSqft(part, args.feetPerPixelActual),
+        0,
+      )
       : polygonAreaSqft(plane.polygon_px, args.feetPerPixelActual);
     const mult = pitchMultiplier(rise);
     return {
@@ -9752,7 +13713,13 @@ function buildPlaneRows(args: {
       plane_index: plane.plane_index,
       source: plane.source,
       polygon_px: plane.polygon_px,
-      polygon_geojson: polygonPxToGeoJSON(plane.polygon_px, args.center, args.width, args.height, args.metersPerPixelActual),
+      polygon_geojson: polygonPxToGeoJSON(
+        plane.polygon_px,
+        args.center,
+        args.width,
+        args.height,
+        args.metersPerPixelActual,
+      ),
       pitch: round(rise, 2),
       pitch_degrees: round(pitchDegrees, 2),
       azimuth: round(plane.azimuth ?? solarAzimuth ?? 0, 2),
@@ -9767,8 +13734,10 @@ function buildEdgeRows(args: {
   ai_measurement_job_id: string;
   edges: RoofEdge[];
   center: GeoPoint;
-  width: number; height: number;
-  metersPerPixelActual: number; feetPerPixelActual: number;
+  width: number;
+  height: number;
+  metersPerPixelActual: number;
+  feetPerPixelActual: number;
 }) {
   return args.edges.map((edge) => {
     const lpx = polylineLengthPx(edge.line_px);
@@ -9777,7 +13746,13 @@ function buildEdgeRows(args: {
       edge_type: edge.edge_type,
       source: edge.source,
       line_px: edge.line_px,
-      line_geojson: linePxToGeoJSON(edge.line_px, args.center, args.width, args.height, args.metersPerPixelActual),
+      line_geojson: linePxToGeoJSON(
+        edge.line_px,
+        args.center,
+        args.width,
+        args.height,
+        args.metersPerPixelActual,
+      ),
       length_px: round(lpx, 2),
       length_ft: round(lpx * args.feetPerPixelActual, 2),
       confidence: round(edge.confidence, 3),
@@ -9787,9 +13762,21 @@ function buildEdgeRows(args: {
 }
 function calculateTotals(planes: any[], edges: any[], wfp: number) {
   const t2d = planes.reduce((s, p) => s + Number(p.area_2d_sqft || 0), 0);
-  const tslope = planes.reduce((s, p) => s + Number(p.area_pitch_adjusted_sqft || 0), 0);
-  const lt: Record<string, number> = { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0, unknown: 0 };
-  for (const e of edges) lt[e.edge_type] = (lt[e.edge_type] || 0) + Number(e.length_ft || 0);
+  const tslope = planes.reduce(
+    (s, p) => s + Number(p.area_pitch_adjusted_sqft || 0),
+    0,
+  );
+  const lt: Record<string, number> = {
+    ridge: 0,
+    hip: 0,
+    valley: 0,
+    eave: 0,
+    rake: 0,
+    unknown: 0,
+  };
+  for (const e of edges) {
+    lt[e.edge_type] = (lt[e.edge_type] || 0) + Number(e.length_ft || 0);
+  }
   const pb: Record<string, number> = {};
   for (const p of planes) {
     const k = String(p.pitch ?? "unknown");
@@ -9812,68 +13799,204 @@ function calculateTotals(planes: any[], edges: any[], wfp: number) {
     pitch_breakdown: pb,
     line_breakdown: lt,
     plane_breakdown: planes.map((p) => ({
-      plane_index: p.plane_index, source: p.source, pitch: p.pitch,
-      pitch_degrees: p.pitch_degrees, area_2d_sqft: p.area_2d_sqft,
-      area_pitch_adjusted_sqft: p.area_pitch_adjusted_sqft, confidence: p.confidence,
+      plane_index: p.plane_index,
+      source: p.source,
+      pitch: p.pitch,
+      pitch_degrees: p.pitch_degrees,
+      area_2d_sqft: p.area_2d_sqft,
+      area_pitch_adjusted_sqft: p.area_pitch_adjusted_sqft,
+      confidence: p.confidence,
     })),
   };
 }
 function scoreQuality(input: {
-  geocode_location_type: string; solarData: any;
-  planes: any[]; edges: any[]; totals: any; usedSinglePlaneFallback: boolean;
+  geocode_location_type: string;
+  solarData: any;
+  planes: any[];
+  edges: any[];
+  totals: any;
+  usedSinglePlaneFallback: boolean;
 }) {
   const avgPC = average(input.planes.map((p) => Number(p.confidence || 0)));
-  const areaOK = input.totals.total_area_pitch_adjusted_sqft >= 300 && input.totals.total_area_pitch_adjusted_sqft <= 20000;
+  const areaOK = input.totals.total_area_pitch_adjusted_sqft >= 300 &&
+    input.totals.total_area_pitch_adjusted_sqft <= 20000;
   const checks = [
-    { name: "geocode_precision", passed: ["STORED","ROOFTOP"].includes(input.geocode_location_type), score: ["STORED","ROOFTOP"].includes(input.geocode_location_type) ? 1 : 0.5, details: { geocode_location_type: input.geocode_location_type } },
-    { name: "has_planes", passed: input.planes.length > 0, score: input.planes.length > 0 ? 1 : 0, details: { plane_count: input.planes.length } },
-    { name: "has_edges", passed: input.edges.length > 0, score: input.edges.length > 0 ? 1 : 0.5, details: { edge_count: input.edges.length } },
-    { name: "single_plane_fallback", passed: !input.usedSinglePlaneFallback, score: input.usedSinglePlaneFallback ? 0.55 : 1, details: { usedSinglePlaneFallback: input.usedSinglePlaneFallback } },
-    { name: "solar_available", passed: !!input.solarData, score: input.solarData ? 1 : 0.55, details: { solar: !!input.solarData } },
-    { name: "area_reasonable", passed: areaOK, score: areaOK ? 1 : 0.25, details: { total_area_pitch_adjusted_sqft: input.totals.total_area_pitch_adjusted_sqft } },
-    { name: "avg_plane_confidence", passed: avgPC >= 0.65, score: avgPC, details: { avg_plane_confidence: avgPC } },
+    {
+      name: "geocode_precision",
+      passed: ["STORED", "ROOFTOP"].includes(input.geocode_location_type),
+      score: ["STORED", "ROOFTOP"].includes(input.geocode_location_type)
+        ? 1
+        : 0.5,
+      details: { geocode_location_type: input.geocode_location_type },
+    },
+    {
+      name: "has_planes",
+      passed: input.planes.length > 0,
+      score: input.planes.length > 0 ? 1 : 0,
+      details: { plane_count: input.planes.length },
+    },
+    {
+      name: "has_edges",
+      passed: input.edges.length > 0,
+      score: input.edges.length > 0 ? 1 : 0.5,
+      details: { edge_count: input.edges.length },
+    },
+    {
+      name: "single_plane_fallback",
+      passed: !input.usedSinglePlaneFallback,
+      score: input.usedSinglePlaneFallback ? 0.55 : 1,
+      details: { usedSinglePlaneFallback: input.usedSinglePlaneFallback },
+    },
+    {
+      name: "solar_available",
+      passed: !!input.solarData,
+      score: input.solarData ? 1 : 0.55,
+      details: { solar: !!input.solarData },
+    },
+    {
+      name: "area_reasonable",
+      passed: areaOK,
+      score: areaOK ? 1 : 0.25,
+      details: {
+        total_area_pitch_adjusted_sqft:
+          input.totals.total_area_pitch_adjusted_sqft,
+      },
+    },
+    {
+      name: "avg_plane_confidence",
+      passed: avgPC >= 0.65,
+      score: avgPC,
+      details: { avg_plane_confidence: avgPC },
+    },
   ];
-  const geom = average([getScore(checks,"geocode_precision"), getScore(checks,"has_planes"), getScore(checks,"single_plane_fallback"), getScore(checks,"avg_plane_confidence")]);
-  const meas = average([getScore(checks,"has_edges"), getScore(checks,"solar_available"), getScore(checks,"area_reasonable")]);
-  return { checks, geometry_score: round(geom, 3), measurement_score: round(meas, 3), overall_score: round(geom * 0.6 + meas * 0.4, 3) };
+  const geom = average([
+    getScore(checks, "geocode_precision"),
+    getScore(checks, "has_planes"),
+    getScore(checks, "single_plane_fallback"),
+    getScore(checks, "avg_plane_confidence"),
+  ]);
+  const meas = average([
+    getScore(checks, "has_edges"),
+    getScore(checks, "solar_available"),
+    getScore(checks, "area_reasonable"),
+  ]);
+  return {
+    checks,
+    geometry_score: round(geom, 3),
+    measurement_score: round(meas, 3),
+    overall_score: round(geom * 0.6 + meas * 0.4, 3),
+  };
 }
-async function setMeasurementJobStatus(id: string, status: string, msg: string, measurement_id: string | null = null) {
-  const legacyStatus = ["queued", "processing", "completed", "failed"].includes(status) ? status : "completed";
+async function setMeasurementJobStatus(
+  id: string,
+  status: string,
+  msg: string,
+  measurement_id: string | null = null,
+) {
+  const legacyStatus =
+    ["queued", "processing", "completed", "failed"].includes(status)
+      ? status
+      : "completed";
   const patch: Record<string, unknown> = {
-    status: legacyStatus, progress_message: msg, measurement_id,
+    status: legacyStatus,
+    progress_message: msg,
+    measurement_id,
     error: status === "failed" ? msg : null,
     updated_at: new Date().toISOString(),
-    ...(legacyStatus === "completed" || legacyStatus === "failed" ? { completed_at: new Date().toISOString() } : {}),
+    ...(legacyStatus === "completed" || legacyStatus === "failed"
+      ? { completed_at: new Date().toISOString() }
+      : {}),
   };
-  if (legacyStatus === "processing") patch.started_at = new Date().toISOString();
-  const { error } = await supabase.from("measurement_jobs").update(patch).eq("id", id);
-  if (error) console.error("setMeasurementJobStatus failed", { id, status, legacyStatus, error });
+  if (legacyStatus === "processing") {
+    patch.started_at = new Date().toISOString();
+  }
+  const { error } = await supabase.from("measurement_jobs").update(patch).eq(
+    "id",
+    id,
+  );
+  if (error) {
+    console.error("setMeasurementJobStatus failed", {
+      id,
+      status,
+      legacyStatus,
+      error,
+    });
+  }
 }
-async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
-  const terminal = ["completed", "failed", "needs_review", "needs_internal_review", "needs_manual_measurement", "topology_mismatch"].includes(status);
-  const failedResultState = status === "failed" ? normalizeResultStateForWrite(msg, null) : null;
+async function setAiJobStatus(
+  id: string,
+  status: string,
+  msg: string,
+  quality: any = null,
+) {
+  const terminal = [
+    "completed",
+    "failed",
+    "needs_review",
+    "needs_internal_review",
+    "needs_manual_measurement",
+    "topology_mismatch",
+  ].includes(status);
+  const failedResultState = status === "failed"
+    ? normalizeResultStateForWrite(msg, null)
+    : null;
   await supabase.from("ai_measurement_jobs").update({
-    status, status_message: msg,
+    status,
+    status_message: msg,
     updated_at: new Date().toISOString(),
     ...(terminal ? { completed_at: new Date().toISOString() } : {}),
-    ...(quality ? {
-      confidence_score: quality.overall_score,
-      geometry_quality_score: quality.geometry_score,
-      measurement_quality_score: quality.measurement_score,
-    } : {}),
-    ...(status === "failed" ? { failure_reason: msg, result_state: failedResultState, report_blocked: true, needs_review: true } : {}),
+    ...(quality
+      ? {
+        confidence_score: quality.overall_score,
+        geometry_quality_score: quality.geometry_score,
+        measurement_quality_score: quality.measurement_score,
+      }
+      : {}),
+    ...(status === "failed"
+      ? {
+        failure_reason: msg,
+        result_state: failedResultState,
+        report_blocked: true,
+        needs_review: true,
+      }
+      : {}),
   }).eq("id", id);
 }
 
-async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, failureReason: string, debug: any, imageUrl: string | null, mpp: number) {
-  const debugWithTransform = mergeTransformProofIntoDebug(debug, input?._registration_preflight ?? null);
-  console.log("VTRACE_TRANSFORM_MERGED_INTO_FAILURE_PAYLOAD", JSON.stringify({ has_preflight: !!input?._registration_preflight, reason: failureReason }));
-  const phase3Debug = withPhase3Visibility(debugWithTransform, [], failureReason);
-  const persistedFailureReason = phase3Debug.hard_fail_reason || failureReason || 'ai_failed_unknown';
-  const persistedResultState = normalizeResultStateForWrite(phase3Debug.result_state, phase3Debug);
+async function insertFailedPreliminaryMeasurement(
+  input: any,
+  coords: GeoPoint,
+  failureReason: string,
+  debug: any,
+  imageUrl: string | null,
+  mpp: number,
+) {
+  const debugWithTransform = mergeTransformProofIntoDebug(
+    debug,
+    input?._registration_preflight ?? null,
+  );
+  console.log(
+    "VTRACE_TRANSFORM_MERGED_INTO_FAILURE_PAYLOAD",
+    JSON.stringify({
+      has_preflight: !!input?._registration_preflight,
+      reason: failureReason,
+    }),
+  );
+  const phase3Debug = withPhase3Visibility(
+    debugWithTransform,
+    [],
+    failureReason,
+  );
+  const persistedFailureReason = phase3Debug.hard_fail_reason ||
+    failureReason || "ai_failed_unknown";
+  const persistedResultState = normalizeResultStateForWrite(
+    phase3Debug.result_state,
+    phase3Debug,
+  );
   const aiDetectionData = {
     topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
-    solver_version: phase3Debug?.solver_version || "autonomous_graph_solver_v3_prune_first",
+    solver_version: phase3Debug?.solver_version ||
+      "autonomous_graph_solver_v3_prune_first",
     fallback_used: Boolean(phase3Debug?.fallback_used),
     hard_fail_reason: persistedFailureReason,
     failure_reason: persistedFailureReason,
@@ -9884,10 +14007,14 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     totals: { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
     dsm_loaded: Boolean(phase3Debug?.dsm_loaded),
     mask_loaded: Boolean(phase3Debug?.mask_loaded),
-    edge_filter_count_before: Number(phase3Debug?.edge_filter_count_before || 0),
+    edge_filter_count_before: Number(
+      phase3Debug?.edge_filter_count_before || 0,
+    ),
     edge_filter_count_after: Number(phase3Debug?.edge_filter_count_after || 0),
     snapped_vertex_count: Number(phase3Debug?.snapped_vertex_count || 0),
-    rejected_fake_intersections: Number(phase3Debug?.rejected_fake_intersections || 0),
+    rejected_fake_intersections: Number(
+      phase3Debug?.rejected_fake_intersections || 0,
+    ),
     facet_validation_errors: Number(phase3Debug?.facet_validation_errors || 0),
     debug: phase3Debug,
   };
@@ -9901,10 +14028,19 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     hard_fail_reason: persistedFailureReason,
     coordinate_space_input: debug?.coordinate_space_input || "unknown",
     coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
-    coordinate_space_renderer: debug?.coordinate_space_renderer || "satellite_px",
-    dsm_pixel_transform_valid: Boolean(debug?.dsm_pixel_transform_valid ?? debug?.coordinate_space_match ?? false),
-    geo_to_dsm_px_success: Boolean(debug?.geo_to_dsm_px_success ?? debug?.coordinate_space_match ?? false),
-    attempted_faces: Number(debug?.attempted_faces ?? debug?.faces_attempted ?? debug?.faces_extracted ?? 0),
+    coordinate_space_renderer: debug?.coordinate_space_renderer ||
+      "satellite_px",
+    dsm_pixel_transform_valid: Boolean(
+      debug?.dsm_pixel_transform_valid ?? debug?.coordinate_space_match ??
+        false,
+    ),
+    geo_to_dsm_px_success: Boolean(
+      debug?.geo_to_dsm_px_success ?? debug?.coordinate_space_match ?? false,
+    ),
+    attempted_faces: Number(
+      debug?.attempted_faces ?? debug?.faces_attempted ??
+        debug?.faces_extracted ?? 0,
+    ),
     attempted_edges: Number(debug?.attempted_edges ?? debug?.edge_count ?? 0),
     attempted_area_total: Number(debug?.attempted_area_total ?? 0),
     attempted_ridge_lf: Number(debug?.attempted_ridge_lf ?? 0),
@@ -9921,22 +14057,38 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     dsm_planar_graph_debug: debug,
     acquisition_audit: debug?.acquisition_audit || null,
     source_acquisition_debug: debug?.source_acquisition_debug || null,
-    google_solar_status: debug?.google_solar_status ?? debug?.google_solar_mask_stage?.google_solar_status ?? null,
-    google_solar_error: debug?.google_solar_error ?? debug?.google_solar_mask_stage?.google_solar_error ?? null,
-    google_solar_stage_started_at: debug?.google_solar_stage_started_at ?? debug?.google_solar_mask_stage?.google_solar_stage_started_at ?? null,
-    google_solar_stage_finished_at: debug?.google_solar_stage_finished_at ?? debug?.google_solar_mask_stage?.google_solar_stage_finished_at ?? null,
-    google_solar_stage_duration_ms: debug?.google_solar_stage_duration_ms ?? debug?.google_solar_mask_stage?.google_solar_stage_duration_ms ?? null,
-    google_solar_fetch_started_at: debug?.google_solar_fetch_started_at ?? debug?.google_solar_mask_stage?.google_solar_fetch_started_at ?? null,
-    google_solar_fetch_finished_at: debug?.google_solar_fetch_finished_at ?? debug?.google_solar_mask_stage?.google_solar_fetch_finished_at ?? null,
-    google_solar_fetch_duration_ms: debug?.google_solar_fetch_duration_ms ?? debug?.google_solar_mask_stage?.google_solar_fetch_duration_ms ?? null,
-    dsm_fetch_started_at: debug?.dsm_fetch_started_at ?? debug?.google_solar_mask_stage?.dsm_fetch_started_at ?? null,
-    dsm_fetch_finished_at: debug?.dsm_fetch_finished_at ?? debug?.google_solar_mask_stage?.dsm_fetch_finished_at ?? null,
-    dsm_fetch_duration_ms: debug?.dsm_fetch_duration_ms ?? debug?.google_solar_mask_stage?.dsm_fetch_duration_ms ?? null,
-    dsm_loaded: debug?.dsm_loaded ?? debug?.google_solar_mask_stage?.dsm_loaded ?? false,
-    mask_loaded: debug?.mask_loaded ?? debug?.google_solar_mask_stage?.mask_loaded ?? false,
-    mask_point_count: debug?.mask_point_count ?? debug?.google_solar_mask_stage?.mask_point_count ?? 0,
-    footprint_extraction_duration_ms: debug?.footprint_extraction_duration_ms ?? debug?.google_solar_mask_stage?.footprint_extraction_duration_ms ?? null,
-    footprint_extraction_error: debug?.footprint_extraction_error ?? debug?.google_solar_mask_stage?.footprint_extraction_error ?? null,
+    google_solar_status: debug?.google_solar_status ??
+      debug?.google_solar_mask_stage?.google_solar_status ?? null,
+    google_solar_error: debug?.google_solar_error ??
+      debug?.google_solar_mask_stage?.google_solar_error ?? null,
+    google_solar_stage_started_at: debug?.google_solar_stage_started_at ??
+      debug?.google_solar_mask_stage?.google_solar_stage_started_at ?? null,
+    google_solar_stage_finished_at: debug?.google_solar_stage_finished_at ??
+      debug?.google_solar_mask_stage?.google_solar_stage_finished_at ?? null,
+    google_solar_stage_duration_ms: debug?.google_solar_stage_duration_ms ??
+      debug?.google_solar_mask_stage?.google_solar_stage_duration_ms ?? null,
+    google_solar_fetch_started_at: debug?.google_solar_fetch_started_at ??
+      debug?.google_solar_mask_stage?.google_solar_fetch_started_at ?? null,
+    google_solar_fetch_finished_at: debug?.google_solar_fetch_finished_at ??
+      debug?.google_solar_mask_stage?.google_solar_fetch_finished_at ?? null,
+    google_solar_fetch_duration_ms: debug?.google_solar_fetch_duration_ms ??
+      debug?.google_solar_mask_stage?.google_solar_fetch_duration_ms ?? null,
+    dsm_fetch_started_at: debug?.dsm_fetch_started_at ??
+      debug?.google_solar_mask_stage?.dsm_fetch_started_at ?? null,
+    dsm_fetch_finished_at: debug?.dsm_fetch_finished_at ??
+      debug?.google_solar_mask_stage?.dsm_fetch_finished_at ?? null,
+    dsm_fetch_duration_ms: debug?.dsm_fetch_duration_ms ??
+      debug?.google_solar_mask_stage?.dsm_fetch_duration_ms ?? null,
+    dsm_loaded: debug?.dsm_loaded ??
+      debug?.google_solar_mask_stage?.dsm_loaded ?? false,
+    mask_loaded: debug?.mask_loaded ??
+      debug?.google_solar_mask_stage?.mask_loaded ?? false,
+    mask_point_count: debug?.mask_point_count ??
+      debug?.google_solar_mask_stage?.mask_point_count ?? 0,
+    footprint_extraction_duration_ms: debug?.footprint_extraction_duration_ms ??
+      debug?.google_solar_mask_stage?.footprint_extraction_duration_ms ?? null,
+    footprint_extraction_error: debug?.footprint_extraction_error ??
+      debug?.google_solar_mask_stage?.footprint_extraction_error ?? null,
     google_solar_mask_stage: debug?.google_solar_mask_stage ?? null,
     // ── Phase 0: Perimeter-First Topology Contract ──
     perimeter_phase0: debug?.perimeter_phase0 ?? null,
@@ -9949,11 +14101,17 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     unknown_perimeter_lf: debug?.unknown_perimeter_lf ?? null,
     perimeter_area_sqft: debug?.perimeter_area_sqft ?? null,
     perimeter_failure_reasons: debug?.perimeter_failure_reasons ?? [],
-    target_mask_area_sqft: debug?.perimeter_phase0?.target_mask_area_sqft ?? debug?.perimeter_inner_trace?.target_mask_area_sqft ?? null,
-    global_mask_area_sqft: debug?.perimeter_phase0?.global_mask_area_sqft ?? debug?.perimeter_inner_trace?.global_mask_area_sqft ?? null,
-    global_mask_inflation_ratio: debug?.perimeter_phase0?.global_mask_inflation_ratio ?? debug?.perimeter_inner_trace?.global_mask_inflation_ratio ?? null,
-    missed_target_roof_pct: debug?.perimeter_phase0?.missed_target_roof_pct ?? debug?.perimeter_inner_trace?.missed_target_roof_pct ?? null,
-    mask_components_table: debug?.perimeter_phase0?.mask_components_table ?? debug?.perimeter_inner_trace?.mask_components_table ?? [],
+    target_mask_area_sqft: debug?.perimeter_phase0?.target_mask_area_sqft ??
+      debug?.perimeter_inner_trace?.target_mask_area_sqft ?? null,
+    global_mask_area_sqft: debug?.perimeter_phase0?.global_mask_area_sqft ??
+      debug?.perimeter_inner_trace?.global_mask_area_sqft ?? null,
+    global_mask_inflation_ratio:
+      debug?.perimeter_phase0?.global_mask_inflation_ratio ??
+        debug?.perimeter_inner_trace?.global_mask_inflation_ratio ?? null,
+    missed_target_roof_pct: debug?.perimeter_phase0?.missed_target_roof_pct ??
+      debug?.perimeter_inner_trace?.missed_target_roof_pct ?? null,
+    mask_components_table: debug?.perimeter_phase0?.mask_components_table ??
+      debug?.perimeter_inner_trace?.mask_components_table ?? [],
     // Footprint diagnostics (always present)
     footprint_source: debug?.footprint_source || "unknown",
     footprint_valid: debug?.footprint_valid ?? false,
@@ -9970,7 +14128,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     graph_segments: debug?.graph_segments ?? 0,
     faces_attempted: debug?.faces_attempted ?? debug?.faces_extracted ?? 0,
     faces_rejected: debug?.faces_rejected ?? 0,
-    rejection_reasons: debug?.rejection_reasons ?? debug?.candidates_rejected ?? [],
+    rejection_reasons: debug?.rejection_reasons ?? debug?.candidates_rejected ??
+      [],
     debug_geometry: {
       topology_source: aiDetectionData.topology_source,
       facet_source: debug?.facet_source || "dsm_planar_graph_faces",
@@ -9989,7 +14148,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     overlay_debug: {
       coordinate_space: "satellite_px",
       coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
-      coordinate_space_renderer: debug?.coordinate_space_renderer || "satellite_px",
+      coordinate_space_renderer: debug?.coordinate_space_renderer ||
+        "satellite_px",
       raster_url: imageUrl,
       raster_size: debug?.raster_size || null,
       footprint_px: debug?.footprint_px || [],
@@ -10026,10 +14186,14 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     target_lat: coords.lat,
     target_lng: coords.lng,
     mapbox_image_url: imageUrl,
-      analysis_image_size: debug?.raster_size || {
-        width: Number(input.actual_image_width || input.logical_image_width || 1280),
-        height: Number(input.actual_image_height || input.logical_image_height || 1280),
-      },
+    analysis_image_size: debug?.raster_size || {
+      width: Number(
+        input.actual_image_width || input.logical_image_width || 1280,
+      ),
+      height: Number(
+        input.actual_image_height || input.logical_image_height || 1280,
+      ),
+    },
     meters_per_pixel: mpp,
     ai_detection_data: aiDetectionData,
     ai_analysis: aiDetectionData,
@@ -10066,49 +14230,78 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
     source_button: input.source_button,
     engine_version: "autonomous_graph_solver_v3_prune_first",
     engine_used: "autonomous_dsm_graph_solver",
-    geometry_source: 'heuristic_estimate',
-    true_outer_roof_perimeter_px: debug?.perimeter_topology?.perimeter_ring_px ?? (debug?.footprint_px || null),
-    true_outer_roof_perimeter_geo: debug?.perimeter_topology?.perimeter_ring_geo ?? null,
+    geometry_source: "heuristic_estimate",
+    true_outer_roof_perimeter_px:
+      debug?.perimeter_topology?.perimeter_ring_px ??
+        (debug?.footprint_px || null),
+    true_outer_roof_perimeter_geo:
+      debug?.perimeter_topology?.perimeter_ring_geo ?? null,
     eave_edges: debug?.perimeter_topology?.eave_edges ?? null,
     rake_edges: debug?.perimeter_topology?.rake_edges ?? null,
     roof_corners: debug?.perimeter_topology?.corner_nodes ?? null,
     missed_roof_regions: debug?.perimeter_phase0?.missed_roof_regions ?? null,
-    perimeter_confidence: debug?.perimeter_topology?.perimeter_confidence ?? null,
-    perimeter_source: debug?.perimeter_source ?? debug?.perimeter_topology?.perimeter_source ?? null,
+    perimeter_confidence: debug?.perimeter_topology?.perimeter_confidence ??
+      null,
+    perimeter_source: debug?.perimeter_source ??
+      debug?.perimeter_topology?.perimeter_source ?? null,
     perimeter_hints: debug?.perimeter_phase0?.perimeter_candidate_table ?? null,
     perimeter_gate_metrics: debug?.perimeter_phase0 ?? null,
-    perimeter_status: debug?.perimeter_gate_passed === true ? 'pass' : debug?.perimeter_gate_passed === false ? 'fail' : 'not_run',
-    perimeter_area_sqft: debug?.perimeter_phase0?.perimeter_area_sqft ?? debug?.perimeter_area_sqft ?? null,
-    perimeter_total_lf: debug?.perimeter_phase0?.total_perimeter_lf ?? debug?.perimeter_total_ft ?? null,
-    eave_lf: debug?.perimeter_phase0?.eave_length_lf ?? debug?.perimeter_eave_ft ?? null,
-    rake_lf: debug?.perimeter_phase0?.rake_length_lf ?? debug?.perimeter_rake_ft ?? null,
-    perimeter_vs_mask_iou: debug?.perimeter_phase0?.perimeter_vs_mask_iou ?? debug?.perimeter_phase0?.perimeter_overlap_score ?? null,
-    missed_roof_area_pct: debug?.perimeter_phase0?.missed_roof_area_pct ?? debug?.perimeter_phase0?.missed_target_roof_pct ?? null,
-    centroid_offset_px: debug?.perimeter_phase0?.perimeter_centroid_offset_px ?? null,
+    perimeter_status: debug?.perimeter_gate_passed === true
+      ? "pass"
+      : debug?.perimeter_gate_passed === false
+      ? "fail"
+      : "not_run",
+    perimeter_area_sqft: debug?.perimeter_phase0?.perimeter_area_sqft ??
+      debug?.perimeter_area_sqft ?? null,
+    perimeter_total_lf: debug?.perimeter_phase0?.total_perimeter_lf ??
+      debug?.perimeter_total_ft ?? null,
+    eave_lf: debug?.perimeter_phase0?.eave_length_lf ??
+      debug?.perimeter_eave_ft ?? null,
+    rake_lf: debug?.perimeter_phase0?.rake_length_lf ??
+      debug?.perimeter_rake_ft ?? null,
+    perimeter_vs_mask_iou: debug?.perimeter_phase0?.perimeter_vs_mask_iou ??
+      debug?.perimeter_phase0?.perimeter_overlap_score ?? null,
+    missed_roof_area_pct: debug?.perimeter_phase0?.missed_roof_area_pct ??
+      debug?.perimeter_phase0?.missed_target_roof_pct ?? null,
+    centroid_offset_px: debug?.perimeter_phase0?.perimeter_centroid_offset_px ??
+      null,
     perimeter_gate_passed: debug?.perimeter_gate_passed ?? null,
     eave_candidate_lf: debug?.perimeter_phase0?.eave_candidate_lf ?? null,
     rake_candidate_lf: debug?.perimeter_phase0?.rake_candidate_lf ?? null,
     unknown_perimeter_lf: debug?.perimeter_phase0?.unknown_perimeter_lf ?? null,
     eave_rake_confidence: debug?.perimeter_phase0?.eave_rake_confidence ?? null,
     archetype_debug: debug?.perimeter_phase0?.archetype_debug ?? null,
-    eave_rake_classification_debug: debug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
-    perimeter_edge_pitch_relation: debug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
+    eave_rake_classification_debug:
+      debug?.perimeter_phase0?.eave_rake_classification_debug ?? null,
+    perimeter_edge_pitch_relation:
+      debug?.perimeter_phase0?.perimeter_edge_pitch_relation ?? null,
     last_failure_reason: failureReason,
-    last_failure_stage: debug?.failure_stage || (failureReason.includes('footprint') ? 'footprint_validation' : failureReason.includes('dsm') ? 'dsm_ingestion' : failureReason.includes('topology') ? 'topology_validation' : 'solver'),
+    last_failure_stage: debug?.failure_stage ||
+      (failureReason.includes("footprint")
+        ? "footprint_validation"
+        : failureReason.includes("dsm")
+        ? "dsm_ingestion"
+        : failureReason.includes("topology")
+        ? "topology_validation"
+        : "solver"),
     dsm_contract_debug: {
-      footprint_source: debug?.footprint_source || 'unknown',
+      footprint_source: debug?.footprint_source || "unknown",
       footprint_valid: debug?.footprint_valid ?? false,
       footprint_area_sqft: Math.round(debug?.footprint_area_sqft || 0),
-      coordinate_space_solver: debug?.coordinate_space_solver || 'unknown',
+      coordinate_space_solver: debug?.coordinate_space_solver || "unknown",
       dsm_loaded: !!debug?.dsm_loaded,
       mask_loaded: !!debug?.mask_loaded,
-      raw_dsm_edge_count: Number(debug?.raw_edges || debug?.dsm_edges_detected || 0),
-      accepted_dsm_edge_count: Number(debug?.accepted_edges || debug?.dsm_edges_accepted || 0),
+      raw_dsm_edge_count: Number(
+        debug?.raw_edges || debug?.dsm_edges_detected || 0,
+      ),
+      accepted_dsm_edge_count: Number(
+        debug?.accepted_edges || debug?.dsm_edges_accepted || 0,
+      ),
       faces_attempted: Number(debug?.faces_attempted || 0),
       faces_validated: 0,
       solver_failed: true,
       solver_failure_reason: failureReason,
-      solver_validation_status: debug?.status || 'failed',
+      solver_validation_status: debug?.status || "failed",
       failure_classification: debug?.hard_fail_reason || failureReason,
       graph_nodes_attempted: Number(debug?.graph_nodes || 0),
       graph_segments_attempted: Number(debug?.graph_segments || 0),
@@ -10121,7 +14314,8 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
       face_clipping_diagnostics: debug?.face_clipping_diagnostics || [],
       edge_filter_over_aggressive: debug?.edge_filter_over_aggressive ?? false,
       edge_acceptance_ratio: debug?.edge_acceptance_ratio ?? null,
-      bbox_rescue_used_in_validation: debug?.bbox_rescue_used_in_validation ?? false,
+      bbox_rescue_used_in_validation: debug?.bbox_rescue_used_in_validation ??
+        false,
       face_rejection_table: debug?.face_rejection_table || [],
       failure_category: debug?.failure_category || null,
       dominant_rejection: debug?.dominant_rejection || null,
@@ -10135,87 +14329,142 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
   // every failed run and operators cannot tell whether registration passed.
   try {
     const rasterSize = debug?.raster_size || {
-      width: Number(input.actual_image_width || input.logical_image_width || 1280),
-      height: Number(input.actual_image_height || input.logical_image_height || 1280),
+      width: Number(
+        input.actual_image_width || input.logical_image_width || 1280,
+      ),
+      height: Number(
+        input.actual_image_height || input.logical_image_height || 1280,
+      ),
     };
     const mppFinite = Number.isFinite(mpp) && (mpp as number) > 0;
     const confirmedLatLngForFailure =
-      input?.confirmed_roof_center_lat != null && input?.confirmed_roof_center_lng != null
-        ? { lat: Number(input.confirmed_roof_center_lat), lng: Number(input.confirmed_roof_center_lng) }
+      input?.confirmed_roof_center_lat != null &&
+        input?.confirmed_roof_center_lng != null
+        ? {
+          lat: Number(input.confirmed_roof_center_lat),
+          lng: Number(input.confirmed_roof_center_lng),
+        }
         : { lat: coords.lat, lng: coords.lng };
     // Build the transform package on failure paths too so the persisted
     // registration block carries real evidence (or an explicit failure
     // reason list when inputs were insufficient).
-    const dsmTileBoundsForFailure = debug?.dsm_tile_bounds_lat_lng
-      || (debug?.dsm_bounds
+    const dsmTileBoundsForFailure = debug?.dsm_tile_bounds_lat_lng ||
+      (debug?.dsm_bounds
         ? {
-            sw: { lat: debug.dsm_bounds.minLat, lng: debug.dsm_bounds.minLng },
-            ne: { lat: debug.dsm_bounds.maxLat, lng: debug.dsm_bounds.maxLng },
-          }
+          sw: { lat: debug.dsm_bounds.minLat, lng: debug.dsm_bounds.minLng },
+          ne: { lat: debug.dsm_bounds.maxLat, lng: debug.dsm_bounds.maxLng },
+        }
         : null);
-    const dsmSizeForFailure = debug?.dsm_size_px
-      || debug?.dsm_coordinate_match?.dsm_bbox
-      || (debug?.dsm_width && debug?.dsm_height ? { width: debug.dsm_width, height: debug.dsm_height } : null);
+    const dsmSizeForFailure = debug?.dsm_size_px ||
+      debug?.dsm_coordinate_match?.dsm_bbox ||
+      (debug?.dsm_width && debug?.dsm_height
+        ? { width: debug.dsm_width, height: debug.dsm_height }
+        : null);
     const transformPkgFailure = buildRegistrationTransformPackage({
       confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
       static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
       zoom: Number.isFinite(Number(input.zoom)) ? Number(input.zoom) : 19,
-      size: { width: Number(input.logical_image_width || 640), height: Number(input.logical_image_height || 640) },
+      size: {
+        width: Number(input.logical_image_width || 640),
+        height: Number(input.logical_image_height || 640),
+      },
       scale: Number(input.raster_scale || 2),
       dsm_tile_bounds_lat_lng: dsmTileBoundsForFailure,
       dsm_size_px: dsmSizeForFailure,
       dsm_meters_per_pixel: mppFinite ? mpp : null,
     });
-    (failurePayload as any)._registration_preflight = input?._registration_preflight;
-    (failurePayload as any)._registration_transform_package = transformPkgFailure;
+    (failurePayload as any)._registration_preflight = input
+      ?._registration_preflight;
+    (failurePayload as any)._registration_transform_package =
+      transformPkgFailure;
     (failurePayload as any)._registration_transform_build_stage =
-      debug?.failure_stage === "source_registration" ? "source_preflight" : "candidate_final";
+      debug?.failure_stage === "source_registration"
+        ? "source_preflight"
+        : "candidate_final";
     (failurePayload as any)._registration_gate_input = {
-      evaluation_stage: debug?.failure_stage === "source_registration" ? "source_preflight" : "candidate_final",
+      evaluation_stage: debug?.failure_stage === "source_registration"
+        ? "source_preflight"
+        : "candidate_final",
       user_confirmed_roof_target: Boolean(input?.user_confirmed_roof_target),
       roof_target_admin_override: Boolean(input?.roof_target_admin_override),
-      original_geocode_lat_lng:
-        input?.original_geocode_lat != null && input?.original_geocode_lng != null
-          ? { lat: Number(input.original_geocode_lat), lng: Number(input.original_geocode_lng) }
-          : null,
+      original_geocode_lat_lng: input?.original_geocode_lat != null &&
+          input?.original_geocode_lng != null
+        ? {
+          lat: Number(input.original_geocode_lat),
+          lng: Number(input.original_geocode_lng),
+        }
+        : null,
       confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
-      confirmed_roof_center_px: transformPkgFailure.confirmed_roof_center_px ?? null,
-      confirmed_roof_center_dsm_px: transformPkgFailure.confirmed_roof_center_dsm_px ?? null,
+      confirmed_roof_center_px: transformPkgFailure.confirmed_roof_center_px ??
+        null,
+      confirmed_roof_center_dsm_px:
+        transformPkgFailure.confirmed_roof_center_dsm_px ?? null,
       geo_to_dsm_px_success: transformPkgFailure.geo_to_dsm_px_success === true,
-      dsm_pixel_transform_valid: transformPkgFailure.dsm_pixel_transform_valid === true,
-      dsm_to_raster_transform: transformPkgFailure.dsm_to_raster_transform ?? null,
-      geo_to_raster_transform: transformPkgFailure.geo_to_raster_transform ?? null,
+      dsm_pixel_transform_valid:
+        transformPkgFailure.dsm_pixel_transform_valid === true,
+      dsm_to_raster_transform: transformPkgFailure.dsm_to_raster_transform ??
+        null,
+      geo_to_raster_transform: transformPkgFailure.geo_to_raster_transform ??
+        null,
       geo_to_dsm_transform: transformPkgFailure.geo_to_dsm_transform ?? null,
       raster_bounds_lat_lng: transformPkgFailure.raster_bounds_lat_lng ?? null,
-      dsm_tile_bounds_lat_lng: transformPkgFailure.dsm_tile_bounds_lat_lng ?? dsmTileBoundsForFailure,
+      dsm_tile_bounds_lat_lng: transformPkgFailure.dsm_tile_bounds_lat_lng ??
+        dsmTileBoundsForFailure,
       raster_size_px: transformPkgFailure.raster_size_px ?? rasterSize,
       dsm_size_px: transformPkgFailure.dsm_size_px ?? dsmSizeForFailure,
       meters_per_pixel: mppFinite ? mpp : null,
       static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
-      selected_candidate_polygon_px: Array.isArray(debug?.footprint_px) ? debug.footprint_px : null,
+      selected_candidate_polygon_px: Array.isArray(debug?.footprint_px)
+        ? debug.footprint_px
+        : null,
     };
   } catch (e) {
-    console.warn("[REGISTRATION_GATE] insertFailedPreliminaryMeasurement: failed to build gate input", (e as Error)?.message);
+    console.warn(
+      "[REGISTRATION_GATE] insertFailedPreliminaryMeasurement: failed to build gate input",
+      (e as Error)?.message,
+    );
   }
 
-  const { data, error } = await insertRoofMeasurementWithSchemaGuard(failurePayload);
+  const { data, error } = await insertRoofMeasurementWithSchemaGuard(
+    failurePayload,
+  );
   if (error) throw error;
   return data.id as string;
 }
 
-function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0; }
-function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
-function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
-function round(v: number, d = 2) { const m = Math.pow(10, d); return Math.round(Number(v || 0) * m) / m; }
+function average(v: number[]) {
+  const c = v.filter((n) => Number.isFinite(n));
+  return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0;
+}
+function getScore(checks: any[], name: string) {
+  return checks.find((c) => c.name === name)?.score ?? 0;
+}
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+function round(v: number, d = 2) {
+  const m = Math.pow(10, d);
+  return Math.round(Number(v || 0) * m) / m;
+}
 async function hashSignature(value: unknown) {
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
-  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(value)),
+  );
+  return Array.from(new Uint8Array(bytes)).map((b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
 }
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
-  if (error && typeof error === "object" && "message" in error) return String((error as any).message);
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as any).message);
+  }
   return String(error);
 }
 function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }

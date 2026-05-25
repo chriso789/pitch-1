@@ -1,6 +1,6 @@
 /**
  * DSM Analyzer — Real GeoTIFF parsing via npm:geotiff
- * 
+ *
  * Reads actual float32 elevation values and boolean mask pixels.
  * Extracts real geo-bounds from GeoTIFF ModelTiepoint + ModelPixelScale tags.
  * No hardcoded 50m radius fallback — uses actual raster metadata.
@@ -13,34 +13,34 @@ type XY = [number, number]; // [lng, lat]
 // ============= TYPES =============
 
 export interface DSMGrid {
-  data: Float32Array;     // flat row-major elevation grid in meters
+  data: Float32Array; // flat row-major elevation grid in meters
   bounds: {
     minLng: number;
     maxLng: number;
     minLat: number;
     maxLat: number;
   };
-  resolution: number;     // meters per pixel (approximate)
+  resolution: number; // meters per pixel (approximate)
   width: number;
   height: number;
   noDataValue: number;
 }
 
 export interface RoofMask {
-  data: Uint8Array;       // flat row-major, 0 = not roof, >0 = roof
-  bounds: DSMGrid['bounds'];
+  data: Uint8Array; // flat row-major, 0 = not roof, >0 = roof
+  bounds: DSMGrid["bounds"];
   width: number;
   height: number;
 }
 
 export interface MaskedDSMGrid extends DSMGrid {
-  mask: Uint8Array;       // same dimensions as DSM, 1 = roof pixel
+  mask: Uint8Array; // same dimensions as DSM, 1 = roof pixel
 }
 
 export interface DSMRefinedEdge {
   start: XY;
   end: XY;
-  type: 'ridge' | 'hip' | 'valley';
+  type: "ridge" | "hip" | "valley";
   confidence: number;
   elevationStart?: number;
   elevationEnd?: number;
@@ -49,7 +49,10 @@ export interface DSMRefinedEdge {
 
 export interface DSMAnalysisResult {
   refinedEdges: DSMRefinedEdge[];
-  facetPitches: Map<string, { pitch: number; azimuth: number; confidence: number }>;
+  facetPitches: Map<
+    string,
+    { pitch: number; azimuth: number; confidence: number }
+  >;
   dsmAvailable: boolean;
   qualityScore: number;
 }
@@ -60,9 +63,14 @@ export interface DSMAnalysisResult {
  * Convert UTM coordinates to latitude/longitude (WGS84).
  * Uses iterative Karney method for accuracy.
  */
-function utmToLatLng(easting: number, northing: number, zone: number, isNorth: boolean): { lat: number; lng: number } {
+function utmToLatLng(
+  easting: number,
+  northing: number,
+  zone: number,
+  isNorth: boolean,
+): { lat: number; lng: number } {
   const k0 = 0.9996;
-  const a = 6378137.0;        // WGS84 semi-major axis
+  const a = 6378137.0; // WGS84 semi-major axis
   const f = 1 / 298.257223563;
   const e = Math.sqrt(2 * f - f * f);
   const e2 = e * e;
@@ -75,10 +83,10 @@ function utmToLatLng(easting: number, northing: number, zone: number, isNorth: b
   const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
 
   const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
-  const phi1 = mu
-    + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
-    + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
-    + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
+  const phi1 = mu +
+    (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu) +
+    (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu) +
+    (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
 
   const sinPhi = Math.sin(phi1);
   const cosPhi = Math.cos(phi1);
@@ -89,14 +97,16 @@ function utmToLatLng(easting: number, northing: number, zone: number, isNorth: b
   const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinPhi * sinPhi, 1.5);
   const D = x / (N1 * k0);
 
-  const lat = phi1
-    - (N1 * tanPhi / R1) * (D * D / 2
-    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D * D * D * D / 24
-    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D * D * D * D * D * D / 720);
+  const lat = phi1 -
+    (N1 * tanPhi / R1) * (D * D / 2 -
+        (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D * D * D * D / 24 +
+        (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D *
+          D * D * D * D * D / 720);
 
-  const lng = (D
-    - (1 + 2 * T1 + C1) * D * D * D / 6
-    + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D * D * D * D * D / 120) / cosPhi;
+  const lng = (D -
+    (1 + 2 * T1 + C1) * D * D * D / 6 +
+    (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D * D * D *
+      D * D / 120) / cosPhi;
 
   const lng0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
 
@@ -113,8 +123,16 @@ function utmToLatLng(easting: number, northing: number, zone: number, isNorth: b
  * Uses npm:geotiff for real raster I/O (float32 elevations, tiepoints, pixel scale).
  */
 async function parseRealGeoTIFF(
-  buffer: ArrayBuffer
-): Promise<{ data: Float32Array; width: number; height: number; bounds: DSMGrid['bounds']; noDataValue: number } | null> {
+  buffer: ArrayBuffer,
+): Promise<
+  {
+    data: Float32Array;
+    width: number;
+    height: number;
+    bounds: DSMGrid["bounds"];
+    noDataValue: number;
+  } | null
+> {
   try {
     const tiff = await fromArrayBuffer(buffer);
     const image = await tiff.getImage();
@@ -123,7 +141,11 @@ async function parseRealGeoTIFF(
 
     // Read raster data — returns TypedArray[]
     const rasters = await image.readRasters();
-    const rawData = rasters[0] as Float32Array | Float64Array | Int16Array | Uint8Array;
+    const rawData = rasters[0] as
+      | Float32Array
+      | Float64Array
+      | Int16Array
+      | Uint8Array;
 
     // Convert to Float32Array if needed
     let elevations: Float32Array;
@@ -142,11 +164,21 @@ async function parseRealGeoTIFF(
     const pixelScale = fileDir.ModelPixelScale;
     const modelTransformation = fileDir.ModelTransformation;
     const geoKeys = image.getGeoKeys();
-    console.log(`[DSM_ANALYZER] GeoKeys: ${JSON.stringify(geoKeys || {})}, hasTiepoints=${!!(tiepoint && tiepoint.length)}, hasPixelScale=${!!(pixelScale && pixelScale.length)}, hasModelTransformation=${!!(modelTransformation && modelTransformation.length)}`);
+    console.log(
+      `[DSM_ANALYZER] GeoKeys: ${
+        JSON.stringify(geoKeys || {})
+      }, hasTiepoints=${!!(tiepoint &&
+        tiepoint.length)}, hasPixelScale=${!!(pixelScale &&
+          pixelScale
+            .length)}, hasModelTransformation=${!!(modelTransformation &&
+          modelTransformation.length)}`,
+    );
 
-    let bounds: DSMGrid['bounds'];
+    let bounds: DSMGrid["bounds"] | null = null;
 
-    if (tiepoint && tiepoint.length > 0 && pixelScale && pixelScale.length >= 2) {
+    if (
+      tiepoint && tiepoint.length > 0 && pixelScale && pixelScale.length >= 2
+    ) {
       const tp = tiepoint[0];
       const scaleX = pixelScale[0];
       const scaleY = pixelScale[1];
@@ -156,7 +188,13 @@ async function parseRealGeoTIFF(
       let rawMaxY = tp.y + tp.j * scaleY;
       let rawMinY = tp.y - (height - tp.j) * scaleY;
 
-      bounds = resolveProjectedBounds(rawMinX, rawMinY, rawMaxX, rawMaxY, geoKeys);
+      bounds = resolveProjectedBounds(
+        rawMinX,
+        rawMinY,
+        rawMaxX,
+        rawMaxY,
+        geoKeys,
+      );
       if (!bounds) return null;
     } else if (modelTransformation && modelTransformation.length >= 16) {
       // ModelTransformation is a 4x4 affine matrix (row-major):
@@ -171,44 +209,75 @@ async function parseRealGeoTIFF(
 
       // Compute corners
       const corners = [
-        { x: tx, y: ty },                                                    // (0,0)
-        { x: sx * width + tx, y: shy * width + ty },                         // (W,0)
-        { x: shx * height + tx, y: sy * height + ty },                       // (0,H)
-        { x: sx * width + shx * height + tx, y: shy * width + sy * height + ty }, // (W,H)
+        { x: tx, y: ty }, // (0,0)
+        { x: sx * width + tx, y: shy * width + ty }, // (W,0)
+        { x: shx * height + tx, y: sy * height + ty }, // (0,H)
+        {
+          x: sx * width + shx * height + tx,
+          y: shy * width + sy * height + ty,
+        }, // (W,H)
       ];
 
-      const rawMinX = Math.min(...corners.map(c => c.x));
-      const rawMaxX = Math.max(...corners.map(c => c.x));
-      const rawMinY = Math.min(...corners.map(c => c.y));
-      const rawMaxY = Math.max(...corners.map(c => c.y));
+      const rawMinX = Math.min(...corners.map((c) => c.x));
+      const rawMaxX = Math.max(...corners.map((c) => c.x));
+      const rawMinY = Math.min(...corners.map((c) => c.y));
+      const rawMaxY = Math.max(...corners.map((c) => c.y));
 
-      console.log(`[DSM_ANALYZER] ModelTransformation bounds: [${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+      console.log(
+        `[DSM_ANALYZER] ModelTransformation bounds: [${rawMinX.toFixed(1)}, ${
+          rawMinY.toFixed(1)
+        }, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`,
+      );
 
-      bounds = resolveProjectedBounds(rawMinX, rawMinY, rawMaxX, rawMaxY, geoKeys);
+      bounds = resolveProjectedBounds(
+        rawMinX,
+        rawMinY,
+        rawMaxX,
+        rawMaxY,
+        geoKeys,
+      );
       if (!bounds) return null;
     } else {
       // Fallback: use library's getBoundingBox (handles ModelTransformation internally)
       const bbox = image.getBoundingBox();
       if (bbox && bbox.length === 4) {
-        console.log(`[DSM_ANALYZER] Using getBoundingBox fallback: [${bbox.map((v: number) => v.toFixed(2)).join(', ')}]`);
-        bounds = resolveProjectedBounds(bbox[0], bbox[1], bbox[2], bbox[3], geoKeys);
+        console.log(
+          `[DSM_ANALYZER] Using getBoundingBox fallback: [${
+            bbox.map((v: number) => v.toFixed(2)).join(", ")
+          }]`,
+        );
+        bounds = resolveProjectedBounds(
+          bbox[0],
+          bbox[1],
+          bbox[2],
+          bbox[3],
+          geoKeys,
+        );
         if (!bounds) return null;
       } else {
-        console.warn('[DSM_ANALYZER] No geo-referencing found in GeoTIFF');
+        console.warn("[DSM_ANALYZER] No geo-referencing found in GeoTIFF");
         return null;
       }
     }
+
+    if (!bounds) return null;
 
     // Get nodata value
     const noDataValue = fileDir.GDAL_NODATA
       ? parseFloat(fileDir.GDAL_NODATA)
       : -9999;
 
-    console.log(`[DSM_ANALYZER] Parsed GeoTIFF: ${width}x${height}, bounds=[${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+    console.log(
+      `[DSM_ANALYZER] Parsed GeoTIFF: ${width}x${height}, bounds=[${
+        bounds.minLng.toFixed(6)
+      }, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${
+        bounds.maxLat.toFixed(6)
+      }]`,
+    );
 
     return { data: elevations, width, height, bounds, noDataValue };
   } catch (err) {
-    console.error('[DSM_ANALYZER] GeoTIFF parse error:', err);
+    console.error("[DSM_ANALYZER] GeoTIFF parse error:", err);
     return null;
   }
 }
@@ -218,16 +287,28 @@ async function parseRealGeoTIFF(
  * Returns null if the CRS cannot be determined.
  */
 function resolveProjectedBounds(
-  rawMinX: number, rawMinY: number, rawMaxX: number, rawMaxY: number,
-  geoKeys: any
-): DSMGrid['bounds'] | null {
+  rawMinX: number,
+  rawMinY: number,
+  rawMaxX: number,
+  rawMaxY: number,
+  geoKeys: any,
+): DSMGrid["bounds"] | null {
   const isProjected = Math.abs(rawMinX) > 360 || Math.abs(rawMinY) > 360;
   if (!isProjected) {
-    return { minLng: rawMinX, maxLng: rawMaxX, minLat: rawMinY, maxLat: rawMaxY };
+    return {
+      minLng: rawMinX,
+      maxLng: rawMaxX,
+      minLat: rawMinY,
+      maxLat: rawMaxY,
+    };
   }
 
   const projCRS = geoKeys?.ProjectedCSTypeGeoKey || 0;
-  console.log(`[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${rawMinX.toFixed(1)}, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`);
+  console.log(
+    `[DSM_ANALYZER] Projected CRS detected (key=${projCRS}), bounds=[${
+      rawMinX.toFixed(1)
+    }, ${rawMinY.toFixed(1)}, ${rawMaxX.toFixed(1)}, ${rawMaxY.toFixed(1)}]`,
+  );
 
   let utmZone = 0;
   let isNorth = true;
@@ -244,14 +325,27 @@ function resolveProjectedBounds(
   }
 
   if (utmZone === 0) {
-    console.warn(`[DSM_ANALYZER] Cannot determine UTM zone for projected CRS ${projCRS}`);
+    console.warn(
+      `[DSM_ANALYZER] Cannot determine UTM zone for projected CRS ${projCRS}`,
+    );
     return null;
   }
 
   const sw = utmToLatLng(rawMinX, rawMinY, utmZone, isNorth);
   const ne = utmToLatLng(rawMaxX, rawMaxY, utmZone, isNorth);
-  const bounds = { minLng: sw.lng, minLat: sw.lat, maxLng: ne.lng, maxLat: ne.lat };
-  console.log(`[DSM_ANALYZER] Converted UTM zone ${utmZone}${isNorth ? 'N' : 'S'} → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${bounds.maxLng.toFixed(6)}, ${bounds.maxLat.toFixed(6)}]`);
+  const bounds = {
+    minLng: sw.lng,
+    minLat: sw.lat,
+    maxLng: ne.lng,
+    maxLat: ne.lat,
+  };
+  console.log(
+    `[DSM_ANALYZER] Converted UTM zone ${utmZone}${
+      isNorth ? "N" : "S"
+    } → lat/lng: [${bounds.minLng.toFixed(6)}, ${bounds.minLat.toFixed(6)}, ${
+      bounds.maxLng.toFixed(6)
+    }, ${bounds.maxLat.toFixed(6)}]`,
+  );
   return bounds;
 }
 
@@ -261,11 +355,15 @@ function resolveProjectedBounds(
 export interface DSMFetchDiagnostics {
   google_solar_building_insights_status?: number;
   google_solar_datalayers_status?: number;
+  google_solar_datalayers_fetch_duration_ms?: number;
+  google_solar_datalayers_timeout_ms?: number;
   dsm_url_present?: boolean;
   mask_url_present?: boolean;
   rgb_url_present?: boolean;
   imagery_quality?: string;
   dsm_fetch_status?: number;
+  dsm_fetch_duration_ms?: number;
+  dsm_fetch_timeout_ms?: number;
   dsm_fetch_content_type?: string;
   dsm_fetch_byte_length?: number;
   dsm_parse_success?: boolean;
@@ -277,6 +375,8 @@ export interface DSMFetchDiagnostics {
   dsm_max_elevation_m?: number;
   dsm_error_message?: string;
   mask_fetch_status?: number;
+  mask_fetch_duration_ms?: number;
+  mask_fetch_timeout_ms?: number;
   mask_parse_success?: boolean;
   mask_roof_pixel_count?: number;
   mask_width?: number;
@@ -287,27 +387,102 @@ export interface DSMFetchDiagnostics {
 let _lastDiagnostics: DSMFetchDiagnostics = {};
 
 /** Get diagnostics from the most recent DSM/mask fetch cycle */
-export function getLastDSMDiagnostics(): DSMFetchDiagnostics { return _lastDiagnostics; }
+export function getLastDSMDiagnostics(): DSMFetchDiagnostics {
+  return _lastDiagnostics;
+}
 
 /** Reset diagnostics before a new fetch cycle */
-export function resetDSMDiagnostics() { _lastDiagnostics = {}; }
+export function resetDSMDiagnostics() {
+  _lastDiagnostics = {};
+}
 
 // Cache dataLayers response per request to avoid double-fetch
-let _cachedDataLayers: { lat: number; lng: number; data: any; status: number } | null = null;
+let _cachedDataLayers:
+  | { lat: number; lng: number; data: any; status: number }
+  | null = null;
 
-async function fetchDataLayers(lat: number, lng: number, apiKey: string): Promise<{ data: any; status: number }> {
-  if (_cachedDataLayers && _cachedDataLayers.lat === lat && _cachedDataLayers.lng === lng) {
+type GoogleSolarFetchOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+const DEFAULT_GOOGLE_SOLAR_FETCH_TIMEOUT_MS = 20_000;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function fetchWithAbortTimeout(
+  url: string,
+  timeoutMs: number,
+  failureCode: string,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController();
+  const abortFromExternal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternal();
+  else {externalSignal?.addEventListener("abort", abortFromExternal, {
+      once: true,
+    });}
+
+  const timeoutId = setTimeout(() => {
+    controller.abort(
+      new DOMException(`${failureCode} after ${timeoutMs}ms`, "AbortError"),
+    );
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromExternal);
+  }
+}
+
+async function fetchDataLayers(
+  lat: number,
+  lng: number,
+  apiKey: string,
+  options: GoogleSolarFetchOptions = {},
+): Promise<{ data: any; status: number }> {
+  if (
+    _cachedDataLayers && _cachedDataLayers.lat === lat &&
+    _cachedDataLayers.lng === lng
+  ) {
     return { data: _cachedDataLayers.data, status: _cachedDataLayers.status };
   }
-  const url = `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}&location.longitude=${lng}&radiusMeters=50&view=FULL_LAYERS&key=${apiKey}`;
-  const response = await fetch(url);
+  const url =
+    `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}&location.longitude=${lng}&radiusMeters=50&view=FULL_LAYERS&key=${apiKey}`;
+  const startedAt = Date.now();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_GOOGLE_SOLAR_FETCH_TIMEOUT_MS;
+  _lastDiagnostics.google_solar_datalayers_timeout_ms = timeoutMs;
+  let response: Response;
+  try {
+    response = await fetchWithAbortTimeout(
+      url,
+      timeoutMs,
+      "google_solar_datalayers_timeout",
+      options.signal,
+    );
+  } catch (error) {
+    _lastDiagnostics.google_solar_datalayers_fetch_duration_ms = Date.now() -
+      startedAt;
+    _lastDiagnostics.failure_code = isAbortError(error)
+      ? "google_solar_datalayers_timeout"
+      : "google_solar_datalayers_exception";
+    throw error;
+  }
   const status = response.status;
+  _lastDiagnostics.google_solar_datalayers_fetch_duration_ms = Date.now() -
+    startedAt;
   let data: any = null;
   if (response.ok) {
     data = await response.json();
   } else {
     const errText = await response.text();
-    console.warn(`[DSM_ANALYZER] DataLayers ${status}: ${errText.substring(0, 300)}`);
+    console.warn(
+      `[DSM_ANALYZER] DataLayers ${status}: ${errText.substring(0, 300)}`,
+    );
   }
   _cachedDataLayers = { lat, lng, data, status };
   _lastDiagnostics.google_solar_datalayers_status = status;
@@ -323,13 +498,23 @@ async function fetchDataLayers(lat: number, lng: number, apiKey: string): Promis
 export async function fetchDSMFromGoogleSolar(
   lat: number,
   lng: number,
-  apiKey: string
+  apiKey: string,
+  options: GoogleSolarFetchOptions = {},
 ): Promise<DSMGrid | null> {
   resetDSMDiagnostics();
   try {
-    const { data: layersData, status } = await fetchDataLayers(lat, lng, apiKey);
+    const timeoutMs = options.timeoutMs ??
+      DEFAULT_GOOGLE_SOLAR_FETCH_TIMEOUT_MS;
+    const { data: layersData, status } = await fetchDataLayers(
+      lat,
+      lng,
+      apiKey,
+      options,
+    );
     if (!layersData) {
-      _lastDiagnostics.failure_code = status === 404 ? 'google_solar_no_datalayers' : `google_solar_http_${status}`;
+      _lastDiagnostics.failure_code = status === 404
+        ? "google_solar_no_datalayers"
+        : `google_solar_http_${status}`;
       _lastDiagnostics.dsm_error_message = `DataLayers returned ${status}`;
       return null;
     }
@@ -340,31 +525,46 @@ export async function fetchDSMFromGoogleSolar(
     _lastDiagnostics.imagery_quality = layersData.imageryQuality;
 
     if (!layersData.dsmUrl) {
-      _lastDiagnostics.failure_code = 'dsm_url_missing';
-      _lastDiagnostics.dsm_error_message = 'DataLayers response has no dsmUrl';
-      console.log('[DSM_ANALYZER] No DSM URL in Google Solar response');
+      _lastDiagnostics.failure_code = "dsm_url_missing";
+      _lastDiagnostics.dsm_error_message = "DataLayers response has no dsmUrl";
+      console.log("[DSM_ANALYZER] No DSM URL in Google Solar response");
       return null;
     }
 
-    console.log('[DSM_ANALYZER] Fetching DSM GeoTIFF...');
-    const dsmResponse = await fetch(`${layersData.dsmUrl}&key=${apiKey}`);
+    console.log("[DSM_ANALYZER] Fetching DSM GeoTIFF...");
+    const dsmFetchStartedAt = Date.now();
+    _lastDiagnostics.dsm_fetch_timeout_ms = timeoutMs;
+    const dsmResponse = await fetchWithAbortTimeout(
+      `${layersData.dsmUrl}&key=${apiKey}`,
+      timeoutMs,
+      "dsm_fetch_timeout",
+      options.signal,
+    );
+    _lastDiagnostics.dsm_fetch_duration_ms = Date.now() - dsmFetchStartedAt;
     _lastDiagnostics.dsm_fetch_status = dsmResponse.status;
-    _lastDiagnostics.dsm_fetch_content_type = dsmResponse.headers.get('content-type') || undefined;
+    _lastDiagnostics.dsm_fetch_content_type =
+      dsmResponse.headers.get("content-type") || undefined;
 
     if (!dsmResponse.ok) {
-      _lastDiagnostics.failure_code = 'dsm_fetch_failed';
-      _lastDiagnostics.dsm_error_message = `DSM GeoTIFF fetch returned ${dsmResponse.status}`;
+      _lastDiagnostics.failure_code = "dsm_fetch_failed";
+      _lastDiagnostics.dsm_error_message =
+        `DSM GeoTIFF fetch returned ${dsmResponse.status}`;
       const errBody = await dsmResponse.text();
-      console.warn(`[DSM_ANALYZER] Failed to fetch DSM GeoTIFF: ${dsmResponse.status} — ${errBody.substring(0, 200)}`);
+      console.warn(
+        `[DSM_ANALYZER] Failed to fetch DSM GeoTIFF: ${dsmResponse.status} — ${
+          errBody.substring(0, 200)
+        }`,
+      );
       return null;
     }
 
     // Validate content type — Google sometimes returns JSON errors with 200
-    const ct = dsmResponse.headers.get('content-type') || '';
-    if (ct.includes('application/json') || ct.includes('text/html')) {
+    const ct = dsmResponse.headers.get("content-type") || "";
+    if (ct.includes("application/json") || ct.includes("text/html")) {
       const body = await dsmResponse.text();
-      _lastDiagnostics.failure_code = 'dsm_fetch_wrong_content_type';
-      _lastDiagnostics.dsm_error_message = `Expected image/tiff but got ${ct}: ${body.substring(0, 200)}`;
+      _lastDiagnostics.failure_code = "dsm_fetch_wrong_content_type";
+      _lastDiagnostics.dsm_error_message =
+        `Expected image/tiff but got ${ct}: ${body.substring(0, 200)}`;
       console.warn(`[DSM_ANALYZER] DSM response is ${ct}, not GeoTIFF`);
       return null;
     }
@@ -373,16 +573,19 @@ export async function fetchDSMFromGoogleSolar(
     _lastDiagnostics.dsm_fetch_byte_length = arrayBuffer.byteLength;
 
     if (arrayBuffer.byteLength < 100) {
-      _lastDiagnostics.failure_code = 'dsm_fetch_too_small';
-      _lastDiagnostics.dsm_error_message = `GeoTIFF only ${arrayBuffer.byteLength} bytes`;
+      _lastDiagnostics.failure_code = "dsm_fetch_too_small";
+      _lastDiagnostics.dsm_error_message =
+        `GeoTIFF only ${arrayBuffer.byteLength} bytes`;
       return null;
     }
 
     const parsed = await parseRealGeoTIFF(arrayBuffer);
     if (!parsed) {
       _lastDiagnostics.dsm_parse_success = false;
-      _lastDiagnostics.failure_code = _lastDiagnostics.failure_code || 'dsm_parse_failed';
-      _lastDiagnostics.dsm_error_message = _lastDiagnostics.dsm_error_message || 'parseRealGeoTIFF returned null';
+      _lastDiagnostics.failure_code = _lastDiagnostics.failure_code ||
+        "dsm_parse_failed";
+      _lastDiagnostics.dsm_error_message = _lastDiagnostics.dsm_error_message ||
+        "parseRealGeoTIFF returned null";
       return null;
     }
 
@@ -395,19 +598,32 @@ export async function fetchDSMFromGoogleSolar(
     let minElev = Infinity, maxElev = -Infinity;
     for (let i = 0; i < parsed.data.length; i++) {
       const v = parsed.data[i];
-      if (v === parsed.noDataValue || isNaN(v)) { noDataCount++; }
-      else { if (v < minElev) minElev = v; if (v > maxElev) maxElev = v; }
+      if (v === parsed.noDataValue || isNaN(v)) noDataCount++;
+      else {
+        if (v < minElev) minElev = v;
+        if (v > maxElev) maxElev = v;
+      }
     }
     const noDataRatio = noDataCount / parsed.data.length;
     _lastDiagnostics.dsm_no_data_ratio = +noDataRatio.toFixed(4);
     _lastDiagnostics.dsm_valid_pixels = parsed.data.length - noDataCount;
-    _lastDiagnostics.dsm_min_elevation_m = Number.isFinite(minElev) ? +minElev.toFixed(2) : undefined;
-    _lastDiagnostics.dsm_max_elevation_m = Number.isFinite(maxElev) ? +maxElev.toFixed(2) : undefined;
+    _lastDiagnostics.dsm_min_elevation_m = Number.isFinite(minElev)
+      ? +minElev.toFixed(2)
+      : undefined;
+    _lastDiagnostics.dsm_max_elevation_m = Number.isFinite(maxElev)
+      ? +maxElev.toFixed(2)
+      : undefined;
 
     if (noDataRatio > 0.95) {
-      _lastDiagnostics.failure_code = 'dsm_empty_or_all_nodata';
-      _lastDiagnostics.dsm_error_message = `${(noDataRatio * 100).toFixed(1)}% no-data pixels`;
-      console.warn(`[DSM_ANALYZER] DSM is mostly no-data: ${(noDataRatio * 100).toFixed(1)}%`);
+      _lastDiagnostics.failure_code = "dsm_empty_or_all_nodata";
+      _lastDiagnostics.dsm_error_message = `${
+        (noDataRatio * 100).toFixed(1)
+      }% no-data pixels`;
+      console.warn(
+        `[DSM_ANALYZER] DSM is mostly no-data: ${
+          (noDataRatio * 100).toFixed(1)
+        }%`,
+      );
       return null;
     }
 
@@ -415,7 +631,11 @@ export async function fetchDSMFromGoogleSolar(
     const latSpan = parsed.bounds.maxLat - parsed.bounds.minLat;
     const resolution = (latSpan * 111320) / parsed.height;
 
-    console.log(`[DSM_ANALYZER] DSM loaded successfully: ${parsed.width}x${parsed.height}, ${_lastDiagnostics.dsm_valid_pixels} valid pixels, elev range [${minElev.toFixed(1)}, ${maxElev.toFixed(1)}]m`);
+    console.log(
+      `[DSM_ANALYZER] DSM loaded successfully: ${parsed.width}x${parsed.height}, ${_lastDiagnostics.dsm_valid_pixels} valid pixels, elev range [${
+        minElev.toFixed(1)
+      }, ${maxElev.toFixed(1)}]m`,
+    );
 
     return {
       data: parsed.data,
@@ -426,9 +646,10 @@ export async function fetchDSMFromGoogleSolar(
       noDataValue: parsed.noDataValue,
     };
   } catch (error) {
-    _lastDiagnostics.failure_code = 'dsm_fetch_exception';
+    _lastDiagnostics.failure_code = _lastDiagnostics.failure_code ||
+      (isAbortError(error) ? "dsm_fetch_timeout" : "dsm_fetch_exception");
     _lastDiagnostics.dsm_error_message = (error as Error).message;
-    console.warn('[DSM_ANALYZER] Error fetching DSM:', error);
+    console.warn("[DSM_ANALYZER] Error fetching DSM:", error);
     return null;
   }
 }
@@ -439,21 +660,46 @@ export async function fetchDSMFromGoogleSolar(
 export async function fetchRoofMaskFromGoogleSolar(
   lat: number,
   lng: number,
-  apiKey: string
+  apiKey: string,
+  options: GoogleSolarFetchOptions = {},
 ): Promise<RoofMask | null> {
   try {
-    const { data: layersData, status } = await fetchDataLayers(lat, lng, apiKey);
-    if (!layersData) return null;
-
-    if (!layersData.maskUrl) {
-      console.log('[DSM_ANALYZER] No mask URL in Google Solar response');
+    const timeoutMs = options.timeoutMs ??
+      DEFAULT_GOOGLE_SOLAR_FETCH_TIMEOUT_MS;
+    const { data: layersData, status } = await fetchDataLayers(
+      lat,
+      lng,
+      apiKey,
+      options,
+    );
+    if (!layersData) {
+      _lastDiagnostics.failure_code = status === 404
+        ? "google_solar_no_datalayers"
+        : `google_solar_http_${status}`;
       return null;
     }
 
-    console.log('[DSM_ANALYZER] Fetching roof mask GeoTIFF...');
-    const maskResponse = await fetch(`${layersData.maskUrl}&key=${apiKey}`);
+    if (!layersData.maskUrl) {
+      _lastDiagnostics.failure_code = "mask_url_missing";
+      console.log("[DSM_ANALYZER] No mask URL in Google Solar response");
+      return null;
+    }
+
+    console.log("[DSM_ANALYZER] Fetching roof mask GeoTIFF...");
+    const maskFetchStartedAt = Date.now();
+    _lastDiagnostics.mask_fetch_timeout_ms = timeoutMs;
+    const maskResponse = await fetchWithAbortTimeout(
+      `${layersData.maskUrl}&key=${apiKey}`,
+      timeoutMs,
+      "mask_fetch_timeout",
+      options.signal,
+    );
+    _lastDiagnostics.mask_fetch_duration_ms = Date.now() - maskFetchStartedAt;
     _lastDiagnostics.mask_fetch_status = maskResponse.status;
-    if (!maskResponse.ok) return null;
+    if (!maskResponse.ok) {
+      _lastDiagnostics.failure_code = "mask_fetch_failed";
+      return null;
+    }
 
     const buffer = await maskResponse.arrayBuffer();
     const parsed = await parseRealGeoTIFF(buffer);
@@ -479,7 +725,9 @@ export async function fetchRoofMaskFromGoogleSolar(
 
     _lastDiagnostics.mask_roof_pixel_count = roofPixels;
     const coverage = (roofPixels / parsed.data.length * 100).toFixed(1);
-    console.log(`[DSM_ANALYZER] Mask parsed: ${parsed.width}x${parsed.height}, ${roofPixels} roof pixels (${coverage}%)`);
+    console.log(
+      `[DSM_ANALYZER] Mask parsed: ${parsed.width}x${parsed.height}, ${roofPixels} roof pixels (${coverage}%)`,
+    );
 
     return {
       data: maskData,
@@ -488,7 +736,9 @@ export async function fetchRoofMaskFromGoogleSolar(
       height: parsed.height,
     };
   } catch (error) {
-    console.warn('[DSM_ANALYZER] Error fetching roof mask:', error);
+    _lastDiagnostics.failure_code = _lastDiagnostics.failure_code ||
+      (isAbortError(error) ? "mask_fetch_timeout" : "mask_fetch_exception");
+    console.warn("[DSM_ANALYZER] Error fetching roof mask:", error);
     return null;
   }
 }
@@ -496,19 +746,30 @@ export async function fetchRoofMaskFromGoogleSolar(
 /**
  * Apply mask to DSM — creates a MaskedDSMGrid where non-roof pixels are set to noData
  */
-export function applyMaskToDSM(dsmGrid: DSMGrid, mask: RoofMask): MaskedDSMGrid {
+export function applyMaskToDSM(
+  dsmGrid: DSMGrid,
+  mask: RoofMask,
+): MaskedDSMGrid {
   // Resample mask to DSM dimensions if they differ
   const alignedMask = new Uint8Array(dsmGrid.width * dsmGrid.height);
 
   for (let y = 0; y < dsmGrid.height; y++) {
     for (let x = 0; x < dsmGrid.width; x++) {
       // Map DSM pixel to geographic coordinate
-      const lng = dsmGrid.bounds.minLng + (x / dsmGrid.width) * (dsmGrid.bounds.maxLng - dsmGrid.bounds.minLng);
-      const lat = dsmGrid.bounds.maxLat - (y / dsmGrid.height) * (dsmGrid.bounds.maxLat - dsmGrid.bounds.minLat);
+      const lng = dsmGrid.bounds.minLng +
+        (x / dsmGrid.width) * (dsmGrid.bounds.maxLng - dsmGrid.bounds.minLng);
+      const lat = dsmGrid.bounds.maxLat -
+        (y / dsmGrid.height) * (dsmGrid.bounds.maxLat - dsmGrid.bounds.minLat);
 
       // Map geographic coordinate to mask pixel
-      const mx = Math.floor((lng - mask.bounds.minLng) / (mask.bounds.maxLng - mask.bounds.minLng) * mask.width);
-      const my = Math.floor((mask.bounds.maxLat - lat) / (mask.bounds.maxLat - mask.bounds.minLat) * mask.height);
+      const mx = Math.floor(
+        (lng - mask.bounds.minLng) / (mask.bounds.maxLng - mask.bounds.minLng) *
+          mask.width,
+      );
+      const my = Math.floor(
+        (mask.bounds.maxLat - lat) / (mask.bounds.maxLat - mask.bounds.minLat) *
+          mask.height,
+      );
 
       if (mx >= 0 && mx < mask.width && my >= 0 && my < mask.height) {
         alignedMask[y * dsmGrid.width + x] = mask.data[my * mask.width + mx];
@@ -528,7 +789,9 @@ export function applyMaskToDSM(dsmGrid: DSMGrid, mask: RoofMask): MaskedDSMGrid 
     }
   }
 
-  console.log(`[DSM_ANALYZER] Masked DSM: ${maskedCount}/${dsmGrid.data.length} pixels retained`);
+  console.log(
+    `[DSM_ANALYZER] Masked DSM: ${maskedCount}/${dsmGrid.data.length} pixels retained`,
+  );
 
   return {
     ...dsmGrid,
@@ -542,8 +805,12 @@ export function applyMaskToDSM(dsmGrid: DSMGrid, mask: RoofMask): MaskedDSMGrid 
 /** Get elevation at a geographic point, returns null if out of bounds or noData */
 export function getElevationAt(point: XY, grid: DSMGrid): number | null {
   const { bounds, width, height, data, noDataValue } = grid;
-  const x = Math.floor((point[0] - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width);
-  const y = Math.floor((bounds.maxLat - point[1]) / (bounds.maxLat - bounds.minLat) * height);
+  const x = Math.floor(
+    (point[0] - bounds.minLng) / (bounds.maxLng - bounds.minLng) * width,
+  );
+  const y = Math.floor(
+    (bounds.maxLat - point[1]) / (bounds.maxLat - bounds.minLat) * height,
+  );
   if (x < 0 || x >= width || y < 0 || y >= height) return null;
   const val = data[y * width + x];
   if (val === noDataValue || isNaN(val)) return null;
@@ -553,16 +820,24 @@ export function getElevationAt(point: XY, grid: DSMGrid): number | null {
 /** Convert pixel (x,y) to geographic [lng, lat] */
 export function pixelToGeo(x: number, y: number, grid: DSMGrid): XY {
   return [
-    grid.bounds.minLng + ((x + 0.5) / grid.width) * (grid.bounds.maxLng - grid.bounds.minLng),
-    grid.bounds.maxLat - ((y + 0.5) / grid.height) * (grid.bounds.maxLat - grid.bounds.minLat),
+    grid.bounds.minLng +
+    ((x + 0.5) / grid.width) * (grid.bounds.maxLng - grid.bounds.minLng),
+    grid.bounds.maxLat -
+    ((y + 0.5) / grid.height) * (grid.bounds.maxLat - grid.bounds.minLat),
   ];
 }
 
 /** Convert geographic [lng, lat] to pixel (x, y) */
 export function geoToPixel(point: XY, grid: DSMGrid): [number, number] {
   return [
-    Math.floor((point[0] - grid.bounds.minLng) / (grid.bounds.maxLng - grid.bounds.minLng) * grid.width),
-    Math.floor((grid.bounds.maxLat - point[1]) / (grid.bounds.maxLat - grid.bounds.minLat) * grid.height),
+    Math.floor(
+      (point[0] - grid.bounds.minLng) /
+        (grid.bounds.maxLng - grid.bounds.minLng) * grid.width,
+    ),
+    Math.floor(
+      (grid.bounds.maxLat - point[1]) /
+        (grid.bounds.maxLat - grid.bounds.minLat) * grid.height,
+    ),
   ];
 }
 
@@ -573,13 +848,19 @@ export function geoToPixel(point: XY, grid: DSMGrid): [number, number] {
  */
 export function analyzeDSM(
   dsmGrid: DSMGrid | null,
-  skeletonEdges: Array<{ start: XY; end: XY; type: 'ridge' | 'hip' | 'valley' }>,
+  skeletonEdges: Array<
+    { start: XY; end: XY; type: "ridge" | "hip" | "valley" }
+  >,
   footprint: XY[],
-  roofMask?: RoofMask | null
+  roofMask?: RoofMask | null,
 ): DSMAnalysisResult {
   if (!dsmGrid || !dsmGrid.data || dsmGrid.data.length === 0) {
     return {
-      refinedEdges: skeletonEdges.map(e => ({ ...e, confidence: 0.3, requiresReview: true })),
+      refinedEdges: skeletonEdges.map((e) => ({
+        ...e,
+        confidence: 0.3,
+        requiresReview: true,
+      })),
       facetPitches: new Map(),
       dsmAvailable: false,
       qualityScore: 0,
@@ -595,7 +876,9 @@ export function analyzeDSM(
     totalConfidence += refined.confidence;
   }
 
-  const qualityScore = skeletonEdges.length > 0 ? totalConfidence / skeletonEdges.length : 0;
+  const qualityScore = skeletonEdges.length > 0
+    ? totalConfidence / skeletonEdges.length
+    : 0;
 
   return {
     refinedEdges,
@@ -606,8 +889,8 @@ export function analyzeDSM(
 }
 
 function refineEdgeWithDSM(
-  edge: { start: XY; end: XY; type: 'ridge' | 'hip' | 'valley' },
-  grid: DSMGrid
+  edge: { start: XY; end: XY; type: "ridge" | "hip" | "valley" },
+  grid: DSMGrid,
 ): DSMRefinedEdge {
   const startElev = getElevationAt(edge.start, grid);
   const endElev = getElevationAt(edge.end, grid);
@@ -636,10 +919,10 @@ function refineEdgeWithDSM(
 
   let confidence = 0.5;
 
-  if (edge.type === 'ridge') {
+  if (edge.type === "ridge") {
     const ridgeScore = range > 0 ? (avg - min) / range : 0;
     confidence = Math.min(0.95, 0.4 + ridgeScore * 0.5);
-  } else if (edge.type === 'valley') {
+  } else if (edge.type === "valley") {
     const valleyScore = range > 0 ? (max - avg) / range : 0;
     confidence = Math.min(0.95, 0.4 + valleyScore * 0.5);
   } else {
@@ -657,13 +940,21 @@ function refineEdgeWithDSM(
 
 // Legacy exports for backward compat — now these are no-ops since the
 // new pipeline uses dsm-edge-detector.ts instead
-export function detectRidgeLinesFromDSM(_dsmGrid: DSMGrid): Array<{ start: XY; end: XY; confidence: number }> {
-  console.warn('[DSM_ANALYZER] detectRidgeLinesFromDSM is deprecated — use dsm-edge-detector.ts');
+export function detectRidgeLinesFromDSM(
+  _dsmGrid: DSMGrid,
+): Array<{ start: XY; end: XY; confidence: number }> {
+  console.warn(
+    "[DSM_ANALYZER] detectRidgeLinesFromDSM is deprecated — use dsm-edge-detector.ts",
+  );
   return [];
 }
 
-export function detectValleyLinesFromDSM(_dsmGrid: DSMGrid): Array<{ start: XY; end: XY; confidence: number }> {
-  console.warn('[DSM_ANALYZER] detectValleyLinesFromDSM is deprecated — use dsm-edge-detector.ts');
+export function detectValleyLinesFromDSM(
+  _dsmGrid: DSMGrid,
+): Array<{ start: XY; end: XY; confidence: number }> {
+  console.warn(
+    "[DSM_ANALYZER] detectValleyLinesFromDSM is deprecated — use dsm-edge-detector.ts",
+  );
   return [];
 }
 
@@ -675,7 +966,9 @@ export function computeMaskIoU(
   facetPolygonsGeo: Array<Array<{ lat: number; lng: number }>>,
   roofMask: RoofMask,
 ): number {
-  if (!roofMask || !roofMask.data || roofMask.width === 0 || roofMask.height === 0) return 0;
+  if (
+    !roofMask || !roofMask.data || roofMask.width === 0 || roofMask.height === 0
+  ) return 0;
   if (facetPolygonsGeo.length === 0) return 0;
 
   const w = roofMask.width;
@@ -683,7 +976,7 @@ export function computeMaskIoU(
   const geomRaster = new Uint8Array(w * h);
 
   for (const polygon of facetPolygonsGeo) {
-    const pxPoly = polygon.map(p => {
+    const pxPoly = polygon.map((p) => {
       const px = geoToPixel([p.lng, p.lat], roofMask as unknown as DSMGrid);
       return { x: px[0], y: px[1] };
     });
@@ -700,11 +993,20 @@ export function computeMaskIoU(
   }
 
   const iou = union > 0 ? intersection / union : 0;
-  console.log(`[DSM_ANALYZER] Mask IoU: ${iou.toFixed(3)} (intersection=${intersection}, union=${union})`);
+  console.log(
+    `[DSM_ANALYZER] Mask IoU: ${
+      iou.toFixed(3)
+    } (intersection=${intersection}, union=${union})`,
+  );
   return Number(iou.toFixed(3));
 }
 
-function rasterizePolygonToGrid(poly: Array<{ x: number; y: number }>, grid: Uint8Array, w: number, h: number): void {
+function rasterizePolygonToGrid(
+  poly: Array<{ x: number; y: number }>,
+  grid: Uint8Array,
+  w: number,
+  h: number,
+): void {
   if (poly.length < 3) return;
   let minY = h, maxY = 0;
   for (const p of poly) {
@@ -749,11 +1051,15 @@ function rasterizePolygonToGrid(poly: Array<{ x: number; y: number }>, grid: Uin
  */
 function labelConnectedComponents(grid: Uint8Array, w: number, h: number): {
   labels: Int32Array;
-  components: Array<{ id: number; size: number; centroidX: number; centroidY: number }>;
+  components: Array<
+    { id: number; size: number; centroidX: number; centroidY: number }
+  >;
 } {
   const labels = new Int32Array(w * h);
   let nextLabel = 1;
-  const components: Array<{ id: number; size: number; sumX: number; sumY: number }> = [];
+  const components: Array<
+    { id: number; size: number; sumX: number; sumY: number }
+  > = [];
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -770,7 +1076,7 @@ function labelConnectedComponents(grid: Uint8Array, w: number, h: number): {
         size++;
         sumX += cx;
         sumY += cy;
-        for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
           const nx = cx + dx, ny = cy + dy;
           if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
           const ni = ny * w + nx;
@@ -786,7 +1092,7 @@ function labelConnectedComponents(grid: Uint8Array, w: number, h: number): {
 
   return {
     labels,
-    components: components.map(c => ({
+    components: components.map((c) => ({
       id: c.id,
       size: c.size,
       centroidX: c.sumX / c.size,
@@ -811,9 +1117,15 @@ function labelConnectedComponents(grid: Uint8Array, w: number, h: number): {
  */
 
 let _lastContourDiagnostics: any = null;
-export function getLastContourDiagnostics(): any { return _lastContourDiagnostics; }
+export function getLastContourDiagnostics(): any {
+  return _lastContourDiagnostics;
+}
 
-export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeLng?: number): XY[] {
+export function extractMaskContour(
+  mask: RoofMask,
+  geocodeLat?: number,
+  geocodeLng?: number,
+): XY[] {
   const { data, width, height, bounds } = mask;
   _lastContourDiagnostics = null;
   if (!data || width < 4 || height < 4) return [];
@@ -847,34 +1159,42 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   let targetCx = sw / 2;
   let targetCy = sh / 2;
   if (geocodeLat != null && geocodeLng != null) {
-    targetCx = ((geocodeLng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * sw;
-    targetCy = ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) * sh;
+    targetCx =
+      ((geocodeLng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * sw;
+    targetCy =
+      ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) * sh;
   }
 
-  const maxSize = Math.max(...components.map(c => c.size));
+  const maxSize = Math.max(...components.map((c) => c.size));
   const minSize = Math.max(4, maxSize * 0.10);
-  const viable = components.filter(c => c.size >= minSize);
+  const viable = components.filter((c) => c.size >= minSize);
 
   // Primary component = nearest to geocode
   let bestComp = viable[0];
   let bestDist = Infinity;
   for (const c of viable) {
     const dist = Math.hypot(c.centroidX - targetCx, c.centroidY - targetCy);
-    if (dist < bestDist) { bestDist = dist; bestComp = c; }
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestComp = c;
+    }
   }
 
   // Only merge fragments close to the primary — excludes neighboring buildings
   const primaryRadius = Math.sqrt(bestComp.size / Math.PI);
   const mergeDistThreshold = Math.min(60, Math.max(20, primaryRadius * 2.5));
-  const toMerge = viable.filter(c => {
+  const toMerge = viable.filter((c) => {
     if (c.id === bestComp.id) return true;
-    const dist = Math.hypot(c.centroidX - bestComp.centroidX, c.centroidY - bestComp.centroidY);
+    const dist = Math.hypot(
+      c.centroidX - bestComp.centroidX,
+      c.centroidY - bestComp.centroidY,
+    );
     return dist <= mergeDistThreshold;
   });
 
   // ── 5. Merge nearby components into a single mask ──
   const compMask = new Uint8Array(sw * sh);
-  const mergeIds = new Set(toMerge.map(c => c.id));
+  const mergeIds = new Set(toMerge.map((c) => c.id));
   let mergedPixelCount = 0;
   for (let i = 0; i < sw * sh; i++) {
     if (mergeIds.has(labels[i])) {
@@ -885,7 +1205,7 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
 
   // ── 5b. Compute convex hull of merged components for clean building footprint ──
   // Collect all pixels from viable components
-  const allPoints: Array<{x: number, y: number}> = [];
+  const allPoints: Array<{ x: number; y: number }> = [];
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
       if (compMask[y * sw + x] > 0) {
@@ -911,7 +1231,11 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
   const filled = fillHoles(hullMask, sw, sh);
   const filledPixelCount = filled.reduce((s, v) => s + v, 0);
 
-  console.log(`[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable, ${toMerge.length} within merge threshold (${mergeDistThreshold.toFixed(1)}px of primary). Merged ${toMerge.length} (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`);
+  console.log(
+    `[MASK_CONTOUR] Components: ${components.length} total, ${viable.length} viable, ${toMerge.length} within merge threshold (${
+      mergeDistThreshold.toFixed(1)
+    }px of primary). Merged ${toMerge.length} (${mergedPixelCount}px²) → convex hull → filled: ${filledPixelCount}px²`,
+  );
 
   // ── 6. Trace outer boundary using Moore neighborhood ──
   const contourPx = traceOuterBoundary(filled, sw, sh);
@@ -971,12 +1295,20 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
     contour_valid: maskMissedPct < 0.15, // Relaxed threshold since convex hull may include some non-roof area
   };
 
-  console.log(`[MASK_CONTOUR] Validation: covered=${(maskCoveredPct*100).toFixed(1)}%, missed=${(maskMissedPct*100).toFixed(1)}%, area_ratio=${areaRatio.toFixed(3)}, vertices=${simplified.length}`);
+  console.log(
+    `[MASK_CONTOUR] Validation: covered=${
+      (maskCoveredPct * 100).toFixed(1)
+    }%, missed=${(maskMissedPct * 100).toFixed(1)}%, area_ratio=${
+      areaRatio.toFixed(3)
+    }, vertices=${simplified.length}`,
+  );
 
   // ── 9. Convert to geo coordinates ──
-  const geoContour: XY[] = simplified.map(p => {
-    const lng = bounds.minLng + ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
-    const lat = bounds.maxLat - ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+  const geoContour: XY[] = simplified.map((p) => {
+    const lng = bounds.minLng +
+      ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+    const lat = bounds.maxLat -
+      ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
     return [lng, lat] as XY;
   });
 
@@ -984,14 +1316,18 @@ export function extractMaskContour(mask: RoofMask, geocodeLat?: number, geocodeL
 }
 
 // ── Convex Hull using Graham scan ──
-function convexHull(points: Array<{x: number; y: number}>): Array<{x: number; y: number}> {
+function convexHull(
+  points: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
   if (points.length < 3) return points.slice();
 
   // Find the point with lowest y (and leftmost if tie)
   let start = 0;
   for (let i = 1; i < points.length; i++) {
-    if (points[i].y < points[start].y ||
-        (points[i].y === points[start].y && points[i].x < points[start].x)) {
+    if (
+      points[i].y < points[start].y ||
+      (points[i].y === points[start].y && points[i].x < points[start].x)
+    ) {
       start = i;
     }
   }
@@ -1000,22 +1336,28 @@ function convexHull(points: Array<{x: number; y: number}>): Array<{x: number; y:
   // Sort by polar angle with respect to pivot
   const sorted = points
     .filter((_, i) => i !== start)
-    .map(p => ({
+    .map((p) => ({
       p,
       angle: Math.atan2(p.y - pivot.y, p.x - pivot.x),
       dist: (p.x - pivot.x) ** 2 + (p.y - pivot.y) ** 2,
     }))
     .sort((a, b) => a.angle - b.angle || a.dist - b.dist)
-    .map(o => o.p);
+    .map((o) => o.p);
 
   // Cross product to determine turn direction
-  const cross = (o: {x: number; y: number}, a: {x: number; y: number}, b: {x: number; y: number}) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const cross = (
+    o: { x: number; y: number },
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
   // Build hull
-  const hull: Array<{x: number; y: number}> = [pivot];
+  const hull: Array<{ x: number; y: number }> = [pivot];
   for (const p of sorted) {
-    while (hull.length > 1 && cross(hull[hull.length - 2], hull[hull.length - 1], p) <= 0) {
+    while (
+      hull.length > 1 &&
+      cross(hull[hull.length - 2], hull[hull.length - 1], p) <= 0
+    ) {
       hull.pop();
     }
     hull.push(p);
@@ -1025,11 +1367,21 @@ function convexHull(points: Array<{x: number; y: number}>): Array<{x: number; y:
 }
 
 // ── Morphological close: dilate then erode ──
-function morphClose(grid: Uint8Array, w: number, h: number, radius: number): Uint8Array {
+function morphClose(
+  grid: Uint8Array,
+  w: number,
+  h: number,
+  radius: number,
+): Uint8Array {
   return morphErode(morphDilate(grid, w, h, radius), w, h, radius);
 }
 
-function morphDilate(grid: Uint8Array, w: number, h: number, r: number): Uint8Array {
+function morphDilate(
+  grid: Uint8Array,
+  w: number,
+  h: number,
+  r: number,
+): Uint8Array {
   const out = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -1048,7 +1400,12 @@ function morphDilate(grid: Uint8Array, w: number, h: number, r: number): Uint8Ar
   return out;
 }
 
-function morphErode(grid: Uint8Array, w: number, h: number, r: number): Uint8Array {
+function morphErode(
+  grid: Uint8Array,
+  w: number,
+  h: number,
+  r: number,
+): Uint8Array {
   const out = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -1056,7 +1413,9 @@ function morphErode(grid: Uint8Array, w: number, h: number, r: number): Uint8Arr
       for (let dy = -r; dy <= r && allSet; dy++) {
         for (let dx = -r; dx <= r && allSet; dx++) {
           const nx = x + dx, ny = y + dy;
-          if (nx < 0 || nx >= w || ny < 0 || ny >= h || grid[ny * w + nx] === 0) {
+          if (
+            nx < 0 || nx >= w || ny < 0 || ny >= h || grid[ny * w + nx] === 0
+          ) {
             allSet = false;
           }
         }
@@ -1073,25 +1432,40 @@ function fillHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
   const queue: number[] = [];
   // Seed from all border pixels that are background
   for (let x = 0; x < w; x++) {
-    if (mask[x] === 0 && !visited[x]) { visited[x] = 1; queue.push(x); }
+    if (mask[x] === 0 && !visited[x]) {
+      visited[x] = 1;
+      queue.push(x);
+    }
     const bi = (h - 1) * w + x;
-    if (mask[bi] === 0 && !visited[bi]) { visited[bi] = 1; queue.push(bi); }
+    if (mask[bi] === 0 && !visited[bi]) {
+      visited[bi] = 1;
+      queue.push(bi);
+    }
   }
   for (let y = 0; y < h; y++) {
     const li = y * w;
-    if (mask[li] === 0 && !visited[li]) { visited[li] = 1; queue.push(li); }
+    if (mask[li] === 0 && !visited[li]) {
+      visited[li] = 1;
+      queue.push(li);
+    }
     const ri = y * w + w - 1;
-    if (mask[ri] === 0 && !visited[ri]) { visited[ri] = 1; queue.push(ri); }
+    if (mask[ri] === 0 && !visited[ri]) {
+      visited[ri] = 1;
+      queue.push(ri);
+    }
   }
   // BFS flood background
   while (queue.length > 0) {
     const ci = queue.pop()!;
     const cx = ci % w, cy = (ci - cx) / w;
-    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]] as const) {
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
       const nx = cx + dx, ny = cy + dy;
       if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
       const ni = ny * w + nx;
-      if (mask[ni] === 0 && !visited[ni]) { visited[ni] = 1; queue.push(ni); }
+      if (mask[ni] === 0 && !visited[ni]) {
+        visited[ni] = 1;
+        queue.push(ni);
+      }
     }
   }
   // Result: anything that's mask OR interior hole = 1
@@ -1104,13 +1478,18 @@ function fillHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
 
 // ── Moore neighborhood boundary tracing ──
 // Returns ordered outer boundary pixels for a binary mask.
-function traceOuterBoundary(mask: Uint8Array, w: number, h: number): Array<{x: number; y: number}> {
+function traceOuterBoundary(
+  mask: Uint8Array,
+  w: number,
+  h: number,
+): Array<{ x: number; y: number }> {
   // Find topmost-leftmost foreground pixel as start
   let startX = -1, startY = -1;
   outer: for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (mask[y * w + x] > 0) {
-        startX = x; startY = y;
+        startX = x;
+        startY = y;
         break outer;
       }
     }
@@ -1124,7 +1503,7 @@ function traceOuterBoundary(mask: Uint8Array, w: number, h: number): Array<{x: n
   const dx = [1, 1, 0, -1, -1, -1, 0, 1];
   const dy = [0, 1, 1, 1, 0, -1, -1, -1];
 
-  const boundary: Array<{x: number; y: number}> = [];
+  const boundary: Array<{ x: number; y: number }> = [];
   let cx = startX, cy = startY;
   let dir = 7; // Start looking from top-left (entering from left)
   const maxIter = w * h * 4; // Safety limit
@@ -1141,7 +1520,8 @@ function traceOuterBoundary(mask: Uint8Array, w: number, h: number): Array<{x: n
       const nx = cx + dx[sd];
       const ny = cy + dy[sd];
       if (nx >= 0 && nx < w && ny >= 0 && ny < h && mask[ny * w + nx] > 0) {
-        cx = nx; cy = ny;
+        cx = nx;
+        cy = ny;
         dir = sd;
         found = true;
         break;
@@ -1153,9 +1533,12 @@ function traceOuterBoundary(mask: Uint8Array, w: number, h: number): Array<{x: n
   }
 
   // Remove duplicates that might occur at corners
-  const unique: Array<{x: number; y: number}> = [];
+  const unique: Array<{ x: number; y: number }> = [];
   for (const p of boundary) {
-    if (unique.length === 0 || unique[unique.length - 1].x !== p.x || unique[unique.length - 1].y !== p.y) {
+    if (
+      unique.length === 0 || unique[unique.length - 1].x !== p.x ||
+      unique[unique.length - 1].y !== p.y
+    ) {
       unique.push(p);
     }
   }
@@ -1164,7 +1547,10 @@ function traceOuterBoundary(mask: Uint8Array, w: number, h: number): Array<{x: n
 }
 
 // ── Ramer-Douglas-Peucker line simplification ──
-function rdpSimplify(pts: Array<{x: number; y: number}>, epsilon: number): Array<{x: number; y: number}> {
+function rdpSimplify(
+  pts: Array<{ x: number; y: number }>,
+  epsilon: number,
+): Array<{ x: number; y: number }> {
   if (pts.length <= 3) return pts;
 
   // For closed polygons, find the point farthest from first
@@ -1172,7 +1558,10 @@ function rdpSimplify(pts: Array<{x: number; y: number}>, epsilon: number): Array
   const first = pts[0], last = pts[pts.length - 1];
   for (let i = 1; i < pts.length - 1; i++) {
     const d = perpendicularDist(pts[i], first, last);
-    if (d > maxDist) { maxDist = d; splitIdx = i; }
+    if (d > maxDist) {
+      maxDist = d;
+      splitIdx = i;
+    }
   }
 
   if (maxDist > epsilon) {
@@ -1183,7 +1572,11 @@ function rdpSimplify(pts: Array<{x: number; y: number}>, epsilon: number): Array
   return [first, last];
 }
 
-function perpendicularDist(p: {x: number; y: number}, a: {x: number; y: number}, b: {x: number; y: number}): number {
+function perpendicularDist(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
   const dx = b.x - a.x, dy = b.y - a.y;
   const lenSq = dx * dx + dy * dy;
   if (lenSq === 0) return Math.hypot(p.x - a.x, p.y - a.y);
@@ -1191,19 +1584,25 @@ function perpendicularDist(p: {x: number; y: number}, a: {x: number; y: number},
 }
 
 // ── Point-in-polygon (scanline) for contour validation ──
-function pointInPolygonScan(pt: {x: number; y: number}, poly: Array<{x: number; y: number}>): boolean {
+function pointInPolygonScan(
+  pt: { x: number; y: number },
+  poly: Array<{ x: number; y: number }>,
+): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const xi = poly[i].x, yi = poly[i].y;
     const xj = poly[j].x, yj = poly[j].y;
-    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) {
+    if (
+      ((yi > pt.y) !== (yj > pt.y)) &&
+      (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)
+    ) {
       inside = !inside;
     }
   }
   return inside;
 }
 
-export type { };
+export type {};
 
 // ═══════════════════════════════════════════════════════════════════
 // Target-Centered Perimeter Candidate Selection v1
@@ -1217,10 +1616,10 @@ export interface MaskContourComponent {
   component_id: number;
   component_index: number; // ordinal rank by size desc
   size_px: number;
-  centroid_grid: { x: number; y: number };       // in downsampled grid coords
-  centroid_geo: [number, number];                // [lng, lat]
+  centroid_grid: { x: number; y: number }; // in downsampled grid coords
+  centroid_geo: [number, number]; // [lng, lat]
   bbox_geo: { minLng: number; minLat: number; maxLng: number; maxLat: number };
-  polygon_geo: XY[];                             // closed ring [lng,lat]
+  polygon_geo: XY[]; // closed ring [lng,lat]
   is_largest: boolean;
   contains_geocode: boolean;
 }
@@ -1258,9 +1657,9 @@ export function extractMaskContourComponents(
   if (components.length === 0) return [];
 
   // 4. Filter to viable (>=10% of largest, min 4 px)
-  const maxSize = Math.max(...components.map(c => c.size));
+  const maxSize = Math.max(...components.map((c) => c.size));
   const minSize = Math.max(4, maxSize * 0.10);
-  const viable = components.filter(c => c.size >= minSize);
+  const viable = components.filter((c) => c.size >= minSize);
   if (viable.length === 0) return [];
 
   // 5. For each viable component: extract own outer contour (no convex hull —
@@ -1268,8 +1667,10 @@ export function extractMaskContourComponents(
   let geoTx: number | undefined;
   let geoTy: number | undefined;
   if (geocodeLat != null && geocodeLng != null) {
-    geoTx = ((geocodeLng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * sw;
-    geoTy = ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) * sh;
+    geoTx = ((geocodeLng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) *
+      sw;
+    geoTy = ((bounds.maxLat - geocodeLat) / (bounds.maxLat - bounds.minLat)) *
+      sh;
   }
 
   const sortedBySize = [...viable].sort((a, b) => b.size - a.size);
@@ -1283,8 +1684,10 @@ export function extractMaskContourComponents(
       if (labels[i] === comp.id) {
         compMask[i] = 1;
         const cx = i % sw, cy = (i - cx) / sw;
-        if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
-        if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
       }
     }
     const filled = fillHoles(compMask, sw, sh);
@@ -1295,9 +1698,11 @@ export function extractMaskContourComponents(
     if (simplified.length < 3) continue;
 
     // Convert pixels → geo
-    const polygon_geo: XY[] = simplified.map(p => {
-      const lng = bounds.minLng + ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
-      const lat = bounds.maxLat - ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
+    const polygon_geo: XY[] = simplified.map((p) => {
+      const lng = bounds.minLng +
+        ((p.x / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng);
+      const lat = bounds.maxLat -
+        ((p.y / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat);
       return [lng, lat] as XY;
     });
     // Close the ring
@@ -1307,8 +1712,12 @@ export function extractMaskContourComponents(
     }
 
     const centroid_geo: [number, number] = [
-      bounds.minLng + ((comp.centroidX / scale + 0.5) / width) * (bounds.maxLng - bounds.minLng),
-      bounds.maxLat - ((comp.centroidY / scale + 0.5) / height) * (bounds.maxLat - bounds.minLat),
+      bounds.minLng +
+      ((comp.centroidX / scale + 0.5) / width) *
+        (bounds.maxLng - bounds.minLng),
+      bounds.maxLat -
+      ((comp.centroidY / scale + 0.5) / height) *
+        (bounds.maxLat - bounds.minLat),
     ];
 
     let contains_geocode = false;
@@ -1323,10 +1732,14 @@ export function extractMaskContourComponents(
       centroid_grid: { x: comp.centroidX, y: comp.centroidY },
       centroid_geo,
       bbox_geo: {
-        minLng: bounds.minLng + (minX / scale / width) * (bounds.maxLng - bounds.minLng),
-        maxLng: bounds.minLng + ((maxX + 1) / scale / width) * (bounds.maxLng - bounds.minLng),
-        minLat: bounds.maxLat - ((maxY + 1) / scale / height) * (bounds.maxLat - bounds.minLat),
-        maxLat: bounds.maxLat - (minY / scale / height) * (bounds.maxLat - bounds.minLat),
+        minLng: bounds.minLng +
+          (minX / scale / width) * (bounds.maxLng - bounds.minLng),
+        maxLng: bounds.minLng +
+          ((maxX + 1) / scale / width) * (bounds.maxLng - bounds.minLng),
+        minLat: bounds.maxLat -
+          ((maxY + 1) / scale / height) * (bounds.maxLat - bounds.minLat),
+        maxLat: bounds.maxLat -
+          (minY / scale / height) * (bounds.maxLat - bounds.minLat),
       },
       polygon_geo,
       is_largest: rank === 0,
@@ -1334,7 +1747,8 @@ export function extractMaskContourComponents(
     });
   }
 
-  console.log(`[MASK_CONTOUR_COMPONENTS] Extracted ${out.length} per-component contours (of ${components.length} total, ${viable.length} viable)`);
+  console.log(
+    `[MASK_CONTOUR_COMPONENTS] Extracted ${out.length} per-component contours (of ${components.length} total, ${viable.length} viable)`,
+  );
   return out;
 }
-
