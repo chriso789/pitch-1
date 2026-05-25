@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { evaluateAerialPrimacy } from "../aerial-primary-gate.ts";
+import { evaluateAerialPrimacy } from "../../_shared/aerial-primary-gate.ts";
 
 const ring = (n = 6) =>
   Array.from({ length: n }, (_, i) => [i, i] as [number, number]);
