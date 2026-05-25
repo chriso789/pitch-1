@@ -225,6 +225,18 @@ const AI_MEASUREMENT_STALE_RUNNING_MS = 120_000;
 const AI_RUNTIME_UNHANDLED_FAILURE_REASON =
   "ai_measurement_runtime_killed_or_unhandled";
 const AI_RUNTIME_TIMEOUT_FAILURE_REASON = "ai_measurement_runtime_timeout";
+const AI_MEASUREMENT_CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
+const AI_MEASUREMENT_CPU_TIMEOUT_STAGE =
+  "phase3_5_topology_cpu_budget_exceeded";
+const AI_MEASUREMENT_CPU_BUDGET_MS = Number(
+  Deno.env.get("AI_MEASUREMENT_CPU_BUDGET_MS") || 75_000,
+);
+const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = Number(
+  Deno.env.get("AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS") || 15_000,
+);
+const AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT = Number(
+  Deno.env.get("AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT") || 950_000,
+);
 const AI_TERMINAL_STATUSES = new Set([
   "completed",
   "failed",
@@ -2411,6 +2423,7 @@ Deno.serve(async (req) => {
 
 async function processJob(input: any) {
   try {
+    input._runtime_started_at_ms = input._runtime_started_at_ms ?? Date.now();
     await setMeasurementJobStatus(
       input.measurement_job_id,
       "processing",
@@ -5432,6 +5445,17 @@ async function processJob(input: any) {
       };
     })();
 
+    await setMeasurementJobStatus(
+      input.measurement_job_id,
+      "processing",
+      "Isolating target roof mask",
+    );
+    await setAiJobStatus(
+      input.ai_measurement_job_id,
+      "running",
+      "Isolating target roof mask",
+    );
+
     vlog("ENTER_target_mask_isolation", {
       footprint_source: footprintSource,
       footprint_px_count: footprint.length,
@@ -6106,7 +6130,8 @@ async function processJob(input: any) {
             candidate_centroid_offset_threshold_px: _centroidThresholdPx,
           },
         });
-        const failReason = _stageReport.hard_fail_reason ?? "coordinate_registration_failed";
+        const failReason = _stageReport.hard_fail_reason ??
+          "coordinate_registration_failed";
         console.error(
           `[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`,
           JSON.stringify({
@@ -6224,7 +6249,7 @@ async function processJob(input: any) {
           registration_gate: registrationBlock,
           hard_fail_reason: failReason,
           block_customer_report_reason: failReason,
-          result_state: "ai_failed_source_acquisition",
+          result_state: "ai_failed_runtime",
           diagram_render_intent: "coordinate_registration_debug_only",
           failure_stage: _stageReport.failure_stage,
           missing_required_fields: _stageReport.missing_required_fields,
@@ -6331,6 +6356,42 @@ async function processJob(input: any) {
           const dsmH = dsmForRefine.height as number;
           const mppRefine = (dsmForRefine.resolution as number) || actualMpp ||
             0.1;
+          const phase3A5WorkUnits = dsmW * dsmH;
+          await setMeasurementJobStatus(
+            input.measurement_job_id,
+            "processing",
+            "Running perimeter refinement",
+          );
+          await setAiJobStatus(
+            input.ai_measurement_job_id,
+            "running",
+            "Running perimeter refinement",
+          );
+          const phase3A5Budget = shouldPreemptForCpuBudget(
+            input,
+            phase3A5WorkUnits,
+          );
+          if (phase3A5Budget.preempt) {
+            await persistCpuBudgetTerminalFailure({
+              input,
+              coords,
+              imageUrl,
+              mpp: actualMpp,
+              stage: "phase3_5_perimeter_refinement",
+              estimatedWorkUnits: phase3A5WorkUnits,
+              debug: {
+                dsm_loaded: true,
+                mask_loaded: !!roofMask,
+                dsm_size_px: { width: dsmW, height: dsmH },
+                perimeter_phase0: perimeterPhase0Snapshot,
+                target_mask_isolation: {
+                  ...targetMaskIsolation,
+                  target_mask_grid: undefined,
+                },
+              },
+            });
+            return;
+          }
           // Project Layer-1 perimeter (geo) → DSM pixel space.
           const rawPerimDsmPx: [number, number][] = footprintGeo.map((g) => {
             const [px, py] = geoToPixel(g as any, dsmForRefine);
@@ -6759,6 +6820,43 @@ async function processJob(input: any) {
         skeletonEdges: [],
         boundaryEdges: { eaveEdges: perimeterEdges, rakeEdges: [] },
       };
+      await setMeasurementJobStatus(
+        input.measurement_job_id,
+        "processing",
+        "Running perimeter topology validation",
+      );
+      await setAiJobStatus(
+        input.ai_measurement_job_id,
+        "running",
+        "Running perimeter topology validation",
+      );
+      const graphWorkUnits =
+        Number((dsmGrid as any)?.width || (maskedDSM as any)?.width || 0) *
+          Number((dsmGrid as any)?.height || (maskedDSM as any)?.height || 0) +
+        Math.max(1, footprintGeoForSolver.length) *
+          Math.max(1, solarSegments.length) *
+          1_000;
+      const graphBudget = shouldPreemptForCpuBudget(input, graphWorkUnits);
+      if (graphBudget.preempt) {
+        await persistCpuBudgetTerminalFailure({
+          input,
+          coords,
+          imageUrl,
+          mpp: actualMpp,
+          stage: "autonomous_topology_solver",
+          estimatedWorkUnits: graphWorkUnits,
+          debug: {
+            dsm_loaded: !!dsmGrid || !!maskedDSM,
+            mask_loaded: !!roofMask || !!maskedDSM,
+            phase3A_5: phase3A5Diagnostics,
+            perimeter_phase0: perimeterPhase0Snapshot,
+            perimeter_topology: perimeterTopologySnapshot,
+            footprint_source: phase3A5SelectedSource,
+            footprint_point_count: footprintGeoForSolver.length,
+          },
+        });
+        return;
+      }
       const graph = solveAutonomousGraph(graphInput);
       const phase3CBlock = buildPhase3CBlock(graph.logs || {});
       const phase3DBlock = buildPhase3DBlock(graph.logs || {});
@@ -12771,7 +12869,7 @@ async function processJob(input: any) {
     }
     await setAiJobStatus(input.ai_measurement_job_id, "failed", failureReason);
     await supabase.from("ai_measurement_jobs").update({
-      result_state: "ai_failed_source_acquisition",
+      result_state: "ai_failed_runtime",
       hard_fail_reason: failureReason,
       report_blocked: true,
       needs_review: true,
@@ -12782,6 +12880,115 @@ async function processJob(input: any) {
       },
     }).eq("id", input.ai_measurement_job_id);
   }
+}
+
+function runtimeElapsedMs(input: any): number {
+  return Date.now() - Number(input?._runtime_started_at_ms || Date.now());
+}
+
+function shouldPreemptForCpuBudget(
+  input: any,
+  estimatedWorkUnits = 0,
+): {
+  preempt: boolean;
+  elapsed_ms: number;
+  remaining_ms: number;
+  reason: string | null;
+} {
+  const elapsedMs = runtimeElapsedMs(input);
+  const remainingMs = AI_MEASUREMENT_CPU_BUDGET_MS - elapsedMs;
+  if (remainingMs <= AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS) {
+    return {
+      preempt: true,
+      elapsed_ms: elapsedMs,
+      remaining_ms: remainingMs,
+      reason: "wall_clock_budget_reserve_reached",
+    };
+  }
+  if (estimatedWorkUnits > AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT) {
+    return {
+      preempt: true,
+      elapsed_ms: elapsedMs,
+      remaining_ms: remainingMs,
+      reason: "estimated_topology_workload_exceeds_cpu_budget",
+    };
+  }
+  return {
+    preempt: false,
+    elapsed_ms: elapsedMs,
+    remaining_ms: remainingMs,
+    reason: null,
+  };
+}
+
+async function persistCpuBudgetTerminalFailure(args: {
+  input: any;
+  coords: GeoPoint;
+  imageUrl: string | null;
+  mpp: number;
+  stage: string;
+  estimatedWorkUnits?: number;
+  debug?: Record<string, unknown>;
+}): Promise<string | null> {
+  const budget = shouldPreemptForCpuBudget(
+    args.input,
+    args.estimatedWorkUnits ?? 0,
+  );
+  const debugPayload = {
+    ...(args.debug ?? {}),
+    topology_source: REQUIRED_TOPOLOGY_SOURCE,
+    failure_stage: AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
+    cpu_budget_stage: args.stage,
+    cpu_budget_preempt_reason: budget.reason,
+    cpu_budget_elapsed_ms: budget.elapsed_ms,
+    cpu_budget_remaining_ms: budget.remaining_ms,
+    cpu_budget_ms: AI_MEASUREMENT_CPU_BUDGET_MS,
+    cpu_terminal_write_reserve_ms: AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS,
+    estimated_work_units: args.estimatedWorkUnits ?? null,
+    topology_pixel_limit: AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
+    result_state: "ai_failed_runtime",
+    hard_fail_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+    block_customer_report_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+    customer_report_ready: false,
+    diagram_render_intent: "debug_only",
+    roof_lines_count: 0,
+  };
+  const failedId = await insertFailedPreliminaryMeasurement(
+    args.input,
+    args.coords,
+    AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+    debugPayload,
+    args.imageUrl,
+    args.mpp,
+  );
+  await setMeasurementJobStatus(
+    args.input.measurement_job_id,
+    "failed",
+    `AI measurement CPU budget exceeded: ${args.stage}`,
+    failedId,
+  );
+  await setAiJobStatus(
+    args.input.ai_measurement_job_id,
+    "failed",
+    AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+  );
+  await supabase.from("ai_measurement_jobs").update({
+    status: "failed",
+    status_message: `AI measurement CPU budget exceeded: ${args.stage}`,
+    result_state: "ai_failed_runtime",
+    hard_fail_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+    failure_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+    needs_review: true,
+    report_blocked: true,
+    completed_at: new Date().toISOString(),
+    source_context: {
+      hard_fail_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+      failure_stage: AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
+      cpu_budget_stage: args.stage,
+      debug: debugPayload,
+    },
+  }).eq("id", args.input.ai_measurement_job_id);
+  return failedId;
 }
 
 async function ensureTerminalStatusWritten(
@@ -12823,7 +13030,7 @@ async function ensureTerminalStatusWritten(
       terminal_write_guard_triggered: true,
       prior_ai_job_status: aiJob?.status ?? null,
       prior_measurement_job_status: measurementJob?.status ?? null,
-      result_state: "ai_failed_source_acquisition",
+      result_state: "ai_failed_runtime",
       hard_fail_reason: failureReason,
       block_customer_report_reason: failureReason,
       customer_report_ready: false,
@@ -12860,7 +13067,7 @@ async function ensureTerminalStatusWritten(
     await supabase.from("ai_measurement_jobs").update({
       status: "failed",
       status_message: failureReason,
-      result_state: "ai_failed_source_acquisition",
+      result_state: "ai_failed_runtime",
       hard_fail_reason: failureReason,
       report_blocked: true,
       needs_review: true,
@@ -12902,7 +13109,7 @@ async function runAiMeasurementWatchdog() {
       status: "failed",
       status_message: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
       failure_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
-      result_state: "ai_failed_source_acquisition",
+      result_state: "ai_failed_runtime",
       hard_fail_reason: AI_RUNTIME_TIMEOUT_FAILURE_REASON,
       report_blocked: true,
       needs_review: true,

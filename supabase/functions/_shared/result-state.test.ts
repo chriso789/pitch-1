@@ -1,4 +1,7 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   ALLOWED_RESULT_STATES,
   isAllowedResultState,
@@ -13,34 +16,85 @@ Deno.test("normalizeResultState: passes canonical values through", () => {
 });
 
 Deno.test("normalizeResultState: maps perimeter failures", () => {
-  assertEquals(normalizeResultState("perimeter_inner_trace_detected"), "ai_failed_perimeter");
-  assertEquals(normalizeResultState("invalid_roof_footprint"), "ai_failed_perimeter");
+  assertEquals(
+    normalizeResultState("perimeter_inner_trace_detected"),
+    "ai_failed_perimeter",
+  );
+  assertEquals(
+    normalizeResultState("invalid_roof_footprint"),
+    "ai_failed_perimeter",
+  );
   assertEquals(normalizeResultState("layer1_invalid"), "ai_failed_perimeter");
-  assertEquals(normalizeResultState("target_mask_isolation_failed"), "ai_failed_perimeter");
+  assertEquals(
+    normalizeResultState("target_mask_isolation_failed"),
+    "ai_failed_perimeter",
+  );
 });
 
 Deno.test("normalizeResultState: maps target / source failures", () => {
-  assertEquals(normalizeResultState("target_unconfirmed"), "ai_failed_target_unconfirmed");
-  assertEquals(normalizeResultState("google_solar_no_dsm_coverage"), "ai_failed_source_acquisition");
-  assertEquals(normalizeResultState("dsm_fetch_failed"), "ai_failed_source_acquisition");
-  assertEquals(normalizeResultState("source_acquisition_failed"), "ai_failed_source_acquisition");
+  assertEquals(
+    normalizeResultState("target_unconfirmed"),
+    "ai_failed_target_unconfirmed",
+  );
+  assertEquals(
+    normalizeResultState("google_solar_no_dsm_coverage"),
+    "ai_failed_source_acquisition",
+  );
+  assertEquals(
+    normalizeResultState("dsm_fetch_failed"),
+    "ai_failed_source_acquisition",
+  );
+  assertEquals(
+    normalizeResultState("source_acquisition_failed"),
+    "ai_failed_source_acquisition",
+  );
 });
 
 Deno.test("normalizeResultState: maps topology failures", () => {
-  assertEquals(normalizeResultState("topology_undersegmented_after_refinement"), "ai_failed_topology");
-  assertEquals(normalizeResultState("ai_failed_complex_topology"), "ai_failed_topology");
-  assertEquals(normalizeResultState("invalid_edge_classification"), "ai_failed_topology");
-  assertEquals(normalizeResultState("ridge_network_missing"), "ai_failed_topology");
+  assertEquals(
+    normalizeResultState("topology_undersegmented_after_refinement"),
+    "ai_failed_topology",
+  );
+  assertEquals(
+    normalizeResultState("ai_failed_complex_topology"),
+    "ai_failed_topology",
+  );
+  assertEquals(
+    normalizeResultState("invalid_edge_classification"),
+    "ai_failed_topology",
+  );
+  assertEquals(
+    normalizeResultState("ridge_network_missing"),
+    "ai_failed_topology",
+  );
 });
 
 Deno.test("normalizeResultState: maps pitch failures", () => {
   assertEquals(normalizeResultState("pitch_invalid"), "ai_failed_pitch");
-  assertEquals(normalizeResultState("collapsed_plane_pitch"), "ai_failed_pitch");
+  assertEquals(
+    normalizeResultState("collapsed_plane_pitch"),
+    "ai_failed_pitch",
+  );
 });
 
 Deno.test("normalizeResultState: maps schema failures", () => {
   assertEquals(normalizeResultState("schema_mismatch"), "ai_failed_schema");
-  assertEquals(normalizeResultState("constraint_violation"), "ai_failed_schema");
+  assertEquals(
+    normalizeResultState("constraint_violation"),
+    "ai_failed_schema",
+  );
+});
+
+Deno.test("normalizeResultState: maps runtime and CPU failures", () => {
+  assertEquals(
+    normalizeResultState("ai_measurement_cpu_timeout"),
+    "ai_failed_runtime",
+  );
+  assertEquals(normalizeResultState("CPU Time exceeded"), "ai_failed_runtime");
+  assertEquals(
+    normalizeResultState("ai_measurement_runtime_timeout"),
+    "ai_failed_runtime",
+  );
 });
 
 Deno.test("normalizeResultState: unknown maps to ai_failed_unknown", () => {
@@ -80,6 +134,7 @@ Deno.test("integration: every normalized value is DB-safe", () => {
     "google_solar_no_dsm_coverage",
     "collapsed_plane_pitch",
     "schema_violation",
+    "ai_measurement_cpu_timeout",
     "totally_new_solver_failure",
     null,
     undefined,

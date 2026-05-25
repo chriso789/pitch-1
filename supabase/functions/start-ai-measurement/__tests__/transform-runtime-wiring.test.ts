@@ -413,6 +413,26 @@ Deno.test("runtime has terminal-write guard and stale-job watchdog", async () =>
   assert(source.includes("needs_review: true"));
 });
 
+Deno.test("runtime CPU budget guard preempts Phase 3A.5/topology before stuck running state", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
+  assert(
+    source.includes(
+      'const AI_MEASUREMENT_CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";',
+    ),
+  );
+  assert(source.includes("const AI_MEASUREMENT_CPU_TIMEOUT_STAGE ="));
+  assert(source.includes("shouldPreemptForCpuBudget("));
+  assert(source.includes("persistCpuBudgetTerminalFailure("));
+  assert(source.includes('stage: "phase3_5_perimeter_refinement"'));
+  assert(source.includes('stage: "autonomous_topology_solver"'));
+  assert(source.includes("Running perimeter refinement"));
+  assert(source.includes("Running perimeter topology validation"));
+  assert(source.includes('result_state: "ai_failed_runtime"'));
+  assert(source.includes("AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT"));
+});
+
 Deno.test("Phase 3A.5 failures preserve perimeter result state and aerial overlay", async () => {
   const source = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),

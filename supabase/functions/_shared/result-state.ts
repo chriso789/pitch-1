@@ -15,16 +15,17 @@
 // geometry_report_json bag is also being persisted).
 
 export const ALLOWED_RESULT_STATES = [
-  'customer_report_ready',
-  'perimeter_only',
-  'diagnostic_only',
-  'ai_failed_target_unconfirmed',
-  'ai_failed_source_acquisition',
-  'ai_failed_perimeter',
-  'ai_failed_topology',
-  'ai_failed_pitch',
-  'ai_failed_schema',
-  'ai_failed_unknown',
+  "customer_report_ready",
+  "perimeter_only",
+  "diagnostic_only",
+  "ai_failed_target_unconfirmed",
+  "ai_failed_source_acquisition",
+  "ai_failed_perimeter",
+  "ai_failed_topology",
+  "ai_failed_pitch",
+  "ai_failed_schema",
+  "ai_failed_runtime",
+  "ai_failed_unknown",
 ] as const;
 
 export type ResultState = (typeof ALLOWED_RESULT_STATES)[number];
@@ -36,98 +37,108 @@ const ALLOWED_SET: ReadonlySet<string> = new Set(ALLOWED_RESULT_STATES);
  * result_state buckets. Unknown values become `ai_failed_unknown`.
  */
 export function normalizeResultState(raw: unknown): ResultState {
-  if (raw == null) return 'ai_failed_unknown';
+  if (raw == null) return "ai_failed_unknown";
   const s = String(raw).toLowerCase().trim();
-  if (!s) return 'ai_failed_unknown';
+  if (!s) return "ai_failed_unknown";
   if (ALLOWED_SET.has(s)) return s as ResultState;
 
   // Order matters: most-specific rules first.
-  if (s.includes('target') && (s.includes('unconfirm') || s.includes('not_confirmed') || s.includes('confirmation_required'))) return 'ai_failed_target_unconfirmed';
-  if (s.includes('target_unconfirmed')) return 'ai_failed_target_unconfirmed';
+  if (
+    s.includes("target") &&
+    (s.includes("unconfirm") || s.includes("not_confirmed") ||
+      s.includes("confirmation_required"))
+  ) return "ai_failed_target_unconfirmed";
+  if (s.includes("target_unconfirmed")) return "ai_failed_target_unconfirmed";
 
   if (
-    s.includes('coordinate_registration_failed') ||
-    s.includes('candidate_does_not_contain_confirmed_roof_center') ||
-    s.includes('candidate_does_not_contain_confirmed_center') ||
-    s.includes('candidate_centroid_offset_exceeds_target') ||
-    s.includes('candidate_polygon_missing') ||
-    s.includes('selected_candidate_polygon_missing') ||
-    s.includes('coordinate_space_mismatch') ||
-    s.includes('dsm_size_missing') ||
-    s.includes('dsm_bounds_missing') ||
-    s.includes('dsm_decode_failed') ||
-    s.includes('dsm_center_out_of_bounds') ||
-    s.includes('dsm_raster_overlap_failed') ||
-    s.includes('dsm_raster_transform_missing') ||
-    s.includes('geo_to_dsm_transform_missing') ||
-    s.includes('registration_field_conflict') ||
-    s.includes('missing_selected_candidate') ||
-    s.includes('source_acquisition') ||
-    s.includes('acquisition') ||
-    s.includes('dsm_fetch') ||
-    s.includes('no_dsm_coverage') ||
-    s.includes('source_failed') ||
-    s.includes('imagery_unavailable')
-  ) return 'ai_failed_source_acquisition';
-
+    s.includes("coordinate_registration_failed") ||
+    s.includes("candidate_does_not_contain_confirmed_roof_center") ||
+    s.includes("candidate_does_not_contain_confirmed_center") ||
+    s.includes("candidate_centroid_offset_exceeds_target") ||
+    s.includes("candidate_polygon_missing") ||
+    s.includes("selected_candidate_polygon_missing") ||
+    s.includes("coordinate_space_mismatch") ||
+    s.includes("dsm_size_missing") ||
+    s.includes("dsm_bounds_missing") ||
+    s.includes("dsm_decode_failed") ||
+    s.includes("dsm_center_out_of_bounds") ||
+    s.includes("dsm_raster_overlap_failed") ||
+    s.includes("dsm_raster_transform_missing") ||
+    s.includes("geo_to_dsm_transform_missing") ||
+    s.includes("registration_field_conflict") ||
+    s.includes("missing_selected_candidate") ||
+    s.includes("source_acquisition") ||
+    s.includes("acquisition") ||
+    s.includes("dsm_fetch") ||
+    s.includes("no_dsm_coverage") ||
+    s.includes("source_failed") ||
+    s.includes("imagery_unavailable")
+  ) return "ai_failed_source_acquisition";
 
   if (
-    s.includes('perimeter') ||
-    s.includes('target_mask') ||
-    s.includes('inner_trace') ||
-    s.includes('layer1') ||
-    s.includes('invalid_roof_footprint') ||
-    s.includes('footprint_invalid') ||
-    s.includes('classification_invalid') ||
-    s.includes('eave_rake') ||
-    s.includes('all_rake_no_eave') ||
+    s.includes("perimeter") ||
+    s.includes("target_mask") ||
+    s.includes("inner_trace") ||
+    s.includes("layer1") ||
+    s.includes("invalid_roof_footprint") ||
+    s.includes("footprint_invalid") ||
+    s.includes("classification_invalid") ||
+    s.includes("eave_rake") ||
+    s.includes("all_rake_no_eave") ||
     // Phase 3A.5 explicit tokens
-    s.includes('perimeter_refinement_failed') ||
-    s.includes('perimeter_shape_not_accurate') ||
-    s.includes('iou_below_gate') ||
-    s.includes('ratio_above_gate')
-  ) return 'ai_failed_perimeter';
+    s.includes("perimeter_refinement_failed") ||
+    s.includes("perimeter_shape_not_accurate") ||
+    s.includes("iou_below_gate") ||
+    s.includes("ratio_above_gate")
+  ) return "ai_failed_perimeter";
 
   if (
-    s.includes('topology') ||
-    s.includes('undersegment') ||
-    s.includes('complex_topology') ||
-    s.includes('invalid_edge_classification') ||
-    s.includes('ridge_network_missing') ||
-    s.includes('graph_fragment') ||
-    s.includes('insufficient_structural_signal') ||
-    s.includes('invalid_roof_graph') ||
-    s.includes('backbone') ||
-    s.includes('connectivity_collapse') ||
-    s.includes('seed_collapse') ||
-    s.includes('patent') ||
+    s.includes("topology") ||
+    s.includes("undersegment") ||
+    s.includes("complex_topology") ||
+    s.includes("invalid_edge_classification") ||
+    s.includes("ridge_network_missing") ||
+    s.includes("graph_fragment") ||
+    s.includes("insufficient_structural_signal") ||
+    s.includes("invalid_roof_graph") ||
+    s.includes("backbone") ||
+    s.includes("connectivity_collapse") ||
+    s.includes("seed_collapse") ||
+    s.includes("patent") ||
     // Phase 3D / 3E explicit tokens
-    s.includes('backbone_not_applied') ||
-    s.includes('seed_chain_unlocked') ||
-    s.includes('repair_required_but_unavailable') ||
-    s.includes('topology_undersegmented_after_backbone_repair')
-  ) return 'ai_failed_topology';
+    s.includes("backbone_not_applied") ||
+    s.includes("seed_chain_unlocked") ||
+    s.includes("repair_required_but_unavailable") ||
+    s.includes("topology_undersegmented_after_backbone_repair")
+  ) return "ai_failed_topology";
 
-  if (s.includes('pitch') || s.includes('collapsed_plane')) return 'ai_failed_pitch';
+  if (s.includes("pitch") || s.includes("collapsed_plane")) {
+    return "ai_failed_pitch";
+  }
 
   if (
-    s.includes('schema') ||
-    s.includes('constraint') ||
-    s.includes('cache') ||
-    s.includes('db_insert') ||
-    s.includes('db insert')
-  ) return 'ai_failed_schema';
+    s.includes("schema") ||
+    s.includes("constraint") ||
+    s.includes("cache") ||
+    s.includes("db_insert") ||
+    s.includes("db insert")
+  ) return "ai_failed_schema";
 
-  // Runtime / unhandled exceptions: DB CHECK only allows 10 buckets, so we
-  // funnel runtime failures into ai_failed_unknown and let the specific
-  // reason live in hard_fail_reason. NEVER expand the constraint.
-  if (s.includes('runtime') || s.includes('exception')) return 'ai_failed_unknown';
+  if (
+    s.includes("runtime") ||
+    s.includes("cpu_timeout") ||
+    s.includes("cpu time") ||
+    s.includes("ai_measurement_cpu_timeout") ||
+    s.includes("exception")
+  ) return "ai_failed_runtime";
 
-  if (s === 'ready' || s.includes('customer_report_ready')) return 'customer_report_ready';
-  if (s.includes('perimeter_only')) return 'perimeter_only';
-  if (s.includes('diagnostic')) return 'diagnostic_only';
+  if (s === "ready" || s.includes("customer_report_ready")) {
+    return "customer_report_ready";
+  }
+  if (s.includes("perimeter_only")) return "perimeter_only";
+  if (s.includes("diagnostic")) return "diagnostic_only";
 
-  return 'ai_failed_unknown';
+  return "ai_failed_unknown";
 }
 
 /**
@@ -152,7 +163,7 @@ export function normalizeResultStateForWrite(
 }
 
 export function isAllowedResultState(value: unknown): value is ResultState {
-  return typeof value === 'string' && ALLOWED_SET.has(value);
+  return typeof value === "string" && ALLOWED_SET.has(value);
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -170,17 +181,20 @@ export function isAllowedResultState(value: unknown): value is ResultState {
 // The intent is derived from the canonical result_state and a perimeter
 // pass flag. Callers must persist this value alongside result_state.
 
-export type DiagramRenderIntent = 'full_topology' | 'perimeter_only' | 'rejected_only';
+export type DiagramRenderIntent =
+  | "full_topology"
+  | "perimeter_only"
+  | "rejected_only";
 
 export function deriveDiagramRenderIntent(
   resultState: ResultState | string | null | undefined,
   perimeterPassed: boolean,
 ): DiagramRenderIntent {
-  const s = String(resultState ?? '').toLowerCase();
-  if (s === 'customer_report_ready') return 'full_topology';
-  if (s === 'perimeter_only') return 'perimeter_only';
+  const s = String(resultState ?? "").toLowerCase();
+  if (s === "customer_report_ready") return "full_topology";
+  if (s === "perimeter_only") return "perimeter_only";
   // Topology / pitch / unknown failures: if perimeter is valid we can still
   // show the perimeter cleanly; otherwise mark all geometry as rejected.
-  if (perimeterPassed) return 'perimeter_only';
-  return 'rejected_only';
+  if (perimeterPassed) return "perimeter_only";
+  return "rejected_only";
 }
