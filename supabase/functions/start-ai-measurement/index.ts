@@ -46,6 +46,9 @@ import {
   classifyRegistrationStage,
   REGISTRATION_STAGE_CLASSIFIER_VERSION,
 } from "../_shared/registration-stage-classifier.ts";
+import { buildDsmRegistration, DSM_REGISTRATION_VERSION } from "../_shared/dsm-registration.ts";
+import { hoistSelectedCandidatePolygon } from "../_shared/candidate-hoist.ts";
+
 import {
   REGISTRATION_PRECEDENCE_VERSION,
   deriveRegistrationFailureReason,
