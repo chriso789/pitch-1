@@ -34,7 +34,8 @@ Deno.test("A. strict mode: candidate selected, confirmed_roof_center_px=null →
   assertEquals(res.coordinate_registration_gate_passed, false);
   assertEquals(res.confirmed_center_inside_candidate, false);
   assertEquals(res.failure?.result_state, "ai_failed_source_acquisition");
-  assertEquals(res.failure?.hard_fail_reason, "coordinate_registration_failed");
+  // v3 contract: prefer specific missing-field token over generic fallback.
+  assertEquals(res.failure?.hard_fail_reason, "dsm_size_missing");
   assert(
     (res.registration as any).missing_required_fields.includes("confirmed_roof_center_px"),
   );

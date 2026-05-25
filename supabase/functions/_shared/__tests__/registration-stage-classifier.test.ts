@@ -96,7 +96,11 @@ Deno.test("Test C — Candidate polygon missing", () => {
     },
     candidate: { selected_candidate_polygon_px: null },
   });
-  assertEquals(r.hard_fail_reason, "candidate_polygon_missing");
+  // Production token is `selected_candidate_polygon_missing` (see
+  // registration-stage-classifier.ts priority list, item 6). The legacy
+  // `candidate_polygon_missing` is only recognized by result-state
+  // normalization for backwards compat, never emitted directly.
+  assertEquals(r.hard_fail_reason, "selected_candidate_polygon_missing");
   assertEquals(r.missing_required_fields.includes("selected_candidate_polygon_px"), true);
   assertEquals(r.missing_required_fields.includes("raster_bounds_lat_lng"), false);
 });
@@ -238,7 +242,9 @@ Deno.test("Phase 2 — dsm_fetch_attempted=true with bounds missing → dsm_boun
   assertEquals(r.failure_stage, "dsm_bounds_extraction");
 });
 
-Deno.test("Phase 2 — dsm attempted but URL only, decode failed → dsm_decode_failed not silently early", () => {
+Deno.test("Phase 2 — dsm attempted, bounds+size present, decode failed → dsm_decode_failed", () => {
+  // dsm_bounds_missing has higher priority than dsm_decode_failed, so the
+  // fixture must populate tile bounds + size to isolate the decode failure.
   const r = classifyRegistrationStage({
     confirmed_roof_center_lat_lng: confirmedLL,
     static_transform_succeeded: true,
@@ -246,10 +252,13 @@ Deno.test("Phase 2 — dsm attempted but URL only, decode failed → dsm_decode_
       dsm_url_present: true,
       dsm_loaded: true,
       dsm_decode_success: false,
+      dsm_tile_bounds_lat_lng: dsmBounds,
+      dsm_size_px: { width: 256, height: 256 },
     },
     candidate: { selected_candidate_polygon_px: null },
   });
   // dsmAttempted=true via dsm_url_present, so classifier may emit hard fail.
   assertEquals(r.failure_stage === "early_preflight", false);
   assertEquals(r.hard_fail_reason, "dsm_decode_failed");
+  assertEquals(r.failure_stage, "dsm_decode");
 });
