@@ -924,12 +924,34 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
               : null
           )}
 
-        {/* Perimeter */}
+        {/* Raw perimeter (gray) */}
+        {layers.perimeter && rawPerimeterPx && rawPerimeterPx.length > 2 &&
+          rawPerimeterPx !== selectedPerimeterPx &&
+          rawPerimeterPx !== refinedPerimeterPx && (
+          <polygon
+            points={rawPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(" ")}
+            fill="none"
+            stroke="#9ca3af"
+            strokeWidth={2}
+          />
+        )}
+        {/* Refined perimeter (green) */}
+        {layers.perimeter && refinedPerimeterPx &&
+          refinedPerimeterPx.length > 2 &&
+          refinedPerimeterPx !== selectedPerimeterPx && (
+          <polygon
+            points={refinedPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(" ")}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth={2.5}
+          />
+        )}
+        {/* Selected perimeter (blue, primary) */}
         {layers.perimeter && perimeterPx && perimeterPx.length > 2 && (
           <polygon
             points={perimeterPx.map((p) => `${p[0]},${p[1]}`).join(" ")}
-            fill="rgba(34,197,94,0.08)"
-            stroke="#22c55e"
+            fill="rgba(59,130,246,0.08)"
+            stroke="#3b82f6"
             strokeWidth={3}
           />
         )}
