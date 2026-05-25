@@ -406,6 +406,8 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const targetMaskIsolation = (incoming as any).target_mask_isolation ?? null;
   const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
   const perimeterTopology = (incoming as any).perimeter_topology ?? null;
+  const aerialCandidateRoofGraph =
+    (incoming as any).aerial_candidate_roof_graph ?? null;
   const phase3_5 = {
     raw_perimeter_px: rawPerimeterPx,
     refined_perimeter_px: null,
@@ -444,10 +446,12 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     target_mask_isolation: targetMaskIsolation,
     perimeter_topology: perimeterTopology,
     raw_perimeter_px: rawPerimeterPx,
+    aerial_candidate_roof_graph: aerialCandidateRoofGraph,
     phase3_5,
     debug_layers,
   };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────
 // Final-diagram zero-geometry safety guard (success-path).
