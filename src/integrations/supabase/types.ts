@@ -39119,6 +39119,7 @@ export type Database = {
           facets_json: Json | null
           failed_loose: string[] | null
           failed_strict: string[] | null
+          failure_stage: string | null
           footprint_confidence: number | null
           footprint_detection_method: string | null
           footprint_is_rectangular: boolean | null
@@ -39334,6 +39335,7 @@ export type Database = {
           facets_json?: Json | null
           failed_loose?: string[] | null
           failed_strict?: string[] | null
+          failure_stage?: string | null
           footprint_confidence?: number | null
           footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
@@ -39549,6 +39551,7 @@ export type Database = {
           facets_json?: Json | null
           failed_loose?: string[] | null
           failed_strict?: string[] | null
+          failure_stage?: string | null
           footprint_confidence?: number | null
           footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
