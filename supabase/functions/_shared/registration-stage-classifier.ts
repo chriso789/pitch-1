@@ -73,6 +73,11 @@ export interface StageClassifierInput {
   dsm_tile_bounds_contain_confirmed_center?: boolean | null;
   dsm_to_raster_bounds_overlap?: boolean | null;
   static_transform_succeeded?: boolean | null;
+  // Two-phase gate: set true only AFTER Google Solar / DSM / mask fetch
+  // has been attempted. When false the classifier returns a soft
+  // `early_preflight` result with hard_fail_reason=null instead of
+  // synthesizing DSM-derived hard fails before DSM is even fetched.
+  dsm_fetch_attempted?: boolean | null;
 }
 
 export interface DsmProof {
