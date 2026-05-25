@@ -337,6 +337,18 @@ export function buildPreTopologyDebugBag(args: {
       >)
       : null;
 
+  const aerialCandidateRoofGraph = buildAerialCandidateGraph({
+    rasterUrl: args.rasterUrl ?? null,
+    rasterBoundsLatLng: args.rasterBoundsLatLng,
+    geoToRasterTransform: args.geoToRasterTransform,
+    perimeterTopology: args.perimeterTopologySnapshot,
+    targetMaskIsolation: args.targetMaskIsolation,
+    solarSegments: args.solarSegments,
+    maskComponentsTable: args.maskComponentsTable,
+    confirmedRoofCenterPx: args.confirmedRoofCenterPx,
+    staticMapCenterLatLng: args.staticMapCenterLatLng,
+  });
+
   return {
     dsm_split_status: dsmSplit,
     perimeter_phase0: args.perimeterPhase0Snapshot ?? null,
@@ -352,8 +364,10 @@ export function buildPreTopologyDebugBag(args: {
     mask_loaded: dsmSplit.mask_loaded || dsmSplit.masked_dsm_loaded,
     raster_loaded: dsmSplit.raster_loaded,
     raw_perimeter_px: rawPerimeterPx,
+    aerial_candidate_roof_graph: aerialCandidateRoofGraph,
   };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────
 // CPU-budget terminal debug payload (pure shaping for the failure row).
