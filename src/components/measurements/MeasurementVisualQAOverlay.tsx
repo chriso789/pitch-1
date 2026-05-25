@@ -157,20 +157,30 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     parseRasterSizeFromUrl(rasterUrl) ||
     { width: 1280, height: 1280 };
 
-  // Render order (fallback chain): refined → raw → perimeter_topology.ring.
-  // The last-resort fallback lets the overlay still render on runs that were
-  // preempted before Phase 3A.5 refinement (debug-only layers only).
+  // Render order (fallback chain):
+  // 1. aerial_candidate_roof_graph.perimeter_ring_px (DSM-failed runs that still
+  //    captured registered aerial geometry — top priority).
+  // 2. phase3_5.raw_perimeter_px
+  // 3. debug_layers.raw_perimeter_px
+  // 4. perimeter_topology.perimeter_ring_px
+  // Ensures the overlay still renders on runs preempted before refinement.
+  const aerialCandidateGraph = (grj as any)?.aerial_candidate_roof_graph
+    ?? (grj as any)?.debug_layers?.aerial_candidate_roof_graph;
+  const aerialCandidatePerimeterPx =
+    aerialCandidateGraph?.perimeter_ring_px;
   const perimeterTopologyRingPx = (grj as any)?.perimeter_topology?.perimeter_ring_px;
   const debugLayersRawPx = (grj as any)?.debug_layers?.raw_perimeter_px;
   const rawRing = useMemo<Pt[]>(
     () => {
+      const a = asPxRing(aerialCandidatePerimeterPx);
+      if (a.length >= 3) return a;
       const r1 = asPxRing(phase35?.raw_perimeter_px);
       if (r1.length >= 3) return r1;
       const r2 = asPxRing(debugLayersRawPx);
       if (r2.length >= 3) return r2;
       return asPxRing(perimeterTopologyRingPx);
     },
-    [phase35, debugLayersRawPx, perimeterTopologyRingPx],
+    [phase35, debugLayersRawPx, perimeterTopologyRingPx, aerialCandidatePerimeterPx],
   );
   const refinedRing = useMemo<Pt[]>(() => asPxRing(phase35?.refined_perimeter_px), [phase35]);
 
