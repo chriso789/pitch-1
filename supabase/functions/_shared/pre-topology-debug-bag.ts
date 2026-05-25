@@ -359,14 +359,16 @@ export function buildPreTopologyDebugBag(args: {
     dsmSplit.georegistration_transform.dsm_to_raster_transform_present &&
     dsmSplit.georegistration_transform.geo_to_dsm_transform_present &&
     dsmSplit.georegistration_transform.dsm_pixel_transform_valid;
-  const dsmValidationStatus = !dsmSplit.dsm_loaded
-    ? "pending"
-    : dsmTransformPresent
-    ? "valid"
-    : "invalid_transform";
+  const dsmValidationStatus: { available: boolean; reason: string | null } =
+    !dsmSplit.dsm_loaded
+      ? { available: false, reason: "dsm_not_loaded" }
+      : dsmTransformPresent
+      ? { available: true, reason: null }
+      : { available: false, reason: "invalid_transform" };
   const primaryGeometrySource = aerialCandidateRoofGraph.executed
     ? "aerial_registered"
     : null;
+
 
   return {
     dsm_split_status: dsmSplit,
