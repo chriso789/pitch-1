@@ -665,6 +665,31 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
             </AlertDescription>
           </Alert>
         )}
+        {!rasterSizeResolved && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Raster size unknown</AlertTitle>
+            <AlertDescription>
+              Overlay rendering is suppressed because the source raster size could not be resolved
+              (no <code>overlay_debug.raster_size</code>, <code>analysis_image_size</code>,
+              <code>?size=WxH</code> on the URL, or image natural dimensions). Drawing polygon
+              pixels against a guessed frame would mis-place the geometry.
+            </AlertDescription>
+          </Alert>
+        )}
+        {frameCheck.mismatch && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Overlay render transform mismatch</AlertTitle>
+            <AlertDescription>
+              The selected perimeter bbox center is{' '}
+              <code>{frameCheck.distancePx.toFixed(1)}px</code> from the confirmed roof center
+              (tolerance <code>{frameCheck.tolerancePx.toFixed(1)}px</code>). The polygon is still
+              drawn so you can diagnose, but the rendering frame likely does not match the displayed aerial.
+            </AlertDescription>
+          </Alert>
+        )}
+
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           {/* Canvas */}
