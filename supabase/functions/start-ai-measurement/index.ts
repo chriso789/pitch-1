@@ -14646,6 +14646,13 @@ async function insertFailedPreliminaryMeasurement(
     footprint_extraction_error: debug?.footprint_extraction_error ??
       debug?.google_solar_mask_stage?.footprint_extraction_error ?? null,
     google_solar_mask_stage: debug?.google_solar_mask_stage ?? null,
+    // ── Slice 2: cheap debug layers persisted before topology ──
+    dsm_split_status: (debug as any)?.dsm_split_status ?? null,
+    debug_roof_lines: Array.isArray((debug as any)?.debug_roof_lines)
+      ? (debug as any).debug_roof_lines
+      : [],
+    debug_layers_persisted_at_stage:
+      (debug as any)?.debug_layers_persisted_at_stage ?? null,
     // ── Phase 0: Perimeter-First Topology Contract ──
     perimeter_phase0: debug?.perimeter_phase0 ?? null,
     perimeter_ready: debug?.perimeter_ready ?? false,
