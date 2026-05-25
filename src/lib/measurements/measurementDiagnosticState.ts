@@ -269,7 +269,10 @@ export function resolveMeasurementDiagnosticState(
       active_stage_hint: "topology",
       dsm_transform_valid: dsmTransformValid,
       aerial_candidate_graph_present: aerialCandidateGraphPresent,
+      primary_geometry_source: primaryGeometrySource,
+      dsm_validation_status: dsmValidationStatus,
     };
+
   }
 
 
