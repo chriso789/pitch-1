@@ -41,6 +41,13 @@ import {
   registrationBanner,
   isRegistrationFailure,
 } from '@/lib/measurement/registration-gate';
+import {
+  resolveSourceRasterSize,
+  classifyCoordinateSpace,
+  hasDsmToRasterTransform,
+  bboxOf,
+  detectFrameMismatch,
+} from '@/lib/measurements/overlayCoordinateFrame';
 
 type Pt = [number, number];
 
