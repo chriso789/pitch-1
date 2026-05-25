@@ -1,67 +1,47 @@
-## DSM Bounds + Candidate Polygon Hoist v1
+## Goal
+Confirm commit `a4d543767f5c7a321cc7b24c133803fa01204592` is live on Supabase, then rerun AI Measurement for 4063 Fonsica Avenue and report the full diagnostic field set.
 
-Scope: registration package only. No perimeter shape, topology, or roof_lines changes.
+## Pre-flight state (already verified)
+- Workspace HEAD = `a4d54376` ✅ (matches required commit)
+- New timeout constants present in source (`GOOGLE_SOLAR_STAGE_TIMEOUT_MS=60_000`, fetch/footprint=20_000) ✅
+- New failure tokens wired (`google_solar_mask_timeout`, `roof_mask_footprint_extraction_failed`, `roof_mask_points_missing`) ✅
+- No stuck/running Fonsica row — last 5 are all terminal `ai_failed_source_acquisition` with the legacy `coordinate_registration_failed` hard_fail_reason, latest at 2026-05-25 00:17 UTC ✅
+- That legacy token on the most recent row means the **deployed** edge function is older than `a4d54376`
 
-### Files to touch
+## Steps
 
-- `supabase/functions/start-ai-measurement/index.ts` — wire DSM hoist + candidate hoist before final `evaluateRegistrationGate`.
-- `supabase/functions/_shared/registration-gate.ts` — extend block schema + center selection per coordinate space.
-- `supabase/functions/_shared/registration-stage-classifier.ts` — add new specific failure tokens.
-- `supabase/functions/_shared/dsm-registration.ts` *(new)* — `buildDsmRegistration()` extracting size/bounds/transforms.
-- `supabase/functions/_shared/candidate-hoist.ts` *(new)* — `hoistSelectedCandidatePolygon()` from `perimeter_candidate_table` / `perimeter_topology`.
-- `src/lib/measurement/registration-gate.ts` — mirror new fields for UI banner.
-- Tests under `supabase/functions/_shared/__tests__/` and `supabase/functions/start-ai-measurement/__tests__/`.
+### 1. Force deploy `start-ai-measurement` (and shared modules pulled in via bundling)
+Use `supabase--deploy_edge_functions` with `["start-ai-measurement"]`. After deploy, hit the function with a no-op auth probe (or just rely on the rerun) and grep edge logs for the new diagnostic field name `google_solar_stage_duration_ms` to prove the new code path is serving traffic.
 
-### Step 1 — DSM stage attempted
-If `dsm_loaded || mask_loaded`, call `buildDsmRegistration()`. Always persist:
-- `dsm_stage_attempted=true`, `dsm_stage_pending=false`
-- `dsm_registration_source="google_solar_data_layers"`, `dsm_registration_version="dsm-registration-v1"`
+### 2. Trigger the rerun
+Invoke `start-ai-measurement` for the Fonsica lead (address: `4063 Fonsica Avenue, North Port, FL 34286`). Either:
+- via `supabase--curl_edge_functions` with the lead_id payload, or
+- ask the user to click "Pull AI Measurement" on the Fonsica lead detail page
 
-### Step 2 — DSM size
-Read `dsm_coordinate_match.dsm_bbox` (or decoded grid). Persist `dsm_size_px` + `dsm_size_source` (`decoded_dsm_grid` | `dsm_coordinate_match.dsm_bbox`). Hard-fail token `dsm_size_missing` when unavailable.
+The job should complete or hard-fail within ~60s; it must not sit in "Extracting Google Solar roof mask footprint" for 8 minutes.
 
-### Step 3 — DSM bounds (with derivation fallback)
-Priority order:
-1. Google Solar metadata bounds → `dsm_bounds_source=google_solar_metadata`
-2. confirmed center + DSM mpp → `derived_from_confirmed_center_and_mpp`
-3. dsm_bbox + static map mpp (diagnostic) → `derived_from_dsm_bbox_and_static_mpp`
-4. else → `missing` + token `dsm_bounds_missing`
+### 3. Pull the resulting row and assemble the report
+Query `roof_measurements` for the newest Fonsica row and extract:
 
-When derived: `dsm_bounds_derived=true`, `dsm_bounds_warning="derived_bounds_lower_confidence"`, populate `dsm_meters_per_pixel`, `dsm_bounds_confidence`.
+**Top-level columns:**
+`id`, `created_at`, `result_state`, `hard_fail_reason`, `block_customer_report_reason`, `customer_report_ready`, `last_failure_stage`, `created_by_function`, `route_audit_version`
 
-### Step 4 — geo_to_dsm_transform
-Once size+bounds exist, build affine. Persist `geo_to_dsm_transform`, `confirmed_roof_center_dsm_px`, `dsm_tile_bounds_contain_confirmed_center`, `geo_to_dsm_px_success`. Token `geo_to_dsm_transform_missing` when prereqs exist but build fails.
+**From `geometry_report_json` / `geometry_report_json.source_acquisition_debug.google_solar_mask_stage`:**
+`google_solar_status`, `google_solar_error`, `google_solar_stage_duration_ms`, `google_solar_fetch_duration_ms`, `dsm_fetch_duration_ms`, `dsm_loaded`, `mask_loaded`, `mask_point_count`, `footprint_point_count`, `footprint_extraction_duration_ms`, `footprint_extraction_error`
 
-### Step 5 — dsm_to_raster_transform
-When both raster bounds + dsm bounds exist, compute transform + overlap. Persist `dsm_to_raster_transform`, `dsm_raster_bounds_overlap`, `dsm_raster_overlap_ratio`, `dsm_pixel_transform_valid`. Token `dsm_raster_transform_missing`.
+**From `geometry_report_json.registration` (or `.registration_gate`):**
+`dsm_hoist_called`, `dsm_size_px`, `dsm_tile_bounds_lat_lng`, `geo_to_dsm_transform`, `dsm_to_raster_transform`, `selected_candidate_polygon_px` (presence), `coordinate_registration_gate_passed`
 
-### Step 6 — Candidate polygon hoist
-Before `evaluateRegistrationGate(candidate_final)`:
-- Prefer `perimeter_candidate_table` row with `selected=true` → use ring px points.
-- Else `perimeter_topology.perimeter_ring_px` (only if coordinate frame matches/convertible).
-- Persist `selected_candidate_polygon_px`, `selected_candidate_polygon_geo`, `candidate_coordinate_space` (`dsm_px`|`raster_px`), `candidate_source`, `selected_candidate_polygon_point_count`, `candidate_area_sqft`, `candidate_centroid_px`. Token `selected_candidate_polygon_missing` if none.
+**Runtime:** `created_at` of job vs row update timestamp.
 
-### Step 7 — Center selection per coordinate space
-- `dsm_px` candidates → check against `confirmed_roof_center_dsm_px`
-- `raster_px` candidates → check against `confirmed_roof_center_px`
-Persist `center_used_for_candidate_check`, `confirmed_center_inside_candidate`, `candidate_centroid_offset_from_confirmed_center_px`, `candidate_centroid_offset_threshold_px`. Token `coordinate_space_mismatch` when mismatched and no conversion possible.
+### 4. Apply pass/fail rule
+- **Pass shape:** specific hard_fail_reason from the allow-list (`google_solar_mask_timeout`, `google_solar_roof_mask_missing`, `roof_mask_footprint_extraction_failed`, `roof_mask_points_missing`, `dsm_size_missing`, `dsm_bounds_missing`, `geo_to_dsm_transform_missing`, `dsm_to_raster_transform_missing`, `selected_candidate_polygon_missing`, `candidate_centroid_offset_exceeds_target`, `coordinate_space_mismatch`) OR a clean success with all gates passed before `customer_report_ready=true`.
+- **Fail shape:** any of `8_minute_safety_limit`, generic `coordinate_registration_failed`, still-running >120s, or `customer_report_ready=true` on a debug-only row.
 
-### Step 8 — Specific failure tokens (priority order)
-`dsm_size_missing` → `dsm_bounds_missing` → `geo_to_dsm_transform_missing` → `dsm_raster_transform_missing` → `selected_candidate_polygon_missing` → `candidate_does_not_contain_confirmed_center` → `candidate_centroid_offset_exceeds_target` → `coordinate_space_mismatch` → `coordinate_registration_failed` (fallback only). Add to `registration-stage-classifier.ts` and `result-state.ts` normalizer mapping (all map to `ai_failed_source_acquisition` bucket).
+### 5. If still generic `coordinate_registration_failed`
+Open `registration-stage-classifier.ts` and trace why the new specific-token branches aren't hit — likely the source-acquisition failure path is bypassing the classifier and falling through to a legacy default. Patch the fallback to emit the most specific available token from the google_solar_mask_stage debug block before reaching the generic case.
 
-### Step 9 — Regression tests
-Per AI Measurement Regression Harness skill — fixture-driven Deno tests:
-- `dsm-size-hoist.test.ts` (Test A)
-- `dsm-bounds-derivation.test.ts` (Test B)
-- `candidate-polygon-hoist.test.ts` (Test C)
-- `candidate-center-coordinate-space.test.ts` (Test D)
-- `candidate-centroid-offset-fail.test.ts` (Test E)
-Fixture: anonymized Fonsica row under `_shared/__fixtures__/fonsica-dsm-stage-pending.json`.
-
-### Step 10 — Deploy + rerun Fonsica
-Deploy `start-ai-measurement` via `supabase--deploy_edge_functions`, then trigger Pull AI Measurement on lead `0a38230e-…`. Verify against the expected report fields in the user's spec.
-
-### Out of scope (explicit)
-Perimeter shape gates, topology, roof_lines, Phase 3A/3A.5/3C/3D/3E logic. Only registration package + classifier touched.
-
-Uses Canonical Route & Runtime Provenance Auditor, AI Measurement Regression Harness, and Roof Measurement Vision QA & Geometry Contract skills.
+## Notes
+- No DB migrations needed.
+- No frontend changes needed for this loop.
+- Plan mode → switch to build mode to actually deploy + curl.
