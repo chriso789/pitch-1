@@ -218,12 +218,18 @@ export function buildDebugRoofLines(perimeterTopology: any): DebugRoofLine[] {
     const type = classifyDebugLineType(raw) === "unknown"
       ? fallbackType
       : classifyDebugLineType(raw);
+    const lenRaw = Number(raw?.length_ft ?? raw?.length_lf);
+    const length_ft = Number.isFinite(lenRaw) && lenRaw > 0 ? lenRaw : null;
     out.push({
       type,
       geo,
       px,
+      length_ft,
       debug_only: true,
       customer_ready: false,
+      candidate_source: "phase3A",
+      validation_status: "candidate_only",
+      reason_not_reportable: "runtime_preempted_before_validated_topology",
     });
   };
 
@@ -243,8 +249,12 @@ export function buildDebugRoofLines(perimeterTopology: any): DebugRoofLine[] {
         type: "perimeter",
         geo: [[Number(a[0]), Number(a[1])], [Number(b[0]), Number(b[1])]],
         px: null,
+        length_ft: null,
         debug_only: true,
         customer_ready: false,
+        candidate_source: "phase3A",
+        validation_status: "candidate_only",
+        reason_not_reportable: "runtime_preempted_before_validated_topology",
       });
     }
   }
