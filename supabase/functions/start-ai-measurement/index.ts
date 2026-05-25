@@ -758,6 +758,130 @@ function getSchemaCacheMissingColumn(error: unknown): string | null {
     ?? null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Live-runtime DSM + Candidate hoist (v1)
+// ----------------------------------------------------------------------------
+// The dedicated hoist at the !dsmCoordinateMatch branch (≈L3700) only runs
+// when the DSM/footprint coordinate match fails. The OTHER failure path — the
+// generic registration gate evaluated in `prepareRoofMeasurementPayload` — was
+// previously writing `registration.dsm_size_px=null` even when
+// `geometry.dsm_coordinate_match.dsm_bbox` already had the dims.
+//
+// This helper reads whatever DSM/candidate evidence is already on
+// `geometry_report_json` (no live DSM grids needed) and merges the canonical
+// `buildDsmRegistration` + `hoistSelectedCandidatePolygon` outputs into the
+// authoritative `registration` block, plus runtime proof flags. Idempotent.
+// ─────────────────────────────────────────────────────────────────────────────
+const DSM_HOIST_VERSION = "dsm-bounds-candidate-hoist-v1";
+const CANDIDATE_HOIST_VERSION = "candidate-hoist-v1";
+
+function applyLiveRuntimeHoistToRegistration(
+  registrationBlock: Record<string, unknown>,
+  geometry: Record<string, unknown>,
+): Record<string, unknown> {
+  try {
+    const g: any = geometry ?? {};
+    const reg: any = registrationBlock ?? {};
+
+    // ── Pull DSM evidence already persisted on geometry ───────────
+    const dsmCoordinateMatchDebug = g.dsm_coordinate_match
+      ?? g.source_acquisition_debug?.dsm_coordinate_match
+      ?? null;
+    const dsmLoaded = Boolean(
+      g.dsm_loaded
+        ?? g.source_acquisition_debug?.dsm_loaded
+        ?? reg.dsm_stage_attempted
+        ?? (dsmCoordinateMatchDebug?.dsm_bbox != null),
+    );
+    const maskLoaded = Boolean(
+      g.mask_loaded ?? g.source_acquisition_debug?.mask_loaded,
+    );
+    const confirmedLL = reg.confirmed_roof_center_lat_lng
+      ?? g.confirmed_roof_center_lat_lng
+      ?? null;
+    const rasterMpp = Number.isFinite(Number(g.meters_per_pixel))
+      ? Number(g.meters_per_pixel)
+      : Number.isFinite(Number(reg.raster_meters_per_pixel))
+        ? Number(reg.raster_meters_per_pixel)
+        : null;
+
+    // ── Only hoist DSM fields when registration is missing them ───
+    const dsmAlreadyHoisted = reg.dsm_size_px != null && reg.dsm_tile_bounds_lat_lng != null;
+    if (!dsmAlreadyHoisted && (dsmLoaded || maskLoaded || dsmCoordinateMatchDebug)) {
+      const dsmReg = buildDsmRegistration({
+        dsm_loaded: dsmLoaded,
+        mask_loaded: maskLoaded,
+        effectiveDSM: g.effective_dsm ?? null,
+        roofMask: g.roof_mask ?? null,
+        dsmCoordinateMatchDebug,
+        confirmedCenterLatLng: confirmedLL,
+        rasterMetersPerPixel: rasterMpp,
+      });
+      reg.dsm_size_px = reg.dsm_size_px ?? dsmReg.dsm_size_px;
+      reg.dsm_size_source = reg.dsm_size_source ?? dsmReg.dsm_size_source;
+      reg.dsm_tile_bounds_lat_lng = reg.dsm_tile_bounds_lat_lng ?? dsmReg.dsm_tile_bounds_lat_lng;
+      reg.dsm_bounds_source = reg.dsm_bounds_source ?? dsmReg.dsm_bounds_source;
+      reg.dsm_bounds_derived = reg.dsm_bounds_derived ?? dsmReg.dsm_bounds_derived;
+      reg.dsm_bounds_warning = reg.dsm_bounds_warning ?? dsmReg.dsm_bounds_warning;
+      reg.dsm_bounds_confidence = reg.dsm_bounds_confidence ?? dsmReg.dsm_bounds_confidence;
+      reg.dsm_meters_per_pixel = reg.dsm_meters_per_pixel ?? dsmReg.dsm_meters_per_pixel;
+      reg.dsm_mpp_source = reg.dsm_mpp_source ?? dsmReg.dsm_mpp_source;
+      reg.dsm_registration_version = dsmReg.dsm_registration_version;
+      reg.dsm_registration_source = dsmReg.dsm_registration_source;
+      reg.dsm_stage_attempted = dsmReg.dsm_stage_attempted;
+      reg.dsm_stage_pending = false;
+      reg.dsm_hoist_failure_tokens = dsmReg.failure_tokens;
+    }
+    reg.dsm_hoist_called = true;
+    reg.dsm_hoist_callsite = "start-ai-measurement.prepareRoofMeasurementPayload";
+    reg.dsm_hoist_version = DSM_HOIST_VERSION;
+
+    // ── Candidate polygon hoist ───────────────────────────────────
+    const candidateAlreadyHoisted = Array.isArray(reg.selected_candidate_polygon_px)
+      && reg.selected_candidate_polygon_px.length >= 3;
+    if (!candidateAlreadyHoisted) {
+      const autoDebug = g.autonomous_debug ?? g.dsm_planar_graph_debug ?? {};
+      const candidateTable = autoDebug?.perimeter_phase0?.perimeter_candidate_table
+        ?? g.perimeter_phase0?.perimeter_candidate_table
+        ?? null;
+      const perimeterTopology = g.perimeter_topology
+        ?? autoDebug?.perimeter_topology
+        ?? null;
+      const staleTopology = (g.stale_debug_payload as any)?.perimeter_topology ?? null;
+      const hoist = hoistSelectedCandidatePolygon({
+        perimeter_candidate_table: candidateTable,
+        perimeter_topology: perimeterTopology ?? staleTopology,
+        default_coordinate_space: "dsm_px",
+      });
+      if (hoist.selected_candidate_polygon_px) {
+        reg.selected_candidate_polygon_px = hoist.selected_candidate_polygon_px;
+        reg.selected_candidate_polygon_geo = hoist.selected_candidate_polygon_geo;
+        reg.selected_candidate_polygon_point_count = hoist.selected_candidate_polygon_point_count;
+        reg.candidate_coordinate_space = hoist.candidate_coordinate_space;
+        reg.candidate_source = hoist.candidate_source;
+        reg.candidate_area_sqft = hoist.candidate_area_sqft;
+        reg.candidate_centroid_px = hoist.candidate_centroid_px;
+        reg.candidate_hoist_origin = hoist.candidate_hoist_origin;
+        if (perimeterTopology == null && staleTopology != null) {
+          reg.candidate_source_status = "stale_debug_only";
+        }
+      }
+      reg.candidate_hoist_failure_tokens = hoist.failure_tokens;
+    }
+    reg.candidate_hoist_called = true;
+    reg.candidate_hoist_version = CANDIDATE_HOIST_VERSION;
+    reg.selected_candidate_polygon_px_present = Array.isArray(reg.selected_candidate_polygon_px)
+      && reg.selected_candidate_polygon_px.length >= 3;
+    return reg;
+  } catch (e) {
+    console.warn("[DSM_HOIST_V1] applyLiveRuntimeHoistToRegistration failed", (e as Error)?.message);
+    (registrationBlock as any).dsm_hoist_called = true;
+    (registrationBlock as any).dsm_hoist_version = DSM_HOIST_VERSION;
+    (registrationBlock as any).dsm_hoist_error = (e as Error)?.message ?? "unknown";
+    return registrationBlock;
+  }
+}
+
 function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = { ...payload };
   const geometry = typeof next.geometry_report_json === "object" && next.geometry_report_json !== null && !Array.isArray(next.geometry_report_json)
@@ -804,6 +928,10 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           transform_failure_reasons: ["transform_package_absent"],
         });
       }
+      // Live-runtime DSM + Candidate hoist — hoist BEFORE quarantine so the
+      // registration block reports dsm_size_px / selected_candidate_polygon_px
+      // from whatever evidence already lives on geometry_report_json.
+      registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock, geometry as any);
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
       regVersionForPrecedence = (registrationBlock as any)?.version ?? null;
@@ -844,9 +972,17 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       console.warn("[REGISTRATION_GATE_V2] evaluation failed in payload prep", (e as Error)?.message);
     }
   } else if (regPreflight) {
-    const registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
+    let registrationBlock = mergeRegistrationProof((geometry as any).registration ?? (geometry as any).registration_gate, regPreflight);
+    registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock as Record<string, unknown>, geometry as any);
     geometry.registration = registrationBlock;
     geometry.registration_gate = registrationBlock;
+  } else {
+    // No regInput/regPreflight provided — still run the hoist so debug-only
+    // writes carry dsm_size_px / candidate fields when evidence exists.
+    const existing = ((geometry as any).registration ?? (geometry as any).registration_gate ?? {}) as Record<string, unknown>;
+    const hoisted = applyLiveRuntimeHoistToRegistration({ ...existing }, geometry as any);
+    geometry.registration = hoisted;
+    geometry.registration_gate = hoisted;
   }
   delete (next as any)._registration_gate_input;
   delete (next as any)._registration_transform_package;
