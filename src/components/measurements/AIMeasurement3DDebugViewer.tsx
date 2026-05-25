@@ -185,7 +185,7 @@ function buildStages(m: any): StageDef[] {
     },
     {
       id: "raster",
-      label: "Raster tile / DSM",
+      label: "Raster tile / DSM fetch",
       status: pickStatus(rasterOk && dsmOk, true),
       source: overlayDbg?.imagery_source || m?.selected_image_source ||
         m?.image_source,
@@ -199,6 +199,33 @@ function buildStages(m: any): StageDef[] {
         coordinate_space: overlayDbg?.coordinate_space_solver,
         dsm_coverage: dsm?.coverage,
         dsm_heightmap_url: dsm?.heightmap_url,
+        dsm_loaded: resolvedState.dsm_loaded,
+        dsm_size_px: grj?.registration?.dsm_size_px ?? grj?.dsm_size_px ?? null,
+      },
+    },
+    {
+      id: "dsm_transform",
+      label: "DSM georegistration / transform",
+      status: resolvedState.dsm_transform_valid
+        ? "pass"
+        : (resolvedState.dsm_loaded ? "fail" : "unknown"),
+      reason: resolvedState.dsm_transform_valid
+        ? undefined
+        : "DSM was fetched, but georegistration (tile bounds / geo→DSM / DSM→raster transform) is invalid or missing.",
+      payload: {
+        dsm_tile_bounds_lat_lng:
+          grj?.registration?.dsm_tile_bounds_lat_lng ??
+            grj?.dsm_tile_bounds_lat_lng ?? null,
+        geo_to_dsm_transform: grj?.registration?.geo_to_dsm_transform ?? null,
+        dsm_to_raster_transform:
+          grj?.registration?.dsm_to_raster_transform ?? null,
+        dsm_pixel_transform_valid:
+          grj?.registration?.dsm_pixel_transform_valid ?? null,
+        geo_to_dsm_px_success: grj?.registration?.geo_to_dsm_px_success ?? null,
+        transform_package_valid:
+          grj?.registration?.transform_package_valid ?? null,
+        transform_failure_reasons:
+          grj?.registration?.transform_failure_reasons ?? null,
       },
     },
     {
