@@ -15,7 +15,7 @@
 //   3. dsm_decode_failed           — DSM URL present but decode reported false
 //   4. dsm_center_out_of_bounds    — DSM bounds present but confirmed center outside
 //   5. dsm_raster_overlap_failed   — DSM ↔ raster bounds do not overlap
-//   6. candidate_polygon_missing   — no selected candidate polygon
+//   6. selected_candidate_polygon_missing — no selected candidate polygon
 //   7. candidate_does_not_contain_confirmed_center
 //   8. coordinate_registration_failed (fallback)
 // ============================================================================
@@ -294,7 +294,7 @@ export function classifyRegistrationStage(
   //   6. geo_to_dsm_transform_missing
   //   7. dsm_raster_overlap_failed
   //   8. dsm_raster_transform_missing
-  //   9. candidate_polygon_missing
+  //   9. selected_candidate_polygon_missing
   //  10. candidate_centroid_offset_exceeds_target (when threshold provided)
   //  11. candidate_does_not_contain_confirmed_center
   //  12. coordinate_registration_failed (fallback)
@@ -319,7 +319,7 @@ export function classifyRegistrationStage(
     hardFail = "coordinate_space_mismatch";
     stage = "candidate_coordinate_space";
   } else if (!polyPx) {
-    hardFail = "candidate_polygon_missing";
+    hardFail = "selected_candidate_polygon_missing";
     stage = "candidate_selection";
   } else if (
     dsmProof.dsm_tile_bounds_lat_lng &&
@@ -368,4 +368,3 @@ export function classifyRegistrationStage(
     coordinate_space_audit: audit,
   };
 }
-

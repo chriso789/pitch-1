@@ -40,7 +40,15 @@ export type Polygon = Px[];
 export type RegistrationFailureReason =
   | "target_roof_not_confirmed"
   | "coordinate_registration_failed"
-  | "candidate_does_not_contain_confirmed_roof_center"
+  | "dsm_size_missing"
+  | "dsm_bounds_missing"
+  | "geo_to_dsm_transform_missing"
+  | "dsm_to_raster_transform_missing"
+  | "selected_candidate_polygon_missing"
+  | "candidate_does_not_contain_confirmed_center"
+  | "candidate_centroid_offset_exceeds_target"
+  | "no_perimeter_candidate_contains_confirmed_center"
+  | "coordinate_space_mismatch"
   | "registration_field_conflict"
   | "missing_selected_candidate";
 
@@ -51,6 +59,7 @@ export interface RegistrationGateInput {
   original_geocode_lat_lng?: LatLng | null;
   confirmed_roof_center_lat_lng?: LatLng | null;
   confirmed_roof_center_px?: Px | null;
+  confirmed_roof_center_dsm_px?: Px | null;
 
   // Frame registration
   geo_to_dsm_px_success?: boolean | null;
@@ -77,6 +86,7 @@ export interface RegistrationGateInput {
   candidate_distance_rank?: number | null;
   rejection_reason?: string | null;
   footprint_bbox_diagonal_px?: number | null;
+  no_candidate_contains_confirmed_center?: boolean | null;
 
   // v2.2 — strict mode flag. When true, the gate enforces real transform
   // evidence and rejects "no candidate yet = pass".
@@ -208,6 +218,19 @@ export function maxAllowedCentroidOffsetPx(footprintBBoxDiagonalPx: number | nul
   return Math.max(100, 0.30 * diag);
 }
 
+function firstSpecificMissingReason(fields: string[]): RegistrationFailureReason | null {
+  if (fields.includes("dsm_size_px")) return "dsm_size_missing";
+  if (fields.includes("dsm_tile_bounds_lat_lng")) return "dsm_bounds_missing";
+  if (fields.includes("geo_to_dsm_transform") || fields.includes("geo_to_dsm_px_success")) {
+    return "geo_to_dsm_transform_missing";
+  }
+  if (fields.includes("dsm_to_raster_transform") || fields.includes("dsm_pixel_transform_valid")) {
+    return "dsm_to_raster_transform_missing";
+  }
+  if (fields.includes("selected_candidate_polygon_px")) return "selected_candidate_polygon_missing";
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Gates
 // ---------------------------------------------------------------------------
@@ -278,6 +301,7 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     if (input.dsm_to_raster_transform == null) missing_required_fields.push("dsm_to_raster_transform");
     if (input.raster_bounds_lat_lng == null) missing_required_fields.push("raster_bounds_lat_lng");
     if (input.dsm_tile_bounds_lat_lng == null) missing_required_fields.push("dsm_tile_bounds_lat_lng");
+    if (input.dsm_size_px == null) missing_required_fields.push("dsm_size_px");
     if (!input.selected_candidate_polygon_px || input.selected_candidate_polygon_px.length < 3) {
       missing_required_fields.push("selected_candidate_polygon_px");
     }
@@ -326,17 +350,32 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
 
   // v2.3 hard rule: never claim containment when the confirmed center pixel
   // does not exist.
-  if (!isFinitePx(input.confirmed_roof_center_px ?? null)) {
+  const candidateSpace = input.candidate_coordinate_space ?? null;
+  const centerForCandidate =
+    candidateSpace === "dsm_px"
+      ? input.confirmed_roof_center_dsm_px ?? null
+      : candidateSpace === "raster_px" || candidateSpace == null
+      ? input.confirmed_roof_center_px ?? null
+      : null;
+  const coordinate_space_mismatch =
+    !!input.selected_candidate_polygon_px &&
+    (candidateSpace === "dsm_px"
+      ? !isFinitePx(input.confirmed_roof_center_dsm_px ?? null)
+      : candidateSpace === "raster_px"
+      ? !isFinitePx(input.confirmed_roof_center_px ?? null)
+      : candidateSpace != null);
+
+  if (!isFinitePx(centerForCandidate ?? null)) {
     confirmed_center_inside_candidate = false;
-  } else if (input.confirmed_roof_center_px && input.selected_candidate_polygon_px) {
+  } else if (centerForCandidate && input.selected_candidate_polygon_px) {
     confirmed_center_inside_candidate = polygonContainsPoint(
       input.selected_candidate_polygon_px,
-      input.confirmed_roof_center_px,
+      centerForCandidate,
     );
     const centroid = polygonCentroid(input.selected_candidate_polygon_px);
     candidate_centroid_offset_from_confirmed_center_px = pointDistancePx(
       centroid,
-      input.confirmed_roof_center_px,
+      centerForCandidate,
     );
     if (
       candidate_centroid_offset_from_confirmed_center_px != null &&
@@ -395,6 +434,7 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     original_geocode_lat_lng: input.original_geocode_lat_lng ?? null,
     confirmed_roof_center_lat_lng: input.confirmed_roof_center_lat_lng ?? null,
     confirmed_roof_center_px: input.confirmed_roof_center_px ?? null,
+    confirmed_roof_center_dsm_px: input.confirmed_roof_center_dsm_px ?? null,
     static_map_center_lat_lng: input.static_map_center_lat_lng ?? null,
     google_solar_building_center_lat_lng: input.google_solar_building_center_lat_lng ?? null,
     dsm_tile_origin_lat_lng: input.dsm_tile_origin_lat_lng ?? null,
@@ -409,6 +449,8 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     selected_candidate_polygon_px: input.selected_candidate_polygon_px ?? null,
     selected_candidate_polygon_geo: input.selected_candidate_polygon_geo ?? null,
     candidate_coordinate_space: input.candidate_coordinate_space ?? null,
+    center_used_for_candidate_check:
+      candidateSpace === "dsm_px" ? "dsm_px" : candidateSpace === "raster_px" ? "raster_px" : null,
     geo_to_dsm_px_success,
     dsm_pixel_transform_valid,
     raster_bounds_contain_confirmed_center: rasterBoundsContainConfirmedCenter,
@@ -417,7 +459,14 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
     candidate_centroid_offset_threshold_px: maxOffset,
     candidate_distance_rank: input.candidate_distance_rank ?? null,
     rejection_reason: input.rejection_reason ?? null,
+    candidate_rejection_reason:
+      centroid_offset_exceeds_threshold
+        ? "centroid_offset_exceeds_target"
+        : confirmed_center_inside_candidate === false && input.selected_candidate_polygon_px
+        ? "candidate_does_not_contain_confirmed_center"
+        : input.rejection_reason ?? null,
     centroid_offset_exceeds_threshold,
+    coordinate_space_mismatch,
     footprint_bbox_diagonal_px: footprintDiagonalPx ?? null,
     coordinate_registration_gate_passed,
     user_confirmed_roof_target,
@@ -434,32 +483,61 @@ export function evaluateRegistrationGate(input: RegistrationGateInput): Registra
       block_customer_report_reason: "target_roof_not_confirmed",
     };
   } else if (isFinal && missing_required_fields.length > 0) {
+    const specific = firstSpecificMissingReason(missing_required_fields) ?? "coordinate_registration_failed";
     failure = {
-      reason: "coordinate_registration_failed",
+      reason: specific,
       result_state: "ai_failed_source_acquisition",
-      hard_fail_reason: "coordinate_registration_failed",
-      block_customer_report_reason: "coordinate_registration_failed",
+      hard_fail_reason: specific,
+      block_customer_report_reason: specific,
+    };
+  } else if (isFinal && coordinate_space_mismatch) {
+    failure = {
+      reason: "coordinate_space_mismatch",
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: "coordinate_space_mismatch",
+      block_customer_report_reason: "coordinate_space_mismatch",
     };
   } else if (isFinal && !frame_valid) {
+    const specific =
+      input.geo_to_dsm_px_success !== true
+        ? "geo_to_dsm_transform_missing"
+        : input.dsm_pixel_transform_valid !== true || input.dsm_to_raster_transform == null
+        ? "dsm_to_raster_transform_missing"
+        : "coordinate_registration_failed";
     failure = {
-      reason: "coordinate_registration_failed",
+      reason: specific,
       result_state: "ai_failed_source_acquisition",
-      hard_fail_reason: "coordinate_registration_failed",
-      block_customer_report_reason: "coordinate_registration_failed",
+      hard_fail_reason: specific,
+      block_customer_report_reason: specific,
+    };
+  } else if (isFinal && input.no_candidate_contains_confirmed_center === true) {
+    failure = {
+      reason: "no_perimeter_candidate_contains_confirmed_center",
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: "no_perimeter_candidate_contains_confirmed_center",
+      block_customer_report_reason: "no_perimeter_candidate_contains_confirmed_center",
+    };
+  } else if (isFinal && centroid_offset_exceeds_threshold) {
+    failure = {
+      reason: "candidate_centroid_offset_exceeds_target",
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: "candidate_centroid_offset_exceeds_target",
+      block_customer_report_reason: "candidate_centroid_offset_exceeds_target",
     };
   } else if (isFinal && !confirmed_center_inside_candidate) {
     failure = {
-      reason: "candidate_does_not_contain_confirmed_roof_center",
+      reason: "candidate_does_not_contain_confirmed_center",
       result_state: "ai_failed_source_acquisition",
-      hard_fail_reason: "candidate_does_not_contain_confirmed_roof_center",
-      block_customer_report_reason: "candidate_does_not_contain_confirmed_roof_center",
+      hard_fail_reason: "candidate_does_not_contain_confirmed_center",
+      block_customer_report_reason: "candidate_does_not_contain_confirmed_center",
     };
   } else if (strict && !isFinal && missing_required_fields.length > 0) {
+    const specific = firstSpecificMissingReason(missing_required_fields) ?? "coordinate_registration_failed";
     failure = {
-      reason: "coordinate_registration_failed",
+      reason: specific,
       result_state: "ai_failed_source_acquisition",
-      hard_fail_reason: "coordinate_registration_failed",
-      block_customer_report_reason: "coordinate_registration_failed",
+      hard_fail_reason: specific,
+      block_customer_report_reason: specific,
     };
   }
 

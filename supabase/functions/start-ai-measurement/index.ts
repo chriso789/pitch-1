@@ -775,6 +775,49 @@ function getSchemaCacheMissingColumn(error: unknown): string | null {
 const DSM_HOIST_VERSION = "dsm-bounds-candidate-hoist-v1";
 const CANDIDATE_HOIST_VERSION = "candidate-hoist-v1";
 
+function registrationInputFromBlock(
+  original: RegistrationGateInput,
+  reg: Record<string, unknown>,
+): RegistrationGateInput {
+  return {
+    ...original,
+    original_geocode_lat_lng: (reg.original_geocode_lat_lng as any) ?? original.original_geocode_lat_lng ?? null,
+    confirmed_roof_center_lat_lng: (reg.confirmed_roof_center_lat_lng as any) ?? original.confirmed_roof_center_lat_lng ?? null,
+    confirmed_roof_center_px: (reg.confirmed_roof_center_px as any) ?? original.confirmed_roof_center_px ?? null,
+    confirmed_roof_center_dsm_px: (reg.confirmed_roof_center_dsm_px as any) ?? (original as any).confirmed_roof_center_dsm_px ?? null,
+    geo_to_dsm_px_success: (reg.geo_to_dsm_px_success as any) ?? original.geo_to_dsm_px_success ?? null,
+    dsm_pixel_transform_valid: (reg.dsm_pixel_transform_valid as any) ?? original.dsm_pixel_transform_valid ?? null,
+    dsm_to_raster_transform: reg.dsm_to_raster_transform ?? original.dsm_to_raster_transform ?? null,
+    geo_to_raster_transform: reg.geo_to_raster_transform ?? original.geo_to_raster_transform ?? null,
+    geo_to_dsm_transform: reg.geo_to_dsm_transform ?? original.geo_to_dsm_transform ?? null,
+    raster_bounds_lat_lng: (reg.raster_bounds_lat_lng as any) ?? original.raster_bounds_lat_lng ?? null,
+    dsm_tile_bounds_lat_lng: (reg.dsm_tile_bounds_lat_lng as any) ?? original.dsm_tile_bounds_lat_lng ?? null,
+    raster_size_px: (reg.raster_size_px as any) ?? original.raster_size_px ?? null,
+    dsm_size_px: (reg.dsm_size_px as any) ?? original.dsm_size_px ?? null,
+    meters_per_pixel: (reg.meters_per_pixel as any) ?? original.meters_per_pixel ?? null,
+    static_map_center_lat_lng: (reg.static_map_center_lat_lng as any) ?? original.static_map_center_lat_lng ?? null,
+    selected_candidate_polygon_px:
+      (reg.candidate_source_status === "stale_debug_only" ? null : (reg.selected_candidate_polygon_px as any))
+      ?? original.selected_candidate_polygon_px
+      ?? null,
+    selected_candidate_polygon_geo: (reg.selected_candidate_polygon_geo as any) ?? original.selected_candidate_polygon_geo ?? null,
+    candidate_coordinate_space: (reg.candidate_coordinate_space as any) ?? original.candidate_coordinate_space ?? null,
+    footprint_bbox_diagonal_px: (reg.footprint_bbox_diagonal_px as any) ?? original.footprint_bbox_diagonal_px ?? null,
+    no_candidate_contains_confirmed_center:
+      (reg.no_candidate_contains_confirmed_center as any) ?? (original as any).no_candidate_contains_confirmed_center ?? null,
+  };
+}
+
+function dsmRasterOverlapRatio(dsmBounds: any, rasterBounds: any): number | null {
+  if (!dsmBounds?.sw || !dsmBounds?.ne || !rasterBounds?.sw || !rasterBounds?.ne) return null;
+  const lngOverlap = Math.max(0, Math.min(dsmBounds.ne.lng, rasterBounds.ne.lng) - Math.max(dsmBounds.sw.lng, rasterBounds.sw.lng));
+  const latOverlap = Math.max(0, Math.min(dsmBounds.ne.lat, rasterBounds.ne.lat) - Math.max(dsmBounds.sw.lat, rasterBounds.sw.lat));
+  const overlapArea = lngOverlap * latOverlap;
+  const dsmArea = Math.max(0, (dsmBounds.ne.lng - dsmBounds.sw.lng) * (dsmBounds.ne.lat - dsmBounds.sw.lat));
+  if (!Number.isFinite(overlapArea) || !Number.isFinite(dsmArea) || dsmArea <= 0) return null;
+  return overlapArea / dsmArea;
+}
+
 function applyLiveRuntimeHoistToRegistration(
   registrationBlock: Record<string, unknown>,
   geometry: Record<string, unknown>,
@@ -801,6 +844,8 @@ function applyLiveRuntimeHoistToRegistration(
       ?? null;
     const rasterMpp = Number.isFinite(Number(g.meters_per_pixel))
       ? Number(g.meters_per_pixel)
+      : Number.isFinite(Number(reg.meters_per_pixel))
+        ? Number(reg.meters_per_pixel)
       : Number.isFinite(Number(reg.raster_meters_per_pixel))
         ? Number(reg.raster_meters_per_pixel)
         : null;
@@ -833,8 +878,50 @@ function applyLiveRuntimeHoistToRegistration(
       reg.dsm_hoist_failure_tokens = dsmReg.failure_tokens;
     }
     reg.dsm_hoist_called = true;
-    reg.dsm_hoist_callsite = "start-ai-measurement.prepareRoofMeasurementPayload";
+    reg.dsm_hoist_callsite = "start-ai-measurement";
     reg.dsm_hoist_version = DSM_HOIST_VERSION;
+
+    if (
+      reg.dsm_tile_bounds_lat_lng &&
+      reg.dsm_size_px &&
+      (!reg.geo_to_dsm_transform || !reg.dsm_to_raster_transform || !reg.confirmed_roof_center_dsm_px)
+    ) {
+      const logicalSize = reg.size && typeof reg.size === "object"
+        ? reg.size
+        : reg.raster_size_px && typeof reg.raster_size_px === "object" && Number(reg.scale) > 0
+        ? {
+            width: Number((reg.raster_size_px as any).width) / Number(reg.scale),
+            height: Number((reg.raster_size_px as any).height) / Number(reg.scale),
+          }
+        : null;
+      const transformPkg = buildRegistrationTransformPackage({
+        confirmed_roof_center_lat_lng: confirmedLL,
+        static_map_center_lat_lng: (reg.static_map_center_lat_lng as any) ?? g.static_map_center_lat_lng ?? confirmedLL,
+        zoom: Number.isFinite(Number(reg.zoom)) ? Number(reg.zoom) : Number.isFinite(Number(g.zoom)) ? Number(g.zoom) : 19,
+        size: logicalSize as any,
+        scale: Number.isFinite(Number(reg.scale)) ? Number(reg.scale) : Number.isFinite(Number(g.scale)) ? Number(g.scale) : 2,
+        dsm_tile_bounds_lat_lng: reg.dsm_tile_bounds_lat_lng as any,
+        dsm_size_px: reg.dsm_size_px as any,
+        dsm_meters_per_pixel: Number.isFinite(Number(reg.dsm_meters_per_pixel)) ? Number(reg.dsm_meters_per_pixel) : rasterMpp,
+      });
+      reg.geo_to_dsm_transform = reg.geo_to_dsm_transform ?? transformPkg.geo_to_dsm_transform;
+      reg.confirmed_roof_center_dsm_px = reg.confirmed_roof_center_dsm_px ?? transformPkg.confirmed_roof_center_dsm_px;
+      reg.geo_to_dsm_px_success = transformPkg.geo_to_dsm_px_success === true;
+      reg.dsm_tile_bounds_contain_confirmed_center = transformPkg.dsm_tile_bounds_contain_confirmed_center === true;
+      reg.dsm_to_raster_transform = reg.dsm_to_raster_transform ?? transformPkg.dsm_to_raster_transform;
+      reg.dsm_raster_bounds_overlap = transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
+      reg.dsm_raster_overlap_ratio = dsmRasterOverlapRatio(
+        transformPkg.dsm_tile_bounds_lat_lng,
+        transformPkg.raster_bounds_lat_lng,
+      );
+      reg.dsm_pixel_transform_valid = transformPkg.dsm_pixel_transform_valid === true;
+      reg.raster_bounds_lat_lng = reg.raster_bounds_lat_lng ?? transformPkg.raster_bounds_lat_lng;
+      reg.raster_size_px = reg.raster_size_px ?? transformPkg.raster_size_px;
+      reg.geo_to_raster_transform = reg.geo_to_raster_transform ?? transformPkg.geo_to_raster_transform;
+      reg.confirmed_roof_center_px = reg.confirmed_roof_center_px ?? transformPkg.confirmed_roof_center_px;
+      reg.transform_package = reg.transform_package ?? transformPkg;
+      reg.transform_failure_reasons = validateRegistrationTransformPackage(transformPkg).reasons;
+    }
 
     // ── Candidate polygon hoist ───────────────────────────────────
     const candidateAlreadyHoisted = Array.isArray(reg.selected_candidate_polygon_px)
@@ -853,7 +940,10 @@ function applyLiveRuntimeHoistToRegistration(
         perimeter_topology: perimeterTopology ?? staleTopology,
         default_coordinate_space: "dsm_px",
       });
-      if (hoist.selected_candidate_polygon_px) {
+      const staleOnly = perimeterTopology == null && staleTopology != null && hoist.selected_candidate_polygon_px;
+      if (staleOnly) {
+        reg.candidate_source_status = "stale_debug_only";
+      } else if (hoist.selected_candidate_polygon_px) {
         reg.selected_candidate_polygon_px = hoist.selected_candidate_polygon_px;
         reg.selected_candidate_polygon_geo = hoist.selected_candidate_polygon_geo;
         reg.selected_candidate_polygon_point_count = hoist.selected_candidate_polygon_point_count;
@@ -862,9 +952,7 @@ function applyLiveRuntimeHoistToRegistration(
         reg.candidate_area_sqft = hoist.candidate_area_sqft;
         reg.candidate_centroid_px = hoist.candidate_centroid_px;
         reg.candidate_hoist_origin = hoist.candidate_hoist_origin;
-        if (perimeterTopology == null && staleTopology != null) {
-          reg.candidate_source_status = "stale_debug_only";
-        }
+        reg.candidate_source_status = "current_run";
       }
       reg.candidate_hoist_failure_tokens = hoist.failure_tokens;
     }
@@ -872,6 +960,49 @@ function applyLiveRuntimeHoistToRegistration(
     reg.candidate_hoist_version = CANDIDATE_HOIST_VERSION;
     reg.selected_candidate_polygon_px_present = Array.isArray(reg.selected_candidate_polygon_px)
       && reg.selected_candidate_polygon_px.length >= 3;
+    if (reg.selected_candidate_polygon_px_present) {
+      const stageReport = classifyRegistrationStage({
+        confirmed_roof_center_lat_lng: reg.confirmed_roof_center_lat_lng as any,
+        confirmed_roof_center_px: reg.confirmed_roof_center_px as any,
+        confirmed_roof_center_dsm_px: reg.confirmed_roof_center_dsm_px as any,
+        raster_size_px: reg.raster_size_px as any,
+        raster_bounds_lat_lng: reg.raster_bounds_lat_lng as any,
+        static_transform_succeeded: !!reg.geo_to_raster_transform && !!reg.confirmed_roof_center_px,
+        geo_to_dsm_px_success: reg.geo_to_dsm_px_success === true,
+        dsm_pixel_transform_valid: reg.dsm_pixel_transform_valid === true,
+        dsm_tile_bounds_contain_confirmed_center: reg.dsm_tile_bounds_contain_confirmed_center === true,
+        dsm_to_raster_bounds_overlap: reg.dsm_raster_bounds_overlap === true,
+        dsm: {
+          dsm_loaded: reg.dsm_stage_attempted === true,
+          dsm_decode_success: reg.dsm_stage_attempted === true,
+          dsm_bounds_source: reg.dsm_bounds_source as any,
+          dsm_tile_bounds_lat_lng: reg.dsm_tile_bounds_lat_lng as any,
+          dsm_size_px: reg.dsm_size_px as any,
+          dsm_meters_per_pixel: Number.isFinite(Number(reg.dsm_meters_per_pixel)) ? Number(reg.dsm_meters_per_pixel) : null,
+        },
+        candidate: {
+          selected_candidate_polygon_px: reg.selected_candidate_polygon_px as any,
+          selected_candidate_polygon_geo: reg.selected_candidate_polygon_geo as any,
+          candidate_coordinate_space: reg.candidate_coordinate_space as any,
+          candidate_source: reg.candidate_source as any,
+          candidate_area_sqft: reg.candidate_area_sqft as any,
+          candidate_centroid_px: reg.candidate_centroid_px as any,
+          candidate_centroid_offset_threshold_px: reg.candidate_centroid_offset_threshold_px as any,
+        },
+      });
+      reg.center_used_for_candidate_check = stageReport.coordinate_space_audit.center_used_for_candidate_check;
+      reg.confirmed_center_inside_candidate = stageReport.candidate_proof.confirmed_center_inside_candidate;
+      reg.candidate_centroid_offset_from_confirmed_center_px =
+        stageReport.candidate_proof.candidate_centroid_offset_from_confirmed_center_px;
+      reg.candidate_centroid_offset_threshold_px =
+        stageReport.candidate_proof.candidate_centroid_offset_threshold_px;
+      reg.candidate_rejection_reason = stageReport.hard_fail_reason === "candidate_centroid_offset_exceeds_target"
+        ? "centroid_offset_exceeds_target"
+        : stageReport.candidate_proof.candidate_rejection_reason;
+      reg.stage_hard_fail_reason = stageReport.hard_fail_reason;
+      reg.stage_failure_stage = stageReport.failure_stage;
+      reg.coordinate_space_audit = stageReport.coordinate_space_audit;
+    }
     return reg;
   } catch (e) {
     console.warn("[DSM_HOIST_V1] applyLiveRuntimeHoistToRegistration failed", (e as Error)?.message);
@@ -907,7 +1038,7 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
   let regVersionForPrecedence: string | null = null;
   if (regInput) {
     try {
-      const result = evaluateRegistrationGate(regInput);
+      let result = evaluateRegistrationGate(regInput);
       let registrationBlock: Record<string, unknown> = { ...result.registration };
       // Source Registration Transform Builder v1 — hoist truth-from-math values
       // into the top-level registration block so the gate, UI, and debug
@@ -932,25 +1063,28 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
       // registration block reports dsm_size_px / selected_candidate_polygon_px
       // from whatever evidence already lives on geometry_report_json.
       registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock, geometry as any);
-      geometry.registration = registrationBlock;
-      geometry.registration_gate = registrationBlock;
+      const refreshedGateInput = registrationInputFromBlock(regInput, registrationBlock);
+      result = evaluateRegistrationGate(refreshedGateInput);
+      registrationBlock = { ...registrationBlock, ...result.registration };
+      (geometry as any).registration = registrationBlock;
+      (geometry as any).registration_gate = registrationBlock;
       regVersionForPrecedence = (registrationBlock as any)?.version ?? null;
       if (result.failure) {
         const failure = result.failure;
         regFailureReasonForPrecedence = failure.reason as any;
-        geometry.result_state = failure.result_state;
-        geometry.hard_fail_reason = failure.hard_fail_reason;
-        geometry.block_customer_report_reason = failure.block_customer_report_reason;
-        geometry.failure_stage = registrationFailureStage(failure.reason as any);
-        geometry.diagram_render_intent =
+        (geometry as any).result_state = failure.result_state;
+        (geometry as any).hard_fail_reason = failure.hard_fail_reason;
+        (geometry as any).block_customer_report_reason = failure.block_customer_report_reason;
+        (geometry as any).failure_stage = registrationFailureStage(failure.reason as any);
+        (geometry as any).diagram_render_intent =
           failure.result_state === "ai_failed_target_unconfirmed"
             ? "target_confirmation_required"
             : "coordinate_registration_debug_only";
         (next as any).result_state = failure.result_state;
         (next as any).hard_fail_reason = failure.hard_fail_reason;
         (next as any).block_customer_report_reason = failure.block_customer_report_reason;
-        (next as any).failure_stage = geometry.failure_stage;
-        (next as any).diagram_render_intent = geometry.diagram_render_intent;
+        (next as any).failure_stage = (geometry as any).failure_stage;
+        (next as any).diagram_render_intent = (geometry as any).diagram_render_intent;
         (next as any).customer_report_ready = false;
         (next as any).validation_status = "failed";
         // Quarantine stale Phase 3B / roof_lines when registration blocks.
@@ -2715,7 +2849,7 @@ async function processJob(input: any) {
       candidates.every((c) => c.rejected_reason !== null) &&
       candidates.some((c) => c.rejected_reason === "candidate_does_not_contain_confirmed_roof_center");
     if (allCandidatesWrongHouse) {
-      const failReason = "candidate_does_not_contain_confirmed_roof_center";
+      const failReason = "no_perimeter_candidate_contains_confirmed_center";
       const debugPayload = {
         failure_stage: "registration",
         hard_fail_reason: failReason,
@@ -8148,6 +8282,7 @@ async function processJob(input: any) {
             : null,
         confirmed_roof_center_lat_lng: confirmedLatLngFinal,
         confirmed_roof_center_px: transformPkgFinal.confirmed_roof_center_px ?? null,
+        confirmed_roof_center_dsm_px: transformPkgFinal.confirmed_roof_center_dsm_px ?? null,
         geo_to_dsm_px_success: transformPkgFinal.geo_to_dsm_px_success === true,
         dsm_pixel_transform_valid: transformPkgFinal.dsm_pixel_transform_valid === true,
         dsm_to_raster_transform: transformPkgFinal.dsm_to_raster_transform ?? null,
@@ -9789,6 +9924,7 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
           }
         : null);
     const dsmSizeForFailure = debug?.dsm_size_px
+      || debug?.dsm_coordinate_match?.dsm_bbox
       || (debug?.dsm_width && debug?.dsm_height ? { width: debug.dsm_width, height: debug.dsm_height } : null);
     const transformPkgFailure = buildRegistrationTransformPackage({
       confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
@@ -9814,6 +9950,7 @@ async function insertFailedPreliminaryMeasurement(input: any, coords: GeoPoint, 
           : null,
       confirmed_roof_center_lat_lng: confirmedLatLngForFailure,
       confirmed_roof_center_px: transformPkgFailure.confirmed_roof_center_px ?? null,
+      confirmed_roof_center_dsm_px: transformPkgFailure.confirmed_roof_center_dsm_px ?? null,
       geo_to_dsm_px_success: transformPkgFailure.geo_to_dsm_px_success === true,
       dsm_pixel_transform_valid: transformPkgFailure.dsm_pixel_transform_valid === true,
       dsm_to_raster_transform: transformPkgFailure.dsm_to_raster_transform ?? null,

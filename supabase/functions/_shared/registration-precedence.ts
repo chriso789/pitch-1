@@ -19,8 +19,44 @@ export const REGISTRATION_BLOCKED_SKIPPED_REASON = "blocked_by_registration_gate
 export type RegistrationPrecedenceReason =
   | "target_roof_not_confirmed"
   | "coordinate_registration_failed"
-  | "candidate_does_not_contain_confirmed_roof_center"
+  | "dsm_size_missing"
+  | "dsm_bounds_missing"
+  | "geo_to_dsm_transform_missing"
+  | "dsm_to_raster_transform_missing"
+  | "selected_candidate_polygon_missing"
+  | "candidate_does_not_contain_confirmed_center"
+  | "candidate_centroid_offset_exceeds_target"
+  | "no_perimeter_candidate_contains_confirmed_center"
+  | "coordinate_space_mismatch"
   | "registration_field_conflict";
+
+function specificReasonFromRegistration(reg: any): RegistrationPrecedenceReason | null {
+  const hard = String(reg?.stage_hard_fail_reason ?? reg?.hard_fail_reason ?? reg?.block_customer_report_reason ?? "");
+  if ([
+    "dsm_size_missing",
+    "dsm_bounds_missing",
+    "geo_to_dsm_transform_missing",
+    "dsm_to_raster_transform_missing",
+    "selected_candidate_polygon_missing",
+    "candidate_does_not_contain_confirmed_center",
+    "candidate_centroid_offset_exceeds_target",
+    "no_perimeter_candidate_contains_confirmed_center",
+    "coordinate_space_mismatch",
+  ].includes(hard)) {
+    return hard as RegistrationPrecedenceReason;
+  }
+  const missing = Array.isArray(reg?.missing_required_fields) ? reg.missing_required_fields : [];
+  if (missing.includes("dsm_size_px")) return "dsm_size_missing";
+  if (missing.includes("dsm_tile_bounds_lat_lng")) return "dsm_bounds_missing";
+  if (missing.includes("geo_to_dsm_transform") || missing.includes("geo_to_dsm_px_success")) {
+    return "geo_to_dsm_transform_missing";
+  }
+  if (missing.includes("dsm_to_raster_transform") || missing.includes("dsm_pixel_transform_valid")) {
+    return "dsm_to_raster_transform_missing";
+  }
+  if (missing.includes("selected_candidate_polygon_px")) return "selected_candidate_polygon_missing";
+  return null;
+}
 
 /**
  * Inspect a persisted registration block and return the failure reason
@@ -33,6 +69,8 @@ export function deriveRegistrationFailureReason(reg: any): RegistrationPrecedenc
   if (reg.user_confirmed_roof_target === false && reg.roof_target_admin_override !== true) {
     return "target_roof_not_confirmed";
   }
+  const specific = specificReasonFromRegistration(reg);
+  if (specific) return specific;
   // Strict-mode missing transform evidence collapses to coordinate_registration_failed.
   if (Array.isArray(reg.missing_required_fields) && reg.missing_required_fields.length > 0) {
     return "coordinate_registration_failed";
@@ -44,10 +82,10 @@ export function deriveRegistrationFailureReason(reg: any): RegistrationPrecedenc
     return "coordinate_registration_failed";
   }
   if (reg.centroid_offset_exceeds_threshold === true) {
-    return "candidate_does_not_contain_confirmed_roof_center";
+    return "candidate_centroid_offset_exceeds_target";
   }
   if (reg.confirmed_center_inside_candidate === false) {
-    return "candidate_does_not_contain_confirmed_roof_center";
+    return "candidate_does_not_contain_confirmed_center";
   }
   return null;
 }

@@ -81,7 +81,7 @@ Deno.test("missing static-map size leaves transforms null and gate fails coordin
   assert(result.failure, "gate must fail when transform package is invalid");
   assertEquals(result.coordinate_registration_gate_passed, false);
   assertEquals(result.failure?.result_state, "ai_failed_source_acquisition");
-  assertEquals(result.failure?.hard_fail_reason, "coordinate_registration_failed");
+  assertEquals(result.failure?.hard_fail_reason, "dsm_size_missing");
 });
 
 Deno.test("gate passes only when candidate polygon contains confirmed centre", () => {
@@ -114,6 +114,7 @@ Deno.test("gate passes only when candidate polygon contains confirmed centre", (
     dsm_to_raster_transform: pkg.dsm_to_raster_transform,
     raster_bounds_lat_lng: pkg.raster_bounds_lat_lng,
     dsm_tile_bounds_lat_lng: pkg.dsm_tile_bounds_lat_lng,
+    dsm_size_px: pkg.dsm_size_px,
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
     selected_candidate_polygon_px: containing,
@@ -149,6 +150,7 @@ Deno.test("missing selected candidate at final stage hard-fails", () => {
     dsm_to_raster_transform: pkg.dsm_to_raster_transform,
     raster_bounds_lat_lng: pkg.raster_bounds_lat_lng,
     dsm_tile_bounds_lat_lng: pkg.dsm_tile_bounds_lat_lng,
+    dsm_size_px: pkg.dsm_size_px,
     geo_to_dsm_px_success: true,
     dsm_pixel_transform_valid: true,
     selected_candidate_polygon_px: null,
@@ -157,6 +159,90 @@ Deno.test("missing selected candidate at final stage hard-fails", () => {
   assert(result.failure, "final stage must fail without selected candidate");
   const missing = (result.registration as any).missing_required_fields as string[];
   assert(missing.includes("selected_candidate_polygon_px"));
+  assertEquals(result.failure?.hard_fail_reason, "selected_candidate_polygon_missing");
+});
+
+Deno.test("candidate in dsm_px uses confirmed_roof_center_dsm_px", () => {
+  const result = evaluateRegistrationGate({
+    evaluation_stage: "candidate_final",
+    user_confirmed_roof_target: true,
+    original_geocode_lat_lng: FONSICA,
+    confirmed_roof_center_lat_lng: FONSICA,
+    confirmed_roof_center_px: [10, 10],
+    confirmed_roof_center_dsm_px: [640, 640],
+    geo_to_raster_transform: {},
+    geo_to_dsm_transform: {},
+    dsm_to_raster_transform: {},
+    raster_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    dsm_tile_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    dsm_size_px: { width: 998, height: 998 },
+    geo_to_dsm_px_success: true,
+    dsm_pixel_transform_valid: true,
+    selected_candidate_polygon_px: [[630,630],[650,630],[650,650],[630,650]],
+    candidate_coordinate_space: "dsm_px",
+    footprint_bbox_diagonal_px: 40,
+  });
+  assertEquals((result.registration as any).center_used_for_candidate_check, "dsm_px");
+  assertEquals(result.confirmed_center_inside_candidate, true);
+  assertEquals(result.failure, null);
+});
+
+Deno.test("candidate in raster_px uses confirmed_roof_center_px", () => {
+  const result = evaluateRegistrationGate({
+    evaluation_stage: "candidate_final",
+    user_confirmed_roof_target: true,
+    original_geocode_lat_lng: FONSICA,
+    confirmed_roof_center_lat_lng: FONSICA,
+    confirmed_roof_center_px: [640, 640],
+    confirmed_roof_center_dsm_px: [10, 10],
+    geo_to_raster_transform: {},
+    geo_to_dsm_transform: {},
+    dsm_to_raster_transform: {},
+    raster_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    dsm_tile_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    dsm_size_px: { width: 998, height: 998 },
+    geo_to_dsm_px_success: true,
+    dsm_pixel_transform_valid: true,
+    selected_candidate_polygon_px: [[630,630],[650,630],[650,650],[630,650]],
+    candidate_coordinate_space: "raster_px",
+    footprint_bbox_diagonal_px: 40,
+  });
+  assertEquals((result.registration as any).center_used_for_candidate_check, "raster_px");
+  assertEquals(result.confirmed_center_inside_candidate, true);
+  assertEquals(result.failure, null);
+});
+
+Deno.test("candidate offset above target threshold hard-fails specifically", () => {
+  const result = evaluateRegistrationGate({
+    evaluation_stage: "candidate_final",
+    user_confirmed_roof_target: true,
+    original_geocode_lat_lng: FONSICA,
+    confirmed_roof_center_lat_lng: FONSICA,
+    confirmed_roof_center_px: [640, 640],
+    confirmed_roof_center_dsm_px: [640, 640],
+    geo_to_raster_transform: {},
+    geo_to_dsm_transform: {},
+    dsm_to_raster_transform: {},
+    raster_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    dsm_tile_bounds_lat_lng: { sw: { lat: FONSICA.lat - 0.001, lng: FONSICA.lng - 0.001 }, ne: { lat: FONSICA.lat + 0.001, lng: FONSICA.lng + 0.001 } },
+    dsm_size_px: { width: 998, height: 998 },
+    geo_to_dsm_px_success: true,
+    dsm_pixel_transform_valid: true,
+    selected_candidate_polygon_px: [[100,100],[120,100],[120,120],[100,120]],
+    candidate_coordinate_space: "raster_px",
+    footprint_bbox_diagonal_px: 40,
+  });
+  assertEquals(result.failure?.hard_fail_reason, "candidate_centroid_offset_exceeds_target");
+  assertEquals((result.registration as any).candidate_rejection_reason, "centroid_offset_exceeds_target");
+});
+
+Deno.test("runtime path reruns gate after DSM/candidate hoist", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(source.includes("registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock, geometry as any);"));
+  assert(source.includes("const refreshedGateInput = registrationInputFromBlock(regInput, registrationBlock);"));
+  assert(source.includes("result = evaluateRegistrationGate(refreshedGateInput);"));
+  assert(source.includes('reg.dsm_hoist_callsite = "start-ai-measurement";'));
+  assert(source.includes('reg.candidate_source_status = "stale_debug_only";'));
 });
 
 Deno.test("must-run preflight: target unconfirmed still builds static transform proof", () => {

@@ -67,7 +67,7 @@ Deno.test("evaluateRegistrationGate — fails on invalid frame", () => {
     dsm_pixel_transform_valid: false,
   });
   assertEquals(res.failure?.result_state, "ai_failed_source_acquisition");
-  assertEquals(res.failure?.hard_fail_reason, "coordinate_registration_failed");
+  assertEquals(res.failure?.hard_fail_reason, "dsm_size_missing");
 });
 
 Deno.test("evaluateRegistrationGate — fails when candidate doesn't contain confirmed center", () => {
@@ -83,12 +83,13 @@ Deno.test("evaluateRegistrationGate — fails when candidate doesn't contain con
     dsm_to_raster_transform: { a: 1 },
     raster_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
     dsm_tile_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
+    dsm_size_px: { width: 998, height: 998 },
     selected_candidate_polygon_px: SQUARE,
   });
   assertEquals(res.confirmed_center_inside_candidate, false);
   assertEquals(
     res.failure?.hard_fail_reason,
-    "candidate_does_not_contain_confirmed_roof_center",
+    "candidate_centroid_offset_exceeds_target",
   );
 });
 
@@ -105,6 +106,7 @@ Deno.test("evaluateRegistrationGate — passes when all gates satisfied", () => 
     dsm_to_raster_transform: { a: 1 },
     raster_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
     dsm_tile_bounds_lat_lng: { sw: { lat: 33.7, lng: -84.4 }, ne: { lat: 33.8, lng: -84.3 } },
+    dsm_size_px: { width: 998, height: 998 },
     selected_candidate_polygon_px: SQUARE,
   });
   assertEquals(res.failure, null);
@@ -203,6 +205,6 @@ Deno.test("regression: confirmed but bad transform yields source_acquisition", (
   });
   assert(r.failure);
   assertEquals(r.failure!.result_state, "ai_failed_source_acquisition");
-  assertEquals(r.failure!.hard_fail_reason, "coordinate_registration_failed");
+  assertEquals(r.failure!.hard_fail_reason, "dsm_size_missing");
   assertEquals(canApproveManualPerimeter(r), false);
 });
