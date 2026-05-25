@@ -157,12 +157,16 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     grj?.raster_image_url ||
     null;
 
-  const rasterSize =
-    overlayDbg?.raster_size ||
-    grj?.raster_size ||
-    (measurement as any)?.analysis_image_size ||
-    parseRasterSizeFromUrl(rasterUrl) ||
-    { width: 1280, height: 1280 };
+  // Track the loaded image's natural size so resolveSourceRasterSize has a
+  // last-resort fallback. NOTE: no silent 1280x1280 default — if nothing
+  // resolves we render a banner and skip projection.
+  const [imageNatural, setImageNatural] = useState<{ width: number; height: number } | null>(null);
+  const resolvedRaster = resolveSourceRasterSize(measurement, rasterUrl, imageNatural);
+  const rasterSize = {
+    width: resolvedRaster.width ?? 0,
+    height: resolvedRaster.height ?? 0,
+  };
+  const rasterSizeResolved = resolvedRaster.source !== 'unresolved' && rasterSize.width > 0;
 
   // Render order (fallback chain):
   // 1. aerial_candidate_roof_graph.perimeter_ring_px (DSM-failed runs that still
