@@ -292,5 +292,7 @@ export function resolveMeasurementDiagnosticState(
       customerReady,
     }),
     dsm_transform_valid: dsmTransformValid,
+    aerial_candidate_graph_present: aerialCandidateGraphPresent,
   };
+
 }
