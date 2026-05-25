@@ -34,7 +34,7 @@ Deno.test("evaluateRegistrationGate — target confirmed, frame invalid → ai_f
     dsm_pixel_transform_valid: true,
     dsm_to_raster_transform: { a: 1 },
   });
-  assertEquals(r.failure?.reason, "coordinate_registration_failed");
+  assertEquals(r.failure?.reason, "dsm_size_missing");
   assertEquals(r.failure?.result_state, "ai_failed_source_acquisition");
   // v3 contract: gate prefers specific missing-field tokens (firstSpecificMissingReason)
   // over the generic coordinate_registration_failed fallback. Fixture lacks DSM size.
