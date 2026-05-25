@@ -96,7 +96,11 @@ Deno.test("Test C — Candidate polygon missing", () => {
     },
     candidate: { selected_candidate_polygon_px: null },
   });
-  assertEquals(r.hard_fail_reason, "candidate_polygon_missing");
+  // Production token is `selected_candidate_polygon_missing` (see
+  // registration-stage-classifier.ts priority list, item 6). The legacy
+  // `candidate_polygon_missing` is only recognized by result-state
+  // normalization for backwards compat, never emitted directly.
+  assertEquals(r.hard_fail_reason, "selected_candidate_polygon_missing");
   assertEquals(r.missing_required_fields.includes("selected_candidate_polygon_px"), true);
   assertEquals(r.missing_required_fields.includes("raster_bounds_lat_lng"), false);
 });
