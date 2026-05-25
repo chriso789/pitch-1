@@ -127,7 +127,9 @@ export interface CoordinateSpaceAudit {
 
 export interface StageClassifierResult {
   version: typeof REGISTRATION_STAGE_CLASSIFIER_VERSION;
-  hard_fail_reason: string;
+  /** `null` when the run is still in `early_preflight` — DSM/source has
+   *  not yet been attempted, so no DSM-derived hard fail may be promoted. */
+  hard_fail_reason: string | null;
   failure_stage: string;
   result_state: "ai_failed_source_acquisition";
   missing_required_fields: string[];
