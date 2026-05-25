@@ -14544,6 +14544,19 @@ async function insertFailedPreliminaryMeasurement(
   debug: any,
   imageUrl: string | null,
   mpp: number,
+  opts?: {
+    /**
+     * When true, the row is persisted as an "aerial-primary downgrade":
+     *   - result_state lands as `perimeter_only` (already in debug)
+     *   - hard_fail_reason = null   (no hard fail — DSM validation only)
+     *   - block_customer_report_reason = opts.dsmValidationReason
+     *   - validation_status = "needs_review"
+     *   - last_failure_reason = null
+     * Customer-ready gate is NOT relaxed.
+     */
+    aerialPrimaryDowngrade?: boolean;
+    dsmValidationReason?: string;
+  },
 ) {
   const debugWithTransform = mergeTransformProofIntoDebug(
     debug,
@@ -14554,6 +14567,7 @@ async function insertFailedPreliminaryMeasurement(
     JSON.stringify({
       has_preflight: !!input?._registration_preflight,
       reason: failureReason,
+      aerial_primary_downgrade: !!opts?.aerialPrimaryDowngrade,
     }),
   );
   const phase3Debug = withPhase3Visibility(
@@ -14561,10 +14575,15 @@ async function insertFailedPreliminaryMeasurement(
     [],
     failureReason,
   );
-  const persistedFailureReason = phase3Debug.hard_fail_reason ||
-    failureReason || "ai_failed_unknown";
+  const aerialDowngrade = !!opts?.aerialPrimaryDowngrade;
+  const persistedFailureReason = aerialDowngrade
+    ? null
+    : (phase3Debug.hard_fail_reason || failureReason || "ai_failed_unknown");
+  const persistedBlockReason = aerialDowngrade
+    ? (opts?.dsmValidationReason || "dsm_validation_unavailable")
+    : persistedFailureReason;
   const persistedResultState = normalizeResultStateForWrite(
-    phase3Debug.result_state,
+    aerialDowngrade ? "perimeter_only" : phase3Debug.result_state,
     phase3Debug,
   );
   const aiDetectionData = {
