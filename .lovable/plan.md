@@ -1,149 +1,148 @@
 
-## Scope
+# Pivot: Aerial-Registered Geometry First, DSM as Validation
 
-Add a new **Registered Aerial Geometry Stage** that runs between source acquisition and DSM topology solving. It builds a first-class diagnostic `aerial_candidate_roof_graph` in `raster_px` space from already-available inputs (raster bounds, `geo_to_raster_transform`, Solar mask, perimeter ring, target mask, eave edges). DSM is demoted to a validation/refinement layer — it no longer gates whether *any* roof geometry exists. Customer gates stay strict.
+## Goal
 
-No schema migration. No relaxation of `customer_report_ready`. Canonical route remains `start-ai-measurement`.
+Stop treating DSM as the final judge. When registered aerial geometry exists (raster_url + geo→raster transform + valid perimeter ring with adequate mask IoU), the run must continue, persist that geometry as the primary scaffold, and degrade DSM to a validation tier. Only the customer-ready gate stays strict.
 
----
+## Source of truth hierarchy (new)
 
-## Backend
+```
+Primary       : registered aerial roof perimeter + aerial candidate graph
+Secondary     : Google Solar mask + solar segments
+Validation    : DSM pitch / topology / ridges (optional, not fatal)
+```
 
-### 1. New module: `supabase/functions/_shared/aerial-candidate-graph.ts`
+The infrastructure for the primary tier already landed last turn (`aerial-candidate-graph.ts`, debug-bag wiring, overlay fallback, dialog row). This pivot wires it into the canonical control flow so it actually replaces the DSM-first decision tree.
 
-Pure builder. Inputs (all already persisted today):
-- `overlay_debug.raster_url`, `raster_bounds_lat_lng`, `geo_to_raster_transform`
-- `confirmed_roof_center_px`, `static_map_center_lat_lng`
-- Google Solar mask contour / segment polygons / azimuths
-- `target_mask_isolation` (bbox, components, chosen component)
-- `perimeter_topology.perimeter_ring_px` / `perimeter_ring_geo`
-- `perimeter_topology.eave_edges`, `corner_nodes`
-- `mask_components_table`
+## Scope (backend)
 
-Output shape persisted at `geometry_report_json.aerial_candidate_roof_graph`:
+All changes are inside `supabase/functions/start-ai-measurement/index.ts` and small additions in `_shared/`. No DB migration. No new edge function. No geometry-gate relaxation. Canonical route preserved.
+
+### 1. New module: `_shared/aerial-primary-gate.ts`
+
+Pure function `evaluateAerialPrimacy({ perimeterTopologySnapshot, targetMaskIsolation, rasterUrl, rasterBoundsLatLng, geoToRasterTransform, footprintSource })` returns:
 
 ```ts
 {
-  version: "aerial-candidate-graph-v1",
-  coordinate_space: "raster_px",
-  executed: true,
-  customer_ready: false,
-  source: "registered_aerial_geometry",
-  perimeter_ring_px, perimeter_ring_geo,
-  perimeter_area_sqft, target_mask_area_sqft,
-  perimeter_vs_mask_iou, target_mask_overlap_with_perimeter,
-  nodes: [{ id, px, geo, kind: "corner"|"reflex"|"convex" }],
-  edges: [{
-    id, type_candidate: "eave"|"rake"|"perimeter"|"unclassified",
-    start_px, end_px, start_geo, end_geo,
-    length_ft, confidence, evidence_source,
-    debug_only: true, customer_ready: false,
-    validation_status: "candidate_only",
-  }],
-  candidate_faces: [{ id, polygon_px, polygon_geo, source: "solar_segment"|"mask_component" }],
-  evidence: {
-    raster_registered: bool,
-    target_mask_isolation_checked: bool,
-    solar_segments_used: bool,
-    dsm_required: false,
-  },
-  skipped_reason?: string,  // when inputs insufficient
+  aerial_primary_ready: boolean,        // can we proceed without DSM?
+  reasons: string[],                    // which checks passed/failed
+  perimeter_area_sqft: number | null,
+  mask_iou: number | null,
+  candidate_edge_count: number,
 }
 ```
 
-Skip (`executed:false, skipped_reason`) when raster transform OR perimeter ring missing. Never throw.
+Pass conditions (ALL):
+- `rasterUrl` present
+- `geoToRasterTransform` present
+- `perimeter_ring_px.length ≥ 4` AND `perimeter_ring_geo.length ≥ 4`
+- `target_mask_isolation.perimeter_vs_mask_iou ≥ 0.75` (or `≥ 0.70` when `target_mask_isolation.target_mask_overlap ≥ 0.95`)
+- `footprintSource ∈ { google_solar_roof_mask, osm_overpass, user_verified_perimeter, parcel_then_mask_refined, … }` — anything except `none` / `unknown` / `blocked_by_registration_gate`
 
-### 2. Wire into `supabase/functions/start-ai-measurement/index.ts`
+### 2. Hard-block downgrades (lines 6122 + 6197 in `index.ts`)
 
-New phase **before** Phase 3A.5 perimeter refinement / Phase 3C-E:
+Both existing hard-block branches gain a pre-check: if `evaluateAerialPrimacy().aerial_primary_ready === true`, do NOT take the hard-block branch. Instead route to a new "aerial-primary persistence" handler (Section 3).
 
-```
-… source acquisition (raster + solar + target mask) …
-→ buildAerialCandidateGraph(ctx)             // NEW
-→ persist into geometry_report_json
-→ perimeter refinement (Phase 3A.5)
-→ DSM georeg gate (existing footprint-DSM gate)
-   ├── pass → autonomous DSM solver / Phase 3C/D/E (validation/refinement)
-   └── fail → mark dsm_status.georegistration_transform=fail,
-              keep aerial_candidate_roof_graph,
-              do NOT erase aerial geometry,
-              hard_fail_reason = "dsm_transform_invalid"
-                 (only when DSM was the actual blocker)
-```
+The original hard-block stays as the fallback when aerial primacy is also unavailable. This preserves the current behavior for the truly-no-geometry case.
 
-Existing CPU preempt + persistence contract slice stays intact. Aerial graph builder is cheap (no heavy edge detection) — runs before any preempt threshold matters.
+### 3. New handler: `persistAerialPrimaryGeometry(...)`
 
-### 3. Demote-DSM rule (no gate relaxation)
+Called when DSM is blocked (unknown footprint, coord match fail, or transform invalid) but aerial primary IS ready. It writes:
 
-In `start-ai-measurement`:
-- If `aerial_candidate_roof_graph.executed === true` AND DSM georeg fails → write `result_state` via `normalizeResultStateForWrite` mapping to existing `ai_failed_runtime` bucket, set `hard_fail_reason="dsm_transform_invalid"`, `block_customer_report_reason="dsm_validation_unavailable"`, keep `customer_report_ready=false`.
-- DSM solver path is unchanged when transform IS valid. Aerial graph remains as additional debug evidence.
+- `result_state = normalizeResultStateForWrite("perimeter_only", debugPayload)` — NOT `ai_failed_runtime`. `perimeter_only` is already in the TrueRoofPerimeter three-state contract.
+- `hard_fail_reason = null` (no hard fail — just downgraded scope)
+- `block_customer_report_reason = "dsm_validation_unavailable"` (or `"dsm_transform_invalid"` when applicable)
+- `customer_report_ready = false` (stays strict — aerial-only never unlocks the customer report on its own)
+- `report_blocked = true`, `needs_review = true`
+- `geometry_report_json`:
+  - `primary_geometry_source = "aerial_registered"`
+  - `aerial_candidate_roof_graph` (already built by debug bag)
+  - `dsm_validation_status = { available: false, reason: <dsm_*_token> }`
+  - `route_provenance` stamps untouched (canonical route preserved)
+  - `phase3C/3D/3E` get `executed: false, skipped_reason: "dsm_validation_unavailable_primary_aerial_used"`
 
-### 4. Debug edges contract (already partially in place)
+### 4. Post-Phase-3A.5 path (line ~7081, `solveAutonomousGraph` call)
 
-Aerial graph edges feed `debug_roof_lines` only. They MUST NOT contribute to `roof_lines_count` or any typed-roof-line aggregation. Enforce in `roof-lines.ts` aggregator: filter `debug_only===true`.
+After Phase 3A.5 succeeds, the solver still runs IF DSM is healthy. New decision:
 
----
+- DSM healthy (transform valid, coord match) → run `solveAutonomousGraph` exactly as today. DSM acts as validator + topology source. Customer-ready gate unchanged.
+- DSM unhealthy but aerial primary ready → skip `solveAutonomousGraph`, persist via `persistAerialPrimaryGeometry` with `result_state="perimeter_only"`.
+- Neither → existing hard-fail behavior.
 
-## Frontend
+`solveAutonomousGraph` itself is NOT modified.
 
-### 5. `src/components/measurements/MeasurementVisualQAOverlay.tsx`
+### 5. Pre-Phase-3A.5 CPU preempt sites (lines 6532, 6567)
 
-Extend render fallback chain to include aerial candidate graph perimeter (highest debug priority):
+Already wired to carry the aerial graph through `buildPreTopologyDebugBag`. No code change needed; they keep failing as `ai_failed_runtime / ai_measurement_cpu_timeout` because that's the correct bucket for a real wall-clock timeout. Aerial primacy does not override CPU timeouts.
 
-1. `aerial_candidate_roof_graph.perimeter_ring_px` (NEW — top of fallback when DSM failed)
-2. `phase3_5.refined_perimeter_px`
-3. `phase3_5.raw_perimeter_px`
-4. `debug_layers.raw_perimeter_px`
-5. `perimeter_topology.perimeter_ring_px`
+### 6. Result-state contract (no migration)
 
-Add toggleable layer for aerial candidate edges (gray) and candidate faces (translucent fill). Use existing layer-toggle pattern.
+`perimeter_only` is already DB-safe per the Result-State Contract. The change is purely which inputs map to it. The `normalizeResultStateForWrite` mapping table gets one new branch:
+- input `"aerial_primary_dsm_unavailable"` → `"perimeter_only"`.
 
-### 6. `src/components/measurements/MeasurementReportDialog.tsx`
+## Scope (frontend)
 
-Add three-line status block when `aerial_candidate_roof_graph` exists:
-- **Aerial Candidate Graph:** present / skipped
-- **DSM Topology:** passed / failed / blocked
-- **Customer Report:** ready / blocked (with `block_customer_report_reason`)
+### 7. `MeasurementReportDialog.tsx`
 
-No change to customer-ready gating.
+Add three explicit diagnostic rows (alongside the existing "Aerial Candidate Graph" row from last turn):
 
-### 7. `src/lib/measurements/measurementDiagnosticState.ts`
+- **Primary Geometry Source** — reads `grj.primary_geometry_source` (e.g. `aerial_registered`, `dsm_validated`, `—`).
+- **DSM Validation Status** — `available | unavailable: <reason>`.
+- **Customer Report Blocker** — surfaces `block_customer_report_reason` distinctly from `hard_fail_reason`, so "DSM validation unavailable — aerial geometry persisted" stops looking like a runtime failure.
 
-Add `aerial_candidate_graph_present` boolean. When true AND DSM failed, blocker copy is "DSM validation unavailable — aerial candidate geometry persisted for review" (not "no roof geometry").
+### 8. `measurementDiagnosticState.ts`
 
----
+Add `primary_geometry_source` + `dsm_validation_status` to the resolved diagnostic state. Blocker copy when `aerial_primary_ready && !dsm_validated`: "DSM validation unavailable — aerial roof geometry persisted for review (not customer-ready)."
 
-## Tests (added before deploy; deploy only after green)
+### 9. `MeasurementVisualQAOverlay.tsx`
 
-Backend (Deno) — `supabase/functions/start-ai-measurement/__tests__/`:
+Already prioritizes `aerial_candidate_roof_graph.perimeter_ring_px` (done last turn). No change needed beyond a header chip that says "Primary: Aerial Registered Geometry" when the new state applies.
 
-- `aerial-candidate-graph-builder.test.ts` — given `perimeter_ring_px` + raster transform + target mask, builder emits `executed:true`, all edges flagged `debug_only:true`, `customer_ready:false`, edges carry `start_px`/`end_px`/`start_geo`/`end_geo`/`length_ft`.
-- `aerial-graph-survives-dsm-failure.test.ts` — given invalid DSM transforms, aerial graph still persisted; `customer_report_ready===false`; `hard_fail_reason==="dsm_transform_invalid"`; `block_customer_report_reason` set.
-- `aerial-debug-edges-excluded-from-roof-lines.test.ts` — aerial edges do NOT increment `roof_lines_count` and do NOT appear in typed roof_lines aggregator.
-- `aerial-graph-skipped-without-raster.test.ts` — missing `geo_to_raster_transform` → `executed:false`, `skipped_reason:"raster_transform_unavailable"`, no throw.
+## Tests
 
-Frontend (Vitest):
+### Backend (Deno)
 
-- `MeasurementVisualQAOverlay.aerial-fallback.test.tsx` — only `aerial_candidate_roof_graph.perimeter_ring_px` present → overlay renders; "unavailable" not shown.
-- `MeasurementReportDialog.aerial-status-block.test.tsx` — aerial present + DSM failed → three-line status block renders; customer-report chip remains "blocked".
-- `measurementDiagnosticState.aerial-blocker-copy.test.ts` — DSM failure + aerial present → blocker copy mentions DSM validation, not missing geometry.
+1. `aerial-primary-gate.test.ts` — unit: pass / fail conditions, IoU thresholds, footprint source allowlist.
+2. `aerial-primary-replaces-dsm-hardblock.test.ts` — given aerial primary ready + DSM coord-match fail, exercise the branch selector and assert it routes to `persistAerialPrimaryGeometry`, not the hard-block branch.
+3. `aerial-primary-result-state.test.ts` — asserts the persisted row has `result_state="perimeter_only"`, `block_customer_report_reason="dsm_validation_unavailable"`, `customer_report_ready=false`, `primary_geometry_source="aerial_registered"`, route_provenance intact.
+4. `dsm-healthy-still-runs-solver.test.ts` — regression: when DSM transform valid + coord match true, `solveAutonomousGraph` still runs (no behavioral drift on the healthy path).
+5. `cpu-preempt-not-overridden-by-aerial.test.ts` — CPU timeout still fails as `ai_failed_runtime`, not silently downgraded.
 
----
+### Frontend (vitest)
 
-## Guardrails (unchanged)
+6. `MeasurementReportDialog.aerial-primary.test.tsx` — renders the three new rows correctly for an aerial-primary row.
+7. `MeasurementVisualQAOverlay.aerial-primary-header.test.tsx` — header chip appears when `primary_geometry_source==='aerial_registered'`.
 
-- No geometry gate relaxation; vendor benchmark thresholds untouched.
-- No DB schema migration; everything lives inside `geometry_report_json`.
-- `customer_report_ready` stays driven by existing `assertCustomerReportReady` path; aerial graph alone never flips it.
-- Canonical route remains `start-ai-measurement`; legacy routes still stamped `canonical_measurement_route:false`.
-- DSM solver code paths unchanged when DSM georeg is valid.
+## Guardrails (explicit non-goals)
 
-## Post-deploy verification (Fonsica rerun from lead UI)
+- No geometry-gate relaxation. Customer-ready gate (typed roof_lines, valid pitch, topology validation, vendor benchmark) is untouched.
+- No DB migration. `perimeter_only` already exists.
+- No fake customer report. Aerial-only NEVER flips `customer_report_ready=true`.
+- Canonical route preserved: only `start-ai-measurement` writes canonical rows. Legacy routes unchanged.
+- `solveAutonomousGraph` is not modified — only when it runs.
+- UNet stays unbuilt (per Core memory).
 
-- `geometry_report_json.aerial_candidate_roof_graph.executed === true`
-- Aerial perimeter visible in overlay even when DSM transform invalid
-- `customer_report_ready === false`
-- Three-line status block visible in report dialog
-- `debug_roof_lines.length > 0` while `roof_lines_count === 0`
-- No DB constraint errors; CPU elapsed < budget
+## Acceptance signals (next Fonsica rerun)
+
+After deploy, a Fonsica run with the current DSM-broken state should produce:
+
+- `result_state = perimeter_only` (not `ai_failed_runtime`)
+- `hard_fail_reason = null`
+- `block_customer_report_reason = dsm_validation_unavailable`
+- `primary_geometry_source = aerial_registered`
+- `aerial_candidate_roof_graph.edges.length ≥ 6`
+- `customer_report_ready = false`
+- Viewer renders aerial perimeter + Solar segments overlay from raster_px (no blank report)
+- Report dialog shows the three new diagnostic rows
+- Debug roof_lines count > 0; reportable roof_lines count = 0 (since topology never validated)
+
+## Files changed
+
+- `supabase/functions/_shared/aerial-primary-gate.ts` (new)
+- `supabase/functions/_shared/result-state.ts` (mapping branch only)
+- `supabase/functions/start-ai-measurement/index.ts` (two hard-block downgrades + post-3A.5 decision + new persistence helper)
+- `src/components/measurements/MeasurementReportDialog.tsx`
+- `src/components/measurements/MeasurementVisualQAOverlay.tsx`
+- `src/lib/measurements/measurementDiagnosticState.ts`
+- 7 new test files (5 Deno + 2 vitest)

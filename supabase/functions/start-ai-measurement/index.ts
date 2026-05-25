@@ -155,6 +155,10 @@ import {
   ZERO_GEOMETRY_GUARD_REASON,
 } from "../_shared/pre-topology-debug-bag.ts";
 import {
+  evaluateAerialPrimacy,
+  type AerialPrimacyEvaluation,
+} from "../_shared/aerial-primary-gate.ts";
+import {
   ALLOWED_FOOTPRINT_SOURCES,
   applyFootprintSourceDbSafeCoercion,
   normalizeRoofMeasurementFootprintSource,
@@ -14540,6 +14544,19 @@ async function insertFailedPreliminaryMeasurement(
   debug: any,
   imageUrl: string | null,
   mpp: number,
+  opts?: {
+    /**
+     * When true, the row is persisted as an "aerial-primary downgrade":
+     *   - result_state lands as `perimeter_only` (already in debug)
+     *   - hard_fail_reason = null   (no hard fail — DSM validation only)
+     *   - block_customer_report_reason = opts.dsmValidationReason
+     *   - validation_status = "needs_review"
+     *   - last_failure_reason = null
+     * Customer-ready gate is NOT relaxed.
+     */
+    aerialPrimaryDowngrade?: boolean;
+    dsmValidationReason?: string;
+  },
 ) {
   const debugWithTransform = mergeTransformProofIntoDebug(
     debug,
@@ -14550,6 +14567,7 @@ async function insertFailedPreliminaryMeasurement(
     JSON.stringify({
       has_preflight: !!input?._registration_preflight,
       reason: failureReason,
+      aerial_primary_downgrade: !!opts?.aerialPrimaryDowngrade,
     }),
   );
   const phase3Debug = withPhase3Visibility(
@@ -14557,20 +14575,30 @@ async function insertFailedPreliminaryMeasurement(
     [],
     failureReason,
   );
-  const persistedFailureReason = phase3Debug.hard_fail_reason ||
-    failureReason || "ai_failed_unknown";
+  const aerialDowngrade = !!opts?.aerialPrimaryDowngrade;
+  const persistedFailureReason = aerialDowngrade
+    ? null
+    : (phase3Debug.hard_fail_reason || failureReason || "ai_failed_unknown");
+  const persistedBlockReason = aerialDowngrade
+    ? (opts?.dsmValidationReason || "dsm_validation_unavailable")
+    : persistedFailureReason;
   const persistedResultState = normalizeResultStateForWrite(
-    phase3Debug.result_state,
+    aerialDowngrade ? "perimeter_only" : phase3Debug.result_state,
     phase3Debug,
   );
+  // For text columns that don't accept null but are also non-semantic (notes/
+  // status messages), fall back to the dsm-validation reason during downgrade.
+  const persistedNoteReason = persistedFailureReason ??
+    (opts?.dsmValidationReason || "dsm_validation_unavailable");
+  const persistedValidationStatus = aerialDowngrade ? "needs_review" : "failed";
   const aiDetectionData = {
     topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
     solver_version: phase3Debug?.solver_version ||
       "autonomous_graph_solver_v3_prune_first",
     fallback_used: Boolean(phase3Debug?.fallback_used),
     hard_fail_reason: persistedFailureReason,
-    failure_reason: persistedFailureReason,
-    validation_status: "failed",
+    failure_reason: persistedNoteReason,
+    validation_status: persistedValidationStatus,
     measurement_confidence: 0,
     planes: [],
     edges: [],
@@ -14594,8 +14622,18 @@ async function insertFailedPreliminaryMeasurement(
     topology_source: aiDetectionData.topology_source,
     facet_source: debug?.facet_source || "dsm_planar_graph_faces",
     fallback_used: aiDetectionData.fallback_used,
-    block_customer_report_reason: persistedFailureReason,
+    block_customer_report_reason: persistedBlockReason,
     hard_fail_reason: persistedFailureReason,
+    // Aerial-primary downgrade markers (no-op when not in downgrade mode)
+    primary_geometry_source: aerialDowngrade
+      ? "aerial_registered"
+      : (phase3Debug?.primary_geometry_source ?? null),
+    dsm_validation_status: aerialDowngrade
+      ? {
+        available: false,
+        reason: opts?.dsmValidationReason || "dsm_validation_unavailable",
+      }
+      : (phase3Debug?.dsm_validation_status ?? null),
     coordinate_space_input: debug?.coordinate_space_input || "unknown",
     coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
     coordinate_space_renderer: debug?.coordinate_space_renderer ||
@@ -14720,7 +14758,7 @@ async function insertFailedPreliminaryMeasurement(
       faces_extracted: Number(debug?.faces_extracted || 0),
       valid_faces: Number(debug?.valid_faces || 0),
       face_coverage_ratio: debug?.face_coverage_ratio ?? 0,
-      hard_fail_reason: persistedFailureReason,
+      hard_fail_reason: persistedFailureReason ?? persistedBlockReason,
     },
     overlay_debug: {
       coordinate_space: "satellite_px",
@@ -14743,8 +14781,8 @@ async function insertFailedPreliminaryMeasurement(
       accepted_edges_dsm_px: debug?.accepted_edges_dsm_px || [],
       dsm_edges_detected: Number(debug?.dsm_edges_detected || 0),
       dsm_edges_accepted: Number(debug?.dsm_edges_accepted || 0),
-      validation_status: "failed",
-      hard_fail_reason: failureReason,
+      validation_status: persistedValidationStatus,
+      hard_fail_reason: aerialDowngrade ? null : failureReason,
       acquisition_audit: debug?.acquisition_audit || null,
       source_acquisition_debug: debug?.source_acquisition_debug || null,
     },
@@ -14785,8 +14823,8 @@ async function insertFailedPreliminaryMeasurement(
     measurement_quality_score: 0,
     requires_manual_review: true,
     manual_review_recommended: true,
-    validation_status: "failed",
-    validation_notes: persistedFailureReason,
+    validation_status: persistedValidationStatus,
+    validation_notes: persistedNoteReason,
     facet_count: 0,
     edge_count: 0,
     total_ridge_length: 0,
@@ -14796,14 +14834,14 @@ async function insertFailedPreliminaryMeasurement(
     total_rake_length: 0,
     linear_features_wkt: [],
     metadata: aiDetectionData,
-    gate_decision: "failed",
-    gate_reason: persistedFailureReason,
+    gate_decision: aerialDowngrade ? "needs_review" : "failed",
+    gate_reason: persistedNoteReason,
     customer_report_ready: false,
     result_state: persistedResultState,
     hard_fail_reason: persistedFailureReason,
     diagram_render_intent: phase3Debug.diagram_render_intent,
     ...getPhase3DbColumns(),
-    block_customer_report_reason: persistedFailureReason,
+    block_customer_report_reason: persistedBlockReason,
     internal_debug_report_ready: true,
 
     source_button: input.source_button,
