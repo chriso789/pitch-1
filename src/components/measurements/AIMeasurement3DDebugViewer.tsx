@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { resolveSourceRasterSize, hasDsmToRasterTransform } from "@/lib/measurements/overlayCoordinateFrame";
 import {
   Dialog,
   DialogContent,
