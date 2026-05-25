@@ -14586,14 +14586,19 @@ async function insertFailedPreliminaryMeasurement(
     aerialDowngrade ? "perimeter_only" : phase3Debug.result_state,
     phase3Debug,
   );
+  // For text columns that don't accept null but are also non-semantic (notes/
+  // status messages), fall back to the dsm-validation reason during downgrade.
+  const persistedNoteReason = persistedFailureReason ??
+    (opts?.dsmValidationReason || "dsm_validation_unavailable");
+  const persistedValidationStatus = aerialDowngrade ? "needs_review" : "failed";
   const aiDetectionData = {
     topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
     solver_version: phase3Debug?.solver_version ||
       "autonomous_graph_solver_v3_prune_first",
     fallback_used: Boolean(phase3Debug?.fallback_used),
     hard_fail_reason: persistedFailureReason,
-    failure_reason: persistedFailureReason,
-    validation_status: "failed",
+    failure_reason: persistedNoteReason,
+    validation_status: persistedValidationStatus,
     measurement_confidence: 0,
     planes: [],
     edges: [],
@@ -14617,8 +14622,18 @@ async function insertFailedPreliminaryMeasurement(
     topology_source: aiDetectionData.topology_source,
     facet_source: debug?.facet_source || "dsm_planar_graph_faces",
     fallback_used: aiDetectionData.fallback_used,
-    block_customer_report_reason: persistedFailureReason,
+    block_customer_report_reason: persistedBlockReason,
     hard_fail_reason: persistedFailureReason,
+    // Aerial-primary downgrade markers (no-op when not in downgrade mode)
+    primary_geometry_source: aerialDowngrade
+      ? "aerial_registered"
+      : (phase3Debug?.primary_geometry_source ?? null),
+    dsm_validation_status: aerialDowngrade
+      ? {
+        available: false,
+        reason: opts?.dsmValidationReason || "dsm_validation_unavailable",
+      }
+      : (phase3Debug?.dsm_validation_status ?? null),
     coordinate_space_input: debug?.coordinate_space_input || "unknown",
     coordinate_space_solver: debug?.coordinate_space_solver || "dsm_px",
     coordinate_space_renderer: debug?.coordinate_space_renderer ||
