@@ -237,8 +237,10 @@ export function resolveMeasurementDiagnosticState(
       phase0_incomplete_reason: "runtime_preemption",
       active_stage_hint: "topology",
       dsm_transform_valid: dsmTransformValid,
+      aerial_candidate_graph_present: aerialCandidateGraphPresent,
     };
   }
+
 
   const hardFail = readString(
     geometry.hard_fail_reason,
