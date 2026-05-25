@@ -19,11 +19,34 @@ export interface DebugRoofLine {
   type: "eave" | "rake" | "perimeter" | "unknown";
   geo: Array<[number, number]> | null;
   px: Array<[number, number]> | null;
+  length_ft?: number | null;
   debug_only: true;
   customer_ready: false;
+  candidate_source: "phase3A";
+  validation_status: "candidate_only";
+  reason_not_reportable: "runtime_preempted_before_validated_topology";
+}
+
+export interface DsmSplitStatusFetchDecode {
+  status: "pass" | "fail";
+  stage: "dsm_fetch_decode";
+  dsm_loaded: boolean;
+  mask_loaded: boolean;
+  raster_loaded: boolean;
+  dsm_size_px: { width: number; height: number } | null;
+}
+
+export interface DsmSplitStatusGeoreg {
+  status: "pass" | "fail" | "warning";
+  stage: "dsm_georeg_transform";
+  dsm_tile_bounds_lat_lng_present: boolean;
+  geo_to_dsm_transform_present: boolean;
+  dsm_to_raster_transform_present: boolean;
+  dsm_pixel_transform_valid: boolean;
 }
 
 export interface DsmSplitStatus {
+  // Flat (legacy) fields preserved for backwards compatibility.
   dsm_loaded: boolean;
   masked_dsm_loaded: boolean;
   mask_loaded: boolean;
@@ -32,6 +55,9 @@ export interface DsmSplitStatus {
   masked_dsm_size_px: { width: number; height: number } | null;
   raster_size_px: { width: number; height: number } | null;
   dsm_resolution_mpp: number | null;
+  // Nested contract added in slice 3.
+  fetch_decode: DsmSplitStatusFetchDecode;
+  georegistration_transform: DsmSplitStatusGeoreg;
 }
 
 export interface PreTopologyDebugBag {
@@ -48,6 +74,7 @@ export interface PreTopologyDebugBag {
   dsm_loaded: boolean;
   mask_loaded: boolean;
   raster_loaded: boolean;
+  raw_perimeter_px: Array<[number, number]> | null;
 }
 
 const MAX_DEBUG_ROOF_LINES = 512;
@@ -70,21 +97,49 @@ function buildDsmSplitStatus(args: {
   maskedDSM: any;
   roofMask: any;
   raster: any;
+  registration?: any;
 }): DsmSplitStatus {
   const dsmSize = sizeOf(args.dsmGrid);
   const maskedDsmSize = sizeOf(args.maskedDSM);
   const rasterSize = sizeOf(args.raster);
   const dsmRes = Number(args.dsmGrid?.resolution ?? args.maskedDSM?.resolution);
+  const dsmLoaded = !!args.dsmGrid;
+  const maskLoaded = !!args.roofMask;
+  const rasterLoaded = !!args.raster &&
+    !!(args.raster as any)?.width && !!(args.raster as any)?.height;
+  const reg = args.registration ?? {};
+  const tileBoundsPresent = reg?.dsm_tile_bounds_lat_lng != null;
+  const geoToDsmPresent = reg?.geo_to_dsm_transform != null ||
+    reg?.geo_to_dsm_px_success === true;
+  const dsmToRasterPresent = reg?.dsm_to_raster_transform != null;
+  const dsmPixelTransformValid = reg?.dsm_pixel_transform_valid === true;
+  const hasAllTransforms = tileBoundsPresent && geoToDsmPresent &&
+    dsmToRasterPresent && dsmPixelTransformValid;
   return {
-    dsm_loaded: !!args.dsmGrid,
+    dsm_loaded: dsmLoaded,
     masked_dsm_loaded: !!args.maskedDSM,
-    mask_loaded: !!args.roofMask,
-    raster_loaded: !!args.raster &&
-      !!(args.raster as any)?.width && !!(args.raster as any)?.height,
+    mask_loaded: maskLoaded,
+    raster_loaded: rasterLoaded,
     dsm_size_px: dsmSize,
     masked_dsm_size_px: maskedDsmSize,
     raster_size_px: rasterSize,
     dsm_resolution_mpp: Number.isFinite(dsmRes) && dsmRes > 0 ? dsmRes : null,
+    fetch_decode: {
+      status: dsmLoaded && maskLoaded && rasterLoaded ? "pass" : "fail",
+      stage: "dsm_fetch_decode",
+      dsm_loaded: dsmLoaded,
+      mask_loaded: maskLoaded,
+      raster_loaded: rasterLoaded,
+      dsm_size_px: dsmSize,
+    },
+    georegistration_transform: {
+      status: hasAllTransforms ? "pass" : (dsmLoaded ? "fail" : "warning"),
+      stage: "dsm_georeg_transform",
+      dsm_tile_bounds_lat_lng_present: tileBoundsPresent,
+      geo_to_dsm_transform_present: geoToDsmPresent,
+      dsm_to_raster_transform_present: dsmToRasterPresent,
+      dsm_pixel_transform_valid: dsmPixelTransformValid,
+    },
   };
 }
 
@@ -164,12 +219,18 @@ export function buildDebugRoofLines(perimeterTopology: any): DebugRoofLine[] {
     const type = classifyDebugLineType(raw) === "unknown"
       ? fallbackType
       : classifyDebugLineType(raw);
+    const lenRaw = Number(raw?.length_ft ?? raw?.length_lf);
+    const length_ft = Number.isFinite(lenRaw) && lenRaw > 0 ? lenRaw : null;
     out.push({
       type,
       geo,
       px,
+      length_ft,
       debug_only: true,
       customer_ready: false,
+      candidate_source: "phase3A",
+      validation_status: "candidate_only",
+      reason_not_reportable: "runtime_preempted_before_validated_topology",
     });
   };
 
@@ -189,8 +250,12 @@ export function buildDebugRoofLines(perimeterTopology: any): DebugRoofLine[] {
         type: "perimeter",
         geo: [[Number(a[0]), Number(a[1])], [Number(b[0]), Number(b[1])]],
         px: null,
+        length_ft: null,
         debug_only: true,
         customer_ready: false,
+        candidate_source: "phase3A",
+        validation_status: "candidate_only",
+        reason_not_reportable: "runtime_preempted_before_validated_topology",
       });
     }
   }
@@ -218,12 +283,14 @@ export function buildPreTopologyDebugBag(args: {
   footprintSource: string | null;
   footprintGeo: Array<[number, number]> | null;
   footprintPx: Array<[number, number]> | null;
+  registration?: any;
 }): PreTopologyDebugBag {
   const dsmSplit = buildDsmSplitStatus({
     dsmGrid: args.dsmGrid,
     maskedDSM: args.maskedDSM,
     roofMask: args.roofMask,
     raster: args.raster,
+    registration: args.registration,
   });
 
   const footprintPxCount = Array.isArray(args.footprintPx)
@@ -240,6 +307,19 @@ export function buildPreTopologyDebugBag(args: {
       : null;
   const footprintValid = (footprintPxCount >= 3) || (footprintGeoCount >= 3);
 
+  // Lift raw perimeter (DSM-pixel ring) out of perimeter_topology so the
+  // viewer can render the overlay from `phase3_5.raw_perimeter_px` /
+  // `debug_layers.raw_perimeter_px` even when refinement never ran.
+  const ringPx = args.perimeterTopologySnapshot?.perimeter_ring_px;
+  const rawPerimeterPx: Array<[number, number]> | null =
+    Array.isArray(ringPx) && ringPx.length >= 3
+      ? (ringPx.map((p: any) =>
+        Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.x), Number(p?.y)]
+      ).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1])) as Array<
+        [number, number]
+      >)
+      : null;
+
   return {
     dsm_split_status: dsmSplit,
     perimeter_phase0: args.perimeterPhase0Snapshot ?? null,
@@ -251,11 +331,10 @@ export function buildPreTopologyDebugBag(args: {
     footprint_px: footprintPxSliced,
     debug_roof_lines: buildDebugRoofLines(args.perimeterTopologySnapshot),
     debug_layers_persisted_at_stage: args.stage,
-    // Flat mirrors so existing top-level reads (`debug?.dsm_loaded`) keep
-    // working without rewriting every consumer.
     dsm_loaded: dsmSplit.dsm_loaded || dsmSplit.masked_dsm_loaded,
     mask_loaded: dsmSplit.mask_loaded || dsmSplit.masked_dsm_loaded,
     raster_loaded: dsmSplit.raster_loaded,
+    raw_perimeter_px: rawPerimeterPx,
   };
 }
 
@@ -287,9 +366,6 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   constants: CpuBudgetConstants;
 }): Record<string, unknown> {
   const incoming = args.debug ?? {};
-  // Pull through cheap-evidence fields explicitly so even if a caller forgot
-  // to pass the full PreTopologyDebugBag we still publish empty defaults
-  // (never blank, never undefined).
   const dsmSplitStatus = (incoming as any).dsm_split_status ?? null;
   const debugRoofLines = Array.isArray((incoming as any).debug_roof_lines)
     ? (incoming as any).debug_roof_lines
@@ -297,6 +373,18 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const debugStage = (incoming as any).debug_layers_persisted_at_stage ??
     args.stage;
   const targetMaskIsolation = (incoming as any).target_mask_isolation ?? null;
+  const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
+  const perimeterTopology = (incoming as any).perimeter_topology ?? null;
+  const phase3_5 = {
+    raw_perimeter_px: rawPerimeterPx,
+    refined_perimeter_px: null,
+    refined_perimeter_missing_reason:
+      "refinement_not_reached_before_cpu_preempt",
+  };
+  const debug_layers = {
+    raw_perimeter_px: rawPerimeterPx,
+    selected_perimeter_px: rawPerimeterPx,
+  };
   return {
     ...incoming,
     topology_source: args.constants.REQUIRED_TOPOLOGY_SOURCE,
@@ -317,14 +405,16 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     customer_report_ready: false,
     customer_ready: false,
     diagram_render_intent: "debug_only",
-    // Customer-facing roof_lines count is always zero on a preempt; the debug
-    // lines are tracked separately so the count contract isn't poisoned.
     roof_lines_count: 0,
-    // ── Cheap evidence layers (explicit lift to top level) ──
+    debug_roof_lines_count: debugRoofLines.length,
     dsm_split_status: dsmSplitStatus,
     debug_roof_lines: debugRoofLines,
     debug_layers_persisted_at_stage: debugStage,
     target_mask_isolation: targetMaskIsolation,
+    perimeter_topology: perimeterTopology,
+    raw_perimeter_px: rawPerimeterPx,
+    phase3_5,
+    debug_layers,
   };
 }
 
