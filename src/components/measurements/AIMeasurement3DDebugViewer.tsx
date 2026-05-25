@@ -773,22 +773,55 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
     }
     return [];
   }
+  function bboxToPoly(b: any): Array<[number, number]> | null {
+    if (!b) return null;
+    if (Array.isArray(b) && b.length === 4 && typeof b[0] === "number") {
+      const [x1, y1, x2, y2] = b;
+      return [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+    }
+    if (b.minX != null && b.minY != null && b.maxX != null && b.maxY != null) {
+      return [
+        [b.minX, b.minY],
+        [b.maxX, b.minY],
+        [b.maxX, b.maxY],
+        [b.minX, b.maxY],
+      ];
+    }
+    return null;
+  }
   const targetMaskPolys = collectPolys([
     targetMaskDbg?.target_mask_polygons_px,
     targetMaskDbg?.target_mask_polygon_px,
     targetMaskDbg?.target_mask_contour_px,
+    debugLayers?.target_roof_mask_px,
+    debugLayers?.target_mask_contour_px,
     grj?.target_mask_polygons_px,
     grj?.target_mask_polygon_px,
   ]);
+  if (!targetMaskPolys.length) {
+    const bboxPoly = bboxToPoly(
+      targetMaskDbg?.target_mask_bbox_px ?? debugLayers?.target_mask_bbox_px,
+    );
+    if (bboxPoly) targetMaskPolys.push(bboxPoly);
+  }
   const globalMaskPolys = collectPolys([
     targetMaskDbg?.global_mask_polygons_px,
     targetMaskDbg?.global_mask_contours_px,
+    debugLayers?.global_mask_px,
     grj?.global_mask_polygons_px,
     grj?.global_mask_polygon_px,
   ]);
+  if (!globalMaskPolys.length) {
+    const bboxPoly = bboxToPoly(
+      targetMaskDbg?.global_visible_roof_bbox_px ??
+        debugLayers?.global_visible_roof_bbox_px,
+    );
+    if (bboxPoly) globalMaskPolys.push(bboxPoly);
+  }
   const missedRegions = collectPolys([
     targetMaskDbg?.missed_roof_regions_px,
     targetMaskDbg?.missed_target_roof_regions_px,
+    debugLayers?.missed_roof_regions_px,
     grj?.missed_roof_regions_px,
     grj?.missed_target_roof_regions_px,
   ]);
