@@ -433,6 +433,23 @@ Deno.test("runtime CPU budget guard preempts Phase 3A.5/topology before stuck ru
   assert(source.includes("AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT"));
 });
 
+Deno.test("diagnostic state precedence keeps CPU timeout above stale registration fields", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20260525093000_add_roof_measurement_failure_stage.sql",
+      import.meta.url,
+    ),
+  );
+  assert(source.includes("resolveMeasurementDiagnosticState"));
+  assert(source.includes('"runtime_cpu_budget_guard"'));
+  assert(source.includes("runtimeStateWins"));
+  assert(source.includes("registration_precedence_reason: runtimeStateWins"));
+  assert(migration.includes("ADD COLUMN IF NOT EXISTS failure_stage text"));
+});
+
 Deno.test("Phase 3A.5 failures preserve perimeter result state and aerial overlay", async () => {
   const source = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),

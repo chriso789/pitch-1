@@ -147,6 +147,7 @@ import {
   normalizeDiagramRenderIntentForWrite,
   withDiagramRenderIntentConstraintRetryPayload,
 } from "../_shared/diagram-render-intent.ts";
+import { resolveMeasurementDiagnosticState } from "../_shared/measurement-diagnostic-state.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -839,6 +840,9 @@ function withPhase3Visibility(
     rawResultState ?? payload.result_state ?? payload.hard_fail_reason,
     payload,
   );
+  const resolvedDiagnosticState = resolveMeasurementDiagnosticState(payload);
+  const runtimeStateWins = resolvedDiagnosticState.final_state_source ===
+    "runtime_cpu_budget_guard";
   // ─── Registration failure dominates hard_fail_reason / failure_stage ───
   const reg =
     (payload.registration ?? payload.registration_gate ?? null) as any;
@@ -850,21 +854,27 @@ function withPhase3Visibility(
     (payload.mask_loaded === true ||
       payload.phase3A_5?.target_mask_bbox_px != null);
   const rawRegFailureReason = deriveRegistrationFailureReason(reg);
-  const regFailureReason = phase3A5RanWithSources ? null : rawRegFailureReason;
+  const regFailureReason = runtimeStateWins || phase3A5RanWithSources
+    ? null
+    : rawRegFailureReason;
   const hardFailReason = regFailureReason
     ? regFailureReason
-    : (phase3A.perimeter_classification_invalid
-      ? "perimeter_classification_invalid"
-      : (payload.hard_fail_reason ?? payload.block_customer_report_reason ??
-        payload.failure_reason ?? null));
+    : (runtimeStateWins
+      ? resolvedDiagnosticState.hard_fail_reason
+      : (phase3A.perimeter_classification_invalid
+        ? "perimeter_classification_invalid"
+        : (payload.hard_fail_reason ?? payload.block_customer_report_reason ??
+          payload.failure_reason ?? null)));
   const failureStage = regFailureReason
     ? registrationFailureStage(regFailureReason)
-    : (payload.failure_stage ??
-      (String(resultState).includes("perimeter")
-        ? "perimeter"
-        : String(resultState).includes("topology")
-        ? "topology"
-        : "unknown"));
+    : (runtimeStateWins
+      ? resolvedDiagnosticState.failure_stage
+      : (payload.failure_stage ??
+        (String(resultState).includes("perimeter")
+          ? "perimeter"
+          : String(resultState).includes("topology")
+          ? "topology"
+          : "unknown")));
 
   // Build phase blocks first…
   let phase3_5 = buildPhase3A5Block(payload);
@@ -898,16 +908,22 @@ function withPhase3Visibility(
     phase3C,
     phase3D,
     phase3E,
-    result_state: normalizeResultStateForWrite(resultState, payload),
+    result_state: runtimeStateWins
+      ? resolvedDiagnosticState.result_state
+      : normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: regFailureReason
       ? hardFailReason
-      : (payload.block_customer_report_reason ?? hardFailReason ?? null),
+      : (runtimeStateWins
+        ? resolvedDiagnosticState.block_customer_report_reason
+        : (payload.block_customer_report_reason ?? hardFailReason ?? null)),
     failure_stage: failureStage,
     diagram_render_intent: regFailureReason
       ? (resultState === "ai_failed_target_unconfirmed"
         ? "target_confirmation_required"
         : "coordinate_registration_debug_only")
+      : runtimeStateWins
+      ? resolvedDiagnosticState.diagram_render_intent
       : (payload.diagram_render_intent ??
         (String(resultState).startsWith("ai_failed_")
           ? "rejected_only"
@@ -915,8 +931,13 @@ function withPhase3Visibility(
             resultState,
             payload.perimeter_gate_passed === true,
           ))),
-    customer_report_ready: resultState === "customer_report_ready" &&
-      !regFailureReason,
+    customer_report_ready: runtimeStateWins
+      ? false
+      : resultState === "customer_report_ready" && !regFailureReason,
+    final_state_source: resolvedDiagnosticState.final_state_source,
+    final_state_resolved_at: new Date().toISOString(),
+    final_state_precedence_version:
+      resolvedDiagnosticState.final_state_precedence_version,
     // ─── Registration Precedence stamp (always written) ───
     registration_precedence_version: REGISTRATION_PRECEDENCE_VERSION,
     registration_precedence_applied: !!regFailureReason,
@@ -1156,6 +1177,41 @@ function ensureRegistrationProofBeforeWrite(
     transform_package_valid: false,
     transform_failure_reasons: ["transform_builder_not_called_before_write"],
   });
+  const resolvedDiagnosticState = resolveMeasurementDiagnosticState({
+    ...next,
+    geometry_report_json: geometry,
+  });
+  if (
+    resolvedDiagnosticState.final_state_source === "runtime_cpu_budget_guard"
+  ) {
+    (geometry as any).registration = fallback;
+    (geometry as any).registration_gate = fallback;
+    (geometry as any).result_state = resolvedDiagnosticState.result_state;
+    (geometry as any).hard_fail_reason =
+      resolvedDiagnosticState.hard_fail_reason;
+    (geometry as any).block_customer_report_reason =
+      resolvedDiagnosticState.block_customer_report_reason;
+    (geometry as any).failure_stage = resolvedDiagnosticState.failure_stage;
+    (geometry as any).diagram_render_intent =
+      resolvedDiagnosticState.diagram_render_intent;
+    (geometry as any).final_state_source =
+      resolvedDiagnosticState.final_state_source;
+    (geometry as any).final_state_resolved_at = new Date().toISOString();
+    (geometry as any).final_state_precedence_version =
+      resolvedDiagnosticState.final_state_precedence_version;
+    (next as any).result_state = resolvedDiagnosticState.result_state;
+    (next as any).hard_fail_reason = resolvedDiagnosticState.hard_fail_reason;
+    (next as any).block_customer_report_reason =
+      resolvedDiagnosticState.block_customer_report_reason;
+    (next as any).failure_stage = resolvedDiagnosticState.failure_stage;
+    (next as any).diagram_render_intent =
+      resolvedDiagnosticState.diagram_render_intent;
+    (next as any).customer_report_ready = false;
+    (next as any).report_blocked = true;
+    (next as any).needs_review = true;
+    next.geometry_report_json = geometry;
+    return next;
+  }
   (geometry as any).registration = fallback;
   (geometry as any).registration_gate = fallback;
   (geometry as any).result_state = "ai_failed_source_acquisition";
@@ -1748,6 +1804,13 @@ function prepareRoofMeasurementPayload(
       regForMirror.confirmed_center_inside_candidate ?? false;
   }
 
+  const resolvedDiagnosticState = resolveMeasurementDiagnosticState({
+    ...next,
+    geometry_report_json: geometry,
+  });
+  const runtimeStateWins = resolvedDiagnosticState.final_state_source ===
+    "runtime_cpu_budget_guard";
+
   // v2.3 precedence: prefer the honest gate-level failure
   // (coordinate_registration_failed) over the conflict label. Conflicts are
   // still recorded for auditability and still hard-fail the write.
@@ -1756,7 +1819,7 @@ function prepareRoofMeasurementPayload(
   if (conflicts.length > 0) {
     (geometry as any).registration_field_conflicts = conflicts;
   }
-  if (dominantReason) {
+  if (dominantReason && !runtimeStateWins) {
     regFailureReasonForPrecedence = dominantReason as any;
     const hard = dominantReason === "registration_field_conflict"
       ? "registration_field_conflict"
@@ -1793,7 +1856,7 @@ function prepareRoofMeasurementPayload(
     }
   }
 
-  if (regFailureReasonForPrecedence) {
+  if (regFailureReasonForPrecedence && !runtimeStateWins) {
     // v2.3: quarantine stale perimeter / topology / refinement payloads under
     // `stale_debug_payload` so a blocked-by-registration row cannot accidentally
     // render eave/rake/perimeter totals from a prior successful pass.
@@ -1839,11 +1902,45 @@ function prepareRoofMeasurementPayload(
   (geometry as any).registration_precedence_version =
     REGISTRATION_PRECEDENCE_VERSION;
   (geometry as any).registration_precedence_applied =
-    !!regFailureReasonForPrecedence;
-  (geometry as any).registration_precedence_reason =
-    regFailureReasonForPrecedence;
+    !!regFailureReasonForPrecedence && !runtimeStateWins;
+  (geometry as any).registration_precedence_reason = runtimeStateWins
+    ? null
+    : regFailureReasonForPrecedence;
   (geometry as any).registration_gate_version = regVersionForPrecedence ??
     (geometry as any).registration_gate_version ?? null;
+
+  if (runtimeStateWins) {
+    (geometry as any).result_state = resolvedDiagnosticState.result_state;
+    (geometry as any).hard_fail_reason =
+      resolvedDiagnosticState.hard_fail_reason;
+    (geometry as any).block_customer_report_reason =
+      resolvedDiagnosticState.block_customer_report_reason;
+    (geometry as any).failure_stage = resolvedDiagnosticState.failure_stage;
+    (geometry as any).diagram_render_intent =
+      resolvedDiagnosticState.diagram_render_intent;
+    (geometry as any).footprint_source =
+      resolvedDiagnosticState.footprint_source;
+    (geometry as any).customer_report_ready = false;
+    (geometry as any).report_blocked = true;
+    (geometry as any).needs_review = true;
+    (geometry as any).final_state_source =
+      resolvedDiagnosticState.final_state_source;
+    (geometry as any).final_state_resolved_at = new Date().toISOString();
+    (geometry as any).final_state_precedence_version =
+      resolvedDiagnosticState.final_state_precedence_version;
+    (next as any).result_state = resolvedDiagnosticState.result_state;
+    (next as any).hard_fail_reason = resolvedDiagnosticState.hard_fail_reason;
+    (next as any).block_customer_report_reason =
+      resolvedDiagnosticState.block_customer_report_reason;
+    (next as any).failure_stage = resolvedDiagnosticState.failure_stage;
+    (next as any).diagram_render_intent =
+      resolvedDiagnosticState.diagram_render_intent;
+    (next as any).footprint_source = resolvedDiagnosticState.footprint_source;
+    (next as any).customer_report_ready = false;
+    (next as any).report_blocked = true;
+    (next as any).needs_review = true;
+    (next as any).validation_status = "needs_internal_review";
+  }
 
   // ─── diagram_render_intent normalization (DB-safe) ───
   // Coerce whatever the pipeline produced into one of the 6 stable buckets
@@ -1856,7 +1953,9 @@ function prepareRoofMeasurementPayload(
     result_state: (next as any).result_state,
     hard_fail_reason: (next as any).hard_fail_reason,
     block_customer_report_reason: (next as any).block_customer_report_reason,
-    registration_precedence_reason: regFailureReasonForPrecedence,
+    registration_precedence_reason: runtimeStateWins
+      ? null
+      : regFailureReasonForPrecedence,
     failure_stage: (next as any).failure_stage,
   });
   (next as any).diagram_render_intent = intentNorm.normalized;
@@ -5842,18 +5941,49 @@ async function processJob(input: any) {
           googleSolarMaskStageDebug.dsm_fetch_duration_ms = Date.now() -
             dsmFetchStarted;
           googleSolarMaskStageDebug.dsm_loaded = !!dsmGrid;
-          roofMask = roofMaskForContour || await withStageTimeout(
-            fetchRoofMaskFromGoogleSolar(
-              coords.lat,
-              coords.lng,
-              GOOGLE_SOLAR_API_KEY,
-              {
-                timeoutMs: GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
-              },
-            ),
-            GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
-            "google_solar_roof_mask_fetch_dsm_stage",
+          if (roofMaskForContour) {
+            roofMask = roofMaskForContour;
+          } else {
+            googleSolarMaskStageDebug.google_solar_fetch_started_at =
+              googleSolarMaskStageDebug.google_solar_fetch_started_at ??
+                nowIso();
+            const maskFetchStarted = Date.now();
+            roofMask = await withStageTimeout(
+              fetchRoofMaskFromGoogleSolar(
+                coords.lat,
+                coords.lng,
+                GOOGLE_SOLAR_API_KEY,
+                {
+                  timeoutMs: GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+                },
+              ),
+              GOOGLE_SOLAR_FETCH_TIMEOUT_MS,
+              "google_solar_roof_mask_fetch_dsm_stage",
+            );
+            googleSolarMaskStageDebug.google_solar_fetch_finished_at =
+              googleSolarMaskStageDebug.google_solar_fetch_finished_at ??
+                nowIso();
+            googleSolarMaskStageDebug.google_solar_fetch_duration_ms =
+              googleSolarMaskStageDebug.google_solar_fetch_duration_ms ??
+                (Date.now() - maskFetchStarted);
+          }
+          googleSolarMaskStageDebug.mask_loaded =
+            googleSolarMaskStageDebug.mask_loaded || !!roofMask;
+          googleSolarMaskStageDebug.mask_point_count = Math.max(
+            Number(googleSolarMaskStageDebug.mask_point_count ?? 0),
+            countMaskPoints(roofMask),
           );
+          if (dsmGrid && roofMask) {
+            googleSolarMaskStageDebug.google_solar_status =
+              googleSolarMaskStageDebug.google_solar_status === "not_started"
+                ? "dsm_and_mask_loaded"
+                : googleSolarMaskStageDebug.google_solar_status;
+          } else if (dsmGrid) {
+            googleSolarMaskStageDebug.google_solar_status =
+              googleSolarMaskStageDebug.google_solar_status === "not_started"
+                ? "dsm_loaded_mask_missing"
+                : googleSolarMaskStageDebug.google_solar_status;
+          }
           maskedDSM = dsmGrid && roofMask
             ? applyMaskToDSM(dsmGrid, roofMask)
             : null;
