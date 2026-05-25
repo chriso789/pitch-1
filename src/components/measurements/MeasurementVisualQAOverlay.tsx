@@ -285,18 +285,27 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     layers, scale, editedRing, rawRing, refinedRing, maskPolygon, cornerCutMids, dsmEdges,
   ]);
 
+  const dsmAllowed = hasDsmToRasterTransform(measurement);
+
   function draw() {
     const cvs = canvasRef.current;
     if (!cvs) return;
-    const W = Math.max(1, Math.round((rasterSize?.width || 1280) * scale));
-    const H = Math.max(1, Math.round((rasterSize?.height || 1280) * scale));
+    if (!rasterSizeResolved) {
+      // Refuse to project onto a guessed frame. The "raster size unknown"
+      // banner above the canvas tells the user why nothing is drawn.
+      cvs.width = 1; cvs.height = 1;
+      return;
+    }
+    const W = Math.max(1, Math.round(rasterSize.width * scale));
+    const H = Math.max(1, Math.round(rasterSize.height * scale));
     cvs.width = W;
     cvs.height = H;
     const ctx = cvs.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
 
-    // Aerial background
+    // Aerial background — drawImage uses the same W/H as the SVG/canvas,
+    // so the image and overlay share the exact same scale (no letterbox drift).
     if (layers.aerial && imgRef.current) {
       ctx.drawImage(imgRef.current, 0, 0, W, H);
     } else {
