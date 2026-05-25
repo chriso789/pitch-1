@@ -469,6 +469,9 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     perimeter_topology: perimeterTopology,
     raw_perimeter_px: rawPerimeterPx,
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
+    primary_geometry_source: (incoming as any).primary_geometry_source ??
+      (aerialCandidateRoofGraph?.executed ? "aerial_registered" : null),
+    dsm_validation_status: (incoming as any).dsm_validation_status ?? null,
     phase3_5,
     debug_layers,
   };
