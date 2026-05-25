@@ -199,6 +199,21 @@ export function resolveMeasurementDiagnosticState(
   const aerialGraph = asRecord(geometry.aerial_candidate_roof_graph);
   const aerialCandidateGraphPresent = aerialGraph.executed === true;
 
+  // ── Aerial-Primary downgrade markers ──
+  const primaryGeometrySource = readString(geometry.primary_geometry_source);
+  const rawDsmValStatus = geometry.dsm_validation_status;
+  let dsmValidationStatus:
+    | { available: boolean; reason: string | null }
+    | null = null;
+  if (rawDsmValStatus && typeof rawDsmValStatus === "object") {
+    const rec = rawDsmValStatus as Record<string, unknown>;
+    dsmValidationStatus = {
+      available: rec.available === true,
+      reason: readString(rec.reason),
+    };
+  }
+
+
 
 
   function resolveActiveStageHint(opts: {
