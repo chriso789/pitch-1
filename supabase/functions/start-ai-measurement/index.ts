@@ -6503,6 +6503,35 @@ async function processJob(input: any) {
             "running",
             "Running perimeter refinement",
           );
+          // ── PRE-PHASE-3A.5 PREEMPT CHECKPOINT ──
+          // If wall clock is already inside the terminal-write reserve before we
+          // even estimate Phase 3A.5 work units, exit immediately with the
+          // cheap debug layers persisted so the row is never silently empty.
+          const prePhase3A5Budget = shouldPreemptForCpuBudget(input, 0);
+          if (prePhase3A5Budget.preempt) {
+            await persistCpuBudgetTerminalFailure({
+              input,
+              coords,
+              imageUrl,
+              mpp: actualMpp,
+              stage: "pre_phase3_5_preempt",
+              estimatedWorkUnits: 0,
+              debug: buildPreTopologyDebugBag({
+                stage: "pre_phase3_5_preempt",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource,
+                footprintGeo,
+                footprintPx: null,
+              }),
+            });
+            return;
+          }
           const phase3A5Budget = shouldPreemptForCpuBudget(
             input,
             phase3A5WorkUnits,
@@ -6515,16 +6544,19 @@ async function processJob(input: any) {
               mpp: actualMpp,
               stage: "phase3_5_perimeter_refinement",
               estimatedWorkUnits: phase3A5WorkUnits,
-              debug: {
-                dsm_loaded: true,
-                mask_loaded: !!roofMask,
-                dsm_size_px: { width: dsmW, height: dsmH },
-                perimeter_phase0: perimeterPhase0Snapshot,
-                target_mask_isolation: {
-                  ...targetMaskIsolation,
-                  target_mask_grid: undefined,
-                },
-              },
+              debug: buildPreTopologyDebugBag({
+                stage: "phase3_5_perimeter_refinement",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource,
+                footprintGeo,
+                footprintPx: null,
+              }),
             });
             return;
           }
