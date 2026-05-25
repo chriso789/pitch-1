@@ -316,19 +316,34 @@ function buildStages(m: any): StageDef[] {
     },
     {
       id: "topology",
-      label: "Internal topology",
+      label: "Phase 3A.5 / Perimeter topology",
       status: pickStatus(topoOk, Object.keys(topo).length > 0 || topoOk),
-      payload: topo,
+      reason: resolvedState.final_state_source === "runtime_cpu_budget_guard"
+        ? "Phase 3A.5 stopped: CPU budget exceeded before topology completed."
+        : undefined,
+      payload: {
+        ...topo,
+        phase3_5: grj?.phase3_5 ?? grj?.phase3A_5 ?? null,
+        cpu_budget_stage: grj?.cpu_budget_stage ?? null,
+        cpu_budget_elapsed_ms: grj?.cpu_budget_elapsed_ms ?? null,
+        cpu_budget_ms: grj?.cpu_budget_ms ?? null,
+        estimated_work_units: grj?.estimated_work_units ?? null,
+        topology_pixel_limit: grj?.topology_pixel_limit ?? null,
+      },
     },
     {
       id: "final",
       label: "Final diagram",
-      status: pickStatus(finalOk, true),
+      status: hasFinalGeometry
+        ? pickStatus(finalOk, true)
+        : "fail",
+      reason: hasFinalGeometry
+        ? undefined
+        : "Final diagram blocked: zero facets and zero roof_lines persisted.",
       payload: {
         final_diagram_url: grj?.final_diagram_url,
-        roof_lines_count: Array.isArray(grj?.roof_lines)
-          ? grj.roof_lines.length
-          : 0,
+        roof_lines_count: roofLinesCount,
+        facet_count: facetCount,
         totals: {
           eave: m?.total_eave_length,
           rake: m?.total_rake_length,
