@@ -25,7 +25,10 @@ export type ResolvedMeasurementDiagnosticState = {
   active_stage_hint: string | null;
   /** DSM coordinate transform / georegistration is intact. */
   dsm_transform_valid: boolean;
+  /** Registered aerial geometry stage produced a candidate roof graph. */
+  aerial_candidate_graph_present: boolean;
 };
+
 
 const PRECEDENCE_VERSION = "measurement-state-precedence-v3";
 const CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
@@ -177,6 +180,11 @@ export function resolveMeasurementDiagnosticState(
     registration.geo_to_dsm_transform != null &&
     registration.dsm_to_raster_transform != null;
 
+  const aerialGraph = asRecord(geometry.aerial_candidate_roof_graph);
+  const aerialCandidateGraphPresent = aerialGraph.executed === true;
+
+
+
   function resolveActiveStageHint(opts: {
     runtime: boolean;
     resultState: string | null;
@@ -229,8 +237,10 @@ export function resolveMeasurementDiagnosticState(
       phase0_incomplete_reason: "runtime_preemption",
       active_stage_hint: "topology",
       dsm_transform_valid: dsmTransformValid,
+      aerial_candidate_graph_present: aerialCandidateGraphPresent,
     };
   }
+
 
   const hardFail = readString(
     geometry.hard_fail_reason,
@@ -282,5 +292,7 @@ export function resolveMeasurementDiagnosticState(
       customerReady,
     }),
     dsm_transform_valid: dsmTransformValid,
+    aerial_candidate_graph_present: aerialCandidateGraphPresent,
   };
+
 }

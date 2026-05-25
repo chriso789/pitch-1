@@ -10,6 +10,13 @@
 // inputs, and do not mutate their inputs (except the explicit safety-gate
 // helper, which mutates the in-place payload it is given).
 
+import {
+  type AerialCandidateRoofGraph,
+  buildAerialCandidateGraph,
+} from "./aerial-candidate-graph.ts";
+
+
+
 export type PreTopologyStage =
   | "pre_phase3_5_preempt"
   | "phase3_5_perimeter_refinement"
@@ -75,7 +82,9 @@ export interface PreTopologyDebugBag {
   mask_loaded: boolean;
   raster_loaded: boolean;
   raw_perimeter_px: Array<[number, number]> | null;
+  aerial_candidate_roof_graph: AerialCandidateRoofGraph | null;
 }
+
 
 const MAX_DEBUG_ROOF_LINES = 512;
 const MAX_FOOTPRINT_PX_POINTS = 256;
@@ -284,7 +293,15 @@ export function buildPreTopologyDebugBag(args: {
   footprintGeo: Array<[number, number]> | null;
   footprintPx: Array<[number, number]> | null;
   registration?: any;
+  rasterUrl?: string | null;
+  rasterBoundsLatLng?: unknown;
+  geoToRasterTransform?: unknown;
+  solarSegments?: unknown;
+  maskComponentsTable?: unknown;
+  confirmedRoofCenterPx?: unknown;
+  staticMapCenterLatLng?: unknown;
 }): PreTopologyDebugBag {
+
   const dsmSplit = buildDsmSplitStatus({
     dsmGrid: args.dsmGrid,
     maskedDSM: args.maskedDSM,
@@ -320,6 +337,18 @@ export function buildPreTopologyDebugBag(args: {
       >)
       : null;
 
+  const aerialCandidateRoofGraph = buildAerialCandidateGraph({
+    rasterUrl: args.rasterUrl ?? null,
+    rasterBoundsLatLng: args.rasterBoundsLatLng,
+    geoToRasterTransform: args.geoToRasterTransform,
+    perimeterTopology: args.perimeterTopologySnapshot,
+    targetMaskIsolation: args.targetMaskIsolation,
+    solarSegments: args.solarSegments,
+    maskComponentsTable: args.maskComponentsTable,
+    confirmedRoofCenterPx: args.confirmedRoofCenterPx,
+    staticMapCenterLatLng: args.staticMapCenterLatLng,
+  });
+
   return {
     dsm_split_status: dsmSplit,
     perimeter_phase0: args.perimeterPhase0Snapshot ?? null,
@@ -335,8 +364,10 @@ export function buildPreTopologyDebugBag(args: {
     mask_loaded: dsmSplit.mask_loaded || dsmSplit.masked_dsm_loaded,
     raster_loaded: dsmSplit.raster_loaded,
     raw_perimeter_px: rawPerimeterPx,
+    aerial_candidate_roof_graph: aerialCandidateRoofGraph,
   };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────
 // CPU-budget terminal debug payload (pure shaping for the failure row).
@@ -375,6 +406,8 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const targetMaskIsolation = (incoming as any).target_mask_isolation ?? null;
   const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
   const perimeterTopology = (incoming as any).perimeter_topology ?? null;
+  const aerialCandidateRoofGraph =
+    (incoming as any).aerial_candidate_roof_graph ?? null;
   const phase3_5 = {
     raw_perimeter_px: rawPerimeterPx,
     refined_perimeter_px: null,
@@ -413,10 +446,12 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     target_mask_isolation: targetMaskIsolation,
     perimeter_topology: perimeterTopology,
     raw_perimeter_px: rawPerimeterPx,
+    aerial_candidate_roof_graph: aerialCandidateRoofGraph,
     phase3_5,
     debug_layers,
   };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────
 // Final-diagram zero-geometry safety guard (success-path).
