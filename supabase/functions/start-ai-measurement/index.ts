@@ -14074,7 +14074,7 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
 // Whitelist of footprint_source values accepted by the
 // roof_measurements_footprint_source_check constraint. Anything not in this
 // list MUST be mapped (or fall through to 'unknown') so inserts never fail.
-const ALLOWED_FOOTPRINT_SOURCES = new Set<string>([
+export const ALLOWED_FOOTPRINT_SOURCES = new Set<string>([
   "mapbox_vector",
   "regrid_parcel",
   "osm_overpass",
