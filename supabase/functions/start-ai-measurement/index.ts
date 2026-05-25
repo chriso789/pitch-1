@@ -925,6 +925,10 @@ function prepareRoofMeasurementPayload(payload: Record<string, unknown>): Record
           transform_failure_reasons: ["transform_package_absent"],
         });
       }
+      // Live-runtime DSM + Candidate hoist — hoist BEFORE quarantine so the
+      // registration block reports dsm_size_px / selected_candidate_polygon_px
+      // from whatever evidence already lives on geometry_report_json.
+      registrationBlock = applyLiveRuntimeHoistToRegistration(registrationBlock, geometry as any);
       geometry.registration = registrationBlock;
       geometry.registration_gate = registrationBlock;
       regVersionForPrecedence = (registrationBlock as any)?.version ?? null;
