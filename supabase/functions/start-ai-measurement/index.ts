@@ -6576,6 +6576,13 @@ async function processJob(input: any) {
                 footprintSource,
                 footprintGeo,
                 footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: _transformPkg?.raster_bounds_lat_lng ?? null,
+                geoToRasterTransform: _transformPkg?.geo_to_raster_transform ?? null,
+                solarSegments,
+                maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: _transformPkg?.confirmed_roof_center_px ?? null,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
               }),
             });
             return;
