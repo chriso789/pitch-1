@@ -96,21 +96,49 @@ function buildDsmSplitStatus(args: {
   maskedDSM: any;
   roofMask: any;
   raster: any;
+  registration?: any;
 }): DsmSplitStatus {
   const dsmSize = sizeOf(args.dsmGrid);
   const maskedDsmSize = sizeOf(args.maskedDSM);
   const rasterSize = sizeOf(args.raster);
   const dsmRes = Number(args.dsmGrid?.resolution ?? args.maskedDSM?.resolution);
+  const dsmLoaded = !!args.dsmGrid;
+  const maskLoaded = !!args.roofMask;
+  const rasterLoaded = !!args.raster &&
+    !!(args.raster as any)?.width && !!(args.raster as any)?.height;
+  const reg = args.registration ?? {};
+  const tileBoundsPresent = reg?.dsm_tile_bounds_lat_lng != null;
+  const geoToDsmPresent = reg?.geo_to_dsm_transform != null ||
+    reg?.geo_to_dsm_px_success === true;
+  const dsmToRasterPresent = reg?.dsm_to_raster_transform != null;
+  const dsmPixelTransformValid = reg?.dsm_pixel_transform_valid === true;
+  const hasAllTransforms = tileBoundsPresent && geoToDsmPresent &&
+    dsmToRasterPresent && dsmPixelTransformValid;
   return {
-    dsm_loaded: !!args.dsmGrid,
+    dsm_loaded: dsmLoaded,
     masked_dsm_loaded: !!args.maskedDSM,
-    mask_loaded: !!args.roofMask,
-    raster_loaded: !!args.raster &&
-      !!(args.raster as any)?.width && !!(args.raster as any)?.height,
+    mask_loaded: maskLoaded,
+    raster_loaded: rasterLoaded,
     dsm_size_px: dsmSize,
     masked_dsm_size_px: maskedDsmSize,
     raster_size_px: rasterSize,
     dsm_resolution_mpp: Number.isFinite(dsmRes) && dsmRes > 0 ? dsmRes : null,
+    fetch_decode: {
+      status: dsmLoaded && maskLoaded && rasterLoaded ? "pass" : "fail",
+      stage: "dsm_fetch_decode",
+      dsm_loaded: dsmLoaded,
+      mask_loaded: maskLoaded,
+      raster_loaded: rasterLoaded,
+      dsm_size_px: dsmSize,
+    },
+    georegistration_transform: {
+      status: hasAllTransforms ? "pass" : (dsmLoaded ? "fail" : "warning"),
+      stage: "dsm_georeg_transform",
+      dsm_tile_bounds_lat_lng_present: tileBoundsPresent,
+      geo_to_dsm_transform_present: geoToDsmPresent,
+      dsm_to_raster_transform_present: dsmToRasterPresent,
+      dsm_pixel_transform_valid: dsmPixelTransformValid,
+    },
   };
 }
 
