@@ -157,12 +157,27 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     parseRasterSizeFromUrl(rasterUrl) ||
     { width: 1280, height: 1280 };
 
-  const rawRing = useMemo<Pt[]>(() => asPxRing(phase35?.raw_perimeter_px), [phase35]);
+  // Render order (fallback chain): refined → raw → perimeter_topology.ring.
+  // The last-resort fallback lets the overlay still render on runs that were
+  // preempted before Phase 3A.5 refinement (debug-only layers only).
+  const perimeterTopologyRingPx = (grj as any)?.perimeter_topology?.perimeter_ring_px;
+  const debugLayersRawPx = (grj as any)?.debug_layers?.raw_perimeter_px;
+  const rawRing = useMemo<Pt[]>(
+    () => {
+      const r1 = asPxRing(phase35?.raw_perimeter_px);
+      if (r1.length >= 3) return r1;
+      const r2 = asPxRing(debugLayersRawPx);
+      if (r2.length >= 3) return r2;
+      return asPxRing(perimeterTopologyRingPx);
+    },
+    [phase35, debugLayersRawPx, perimeterTopologyRingPx],
+  );
   const refinedRing = useMemo<Pt[]>(() => asPxRing(phase35?.refined_perimeter_px), [phase35]);
 
   // Editable copy — seeds from refined (or raw fallback). User edits stay local
   // until Save explicitly persists them through verify-perimeter-manually.
   const seedRing: Pt[] = refinedRing.length >= 4 ? refinedRing : rawRing;
+
   const [editedRing, setEditedRing] = useState<Pt[]>(seedRing);
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -518,17 +533,21 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
 
   const hasPerimeterData = rawRing.length >= 3 || refinedRing.length >= 3;
 
-  if (!hasPerimeterData) {
+  if (!hasPerimeterData && !rasterUrl) {
     return (
       <Alert>
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>Visual QA overlay unavailable</AlertTitle>
         <AlertDescription>
-          No <code>phase3_5.raw_perimeter_px</code> or <code>phase3_5.refined_perimeter_px</code> was persisted for this run.
+          No <code>phase3_5.raw_perimeter_px</code>,{' '}
+          <code>debug_layers.raw_perimeter_px</code>,{' '}
+          <code>perimeter_topology.perimeter_ring_px</code>, or aerial{' '}
+          <code>raster_url</code> was persisted for this run.
         </AlertDescription>
       </Alert>
     );
   }
+
 
   return (
     <Card className="overflow-hidden">

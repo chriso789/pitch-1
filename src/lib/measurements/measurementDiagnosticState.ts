@@ -128,15 +128,27 @@ export function resolveMeasurementDiagnosticState(
     (row.target_lat != null && row.target_lng != null
       ? { lat: row.target_lat, lng: row.target_lng }
       : null);
-  const targetConfirmed = readBool(
+  const confirmedCenterPx = geometry.confirmed_roof_center_px ??
+    registration.confirmed_roof_center_dsm_px ??
+    geometry.confirmed_roof_center_dsm_px ?? null;
+  const staticMapCenterLatLng = geometry.static_map_center_lat_lng ??
+    registration.static_map_center_lat_lng ?? null;
+  const footprintValidFlag = readBool(
+    geometry.footprint_valid,
+    (geometry.dsm_planar_graph_debug as any)?.footprint_valid,
+  );
+  const userConfirmedFlag = readBool(
     row.user_confirmed_roof_target,
     geometry.user_confirmed_roof_target,
     registration.user_confirmed_roof_target,
     row.roof_target_admin_override,
     geometry.roof_target_admin_override,
     registration.roof_target_admin_override,
-  ) && !!confirmedCenter;
-
+  );
+  // Target confirmation passes when ANY independent piece of evidence shows
+  // the user steered the run to a known roof — explicit flag + center, an
+  // explicit confirmed_roof_center_px, a static-map center coupled with
+  // progress past source acquisition, OR a validated footprint.
   const sourceAcquisitionCompleted = dsmLoaded ||
     maskLoaded ||
     readString(
@@ -144,6 +156,16 @@ export function resolveMeasurementDiagnosticState(
         dpgd.google_solar_status,
         overlayDebug.google_solar_status,
       ) != null;
+  const targetConfirmed =
+    (userConfirmedFlag && !!confirmedCenter) ||
+    !!confirmedCenterPx ||
+    (!!staticMapCenterLatLng &&
+      (sourceAcquisitionCompleted ||
+        !!nestedFailureStage ||
+        !!cpuBudgetStage ||
+        footprintValidFlag)) ||
+    footprintValidFlag;
+
 
   // ── DSM transform / georegistration validity ──
   // DSM "loaded" only means the raster was fetched/decoded; the georegistration

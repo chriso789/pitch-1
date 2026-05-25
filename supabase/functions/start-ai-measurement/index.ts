@@ -13097,15 +13097,23 @@ function shouldPreemptForCpuBudget(
 } {
   const elapsedMs = runtimeElapsedMs(input);
   const remainingMs = AI_MEASUREMENT_CPU_BUDGET_MS - elapsedMs;
-  if (remainingMs <= AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS) {
+  // Effective wall-clock budget reserves the tail for the terminal debug
+  // write. Once elapsed crosses this threshold we preempt regardless of
+  // whether `estimatedWorkUnits` is known (0/unavailable still triggers).
+  const effectiveBudgetMs = AI_MEASUREMENT_CPU_BUDGET_MS -
+    AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS;
+  if (elapsedMs >= effectiveBudgetMs) {
     return {
       preempt: true,
       elapsed_ms: elapsedMs,
       remaining_ms: remainingMs,
-      reason: "wall_clock_budget_reserve_reached",
+      reason: "wall_clock_reserve_threshold",
     };
   }
-  if (estimatedWorkUnits > AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT) {
+  if (
+    estimatedWorkUnits > 0 &&
+    estimatedWorkUnits > AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT
+  ) {
     return {
       preempt: true,
       elapsed_ms: elapsedMs,
