@@ -182,6 +182,103 @@ export interface BuildAerialCandidateGraphArgs {
   maskComponentsTable?: any;
   confirmedRoofCenterPx?: unknown;
   staticMapCenterLatLng?: unknown;
+  // New: fallback evidence sources persisted in geometry_report_json so the
+  // builder can succeed even when the canonical perimeter_topology snapshot
+  // has not been wired into a particular call site yet.
+  registration?: any;
+  debugLayers?: any;
+  dsmPlanarGraphDebug?: any;
+  debugRoofLines?: any;
+}
+
+function firstValid<T>(...candidates: Array<T | null | undefined>): T | null {
+  for (const c of candidates) {
+    if (c != null) return c as T;
+  }
+  return null;
+}
+
+function resolvePerimeterRingPx(
+  args: BuildAerialCandidateGraphArgs,
+): { ring: Array<[number, number]> | null; source: string | null } {
+  const candidates: Array<[string, any]> = [
+    [
+      "perimeter_topology.perimeter_ring_px",
+      args.perimeterTopology?.perimeter_ring_px,
+    ],
+    [
+      "debug_layers.raw_perimeter_px",
+      args.debugLayers?.raw_perimeter_px,
+    ],
+    [
+      "debug_layers.selected_perimeter_px",
+      args.debugLayers?.selected_perimeter_px,
+    ],
+    [
+      "dsm_planar_graph_debug.perimeter_topology.perimeter_ring_px",
+      args.dsmPlanarGraphDebug?.perimeter_topology?.perimeter_ring_px,
+    ],
+    [
+      "dsm_planar_graph_debug.phase3_5.raw_perimeter_px",
+      args.dsmPlanarGraphDebug?.phase3_5?.raw_perimeter_px,
+    ],
+    [
+      "dsm_planar_graph_debug.debug_layers.raw_perimeter_px",
+      args.dsmPlanarGraphDebug?.debug_layers?.raw_perimeter_px,
+    ],
+  ];
+  for (const [src, raw] of candidates) {
+    const ring = normalizeRing(raw);
+    if (ring) return { ring, source: src };
+  }
+  return { ring: null, source: null };
+}
+
+function resolvePerimeterRingGeo(
+  args: BuildAerialCandidateGraphArgs,
+): Array<[number, number]> | null {
+  const candidates = [
+    args.perimeterTopology?.perimeter_ring_geo,
+    args.dsmPlanarGraphDebug?.perimeter_topology?.perimeter_ring_geo,
+  ];
+  for (const raw of candidates) {
+    const ring = normalizeGeoRing(raw);
+    if (ring) return ring;
+  }
+  // Derive from debugRoofLines[].geo only as last resort.
+  if (Array.isArray(args.debugRoofLines)) {
+    const flat: Array<[number, number]> = [];
+    for (const dl of args.debugRoofLines) {
+      const geo = Array.isArray(dl?.geo) ? dl.geo : null;
+      if (!geo) continue;
+      for (const p of geo) {
+        const gp = geoPair(p);
+        if (gp) flat.push(gp);
+      }
+    }
+    if (flat.length >= 3) return flat;
+  }
+  return null;
+}
+
+function resolveRasterRegistration(args: BuildAerialCandidateGraphArgs): {
+  registered: boolean;
+  basis: "transform" | "bounds_only" | "registration_package" | null;
+} {
+  const pkg = args.registration?.transform_package ?? args.registration ?? null;
+  const transform = args.geoToRasterTransform ?? pkg?.geo_to_raster_transform;
+  const bounds = args.rasterBoundsLatLng ?? pkg?.raster_bounds_lat_lng ??
+    args.registration?.raster_bounds_lat_lng;
+  if (transform && bounds) {
+    return { registered: true, basis: "transform" };
+  }
+  if (transform) {
+    return { registered: true, basis: "registration_package" };
+  }
+  if (bounds && (args.rasterUrl ?? args.registration?.raster?.url)) {
+    return { registered: true, basis: "bounds_only" };
+  }
+  return { registered: false, basis: null };
 }
 
 export function buildAerialCandidateGraph(
@@ -204,25 +301,29 @@ export function buildAerialCandidateGraph(
     candidate_faces: [],
     evidence: {
       raster_registered: false,
+      raster_registered_basis: null,
       target_mask_isolation_checked: false,
       solar_segments_used: false,
       dsm_required: false,
     },
+    perimeter_source: null,
   };
 
-  const rasterRegistered = !!args.geoToRasterTransform &&
-    !!args.rasterBoundsLatLng;
-  base.evidence.raster_registered = rasterRegistered;
+  const reg = resolveRasterRegistration(args);
+  base.evidence.raster_registered = reg.registered;
+  base.evidence.raster_registered_basis = reg.basis;
 
-  const ringPx = normalizeRing(args.perimeterTopology?.perimeter_ring_px);
-  const ringGeo = normalizeGeoRing(args.perimeterTopology?.perimeter_ring_geo);
+  const { ring: ringPx, source: ringSource } = resolvePerimeterRingPx(args);
+  const ringGeo = resolvePerimeterRingGeo(args);
+  base.perimeter_source = ringSource;
 
-  if (!rasterRegistered) {
+  if (!reg.registered) {
     return { ...base, skipped_reason: "raster_transform_unavailable" };
   }
   if (!ringPx && !ringGeo) {
     return { ...base, skipped_reason: "perimeter_ring_unavailable" };
   }
+
 
   base.perimeter_ring_px = ringPx;
   base.perimeter_ring_geo = ringGeo;
