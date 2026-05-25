@@ -136,6 +136,16 @@ export function normalizeResultState(raw: unknown): ResultState {
     return "customer_report_ready";
   }
   if (s.includes("perimeter_only")) return "perimeter_only";
+  // Aerial-primary downgrade: DSM validation unavailable but registered aerial
+  // geometry persisted. Lands in the existing `perimeter_only` bucket — no DB
+  // migration required. See _shared/aerial-primary-gate.ts.
+  if (
+    s.includes("aerial_primary_dsm_unavailable") ||
+    s.includes("dsm_validation_unavailable") ||
+    s.includes("aerial_primary")
+  ) {
+    return "perimeter_only";
+  }
   if (s.includes("diagnostic")) return "diagnostic_only";
 
   return "ai_failed_unknown";
