@@ -748,15 +748,29 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
       label: "Phase 3A Failure",
       value: String(phase3A?.eave_rake_failure_reason ?? "—"),
     },
-    { label: "Reportable Roof Lines", value: fmt(phase3B?.roof_lines_count ?? grj.roof_lines_count) },
+    (() => {
+      // Reportable Roof Lines must be 0 until topology is actually validated
+      // OR the row is customer-ready. Phase 3B's `reportable_roof_lines_count`
+      // currently counts debug eave candidates — that is NOT reportable.
+      const customerReady = (m as any)?.customer_report_ready === true ||
+        (grj as any)?.customer_report_ready === true;
+      const topologyValidated = (grj as any)?.topology_validated === true ||
+        ((grj as any)?.geometry_source === "dsm_validated");
+      const rawReportable = phase3B?.roof_lines_count ?? grj.roof_lines_count;
+      const trueReportable =
+        (customerReady || topologyValidated) ? rawReportable : 0;
+      return { label: "Reportable Roof Lines", value: fmt(trueReportable) };
+    })(),
     {
       label: "Debug Roof Lines",
       value: fmt(
         Array.isArray(grj.debug_roof_lines)
           ? grj.debug_roof_lines.length
-          : (grj.debug_roof_lines_count ?? 0),
+          : (grj.debug_roof_lines_count ??
+            phase3B?.reportable_roof_lines_count ?? 0),
       ),
     },
+
     (() => {
       const aerial = (grj as any)?.aerial_candidate_roof_graph
         ?? (grj as any)?.debug_layers?.aerial_candidate_roof_graph;

@@ -83,6 +83,8 @@ export interface PreTopologyDebugBag {
   raster_loaded: boolean;
   raw_perimeter_px: Array<[number, number]> | null;
   aerial_candidate_roof_graph: AerialCandidateRoofGraph | null;
+  primary_geometry_source?: "aerial_registered" | null;
+  dsm_validation_status?: { available: boolean; reason: string | null } | null;
 }
 
 
@@ -347,7 +349,26 @@ export function buildPreTopologyDebugBag(args: {
     maskComponentsTable: args.maskComponentsTable,
     confirmedRoofCenterPx: args.confirmedRoofCenterPx,
     staticMapCenterLatLng: args.staticMapCenterLatLng,
+    registration: args.registration,
+    debugLayers: (args as any).debugLayers ?? null,
+    dsmPlanarGraphDebug: (args as any).dsmPlanarGraphDebug ?? null,
+    debugRoofLines: (args as any).debugRoofLines ?? null,
   });
+
+  const dsmTransformPresent =
+    dsmSplit.georegistration_transform.dsm_to_raster_transform_present &&
+    dsmSplit.georegistration_transform.geo_to_dsm_transform_present &&
+    dsmSplit.georegistration_transform.dsm_pixel_transform_valid;
+  const dsmValidationStatus: { available: boolean; reason: string | null } =
+    !dsmSplit.dsm_loaded
+      ? { available: false, reason: "dsm_not_loaded" }
+      : dsmTransformPresent
+      ? { available: true, reason: null }
+      : { available: false, reason: "invalid_transform" };
+  const primaryGeometrySource = aerialCandidateRoofGraph.executed
+    ? "aerial_registered"
+    : null;
+
 
   return {
     dsm_split_status: dsmSplit,
@@ -365,8 +386,11 @@ export function buildPreTopologyDebugBag(args: {
     raster_loaded: dsmSplit.raster_loaded,
     raw_perimeter_px: rawPerimeterPx,
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
-  };
+    primary_geometry_source: primaryGeometrySource,
+    dsm_validation_status: dsmValidationStatus,
+  } as PreTopologyDebugBag;
 }
+
 
 
 // ────────────────────────────────────────────────────────────────────────
@@ -447,6 +471,9 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     perimeter_topology: perimeterTopology,
     raw_perimeter_px: rawPerimeterPx,
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
+    primary_geometry_source: (incoming as any).primary_geometry_source ??
+      (aerialCandidateRoofGraph?.executed ? "aerial_registered" : null),
+    dsm_validation_status: (incoming as any).dsm_validation_status ?? null,
     phase3_5,
     debug_layers,
   };

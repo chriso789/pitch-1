@@ -6342,9 +6342,19 @@ async function processJob(input: any) {
           ),
         );
         // Hoist registration fields to outer scope for downstream debug-bag use.
-        hoistedRasterBoundsLatLng = hoistedRasterBoundsLatLng;
-        hoistedGeoToRasterTransform = hoistedGeoToRasterTransform;
-        hoistedConfirmedRoofCenterPx = hoistedConfirmedRoofCenterPx;
+        // CRITICAL: these were previously self-assigned (no-op), which silently
+        // starved the aerial candidate graph builder of registration data and
+        // produced `skipped_reason: "raster_transform_unavailable"` even when
+        // the transform package already had the values.
+        hoistedRasterBoundsLatLng =
+          (_transformPkg as any)?.raster_bounds_lat_lng ??
+            hoistedRasterBoundsLatLng;
+        hoistedGeoToRasterTransform =
+          (_transformPkg as any)?.geo_to_raster_transform ??
+            hoistedGeoToRasterTransform;
+        hoistedConfirmedRoofCenterPx =
+          (_transformPkg as any)?.confirmed_roof_center_px ??
+            hoistedConfirmedRoofCenterPx;
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
