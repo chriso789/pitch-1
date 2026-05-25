@@ -401,15 +401,22 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
   embedded = false,
 }) => {
   const stages = useMemo(() => buildStages(measurement), [measurement]);
-  const [activeStage, setActiveStage] = useState<string>(
-    stages[0]?.id || "target",
+  const initialResolved = useMemo(
+    () => resolveMeasurementDiagnosticState(measurement),
+    [measurement],
   );
+  const defaultStageId =
+    (initialResolved.active_stage_hint &&
+      stages.find((s) => s.id === initialResolved.active_stage_hint)?.id) ||
+    stages[0]?.id ||
+    "target";
+  const [activeStage, setActiveStage] = useState<string>(defaultStageId);
   const [layers, setLayers] = useState<Record<string, boolean>>(
     () => Object.fromEntries(LAYER_TOGGLES.map((l) => [l.key, l.default])),
   );
 
   const grj = measurement?.geometry_report_json || {};
-  const resolvedState = resolveMeasurementDiagnosticState(measurement);
+  const resolvedState = initialResolved;
   const overlayDbg = grj.overlay_debug || {};
   const rasterUrl: string | undefined = overlayDbg?.raster_url ||
     measurement?.satellite_overlay_url || measurement?.google_maps_image_url;
