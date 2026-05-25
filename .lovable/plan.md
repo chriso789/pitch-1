@@ -1,248 +1,144 @@
-## Diagnosis
+## Scope
 
-The latest Fonsica run did NOT regress geometrically. It regressed because the registration-gate cleanup writes a diagnostic value (`blocked_by_registration_gate`) directly into the `roof_measurements.footprint_source` DB column, which is constrained to a whitelist (`mapbox_vector`, `regrid_parcel`, …, `unknown`, etc.). The insert explodes, the pipeline falls into `processJob_outer_catch`, and the cheap pre-topology debug bag we just added never gets persisted because the row write happens BEFORE the snapshot is flushed and there is no isolated boundary around persistence.
+Six tightly scoped fixes on top of the now-working persistence-contract slice. No geometry gate changes, no schema migration, no architectural rework. Canonical route stays `start-ai-measurement`.
 
-A normalizer (`normalizeRoofMeasurementFootprintSource`) already exists at L14103 — it is just bypassed by the three registration-cleanup writes at L1899/1927-28/1944 and one legacy write at L4116 (`google_solar_roof_mask`).
+---
 
-This is a persistence-contract bug, not a geometry bug. Scope is intentionally narrow.
+## Backend changes (`supabase/functions/start-ai-measurement/index.ts` + `_shared/pre-topology-debug-bag.ts`)
 
-## Scope (edge-function-only, no schema migration)
+### 1. CPU preemption threshold (fire before exhaustion)
 
-Confined to:
+In the pre-Phase-3A.5 preempt check:
 
-- `supabase/functions/start-ai-measurement/index.ts`
-- `supabase/functions/_shared/pre-topology-debug-bag.ts` (read-only types extension)
-- new Deno tests under `supabase/functions/start-ai-measurement/__tests__/`
+- Compute `effective_budget_ms = cpu_budget_ms - cpu_terminal_write_reserve_ms` (e.g. 75000 − 15000 = 60000).
+- Preempt when `elapsed_ms >= effective_budget_ms`, regardless of whether `estimated_work_units` is known.
+- If `estimated_work_units` is 0/unavailable, fall back purely to wall-clock reserve check (do not skip preempt because work units are missing).
+- Record `cpu_budget_preempt_reason = 'wall_clock_reserve_threshold'` and ensure heavy Phase 3A.5/topology calls are not invoked after threshold.
 
-Explicit non-goals: no DB constraint change, no relaxation of any geometry gate, no frontend changes, no new preflight stage, no rework of registration logic itself.
+Acceptance: `cpu_budget_elapsed_ms < cpu_budget_ms` and ideally `<= effective_budget_ms + small_tolerance`.
 
-## Fixes
+### 2. Persist raw perimeter into phase3_5 + debug_layers before preempt write
 
-### 1. Stop writing unconstrained `footprint_source` to the DB column
+In `buildPreTopologyDebugBag` (or the preempt writer that consumes it), when `perimeter_topology.perimeter_ring_px` exists:
 
-At every write site where a diagnostic label leaks into `(geometry|next).footprint_source`, split into two fields:
-
-- `footprint_source` → always run through `normalizeRoofMeasurementFootprintSource(...)` so the DB column only ever sees a whitelisted value (`"unknown"` is the safe default).
-- `footprint_source_diagnostic` → store the raw diagnostic label (`"blocked_by_registration_gate"`, `"google_solar_roof_mask"`, etc.) inside `geometry_report_json` only. Never written to the column.
-
-Sites to patch:
-
-- L1899 — registration-gate quarantine path.
-- L1927-28 / L1944 — `runtimeStateWins` branch (`resolvedDiagnosticState.footprint_source`).
-- L4116 — `google_solar_roof_mask` literal.
-- Any other sites surfaced by a final `rg footprint_source` sweep that write into a `roof_measurements` payload object (not into `geometry_report_json`).
-
-Also extend `resolveDiagnosticState(...)` (or the producer of `resolvedDiagnosticState`) so it returns BOTH:
-
-```ts
-{ footprint_source: <DB-safe>, footprint_source_diagnostic: <raw> }
+```
+geometry_report_json.phase3_5.raw_perimeter_px = perimeter_topology.perimeter_ring_px;
+geometry_report_json.debug_layers.raw_perimeter_px = perimeter_topology.perimeter_ring_px;
+geometry_report_json.debug_layers.selected_perimeter_px = perimeter_topology.perimeter_ring_px;
 ```
 
-and persist the raw label under `geometry_report_json.footprint_source_diagnostic` + `geometry_report_json.footprint_source_normalized_from`.
+If refined perimeter is absent at preempt time:
 
-### 2. Defensive normalization at the chokepoint
-
-Inside `prepareRoofMeasurementPayload` (or whichever helper feeds `insertRoofMeasurementWithSchemaGuard` / `updateRoofMeasurementWithSchemaGuard`), unconditionally:
-
-```ts
-const raw = payload.footprint_source;
-const normalized = normalizeRoofMeasurementFootprintSource(raw);
-if (normalized !== raw) {
-  geometryReportJson.footprint_source_diagnostic ??= raw;
-  geometryReportJson.footprint_source_normalized_from = raw;
-}
-payload.footprint_source = normalized;
+```
+geometry_report_json.phase3_5.refined_perimeter_missing_reason =
+  'refinement_not_reached_before_cpu_preempt';
 ```
 
-This is the belt-and-braces guard: even if a new code path forgets, the row stays insertable.
+No new fields outside `geometry_report_json` — stays within current persistence contract.
 
-### 3. Persist the debug bag BEFORE the constrained DB row
+### 3. Derive `px` on debug_roof_lines from `perimeter_topology.eave_edges`
 
-The Phase-3A.5 cleanup we just shipped persists the pre-topology debug bag via `persistCpuBudgetTerminalFailure → insertFailedPreliminaryMeasurement`. But on the registration-gate quarantine path the failing insert today fires from a different write site, and the debug bag is built only inside the CPU-budget helper.
+When building `debug_roof_lines`, if the source edge carries `start_px`/`end_px`, populate:
 
-Reorder so that for any "block-and-record" exit (registration-gate quarantine, runtime-state-wins, processJob outer catch):
+```
+px: [{ x: start.x, y: start.y }, { x: end.x, y: end.y }]
+```
 
-1. Build the pre-topology debug bag (already cheap — same helper).
-2. Write a minimal `geometry_report_json` snapshot via a new helper `persistDiagnosticSnapshotEarly(jobId, debugBag, reason)` that ONLY updates `ai_measurement_jobs.geometry_report_json` (no `roof_measurements` row, no constrained columns). This survives any subsequent `roof_measurements` insert failure.
-3. Then attempt the `roof_measurements` insert with the normalized payload.
+Keep `geo`, `length_ft`, and flags as today. Enforce on every entry:
 
-If step 3 throws a Postgres `23514` (check constraint) error, catch it locally, log the offending column/value into `geometry_report_json.schema_drift_stripped_columns` (per Schema & DB Drift Guard skill), strip the offending optional field to `"unknown"`, and retry once. Do NOT let it propagate to `processJob_outer_catch`.
+- `debug_only: true`
+- `customer_ready: false`
+- `candidate_source: 'phase3A'`
+- `validation_status: 'candidate_only'`
+- `reason_not_reportable: 'runtime_preempted_before_validated_topology'`
 
-### 4. Wire `dsm_split_status` end-to-end
+### 4. Nested `dsm_split_status` contract (additive)
 
-The viewer already reads `dsm_split_status` but the backend ships `null`. Inside the source-acquisition path, emit:
+Keep existing flat fields untouched. Add nested shape alongside:
 
-```ts
-debugBag.dsm_split_status = {
-  fetch_decode:           { ok, ms, bytes, error?,  stage: "dsm_fetch_decode" },
-  georegistration_transform: { ok, ms, error?,      stage: "dsm_georeg_transform" },
+```
+dsm_split_status.fetch_decode = {
+  status: dsm_loaded && mask_loaded && raster_loaded ? 'pass' : 'fail',
+  stage: 'dsm_fetch_decode',
+  dsm_loaded, mask_loaded, raster_loaded, dsm_size_px,
+};
+dsm_split_status.georegistration_transform = {
+  status: hasAllTransforms ? 'pass' : (dsm_loaded ? 'fail' : 'warning'),
+  stage: 'dsm_georeg_transform',
+  dsm_tile_bounds_lat_lng_present,
+  geo_to_dsm_transform_present,
+  dsm_to_raster_transform_present,
+  dsm_pixel_transform_valid,
 };
 ```
 
-`buildPreTopologyDebugBag(...)` already passes `dsm_split_status` through — just populate the two sub-stages where DSM is fetched and where it is transformed. Both are pure pass-through booleans + timings, no new heavy work.
+For current Fonsica state: `fetch_decode.status='pass'`, `georegistration_transform.status='fail'`.
 
-### 5. Isolate persistence boundaries
+---
 
-Introduce three small wrappers in `start-ai-measurement/index.ts`:
+## Frontend changes
 
-```ts
-async function persistDiagnosticSnapshotEarly(jobId, debugBag, reason)  // updates ai_measurement_jobs only
-async function persistMeasurementRow(payload, geometryReportJson)        // insert roof_measurements (with normalize+retry)
-async function persistOverlayArtifacts(...)                              // existing storage writes
-```
+### 5. Diagnostic resolver — target confirmation (`src/lib/measurements/measurementDiagnosticState.ts`)
 
-Each is wrapped in its own try/catch. A failure in one MUST NOT roll back the others. Failure metadata for each is appended to `geometry_report_json.persistence_audit[]` so the next run is debuggable from the row alone.
+Add a `target_confirmation_passed` derivation that returns true when ANY of:
 
-Specifically:
+- `user_confirmed_roof_target === true`
+- `geometry_report_json.confirmed_roof_center_px` exists
+- `geometry_report_json.static_map_center_lat_lng` exists AND run progressed past source acquisition (any of `dsm_loaded`, `mask_loaded`, `footprint_valid`, or a non-source-acquisition `failure_stage`)
+- `footprint_valid === true`
 
-- `processJob_outer_catch` becomes a true last-resort path, not the place where DB-constraint failures land.
-- Any caught constraint failure logs `failure_stage = "persist_measurement_row_constraint"` (not `processJob_outer_catch`).
+For runtime CPU failures (`hard_fail_reason === 'ai_measurement_cpu_timeout'`), the resolver must not surface "roof target not confirmed" as the blocker.
 
-### 6. Regression tests (new files, all Deno)
+### 6. Visual QA overlay fallback (`AIMeasurement3DDebugViewer.tsx`)
 
-Under `supabase/functions/start-ai-measurement/__tests__/`:
+Render order:
 
-- `footprint-source-normalization.test.ts`
-  - Asserts `normalizeRoofMeasurementFootprintSource("blocked_by_registration_gate") === "unknown"`.
-  - Asserts `normalizeRoofMeasurementFootprintSource("google_solar_roof_mask")` is mapped (not raw).
-  - Asserts every value in `ALLOWED_FOOTPRINT_SOURCES` round-trips.
-- `persist-measurement-row-constraint-retry.test.ts`
-  - Mocks Supabase `.insert()` to throw a `23514`-shaped error on the first call, succeed on retry with `footprint_source="unknown"`.
-  - Asserts `geometry_report_json.schema_drift_stripped_columns` includes `{ column: "footprint_source", value: "blocked_by_registration_gate", reason: "23514" }`.
-  - Asserts the row finally lands.
-- `early-diagnostic-snapshot.test.ts`
-  - Calls the new `persistDiagnosticSnapshotEarly(...)` with a mocked Supabase.
-  - Asserts it updates ONLY `ai_measurement_jobs.geometry_report_json`, never `roof_measurements`.
-  - Asserts that a subsequent failing `persistMeasurementRow` does not clear the snapshot.
-- `dsm-split-status-emission.test.ts`
-  - Asserts the debug bag carries both `fetch_decode` and `georegistration_transform` sub-keys with `ok` + `stage`.
+1. `geometry_report_json.phase3_5.refined_perimeter_px` (existing)
+2. `geometry_report_json.phase3_5.raw_perimeter_px` (new fallback)
+3. `geometry_report_json.perimeter_topology.perimeter_ring_px` (last-resort fallback)
 
-Tests reuse existing imports + the minimal `supabase` shim pattern from `pre-topology-debug-bag.test.ts`.
+Only show "Visual QA overlay unavailable" if all three are missing AND no `overlay_debug.raster_url` exists.
 
-## Deploy + verification
+### 7. Debug vs reportable roof line counts (`AIMeasurement3DDebugViewer.tsx` + `MeasurementReportDialog.tsx`)
 
-1. Run new tests via `supabase--test_edge_functions` — must be green.
-2. Deploy `start-ai-measurement`.
-3. Rerun Fonsica from the lead UI.
-4. Read the resulting row via `debug-measurement-runtime` and confirm:
-  - `roof_measurements.footprint_source` is in the whitelist (likely `"unknown"`).
-  - `geometry_report_json.footprint_source_diagnostic = "blocked_by_registration_gate"` (or similar).
-  - `geometry_report_json.dsm_split_status.fetch_decode` + `…georegistration_transform` populated.
-  - `geometry_report_json.debug_roof_lines[]` populated, every entry `debug_only:true, customer_ready:false`.
-  - `failure_stage` is stage-correct, NOT `processJob_outer_catch`.
-  - `persistence_audit[]` is present.
+- Replace single "Roof Lines Count" chip with two labelled chips: **Debug Roof Lines** (from `debug_roof_lines.length`) and **Reportable Roof Lines** (from `roof_lines_count`).
+- Customer-report gating logic stays driven by `roof_lines_count` / `customer_report_ready`. Debug count never feeds the report-ready signal.
 
-## Out of scope (explicit)
+---
 
-- No DB CHECK constraint change on `roof_measurements_footprint_source_check` or `result_state`.
-- No relaxation of perimeter / topology / vendor-benchmark / footprint-sanity gates.
-- No frontend changes (viewer already reads `dsm_split_status`, `debug_roof_lines`, `footprint_source_diagnostic`).
-- No new preflight stage. No registration-logic rewrite. No `processJob` restructuring beyond wrapping the three persistence boundaries.  
-  
-Here’s the next drop-in in plain English:
-  ## We are fixing ONE thing next:
-  The backend is crashing because it’s writing an invalid `footprint_source` value into the database.
-  That’s why the newest run looks worse.
-  The exact failure is:
-  ```
+## Tests (added before deploy; deploy only after green)
 
-  ```
-  ```
-  new row for relation "roof_measurements"
-  violates check constraint
-  "roof_measurements_footprint_source_check"
-  ```
-  So the next drop-in is NOT geometry.  
-    
-  NOT topology.  
-    
-  NOT overlays.
-  It is:
-  # Normalize `footprint_source` before DB writes
-  The backend currently tries to save internal diagnostic labels like:
-  ```
+Backend (Deno) — under `supabase/functions/start-ai-measurement/__tests__/`:
 
-  ```
-  ```
-  blocked_by_registration_gate
-  registration_blocked
-  coordinate_registration_failed
-  ```
-  into a DB column that only allows a limited enum/check list.
-  That explodes the insert.
-  ---
-  # What the drop-in does
-  ## 1. Add DB-safe normalization
-  Example:
-  ```
+- `cpu-preempt-threshold.test.ts` — given `cpu_budget_ms=75000`, `cpu_terminal_write_reserve_ms=15000`, `elapsed=60000`, preempt fires; assert `elapsed_ms < cpu_budget_ms` and heavy Phase 3A.5 entrypoint not invoked.
+- `raw-perimeter-persistence.test.ts` — given `perimeter_topology.perimeter_ring_px` present and no refined perimeter, assert all three persisted paths populated and `refined_perimeter_missing_reason` set.
+- `debug-roof-lines-px-derivation.test.ts` — given eave edges with `start_px`/`end_px`, every emitted debug line has non-null `px` and required debug flags.
+- `dsm-split-status-nested-contract.test.ts` — given DSM loaded, transforms missing: `fetch_decode.status='pass'`, `georegistration_transform.status='fail'`; flat fields preserved.
 
-  ```
-  ```
-  footprint_source = "unknown"
-  ```
-  for DB storage.
-  ---
-  ## 2. Preserve the REAL diagnostic value in JSON
-  Example:
-  ```
+Frontend (Vitest):
 
-  ```
-  ```
-  {
-    "footprint_source_diagnostic":
-      "blocked_by_registration_gate"
-  }
-  ```
-  So diagnostics remain rich without violating the DB constraint.
-  ---
-  ## 3. Apply normalization to EVERY write path
-  Including:
-  -   
-  failed preliminary inserts  
+- `measurementDiagnosticState.test.ts` — runtime CPU failure with valid footprint/center → `target_confirmation_passed === true`; blocker is not "target not confirmed".
+- Viewer test — given only `perimeter_topology.perimeter_ring_px`, raw perimeter overlay renders; "Visual QA overlay unavailable" not shown.
+- Viewer test — `debug_roof_lines.length=6`, `roof_lines_count=0` → both chips render with distinct labels; customer report remains blocked.
 
-  -   
-  registration failures  
+---
 
-  -   
-  runtime failures  
+## Guardrails (unchanged)
 
-  -   
-  outer catch blocks  
+- No geometry gate relaxation, no vendor benchmark threshold changes.
+- No DB schema migration; all new fields live inside `geometry_report_json`.
+- No new preflight/source/timeout architecture.
+- No customer report generation; `customer_report_ready` stays false.
+- Canonical route remains `start-ai-measurement`.
 
-  -   
-  final writes  
+## Post-deploy verification (Fonsica rerun from lead UI only)
 
-  Right now only one path is exploding, but all of them need protection.
-  ---
-  ## 4. Add regression tests
-  To guarantee:
-  -   
-  no invalid `footprint_source` reaches DB again  
+After tests pass and `start-ai-measurement` redeploys:
 
-  -   
-  diagnostics still preserve the rich internal value  
-
-  ---
-  # Why this matters
-  Right now the DB failure happens BEFORE:
-  -   
-  debug layers persist  
-
-  -   
-  overlays persist  
-
-  -   
-  DSM split status persists  
-
-  -   
-  CPU diagnostics persist  
-
-  So the entire diagnostic chain collapses.
-  Once this normalization is fixed:
-  -   
-  the backend will stop crashing early  
-
-  -   
-  the next rerun should finally show the real debug overlay and topology state again  
-
-  That’s the actual next milestone.
+- No `23514` / DB constraint errors.
+- `cpu_budget_elapsed_ms < cpu_budget_ms`.
+- Visual overlay renders from raw perimeter fallback.
+- Debug roof lines carry `px`.
+- `dsm_split_status` has nested `fetch_decode` + `georegistration_transform`.
+- Target-confirmation banner does not appear for runtime CPU failure.
+- `customer_report_ready === false`.
