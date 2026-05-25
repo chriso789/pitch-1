@@ -28,7 +28,8 @@ Deno.test("v2.3: candidate_final with null transforms fails honestly", () => {
   assertEquals(r.coordinate_registration_gate_passed, false);
   assertEquals(r.confirmed_center_inside_candidate, false);
   assert(r.failure);
-  assertEquals(r.failure!.hard_fail_reason, "coordinate_registration_failed");
+  // v3 contract: prefer specific missing-field token over generic fallback.
+  assertEquals(r.failure!.hard_fail_reason, "dsm_size_missing");
   assertEquals(r.failure!.result_state, "ai_failed_source_acquisition");
   const missing = (r.registration as any).missing_required_fields as string[];
   for (const k of [
