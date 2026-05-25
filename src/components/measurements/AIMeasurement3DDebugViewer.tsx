@@ -136,11 +136,19 @@ function buildStages(m: any): StageDef[] {
   const pitchOk = pitch?.pitch_valid === true ||
     (m?.predominant_pitch != null && m.predominant_pitch > 0);
 
+  const facetCount = Number(m?.facet_count ?? topo?.facets_count ?? 0);
+  const roofLinesCount = Array.isArray(grj?.roof_lines)
+    ? grj.roof_lines.length
+    : Number(grj?.roof_lines_count ?? 0);
   const topoOk = topo?.facets_count != null
     ? Number(topo.facets_count) >= 3
-    : Number(m?.facet_count || 0) >= 3;
+    : facetCount >= 3;
 
-  const finalOk = !!grj?.final_diagram_url || Array.isArray(grj?.roof_lines);
+  // Final diagram CANNOT pass without real geometry. Zero facets AND zero
+  // roof_lines means we have nothing reportable, regardless of any URL.
+  const hasFinalGeometry = facetCount > 0 || roofLinesCount > 0;
+  const finalOk = hasFinalGeometry &&
+    (!!grj?.final_diagram_url || Array.isArray(grj?.roof_lines));
 
   const customerReady = m?.customer_report_ready === true ||
     customerGate?.customer_report_ready === true;
@@ -185,7 +193,7 @@ function buildStages(m: any): StageDef[] {
     },
     {
       id: "raster",
-      label: "Raster tile / DSM",
+      label: "Raster tile / DSM fetch",
       status: pickStatus(rasterOk && dsmOk, true),
       source: overlayDbg?.imagery_source || m?.selected_image_source ||
         m?.image_source,
@@ -199,6 +207,33 @@ function buildStages(m: any): StageDef[] {
         coordinate_space: overlayDbg?.coordinate_space_solver,
         dsm_coverage: dsm?.coverage,
         dsm_heightmap_url: dsm?.heightmap_url,
+        dsm_loaded: resolvedState.dsm_loaded,
+        dsm_size_px: grj?.registration?.dsm_size_px ?? grj?.dsm_size_px ?? null,
+      },
+    },
+    {
+      id: "dsm_transform",
+      label: "DSM georegistration / transform",
+      status: resolvedState.dsm_transform_valid
+        ? "pass"
+        : (resolvedState.dsm_loaded ? "fail" : "unknown"),
+      reason: resolvedState.dsm_transform_valid
+        ? undefined
+        : "DSM was fetched, but georegistration (tile bounds / geo→DSM / DSM→raster transform) is invalid or missing.",
+      payload: {
+        dsm_tile_bounds_lat_lng:
+          grj?.registration?.dsm_tile_bounds_lat_lng ??
+            grj?.dsm_tile_bounds_lat_lng ?? null,
+        geo_to_dsm_transform: grj?.registration?.geo_to_dsm_transform ?? null,
+        dsm_to_raster_transform:
+          grj?.registration?.dsm_to_raster_transform ?? null,
+        dsm_pixel_transform_valid:
+          grj?.registration?.dsm_pixel_transform_valid ?? null,
+        geo_to_dsm_px_success: grj?.registration?.geo_to_dsm_px_success ?? null,
+        transform_package_valid:
+          grj?.registration?.transform_package_valid ?? null,
+        transform_failure_reasons:
+          grj?.registration?.transform_failure_reasons ?? null,
       },
     },
     {
@@ -281,19 +316,34 @@ function buildStages(m: any): StageDef[] {
     },
     {
       id: "topology",
-      label: "Internal topology",
+      label: "Phase 3A.5 / Perimeter topology",
       status: pickStatus(topoOk, Object.keys(topo).length > 0 || topoOk),
-      payload: topo,
+      reason: resolvedState.final_state_source === "runtime_cpu_budget_guard"
+        ? "Phase 3A.5 stopped: CPU budget exceeded before topology completed."
+        : undefined,
+      payload: {
+        ...topo,
+        phase3_5: grj?.phase3_5 ?? grj?.phase3A_5 ?? null,
+        cpu_budget_stage: grj?.cpu_budget_stage ?? null,
+        cpu_budget_elapsed_ms: grj?.cpu_budget_elapsed_ms ?? null,
+        cpu_budget_ms: grj?.cpu_budget_ms ?? null,
+        estimated_work_units: grj?.estimated_work_units ?? null,
+        topology_pixel_limit: grj?.topology_pixel_limit ?? null,
+      },
     },
     {
       id: "final",
       label: "Final diagram",
-      status: pickStatus(finalOk, true),
+      status: hasFinalGeometry
+        ? pickStatus(finalOk, true)
+        : "fail",
+      reason: hasFinalGeometry
+        ? undefined
+        : "Final diagram blocked: zero facets and zero roof_lines persisted.",
       payload: {
         final_diagram_url: grj?.final_diagram_url,
-        roof_lines_count: Array.isArray(grj?.roof_lines)
-          ? grj.roof_lines.length
-          : 0,
+        roof_lines_count: roofLinesCount,
+        facet_count: facetCount,
         totals: {
           eave: m?.total_eave_length,
           rake: m?.total_rake_length,
@@ -351,15 +401,22 @@ export const AIMeasurement3DDebugViewer: React.FC<Props> = ({
   embedded = false,
 }) => {
   const stages = useMemo(() => buildStages(measurement), [measurement]);
-  const [activeStage, setActiveStage] = useState<string>(
-    stages[0]?.id || "target",
+  const initialResolved = useMemo(
+    () => resolveMeasurementDiagnosticState(measurement),
+    [measurement],
   );
+  const defaultStageId =
+    (initialResolved.active_stage_hint &&
+      stages.find((s) => s.id === initialResolved.active_stage_hint)?.id) ||
+    stages[0]?.id ||
+    "target";
+  const [activeStage, setActiveStage] = useState<string>(defaultStageId);
   const [layers, setLayers] = useState<Record<string, boolean>>(
     () => Object.fromEntries(LAYER_TOGGLES.map((l) => [l.key, l.default])),
   );
 
   const grj = measurement?.geometry_report_json || {};
-  const resolvedState = resolveMeasurementDiagnosticState(measurement);
+  const resolvedState = initialResolved;
   const overlayDbg = grj.overlay_debug || {};
   const rasterUrl: string | undefined = overlayDbg?.raster_url ||
     measurement?.satellite_overlay_url || measurement?.google_maps_image_url;
@@ -666,13 +723,37 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
     return [W / 2 + dxM / mppX, H / 2 - dyM / mppY];
   }
 
+  // Pull from new debug_layers / phase3_5 first so blocked runs still render.
+  const debugLayers = grj?.debug_layers || {};
+  const phase35 = grj?.phase3_5 || grj?.phase3A_5 || {};
+  const debugRoofLines: any[] = Array.isArray(grj?.debug_roof_lines)
+    ? grj.debug_roof_lines
+    : [];
+
+  const rawPerimeterPx: Array<[number, number]> | undefined =
+    phase35?.raw_perimeter_px || debugLayers?.raw_perimeter_px;
+  const refinedPerimeterPx: Array<[number, number]> | undefined =
+    phase35?.refined_perimeter_px;
+  const selectedPerimeterPx: Array<[number, number]> | undefined =
+    debugLayers?.selected_perimeter_px ||
+    grj?.true_outer_roof_perimeter_px ||
+    grj?.footprint_px;
   const perimeterPx: Array<[number, number]> | undefined =
-    grj?.true_outer_roof_perimeter_px || grj?.footprint_px;
+    selectedPerimeterPx || refinedPerimeterPx || rawPerimeterPx;
+
   const solarSegments: any[] = Array.isArray(grj?.solar_segments)
     ? grj.solar_segments
+    : Array.isArray(debugLayers?.solar_segments_px)
+    ? debugLayers.solar_segments_px
     : [];
-  const eaves: any[] = grj?.layer1_perimeter?.eave_edges || [];
-  const rakes: any[] = grj?.layer1_perimeter?.rake_edges || [];
+  const eaves: any[] = [
+    ...(grj?.layer1_perimeter?.eave_edges || []),
+    ...debugRoofLines.filter((l: any) => l?.type === "eave"),
+  ];
+  const rakes: any[] = [
+    ...(grj?.layer1_perimeter?.rake_edges || []),
+    ...debugRoofLines.filter((l: any) => l?.type === "rake"),
+  ];
   const roofLines: any[] = Array.isArray(grj?.roof_lines) ? grj.roof_lines : [];
 
   const ridges = roofLines.filter((l) => l.attribute === "ridge");
@@ -692,22 +773,55 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
     }
     return [];
   }
+  function bboxToPoly(b: any): Array<[number, number]> | null {
+    if (!b) return null;
+    if (Array.isArray(b) && b.length === 4 && typeof b[0] === "number") {
+      const [x1, y1, x2, y2] = b;
+      return [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+    }
+    if (b.minX != null && b.minY != null && b.maxX != null && b.maxY != null) {
+      return [
+        [b.minX, b.minY],
+        [b.maxX, b.minY],
+        [b.maxX, b.maxY],
+        [b.minX, b.maxY],
+      ];
+    }
+    return null;
+  }
   const targetMaskPolys = collectPolys([
     targetMaskDbg?.target_mask_polygons_px,
     targetMaskDbg?.target_mask_polygon_px,
     targetMaskDbg?.target_mask_contour_px,
+    debugLayers?.target_roof_mask_px,
+    debugLayers?.target_mask_contour_px,
     grj?.target_mask_polygons_px,
     grj?.target_mask_polygon_px,
   ]);
+  if (!targetMaskPolys.length) {
+    const bboxPoly = bboxToPoly(
+      targetMaskDbg?.target_mask_bbox_px ?? debugLayers?.target_mask_bbox_px,
+    );
+    if (bboxPoly) targetMaskPolys.push(bboxPoly);
+  }
   const globalMaskPolys = collectPolys([
     targetMaskDbg?.global_mask_polygons_px,
     targetMaskDbg?.global_mask_contours_px,
+    debugLayers?.global_mask_px,
     grj?.global_mask_polygons_px,
     grj?.global_mask_polygon_px,
   ]);
+  if (!globalMaskPolys.length) {
+    const bboxPoly = bboxToPoly(
+      targetMaskDbg?.global_visible_roof_bbox_px ??
+        debugLayers?.global_visible_roof_bbox_px,
+    );
+    if (bboxPoly) globalMaskPolys.push(bboxPoly);
+  }
   const missedRegions = collectPolys([
     targetMaskDbg?.missed_roof_regions_px,
     targetMaskDbg?.missed_target_roof_regions_px,
+    debugLayers?.missed_roof_regions_px,
     grj?.missed_roof_regions_px,
     grj?.missed_target_roof_regions_px,
   ]);
@@ -810,12 +924,34 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
               : null
           )}
 
-        {/* Perimeter */}
+        {/* Raw perimeter (gray) */}
+        {layers.perimeter && rawPerimeterPx && rawPerimeterPx.length > 2 &&
+          rawPerimeterPx !== selectedPerimeterPx &&
+          rawPerimeterPx !== refinedPerimeterPx && (
+          <polygon
+            points={rawPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(" ")}
+            fill="none"
+            stroke="#9ca3af"
+            strokeWidth={2}
+          />
+        )}
+        {/* Refined perimeter (green) */}
+        {layers.perimeter && refinedPerimeterPx &&
+          refinedPerimeterPx.length > 2 &&
+          refinedPerimeterPx !== selectedPerimeterPx && (
+          <polygon
+            points={refinedPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(" ")}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth={2.5}
+          />
+        )}
+        {/* Selected perimeter (blue, primary) */}
         {layers.perimeter && perimeterPx && perimeterPx.length > 2 && (
           <polygon
             points={perimeterPx.map((p) => `${p[0]},${p[1]}`).join(" ")}
-            fill="rgba(34,197,94,0.08)"
-            stroke="#22c55e"
+            fill="rgba(59,130,246,0.08)"
+            stroke="#3b82f6"
             strokeWidth={3}
           />
         )}
