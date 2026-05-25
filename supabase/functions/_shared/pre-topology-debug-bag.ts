@@ -347,7 +347,24 @@ export function buildPreTopologyDebugBag(args: {
     maskComponentsTable: args.maskComponentsTable,
     confirmedRoofCenterPx: args.confirmedRoofCenterPx,
     staticMapCenterLatLng: args.staticMapCenterLatLng,
+    registration: args.registration,
+    debugLayers: (args as any).debugLayers ?? null,
+    dsmPlanarGraphDebug: (args as any).dsmPlanarGraphDebug ?? null,
+    debugRoofLines: (args as any).debugRoofLines ?? null,
   });
+
+  const dsmTransformPresent =
+    dsmSplit.georegistration_transform.dsm_to_raster_transform_present &&
+    dsmSplit.georegistration_transform.geo_to_dsm_transform_present &&
+    dsmSplit.georegistration_transform.dsm_pixel_transform_valid;
+  const dsmValidationStatus = !dsmSplit.dsm_loaded
+    ? "pending"
+    : dsmTransformPresent
+    ? "valid"
+    : "invalid_transform";
+  const primaryGeometrySource = aerialCandidateRoofGraph.executed
+    ? "aerial_registered"
+    : null;
 
   return {
     dsm_split_status: dsmSplit,
@@ -365,8 +382,11 @@ export function buildPreTopologyDebugBag(args: {
     raster_loaded: dsmSplit.raster_loaded,
     raw_perimeter_px: rawPerimeterPx,
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
-  };
+    primary_geometry_source: primaryGeometrySource,
+    dsm_validation_status: dsmValidationStatus,
+  } as PreTopologyDebugBag;
 }
+
 
 
 // ────────────────────────────────────────────────────────────────────────
