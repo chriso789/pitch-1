@@ -533,17 +533,21 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
 
   const hasPerimeterData = rawRing.length >= 3 || refinedRing.length >= 3;
 
-  if (!hasPerimeterData) {
+  if (!hasPerimeterData && !rasterUrl) {
     return (
       <Alert>
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>Visual QA overlay unavailable</AlertTitle>
         <AlertDescription>
-          No <code>phase3_5.raw_perimeter_px</code> or <code>phase3_5.refined_perimeter_px</code> was persisted for this run.
+          No <code>phase3_5.raw_perimeter_px</code>,{' '}
+          <code>debug_layers.raw_perimeter_px</code>,{' '}
+          <code>perimeter_topology.perimeter_ring_px</code>, or aerial{' '}
+          <code>raster_url</code> was persisted for this run.
         </AlertDescription>
       </Alert>
     );
   }
+
 
   return (
     <Card className="overflow-hidden">
