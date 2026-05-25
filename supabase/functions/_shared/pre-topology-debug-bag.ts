@@ -293,7 +293,15 @@ export function buildPreTopologyDebugBag(args: {
   footprintGeo: Array<[number, number]> | null;
   footprintPx: Array<[number, number]> | null;
   registration?: any;
+  rasterUrl?: string | null;
+  rasterBoundsLatLng?: unknown;
+  geoToRasterTransform?: unknown;
+  solarSegments?: unknown;
+  maskComponentsTable?: unknown;
+  confirmedRoofCenterPx?: unknown;
+  staticMapCenterLatLng?: unknown;
 }): PreTopologyDebugBag {
+
   const dsmSplit = buildDsmSplitStatus({
     dsmGrid: args.dsmGrid,
     maskedDSM: args.maskedDSM,
