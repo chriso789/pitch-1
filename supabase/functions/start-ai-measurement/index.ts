@@ -6052,6 +6052,14 @@ async function processJob(input: any) {
         ) as [number, number]
       );
 
+      // Hoisted registration outputs so downstream debug-bag calls (Phase 3A.5 /
+      // autonomous solver) can include raster bounds + geo→raster transform
+      // even after the inner _transformPkg block has closed.
+      let hoistedRasterBoundsLatLng: any = null;
+      let hoistedGeoToRasterTransform: any = null;
+      let hoistedConfirmedRoofCenterPx: any = null;
+
+
       // ══════════ DSM COORDINATE MATCH GATE ══════════
       // Verify the footprint geo coords actually fall inside the DSM GeoTIFF grid.
       // A footprint can be valid on the satellite raster but mis-registered vs DSM.
@@ -6244,6 +6252,10 @@ async function processJob(input: any) {
               Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height)),
           ),
         );
+        // Hoist registration fields to outer scope for downstream debug-bag use.
+        hoistedRasterBoundsLatLng = hoistedRasterBoundsLatLng;
+        hoistedGeoToRasterTransform = hoistedGeoToRasterTransform;
+        hoistedConfirmedRoofCenterPx = hoistedConfirmedRoofCenterPx;
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
@@ -6541,6 +6553,13 @@ async function processJob(input: any) {
                 footprintSource,
                 footprintGeo,
                 footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+                geoToRasterTransform: hoistedGeoToRasterTransform,
+                solarSegments,
+                maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
               }),
             });
             return;
@@ -6569,6 +6588,13 @@ async function processJob(input: any) {
                 footprintSource,
                 footprintGeo,
                 footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+                geoToRasterTransform: hoistedGeoToRasterTransform,
+                solarSegments,
+                maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
               }),
             });
             return;
@@ -7039,6 +7065,13 @@ async function processJob(input: any) {
               footprintSource: phase3A5SelectedSource,
               footprintGeo: footprintGeoForSolver,
               footprintPx: null,
+              rasterUrl: imageUrl,
+              rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+              geoToRasterTransform: hoistedGeoToRasterTransform,
+              solarSegments,
+              maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
+              confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
+              staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
             }),
             phase3A_5: phase3A5Diagnostics,
           },

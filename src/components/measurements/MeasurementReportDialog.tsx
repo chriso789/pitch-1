@@ -757,6 +757,21 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
           : (grj.debug_roof_lines_count ?? 0),
       ),
     },
+    (() => {
+      const aerial = (grj as any)?.aerial_candidate_roof_graph
+        ?? (grj as any)?.debug_layers?.aerial_candidate_roof_graph;
+      const present = !!aerial;
+      const hardFail = String((m as any)?.hard_fail_reason ?? "");
+      const dsmUnavailable = hardFail === "dsm_transform_invalid" ||
+        String((m as any)?.block_customer_report_reason ?? "") ===
+          "dsm_validation_unavailable";
+      return {
+        label: "Aerial Candidate Graph",
+        value: present
+          ? `present (${aerial?.candidate_faces?.length ?? aerial?.edges?.length ?? 0} candidate edges)${dsmUnavailable ? " — DSM validation unavailable" : ""}`
+          : "—",
+      };
+    })(),
     {
       label: "Diagram Intent",
       value: String(
