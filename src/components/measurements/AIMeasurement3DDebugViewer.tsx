@@ -723,13 +723,37 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
     return [W / 2 + dxM / mppX, H / 2 - dyM / mppY];
   }
 
+  // Pull from new debug_layers / phase3_5 first so blocked runs still render.
+  const debugLayers = grj?.debug_layers || {};
+  const phase35 = grj?.phase3_5 || grj?.phase3A_5 || {};
+  const debugRoofLines: any[] = Array.isArray(grj?.debug_roof_lines)
+    ? grj.debug_roof_lines
+    : [];
+
+  const rawPerimeterPx: Array<[number, number]> | undefined =
+    phase35?.raw_perimeter_px || debugLayers?.raw_perimeter_px;
+  const refinedPerimeterPx: Array<[number, number]> | undefined =
+    phase35?.refined_perimeter_px;
+  const selectedPerimeterPx: Array<[number, number]> | undefined =
+    debugLayers?.selected_perimeter_px ||
+    grj?.true_outer_roof_perimeter_px ||
+    grj?.footprint_px;
   const perimeterPx: Array<[number, number]> | undefined =
-    grj?.true_outer_roof_perimeter_px || grj?.footprint_px;
+    selectedPerimeterPx || refinedPerimeterPx || rawPerimeterPx;
+
   const solarSegments: any[] = Array.isArray(grj?.solar_segments)
     ? grj.solar_segments
+    : Array.isArray(debugLayers?.solar_segments_px)
+    ? debugLayers.solar_segments_px
     : [];
-  const eaves: any[] = grj?.layer1_perimeter?.eave_edges || [];
-  const rakes: any[] = grj?.layer1_perimeter?.rake_edges || [];
+  const eaves: any[] = [
+    ...(grj?.layer1_perimeter?.eave_edges || []),
+    ...debugRoofLines.filter((l: any) => l?.type === "eave"),
+  ];
+  const rakes: any[] = [
+    ...(grj?.layer1_perimeter?.rake_edges || []),
+    ...debugRoofLines.filter((l: any) => l?.type === "rake"),
+  ];
   const roofLines: any[] = Array.isArray(grj?.roof_lines) ? grj.roof_lines : [];
 
   const ridges = roofLines.filter((l) => l.attribute === "ridge");
