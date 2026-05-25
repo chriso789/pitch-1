@@ -343,7 +343,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     }
 
     // DSM ridge / valley / hip lines
-    if (layers.dsm && dsmEdges.length) {
+    if (layers.dsm && dsmEdges.length && dsmAllowed) {
       ctx.save();
       ctx.lineWidth = 1.5;
       for (const e of dsmEdges) {
