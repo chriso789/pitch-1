@@ -366,9 +366,6 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   constants: CpuBudgetConstants;
 }): Record<string, unknown> {
   const incoming = args.debug ?? {};
-  // Pull through cheap-evidence fields explicitly so even if a caller forgot
-  // to pass the full PreTopologyDebugBag we still publish empty defaults
-  // (never blank, never undefined).
   const dsmSplitStatus = (incoming as any).dsm_split_status ?? null;
   const debugRoofLines = Array.isArray((incoming as any).debug_roof_lines)
     ? (incoming as any).debug_roof_lines
@@ -376,6 +373,18 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const debugStage = (incoming as any).debug_layers_persisted_at_stage ??
     args.stage;
   const targetMaskIsolation = (incoming as any).target_mask_isolation ?? null;
+  const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
+  const perimeterTopology = (incoming as any).perimeter_topology ?? null;
+  const phase3_5 = {
+    raw_perimeter_px: rawPerimeterPx,
+    refined_perimeter_px: null,
+    refined_perimeter_missing_reason:
+      "refinement_not_reached_before_cpu_preempt",
+  };
+  const debug_layers = {
+    raw_perimeter_px: rawPerimeterPx,
+    selected_perimeter_px: rawPerimeterPx,
+  };
   return {
     ...incoming,
     topology_source: args.constants.REQUIRED_TOPOLOGY_SOURCE,
@@ -396,14 +405,16 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     customer_report_ready: false,
     customer_ready: false,
     diagram_render_intent: "debug_only",
-    // Customer-facing roof_lines count is always zero on a preempt; the debug
-    // lines are tracked separately so the count contract isn't poisoned.
     roof_lines_count: 0,
-    // ── Cheap evidence layers (explicit lift to top level) ──
+    debug_roof_lines_count: debugRoofLines.length,
     dsm_split_status: dsmSplitStatus,
     debug_roof_lines: debugRoofLines,
     debug_layers_persisted_at_stage: debugStage,
     target_mask_isolation: targetMaskIsolation,
+    perimeter_topology: perimeterTopology,
+    raw_perimeter_px: rawPerimeterPx,
+    phase3_5,
+    debug_layers,
   };
 }
 
