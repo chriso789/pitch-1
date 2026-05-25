@@ -180,6 +180,11 @@ export function resolveMeasurementDiagnosticState(
     registration.geo_to_dsm_transform != null &&
     registration.dsm_to_raster_transform != null;
 
+  const aerialGraph = asRecord(geometry.aerial_candidate_roof_graph);
+  const aerialCandidateGraphPresent = aerialGraph.executed === true;
+
+
+
   function resolveActiveStageHint(opts: {
     runtime: boolean;
     resultState: string | null;
