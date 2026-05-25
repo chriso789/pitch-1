@@ -3697,10 +3697,17 @@ async function processJob(input: any) {
         const _confirmedLatLng = (input as any).confirmed_roof_center_lat != null && (input as any).confirmed_roof_center_lng != null
           ? { lat: Number((input as any).confirmed_roof_center_lat), lng: Number((input as any).confirmed_roof_center_lng) }
           : { lat: coords.lat, lng: coords.lng };
-        const _dsmBoundsLL = effectiveDSMForMatch
-          ? { sw: { lat: effectiveDSMForMatch.bounds.minLat, lng: effectiveDSMForMatch.bounds.minLng }, ne: { lat: effectiveDSMForMatch.bounds.maxLat, lng: effectiveDSMForMatch.bounds.maxLng } }
-          : null;
-        const _dsmSizePx = effectiveDSMForMatch ? { width: effectiveDSMForMatch.width, height: effectiveDSMForMatch.height } : null;
+        const _dsmReg = buildDsmRegistration({
+          dsm_loaded: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
+          mask_loaded: !!roofMaskForContour,
+          effectiveDSM: effectiveDSMForMatch ?? dsmGrid ?? maskedDSM ?? null,
+          roofMask: roofMaskForContour ?? null,
+          dsmCoordinateMatchDebug: dsmCoordinateMatchDebug,
+          confirmedCenterLatLng: _confirmedLatLng,
+          rasterMetersPerPixel: Number.isFinite(Number(actualMpp)) ? Number(actualMpp) : null,
+        });
+        const _dsmBoundsLL = _dsmReg.dsm_tile_bounds_lat_lng;
+        const _dsmSizePx = _dsmReg.dsm_size_px;
         const _transformPkg = buildRegistrationTransformPackage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
@@ -3709,9 +3716,19 @@ async function processJob(input: any) {
           scale: Number((input as any).raster_scale || 2),
           dsm_tile_bounds_lat_lng: _dsmBoundsLL,
           dsm_size_px: _dsmSizePx,
-          dsm_meters_per_pixel: (effectiveDSMForMatch as any)?.resolution ?? null,
+          dsm_meters_per_pixel: _dsmReg.dsm_meters_per_pixel,
         });
-        const _candidatePolygonPx = footprint.map(p => [p.x, p.y] as [number, number]);
+        const _hoist = hoistSelectedCandidatePolygon({
+          fallback_footprint_px: footprint.map(p => [p.x, p.y] as [number, number]),
+          fallback_footprint_source: String(footprintSource ?? "unknown"),
+          fallback_area_sqft: Math.round(footprintAreaSqftVal),
+          default_coordinate_space: "dsm_px",
+        });
+        const _candidatePolygonPx = _hoist.selected_candidate_polygon_px;
+        const _centroidThresholdPx = Math.max(
+          100,
+          Math.round(0.30 * Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height))),
+        );
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ?? null,
@@ -3725,26 +3742,24 @@ async function processJob(input: any) {
           dsm_to_raster_bounds_overlap: _transformPkg.dsm_to_raster_transform?.bounds_overlap ?? null,
           dsm: {
             dsm_url_present: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
-            dsm_loaded: !!(dsmGrid || maskedDSM || effectiveDSMForMatch),
+            dsm_loaded: _dsmReg.dsm_stage_attempted,
             dsm_decode_success: !!effectiveDSMForMatch,
-            dsm_bounds_source: _dsmBoundsLL ? "solar_data_layers_metadata" : "missing",
+            dsm_bounds_source: _dsmReg.dsm_bounds_source,
             dsm_tile_bounds_lat_lng: _dsmBoundsLL,
             dsm_size_px: _dsmSizePx,
-            dsm_meters_per_pixel: (effectiveDSMForMatch as any)?.resolution ?? null,
+            dsm_meters_per_pixel: _dsmReg.dsm_meters_per_pixel,
           },
           candidate: {
             selected_candidate_polygon_px: _candidatePolygonPx,
-            candidate_coordinate_space: "dsm_px",
-            candidate_source: String(footprintSource ?? "unknown"),
-            candidate_area_sqft: Math.round(footprintAreaSqftVal),
-            candidate_centroid_offset_threshold_px: Math.max(
-              6,
-              Math.round(0.05 * Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height))),
-            ),
+            candidate_coordinate_space: _hoist.candidate_coordinate_space,
+            candidate_source: _hoist.candidate_source,
+            candidate_area_sqft: _hoist.candidate_area_sqft,
+            candidate_centroid_px: _hoist.candidate_centroid_px,
+            candidate_centroid_offset_threshold_px: _centroidThresholdPx,
           },
         });
         const failReason = _stageReport.hard_fail_reason;
-        console.error(`[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`, JSON.stringify({ missing: _stageReport.missing_required_fields, mixed: _stageReport.coordinate_space_audit.mixed_space_detected }));
+        console.error(`[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`, JSON.stringify({ missing: _stageReport.missing_required_fields, mixed: _stageReport.coordinate_space_audit.mixed_space_detected, dsm_bounds_source: _dsmReg.dsm_bounds_source, dsm_size_source: _dsmReg.dsm_size_source, candidate_origin: _hoist.candidate_hoist_origin }));
         const registrationGate = evaluateRegistrationGate({
           evaluation_stage: "candidate_final",
           candidate_selection_started: true,
@@ -3780,20 +3795,41 @@ async function processJob(input: any) {
           dsm_proof: _stageReport.dsm_proof,
           candidate_proof: _stageReport.candidate_proof,
           coordinate_space_audit: _stageReport.coordinate_space_audit,
-          // Hoist commonly-queried fields up to the registration root so the
-          // debug-measurement-runtime endpoint can read them without nesting.
-          dsm_tile_bounds_lat_lng: _stageReport.dsm_proof.dsm_tile_bounds_lat_lng,
-          dsm_size_px: _stageReport.dsm_proof.dsm_size_px,
+          // DSM Registration v1 — explicit stage diagnostics
+          dsm_registration_version: _dsmReg.dsm_registration_version,
+          dsm_registration_source: _dsmReg.dsm_registration_source,
+          dsm_stage_attempted: _dsmReg.dsm_stage_attempted,
+          dsm_stage_pending: _dsmReg.dsm_stage_pending,
+          dsm_size_source: _dsmReg.dsm_size_source,
+          dsm_bounds_source: _dsmReg.dsm_bounds_source,
+          dsm_bounds_derived: _dsmReg.dsm_bounds_derived,
+          dsm_bounds_warning: _dsmReg.dsm_bounds_warning,
+          dsm_bounds_confidence: _dsmReg.dsm_bounds_confidence,
+          dsm_meters_per_pixel: _dsmReg.dsm_meters_per_pixel,
+          dsm_mpp_source: _dsmReg.dsm_mpp_source,
+          // Hoist commonly-queried fields up to the registration root.
+          dsm_tile_bounds_lat_lng: _dsmBoundsLL,
+          dsm_size_px: _dsmSizePx,
           geo_to_dsm_transform: _transformPkg.geo_to_dsm_transform,
           confirmed_roof_center_dsm_px: _transformPkg.confirmed_roof_center_dsm_px,
           dsm_tile_bounds_contain_confirmed_center: _transformPkg.dsm_tile_bounds_contain_confirmed_center,
           dsm_to_raster_transform: _transformPkg.dsm_to_raster_transform,
+          // Candidate hoist
           selected_candidate_polygon_px: _candidatePolygonPx,
-          candidate_coordinate_space: "dsm_px",
+          selected_candidate_polygon_geo: _hoist.selected_candidate_polygon_geo,
+          selected_candidate_polygon_point_count: _hoist.selected_candidate_polygon_point_count,
+          candidate_coordinate_space: _hoist.candidate_coordinate_space,
+          candidate_source: _hoist.candidate_source,
+          candidate_area_sqft: _hoist.candidate_area_sqft,
+          candidate_centroid_px: _hoist.candidate_centroid_px,
+          candidate_hoist_origin: _hoist.candidate_hoist_origin,
+          candidate_centroid_offset_threshold_px: _centroidThresholdPx,
+          center_used_for_candidate_check: _stageReport.coordinate_space_audit.center_used_for_candidate_check,
           confirmed_center_inside_candidate: _stageReport.candidate_proof.confirmed_center_inside_candidate,
           candidate_centroid_offset_from_confirmed_center_px:
             _stageReport.candidate_proof.candidate_centroid_offset_from_confirmed_center_px,
         };
+
         const debugPayload = {
           topology_source: REQUIRED_TOPOLOGY_SOURCE,
           footprint_source: footprintSource,
