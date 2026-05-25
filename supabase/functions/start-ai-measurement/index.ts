@@ -14080,14 +14080,14 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
   return "unknown";
 }
 // `footprint_source` DB-safe coercion lives in
-// `_shared/footprint-source.ts` so it can be unit-tested without importing
-// the entire edge function entrypoint (which pulls in npm:@supabase/...).
-// Re-exported here for back-compat with existing local references.
+// `_shared/footprint-source.ts` (re-exported here for back-compat). Imported
+// at top of file so the local identifier is available inside
+// `prepareRoofMeasurementPayload`.
 export {
   ALLOWED_FOOTPRINT_SOURCES,
   applyFootprintSourceDbSafeCoercion,
   normalizeRoofMeasurementFootprintSource,
-} from "../_shared/footprint-source.ts";
+};
 function cleanPlane(
   plane: any,
   idx: number,
