@@ -33,7 +33,10 @@ export interface DsmProofInput {
   dsm_decode_success?: boolean | null;
   dsm_bounds_source?:
     | "solar_data_layers_metadata"
+    | "google_solar_metadata"
     | "derived_from_tile_origin"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
     | "missing"
     | null;
   dsm_tile_bounds_lat_lng?: Bounds | null;
@@ -42,6 +45,7 @@ export interface DsmProofInput {
   dsm_origin_lat_lng?: LatLng | null;
   dsm_failure_reasons?: string[];
 }
+
 
 export interface CandidateProofInput {
   selected_candidate_polygon_px?: Px[] | null;
