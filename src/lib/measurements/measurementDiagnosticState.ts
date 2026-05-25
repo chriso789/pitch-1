@@ -25,7 +25,10 @@ export type ResolvedMeasurementDiagnosticState = {
   active_stage_hint: string | null;
   /** DSM coordinate transform / georegistration is intact. */
   dsm_transform_valid: boolean;
+  /** Registered aerial geometry stage produced a candidate roof graph. */
+  aerial_candidate_graph_present: boolean;
 };
+
 
 const PRECEDENCE_VERSION = "measurement-state-precedence-v3";
 const CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
