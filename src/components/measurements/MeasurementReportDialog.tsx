@@ -748,7 +748,15 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
       label: "Phase 3A Failure",
       value: String(phase3A?.eave_rake_failure_reason ?? "—"),
     },
-    { label: "Roof Lines Count", value: fmt(phase3B?.roof_lines_count) },
+    { label: "Reportable Roof Lines", value: fmt(phase3B?.roof_lines_count ?? grj.roof_lines_count) },
+    {
+      label: "Debug Roof Lines",
+      value: fmt(
+        Array.isArray(grj.debug_roof_lines)
+          ? grj.debug_roof_lines.length
+          : (grj.debug_roof_lines_count ?? 0),
+      ),
+    },
     {
       label: "Diagram Intent",
       value: String(
