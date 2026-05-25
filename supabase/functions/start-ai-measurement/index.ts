@@ -6252,6 +6252,10 @@ async function processJob(input: any) {
               Math.sqrt(Math.max(1, raster.width) * Math.max(1, raster.height)),
           ),
         );
+        // Hoist registration fields to outer scope for downstream debug-bag use.
+        hoistedRasterBoundsLatLng = _transformPkg?.raster_bounds_lat_lng ?? null;
+        hoistedGeoToRasterTransform = _transformPkg?.geo_to_raster_transform ?? null;
+        hoistedConfirmedRoofCenterPx = _transformPkg?.confirmed_roof_center_px ?? null;
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
