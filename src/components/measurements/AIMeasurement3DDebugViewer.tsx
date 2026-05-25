@@ -873,10 +873,16 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
           </div>
         )}
 
+      {!rasterResolved && (
+        <div className="absolute top-2 left-2 right-2 z-10 text-[11px] bg-destructive/90 text-destructive-foreground px-2 py-1 rounded">
+          Raster size unresolved — overlay geometry hidden to avoid mis-projection.
+        </div>
+      )}
       <svg
         className="absolute inset-0 w-full h-full"
-        viewBox={`0 0 ${W} ${H}`}
+        viewBox={rasterResolved ? `0 0 ${W} ${H}` : `0 0 1 1`}
         preserveAspectRatio="xMidYMid meet"
+        style={{ visibility: rasterResolved ? 'visible' : 'hidden' }}
       >
         {/* Global mask (lowest z) */}
         {layers.globalMask &&
