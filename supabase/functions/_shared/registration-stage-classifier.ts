@@ -33,7 +33,10 @@ export interface DsmProofInput {
   dsm_decode_success?: boolean | null;
   dsm_bounds_source?:
     | "solar_data_layers_metadata"
+    | "google_solar_metadata"
     | "derived_from_tile_origin"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
     | "missing"
     | null;
   dsm_tile_bounds_lat_lng?: Bounds | null;
@@ -42,6 +45,7 @@ export interface DsmProofInput {
   dsm_origin_lat_lng?: LatLng | null;
   dsm_failure_reasons?: string[];
 }
+
 
 export interface CandidateProofInput {
   selected_candidate_polygon_px?: Px[] | null;
@@ -78,7 +82,10 @@ export interface DsmProof {
   dsm_decode_success: boolean;
   dsm_bounds_source:
     | "solar_data_layers_metadata"
+    | "google_solar_metadata"
     | "derived_from_tile_origin"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
     | "missing";
   dsm_tile_bounds_lat_lng: Bounds | null;
   dsm_size_px: { width: number; height: number } | null;
@@ -86,6 +93,7 @@ export interface DsmProof {
   dsm_origin_lat_lng: LatLng | null;
   dsm_failure_reasons: string[];
 }
+
 
 export interface CandidateProof {
   selected_candidate_polygon_px: Px[] | null;
@@ -267,19 +275,34 @@ export function classifyRegistrationStage(
     if (!input.raster_bounds_lat_lng) missing.push("raster_bounds_lat_lng");
     if (!input.confirmed_roof_center_px) missing.push("confirmed_roof_center_px");
   }
-  if (!dsmProof.dsm_tile_bounds_lat_lng) missing.push("dsm_tile_bounds_lat_lng");
   if (!dsmProof.dsm_size_px) missing.push("dsm_size_px");
+  if (!dsmProof.dsm_tile_bounds_lat_lng) missing.push("dsm_tile_bounds_lat_lng");
   if (input.geo_to_dsm_px_success !== true) missing.push("geo_to_dsm_transform");
+  if (input.dsm_pixel_transform_valid !== true) missing.push("dsm_to_raster_transform");
   if (!input.confirmed_roof_center_dsm_px) missing.push("confirmed_roof_center_dsm_px");
   if (!polyPx) missing.push("selected_candidate_polygon_px");
   if (!candidateSpace && polyPx) missing.push("candidate_coordinate_space");
 
   // ── Priority-ordered hard_fail_reason ──
+  //
+  // Priority order (first match wins):
+  //   1. dsm_size_missing
+  //   2. dsm_bounds_missing
+  //   3. dsm_decode_failed
+  //   4. dsm_center_out_of_bounds
+  //   5. geo_to_dsm_transform_missing
+  //   6. dsm_raster_transform_missing
+  //   7. dsm_raster_overlap_failed
+  //   8. selected_candidate_polygon_missing
+  //   9. coordinate_space_mismatch
+  //  10. candidate_does_not_contain_confirmed_center
+  //  11. candidate_centroid_offset_exceeds_target
+  //  12. coordinate_registration_failed (fallback)
   let hardFail = "coordinate_registration_failed";
   let stage = "registration";
-  if (mixed) {
-    hardFail = "coordinate_space_mismatch";
-    stage = "candidate_coordinate_space";
+  if (dsmLoaded && !dsmProof.dsm_size_px) {
+    hardFail = "dsm_size_missing";
+    stage = "dsm_size_extraction";
   } else if (dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng) {
     hardFail = "dsm_bounds_missing";
     stage = "dsm_bounds_extraction";
@@ -294,17 +317,42 @@ export function classifyRegistrationStage(
     stage = "dsm_bounds_containment";
   } else if (
     dsmProof.dsm_tile_bounds_lat_lng &&
+    dsmProof.dsm_size_px &&
+    input.geo_to_dsm_px_success !== true
+  ) {
+    hardFail = "geo_to_dsm_transform_missing";
+    stage = "geo_to_dsm_transform";
+  } else if (
+    dsmProof.dsm_tile_bounds_lat_lng &&
     input.raster_bounds_lat_lng &&
     input.dsm_to_raster_bounds_overlap === false
   ) {
     hardFail = "dsm_raster_overlap_failed";
     stage = "dsm_raster_overlap";
+  } else if (
+    dsmProof.dsm_tile_bounds_lat_lng &&
+    input.raster_bounds_lat_lng &&
+    input.dsm_pixel_transform_valid !== true
+  ) {
+    hardFail = "dsm_raster_transform_missing";
+    stage = "dsm_raster_transform";
   } else if (!polyPx) {
-    hardFail = "candidate_polygon_missing";
+    hardFail = "selected_candidate_polygon_missing";
     stage = "candidate_selection";
+  } else if (mixed) {
+    hardFail = "coordinate_space_mismatch";
+    stage = "candidate_coordinate_space";
   } else if (polyPx && centerForCandidate && !confirmedInside) {
     hardFail = "candidate_does_not_contain_confirmed_center";
     stage = "candidate_containment";
+  } else if (
+    polyPx && centerForCandidate &&
+    isFiniteNumber(centroidOffset) &&
+    isFiniteNumber(candidateProof.candidate_centroid_offset_threshold_px) &&
+    (centroidOffset as number) > (candidateProof.candidate_centroid_offset_threshold_px as number)
+  ) {
+    hardFail = "candidate_centroid_offset_exceeds_target";
+    stage = "candidate_centroid_offset";
   }
 
   return {
@@ -318,3 +366,4 @@ export function classifyRegistrationStage(
     coordinate_space_audit: audit,
   };
 }
+
