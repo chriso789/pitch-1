@@ -27,7 +27,23 @@ export type ResolvedMeasurementDiagnosticState = {
   dsm_transform_valid: boolean;
   /** Registered aerial geometry stage produced a candidate roof graph. */
   aerial_candidate_graph_present: boolean;
+  /**
+   * Which geometry tier was used as the PRIMARY scaffold for this run.
+   * - "dsm_validated": full DSM-validated topology
+   * - "aerial_registered": registered aerial perimeter only (downgrade)
+   * - null: not determined / pre-resolution
+   */
+  primary_geometry_source: string | null;
+  /**
+   * Structured DSM-tier validation status. When `available=false`, the run
+   * is an aerial-primary downgrade and `reason` carries the DSM blocker.
+   */
+  dsm_validation_status: {
+    available: boolean;
+    reason: string | null;
+  } | null;
 };
+
 
 
 const PRECEDENCE_VERSION = "measurement-state-precedence-v3";
