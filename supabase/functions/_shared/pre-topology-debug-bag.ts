@@ -82,7 +82,9 @@ export interface PreTopologyDebugBag {
   mask_loaded: boolean;
   raster_loaded: boolean;
   raw_perimeter_px: Array<[number, number]> | null;
+  aerial_candidate_roof_graph: AerialCandidateRoofGraph | null;
 }
+
 
 const MAX_DEBUG_ROOF_LINES = 512;
 const MAX_FOOTPRINT_PX_POINTS = 256;
