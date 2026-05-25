@@ -6042,7 +6042,7 @@ async function processJob(input: any) {
             candidate_centroid_offset_threshold_px: _centroidThresholdPx,
           },
         });
-        const failReason = _stageReport.hard_fail_reason;
+        const failReason = _stageReport.hard_fail_reason ?? "coordinate_registration_failed";
         console.error(
           `[REGISTRATION_STAGE] FAIL stage=${_stageReport.failure_stage} reason=${failReason}`,
           JSON.stringify({
