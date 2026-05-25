@@ -155,6 +155,10 @@ import {
   ZERO_GEOMETRY_GUARD_REASON,
 } from "../_shared/pre-topology-debug-bag.ts";
 import {
+  evaluateAerialPrimacy,
+  type AerialPrimacyEvaluation,
+} from "../_shared/aerial-primary-gate.ts";
+import {
   ALLOWED_FOOTPRINT_SOURCES,
   applyFootprintSourceDbSafeCoercion,
   normalizeRoofMeasurementFootprintSource,
