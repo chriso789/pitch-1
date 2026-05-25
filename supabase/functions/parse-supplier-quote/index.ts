@@ -114,11 +114,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -195,19 +195,24 @@ EXTRACTION RULES:
     });
 
     if (res.status === 429) {
-      return new Response(JSON.stringify({ error: "AI rate limited - please try again later" }), {
+      return new Response(JSON.stringify({ error: "OpenAI rate limited - please try again in a moment" }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (res.status === 402) {
-      return new Response(JSON.stringify({ error: "AI credits exhausted - please add funds" }), {
+    if (res.status === 401 || res.status === 403) {
+      return new Response(JSON.stringify({ error: "OpenAI key invalid or unauthorized - check OPENAI_API_KEY" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (res.status === 402 || res.status === 429) {
+      return new Response(JSON.stringify({ error: "OpenAI quota exceeded - add funds or raise limits on your OpenAI account" }), {
         status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!res.ok) {
       const txt = await res.text();
-      console.error(`[parse-supplier-quote] Gateway error ${res.status}: ${txt}`);
-      throw new Error(`AI gateway error ${res.status}`);
+      console.error(`[parse-supplier-quote] OpenAI error ${res.status}: ${txt}`);
+      throw new Error(`OpenAI error ${res.status}`);
     }
 
     const json = await res.json();
