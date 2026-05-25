@@ -6253,9 +6253,9 @@ async function processJob(input: any) {
           ),
         );
         // Hoist registration fields to outer scope for downstream debug-bag use.
-        hoistedRasterBoundsLatLng = _transformPkg?.raster_bounds_lat_lng ?? null;
-        hoistedGeoToRasterTransform = _transformPkg?.geo_to_raster_transform ?? null;
-        hoistedConfirmedRoofCenterPx = _transformPkg?.confirmed_roof_center_px ?? null;
+        hoistedRasterBoundsLatLng = hoistedRasterBoundsLatLng;
+        hoistedGeoToRasterTransform = hoistedGeoToRasterTransform;
+        hoistedConfirmedRoofCenterPx = hoistedConfirmedRoofCenterPx;
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
@@ -6554,11 +6554,11 @@ async function processJob(input: any) {
                 footprintGeo,
                 footprintPx: null,
                 rasterUrl: imageUrl,
-                rasterBoundsLatLng: _transformPkg?.raster_bounds_lat_lng ?? null,
-                geoToRasterTransform: _transformPkg?.geo_to_raster_transform ?? null,
+                rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+                geoToRasterTransform: hoistedGeoToRasterTransform,
                 solarSegments,
                 maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
-                confirmedRoofCenterPx: _transformPkg?.confirmed_roof_center_px ?? null,
+                confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
                 staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
               }),
             });
@@ -6589,11 +6589,11 @@ async function processJob(input: any) {
                 footprintGeo,
                 footprintPx: null,
                 rasterUrl: imageUrl,
-                rasterBoundsLatLng: _transformPkg?.raster_bounds_lat_lng ?? null,
-                geoToRasterTransform: _transformPkg?.geo_to_raster_transform ?? null,
+                rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+                geoToRasterTransform: hoistedGeoToRasterTransform,
                 solarSegments,
                 maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
-                confirmedRoofCenterPx: _transformPkg?.confirmed_roof_center_px ?? null,
+                confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
                 staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
               }),
             });
