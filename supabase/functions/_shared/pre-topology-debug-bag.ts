@@ -83,6 +83,8 @@ export interface PreTopologyDebugBag {
   raster_loaded: boolean;
   raw_perimeter_px: Array<[number, number]> | null;
   aerial_candidate_roof_graph: AerialCandidateRoofGraph | null;
+  primary_geometry_source?: "aerial_registered" | null;
+  dsm_validation_status?: "valid" | "invalid_transform" | "pending";
 }
 
 
