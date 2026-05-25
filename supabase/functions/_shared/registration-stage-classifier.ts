@@ -82,7 +82,10 @@ export interface DsmProof {
   dsm_decode_success: boolean;
   dsm_bounds_source:
     | "solar_data_layers_metadata"
+    | "google_solar_metadata"
     | "derived_from_tile_origin"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
     | "missing";
   dsm_tile_bounds_lat_lng: Bounds | null;
   dsm_size_px: { width: number; height: number } | null;
@@ -90,6 +93,7 @@ export interface DsmProof {
   dsm_origin_lat_lng: LatLng | null;
   dsm_failure_reasons: string[];
 }
+
 
 export interface CandidateProof {
   selected_candidate_polygon_px: Px[] | null;
