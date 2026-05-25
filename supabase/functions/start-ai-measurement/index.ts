@@ -148,6 +148,12 @@ import {
   withDiagramRenderIntentConstraintRetryPayload,
 } from "../_shared/diagram-render-intent.ts";
 import { resolveMeasurementDiagnosticState } from "../_shared/measurement-diagnostic-state.ts";
+import {
+  applyZeroGeometryFinalDiagramGuard,
+  buildCpuBudgetTerminalDebugPayload,
+  buildPreTopologyDebugBag,
+  ZERO_GEOMETRY_GUARD_REASON,
+} from "../_shared/pre-topology-debug-bag.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
