@@ -17,7 +17,7 @@ import {
   ALLOWED_FOOTPRINT_SOURCES,
   applyFootprintSourceDbSafeCoercion,
   normalizeRoofMeasurementFootprintSource,
-} from "../index.ts";
+} from "../../_shared/footprint-source.ts";
 
 Deno.test("normalizer coerces 'blocked_by_registration_gate' to 'unknown'", () => {
   assertEquals(
