@@ -773,6 +773,35 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
       };
     })(),
     {
+      label: "Primary Geometry Source",
+      value: String(
+        resolvedState.primary_geometry_source ??
+          (grj as any)?.primary_geometry_source ?? "—",
+      ),
+    },
+    (() => {
+      const dvs = resolvedState.dsm_validation_status ??
+        ((grj as any)?.dsm_validation_status ?? null);
+      if (!dvs || typeof dvs !== "object") {
+        return { label: "DSM Validation Status", value: "—" };
+      }
+      const available = (dvs as any).available === true;
+      const reason = (dvs as any).reason
+        ? ` (${(dvs as any).reason})`
+        : "";
+      return {
+        label: "DSM Validation Status",
+        value: available ? "available" : `unavailable${reason}`,
+      };
+    })(),
+    {
+      label: "Customer Report Blocker",
+      value: String(
+        resolvedState.block_customer_report_reason ??
+          (m as any)?.block_customer_report_reason ?? "—",
+      ),
+    },
+    {
       label: "Diagram Intent",
       value: String(
         resolvedState.diagram_render_intent ?? grj.diagram_render_intent ??

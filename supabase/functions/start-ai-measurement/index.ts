@@ -6199,6 +6199,91 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if footprint does not overlap DSM grid, do NOT call solver.
       if (!dsmCoordinateMatch) {
+        // ── Aerial-Primary downgrade pre-check ────────────────────────────
+        // Footprint is valid; only DSM coordinate registration failed. If we
+        // have a registered aerial perimeter + raster transform, persist as
+        // `perimeter_only` (not `ai_failed_runtime`) so the report can render
+        // the aerial graph while remaining customer-report-blocked.
+        {
+          const _ap = evaluateAerialPrimacy({
+            rasterUrl: imageUrl,
+            geoToRasterTransform: hoistedGeoToRasterTransform,
+            rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+            perimeterTopologySnapshot,
+            targetMaskIsolation,
+            footprintSource,
+          });
+          console.log(
+            "[AERIAL_PRIMARY_GATE]",
+            JSON.stringify({
+              at: "dsm_coordinate_match_fail",
+              ready: _ap.aerial_primary_ready,
+              reasons: _ap.reasons,
+              iou: _ap.mask_iou,
+              footprint_source: _ap.footprint_source,
+            }),
+          );
+          if (_ap.aerial_primary_ready) {
+            const dsmReason = "dsm_coordinate_registration_failed";
+            const debugPayload = {
+              topology_source: REQUIRED_TOPOLOGY_SOURCE,
+              footprint_source: footprintSource,
+              footprint_valid: true,
+              footprint_point_count: footprint.length,
+              footprint_area_px: Math.round(footprintAreaPxVal),
+              footprint_area_sqft: Math.round(footprintAreaSqftVal),
+              footprint_coordinate_space: "pixel",
+              coordinate_space_match: false,
+              dsm_coordinate_match: dsmCoordinateMatchDebug,
+              result_state: "perimeter_only",
+              primary_geometry_source: "aerial_registered",
+              dsm_validation_status: {
+                available: false,
+                reason: dsmReason,
+                aerial_primacy: _ap,
+              },
+              block_customer_report_reason: "dsm_validation_unavailable",
+              hard_fail_reason: null,
+              diagram_render_intent: "aerial_primary_overlay",
+              raster_url: imageUrl,
+              raster_size: { width: raster.width, height: raster.height },
+              footprint_px: footprint.map((p) => [p.x, p.y]),
+            };
+            const failedId = await insertFailedPreliminaryMeasurement(
+              input,
+              coords,
+              "perimeter_only",
+              debugPayload,
+              imageUrl,
+              actualMpp,
+              {
+                aerialPrimaryDowngrade: true,
+                dsmValidationReason: dsmReason,
+              },
+            );
+            await setMeasurementJobStatus(
+              input.measurement_job_id,
+              "needs_review",
+              "Aerial perimeter accepted; DSM validation unavailable",
+              failedId,
+            );
+            await setAiJobStatus(
+              input.ai_measurement_job_id,
+              "needs_review",
+              "Aerial perimeter accepted; DSM validation unavailable",
+            );
+            await supabase.from("ai_measurement_jobs").update({
+              needs_review: true,
+              report_blocked: true,
+              source_context: {
+                gate_reason: "aerial_primary_downgrade",
+                dsm_validation_reason: dsmReason,
+                aerial_primacy: _ap,
+              },
+            }).eq("id", input.ai_measurement_job_id);
+            return;
+          }
+        }
         // Build the transform package against what we actually have so we can
         // promote the generic "coordinate_registration_failed" into a
         // stage-specific token (dsm_bounds_missing, dsm_center_out_of_bounds,
@@ -6456,6 +6541,87 @@ async function processJob(input: any) {
 
       // HARD BLOCK: if DSM completely unavailable (404 / no DataLayers), fail as no_dsm_coverage
       if (!dsmGrid && !maskedDSM) {
+        // ── Aerial-Primary downgrade pre-check (DSM absent) ───────────────
+        {
+          const _ap = evaluateAerialPrimacy({
+            rasterUrl: imageUrl,
+            geoToRasterTransform: hoistedGeoToRasterTransform,
+            rasterBoundsLatLng: hoistedRasterBoundsLatLng,
+            perimeterTopologySnapshot,
+            targetMaskIsolation,
+            footprintSource,
+          });
+          console.log(
+            "[AERIAL_PRIMARY_GATE]",
+            JSON.stringify({
+              at: "dsm_unavailable",
+              ready: _ap.aerial_primary_ready,
+              reasons: _ap.reasons,
+              iou: _ap.mask_iou,
+              footprint_source: _ap.footprint_source,
+            }),
+          );
+          if (_ap.aerial_primary_ready) {
+            const dsmReason = (dsmDiag?.failure_code ||
+              "google_solar_no_dsm_coverage") as string;
+            const debugPayload = {
+              topology_source: REQUIRED_TOPOLOGY_SOURCE,
+              footprint_source: footprintSource,
+              footprint_valid: true,
+              footprint_point_count: footprint.length,
+              footprint_area_sqft: Math.round(footprintAreaSqftVal),
+              dsm_loaded: false,
+              mask_loaded: false,
+              dsm_diagnostics: dsmDiag,
+              result_state: "perimeter_only",
+              primary_geometry_source: "aerial_registered",
+              dsm_validation_status: {
+                available: false,
+                reason: dsmReason,
+                aerial_primacy: _ap,
+              },
+              block_customer_report_reason: "dsm_validation_unavailable",
+              hard_fail_reason: null,
+              diagram_render_intent: "aerial_primary_overlay",
+              raster_url: imageUrl,
+              raster_size: { width: raster.width, height: raster.height },
+              footprint_px: footprint.map((p) => [p.x, p.y]),
+            };
+            const failedId = await insertFailedPreliminaryMeasurement(
+              input,
+              coords,
+              "perimeter_only",
+              debugPayload,
+              imageUrl,
+              actualMpp,
+              {
+                aerialPrimaryDowngrade: true,
+                dsmValidationReason: dsmReason,
+              },
+            );
+            await setMeasurementJobStatus(
+              input.measurement_job_id,
+              "needs_review",
+              "Aerial perimeter accepted; DSM data unavailable",
+              failedId,
+            );
+            await setAiJobStatus(
+              input.ai_measurement_job_id,
+              "needs_review",
+              "Aerial perimeter accepted; DSM data unavailable",
+            );
+            await supabase.from("ai_measurement_jobs").update({
+              needs_review: true,
+              report_blocked: true,
+              source_context: {
+                gate_reason: "aerial_primary_downgrade",
+                dsm_validation_reason: dsmReason,
+                aerial_primacy: _ap,
+              },
+            }).eq("id", input.ai_measurement_job_id);
+            return;
+          }
+        }
         const dsmFailCode = dsmDiag?.failure_code ||
           "google_solar_no_dsm_coverage";
         const failReason = dsmFailCode === "google_solar_no_datalayers"
