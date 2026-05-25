@@ -788,7 +788,10 @@ function applyLiveRuntimeHoistToRegistration(
       ?? g.source_acquisition_debug?.dsm_coordinate_match
       ?? null;
     const dsmLoaded = Boolean(
-      g.dsm_loaded ?? g.source_acquisition_debug?.dsm_loaded ?? reg.dsm_stage_attempted,
+      g.dsm_loaded
+        ?? g.source_acquisition_debug?.dsm_loaded
+        ?? reg.dsm_stage_attempted
+        ?? (dsmCoordinateMatchDebug?.dsm_bbox != null),
     );
     const maskLoaded = Boolean(
       g.mask_loaded ?? g.source_acquisition_debug?.mask_loaded,
