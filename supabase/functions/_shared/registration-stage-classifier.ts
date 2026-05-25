@@ -286,26 +286,26 @@ export function classifyRegistrationStage(
   // ── Priority-ordered hard_fail_reason ──
   //
   // Priority order (first match wins):
-  //   1. dsm_size_missing
-  //   2. dsm_bounds_missing
+  //   1. dsm_bounds_missing
+  //   2. dsm_size_missing
   //   3. dsm_decode_failed
   //   4. dsm_center_out_of_bounds
-  //   5. geo_to_dsm_transform_missing
-  //   6. dsm_raster_transform_missing
+  //   5. coordinate_space_mismatch
+  //   6. geo_to_dsm_transform_missing
   //   7. dsm_raster_overlap_failed
-  //   8. selected_candidate_polygon_missing
-  //   9. coordinate_space_mismatch
-  //  10. candidate_does_not_contain_confirmed_center
-  //  11. candidate_centroid_offset_exceeds_target
+  //   8. dsm_raster_transform_missing
+  //   9. candidate_polygon_missing
+  //  10. candidate_centroid_offset_exceeds_target (when threshold provided)
+  //  11. candidate_does_not_contain_confirmed_center
   //  12. coordinate_registration_failed (fallback)
   let hardFail = "coordinate_registration_failed";
   let stage = "registration";
-  if (dsmLoaded && !dsmProof.dsm_size_px) {
-    hardFail = "dsm_size_missing";
-    stage = "dsm_size_extraction";
-  } else if (dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng) {
+  if (dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng) {
     hardFail = "dsm_bounds_missing";
     stage = "dsm_bounds_extraction";
+  } else if (dsmLoaded && !dsmProof.dsm_size_px) {
+    hardFail = "dsm_size_missing";
+    stage = "dsm_size_extraction";
   } else if (dsmUrlPresent && dsm.dsm_decode_success === false) {
     hardFail = "dsm_decode_failed";
     stage = "dsm_decode";
@@ -315,6 +315,12 @@ export function classifyRegistrationStage(
   ) {
     hardFail = "dsm_center_out_of_bounds";
     stage = "dsm_bounds_containment";
+  } else if (mixed) {
+    hardFail = "coordinate_space_mismatch";
+    stage = "candidate_coordinate_space";
+  } else if (!polyPx) {
+    hardFail = "candidate_polygon_missing";
+    stage = "candidate_selection";
   } else if (
     dsmProof.dsm_tile_bounds_lat_lng &&
     dsmProof.dsm_size_px &&
@@ -336,15 +342,7 @@ export function classifyRegistrationStage(
   ) {
     hardFail = "dsm_raster_transform_missing";
     stage = "dsm_raster_transform";
-  } else if (!polyPx) {
-    hardFail = "selected_candidate_polygon_missing";
-    stage = "candidate_selection";
-  } else if (mixed) {
-    hardFail = "coordinate_space_mismatch";
-    stage = "candidate_coordinate_space";
-  } else if (polyPx && centerForCandidate && !confirmedInside) {
-    hardFail = "candidate_does_not_contain_confirmed_center";
-    stage = "candidate_containment";
+
   } else if (
     polyPx && centerForCandidate &&
     isFiniteNumber(centroidOffset) &&
@@ -353,7 +351,11 @@ export function classifyRegistrationStage(
   ) {
     hardFail = "candidate_centroid_offset_exceeds_target";
     stage = "candidate_centroid_offset";
+  } else if (polyPx && centerForCandidate && !confirmedInside) {
+    hardFail = "candidate_does_not_contain_confirmed_center";
+    stage = "candidate_containment";
   }
+
 
   return {
     version: REGISTRATION_STAGE_CLASSIFIER_VERSION,
