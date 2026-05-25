@@ -12388,6 +12388,18 @@ async function processJob(input: any) {
       );
     }
 
+    // ── Slice 2: zero-geometry final-diagram safety gate ──
+    // Defensive — no customer report may ever ship with both facet_count=0
+    // AND roof_lines_count=0 even if upstream gates failed open.
+    applyZeroGeometryFinalDiagramGuard({
+      facetCount: Number((roofMeasurementPayload as any).facet_count ?? 0),
+      roofLinesCount: Number((roofMeasurementPayload as any).edge_count ?? 0),
+      payload: roofMeasurementPayload as any,
+      geometryReportJson: geometryReportJson as any,
+      normalizeResultStateForWrite: (s, d) =>
+        normalizeResultStateForWrite(s as any, d as any),
+    });
+
     const { data: roofMeasurement, error: publishError } =
       await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
