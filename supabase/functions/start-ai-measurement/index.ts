@@ -6052,6 +6052,14 @@ async function processJob(input: any) {
         ) as [number, number]
       );
 
+      // Hoisted registration outputs so downstream debug-bag calls (Phase 3A.5 /
+      // autonomous solver) can include raster bounds + geo→raster transform
+      // even after the inner _transformPkg block has closed.
+      let hoistedRasterBoundsLatLng: any = null;
+      let hoistedGeoToRasterTransform: any = null;
+      let hoistedConfirmedRoofCenterPx: any = null;
+
+
       // ══════════ DSM COORDINATE MATCH GATE ══════════
       // Verify the footprint geo coords actually fall inside the DSM GeoTIFF grid.
       // A footprint can be valid on the satellite raster but mis-registered vs DSM.
