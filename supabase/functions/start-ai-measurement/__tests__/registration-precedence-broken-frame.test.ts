@@ -36,7 +36,9 @@ Deno.test("evaluateRegistrationGate — target confirmed, frame invalid → ai_f
   });
   assertEquals(r.failure?.reason, "coordinate_registration_failed");
   assertEquals(r.failure?.result_state, "ai_failed_source_acquisition");
-  assertEquals(r.failure?.hard_fail_reason, "coordinate_registration_failed");
+  // v3 contract: gate prefers specific missing-field tokens (firstSpecificMissingReason)
+  // over the generic coordinate_registration_failed fallback. Fixture lacks DSM size.
+  assertEquals(r.failure?.hard_fail_reason, "dsm_size_missing");
 });
 
 Deno.test("buildRegistrationPrecedenceStamp — broken frame applied=true", () => {
