@@ -41,6 +41,13 @@ import {
   registrationBanner,
   isRegistrationFailure,
 } from '@/lib/measurement/registration-gate';
+import {
+  resolveSourceRasterSize,
+  classifyCoordinateSpace,
+  hasDsmToRasterTransform,
+  bboxOf,
+  detectFrameMismatch,
+} from '@/lib/measurements/overlayCoordinateFrame';
 
 type Pt = [number, number];
 
@@ -150,12 +157,16 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     grj?.raster_image_url ||
     null;
 
-  const rasterSize =
-    overlayDbg?.raster_size ||
-    grj?.raster_size ||
-    (measurement as any)?.analysis_image_size ||
-    parseRasterSizeFromUrl(rasterUrl) ||
-    { width: 1280, height: 1280 };
+  // Track the loaded image's natural size so resolveSourceRasterSize has a
+  // last-resort fallback. NOTE: no silent 1280x1280 default — if nothing
+  // resolves we render a banner and skip projection.
+  const [imageNatural, setImageNatural] = useState<{ width: number; height: number } | null>(null);
+  const resolvedRaster = resolveSourceRasterSize(measurement, rasterUrl, imageNatural);
+  const rasterSize = {
+    width: resolvedRaster.width ?? 0,
+    height: resolvedRaster.height ?? 0,
+  };
+  const rasterSizeResolved = resolvedRaster.source !== 'unresolved' && rasterSize.width > 0;
 
   // Render order (fallback chain):
   // 1. aerial_candidate_roof_graph.perimeter_ring_px (DSM-failed runs that still
@@ -246,18 +257,22 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const scale = containerWidth > 0 && rasterSize?.width
+  const scale = containerWidth > 0 && rasterSize.width > 0
     ? containerWidth / rasterSize.width
     : 1;
-  const displayHeight = (rasterSize?.height || 1280) * scale;
+  const displayHeight = rasterSize.height > 0 ? rasterSize.height * scale : 0;
 
-  // Load the aerial image once.
+  // Load the aerial image once and capture natural size for resolver fallback.
   useEffect(() => {
-    if (!rasterUrl) { imgRef.current = null; return; }
+    if (!rasterUrl) { imgRef.current = null; setImageNatural(null); return; }
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => { imgRef.current = img; draw(); };
-    img.onerror = () => { imgRef.current = null; draw(); };
+    img.onload = () => {
+      imgRef.current = img;
+      setImageNatural({ width: img.naturalWidth, height: img.naturalHeight });
+      draw();
+    };
+    img.onerror = () => { imgRef.current = null; setImageNatural(null); draw(); };
     img.src = rasterUrl;
     return () => { imgRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -270,18 +285,27 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     layers, scale, editedRing, rawRing, refinedRing, maskPolygon, cornerCutMids, dsmEdges,
   ]);
 
+  const dsmAllowed = hasDsmToRasterTransform(measurement);
+
   function draw() {
     const cvs = canvasRef.current;
     if (!cvs) return;
-    const W = Math.max(1, Math.round((rasterSize?.width || 1280) * scale));
-    const H = Math.max(1, Math.round((rasterSize?.height || 1280) * scale));
+    if (!rasterSizeResolved) {
+      // Refuse to project onto a guessed frame. The "raster size unknown"
+      // banner above the canvas tells the user why nothing is drawn.
+      cvs.width = 1; cvs.height = 1;
+      return;
+    }
+    const W = Math.max(1, Math.round(rasterSize.width * scale));
+    const H = Math.max(1, Math.round(rasterSize.height * scale));
     cvs.width = W;
     cvs.height = H;
     const ctx = cvs.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
 
-    // Aerial background
+    // Aerial background — drawImage uses the same W/H as the SVG/canvas,
+    // so the image and overlay share the exact same scale (no letterbox drift).
     if (layers.aerial && imgRef.current) {
       ctx.drawImage(imgRef.current, 0, 0, W, H);
     } else {
@@ -319,7 +343,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     }
 
     // DSM ridge / valley / hip lines
-    if (layers.dsm && dsmEdges.length) {
+    if (layers.dsm && dsmEdges.length && dsmAllowed) {
       ctx.save();
       ctx.lineWidth = 1.5;
       for (const e of dsmEdges) {
@@ -560,6 +584,35 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   }
 
 
+  // ---- Overlay transform diagnostics --------------------------------------
+  const overlaySourceField =
+    aerialCandidatePerimeterPx ? 'aerial_candidate_roof_graph.perimeter_ring_px'
+      : phase35?.raw_perimeter_px ? 'phase3_5.raw_perimeter_px'
+      : debugLayersRawPx ? 'debug_layers.raw_perimeter_px'
+      : perimeterTopologyRingPx ? 'perimeter_topology.perimeter_ring_px'
+      : 'none';
+  const overlayCoordSpace = classifyCoordinateSpace(overlaySourceField);
+  const confirmedCenterPx: Pt | null = (() => {
+    const c = (grj as any)?.confirmed_center_px ?? overlayDbg?.confirmed_center_px;
+    if (Array.isArray(c) && c.length >= 2) return [Number(c[0]), Number(c[1])];
+    if (rasterSize.width > 0) return [rasterSize.width / 2, rasterSize.height / 2];
+    return null;
+  })();
+  const sourceTransform = {
+    scaleX: scale, scaleY: scale, offsetX: 0, offsetY: 0, fit: 'fill' as const, resolved: rasterSizeResolved,
+  };
+  const frameCheck = rasterSizeResolved && rawRing.length >= 3
+    ? detectFrameMismatch({
+        perimeterPxSource: rawRing,
+        confirmedCenterPxSource: confirmedCenterPx,
+        sourceRasterSize: rasterSize,
+        transform: sourceTransform,
+      })
+    : { mismatch: false, distancePx: 0, tolerancePx: 0 };
+  const firstPt = rawRing[0];
+  const projectedFirst = firstPt ? [firstPt[0] * scale, firstPt[1] * scale] : null;
+  const bb = bboxOf(rawRing);
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
@@ -612,6 +665,31 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
             </AlertDescription>
           </Alert>
         )}
+        {!rasterSizeResolved && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Raster size unknown</AlertTitle>
+            <AlertDescription>
+              Overlay rendering is suppressed because the source raster size could not be resolved
+              (no <code>overlay_debug.raster_size</code>, <code>analysis_image_size</code>,
+              <code>?size=WxH</code> on the URL, or image natural dimensions). Drawing polygon
+              pixels against a guessed frame would mis-place the geometry.
+            </AlertDescription>
+          </Alert>
+        )}
+        {frameCheck.mismatch && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Overlay render transform mismatch</AlertTitle>
+            <AlertDescription>
+              The selected perimeter bbox center is{' '}
+              <code>{frameCheck.distancePx.toFixed(1)}px</code> from the confirmed roof center
+              (tolerance <code>{frameCheck.tolerancePx.toFixed(1)}px</code>). The polygon is still
+              drawn so you can diagnose, but the rendering frame likely does not match the displayed aerial.
+            </AlertDescription>
+          </Alert>
+        )}
+
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           {/* Canvas */}
@@ -686,6 +764,41 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 </div>
               )}
             </div>
+
+            <details open={!rasterSizeResolved || frameCheck.mismatch || registrationFailed} className="border rounded p-2">
+              <summary className="text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer">
+                Overlay transform
+              </summary>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] font-mono mt-2">
+                <div className="text-muted-foreground">source_field</div>
+                <div className="text-right break-all">{overlaySourceField}</div>
+                <div className="text-muted-foreground">coord_space</div>
+                <div className="text-right">{overlayCoordSpace}</div>
+                <div className="text-muted-foreground">raster_size_src</div>
+                <div className="text-right">{resolvedRaster.source}</div>
+                <div className="text-muted-foreground">source_raster_px</div>
+                <div className="text-right">{rasterSize.width}×{rasterSize.height}</div>
+                <div className="text-muted-foreground">displayed_px</div>
+                <div className="text-right">{Math.round(containerWidth)}×{Math.round(displayHeight)}</div>
+                <div className="text-muted-foreground">scale</div>
+                <div className="text-right">{scale.toFixed(4)}</div>
+                <div className="text-muted-foreground">first_pt_src</div>
+                <div className="text-right">{firstPt ? `${firstPt[0].toFixed(1)},${firstPt[1].toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">first_pt_disp</div>
+                <div className="text-right">{projectedFirst ? `${projectedFirst[0].toFixed(1)},${projectedFirst[1].toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">bbox_center_src</div>
+                <div className="text-right">{bb ? `${bb.cx.toFixed(1)},${bb.cy.toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">confirmed_center_src</div>
+                <div className="text-right">{confirmedCenterPx ? `${confirmedCenterPx[0].toFixed(0)},${confirmedCenterPx[1].toFixed(0)}` : '—'}</div>
+                <div className="text-muted-foreground">frame_mismatch</div>
+                <div className={`text-right ${frameCheck.mismatch ? 'text-destructive' : ''}`}>
+                  {frameCheck.mismatch ? `${frameCheck.distancePx.toFixed(1)}px (>${frameCheck.tolerancePx.toFixed(1)})` : 'ok'}
+                </div>
+                <div className="text-muted-foreground">dsm_overlay</div>
+                <div className="text-right">{dsmAllowed ? 'allowed' : 'suppressed (no dsm→raster)'}</div>
+              </div>
+            </details>
+
 
             <div className="space-y-2 pt-2 border-t">
               <Button
