@@ -378,20 +378,37 @@ export function buildAerialCandidateGraph(
   }
 
   // Edges from eave_edges / rake_edges, falling back to perimeter ring segments
+  const ringIndex = (i: unknown): [number, number] | null => {
+    const idx = num(i);
+    if (idx == null || !ringPx) return null;
+    const k = ((idx % ringPx.length) + ringPx.length) % ringPx.length;
+    return ringPx[k] ?? null;
+  };
+
   const pushEdge = (
     raw: any,
     fallbackType: AerialEdgeTypeCandidate,
     source: string,
   ) => {
     if (base.edges.length >= MAX_EDGES) return;
-    const startPx = pxPair(raw?.start_px ?? raw?.start ?? raw?.px?.[0]);
-    const endPx = pxPair(raw?.end_px ?? raw?.end ?? raw?.px?.[1]);
+    const startPx = pxPair(
+      raw?.start_px ?? raw?.start ?? raw?.px?.[0] ?? raw?.a ?? raw?.p1 ??
+        raw?.from,
+    ) ?? ringIndex(raw?.start_index ?? raw?.from_index ?? raw?.i0);
+    const endPx = pxPair(
+      raw?.end_px ?? raw?.end ?? raw?.px?.[1] ?? raw?.b ?? raw?.p2 ?? raw?.to,
+    ) ?? ringIndex(raw?.end_index ?? raw?.to_index ?? raw?.i1);
     if (!startPx || !endPx) return;
-    const startGeo = geoPair(raw?.start_geo ?? raw?.geo?.[0]);
-    const endGeo = geoPair(raw?.end_geo ?? raw?.geo?.[1]);
-    const lenFt = num(raw?.length_ft ?? raw?.length_lf) ??
+    const startGeo = geoPair(
+      raw?.start_geo ?? raw?.geo?.[0] ?? raw?.a_geo ?? raw?.from_geo,
+    );
+    const endGeo = geoPair(
+      raw?.end_geo ?? raw?.geo?.[1] ?? raw?.b_geo ?? raw?.to_geo,
+    );
+    const lenFt = num(raw?.length_ft ?? raw?.length_lf ?? raw?.length) ??
       geoDistFt(startGeo, endGeo);
-    const tRaw = String(raw?.type ?? raw?.type_candidate ?? "").toLowerCase();
+    const tRaw = String(raw?.type ?? raw?.type_candidate ?? raw?.kind ?? "")
+      .toLowerCase();
     const type: AerialEdgeTypeCandidate =
       tRaw === "eave" || tRaw === "rake" || tRaw === "perimeter"
         ? tRaw
@@ -412,6 +429,7 @@ export function buildAerialCandidateGraph(
       validation_status: "candidate_only",
     });
   };
+
 
   const eaves = Array.isArray(args.perimeterTopology?.eave_edges)
     ? args.perimeterTopology.eave_edges
