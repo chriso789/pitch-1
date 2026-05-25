@@ -1,65 +1,84 @@
 ## Goal
-Deploy commit `09e2df70c75e7ec3a2a14927f19fc30c3d1bfae4` (AbortController + terminal-write guard + watchdog), clean up the stuck Fonsica job `6d93693d-9ade-4f20-ab32-9768ffcb9ce8`, then rerun 4063 Fonsica Avenue and report the full diagnostic field set.
 
-## Pre-flight
-1. Confirm workspace HEAD = `09e2df70c75e7ec3a2a14927f19fc30c3d1bfae4` (`git rev-parse HEAD`).
-2. Confirm the new code is present in source:
-   - `AbortController` wired into `fetchRoofMaskFromGoogleSolar`, `fetchDsmFromGoogleSolar`, and Google Solar `dataLayers` fetch
-   - 20s timeout option threaded into Google Solar fetch helpers
-   - Top-level `try/finally` terminal-write guard in `start-ai-measurement` handler
-   - New watchdog edge function (service-role-protected) for stale running jobs > 120s
-3. Run the new regression tests via `supabase--test_edge_functions` (must show the 34 passing).
+Split `start-ai-measurement` validation into two distinct phases so DSM-dependent registration checks never run before DSM has been fetched. Today the preflight at `EARLY_TRANSFORM_STAGE = "early_preflight"` builds a static-only transform package, marks `dsm_stage_pending=true`, but the classifier still emits `dsm_bounds_missing` as a hard fail — short-circuiting the run before Google Solar / DSM / mask are even attempted (the Fonsica rerun proved this: all source-acquisition + DSM diagnostics were `null`).
 
-## Step 1 — Deploy
-- `supabase--deploy_edge_functions` for:
-  - `start-ai-measurement`
-  - the new watchdog function (whatever name commit `09e2df7` introduced — to be confirmed by reading the commit's file list)
-- Verify deploy success; capture deployment ID + timestamp.
+## The two phases
 
-## Step 2 — Clean up the stuck job
-Stuck job `6d93693d-9ade-4f20-ab32-9768ffcb9ce8` needs to be marked terminal. Since `psql` is select-only, this requires a **one-off migration** (`supabase--migration`) that updates exactly that row:
+### Phase 1 — `early_preflight` (request validation only)
 
-```sql
-update public.ai_measurement_jobs
-set status = 'failed',
-    hard_fail_reason = 'ai_measurement_runtime_timeout',
-    report_blocked = true,
-    needs_review = true,
-    updated_at = now()
-where id = '6d93693d-9ade-4f20-ab32-9768ffcb9ce8'
-  and status in ('running','processing','queued');
-```
-(Mirror onto `measurement_jobs` / `roof_measurements` only if a matching row exists — verified first with `supabase--read_query`.)
+Only validate:
+- `job_id` exists and not already terminal
+- lead / property / address present
+- `lat`/`lng` present and numeric
+- user / company / tenant authorization
+- required env / config (Google Solar key, etc.)
+- static map transform inputs (zoom, size, scale, static_map_center) — these are derivable without DSM
 
-Alternative if a watchdog function was just added: invoke it once with the service-role secret to drain stale rows, then verify Fonsica's row is now terminal.
+Must NOT require or report missing:
+- `geo_to_dsm_transform`
+- `dsm_tile_bounds_lat_lng`
+- `dsm_to_raster_transform`
+- `confirmed_roof_center_dsm_px`
+- `selected_candidate_polygon_px`
+- `dsm_size_px`
+- roof mask / Google Solar payload fields
 
-## Step 3 — Verify no stale "running" Fonsica row
-`supabase--read_query` on `ai_measurement_jobs` filtered to the Fonsica lead / address — assert the latest row is terminal before rerun.
+Must NOT emit `dsm_bounds_missing`, `dsm_size_missing`, `selected_candidate_polygon_missing`, or any DSM-derived hard_fail_reason.
 
-## Step 4 — Rerun
-Invoke `start-ai-measurement` via `supabase--curl_edge_functions` with the Fonsica lead payload (address `4063 Fonsica Avenue, North Port, FL 34286`, confirmed roof-target coords from prior runs at `27.0820246, -82.1962156`). Capture the new `job_id`.
+### Phase 2 — `post_source_acquisition_registration_gate`
 
-Poll until terminal or 180s, whichever first.
+Runs only after:
+- Google Solar `dataLayers` fetch attempted (success or fail recorded)
+- DSM fetch attempted (success or fail recorded)
+- Roof mask fetch attempted (success or fail recorded)
+- DSM-derived transforms attempted (`geo_to_dsm`, `dsm_to_raster`)
+- Candidate polygon selection attempted
 
-## Step 5 — Pass/Fail evaluation
-**Pass** if:
-- Runtime < 180s AND terminal state written
-- `hard_fail_reason` ∈ {`google_solar_mask_timeout`, `google_solar_roof_mask_missing`, `roof_mask_footprint_extraction_failed`, `roof_mask_points_missing`, `ai_measurement_runtime_timeout`, `dsm_bounds_missing`, `candidate_centroid_offset_exceeds_target`, `coordinate_space_mismatch`} OR clean success with all gates passed
-- `customer_report_ready` is `false` for any failed/debug row; `true` only after `assertCustomerReportReady`
+Only here may the classifier emit:
+- `dsm_bounds_missing`
+- `dsm_size_missing`
+- `dsm_decode_failed`
+- `dsm_center_out_of_bounds`
+- `geo_to_dsm_transform_missing`
+- `dsm_to_raster_transform_missing`
+- `selected_candidate_polygon_missing`
+- `candidate_centroid_offset_exceeds_target`
+- `coordinate_space_mismatch`
+- `coordinate_registration_failed` (fallback only when no specific token applies)
 
-**Fail** if:
-- Job still `running` after 180s
-- Reaches the 8-minute safety limit
-- Generic `coordinate_registration_failed` returns
-- `customer_report_ready=true` on a debug-only row
+## Files to change
 
-## Step 6 — Report
-Query the resulting `ai_measurement_jobs` + `roof_measurements` row and emit all 30 requested fields:
-- Top: deployed commit SHA, deployment timestamp, stuck-job cleanup result, new job_id, new measurement_id, runtime_seconds, status, status_message, result_state, hard_fail_reason, block_customer_report_reason, customer_report_ready, diagram_render_intent, roof_lines_count
-- `geometry_report_json.source_acquisition_debug.google_solar_mask_stage`: google_solar_status, google_solar_error, google_solar_stage_duration_ms, google_solar_fetch_duration_ms, dsm_fetch_duration_ms, dsm_loaded, mask_loaded, mask_point_count, footprint_point_count, footprint_extraction_duration_ms, footprint_extraction_error
-- `geometry_report_json.registration`: dsm_hoist_called, dsm_size_px, dsm_tile_bounds_lat_lng, geo_to_dsm_transform, dsm_to_raster_transform, selected_candidate_polygon_px_present, coordinate_registration_gate_passed
+1. **`supabase/functions/_shared/registration-stage-classifier.ts`**
+   - Add a guard at the top of `classifyRegistrationStage()`: if `input.dsm_stage_pending === true` OR `input.dsm_fetch_attempted !== true`, return a soft `{ stage: "early_preflight", hardFail: null, registration_gate_passed: null, missing_required_fields: <static-only> }` instead of cascading into the DSM hard_fail ladder.
+   - Restrict the `missing` list during early preflight to static-transform fields only (`raster_bounds_lat_lng`, `confirmed_roof_center_px`).
+   - Keep the existing priority ladder unchanged for the post-acquisition call.
 
-## Notes
-- One migration only (the targeted stuck-job update). No schema changes.
-- No frontend changes.
-- If the rerun returns generic `coordinate_registration_failed` again, follow the prior plan's Step 5: inspect `registration-stage-classifier.ts` and patch the fallback to emit the most specific token before the generic case — but **report first, patch second**.
+2. **`supabase/functions/start-ai-measurement/index.ts`**
+   - At the existing early preflight (~L880–906): keep it as today (build static transform package, set `dsm_stage_pending=true`) but **never** translate it into a terminal `hard_fail_reason`. Persist `registration.failed_stage = null` and `transform_build_stage = "early_preflight"`.
+   - Move the registration-gate-as-hard-fail evaluation to a new chokepoint after source acquisition (after Google Solar / DSM / mask fetches and transform derivation). Reuse `classifyRegistrationStage()` with `dsm_stage_pending=false` and the actual fetch-attempt flags.
+   - Always persist these diagnostics on the failure payload regardless of which phase failed:
+     - `google_solar_status`, `google_solar_error`, `datalayers_url_present`
+     - `dsm_fetch_attempted`, `dsm_fetch_status`, `dsm_fetch_error`, `dsm_fetch_duration_ms`
+     - `roof_mask_fetch_attempted`, `roof_mask_fetch_status`, `roof_mask_fetch_error`
+     - `registration.dsm_hoist_called`, `dsm_size_px`, `dsm_tile_bounds_lat_lng`
+     - `registration.geo_to_dsm_transform`, `dsm_to_raster_transform`
+     - `registration.selected_candidate_polygon_px_present`
+     - `registration.coordinate_registration_gate_passed`
+     - `registration.failed_stage` ∈ {`early_preflight`, `source_acquisition`, `registration_gate`, `topology`, …}
+
+3. **`supabase/functions/_shared/__tests__/registration-gate_test.ts`** (extend, don't replace the 34 existing tests)
+   - New test: early_preflight call with `dsm_stage_pending=true` MUST return `hardFail=null` and MUST NOT list any DSM field in `missing_required_fields`.
+   - New test: post-acquisition call with `dsm_fetch_attempted=true` and `dsmLoaded=true` but missing bounds MUST still emit `dsm_bounds_missing`.
+   - New test: post-acquisition call where Google Solar failed (`dsm_fetch_attempted=true`, `dsm_fetch_status='failed'`) MUST emit a Google-Solar-specific token (`google_solar_mask_timeout` / `google_solar_roof_mask_missing` / etc.), not `coordinate_registration_failed`.
+   - New test: a failure payload from either phase MUST carry the full diagnostic field set listed above (non-null where the stage was attempted, explicit `null` where it was not).
+
+## Out of scope
+
+- No deploy, no Fonsica rerun, no stuck-job cleanup in this loop. The previous loop already deployed `09e2df7` and marked `6d93693d-…` failed; the next rerun happens only after this ordering fix ships.
+- No business-logic changes to Google Solar / DSM / mask fetch helpers themselves — only the gate ordering.
+- No DB schema changes; `result_state` continues to flow through `normalizeResultStateForWrite()`.
+
+## Acceptance
+
+- All 34 existing tests still pass; ≥4 new tests added and passing.
+- Fonsica rerun (next loop) MUST NOT terminate at `early_preflight` with `dsm_bounds_missing`. If it still fails, it must fail at `source_acquisition` or `registration_gate` with populated Google Solar / DSM / mask diagnostics so we can finally see why source acquisition is incomplete.
