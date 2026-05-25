@@ -13070,25 +13070,20 @@ async function persistCpuBudgetTerminalFailure(args: {
     args.input,
     args.estimatedWorkUnits ?? 0,
   );
-  const debugPayload = {
-    ...(args.debug ?? {}),
-    topology_source: REQUIRED_TOPOLOGY_SOURCE,
-    failure_stage: AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
-    cpu_budget_stage: args.stage,
-    cpu_budget_preempt_reason: budget.reason,
-    cpu_budget_elapsed_ms: budget.elapsed_ms,
-    cpu_budget_remaining_ms: budget.remaining_ms,
-    cpu_budget_ms: AI_MEASUREMENT_CPU_BUDGET_MS,
-    cpu_terminal_write_reserve_ms: AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS,
-    estimated_work_units: args.estimatedWorkUnits ?? null,
-    topology_pixel_limit: AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
-    result_state: "ai_failed_runtime",
-    hard_fail_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
-    block_customer_report_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
-    customer_report_ready: false,
-    diagram_render_intent: "debug_only",
-    roof_lines_count: 0,
-  };
+  const debugPayload = buildCpuBudgetTerminalDebugPayload({
+    stage: args.stage,
+    estimatedWorkUnits: args.estimatedWorkUnits ?? null,
+    debug: args.debug,
+    budget,
+    constants: {
+      AI_MEASUREMENT_CPU_BUDGET_MS,
+      AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS,
+      AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
+      AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
+      AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+      REQUIRED_TOPOLOGY_SOURCE,
+    },
+  });
   const failedId = await insertFailedPreliminaryMeasurement(
     args.input,
     args.coords,
