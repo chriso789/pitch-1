@@ -584,6 +584,35 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   }
 
 
+  // ---- Overlay transform diagnostics --------------------------------------
+  const overlaySourceField =
+    aerialCandidatePerimeterPx ? 'aerial_candidate_roof_graph.perimeter_ring_px'
+      : phase35?.raw_perimeter_px ? 'phase3_5.raw_perimeter_px'
+      : debugLayersRawPx ? 'debug_layers.raw_perimeter_px'
+      : perimeterTopologyRingPx ? 'perimeter_topology.perimeter_ring_px'
+      : 'none';
+  const overlayCoordSpace = classifyCoordinateSpace(overlaySourceField);
+  const confirmedCenterPx: Pt | null = (() => {
+    const c = (grj as any)?.confirmed_center_px ?? overlayDbg?.confirmed_center_px;
+    if (Array.isArray(c) && c.length >= 2) return [Number(c[0]), Number(c[1])];
+    if (rasterSize.width > 0) return [rasterSize.width / 2, rasterSize.height / 2];
+    return null;
+  })();
+  const sourceTransform = {
+    scaleX: scale, scaleY: scale, offsetX: 0, offsetY: 0, fit: 'fill' as const, resolved: rasterSizeResolved,
+  };
+  const frameCheck = rasterSizeResolved && rawRing.length >= 3
+    ? detectFrameMismatch({
+        perimeterPxSource: rawRing,
+        confirmedCenterPxSource: confirmedCenterPx,
+        sourceRasterSize: rasterSize,
+        transform: sourceTransform,
+      })
+    : { mismatch: false, distancePx: 0, tolerancePx: 0 };
+  const firstPt = rawRing[0];
+  const projectedFirst = firstPt ? [firstPt[0] * scale, firstPt[1] * scale] : null;
+  const bb = bboxOf(rawRing);
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
