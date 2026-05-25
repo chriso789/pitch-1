@@ -699,10 +699,13 @@ interface CanvasProps {
 function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
   const grj = measurement?.geometry_report_json || {};
   const overlayDbg = grj.overlay_debug || {};
-  const size = overlayDbg?.raster_size ||
-    measurement?.analysis_image_size || { width: 800, height: 800 };
-  const W = Number(size.width) || 800;
-  const H = Number(size.height) || 800;
+  // Use the canonical resolver instead of an 800x800 silent fallback. If we
+  // can't resolve the true source raster size, refuse to render geometry
+  // rather than projecting it onto a guessed frame (Fonsica bottom-right bug).
+  const resolved = resolveSourceRasterSize(measurement, rasterUrl);
+  const rasterResolved = resolved.source !== 'unresolved' && (resolved.width || 0) > 0;
+  const W = Number(resolved.width) || 0;
+  const H = Number(resolved.height) || 0;
 
   // ----- geo → px transform (best-effort using overlay_debug) -----
   const tileCenter = overlayDbg?.tile_center_lat_lng;
