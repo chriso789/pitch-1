@@ -64,10 +64,16 @@ export interface AerialCandidateRoofGraph {
   candidate_faces: AerialCandidateFace[];
   evidence: {
     raster_registered: boolean;
+    raster_registered_basis?:
+      | "transform"
+      | "bounds_only"
+      | "registration_package"
+      | null;
     target_mask_isolation_checked: boolean;
     solar_segments_used: boolean;
     dsm_required: false;
   };
+  perimeter_source?: string | null;
 }
 
 const MAX_NODES = 512;
