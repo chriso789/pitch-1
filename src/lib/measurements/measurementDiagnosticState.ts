@@ -16,9 +16,18 @@ export type ResolvedMeasurementDiagnosticState = {
   mask_loaded: boolean;
   target_mask_isolation_checked: boolean;
   phase0_incomplete_reason: string | null;
+  /**
+   * Stable stage id (matches viewer stage ids) that the UI should focus on
+   * once the run reaches a terminal state. Drives the AI Process Viewer
+   * default-active stage so it reflects the resolved final failure, not
+   * the first stage in the timeline.
+   */
+  active_stage_hint: string | null;
+  /** DSM coordinate transform / georegistration is intact. */
+  dsm_transform_valid: boolean;
 };
 
-const PRECEDENCE_VERSION = "measurement-state-precedence-v2";
+const PRECEDENCE_VERSION = "measurement-state-precedence-v3";
 const CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
 const CPU_TIMEOUT_STAGE = "phase3_5_topology_cpu_budget_exceeded";
 
