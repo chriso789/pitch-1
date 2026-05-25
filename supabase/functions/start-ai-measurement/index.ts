@@ -14758,7 +14758,7 @@ async function insertFailedPreliminaryMeasurement(
       faces_extracted: Number(debug?.faces_extracted || 0),
       valid_faces: Number(debug?.valid_faces || 0),
       face_coverage_ratio: debug?.face_coverage_ratio ?? 0,
-      hard_fail_reason: persistedFailureReason,
+      hard_fail_reason: persistedFailureReason ?? persistedBlockReason,
     },
     overlay_debug: {
       coordinate_space: "satellite_px",
