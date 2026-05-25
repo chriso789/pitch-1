@@ -7014,13 +7014,20 @@ async function processJob(input: any) {
           stage: "autonomous_topology_solver",
           estimatedWorkUnits: graphWorkUnits,
           debug: {
-            dsm_loaded: !!dsmGrid || !!maskedDSM,
-            mask_loaded: !!roofMask || !!maskedDSM,
+            ...buildPreTopologyDebugBag({
+              stage: "autonomous_topology_solver",
+              dsmGrid,
+              maskedDSM,
+              roofMask,
+              raster,
+              perimeterPhase0Snapshot,
+              perimeterTopologySnapshot,
+              targetMaskIsolation,
+              footprintSource: phase3A5SelectedSource,
+              footprintGeo: footprintGeoForSolver,
+              footprintPx: null,
+            }),
             phase3A_5: phase3A5Diagnostics,
-            perimeter_phase0: perimeterPhase0Snapshot,
-            perimeter_topology: perimeterTopologySnapshot,
-            footprint_source: phase3A5SelectedSource,
-            footprint_point_count: footprintGeoForSolver.length,
           },
         });
         return;
