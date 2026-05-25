@@ -19,11 +19,34 @@ export interface DebugRoofLine {
   type: "eave" | "rake" | "perimeter" | "unknown";
   geo: Array<[number, number]> | null;
   px: Array<[number, number]> | null;
+  length_ft?: number | null;
   debug_only: true;
   customer_ready: false;
+  candidate_source: "phase3A";
+  validation_status: "candidate_only";
+  reason_not_reportable: "runtime_preempted_before_validated_topology";
+}
+
+export interface DsmSplitStatusFetchDecode {
+  status: "pass" | "fail";
+  stage: "dsm_fetch_decode";
+  dsm_loaded: boolean;
+  mask_loaded: boolean;
+  raster_loaded: boolean;
+  dsm_size_px: { width: number; height: number } | null;
+}
+
+export interface DsmSplitStatusGeoreg {
+  status: "pass" | "fail" | "warning";
+  stage: "dsm_georeg_transform";
+  dsm_tile_bounds_lat_lng_present: boolean;
+  geo_to_dsm_transform_present: boolean;
+  dsm_to_raster_transform_present: boolean;
+  dsm_pixel_transform_valid: boolean;
 }
 
 export interface DsmSplitStatus {
+  // Flat (legacy) fields preserved for backwards compatibility.
   dsm_loaded: boolean;
   masked_dsm_loaded: boolean;
   mask_loaded: boolean;
@@ -32,6 +55,9 @@ export interface DsmSplitStatus {
   masked_dsm_size_px: { width: number; height: number } | null;
   raster_size_px: { width: number; height: number } | null;
   dsm_resolution_mpp: number | null;
+  // Nested contract added in slice 3.
+  fetch_decode: DsmSplitStatusFetchDecode;
+  georegistration_transform: DsmSplitStatusGeoreg;
 }
 
 export interface PreTopologyDebugBag {
