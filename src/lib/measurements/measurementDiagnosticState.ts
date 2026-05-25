@@ -145,6 +145,40 @@ export function resolveMeasurementDiagnosticState(
         overlayDebug.google_solar_status,
       ) != null;
 
+  // ── DSM transform / georegistration validity ──
+  // DSM "loaded" only means the raster was fetched/decoded; the georegistration
+  // (tile bounds + geo-to-pixel transform + DSM-to-raster transform) is a
+  // SEPARATE gate. Treat any missing field as an invalid transform package.
+  const dsmTransformValid = registration.dsm_pixel_transform_valid === true &&
+    registration.geo_to_dsm_px_success !== false &&
+    registration.dsm_tile_bounds_lat_lng != null &&
+    registration.geo_to_dsm_transform != null &&
+    registration.dsm_to_raster_transform != null;
+
+  function resolveActiveStageHint(opts: {
+    runtime: boolean;
+    resultState: string | null;
+    hardFail: string | null;
+    failureStage: string | null;
+    customerReady: boolean;
+  }): string | null {
+    if (opts.runtime) return "topology";
+    const rs = (opts.resultState ?? "").toLowerCase();
+    const hf = (opts.hardFail ?? "").toLowerCase();
+    const fs = (opts.failureStage ?? "").toLowerCase();
+    if (fs.includes("phase3_5") || fs.includes("topology")) return "topology";
+    if (fs.includes("perimeter") || hf.includes("perimeter")) return "phase0";
+    if (fs.includes("pitch") || hf.includes("pitch")) return "pitch";
+    if (rs === "ai_failed_target_unconfirmed") return "target";
+    if (rs === "ai_failed_source_acquisition") return "acquisition";
+    if (rs === "ai_failed_perimeter") return "phase0";
+    if (rs === "ai_failed_topology") return "topology";
+    if (rs === "ai_failed_pitch") return "pitch";
+    if (rs === "ai_failed_runtime") return "topology";
+    if (opts.customerReady) return "final";
+    return null;
+  }
+
   if (runtimeEvidence && (dsmLoaded || maskLoaded || targetMaskChecked)) {
     const footprintSource = readString(
       geometry.footprint_source,
@@ -171,6 +205,8 @@ export function resolveMeasurementDiagnosticState(
       mask_loaded: maskLoaded,
       target_mask_isolation_checked: targetMaskChecked,
       phase0_incomplete_reason: "runtime_preemption",
+      active_stage_hint: "topology",
+      dsm_transform_valid: dsmTransformValid,
     };
   }
 
@@ -182,25 +218,29 @@ export function resolveMeasurementDiagnosticState(
     nestedHardFail,
   );
 
+  const finalResultState = readString(
+    geometry.result_state,
+    row.result_state,
+    nestedResultState,
+  );
+  const finalFailureStage = readString(geometry.failure_stage, nestedFailureStage);
+  const customerReady = row.customer_report_ready === true ||
+    geometry.customer_report_ready === true;
+
   return {
-    result_state: readString(
-      geometry.result_state,
-      row.result_state,
-      nestedResultState,
-    ),
+    result_state: finalResultState,
     hard_fail_reason: hardFail,
     block_customer_report_reason: readString(
       geometry.block_customer_report_reason,
       hardFail,
     ),
-    failure_stage: readString(geometry.failure_stage, nestedFailureStage),
+    failure_stage: finalFailureStage,
     diagram_render_intent: readString(geometry.diagram_render_intent),
     footprint_source: readString(
       geometry.footprint_source,
       row.footprint_source,
     ),
-    customer_report_ready: row.customer_report_ready === true ||
-      geometry.customer_report_ready === true,
+    customer_report_ready: customerReady,
     report_blocked: row.report_blocked === true ||
       geometry.report_blocked === true || !!hardFail,
     needs_review: row.needs_review === true || geometry.needs_review === true,
@@ -212,5 +252,13 @@ export function resolveMeasurementDiagnosticState(
     mask_loaded: maskLoaded,
     target_mask_isolation_checked: targetMaskChecked,
     phase0_incomplete_reason: null,
+    active_stage_hint: resolveActiveStageHint({
+      runtime: false,
+      resultState: finalResultState,
+      hardFail,
+      failureStage: finalFailureStage,
+      customerReady,
+    }),
+    dsm_transform_valid: dsmTransformValid,
   };
 }
