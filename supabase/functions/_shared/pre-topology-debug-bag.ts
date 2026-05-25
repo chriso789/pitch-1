@@ -283,12 +283,14 @@ export function buildPreTopologyDebugBag(args: {
   footprintSource: string | null;
   footprintGeo: Array<[number, number]> | null;
   footprintPx: Array<[number, number]> | null;
+  registration?: any;
 }): PreTopologyDebugBag {
   const dsmSplit = buildDsmSplitStatus({
     dsmGrid: args.dsmGrid,
     maskedDSM: args.maskedDSM,
     roofMask: args.roofMask,
     raster: args.raster,
+    registration: args.registration,
   });
 
   const footprintPxCount = Array.isArray(args.footprintPx)
@@ -305,6 +307,19 @@ export function buildPreTopologyDebugBag(args: {
       : null;
   const footprintValid = (footprintPxCount >= 3) || (footprintGeoCount >= 3);
 
+  // Lift raw perimeter (DSM-pixel ring) out of perimeter_topology so the
+  // viewer can render the overlay from `phase3_5.raw_perimeter_px` /
+  // `debug_layers.raw_perimeter_px` even when refinement never ran.
+  const ringPx = args.perimeterTopologySnapshot?.perimeter_ring_px;
+  const rawPerimeterPx: Array<[number, number]> | null =
+    Array.isArray(ringPx) && ringPx.length >= 3
+      ? (ringPx.map((p: any) =>
+        Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.x), Number(p?.y)]
+      ).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1])) as Array<
+        [number, number]
+      >)
+      : null;
+
   return {
     dsm_split_status: dsmSplit,
     perimeter_phase0: args.perimeterPhase0Snapshot ?? null,
@@ -316,11 +331,10 @@ export function buildPreTopologyDebugBag(args: {
     footprint_px: footprintPxSliced,
     debug_roof_lines: buildDebugRoofLines(args.perimeterTopologySnapshot),
     debug_layers_persisted_at_stage: args.stage,
-    // Flat mirrors so existing top-level reads (`debug?.dsm_loaded`) keep
-    // working without rewriting every consumer.
     dsm_loaded: dsmSplit.dsm_loaded || dsmSplit.masked_dsm_loaded,
     mask_loaded: dsmSplit.mask_loaded || dsmSplit.masked_dsm_loaded,
     raster_loaded: dsmSplit.raster_loaded,
+    raw_perimeter_px: rawPerimeterPx,
   };
 }
 
