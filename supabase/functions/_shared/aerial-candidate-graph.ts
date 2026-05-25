@@ -419,8 +419,15 @@ export function buildAerialCandidateGraph(
   const rakes = Array.isArray(args.perimeterTopology?.rake_edges)
     ? args.perimeterTopology.rake_edges
     : [];
+  const perimeterEdges = Array.isArray(args.perimeterTopology?.perimeter_edges)
+    ? args.perimeterTopology.perimeter_edges
+    : [];
   for (const e of eaves) pushEdge(e, "eave", "perimeter_topology.eave_edges");
   for (const r of rakes) pushEdge(r, "rake", "perimeter_topology.rake_edges");
+  for (const pe of perimeterEdges) {
+    pushEdge(pe, "perimeter", "perimeter_topology.perimeter_edges");
+  }
+
 
   if (base.edges.length === 0 && ringPx && ringPx.length >= 2) {
     for (let i = 0; i < ringPx.length; i++) {
