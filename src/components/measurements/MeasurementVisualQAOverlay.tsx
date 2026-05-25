@@ -549,7 +549,8 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>Visual QA overlay unavailable</AlertTitle>
         <AlertDescription>
-          No <code>phase3_5.raw_perimeter_px</code>,{' '}
+          No <code>aerial_candidate_roof_graph.perimeter_ring_px</code>,{' '}
+          <code>phase3_5.raw_perimeter_px</code>,{' '}
           <code>debug_layers.raw_perimeter_px</code>,{' '}
           <code>perimeter_topology.perimeter_ring_px</code>, or aerial{' '}
           <code>raster_url</code> was persisted for this run.
