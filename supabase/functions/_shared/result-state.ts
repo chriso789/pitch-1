@@ -48,6 +48,18 @@ export function normalizeResultState(raw: unknown): ResultState {
   if (
     s.includes('coordinate_registration_failed') ||
     s.includes('candidate_does_not_contain_confirmed_roof_center') ||
+    s.includes('candidate_does_not_contain_confirmed_center') ||
+    s.includes('candidate_centroid_offset_exceeds_target') ||
+    s.includes('candidate_polygon_missing') ||
+    s.includes('selected_candidate_polygon_missing') ||
+    s.includes('coordinate_space_mismatch') ||
+    s.includes('dsm_size_missing') ||
+    s.includes('dsm_bounds_missing') ||
+    s.includes('dsm_decode_failed') ||
+    s.includes('dsm_center_out_of_bounds') ||
+    s.includes('dsm_raster_overlap_failed') ||
+    s.includes('dsm_raster_transform_missing') ||
+    s.includes('geo_to_dsm_transform_missing') ||
     s.includes('registration_field_conflict') ||
     s.includes('missing_selected_candidate') ||
     s.includes('source_acquisition') ||
@@ -57,6 +69,7 @@ export function normalizeResultState(raw: unknown): ResultState {
     s.includes('source_failed') ||
     s.includes('imagery_unavailable')
   ) return 'ai_failed_source_acquisition';
+
 
   if (
     s.includes('perimeter') ||
