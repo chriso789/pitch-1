@@ -1975,6 +1975,14 @@ function prepareRoofMeasurementPayload(
       intentNorm.warning;
   }
 
+  // DB-safe coercion of `footprint_source` (single chokepoint). Any diagnostic
+  // label (e.g. "blocked_by_registration_gate", "google_solar_roof_mask") is
+  // coerced to a whitelisted value and the raw label preserved inside
+  // `geometry.footprint_source_diagnostic`. Without this guard any write
+  // explodes with a 23514 CHECK constraint failure and falls into
+  // processJob_outer_catch — wiping every other diagnostic on the row.
+  applyFootprintSourceDbSafeCoercion(next, geometry);
+
   next.geometry_report_json = geometry;
   return next;
 }
