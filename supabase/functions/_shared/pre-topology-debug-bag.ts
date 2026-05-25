@@ -74,6 +74,7 @@ export interface PreTopologyDebugBag {
   dsm_loaded: boolean;
   mask_loaded: boolean;
   raster_loaded: boolean;
+  raw_perimeter_px: Array<[number, number]> | null;
 }
 
 const MAX_DEBUG_ROOF_LINES = 512;
