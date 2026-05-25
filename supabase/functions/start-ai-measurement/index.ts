@@ -148,6 +148,12 @@ import {
   withDiagramRenderIntentConstraintRetryPayload,
 } from "../_shared/diagram-render-intent.ts";
 import { resolveMeasurementDiagnosticState } from "../_shared/measurement-diagnostic-state.ts";
+import {
+  applyZeroGeometryFinalDiagramGuard,
+  buildCpuBudgetTerminalDebugPayload,
+  buildPreTopologyDebugBag,
+  ZERO_GEOMETRY_GUARD_REASON,
+} from "../_shared/pre-topology-debug-bag.ts";
 // ─── VENDOR TRUTH GUARD ───────────────────────────────────────────────
 // Live AI measurement must NEVER depend on vendor ground-truth data.
 // All geometry comes from imagery, Solar API, and topology solvers only.
@@ -6497,6 +6503,35 @@ async function processJob(input: any) {
             "running",
             "Running perimeter refinement",
           );
+          // ── PRE-PHASE-3A.5 PREEMPT CHECKPOINT ──
+          // If wall clock is already inside the terminal-write reserve before we
+          // even estimate Phase 3A.5 work units, exit immediately with the
+          // cheap debug layers persisted so the row is never silently empty.
+          const prePhase3A5Budget = shouldPreemptForCpuBudget(input, 0);
+          if (prePhase3A5Budget.preempt) {
+            await persistCpuBudgetTerminalFailure({
+              input,
+              coords,
+              imageUrl,
+              mpp: actualMpp,
+              stage: "pre_phase3_5_preempt",
+              estimatedWorkUnits: 0,
+              debug: buildPreTopologyDebugBag({
+                stage: "pre_phase3_5_preempt",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource,
+                footprintGeo,
+                footprintPx: null,
+              }),
+            });
+            return;
+          }
           const phase3A5Budget = shouldPreemptForCpuBudget(
             input,
             phase3A5WorkUnits,
@@ -6509,16 +6544,19 @@ async function processJob(input: any) {
               mpp: actualMpp,
               stage: "phase3_5_perimeter_refinement",
               estimatedWorkUnits: phase3A5WorkUnits,
-              debug: {
-                dsm_loaded: true,
-                mask_loaded: !!roofMask,
-                dsm_size_px: { width: dsmW, height: dsmH },
-                perimeter_phase0: perimeterPhase0Snapshot,
-                target_mask_isolation: {
-                  ...targetMaskIsolation,
-                  target_mask_grid: undefined,
-                },
-              },
+              debug: buildPreTopologyDebugBag({
+                stage: "phase3_5_perimeter_refinement",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource,
+                footprintGeo,
+                footprintPx: null,
+              }),
             });
             return;
           }
@@ -6976,13 +7014,20 @@ async function processJob(input: any) {
           stage: "autonomous_topology_solver",
           estimatedWorkUnits: graphWorkUnits,
           debug: {
-            dsm_loaded: !!dsmGrid || !!maskedDSM,
-            mask_loaded: !!roofMask || !!maskedDSM,
+            ...buildPreTopologyDebugBag({
+              stage: "autonomous_topology_solver",
+              dsmGrid,
+              maskedDSM,
+              roofMask,
+              raster,
+              perimeterPhase0Snapshot,
+              perimeterTopologySnapshot,
+              targetMaskIsolation,
+              footprintSource: phase3A5SelectedSource,
+              footprintGeo: footprintGeoForSolver,
+              footprintPx: null,
+            }),
             phase3A_5: phase3A5Diagnostics,
-            perimeter_phase0: perimeterPhase0Snapshot,
-            perimeter_topology: perimeterTopologySnapshot,
-            footprint_source: phase3A5SelectedSource,
-            footprint_point_count: footprintGeoForSolver.length,
           },
         });
         return;
@@ -12343,6 +12388,18 @@ async function processJob(input: any) {
       );
     }
 
+    // ── Slice 2: zero-geometry final-diagram safety gate ──
+    // Defensive — no customer report may ever ship with both facet_count=0
+    // AND roof_lines_count=0 even if upstream gates failed open.
+    applyZeroGeometryFinalDiagramGuard({
+      facetCount: Number((roofMeasurementPayload as any).facet_count ?? 0),
+      roofLinesCount: Number((roofMeasurementPayload as any).edge_count ?? 0),
+      payload: roofMeasurementPayload as any,
+      geometryReportJson: geometryReportJson as any,
+      normalizeResultStateForWrite: (s, d) =>
+        normalizeResultStateForWrite(s as any, d as any),
+    });
+
     const { data: roofMeasurement, error: publishError } =
       await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
@@ -13064,25 +13121,20 @@ async function persistCpuBudgetTerminalFailure(args: {
     args.input,
     args.estimatedWorkUnits ?? 0,
   );
-  const debugPayload = {
-    ...(args.debug ?? {}),
-    topology_source: REQUIRED_TOPOLOGY_SOURCE,
-    failure_stage: AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
-    cpu_budget_stage: args.stage,
-    cpu_budget_preempt_reason: budget.reason,
-    cpu_budget_elapsed_ms: budget.elapsed_ms,
-    cpu_budget_remaining_ms: budget.remaining_ms,
-    cpu_budget_ms: AI_MEASUREMENT_CPU_BUDGET_MS,
-    cpu_terminal_write_reserve_ms: AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS,
-    estimated_work_units: args.estimatedWorkUnits ?? null,
-    topology_pixel_limit: AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
-    result_state: "ai_failed_runtime",
-    hard_fail_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
-    block_customer_report_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
-    customer_report_ready: false,
-    diagram_render_intent: "debug_only",
-    roof_lines_count: 0,
-  };
+  const debugPayload = buildCpuBudgetTerminalDebugPayload({
+    stage: args.stage,
+    estimatedWorkUnits: args.estimatedWorkUnits ?? null,
+    debug: args.debug,
+    budget,
+    constants: {
+      AI_MEASUREMENT_CPU_BUDGET_MS,
+      AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS,
+      AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
+      AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
+      AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+      REQUIRED_TOPOLOGY_SOURCE,
+    },
+  });
   const failedId = await insertFailedPreliminaryMeasurement(
     args.input,
     args.coords,
@@ -14606,6 +14658,13 @@ async function insertFailedPreliminaryMeasurement(
     footprint_extraction_error: debug?.footprint_extraction_error ??
       debug?.google_solar_mask_stage?.footprint_extraction_error ?? null,
     google_solar_mask_stage: debug?.google_solar_mask_stage ?? null,
+    // ── Slice 2: cheap debug layers persisted before topology ──
+    dsm_split_status: (debug as any)?.dsm_split_status ?? null,
+    debug_roof_lines: Array.isArray((debug as any)?.debug_roof_lines)
+      ? (debug as any).debug_roof_lines
+      : [],
+    debug_layers_persisted_at_stage:
+      (debug as any)?.debug_layers_persisted_at_stage ?? null,
     // ── Phase 0: Perimeter-First Topology Contract ──
     perimeter_phase0: debug?.perimeter_phase0 ?? null,
     perimeter_ready: debug?.perimeter_ready ?? false,
