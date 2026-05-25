@@ -257,18 +257,22 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const scale = containerWidth > 0 && rasterSize?.width
+  const scale = containerWidth > 0 && rasterSize.width > 0
     ? containerWidth / rasterSize.width
     : 1;
-  const displayHeight = (rasterSize?.height || 1280) * scale;
+  const displayHeight = rasterSize.height > 0 ? rasterSize.height * scale : 0;
 
-  // Load the aerial image once.
+  // Load the aerial image once and capture natural size for resolver fallback.
   useEffect(() => {
-    if (!rasterUrl) { imgRef.current = null; return; }
+    if (!rasterUrl) { imgRef.current = null; setImageNatural(null); return; }
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => { imgRef.current = img; draw(); };
-    img.onerror = () => { imgRef.current = null; draw(); };
+    img.onload = () => {
+      imgRef.current = img;
+      setImageNatural({ width: img.naturalWidth, height: img.naturalHeight });
+      draw();
+    };
+    img.onerror = () => { imgRef.current = null; setImageNatural(null); draw(); };
     img.src = rasterUrl;
     return () => { imgRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
