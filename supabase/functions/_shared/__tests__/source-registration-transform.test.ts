@@ -101,7 +101,11 @@ Deno.test("C: missing transform package → gate fails honestly", () => {
   });
   assertEquals(r.coordinate_registration_gate_passed, false);
   assert(r.failure);
-  assertEquals(r.failure!.hard_fail_reason, "coordinate_registration_failed");
+  // Updated contract: the gate now prefers the most specific missing-field
+  // token (firstSpecificMissingReason) over the generic
+  // `coordinate_registration_failed` fallback. With no static map params and
+  // no DSM, the first specific token is `dsm_size_missing`.
+  assertEquals(r.failure!.hard_fail_reason, "dsm_size_missing");
 });
 
 Deno.test("D: valid transforms but candidate excludes confirmed center → gate fails", () => {
