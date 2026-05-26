@@ -20,6 +20,20 @@
 export const SOURCE_REGISTRATION_TRANSFORM_VERSION =
   "source-registration-transform-v1";
 
+/** Operator-facing policy tag for the dsm-registration-transform-v1 surface. */
+export const DSM_TRANSFORM_POLICY_VERSION = "dsm-registration-transform-v1";
+
+export type GeoToDsmTransformSource =
+  | "composed_from_dsm_tile_bounds_and_size"
+  | "missing";
+export type DsmToRasterTransformSource =
+  | "composed_geo_to_dsm_then_geo_to_raster"
+  | "missing";
+export type ConfirmedRoofCenterDsmPxSource =
+  | "geo_projected_via_geo_to_dsm"
+  | "raster_center_projected_into_dsm"
+  | "missing";
+
 export type LatLng = { lat: number; lng: number };
 export type Bounds = { sw: LatLng; ne: LatLng };
 export type SizePx = { width: number; height: number };
