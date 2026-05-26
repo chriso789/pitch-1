@@ -67,11 +67,23 @@ Deno.test("CPU-preempt debug bag carries aerial_candidate_roof_graph", () => {
   assert(Array.isArray(graph.edges) && graph.edges.length > 0);
 
   const terminal = buildCpuBudgetTerminalDebugPayload({
-    bag,
     stage: "phase3_5_perimeter_refinement",
-    elapsedMs: 90_000,
-    budgetMs: 95_000,
-    reason: "wall_clock_reserve_threshold",
+    estimatedWorkUnits: 0,
+    debug: bag,
+    budget: {
+      preempt: true,
+      elapsed_ms: 90_000,
+      remaining_ms: 5_000,
+      reason: "wall_clock_reserve_threshold",
+    },
+    constants: {
+      AI_MEASUREMENT_CPU_BUDGET_MS: 95_000,
+      AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS: 15_000,
+      AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT: 1_000_000,
+      AI_MEASUREMENT_CPU_TIMEOUT_STAGE: "phase3_5_topology_cpu_budget_exceeded",
+      AI_MEASUREMENT_CPU_TIMEOUT_REASON: "ai_measurement_cpu_timeout",
+      REQUIRED_TOPOLOGY_SOURCE: "autonomous_dsm_graph_solver",
+    },
   });
   const survived = (terminal as any).aerial_candidate_roof_graph
     ?? (terminal as any)?.debug_layers?.aerial_candidate_roof_graph;

@@ -1,237 +1,108 @@
-## Goal
+# Fonsica Regression: Run Tests, Add Fixture, Verify Live Row
 
-Ship two narrow, independently verifiable slices: (A) a per-connection QBO sandbox↔production switch so prod tenants can transact while sandbox stays available for QA, and (B) a tight verification of last loop's `pre_phase3_5_preempt` fix on a fresh Fonsica row — tests first, then live data.
+## Status snapshot
 
----
+Wired (from prior loop):
+- Terminal payload fallback / `rebuildAerialGraphFromFinalPayload`
+- `skip_debug` synthesis
+- Impossible-skip diagnostics
+- `preserveEstimatedWorkUnits` helper
+- `late_cpu_preempt` surfacing
 
-## Slice A — QBO per-connection sandbox/production switch
+Gaps to close in this slice:
+1. Tests have not actually been executed.
+2. No dedicated Fonsica fixture file exists under `_shared/__fixtures__/`.
+3. The 96s CPU overrun is only diagnosed — root cause (missing control-flow checkpoint between expensive phases) is unfixed.
 
-### Current state (verified)
+This plan does NOT touch six-phase cleanup, cost-tracker P2+, or any QBO work.
 
-- `qbo_connections` rows already carry `is_sandbox` (used by `qbo-check-projects-api` and `qbo-fetch-items`).
-- `_shared/qbo-auth.ts` picks host from the global `QBO_ENVIRONMENT` env (not per-connection).
-- Five functions hardcode `https://quickbooks.api.intuit.com` and will hit production no matter what the connection says:
-  - `qbo-customer-sync` (3 call sites)
-  - `qbo-invoice-create` (2)
-  - `qbo-invoice-send` (3)
-  - `qbo-sync-payment` (2)
-  - `qbo-webhook-handler` (2)
-  - `qbo-oauth-connect` companyinfo verify call (1)
-- `qbo-oauth-connect` `/status` reports `environment: QBO_ENVIRONMENT` — informational only, not authoritative per-connection.
+## Slice 1 — Run the regression tests (no claim of "fixed" until green)
 
-### Changes
+Target test files, run via `supabase--test_edge_functions`:
 
-1. **Shared host helper** (`supabase/functions/_shared/qbo-host.ts`)
-  - `qboHost(connection: { is_sandbox?: boolean | null }): string` → returns `https://sandbox-quickbooks.api.intuit.com` when `is_sandbox === true`, else `https://quickbooks.api.intuit.com`.
-  - `qboHostFromRealm(supabase, realmId)` convenience for webhook paths that only have `realm_id`.
-2. **Refactor the 6 functions** above to import `qboHost(connection)` and replace every hardcoded `https://quickbooks.api.intuit.com` with `${qboHost(connection)}`. For `qbo-webhook-handler`, look up the connection by `realm_id` first (it's keyed off realm anyway) and use its `is_sandbox`.
-3. **OAuth callback writes `is_sandbox` correctly.** In `qbo-oauth-connect` callback, set `is_sandbox = (QBO_ENVIRONMENT === 'sandbox')` on insert/upsert so newly-created connections inherit the OAuth app's environment. (Intuit OAuth endpoints are environment-agnostic; what matters is which client_id was used.)
-4. `**/status` endpoint clarifies both layers**: report `qbo_environment_secret` (global default for new connections) plus, when authenticated and a connection exists, `connection_is_sandbox`. No behavior change beyond the existing payload.
-5. **Production cutover doc note (chat only, no code)** — to flip a tenant to production:
-  - Owner sets `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET` to the Intuit **Production** app keys and `QBO_ENVIRONMENT=production`.
-  - Tenant disconnects + reconnects QBO from Settings; new row written with `is_sandbox=false`.
-  - Sandbox tenants keep working as long as their row still has `is_sandbox=true`.
+```text
+supabase/functions/start-ai-measurement/__tests__/
+  registration-pretopology-terminal-payload.test.ts
+  aerial-graph-survives-cpu-preempt.test.ts
+  cpu-preempt-threshold.test.ts
+  raw-perimeter-and-debug-contract.test.ts
+  aerial-graph-fonsica-shaped-input.test.ts
+```
 
-### Acceptance
+Pure-logic targets the suite must cover (no DSM/geotiff imports):
+- `buildCpuBudgetTerminalDebugPayload`
+- `rebuildAerialGraphFromFinalPayload`
+- `preserveEstimatedWorkUnits`
+- `buildPreTopologyDebugBag`
+- `buildAerialCandidateGraph`
 
-- Search returns **zero** remaining `quickbooks.api.intuit.com` literals in `supabase/functions/qbo-*` outside `qbo-host.ts`.
-- A sandbox-connection invoice create hits `sandbox-quickbooks.api.intuit.com`; a prod-connection invoice create hits `quickbooks.api.intuit.com` (verified by a unit test on `qboHost`).
-- `/status` for the current master returns the existing payload plus a new `connection_is_sandbox` field when a connection row exists.
+If the Deno harness fails because a sibling module pulls in `geotiff` / DSM code, isolate by:
+- Moving the pure helpers into a leaf module (or re-exporting from a thin barrel) that the test imports directly.
+- Importing the helpers by path, not via the function's `index.ts`.
+- No mocking of geotiff — the test must not transitively load it at all.
 
----
+Pass criteria (per assertion, mapped to the AI Measurement Regression Harness rules):
+- `aerial_candidate_roof_graph.executed === true`
+- `edges.length >= 6`
+- `skipped_reason` is null/absent
+- `primary_geometry_source === 'aerial_registered'`
+- `dsm_validation_status.reason === 'invalid_transform'`
+- `estimated_work_units` preserved (> 0, equal to pre-preempt value)
+- `aerial_graph_rebuilt_from_final_payload === true`
+- `work_units_preserved === true`
+- `customer_report_ready === false`
+- If `cpu_budget_elapsed_ms > 75000` → `late_cpu_preempt === true` MUST be asserted present (this is the diagnostic contract; it does NOT mean the bug is fixed).
 
-## Slice B — Fonsica `pre_phase3_5_preempt` verification
+## Slice 2 — Add the Fonsica fixture file (required, not optional)
 
-### Step 1 — Tests first
+New file:
+```text
+supabase/functions/_shared/__fixtures__/fonsica-pretopology-payload.json
+```
 
-Run the existing Deno tests that cover the contract:
+Contents: a real, anonymized terminal-payload shape from the last Fonsica run that exhibited the late preempt. Source = the most recent `ai_measurement_jobs` row for 4063 Fonsica Ave (queried via `supabase--read_query`), with PII stripped.
 
-- `supabase/functions/start-ai-measurement/__tests__/registration-pretopology-terminal-payload.test.ts` (the one added last loop)
-- `aerial-graph-survives-cpu-preempt.test.ts`
-- `cpu-preempt-threshold.test.ts`
-- `raw-perimeter-and-debug-contract.test.ts`
-- `aerial-graph-fonsica-shaped-input.test.ts`
+The regression test is rewritten to load the fixture instead of an inline literal, so future Fonsica-class regressions reuse the same shape.
 
-Pass criteria (must all be green):
+## Slice 3 — Deploy and re-run live
 
-- `pre_phase3_5_preempt.executed === true`
-- `pre_phase3_5_preempt.aerial_graph_rebuilt_from_final_payload === true`
-- `pre_phase3_5_preempt.work_units_preserved === true`
-- `eave_edges.length >= 6` and `perimeter_edges.length >= 6`
-- `cpu_budget_elapsed_ms < 75000` AND `cpu_budget_remaining_ms > 0`
-- overlay transform present and within RMS≤4 / IoU≥0.85
-- `customer_report_ready === false` (gated by topology, not by preempt)
+Order is non-negotiable:
+1. Tests green (Slice 1).
+2. Deploy `start-ai-measurement` via `supabase--deploy_edge_functions`.
+3. Ask the user to retrigger Fonsica from the UI (we don't auto-trigger live AI jobs).
+4. Query the freshest `ai_measurement_jobs` row for 4063 Fonsica Ave via `supabase--read_query`.
+5. Assert against the same contract list above.
 
-### Step 2 — Live Fonsica row check
+## Slice 4 — Decision gate on CPU overrun
 
-Query the most recent `ai_measurement_jobs` row for 4063 Fonsica Ave (within the last 24h). If none exists, ask the user to retrigger from the UI before continuing.
+After the fresh live row lands, exactly one of:
 
-Assertions against the live row (`debug_layers`, `perimeter_topology`, `phase3_5`):
+- `cpu_budget_elapsed_ms <= 75000` AND `late_cpu_preempt` absent/false → graph-persistence fix confirmed; CPU control flow currently healthy on this input. Close the loop.
+- `cpu_budget_elapsed_ms > 75000` AND `late_cpu_preempt === true` → graph-persistence fix confirmed, but CPU control flow is still broken. Surface explicitly: "graph persistence fixed; CPU checkpoint follow-up required" and open the next slice (Slice 5).
+- Any contract field missing/wrong → stop; do not claim fix; report the exact failed field.
 
-- Same 8 contract fields as above pulled directly from the persisted JSON
-- `created_by_function === 'start-ai-measurement'`, `canonical_measurement_route === true`
-- `result_state` is one of the 10 canonical buckets and was written through `normalizeResultStateForWrite`
-- `target_mask_isolation.checked === true`
-- `phase3_5.version` present, `phase3_5.skipped_reason` is null (because executed=true)
+## Slice 5 — (Conditional) Missing CPU checkpoint follow-up
 
-### Output to user
+Only if Slice 4 hits the second branch.
 
-A single status table with: contract field, test value, live-row value, pass/fail. If any row fails, stop and surface the gap — do not declare the fix production-safe.
+Hypothesis: `shouldPreemptForCpuBudget` math is correct, but the long-running path between Phase 3A → 3A.5 → 3C → 3D has no checkpoint call, so the budget is never consulted until after the expensive work returns.
 
----
+Action (NOT executed in this plan — separate follow-up slice):
+- Identify the longest uninterrupted span in `start-ai-measurement/index.ts` between budget checks.
+- Insert `shouldPreemptForCpuBudget(...)` checkpoints at phase boundaries (entry of 3A.5, entry of 3C, entry of 3D, before each `solve*` call).
+- Add a regression test that simulates a slow Phase 3A and asserts preempt fires before Phase 3C entry, not after.
 
-## Out of scope (explicitly not in this loop)
+## Out of scope (explicit)
 
-- Six-phase measurement cleanup (still gated per your earlier message)
-- Cost-tracker P2–P8 priorities
-- Any other QBO call-site changes beyond host selection (no schema, no token logic)
+- Six-phase measurement cleanup
+- Cost-tracker P2–P8
+- QBO additional call-site changes
+- Any frontend report-rendering work
 
-## Files touched (Slice A)
+## Acceptance for this loop
 
-- new: `supabase/functions/_shared/qbo-host.ts` + `__tests__/qbo-host.test.ts`
-- edited: `qbo-customer-sync`, `qbo-invoice-create`, `qbo-invoice-send`, `qbo-sync-payment`, `qbo-webhook-handler`, `qbo-oauth-connect`
-
-## Files touched (Slice B)
-
-- none — verification only (tests + read-only SQL)  
-  
-**Per-connection (DB flag)**
-  That is the only architecture that scales correctly for Pitch-1.
-  Your uploaded implementation plan already identified the exact issue correctly:
-  - `qbo_connections.is_sandbox` already exists
-  - multiple functions still hardcode production URLs
-  - `_shared/qbo-auth.ts` still incorrectly depends on global `QBO_ENVIRONMENT`
-  - webhook handler currently cannot distinguish tenant environments properly
-  The fix plan they proposed is the right one.
-  You should NOT use:
-  # **Global env flag only**
-  because:
-  - you will eventually have mixed tenants
-  - QA breaks when production goes live
-  - production testing becomes dangerous
-  - webhook routing becomes ambiguous
-  - you cannot safely regression-test accounting flows
-  The architecture should be:
-  ```
-
-  ```
-  ```
-  qbo_connections.is_sandbox
-  ```
-  controls:
-  -   
-  API host  
-
-  -   
-  webhook verification routing  
-
-  -   
-  invoice creation host  
-
-  -   
-  payment sync host  
-
-  -   
-  customer sync host  
-
-  -   
-  company info lookup host  
-
-  while:
-  ```
-
-  ```
-  ```
-  QBO_ENVIRONMENT
-  ```
-  ONLY controls:
-  -   
-  which OAuth app credentials are used during NEW connection authorization  
-
-  -   
-  default environment for newly connected tenants  
-
-  That separation is critical.
-  The important part from the Lovable plan that absolutely must stay:
-  ```
-
-  ```
-  ```
-  const baseUrl = connection.is_sandbox
-    ? "https://sandbox-quickbooks.api.intuit.com"
-    : "https://quickbooks.api.intuit.com";
-  ```
-  inside a shared helper:
-  ```
-
-  ```
-  ```
-  supabase/functions/_shared/qbo-host.ts
-  ```
-  That centralization prevents future regressions when you add:
-  -   
-  estimates  
-
-  -   
-  vendor bills  
-
-  -   
-  purchase orders  
-
-  -   
-  payroll  
-
-  -   
-  crew payout sync  
-
-  -   
-  retainage tracking  
-
-  -   
-  change orders  
-
-  -   
-  progress invoicing  
-
-  -   
-  AR aging  
-
-  -   
-  deposit reconciliation  
-
-  Also important:  
-    
-  the webhook handler MUST resolve the connection by `realm_id` before choosing the host. Lovable caught that correctly. 
-  That matters because Intuit sends the same webhook structure regardless of sandbox/prod.
-  Their acceptance criteria are also correct:
-  -   
-  zero remaining hardcoded production URLs  
-
-  -   
-  unit test proving host switching  
-
-  - `/status` returns both:  
-
-    - `qbo_environment_secret`  
-
-    - `connection_is_sandbox`  
-
-  That gives you proper observability later when tenants claim:
-  > “Invoices stopped syncing.”
-  You’ll immediately know whether:
-  -   
-  OAuth app mismatch  
-
-  -   
-  sandbox/prod mismatch  
-
-  -   
-  realm mismatch  
-
-  -   
-  stale token  
-
-  -   
-  webhook routing failure  
-
-  This is the correct production-grade direction for Pitch-1.
+- All five Slice 1 tests pass under Deno.
+- Fixture file committed at the exact path above and consumed by the test.
+- `start-ai-measurement` deployed.
+- A fresh Fonsica row is queried and every contract field is reported (pass or fail) in a single status table.
+- "Fixed" is only claimed if every Slice-1 assertion passes AND the live row satisfies the Slice-4 first branch. Otherwise Slice 5 is queued.
