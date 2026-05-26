@@ -6461,6 +6461,7 @@ async function processJob(input: any) {
             dsm_tile_bounds_lat_lng: _dsmBoundsLL,
             dsm_size_px: _dsmSizePx,
             dsm_meters_per_pixel: _dsmReg.dsm_meters_per_pixel,
+            dsm_failure_reasons: _dsmReg.failure_tokens,
           },
           candidate: {
             selected_candidate_polygon_px: _candidatePolygonPx,
