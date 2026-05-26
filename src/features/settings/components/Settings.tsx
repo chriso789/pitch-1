@@ -152,6 +152,42 @@ const TAB_TO_CATEGORY: Record<string, string> = {
 // Product-related tab keys that get merged into one sidebar entry
 const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements", "inventory"];
 
+const CompanyReferralsSection = () => {
+  const effectiveTenantId = useEffectiveTenantId();
+  if (!effectiveTenantId) {
+    return <div className="p-6 text-muted-foreground">Select a company to manage referrals.</div>;
+  }
+  return (
+    <div className="space-y-4">
+      <header className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Company Referrals</h2>
+          <p className="text-muted-foreground">Manage the contractor-to-CRM referral program.</p>
+        </div>
+        <CreateCompanyReferralPartnerDialog tenantId={effectiveTenantId} />
+      </header>
+      <Tabs defaultValue="settings">
+        <TabsList className="flex flex-wrap">
+          <TabsTrigger value="settings">Program Settings</TabsTrigger>
+          <TabsTrigger value="partners">Partners</TabsTrigger>
+          <TabsTrigger value="signups">Company Signups</TabsTrigger>
+          <TabsTrigger value="payouts">Payouts</TabsTrigger>
+          <TabsTrigger value="credits">Account Credits</TabsTrigger>
+          <TabsTrigger value="flags">Flags / Review</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+        </TabsList>
+        <TabsContent value="settings"><CompanyReferralSettingsPanel tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="partners"><CompanyReferralPartnersTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="signups"><CompanyReferralSignupsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="payouts"><CompanyReferralPayoutsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="credits"><CompanyReferralCreditsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="flags"><CompanyReferralFlagsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="analytics"><CompanyReferralAnalytics tenantId={effectiveTenantId} /></TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
 export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
