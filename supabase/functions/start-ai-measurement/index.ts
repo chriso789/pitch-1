@@ -155,6 +155,10 @@ import {
   ZERO_GEOMETRY_GUARD_REASON,
 } from "../_shared/pre-topology-debug-bag.ts";
 import {
+  isFonsicaShapedAerialInput,
+  resolveRegistrationForPreempt,
+} from "../_shared/aerial-graph-preempt-resolver.ts";
+import {
   evaluateAerialPrimacy,
   type AerialPrimacyEvaluation,
 } from "../_shared/aerial-primary-gate.ts";
