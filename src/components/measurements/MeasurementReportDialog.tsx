@@ -517,6 +517,77 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
           "—",
       ),
     },
+    // ── NEW: DSM registration diagnostic projection (read-only pass-through) ──
+    {
+      label: "DSM Size",
+      value: JSON.stringify(registrationGate.dsm?.dsm_size_px ?? null),
+    },
+    {
+      label: "DSM Bounds Source",
+      value: String(
+        registrationGate.dsm?.dsm_tile_bounds_source ??
+          registrationGate.dsm?.dsm_bounds_source ?? "—",
+      ),
+    },
+    {
+      label: "DSM Bounds Failure",
+      value: String(registrationGate.dsm?.dsm_tile_bounds_failure_reason ?? "—"),
+    },
+    {
+      label: "DSM Bounds Derived",
+      value: String(registrationGate.dsm?.dsm_bounds_derived ?? "—") +
+        (registrationGate.dsm?.dsm_bounds_warning
+          ? ` (${registrationGate.dsm.dsm_bounds_warning})`
+          : ""),
+    },
+    {
+      label: "DSM Bounds Confidence",
+      value: String(registrationGate.dsm?.dsm_bounds_confidence ?? "—"),
+    },
+    {
+      label: "DSM Meters/Pixel",
+      value: String(registrationGate.dsm?.dsm_meters_per_pixel ?? "—") +
+        (registrationGate.dsm?.dsm_mpp_source
+          ? ` (${registrationGate.dsm.dsm_mpp_source})`
+          : ""),
+    },
+    {
+      label: "geo_to_dsm_transform_source",
+      value: String(registrationGate.dsm?.geo_to_dsm_transform_source ?? "—"),
+    },
+    {
+      label: "dsm_to_raster_transform_source",
+      value: String(registrationGate.dsm?.dsm_to_raster_transform_source ?? "—"),
+    },
+    {
+      label: "confirmed_roof_center_dsm_px_source",
+      value: String(
+        registrationGate.dsm?.confirmed_roof_center_dsm_px_source ?? "—",
+      ),
+    },
+    {
+      label: "DSM Transform Policy",
+      value: String(registrationGate.dsm?.dsm_transform_policy_version ?? "—"),
+    },
+    {
+      label: "DSM Hoist Failure Tokens",
+      value: Array.isArray(registrationGate.dsm?.dsm_hoist_failure_tokens) &&
+          registrationGate.dsm.dsm_hoist_failure_tokens.length > 0
+        ? registrationGate.dsm.dsm_hoist_failure_tokens.join(", ")
+        : "—",
+    },
+    {
+      label: "Stage Hard Fail",
+      value: String(
+        registrationGate.stage_classifier?.stage_hard_fail_reason ?? "—",
+      ),
+    },
+    {
+      label: "Stage Failure Stage",
+      value: String(
+        registrationGate.stage_classifier?.stage_failure_stage ?? "—",
+      ),
+    },
     { label: "Centroid Offset (px)", value: fmt(grj.centroid_offset_px) },
     { label: "Roof Overlap Score", value: fmt(grj.roof_image_overlap_score) },
     { label: "DSM Loaded", value: String(grj.dsm_loaded ?? "—") },
