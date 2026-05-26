@@ -135,8 +135,7 @@ export default function QuickBooksSettings() {
 
       if (error) throw error;
 
-      setLastAuthUrl(data.authUrl);
-      console.log('[QBO] Auth URL:', data.authUrl);
+
 
 
       const mappingsMap: Record<string, JobTypeMapping> = {};
