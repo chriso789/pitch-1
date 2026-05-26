@@ -13,7 +13,7 @@
 //   POST /provider-costs/update   master                     → edit pricing row
 //   POST /seed-test-event         master                     → developer test buttons
 
-import { createRouter, jsonOk, jsonErr, requireAuth, serviceClient, type RouterEnv } from "../_shared/router.ts";
+import { createRouter, jsonOk, jsonErr, requireAuth, serviceClient, serveRouter, type RouterEnv } from "../_shared/router.ts";
 import { requireInternalSecret } from "../_shared/auth.ts";
 import type { Context, Next } from "jsr:@hono/hono";
 
