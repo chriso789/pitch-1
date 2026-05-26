@@ -22,12 +22,15 @@ export type Pt = [number, number];
 export type CoordinateSpace = 'raster_px' | 'dsm_px' | 'unknown';
 
 export type RasterSizeSource =
+  | 'transform_package'
   | 'overlay_debug'
   | 'geometry_report_json'
-  | 'analysis_image_size'
+  | 'dsm_split_status'
   | 'parsed_from_url'
   | 'image_natural'
+  | 'analysis_image_size'
   | 'unresolved';
+
 
 export interface ResolvedRasterSize {
   width: number | null;
