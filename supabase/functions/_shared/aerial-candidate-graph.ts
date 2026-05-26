@@ -407,13 +407,35 @@ export function buildAerialCandidateGraph(
     reason,
   });
 
+  // Fonsica-shaped impossibility assertion: if the caller already supplied a
+  // geo→raster transform AND raster bounds AND a perimeter ring AND at least
+  // one typed perimeter edge array, then `raster_transform_unavailable` is
+  // unreachable. The only legal skip reason past this point is
+  // `edge_construction_failed`. Surfacing the violation as a console warn
+  // (not throw) keeps the function pure and side-effect-free for callers,
+  // while still flagging programmer error in production logs.
+  const _eaves = Array.isArray(args.perimeterTopology?.eave_edges)
+    ? args.perimeterTopology.eave_edges
+    : [];
+  const _perimEdges = Array.isArray(args.perimeterTopology?.perimeter_edges)
+    ? args.perimeterTopology.perimeter_edges
+    : [];
+  const _fonsicaShaped = !!reg.geoToRasterTransform &&
+    !!reg.rasterBoundsLatLng && !!ringPx &&
+    (_eaves.length > 0 || _perimEdges.length > 0);
   if (!reg.registered) {
+    if (_fonsicaShaped) {
+      console.warn(
+        "[AERIAL_GRAPH_FONSICA_IMPOSSIBILITY] raster_transform_unavailable returned despite Fonsica-shaped input — registration resolver disagrees with raw args",
+      );
+    }
     return {
       ...base,
       skipped_reason: "raster_transform_unavailable",
       skip_debug: buildSkipDebug("raster_transform_unavailable"),
     };
   }
+
   if (!ringPx && !ringGeo) {
     return {
       ...base,
