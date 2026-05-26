@@ -6348,6 +6348,7 @@ async function processJob(input: any) {
         // starved the aerial candidate graph builder of registration data and
         // produced `skipped_reason: "raster_transform_unavailable"` even when
         // the transform package already had the values.
+        hoistedTransformPackage = _transformPkg ?? hoistedTransformPackage;
         hoistedRasterBoundsLatLng =
           (_transformPkg as any)?.raster_bounds_lat_lng ??
             hoistedRasterBoundsLatLng;
@@ -6357,6 +6358,7 @@ async function processJob(input: any) {
         hoistedConfirmedRoofCenterPx =
           (_transformPkg as any)?.confirmed_roof_center_px ??
             hoistedConfirmedRoofCenterPx;
+
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
