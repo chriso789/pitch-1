@@ -6,6 +6,8 @@
 import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
+import { ensureDsmDiagnosticsOnRegistration as _ensureDsmDiagnosticsOnRegistration } from "../_shared/dsm-diagnostic-propagation.ts";
+
 import {
   detectHipRoof,
   synthesizeHipPlanesFromFootprint,
@@ -1200,7 +1202,8 @@ function ensureRegistrationProofBeforeWrite(
       JSON.stringify({ called: existing.transform_builder_called }),
     );
     next.geometry_report_json = geometry;
-    return next;
+    return ensureDsmDiagnosticsOnRegistration(next);
+
   }
   const fallback = mergeRegistrationProof(existing, null, {
     transform_builder_called: false,
@@ -1240,7 +1243,8 @@ function ensureRegistrationProofBeforeWrite(
     (next as any).report_blocked = true;
     (next as any).needs_review = true;
     next.geometry_report_json = geometry;
-    return next;
+    return ensureDsmDiagnosticsOnRegistration(next);
+
   }
   (geometry as any).registration = fallback;
   (geometry as any).registration_gate = fallback;
@@ -1258,8 +1262,31 @@ function ensureRegistrationProofBeforeWrite(
     "transform_builder_not_called_before_write";
   (next as any).customer_report_ready = false;
   next.geometry_report_json = geometry;
-  return next;
+  return ensureDsmDiagnosticsOnRegistration(next);
+
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DSM diagnostic propagation (read-side only; does not derive bounds)
+// ----------------------------------------------------------------------------
+// Helper lives in _shared so it is unit-testable without pulling the full
+// edge-function bundle (which transitively imports geotiff). The wrapper
+// below injects applyLiveRuntimeHoistToRegistration which lives in this file.
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+export function ensureDsmDiagnosticsOnRegistration(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return _ensureDsmDiagnosticsOnRegistration(payload, {
+    hoist: (reg, geometry) =>
+      applyLiveRuntimeHoistToRegistration(reg, geometry),
+  });
+}
+
+
+
+
 
 function getPhase3DbColumns(): Record<string, unknown> {
   return {

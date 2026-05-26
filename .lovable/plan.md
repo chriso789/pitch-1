@@ -1,197 +1,48 @@
-# QBO Full Split: Per-Connection Environment Routing
+## Scope
 
-Architect QBO integration so each `qbo_connections` row carries its own environment, and every API call (OAuth token exchange, refresh, revoke, accounting REST, webhook verification) selects credentials + host + verifier from that connection — not from a single global env var.
+Read-side diagnostic propagation only. This will **not** make any report customer-ready. It only guarantees that the new DSM diagnostic fields that already exist in code actually land on the live `roof_measurements` / `ai_measurement_jobs` row's `geometry_report_json.registration`, so the UI stops rendering blanks where the runtime "knows" the answer.
 
-## 1. Secrets (add via `add_secret`)
+This prompt does not:
+- derive DSM bounds
+- attempt any heuristic registration
+- change topology, pitch, facets, result_state, or customer-ready gating
 
-New:
+## Problem
 
-- `QBO_CLIENT_ID_DEVELOPMENT`
-- `QBO_CLIENT_SECRET_DEVELOPMENT`
-- `QBO_WEBHOOK_VERIFIER_DEVELOPMENT`
-- `QBO_CLIENT_ID_PRODUCTION`
-- `QBO_CLIENT_SECRET_PRODUCTION`
-- `QBO_WEBHOOK_VERIFIER_PRODUCTION`
-- `QBO_REDIRECT_URI_DEVELOPMENT` (optional; falls back to `QBO_REDIRECT_URI`)
-- `QBO_REDIRECT_URI_PRODUCTION` (optional; falls back to `QBO_REDIRECT_URI`)
-- `QBO_DEFAULT_ENVIRONMENT` (`development` | `production`) — used only when creating a NEW connection where the OAuth initiator did not specify an env
+`applyLiveRuntimeHoistToRegistration` already merges the new diagnostic fields (`dsm_tile_bounds_source`, `dsm_tile_bounds_failure_reason`, `dsm_bounds_derived`, `dsm_bounds_warning`, `dsm_bounds_confidence`, `dsm_meters_per_pixel`, `dsm_mpp_source`, `dsm_hoist_failure_tokens`, `dsm_hoist_called/callsite/version`, `dsm_stage_pending=false`). `buildDsmRegistration` already produces them. `dsm_split_status` is already lifted at line 15511.
 
-Legacy kept as fallback (for backwards compat only): `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`, `QBO_WEBHOOK_VERIFIER_TOKEN`, `QBO_ENVIRONMENT`, `QBO_REDIRECT_URI`.
+But the latest live row still shows the legacy shape (`dsm_tile_bounds_lat_lng=null` with no `dsm_tile_bounds_source` or `dsm_hoist_failure_tokens` next to it). That means at least one terminal write path is reaching `update(roof_measurements)` without the hoist running, or with a stale registration object that pre-existed the hoist.
 
-## 2. Schema migration
+## Fix
 
-Add to `public.qbo_connections`:
+1. Add a single canonical pre-write step `ensureDsmDiagnosticsOnRegistration(payload)` that:
+   - Runs `applyLiveRuntimeHoistToRegistration` against `geometry_report_json` + current `registration` block.
+   - Always writes the diagnostic fields above (even when they resolve to `null`/`"google_solar_tile_bounds_missing"`), so the row never looks "field-absent" — it looks "field-present-and-null-with-reason".
+   - Stamps `dsm_diagnostic_propagation_version` + `dsm_diagnostic_propagation_at` so we can grep for legacy rows vs. propagated rows.
+   - Is fully idempotent (won't overwrite real values once present).
 
-- `oauth_app_env text` — `'development' | 'production'`, canonical environment marker for this connection
-- backfill: `oauth_app_env = case when is_sandbox then 'development' else 'production' end`
-- add CHECK constraint on the two values
-- keep `is_sandbox` as a generated/synced column for backwards compatibility (or keep both and keep them in sync at write time)
-- `NOTIFY pgrst, 'reload schema';`
+2. Call `ensureDsmDiagnosticsOnRegistration` from `ensureRegistrationProofBeforeWrite` (which already wraps every persistence write), immediately before returning `next`. This guarantees the diagnostic block is on every write path including:
+   - the success path at ~L12566 / L13013 / L13393
+   - the failure path at ~L15626 (currently the most common path — DSM bounds missing)
+   - the prepareRoofMeasurementPayload merge at ~L1734 / L1810 / L1822
 
-No new columns for tokens, no encryption change in this pass.
+3. Persist `dsm_split_status` alongside the registration block (mirror it onto `registration.dsm_split_status` in addition to the existing `debug.dsm_split_status`) so the report UI doesn't have to chase two locations.
 
-## 3. New shared helper: `supabase/functions/_shared/qbo-context.ts`
+4. Add `dsm_diagnostic_propagation_summary` to `registration` summarizing why bounds are null (e.g. `"google_solar_tile_bounds_missing"`, `"dsm_loaded_without_tiepoints"`, `"derived_bounds_disabled"`). Pure read-only summary string; no logic depends on it.
 
-Exports:
+## Verification
 
-```ts
-type QboMode = "development" | "production";
+1. Extend existing Deno test `dsm-diagnostic-propagation.test.ts` with:
+   - failing-DSM scenario (no tile bounds): assert the persisted payload has `registration.dsm_tile_bounds_lat_lng === null` **and** `registration.dsm_tile_bounds_source === "missing"` **and** `registration.dsm_hoist_failure_tokens` array present **and** `registration.dsm_split_status` mirrored **and** `registration.dsm_diagnostic_propagation_version` set.
+   - already-valid DSM scenario: assert the helper is idempotent (no field mutated).
+   - legacy-input scenario (registration object missing every new field): assert post-helper all new fields exist.
 
-type QboContext = {
-  mode: QboMode;
-  accountingBaseUrl: string;
-  clientId: string;
-  clientSecret: string;
-  redirectUri: string;
-  webhookVerifier: string;
-};
+2. Hit `start-ai-measurement` end-to-end via `supabase--curl_edge_functions` against the same address from the failing report, then `supabase--read_query` the resulting row's `geometry_report_json.registration` and confirm the new fields are present.
 
-function getQboContextForMode(mode: QboMode): QboContext
-function getQboContextForConnection(conn: { oauth_app_env?: string|null; is_sandbox?: boolean|null }): QboContext
-function getDefaultQboContext(): QboContext  // for NEW OAuth initiations
-function resolveModeFromInitiateRequest(body, defaultMode): QboMode
-```
+## Expected outcome on the live report after this prompt
 
-Resolution rule:
-
-1. Prefer `conn.oauth_app_env`
-2. Else `conn.is_sandbox === true ? 'development' : 'production'`
-3. For each mode, read `QBO_*_DEVELOPMENT` / `QBO_*_PRODUCTION`. If missing for that mode, fall back to legacy single-pair env vars and log a `qbo_context_legacy_fallback` warning (does not throw, so existing single-env tenants keep working during cutover).
-
-`qboHost`/`qboHostFromRealm` in `_shared/qbo-host.ts` keep working but become thin wrappers that delegate to `getQboContextForConnection(...).accountingBaseUrl`.
-
-## 4. `qbo-oauth-connect/index.ts` changes
-
-- `verify` action: also return `qbo_default_environment`, `has_development_credentials`, `has_production_credentials`, `connection_oauth_app_env`, `qbo_context_mode`.
-- `initiate` action: accept optional `mode` ("development"|"production") in body. Validate against creds available. Compute `QboContext` via `getQboContextForMode(mode)`. Use that context's `clientId` + `redirectUri` to build the authorize URL. Persist the chosen mode into the `state` value (signed/opaque) OR into a short-lived `qbo_oauth_state` row keyed on `state`.
-- `callback` action: recover mode from `state` (or default), exchange code with the matching `clientId`/`clientSecret`/`redirectUri`. Fetch CompanyInfo via the matching host. Persist row via `adminClient` with `oauth_app_env` AND `is_sandbox` set together.
-- `refresh` action: load connection, resolve `getQboContextForConnection(conn)`, refresh against THAT context's clientId/secret. Write tokens via `adminClient`. Never use a global single secret.
-- `disconnect` action: load connection, attempt provider revoke against its own context, then `adminClient.update is_active=false, disconnected_at=now()`.
-- Keep the existing pattern: user-scoped client for auth + role gate; `adminClient` (service role) is created AFTER the gate and used ONLY for `qbo_connections` writes.
-
-## 5. `qbo-webhook-handler/index.ts` changes
-
-- Stop reading a single global `QBO_WEBHOOK_VERIFIER`.
-- Order of operations per request:
-  1. Read raw body + `intuit-signature`.
-  2. Try-verify against BOTH the development verifier AND the production verifier. The first match wins and is recorded as the request's `webhook_mode`. Reject 401 if neither matches.
-  3. Parse payload. For each `notification`, look up `qbo_connections` by `realm_id` + `is_active=true`. Resolve `getQboContextForConnection(conn)`. Confirm `conn.oauth_app_env === webhook_mode` (if mismatch, log `qbo_webhook_realm_mode_mismatch` and skip that notification).
-  4. Process events using the connection-specific host + access token (already loaded). Refresh-on-demand uses connection-specific context.
-
-## 6. Downstream functions to thread through
-
-For each, replace any direct read of `QBO_CLIENT_ID`/`QBO_CLIENT_SECRET`/`apiBase` with `getQboContextForConnection(conn)`, and ensure all accounting REST calls and token refreshes use that context:
-
-- `qbo-api`
-- `qbo-customer-sync`
-- `qbo-invoice-create`
-- `qbo-invoice-send`
-- `qbo-sync-payment`
-- `qbo-fetch-items`
-- `qbo-check-projects-api`
-- `qbo-worker`
-- `_shared/qbo-auth.ts` — `getQboEnv()` is deprecated in favor of `getQboContextForConnection(conn)`. `refreshAccessToken`, `exchangeAuthorizationCode`, `persistTokens`, `revokeConnection`, `fetchCompanyInfo` all accept an explicit `QboContext` arg.
-
-Verification: `rg "quickbooks.api.intuit.com" supabase/functions/` returns hits only inside `_shared/qbo-context.ts` and `_shared/qbo-host.ts`.
-
-## 7. Frontend (`QuickBooksSettings.tsx`, `QuickBooksCallback.tsx`, `QuickBooksInvoiceCard.tsx`)
-
-- Add a `mode` selector on the Connect button: `Production` (default) or `Sandbox (development)`. Send `mode` in the `initiate` POST body. Master-only or settings-admin-only.
-- Show the current connection's `oauth_app_env` + `connection_company_name` + `connection_realm_id` in settings.
-- No business-logic changes; UI only surfaces what backend returns from `verify`.
-
-## 8. Tests (`supabase/functions/.../__tests__/`)
-
-- `qbo-context.test.ts`: development context, production context, fallback-to-legacy, missing-creds error message, `getQboContextForConnection` precedence (`oauth_app_env` over `is_sandbox`).
-- `qbo-oauth-connect.test.ts`: initiate respects `mode`; callback persists `oauth_app_env`+`is_sandbox` consistently; refresh uses connection-specific creds; disconnect uses connection-specific creds; admin-client used only after auth+role gate (mock service-role client and assert call ordering).
-- `qbo-webhook-handler.test.ts`: signature accepted under matching verifier only; realm→mode mismatch is logged and skipped; payment fetch uses connection host.
-
-Run via `supabase--test_edge_functions`.
-
-## 9. Acceptance criteria
-
-- Existing single-env tenants keep working (legacy fallback path logs but does not throw).
-- A sandbox connection and a production connection can co-exist; each refreshes against its own credentials.
-- `qbo-oauth-connect` callback writes succeed (no 42501 RLS errors) and persist `oauth_app_env`.
-- Webhook handler verifies with the correct verifier per request and never cross-routes a sandbox event into a production connection.
-- `rg "quickbooks.api.intuit.com"` in `supabase/functions/` returns hits only in the two shared helpers.
-- No tokens, refresh tokens, client secrets, auth codes, or verifier tokens appear in `console.log` output.
-- `supabase--linter` clean for new migration.
-
-## 10. Out of scope (separate follow-up plans)
-
-- pgsodium / field-level token encryption.
-- Webhook journal `oauth_app_env` column + indexes.
-- Replacing `qbo-webhook` (legacy) with `qbo-webhook-handler` and removing the old folder.
-- Provider redirect-URI registration in Intuit Developer portal (manual user step, documented in chat after merge).
-- Production smoke-test runbook (separate doc).
-
-## Technical details
-
-- Mode persistence across the OAuth redirect uses a short-lived `qbo_oauth_state` row `{ state uuid pk, tenant_id, requested_mode, created_at }` with a `created_at < now() - 10min` cleanup on read. This avoids encoding trust into the `state` query param.
-- Legacy fallback rule (so this is safe to ship before the user adds the split secrets): if `QBO_*_DEVELOPMENT` is unset, dev-mode context returns `QBO_CLIENT_ID`/`QBO_CLIENT_SECRET` + sandbox host. Same for production. A `console.warn("qbo_context_legacy_fallback", { mode })` is emitted on every fallback so we can spot non-split deployments in logs.
-- `is_sandbox` stays as a plain column (not generated) and is written together with `oauth_app_env` on every write. A DB trigger keeps them in sync if one is written without the other.  
-  
-The Lovable plan is strong. I would approve it, with **two changes before build**.
-  First, **do not make Production the frontend default yet**. The plan says QuickBooksSettings should show “Production default.” That is dangerous while you are still validating. Default should come from backend `QBO_DEFAULT_ENVIRONMENT`, and for now that should be `development` until you intentionally cut over.
-  Second, **do not let normal tenant admins freely pick sandbox/production** unless you explicitly want that. This should be **master-only** or internal admin-only until production is stable.
-  Everything else is the right direction.
-  ### What this plan gets right
-  It fully fixes the problem instead of patching around it:
-  - Each `qbo_connections` row gets its own permanent environment marker: `oauth_app_env`.
-  - `is_sandbox` stays for backwards compatibility.
-  - OAuth, refresh, revoke, accounting API calls, and webhooks all resolve from the connection environment.
-  - Legacy single-env secrets remain as fallback so you do not break the existing connection during rollout.
-  - `qbo-oauth-connect` keeps user auth/role checks on the user-scoped client, then uses the service-role admin client only for `qbo_connections` writes. That directly solves the RLS failure you hit.
-  - Webhook verification checks both dev and prod verifiers first, then cross-checks the event realm against the matching connection environment. That is the right safe model.
-  ### Required edits to the Lovable plan
-  Add this correction:
-  ```
-
-  ```
-  ```
-  Correction 1 — frontend default:
-  Do not hardcode Production as the default Connect mode yet.
-  QuickBooksSettings.tsx must default the mode selector from backend qbo_default_environment.
-  Until production smoke testing is complete, set QBO_DEFAULT_ENVIRONMENT=development.
-  Production mode may be shown only to master/settings-admin users.
-  ```
-  Add this guardrail:
-  ```
-
-  ```
-  ```
-  Correction 2 — production access control:
-  Only master users can initiate a production QBO connection unless an explicit company-level feature flag allows it.
-  Tenant admins may reconnect their existing mode, but they should not be able to flip sandbox → production unless allowed by backend authorization.
-  Backend must enforce this. Frontend hiding is not enough.
-  ```
-  I would also add one more acceptance criterion:
-  ```
-
-  ```
-  ```
-  Acceptance addition:
-  If a production QBO connection is attempted without production credentials present, the backend returns:
-  {
-    success: false,
-    error: "qbo_production_credentials_missing"
-  }
-  and does not generate an Intuit authorize URL.
-  ```
-  ### Final decision
-  Approve the plan with those changes.
-  This is the right implementation path:
-  ```
-
-  ```
-  ```
-  Full split credentials
-  + qbo_connections.oauth_app_env
-  + is_sandbox compatibility
-  + service-role writes after auth
-  + per-connection QBO context
-  + webhook verifier split
-  + frontend mode selector gated by role
-  ```
-  Do not downgrade this to helper-only. The uploaded plan correctly covers the pieces that would otherwise break later: token refresh, webhook verification, RLS writes, and mixed sandbox/prod tenants.
+- `dsm_tile_bounds_lat_lng` remains `null` (unchanged — bounds genuinely do not exist).
+- `dsm_tile_bounds_source = "missing"`, `dsm_tile_bounds_failure_reason = "google_solar_tile_bounds_missing"`, `dsm_hoist_failure_tokens = [...]`, `dsm_bounds_confidence = 0`, `dsm_split_status` mirrored — all newly visible.
+- `result_state`, `customer_report_ready`, `failure_stage`, perimeter graph, candidate count, aerial scaffold — **unchanged**.
+- No new topology phases execute.
+- After this lands, the next real unlock is the separate Option B prompt (derived DSM bounds fallback).
