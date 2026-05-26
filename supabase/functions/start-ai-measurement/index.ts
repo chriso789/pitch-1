@@ -1441,12 +1441,17 @@ function applyLiveRuntimeHoistToRegistration(
         dsmCoordinateMatchDebug,
         confirmedCenterLatLng: confirmedLL,
         rasterMetersPerPixel: rasterMpp,
+        allow_derived_bounds: false,
       });
       reg.dsm_size_px = reg.dsm_size_px ?? dsmReg.dsm_size_px;
       reg.dsm_size_source = reg.dsm_size_source ?? dsmReg.dsm_size_source;
       reg.dsm_tile_bounds_lat_lng = reg.dsm_tile_bounds_lat_lng ??
         dsmReg.dsm_tile_bounds_lat_lng;
       reg.dsm_bounds_source = reg.dsm_bounds_source ?? dsmReg.dsm_bounds_source;
+      reg.dsm_tile_bounds_source = reg.dsm_tile_bounds_source ??
+        dsmReg.dsm_tile_bounds_source;
+      reg.dsm_tile_bounds_failure_reason = reg.dsm_tile_bounds_failure_reason ??
+        dsmReg.dsm_tile_bounds_failure_reason;
       reg.dsm_bounds_derived = reg.dsm_bounds_derived ??
         dsmReg.dsm_bounds_derived;
       reg.dsm_bounds_warning = reg.dsm_bounds_warning ??
