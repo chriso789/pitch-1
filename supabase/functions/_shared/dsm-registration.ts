@@ -76,11 +76,16 @@ export interface DsmRegistrationResult {
 
   dsm_tile_bounds_lat_lng: Bounds | null;
   dsm_bounds_source: DsmBoundsSource;
+  /** Same value as `dsm_bounds_source`; exposed under the dsm-registration-transform-v1 name. */
+  dsm_tile_bounds_source: DsmTileBoundsSource;
   dsm_bounds_derived: boolean;
   dsm_bounds_warning: string | null;
   dsm_bounds_confidence: number; // 0..1
   dsm_meters_per_pixel: number | null;
   dsm_mpp_source: "decoded_dsm_grid" | "derived_from_static_raster" | "missing";
+
+  /** Reason surfaced from the GeoTIFF decoder when bounds were unavailable. */
+  dsm_tile_bounds_failure_reason: string | null;
 
   /** Specific failure tokens for the classifier (priority-ordered upstream). */
   failure_tokens: string[];
