@@ -13682,20 +13682,47 @@ function shouldPreemptForCpuBudget(
   elapsed_ms: number;
   remaining_ms: number;
   reason: string | null;
+  effective_preempt_ms: number;
+  safety_margin_ms: number;
+  policy_version: string;
 } {
   const elapsedMs = runtimeElapsedMs(input);
   const remainingMs = AI_MEASUREMENT_CPU_BUDGET_MS - elapsedMs;
-  // Effective wall-clock budget reserves the tail for the terminal debug
-  // write. Once elapsed crosses this threshold we preempt regardless of
-  // whether `estimatedWorkUnits` is known (0/unavailable still triggers).
-  const effectiveBudgetMs = AI_MEASUREMENT_CPU_BUDGET_MS -
+  // v2: early-reserve safety margin pulls the preempt point further from the
+  // hard budget so terminal persistence always has headroom.
+  const effectivePreemptMs = AI_MEASUREMENT_CPU_BUDGET_MS -
+    AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS -
+    AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS;
+  // Deeper backstop kept for diagnostics.
+  const wallClockReserveMs = AI_MEASUREMENT_CPU_BUDGET_MS -
     AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS;
-  if (elapsedMs >= effectiveBudgetMs) {
+  const base = {
+    elapsed_ms: elapsedMs,
+    remaining_ms: remainingMs,
+    effective_preempt_ms: effectivePreemptMs,
+    safety_margin_ms: AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS,
+    policy_version: CPU_PREEMPT_POLICY_VERSION,
+  };
+  if (elapsedMs >= effectivePreemptMs) {
     return {
+      ...base,
       preempt: true,
-      elapsed_ms: elapsedMs,
-      remaining_ms: remainingMs,
-      reason: "wall_clock_reserve_threshold",
+      reason: elapsedMs >= wallClockReserveMs
+        ? "wall_clock_reserve_threshold"
+        : "early_reserve_safety_margin",
+    };
+  }
+  // Hard remaining-budget guard: if remaining < (reserve + margin) preempt
+  // regardless. Redundant with elapsed check above but explicit per policy.
+  if (
+    remainingMs <
+      (AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS +
+        AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS)
+  ) {
+    return {
+      ...base,
+      preempt: true,
+      reason: "early_reserve_safety_margin",
     };
   }
   if (
@@ -13703,16 +13730,14 @@ function shouldPreemptForCpuBudget(
     estimatedWorkUnits > AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT
   ) {
     return {
+      ...base,
       preempt: true,
-      elapsed_ms: elapsedMs,
-      remaining_ms: remainingMs,
       reason: "estimated_topology_workload_exceeds_cpu_budget",
     };
   }
   return {
+    ...base,
     preempt: false,
-    elapsed_ms: elapsedMs,
-    remaining_ms: remainingMs,
     reason: null,
   };
 }
