@@ -18,6 +18,7 @@ interface TokenResponse {
   refresh_token: string;
   expires_in: number;
   x_refresh_token_expires_in: number;
+  scope?: string;
 }
 
 const FRONTEND_CALLBACK_URL = Deno.env.get('QBO_FRONTEND_CALLBACK_URL') ?? 'https://pitch-crm.ai/quickbooks/callback';
@@ -199,7 +200,9 @@ Deno.serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt.toISOString(),
-          scopes: 'com.intuit.quickbooks.accounting openid email profile',
+          scopes: tokens.scope
+            ? tokens.scope.split(/\s+/).filter(Boolean)
+            : ['com.intuit.quickbooks.accounting', 'openid', 'email', 'profile'],
           connected_by: user.id,
           is_active: true,
           is_sandbox: isSandbox,
