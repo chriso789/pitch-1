@@ -74,6 +74,15 @@ import { ProductionChecklistSettings } from "@/components/settings/ProductionChe
 import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
 import { MyMoneyContent } from "@/pages/MyMoney";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { CompanyReferralSettingsPanel } from "@/components/company-referrals/settings/CompanyReferralSettingsPanel";
+import { CompanyReferralPartnersTable } from "@/components/company-referrals/settings/CompanyReferralPartnersTable";
+import { CreateCompanyReferralPartnerDialog } from "@/components/company-referrals/settings/CreateCompanyReferralPartnerDialog";
+import { CompanyReferralSignupsTable } from "@/components/company-referrals/settings/CompanyReferralSignupsTable";
+import { CompanyReferralPayoutsTable } from "@/components/company-referrals/settings/CompanyReferralPayoutsTable";
+import { CompanyReferralCreditsTable } from "@/components/company-referrals/settings/CompanyReferralCreditsTable";
+import { CompanyReferralFlagsTable } from "@/components/company-referrals/settings/CompanyReferralFlagsTable";
+import { CompanyReferralAnalytics } from "@/components/company-referrals/settings/CompanyReferralAnalytics";
 
 interface SettingsTab {
   id: string;
