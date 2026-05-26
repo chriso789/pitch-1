@@ -18,17 +18,19 @@ import {
 // Mirror the constants in start-ai-measurement/index.ts.
 const CPU_BUDGET_MS = 75_000;
 const TERMINAL_RESERVE_MS = 15_000;
-const EFFECTIVE_THRESHOLD_MS = CPU_BUDGET_MS - TERMINAL_RESERVE_MS; // 60_000
+const SAFETY_MARGIN_MS = 10_000;
+const EFFECTIVE_THRESHOLD_MS = CPU_BUDGET_MS - TERMINAL_RESERVE_MS -
+  SAFETY_MARGIN_MS; // 50_000 (v2 early-reserve safety margin)
 
 // Local re-implementation of `shouldPreemptForCpuBudget` for test isolation.
-function shouldPreempt(elapsedMs: number, workUnits = 0) {
+function shouldPreempt(elapsedMs: number, _workUnits = 0) {
   const remainingMs = CPU_BUDGET_MS - elapsedMs;
   if (elapsedMs >= EFFECTIVE_THRESHOLD_MS) {
     return {
       preempt: true,
       elapsed_ms: elapsedMs,
       remaining_ms: remainingMs,
-      reason: "wall_clock_reserve_threshold",
+      reason: "early_reserve_safety_margin",
     };
   }
   return {
