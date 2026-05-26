@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { useMapboxToken } from '@/hooks/useMapboxToken';
+import { useMapLoadTracker } from '@/lib/usage/trackClientUsage';
 
 const TerritoryMapPage = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
