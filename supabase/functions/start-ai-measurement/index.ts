@@ -13817,6 +13817,19 @@ async function persistCpuBudgetTerminalFailure(args: {
       REQUIRED_TOPOLOGY_SOURCE,
     },
   });
+  // ── v2 diagnostics: mirror policy + checkpoint fields on the inner debug
+  // payload so both `dp.*` and the outer `terminalDebugPayload` agree.
+  (debugPayload as any).cpu_preempt_policy_version = CPU_PREEMPT_POLICY_VERSION;
+  (debugPayload as any).cpu_preempt_safety_margin_ms =
+    AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS;
+  (debugPayload as any).cpu_effective_preempt_ms =
+    AI_MEASUREMENT_CPU_BUDGET_MS -
+    AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS -
+    AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS;
+  (debugPayload as any).cpu_checkpoint_stage = args.stage;
+  (debugPayload as any).cpu_checkpoint_elapsed_ms = budget.elapsed_ms ?? null;
+  (debugPayload as any).cpu_checkpoint_remaining_ms = budget.remaining_ms ?? null;
+  (debugPayload as any).cpu_preempt_reason = budget.reason ?? null;
   // Force the preserved value onto the payload too, in case the builder
   // didn't surface it from `estimatedWorkUnits`.
   if (typeof preservedWU === "number" && preservedWU > 0) {
