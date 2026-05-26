@@ -18,6 +18,7 @@ interface TokenResponse {
   refresh_token: string;
   expires_in: number;
   x_refresh_token_expires_in: number;
+  scope?: string;
 }
 
 const FRONTEND_CALLBACK_URL = Deno.env.get('QBO_FRONTEND_CALLBACK_URL') ?? 'https://pitch-crm.ai/quickbooks/callback';
