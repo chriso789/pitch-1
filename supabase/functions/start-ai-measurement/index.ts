@@ -6062,6 +6062,8 @@ async function processJob(input: any) {
       let hoistedRasterBoundsLatLng: any = null;
       let hoistedGeoToRasterTransform: any = null;
       let hoistedConfirmedRoofCenterPx: any = null;
+      let hoistedTransformPackage: any = null;
+
 
 
       // ══════════ DSM COORDINATE MATCH GATE ══════════
