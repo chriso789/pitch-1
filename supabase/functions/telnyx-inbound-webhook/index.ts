@@ -236,6 +236,23 @@ Deno.serve(async (req) => {
       is_read: false,
     });
 
+    // Cost tracking — fire-and-forget.
+    try {
+      const { trackUsage } = await import("../_shared/track-usage.ts");
+      trackUsage({
+        tenantId,
+        provider: "telnyx",
+        eventType: "sms_inbound",
+        featureArea: "communications",
+        quantity: 1,
+        unit: "message",
+        edgeFunction: "telnyx-inbound-webhook",
+        status: "success",
+        metadata: { from: fromE164, to: toE164, telnyx_message_id: providerMessageId },
+      });
+    } catch (e) { console.warn('trackUsage skipped:', (e as Error).message); }
+
+
     // If the inbound is a reply to a recent outbound blast for this phone, mark replied.
     // Include 'replied' so multi-turn conversations keep matching the original blast.
     const { data: lastBlastItem } = await supabase
