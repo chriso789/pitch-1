@@ -611,6 +611,19 @@ export function buildAerialCandidateGraph(
     });
   }
 
+  // Edge-construction guarantee: if we had perimeter evidence available
+  // (eave/rake/perimeter_edges arrays OR a ring) but produced zero edges,
+  // mark as skipped rather than reporting an executed but empty graph.
+  if (base.edges.length === 0) {
+    return {
+      ...base,
+      executed: false,
+      skipped_reason: "edge_construction_failed",
+      skip_debug: buildSkipDebug("edge_construction_failed"),
+    };
+  }
+
   base.executed = true;
   return base;
 }
+
