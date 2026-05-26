@@ -234,6 +234,19 @@ export default function QuickBooksSettings() {
       };
 
       window.addEventListener('message', handleMessage);
+    } catch (error: any) {
+      console.error('Error connecting to QuickBooks:', error);
+      const description = await extractFnError(error);
+      toast({
+        title: 'Connection Failed',
+        description,
+        variant: 'destructive',
+      });
+      setConnecting(false);
+    }
+  };
+
+
 
 
 
