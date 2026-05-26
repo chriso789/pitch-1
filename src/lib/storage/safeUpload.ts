@@ -47,9 +47,37 @@ export async function safeStorageUpload(args: {
     );
   }
 
-  return supabase.storage.from(bucket).upload(path, file as Blob, {
+  const result = await supabase.storage.from(bucket).upload(path, file as Blob, {
     contentType,
     upsert,
     cacheControl,
   });
+
+  // Fire-and-forget usage tracking — only on successful upload.
+  if (!result.error) {
+    try {
+      const sizeBytes =
+        file instanceof Blob ? (file as Blob).size :
+        file instanceof ArrayBuffer ? (file as ArrayBuffer).byteLength :
+        (file as Uint8Array).byteLength ?? 0;
+      const sizeMb = sizeBytes / (1024 * 1024);
+      const fileName = path.split('/').pop() ?? '';
+      trackClientUsage({
+        provider: 'supabase',
+        eventType: 'storage_mb',
+        featureArea: 'storage',
+        quantity: Number(sizeMb.toFixed(4)),
+        unit: 'mb',
+        metadata: {
+          bucket,
+          path,
+          file_name: fileName,
+          file_type: contentType ?? (file instanceof Blob ? (file as Blob).type : null),
+          file_size_bytes: sizeBytes,
+        },
+      });
+    } catch { /* swallow */ }
+  }
+
+  return result;
 }
