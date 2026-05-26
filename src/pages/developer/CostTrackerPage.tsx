@@ -107,11 +107,16 @@ export default function CostTrackerPage() {
           <h1 className="text-2xl font-bold">Cost Tracker</h1>
           <p className="text-sm text-muted-foreground">Platform infrastructure spend & per-company profitability — {dashboard?.month}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={recalc}>Recalculate Rollups</Button>
-          <Button variant="outline" size="sm" onClick={() => seedTest("ai_generation")}>Test AI Event</Button>
-          <Button variant="outline" size="sm" onClick={() => seedTest("sms_outbound", "telnyx")}>Test SMS Event</Button>
-          <Button variant="outline" size="sm" onClick={() => seedTest("storage_mb", "supabase", 100)}>Test Upload Event</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("ai_generation", "lovable-ai", 1, { feature_area: "estimate_generation" })}>Test AI</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("sms_outbound", "telnyx")}>Test SMS</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("storage_mb", "supabase", 100, { feature_area: "storage" })}>Test Upload</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("map_load", "mapbox", 1, { feature_area: "canvassing" })}>Test Map Load</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("scrape_credit", "firecrawl", 1, { feature_area: "permits" })}>Test Scrape</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("roof_report", "eagleview", 1, { feature_area: "measurements" })}>Test Roof Report</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("edge_invocation", "supabase", 1, { feature_area: "infrastructure" })}>Test Edge Invocation</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("sms_outbound", "telnyx", 1, { status: "blocked_limit", feature_area: "bulk_sms" })}>Test Blocked Limit</Button>
         </div>
       </div>
 
