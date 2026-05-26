@@ -13617,6 +13617,9 @@ async function persistCpuBudgetTerminalFailure(args: {
         dp.aerial_graph_rebuilt_from_final_payload === true ||
         acg?.aerial_graph_rebuilt_from_final_payload === true,
       work_units_preserved: workUnitsPreserved,
+      // Slice 2: expose the preserved value directly inside the sub-bag so
+      // the live row can be verified the same way the regression fixture is.
+      estimated_work_units: dp.estimated_work_units ?? null,
       skipped_reason: acg?.skipped_reason ?? null,
       impossible_skip: dp.aerial_graph_impossible_skip === true,
       impossible_skip_reason: dp.aerial_graph_impossible_skip_reason ?? null,
