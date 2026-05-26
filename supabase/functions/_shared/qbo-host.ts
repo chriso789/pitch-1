@@ -1,18 +1,29 @@
-// Per-connection QBO API host resolver.
-// Source of truth: qbo_connections.is_sandbox.
-// QBO_ENVIRONMENT env var only controls the default for NEW connections during OAuth.
+// Thin wrapper that delegates to qbo-context.ts (the canonical environment resolver).
+// Kept for backwards compatibility — existing call sites pass a connection row and
+// get the right host whether the row carries oauth_app_env or just legacy is_sandbox.
 
-const PROD_HOST = "https://quickbooks.api.intuit.com";
-const SANDBOX_HOST = "https://sandbox-quickbooks.api.intuit.com";
+import {
+  getQboContextForConnection,
+  QBO_PROD_HOST,
+  QBO_SANDBOX_HOST,
+} from "./qbo-context.ts";
 
-export function qboHost(connection: { is_sandbox?: boolean | null } | null | undefined): string {
-  return connection?.is_sandbox === true ? SANDBOX_HOST : PROD_HOST;
+export function qboHost(
+  connection: { is_sandbox?: boolean | null; oauth_app_env?: string | null } | null | undefined,
+): string {
+  try {
+    return getQboContextForConnection(connection).accountingBaseUrl;
+  } catch {
+    // No creds configured — fall back to pure host selection so callers that only
+    // need the URL (not credentials) still work.
+    return connection?.is_sandbox === true || connection?.oauth_app_env === "development"
+      ? QBO_SANDBOX_HOST
+      : QBO_PROD_HOST;
+  }
 }
 
 /**
  * Resolve host from realm_id (used by webhook handler where only realm is known).
- * Looks up the active qbo_connections row and returns its host.
- * Returns PROD_HOST as a safe default if no row found.
  */
 export async function qboHostFromRealm(
   supabase: { from: (t: string) => any },
@@ -20,18 +31,17 @@ export async function qboHostFromRealm(
 ): Promise<{ host: string; isSandbox: boolean; tenantId: string | null }> {
   const { data } = await supabase
     .from("qbo_connections")
-    .select("is_sandbox, tenant_id")
+    .select("is_sandbox, oauth_app_env, tenant_id")
     .eq("realm_id", realmId)
     .eq("is_active", true)
     .maybeSingle();
 
-  const isSandbox = data?.is_sandbox === true;
+  const host = qboHost(data ?? undefined);
   return {
-    host: isSandbox ? SANDBOX_HOST : PROD_HOST,
-    isSandbox,
+    host,
+    isSandbox: host === QBO_SANDBOX_HOST,
     tenantId: data?.tenant_id ?? null,
   };
 }
 
-export const QBO_PROD_HOST = PROD_HOST;
-export const QBO_SANDBOX_HOST = SANDBOX_HOST;
+export { QBO_PROD_HOST, QBO_SANDBOX_HOST };

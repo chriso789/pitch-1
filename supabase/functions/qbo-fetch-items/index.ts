@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
+import { getQboContextForConnection } from "../_shared/qbo-context.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,14 +54,15 @@ Deno.serve(async (req) => {
     
     if (tokenExpiresAt.getTime() <= now.getTime() + bufferMs) {
       console.log('QuickBooks token expired or expiring soon, refreshing...');
-      
-      // Refresh the token using Intuit's OAuth 2.0 endpoint
+
+      // Refresh using THIS connection's environment-specific credentials.
+      const ctx = getQboContextForConnection(connection);
       const refreshResponse = await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
-          'Authorization': `Basic ${btoa(`${Deno.env.get('QBO_CLIENT_ID')}:${Deno.env.get('QBO_CLIENT_SECRET')}`)}`,
+          'Authorization': `Basic ${btoa(`${ctx.clientId}:${ctx.clientSecret}`)}`,
         },
         body: new URLSearchParams({
           grant_type: 'refresh_token',
@@ -101,7 +104,7 @@ Deno.serve(async (req) => {
 
     // Fetch Service Items from QBO
     const qboResponse = await fetch(
-      `https://${connection.is_sandbox ? 'sandbox-' : ''}quickbooks.api.intuit.com/v3/company/${connection.realm_id}/query?query=SELECT * FROM Item WHERE Type='Service' AND Active=true MAXRESULTS 1000`,
+      `${qboHost(connection)}/v3/company/${connection.realm_id}/query?query=SELECT * FROM Item WHERE Type='Service' AND Active=true MAXRESULTS 1000`,
       {
         headers: {
           'Authorization': `Bearer ${connection.access_token}`,
