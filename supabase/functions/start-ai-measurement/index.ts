@@ -6385,6 +6385,7 @@ async function processJob(input: any) {
           rasterMetersPerPixel: Number.isFinite(Number(actualMpp))
             ? Number(actualMpp)
             : null,
+          allow_derived_bounds: false,
         });
         const _dsmBoundsLL = _dsmReg.dsm_tile_bounds_lat_lng;
         const _dsmSizePx = _dsmReg.dsm_size_px;
