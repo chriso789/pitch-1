@@ -104,14 +104,22 @@ export function resolveSourceRasterSize(
   const grj = measurement?.geometry_report_json || {};
   const overlayDbg = grj.overlay_debug || {};
 
+  // Highest priority: canonical registration transform package raster size.
+  const fromPkg = readSize(
+    grj?.registration?.transform_package?.raster_size_px ??
+      grj?.registration?.raster_size_px ??
+      overlayDbg?.transform_package?.raster_size_px,
+  );
+  if (fromPkg) return { ...fromPkg, source: 'transform_package' };
+
   const fromOverlay = readSize(overlayDbg?.raster_size);
   if (fromOverlay) return { ...fromOverlay, source: 'overlay_debug' };
 
   const fromGrj = readSize(grj?.raster_size);
   if (fromGrj) return { ...fromGrj, source: 'geometry_report_json' };
 
-  const fromAnalysis = readSize(measurement?.analysis_image_size);
-  if (fromAnalysis) return { ...fromAnalysis, source: 'analysis_image_size' };
+  const fromDsmSplit = readSize(grj?.dsm_split_status?.raster_size_px);
+  if (fromDsmSplit) return { ...fromDsmSplit, source: 'dsm_split_status' };
 
   const fromUrl = parseRasterSizeFromUrl(rasterUrl);
   if (fromUrl) return { ...fromUrl, source: 'parsed_from_url' };
@@ -119,8 +127,14 @@ export function resolveSourceRasterSize(
   const fromNatural = readSize(imageNatural);
   if (fromNatural) return { ...fromNatural, source: 'image_natural' };
 
+  // analysis_image_size is intentionally LAST: it's typically the 640x640
+  // logical request size, not the 1280x1280 raster the geometry is in.
+  const fromAnalysis = readSize(measurement?.analysis_image_size);
+  if (fromAnalysis) return { ...fromAnalysis, source: 'analysis_image_size' };
+
   return { width: null, height: null, source: 'unresolved' };
 }
+
 
 const RASTER_FIELDS = new Set([
   'raw_perimeter_px',
