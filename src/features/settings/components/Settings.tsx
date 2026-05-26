@@ -74,6 +74,15 @@ import { ProductionChecklistSettings } from "@/components/settings/ProductionChe
 import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
 import { MyMoneyContent } from "@/pages/MyMoney";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { CompanyReferralSettingsPanel } from "@/components/company-referrals/settings/CompanyReferralSettingsPanel";
+import { CompanyReferralPartnersTable } from "@/components/company-referrals/settings/CompanyReferralPartnersTable";
+import { CreateCompanyReferralPartnerDialog } from "@/components/company-referrals/settings/CreateCompanyReferralPartnerDialog";
+import { CompanyReferralSignupsTable } from "@/components/company-referrals/settings/CompanyReferralSignupsTable";
+import { CompanyReferralPayoutsTable } from "@/components/company-referrals/settings/CompanyReferralPayoutsTable";
+import { CompanyReferralCreditsTable } from "@/components/company-referrals/settings/CompanyReferralCreditsTable";
+import { CompanyReferralFlagsTable } from "@/components/company-referrals/settings/CompanyReferralFlagsTable";
+import { CompanyReferralAnalytics } from "@/components/company-referrals/settings/CompanyReferralAnalytics";
 
 interface SettingsTab {
   id: string;
@@ -137,10 +146,47 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "production-checklist": "business",
   "material-audit": "business",
   "supplier-connections": "business",
+  "company-referrals": "business",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
 const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements", "inventory"];
+
+const CompanyReferralsSection = () => {
+  const effectiveTenantId = useEffectiveTenantId();
+  if (!effectiveTenantId) {
+    return <div className="p-6 text-muted-foreground">Select a company to manage referrals.</div>;
+  }
+  return (
+    <div className="space-y-4">
+      <header className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Company Referrals</h2>
+          <p className="text-muted-foreground">Manage the contractor-to-CRM referral program.</p>
+        </div>
+        <CreateCompanyReferralPartnerDialog tenantId={effectiveTenantId} />
+      </header>
+      <Tabs defaultValue="settings">
+        <TabsList className="flex flex-wrap">
+          <TabsTrigger value="settings">Program Settings</TabsTrigger>
+          <TabsTrigger value="partners">Partners</TabsTrigger>
+          <TabsTrigger value="signups">Company Signups</TabsTrigger>
+          <TabsTrigger value="payouts">Payouts</TabsTrigger>
+          <TabsTrigger value="credits">Account Credits</TabsTrigger>
+          <TabsTrigger value="flags">Flags / Review</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+        </TabsList>
+        <TabsContent value="settings"><CompanyReferralSettingsPanel tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="partners"><CompanyReferralPartnersTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="signups"><CompanyReferralSignupsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="payouts"><CompanyReferralPayoutsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="credits"><CompanyReferralCreditsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="flags"><CompanyReferralFlagsTable tenantId={effectiveTenantId} /></TabsContent>
+        <TabsContent value="analytics"><CompanyReferralAnalytics tenantId={effectiveTenantId} /></TabsContent>
+      </Tabs>
+    </div>
+  );
+};
 
 export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
@@ -264,6 +310,7 @@ export const Settings = () => {
       groups[category].push(tab);
     });
 
+
     // Always add synthetic "Supplier Connections" entry under Business
     if (!groups["business"]) groups["business"] = [];
     if (!groups["business"].some(t => t.tab_key === "supplier-connections")) {
@@ -278,6 +325,21 @@ export const Settings = () => {
         required_role: null,
       });
     }
+
+    // Always add synthetic "Company Referrals" entry under Business
+    if (!groups["business"].some(t => t.tab_key === "company-referrals")) {
+      groups["business"].push({
+        id: "company-referrals-synthetic",
+        tab_key: "company-referrals",
+        label: "Company Referrals",
+        description: "B2B partner referral program",
+        icon_name: "Handshake",
+        order_index: 100,
+        is_active: true,
+        required_role: null,
+      });
+    }
+
 
     // Add single "Products & Pricing" entry
     if (hasProductTab) {
@@ -489,6 +551,8 @@ export const Settings = () => {
             </Tabs>
           </div>
         );
+      case "company-referrals":
+        return <CompanyReferralsSection />;
       case "security":
         return (
           <div className="space-y-6">
