@@ -1200,7 +1200,8 @@ function ensureRegistrationProofBeforeWrite(
       JSON.stringify({ called: existing.transform_builder_called }),
     );
     next.geometry_report_json = geometry;
-    return next;
+    return ensureDsmDiagnosticsOnRegistration(next);
+
   }
   const fallback = mergeRegistrationProof(existing, null, {
     transform_builder_called: false,
