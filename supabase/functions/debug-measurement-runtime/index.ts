@@ -82,7 +82,7 @@ function derivePhaseStatus(block: any): "executed" | "skipped" | "missing" {
   return "missing";
 }
 
-function summarizeRegistration(g: Record<string, any> | null) {
+export function summarizeRegistration(g: Record<string, any> | null) {
   const reg = (g?.registration ?? null) as Record<string, any> | null;
   if (!reg) {
     return {
@@ -100,6 +100,8 @@ function summarizeRegistration(g: Record<string, any> | null) {
       confirmed_center_inside_candidate: null,
       candidate_centroid_offset_from_confirmed_center_px: null,
       coordinate_registration_gate_passed: null,
+      dsm: null,
+      stage_classifier: null,
     };
   }
   return {
@@ -132,10 +134,52 @@ function summarizeRegistration(g: Record<string, any> | null) {
     evaluation_stage: reg.evaluation_stage ?? null,
     missing_required_fields: Array.isArray(reg.missing_required_fields) ? reg.missing_required_fields : null,
     stale_debug_payload_present: (g as any)?.stale_debug_payload != null,
+    // NEW: DSM registration diagnostic projection (pure pass-through from reg.*).
+    // Surfaces source/policy/derivation/failure tokens written by
+    // applyLiveRuntimeHoistToRegistration in start-ai-measurement.
+    dsm: {
+      dsm_size_px: reg.dsm_size_px ?? null,
+      dsm_size_source: reg.dsm_size_source ?? null,
+      dsm_tile_bounds_lat_lng: reg.dsm_tile_bounds_lat_lng ?? null,
+      dsm_bounds_source: reg.dsm_bounds_source ?? null,
+      dsm_tile_bounds_source: reg.dsm_tile_bounds_source ?? null,
+      dsm_tile_bounds_failure_reason: reg.dsm_tile_bounds_failure_reason ?? null,
+      dsm_bounds_derived: reg.dsm_bounds_derived ?? null,
+      dsm_bounds_warning: reg.dsm_bounds_warning ?? null,
+      dsm_bounds_confidence: reg.dsm_bounds_confidence ?? null,
+      dsm_meters_per_pixel: reg.dsm_meters_per_pixel ?? null,
+      dsm_mpp_source: reg.dsm_mpp_source ?? null,
+      dsm_registration_version: reg.dsm_registration_version ?? null,
+      dsm_registration_source: reg.dsm_registration_source ?? null,
+      dsm_stage_attempted: reg.dsm_stage_attempted ?? null,
+      dsm_stage_pending: reg.dsm_stage_pending ?? null,
+      dsm_hoist_called: reg.dsm_hoist_called ?? null,
+      dsm_hoist_callsite: reg.dsm_hoist_callsite ?? null,
+      dsm_hoist_version: reg.dsm_hoist_version ?? null,
+      dsm_hoist_failure_tokens: Array.isArray(reg.dsm_hoist_failure_tokens)
+        ? reg.dsm_hoist_failure_tokens
+        : null,
+      dsm_raster_bounds_overlap: reg.dsm_raster_bounds_overlap ?? null,
+      dsm_raster_overlap_ratio: reg.dsm_raster_overlap_ratio ?? null,
+      dsm_tile_bounds_contain_confirmed_center:
+        reg.dsm_tile_bounds_contain_confirmed_center ?? null,
+      confirmed_roof_center_dsm_px: reg.confirmed_roof_center_dsm_px ?? null,
+      geo_to_dsm_transform_source: reg.geo_to_dsm_transform_source ?? null,
+      dsm_to_raster_transform_source: reg.dsm_to_raster_transform_source ?? null,
+      confirmed_roof_center_dsm_px_source:
+        reg.confirmed_roof_center_dsm_px_source ?? null,
+      dsm_transform_policy_version: reg.dsm_transform_policy_version ?? null,
+    },
+    stage_classifier: {
+      stage_hard_fail_reason: reg.stage_hard_fail_reason ?? null,
+      stage_failure_stage: reg.stage_failure_stage ?? null,
+      coordinate_space_audit: reg.coordinate_space_audit ?? null,
+      candidate_rejection_reason: reg.candidate_rejection_reason ?? null,
+    },
   };
 }
 
-function summarizeRow(row: any) {
+export function summarizeRow(row: any) {
   const g = (row?.geometry_report_json ?? null) as Record<string, any> | null;
   const phase3_5 = pickPhaseBlock(g, "phase3_5") ?? pickPhaseBlock(g, "phase3A_5");
   const phase3C = pickPhaseBlock(g, "phase3C");
