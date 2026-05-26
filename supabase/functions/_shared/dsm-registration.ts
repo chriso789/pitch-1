@@ -22,6 +22,9 @@ export type DsmBoundsSource =
   | "derived_from_dsm_bbox_and_static_mpp"
   | "missing";
 
+/** Alias used by the dsm-registration-transform-v1 diagnostic surface. */
+export type DsmTileBoundsSource = DsmBoundsSource;
+
 export type DsmSizeSource =
   | "decoded_dsm_grid"
   | "dsm_coordinate_match.dsm_bbox"
