@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import PatentRoofReport from "./PatentRoofReport";
 import RasterOverlayDebugView from "./RasterOverlayDebugView";
+import { resolveAerialCandidateGraph } from "@/lib/measurements/aerialCandidateGraphResolver";
 import { MeasurementOverrideEditor } from "@/components/measurement/MeasurementOverrideEditor";
 import AIMeasurement3DDebugViewer from "./AIMeasurement3DDebugViewer";
 import MeasurementVisualQAOverlay from "./MeasurementVisualQAOverlay";
@@ -772,19 +773,32 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     },
 
     (() => {
-      const aerial = (grj as any)?.aerial_candidate_roof_graph
-        ?? (grj as any)?.debug_layers?.aerial_candidate_roof_graph;
-      const present = !!aerial;
+      const aerialGraph = resolveAerialCandidateGraph(grj);
       const hardFail = String((m as any)?.hard_fail_reason ?? "");
-      const dsmUnavailable = hardFail === "dsm_transform_invalid" ||
+      const dvs = resolvedState.dsm_validation_status ??
+        ((grj as any)?.dsm_validation_status ?? null);
+      const dvsReason = dvs && typeof dvs === "object"
+        ? String((dvs as any).reason ?? "")
+        : "";
+      const dsmUnavailable =
+        hardFail === "dsm_transform_invalid" ||
         String((m as any)?.block_customer_report_reason ?? "") ===
-          "dsm_validation_unavailable";
-      return {
-        label: "Aerial Candidate Graph",
-        value: present
-          ? `present (${aerial?.candidate_faces?.length ?? aerial?.edges?.length ?? 0} candidate edges)${dsmUnavailable ? " — DSM validation unavailable" : ""}`
-          : "—",
-      };
+          "dsm_validation_unavailable" ||
+        dvsReason === "invalid_transform";
+      const suffix = dsmUnavailable ? " — DSM validation unavailable" : "";
+
+      let value: string;
+      if (!aerialGraph.present) {
+        value = "—";
+      } else if (!aerialGraph.executed) {
+        value = `present (0 candidate edges) — graph not executed${suffix}`;
+      } else if (aerialGraph.edgeCount > 0) {
+        value = `executed (${aerialGraph.edgeCount} candidate edges)${suffix}`;
+      } else {
+        value = `executed (0 candidate edges) — empty graph${suffix}`;
+      }
+
+      return { label: "Aerial Candidate Graph", value };
     })(),
     {
       label: "Primary Geometry Source",
