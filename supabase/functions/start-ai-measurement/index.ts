@@ -6808,7 +6808,13 @@ async function processJob(input: any) {
             phase3A5WorkUnits,
           );
           if (phase3A5Budget.preempt) {
+            if (hoistedTransformPackage == null) {
+              console.warn(
+                "[AERIAL_GRAPH_HOIST_MISSING] site=phase3_5_perimeter_refinement — registration package is null; aerial candidate graph will skip with raster_transform_unavailable",
+              );
+            }
             await persistCpuBudgetTerminalFailure({
+
               input,
               coords,
               imageUrl,
