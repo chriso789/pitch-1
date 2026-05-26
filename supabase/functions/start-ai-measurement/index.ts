@@ -256,6 +256,15 @@ const AI_MEASUREMENT_CPU_BUDGET_MS = Number(
 const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = Number(
   Deno.env.get("AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS") || 15_000,
 );
+// ── CPU containment v2: early-reserve safety margin ──────────────────────
+// Push the preempt point further away from the hard budget so the terminal
+// persistence path always has headroom and we never overshoot at 83s+.
+// Effective preempt = BUDGET - TERMINAL_RESERVE - SAFETY_MARGIN.
+// Default Fonsica policy: 75_000 - 15_000 - 10_000 = 50_000ms.
+const AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS = Number(
+  Deno.env.get("AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS") || 10_000,
+);
+const CPU_PREEMPT_POLICY_VERSION = "cpu-preempt-v2-early-reserve";
 const AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT = Number(
   Deno.env.get("AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT") || 950_000,
 );
@@ -13673,20 +13682,47 @@ function shouldPreemptForCpuBudget(
   elapsed_ms: number;
   remaining_ms: number;
   reason: string | null;
+  effective_preempt_ms: number;
+  safety_margin_ms: number;
+  policy_version: string;
 } {
   const elapsedMs = runtimeElapsedMs(input);
   const remainingMs = AI_MEASUREMENT_CPU_BUDGET_MS - elapsedMs;
-  // Effective wall-clock budget reserves the tail for the terminal debug
-  // write. Once elapsed crosses this threshold we preempt regardless of
-  // whether `estimatedWorkUnits` is known (0/unavailable still triggers).
-  const effectiveBudgetMs = AI_MEASUREMENT_CPU_BUDGET_MS -
+  // v2: early-reserve safety margin pulls the preempt point further from the
+  // hard budget so terminal persistence always has headroom.
+  const effectivePreemptMs = AI_MEASUREMENT_CPU_BUDGET_MS -
+    AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS -
+    AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS;
+  // Deeper backstop kept for diagnostics.
+  const wallClockReserveMs = AI_MEASUREMENT_CPU_BUDGET_MS -
     AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS;
-  if (elapsedMs >= effectiveBudgetMs) {
+  const base = {
+    elapsed_ms: elapsedMs,
+    remaining_ms: remainingMs,
+    effective_preempt_ms: effectivePreemptMs,
+    safety_margin_ms: AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS,
+    policy_version: CPU_PREEMPT_POLICY_VERSION,
+  };
+  if (elapsedMs >= effectivePreemptMs) {
     return {
+      ...base,
       preempt: true,
-      elapsed_ms: elapsedMs,
-      remaining_ms: remainingMs,
-      reason: "wall_clock_reserve_threshold",
+      reason: elapsedMs >= wallClockReserveMs
+        ? "wall_clock_reserve_threshold"
+        : "early_reserve_safety_margin",
+    };
+  }
+  // Hard remaining-budget guard: if remaining < (reserve + margin) preempt
+  // regardless. Redundant with elapsed check above but explicit per policy.
+  if (
+    remainingMs <
+      (AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS +
+        AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS)
+  ) {
+    return {
+      ...base,
+      preempt: true,
+      reason: "early_reserve_safety_margin",
     };
   }
   if (
@@ -13694,16 +13730,14 @@ function shouldPreemptForCpuBudget(
     estimatedWorkUnits > AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT
   ) {
     return {
+      ...base,
       preempt: true,
-      elapsed_ms: elapsedMs,
-      remaining_ms: remainingMs,
       reason: "estimated_topology_workload_exceeds_cpu_budget",
     };
   }
   return {
+    ...base,
     preempt: false,
-    elapsed_ms: elapsedMs,
-    remaining_ms: remainingMs,
     reason: null,
   };
 }
@@ -13746,7 +13780,13 @@ async function persistCpuBudgetTerminalFailure(args: {
         (debugBag as any)?.estimated_work_units ??
           priorTerminalPayload?.estimated_work_units ??
           priorPrePhase35?.estimated_work_units ?? null,
+      // v2 cascade tail — surface the topology pixel limit so the cascade
+      // can fall back to it when every richer source is missing/0.
+      topology_pixel_limit:
+        (debugBag as any)?.topology_pixel_limit ??
+          AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
     } as Record<string, unknown>,
+    topologyPixelLimit: AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
   };
   const preservedWU = preserveEstimatedWorkUnits(cascadeArgs);
   const effectiveWU =
@@ -13783,6 +13823,19 @@ async function persistCpuBudgetTerminalFailure(args: {
       REQUIRED_TOPOLOGY_SOURCE,
     },
   });
+  // ── v2 diagnostics: mirror policy + checkpoint fields on the inner debug
+  // payload so both `dp.*` and the outer `terminalDebugPayload` agree.
+  (debugPayload as any).cpu_preempt_policy_version = CPU_PREEMPT_POLICY_VERSION;
+  (debugPayload as any).cpu_preempt_safety_margin_ms =
+    AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS;
+  (debugPayload as any).cpu_effective_preempt_ms =
+    AI_MEASUREMENT_CPU_BUDGET_MS -
+    AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS -
+    AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS;
+  (debugPayload as any).cpu_checkpoint_stage = args.stage;
+  (debugPayload as any).cpu_checkpoint_elapsed_ms = budget.elapsed_ms ?? null;
+  (debugPayload as any).cpu_checkpoint_remaining_ms = budget.remaining_ms ?? null;
+  (debugPayload as any).cpu_preempt_reason = budget.reason ?? null;
   // Force the preserved value onto the payload too, in case the builder
   // didn't surface it from `estimatedWorkUnits`.
   if (typeof preservedWU === "number" && preservedWU > 0) {
@@ -13867,6 +13920,16 @@ async function persistCpuBudgetTerminalFailure(args: {
     cpu_budget_remaining_ms: dp.cpu_budget_remaining_ms ?? null,
     cpu_budget_ms: dp.cpu_budget_ms ?? null,
     late_cpu_preempt: dp.late_cpu_preempt === true,
+    // ── CPU containment v2 diagnostics ───────────────────────────────────
+    cpu_preempt_policy_version: CPU_PREEMPT_POLICY_VERSION,
+    cpu_preempt_safety_margin_ms: AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS,
+    cpu_effective_preempt_ms: AI_MEASUREMENT_CPU_BUDGET_MS -
+      AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS -
+      AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS,
+    cpu_checkpoint_stage: args.stage,
+    cpu_checkpoint_elapsed_ms: budget.elapsed_ms ?? null,
+    cpu_checkpoint_remaining_ms: budget.remaining_ms ?? null,
+    cpu_preempt_reason: budget.reason ?? null,
     primary_geometry_source: dp.primary_geometry_source ?? null,
     dsm_validation_status: dp.dsm_validation_status ?? null,
     target_mask_isolation: {
