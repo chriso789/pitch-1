@@ -7377,9 +7377,9 @@ async function processJob(input: any) {
               geoToRasterTransform: resolvedReg.geoToRasterTransform,
               solarSegments,
               maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
-              confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
+              confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
               staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
-              transformPackage: hoistedTransformPackage,
+              transformPackage: resolvedReg.transformPackage,
             }),
 
             phase3A_5: phase3A5Diagnostics,
