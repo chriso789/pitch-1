@@ -1260,7 +1260,8 @@ function ensureRegistrationProofBeforeWrite(
     "transform_builder_not_called_before_write";
   (next as any).customer_report_ready = false;
   next.geometry_report_json = geometry;
-  return next;
+  return ensureDsmDiagnosticsOnRegistration(next);
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
