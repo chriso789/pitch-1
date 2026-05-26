@@ -170,6 +170,37 @@ export default function CostTrackerPage() {
         </CardContent>
       </Card>
 
+      {/* Coverage checklist */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Hot-Path Tracking Coverage (last 30 days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {coverage.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Loading coverage…</p>
+          ) : (
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              {coverage.map((row) => (
+                <li key={row.key} className="flex items-center justify-between rounded-md border p-2">
+                  <span>{row.label}</span>
+                  <Badge
+                    className={
+                      row.status === "green"
+                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                        : row.status === "yellow"
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                        : "bg-destructive/15 text-destructive"
+                    }
+                  >
+                    {row.status === "green" ? "Wired" : row.status === "yellow" ? "Pending" : "Not wired"}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
