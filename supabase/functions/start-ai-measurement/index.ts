@@ -6769,9 +6769,27 @@ async function processJob(input: any) {
           // cheap debug layers persisted so the row is never silently empty.
           const prePhase3A5Budget = shouldPreemptForCpuBudget(input, 0);
           if (prePhase3A5Budget.preempt) {
-            if (hoistedTransformPackage == null) {
+            const resolvedReg = resolveRegistrationForPreempt({
+              input,
+              coords,
+              hoistedTransformPackage,
+              hoistedRasterBoundsLatLng,
+              hoistedGeoToRasterTransform,
+              hoistedConfirmedRoofCenterPx,
+            });
+            // Adopt the rebuild back into the hoisted vars so any later
+            // call sites (e.g. autonomous_topology_solver preempt) inherit it.
+            if (resolvedReg.source === "rebuilt_from_input") {
+              hoistedTransformPackage = resolvedReg.transformPackage;
+              hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+              hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+              hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
               console.warn(
-                "[AERIAL_GRAPH_HOIST_MISSING] site=pre_phase3_5_preempt — registration package is null; aerial candidate graph will skip with raster_transform_unavailable",
+                "[AERIAL_GRAPH_HOIST_REBUILT] site=pre_phase3_5_preempt — early hoist was null; rebuilt registration package inline",
+              );
+            } else if (resolvedReg.transformPackage == null) {
+              console.warn(
+                `[AERIAL_GRAPH_HOIST_MISSING] site=pre_phase3_5_preempt — registration package unavailable (source=${resolvedReg.source}); aerial candidate graph will skip with raster_transform_unavailable`,
               );
             }
 
@@ -6795,13 +6813,13 @@ async function processJob(input: any) {
                 footprintGeo,
                 footprintPx: null,
                 rasterUrl: imageUrl,
-                rasterBoundsLatLng: hoistedRasterBoundsLatLng,
-                geoToRasterTransform: hoistedGeoToRasterTransform,
+                rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                geoToRasterTransform: resolvedReg.geoToRasterTransform,
                 solarSegments,
                 maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
-                confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
+                confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
                 staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
-                transformPackage: hoistedTransformPackage,
+                transformPackage: resolvedReg.transformPackage,
               }),
 
             });
