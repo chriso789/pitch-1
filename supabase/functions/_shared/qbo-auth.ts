@@ -11,6 +11,12 @@
 // future-proofed via the `*_encrypted` accessor below.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  getQboContextForConnection,
+  getQboContextForMode,
+  getDefaultQboMode,
+  type QboContext,
+} from "./qbo-context.ts";
 
 export const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 export const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
@@ -18,8 +24,6 @@ export const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens
 
 export const QBO_DEFAULT_SCOPES = "com.intuit.quickbooks.accounting openid email profile";
 
-// Refresh access tokens this many seconds before they actually expire, to avoid
-// the "valid at request time, expired at server time" race documented by Intuit.
 const REFRESH_SKEW_SECONDS = 5 * 60;
 
 export interface QboTokenResponse {
@@ -41,24 +45,23 @@ export interface QboConnectionRow {
   scopes: string[] | string | null;
   is_active: boolean;
   qbo_company_name: string | null;
+  oauth_app_env?: string | null;
+  is_sandbox?: boolean | null;
 }
 
+/**
+ * @deprecated Use getQboContextForConnection(conn) or getQboContextForMode(mode) instead.
+ * Returns the default-mode context for backwards compatibility.
+ */
 export function getQboEnv() {
-  const clientId = Deno.env.get("QBO_CLIENT_ID");
-  const clientSecret = Deno.env.get("QBO_CLIENT_SECRET");
-  const redirectUri = Deno.env.get("QBO_REDIRECT_URI");
-  const environment = (Deno.env.get("QBO_ENVIRONMENT") ?? "production").toLowerCase();
-  const apiBase =
-    environment === "sandbox"
-      ? "https://sandbox-quickbooks.api.intuit.com"
-      : "https://quickbooks.api.intuit.com";
-
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error(
-      "QBO is not configured: QBO_CLIENT_ID, QBO_CLIENT_SECRET, and QBO_REDIRECT_URI must be set",
-    );
-  }
-  return { clientId, clientSecret, redirectUri, environment, apiBase };
+  const ctx = getQboContextForMode(getDefaultQboMode());
+  return {
+    clientId: ctx.clientId,
+    clientSecret: ctx.clientSecret,
+    redirectUri: ctx.redirectUri,
+    environment: ctx.mode,
+    apiBase: ctx.accountingBaseUrl,
+  };
 }
 
 function basicAuthHeader(clientId: string, clientSecret: string) {
