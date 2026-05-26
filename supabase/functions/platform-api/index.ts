@@ -643,4 +643,4 @@ app.on(["GET","POST"], "/coverage-checklist", requireAuth, requireMaster, async 
   return jsonOk(c, { rows, window: "30d" });
 });
 
-Deno.serve(app.fetch);
+serveRouter(app);
