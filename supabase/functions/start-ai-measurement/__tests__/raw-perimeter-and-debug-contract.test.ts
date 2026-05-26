@@ -60,7 +60,7 @@ Deno.test("raw perimeter px is lifted from perimeter_topology onto phase3_5 + de
   const terminal = buildCpuBudgetTerminalDebugPayload({
     stage: STAGE,
     estimatedWorkUnits: 0,
-    debug: bag,
+    debug: bag as unknown as Record<string, unknown>,
     budget: {
       preempt: true,
       elapsed_ms: 60_000,
