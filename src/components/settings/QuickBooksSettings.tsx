@@ -273,6 +273,26 @@ export default function QuickBooksSettings() {
     }
   };
 
+  const handleSwitchAccount = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('qbo-oauth-connect', {
+        body: { action: 'disconnect' },
+      });
+      if (error) throw error;
+      setConnection(null);
+      toast({
+        title: 'Disconnected',
+        description: 'Sign in with a different QuickBooks account in the popup. If Intuit auto-signs you in, click "Sign in with a different account" on Intuit.',
+      });
+      // Kick off a fresh OAuth flow immediately.
+      await handleConnect();
+    } catch (error: any) {
+      const description = await extractFnError(error);
+      toast({ title: 'Error', description, variant: 'destructive' });
+    }
+  };
+
+
   const handleMappingChange = (jobType: string, itemId: string, itemName: string) => {
     setMappings(prev => ({
       ...prev,
