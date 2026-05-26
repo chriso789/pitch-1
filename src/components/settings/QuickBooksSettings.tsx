@@ -66,6 +66,8 @@ export default function QuickBooksSettings() {
   const [savingMappings, setSavingMappings] = useState(false);
   const [lastAuthUrl, setLastAuthUrl] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<any>(null);
+  const [verifyInfo, setVerifyInfo] = useState<any>(null);
+  const [selectedMode, setSelectedMode] = useState<'development' | 'production'>('development');
 
   const runDiagnostic = async () => {
     try {
@@ -78,6 +80,22 @@ export default function QuickBooksSettings() {
       setDiagnostic({ error: await extractFnError(e) });
     }
   };
+
+  // Load backend-controlled defaults + credential availability on mount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.functions.invoke('qbo-oauth-connect', {
+          body: { action: 'verify' },
+        });
+        if (data) {
+          setVerifyInfo(data);
+          const def = data.qbo_default_environment === 'production' ? 'production' : 'development';
+          setSelectedMode(def);
+        }
+      } catch {}
+    })();
+  }, []);
 
 
   useEffect(() => {
@@ -158,7 +176,7 @@ export default function QuickBooksSettings() {
       setConnecting(true);
 
       const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
-        body: { action: 'initiate' },
+        body: { action: 'initiate', mode: selectedMode },
       });
 
       if (error) throw error;
