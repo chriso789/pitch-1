@@ -14,7 +14,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const { ensureDsmDiagnosticsOnRegistration } = await import(
-  "../../_shared/dsm-diagnostic-propagation.ts"
+  "../dsm-diagnostic-propagation.ts"
 );
 
 
