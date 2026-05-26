@@ -7292,7 +7292,13 @@ async function processJob(input: any) {
           1_000;
       const graphBudget = shouldPreemptForCpuBudget(input, graphWorkUnits);
       if (graphBudget.preempt) {
+        if (hoistedTransformPackage == null) {
+          console.warn(
+            "[AERIAL_GRAPH_HOIST_MISSING] site=autonomous_topology_solver — registration package is null; aerial candidate graph will skip with raster_transform_unavailable",
+          );
+        }
         await persistCpuBudgetTerminalFailure({
+
           input,
           coords,
           imageUrl,
