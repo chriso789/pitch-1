@@ -105,8 +105,59 @@ export default function CostTrackerPage() {
         </div>
       </div>
 
+      {/* Internal Worker Secret */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Internal Worker Secret</CardTitle>
+          {secretConfigured === null ? (
+            <Badge variant="outline">Checking…</Badge>
+          ) : secretConfigured ? (
+            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">Configured</Badge>
+          ) : (
+            <Badge className="bg-destructive/15 text-destructive">Missing</Badge>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {secretConfigured ? (
+            <p className="text-muted-foreground">
+              Internal worker secret is configured. trackUsage() and checkUsageLimit() can authenticate server-to-server.
+              The value is never displayed here.
+            </p>
+          ) : (
+            <>
+              <p className="text-muted-foreground">
+                <strong className="text-foreground">INTERNAL_WORKER_SECRET</strong> is not set. Usage tracking will be skipped
+                in edge functions and the dashboard will stay empty until you configure it.
+              </p>
+              <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
+                <li>Click <em>Generate</em> below to create a strong random secret.</li>
+                <li>Copy it.</li>
+                <li>
+                  Open Supabase → Project Settings → Edge Functions → Secrets, add a secret named{" "}
+                  <code className="rounded bg-muted px-1">INTERNAL_WORKER_SECRET</code> with the copied value.
+                </li>
+                <li>Reload this page — status should turn green.</li>
+              </ol>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={generateSecret}>Generate Internal Worker Secret</Button>
+                {generatedSecret && <Button size="sm" variant="outline" onClick={copySecret}>Copy</Button>}
+              </div>
+              {generatedSecret && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+                  <div className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                    Shown once. Paste into Supabase Secrets now — it will not be displayed again.
+                  </div>
+                  <code className="block break-all rounded bg-background p-2 font-mono text-xs">{generatedSecret}</code>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
         <Kpi title="MTD Revenue" value={fmt(dashboard?.revenue_mtd ?? 0)} />
         <Kpi title="MTD Cost" value={fmt(dashboard?.cost_mtd ?? 0)} />
         <Kpi title="Gross Profit" value={fmt(dashboard?.gross_profit ?? 0)} />
