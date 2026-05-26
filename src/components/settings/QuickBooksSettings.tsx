@@ -166,56 +166,15 @@ export default function QuickBooksSettings() {
       setLastAuthUrl(data.authUrl);
       console.log('[QBO] Auth URL:', data.authUrl);
 
+      // Persist state so the callback page can complete the exchange after
+      // the full-page redirect back from Intuit.
+      try {
+        sessionStorage.setItem('qbo_oauth_state', data.state);
+      } catch {}
 
-      // Open OAuth window
-      const width = 600;
-      const height = 700;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
-
-      const authWindow = window.open(
-        data.authUrl,
-        'QuickBooks OAuth',
-        `width=${width},height=${height},left=${left},top=${top}`
-      );
-
-      // Listen for OAuth callback
-      const handleMessage = async (event: MessageEvent) => {
-        if (event.data.type === 'qbo-oauth-success') {
-          const { code, realmId } = event.data;
-
-          const { error: callbackError } = await supabase.functions.invoke('qbo-oauth-connect', {
-            body: {
-              action: 'callback',
-              code,
-              realmId,
-              state: data.state,
-            },
-          });
-
-          if (callbackError) throw callbackError;
-
-          toast({
-            title: "Connected to QuickBooks",
-            description: "Your QuickBooks account has been connected successfully.",
-          });
-
-          await loadConnection();
-          authWindow?.close();
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Clean up
-      const checkClosed = setInterval(() => {
-        if (authWindow?.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', handleMessage);
-          setConnecting(false);
-        }
-      }, 500);
-
+      // Full-page redirect — avoids popup/COOP/3rd-party-cookie issues that
+      // cause Intuit's appcenter to silently close the OAuth window.
+      window.location.href = data.authUrl;
     } catch (error: any) {
       console.error('Error connecting to QuickBooks:', error);
       const description = await extractFnError(error);
@@ -227,6 +186,7 @@ export default function QuickBooksSettings() {
       setConnecting(false);
     }
   };
+
 
   const handleDisconnect = async () => {
     try {
