@@ -6064,6 +6064,53 @@ async function processJob(input: any) {
       let hoistedConfirmedRoofCenterPx: any = null;
       let hoistedTransformPackage: any = null;
 
+      // ── EARLY UNCONDITIONAL REGISTRATION HOIST ──
+      // Build a DSM-independent registration package from raster acquisition
+      // inputs only. This guarantees the aerial candidate graph builder always
+      // has its geo↔raster transform/bounds even on runs that PASS the DSM
+      // coordinate match gate (and therefore skip the failure-branch hoist at
+      // ~line 6351). The DSM-aware block below may later overwrite/refine
+      // this package; the early hoist is the floor, not the ceiling.
+      try {
+        const _confirmedLatLngEarly =
+          (input as any).confirmed_roof_center_lat != null &&
+            (input as any).confirmed_roof_center_lng != null
+            ? {
+              lat: Number((input as any).confirmed_roof_center_lat),
+              lng: Number((input as any).confirmed_roof_center_lng),
+            }
+            : { lat: coords.lat, lng: coords.lng };
+        const _earlyPkg = buildRegistrationTransformPackage({
+          confirmed_roof_center_lat_lng: _confirmedLatLngEarly,
+          static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+          zoom: Number.isFinite(Number((input as any).zoom))
+            ? Number((input as any).zoom)
+            : 19,
+          size: {
+            width: Number((input as any).logical_image_width || 640),
+            height: Number((input as any).logical_image_height || 640),
+          },
+          scale: Number((input as any).raster_scale || 2),
+          dsm_tile_bounds_lat_lng: null,
+          dsm_size_px: null,
+          dsm_meters_per_pixel: null,
+        });
+        hoistedTransformPackage = _earlyPkg ?? null;
+        hoistedRasterBoundsLatLng =
+          (_earlyPkg as any)?.raster_bounds_lat_lng ?? null;
+        hoistedGeoToRasterTransform =
+          (_earlyPkg as any)?.geo_to_raster_transform ?? null;
+        hoistedConfirmedRoofCenterPx =
+          (_earlyPkg as any)?.confirmed_roof_center_px ?? null;
+      } catch (e) {
+        console.warn(
+          "[AERIAL_GRAPH_HOIST_EARLY] failed to build registration package",
+          (e as Error)?.message,
+        );
+      }
+
+
+
 
 
       // ══════════ DSM COORDINATE MATCH GATE ══════════
