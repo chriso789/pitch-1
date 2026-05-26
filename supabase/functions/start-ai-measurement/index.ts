@@ -7167,6 +7167,64 @@ async function processJob(input: any) {
         };
       }
 
+      // ── CHECKPOINT: post_phase3a5_refinement ──
+      // Even if refinement completed, the wall clock may now be past the
+      // terminal-write reserve. Bail out before topology so we still have
+      // budget to persist a clean terminal payload.
+      {
+        const ckpt = shouldPreemptForCpuBudget(input, 0);
+        if (ckpt.preempt) {
+          const resolvedReg = resolveRegistrationForPreempt({
+            input,
+            coords,
+            hoistedTransformPackage,
+            hoistedRasterBoundsLatLng,
+            hoistedGeoToRasterTransform,
+            hoistedConfirmedRoofCenterPx,
+          });
+          if (resolvedReg.source === "rebuilt_from_input") {
+            hoistedTransformPackage = resolvedReg.transformPackage;
+            hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+            hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+            hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+          }
+          await persistCpuBudgetTerminalFailure({
+            input,
+            coords,
+            imageUrl,
+            mpp: actualMpp,
+            stage: "post_phase3a5_refinement",
+            estimatedWorkUnits: 0,
+            debug: {
+              ...buildPreTopologyDebugBag({
+                stage: "post_phase3a5_refinement",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource,
+                footprintGeo,
+                footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                geoToRasterTransform: resolvedReg.geoToRasterTransform,
+                solarSegments,
+                maskComponentsTable:
+                  targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                transformPackage: resolvedReg.transformPackage,
+              }),
+              phase3A_5: phase3A5Diagnostics,
+            },
+          });
+          return;
+        }
+      }
+
       // HARD GATE: only fail if refinement failed AND no provisional raw fallback is ready.
       const provisionalReady = !!(phase3A5Diagnostics as any)
         ?.provisional_perimeter_ready;
