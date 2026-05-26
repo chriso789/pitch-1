@@ -40,6 +40,22 @@ interface JobTypeMapping {
   qbo_item_name: string | null;
 }
 
+async function extractFnError(err: any): Promise<string> {
+  try {
+    const res = err?.context?.response ?? err?.context;
+    if (res && typeof res.clone === 'function') {
+      const body = await res.clone().json();
+      if (body?.error) return body.error;
+      if (body?.message) return body.message;
+    }
+    if (res && typeof res.text === 'function') {
+      const txt = await res.text();
+      if (txt) return txt;
+    }
+  } catch {}
+  return err?.message ?? 'Unknown error';
+}
+
 export default function QuickBooksSettings() {
   const { toast } = useToast();
   const [connection, setConnection] = useState<QBOConnection | null>(null);
