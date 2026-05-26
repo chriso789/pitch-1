@@ -7260,7 +7260,9 @@ async function processJob(input: any) {
               maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
               confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
               staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+              transformPackage: hoistedTransformPackage,
             }),
+
             phase3A_5: phase3A5Diagnostics,
           },
         });
