@@ -165,6 +165,7 @@ const AppContent = () => {
         <Route path="/deeplink" element={<MobileRoutes />} />
         <Route path="/admin/*" element={<AdminRoutes />} />
         <Route path="/settings/*" element={<SettingsRoutes />} />
+        <Route path="/developer/cost-tracker" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/developer/CostTrackerPage")))}</Suspense>} />
 
         {/* Direct public marketing routes (not through PublicRoutes wrapper) */}
         <Route path="/pricing" element={<Pricing />} />

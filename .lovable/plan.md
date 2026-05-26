@@ -1,342 +1,96 @@
-# Fix: pre_phase3_5_preempt aerial graph handoff (Fonsica)
 
-## Scope (strictly bounded)
+# PITCH CRM — Infrastructure Cost Tracker & AI Chat Removal
 
-Touch only:
+A large two-part build. Shipping in ordered phases so each piece is reviewable and reversible. Before I start writing migrations and edge functions, I want to confirm scope and a few decisions that materially affect the implementation.
 
-- `supabase/functions/start-ai-measurement/index.ts` — preempt call sites + final persistence guard
-- `supabase/functions/_shared/pre-topology-debug-bag.ts` — input fallback + skip_debug enforcement
-- `supabase/functions/_shared/aerial-candidate-graph.ts` — skip_debug guarantee on every skipped return
-- New tests under `supabase/functions/start-ai-measurement/__tests__/`
+---
 
-Do NOT touch: DSM solver, geometry scoring, overlay transforms, customer report gating, DB schema, canonical route.
+## Part A — Cost Tracking & Profitability System
 
-## Root cause (confirmed from code + payload)
+### A1. Database (one migration)
 
-At lines 6766–6804 (pre_phase3_5_preempt) and 6810–6847 (phase3_5_perimeter_refinement), `buildPreTopologyDebugBag` is fed only the `hoisted*` variables. The Fonsica run logs `[AERIAL_GRAPH_HOIST_MISSING] site=pre_phase3_5_preempt — registration package is null`, so the bag is built with `transformPackage=null`, the aerial graph builder returns `executed:false, skipped_reason:"raster_transform_unavailable"`, and (because the null-input early return ran) `skip_debug` is omitted.
+New tables in `public`:
 
-Meanwhile the same payload persists `registration.transform_package.geo_to_raster_transform`, `raster_bounds_lat_lng`, `perimeter_ring_px/geo`, and 6 eave/perimeter edges — proving a valid registration object exists in the run, it's just not the `hoisted*` reference being passed in.
+- **provider_costs** — pricing catalog (provider, event_type, unit, cost_per_unit, markup_percent, is_active). Seeded with the 18 rows you listed.
+- **usage_events** — append-only event log (company_id, user_id, provider, event_type, feature_area, quantity, unit, unit_cost, estimated_cost, billable_amount, request_id, edge_function, status, metadata, created_at). Indexed on company_id, user_id, provider, event_type, feature_area, created_at.
+- **company_usage_limits** — per-tenant plan + monthly caps + `hard_stop_enabled` + `warning_threshold_percent`. Default plan `basic_50` auto-provisioned for each existing company via backfill.
+- **company_usage_monthly_rollups** — unique on (company_id, month).
+- **user_usage_monthly_rollups** — unique on (company_id, user_id, month).
 
-## Patch plan
+RLS:
+- New SECURITY DEFINER helper `public.is_platform_admin(uuid)` checking the existing master/COB role via `has_role` (not a new role table — reusing what's already there).
+- All five tables: SELECT/INSERT/UPDATE/DELETE locked to `is_platform_admin(auth.uid())`.
+- `service_role` gets full access for edge functions.
+- No `anon` grants anywhere.
+- GRANTs explicitly included for every new table.
 
-### 1. Resolve a single registration object at preempt sites
+### A2. Edge functions
 
-In `index.ts`, just above each `persistCpuBudgetTerminalFailure({...})` call at the two preempt sites (and the autonomous_topology_solver site at line 7297), build a local fallback resolver:
+Following your route-migration enforcer (no new standalone folders for one-off endpoints), I'll put these inside an existing or new grouped router:
 
-```
-const resolvedRegPkg =
-  hoistedTransformPackage ??
-  (geometry as any)?.registration?.transform_package ??
-  (geometry as any)?.registration_gate?.transform_package ??
-  null;
+- **`platform-api`** (new grouped router, developer-only): routes `/track-usage`, `/check-usage-limit`, `/recalculate-rollups`, `/seed-test-event`, `/get-cost-dashboard`, `/list-company-usage`, `/get-company-detail`, `/update-provider-cost`. All routes require platform-admin JWT except `/track-usage` and `/check-usage-limit`, which require **either** platform admin OR `INTERNAL_WORKER_SECRET` so other edge functions can call them server-to-server.
 
-const resolvedG2R =
-  hoistedGeoToRasterTransform ??
-  resolvedRegPkg?.geo_to_raster_transform ??
-  (geometry as any)?.registration?.geo_to_raster_transform ?? null;
+- **Cron**: `pg_cron` job every hour calls `/recalculate-rollups` (idempotent upsert).
 
-const resolvedBounds =
-  hoistedRasterBoundsLatLng ??
-  resolvedRegPkg?.raster_bounds_lat_lng ??
-  (geometry as any)?.registration?.raster_bounds_lat_lng ?? null;
+Server-side cost calc only — client-provided `unit_cost`/`estimated_cost` is ignored.
 
-const resolvedCenterPx =
-  hoistedConfirmedRoofCenterPx ??
-  resolvedRegPkg?.confirmed_roof_center_px ??
-  (geometry as any)?.registration?.confirmed_roof_center_px ?? null;
-```
+### A3. Shared utility
 
-Pass these into `buildPreTopologyDebugBag` instead of the raw `hoisted*` vars. Keep the existing `console.warn` but only fire it when `resolvedRegPkg == null` (i.e., truly unavailable, not just unhoisted).
-
-### 2. Defensive input fallback inside `buildPreTopologyDebugBag`
+`supabase/functions/_shared/track-usage.ts` exporting `trackUsage({...})` — fire-and-forget POST to `platform-api/track-usage` with `INTERNAL_WORKER_SECRET`, never throws into caller. I'll wire it into the highest-value hot paths only (not every function in one pass):
 
-In `pre-topology-debug-bag.ts`, before constructing the aerial graph inputs, apply the same chained fallback (`registration ?? registration_gate ?? transformPackage`) so callers that pass the partial bag still resolve a usable transform package. This is belt-and-suspenders for sites we don't update directly.
+- `start-ai-measurement` and the measurement worker (AI tokens, edge invocations, roof reports)
+- SMS send paths (Telnyx outbound/inbound webhooks)
+- Telnyx voice webhook (minutes)
+- OpenAI/Anthropic/Gemini callers in the shared AI helper
 
-### 3. Stale-skip overwrite guard (merge precedence)
+The remaining hooks (storage, map loads, scraping, document parsing) will be stubbed with TODO comments referencing the helper — wiring them all in one pass would touch 40+ files and exceed safe review size. I'll list them in the response so you can prioritize a follow-up loop.
 
-The merge-precedence block (`pre-topology-debug-bag.ts:471–478`) already protects against an executed graph being clobbered. Extend it: when `_incomingGraph.executed === true`, also preserve its `edges`, `nodes`, `primary_geometry_source`, and drop any `skipped_reason`/`skip_debug` fields. Add an assertion: if the freshly built graph reports `executed:false` while inputs include both a transform package and a perimeter ring, log `[AERIAL_GRAPH_BUILDER_REGRESSION]` and prefer the prior executed graph if present.
+### A4. Developer dashboard (frontend)
 
-### 4. Mandatory `skip_debug` on every skipped return
+New route `/developer/cost-tracker` (gated by `is_platform_admin`, hidden from non-platform users in the nav). Pages:
 
-In `aerial-candidate-graph.ts`, the early-return at line ~366 (the null-input branch) does not attach `skip_debug`. Wrap every `executed:false` return through a helper `withSkipDebug(reason, ctx)` so no skipped graph can leak without `skip_debug`. Then in `index.ts`, immediately before the final `geometry_report_json` persistence, run:
+1. **Overview** — MTD revenue, MTD cost, GP, GM%, per-provider spend cards, most-expensive company/user, daily trend chart (recharts).
+2. **Companies table** — sortable, filterable (date range, provider, event_type, status), with profitability status badge (Good/Watch/Bad/Losing Money) using your thresholds.
+3. **Company detail** — cost by provider, by feature, by user; daily trend; raw events; projected month-end; usage-limit progress bars.
+4. **User detail** — totals, breakdowns, recent events.
+5. **Provider Costs admin** — editable table (provider, event_type, cost_per_unit, markup_percent, active).
+6. **Test tools** — buttons for Log Test AI/SMS/Upload Event, Recalculate Rollups, Verify $50 Profitability. All test events tagged `metadata.test = true`.
 
-```
-function ensureAerialGraphSkipDebug(graph, ctx) {
-  if (!graph || graph.executed === true) return graph;
-  return { ...graph, skip_debug: graph.skip_debug ?? buildAerialGraphSkipDebugFromContext(ctx) };
-}
-```
+Data fetched via `edgeApi("platform-api", "/...")` — no direct table reads from frontend (RLS would block anyway, but explicit gate is cleaner).
 
-### 5. Impossible-skip diagnostic (non-throwing in prod)
+---
 
-At the terminal persistence boundary in `persistCpuBudgetTerminalFailure` / `buildCpuBudgetTerminalDebugPayload`, compute:
+## Part B — Remove General AI Chat Surfaces
 
-```
-const hasFonsicaAerialInputs =
-  !!(resolvedG2R && resolvedBounds && perimeter_ring_px &&
-     ((eave_edges?.length ?? 0) > 0 || (perimeter_edges?.length ?? 0) > 0));
-```
-
-If `hasFonsicaAerialInputs && aerial_candidate_roof_graph?.skipped_reason === 'raster_transform_unavailable'`, persist a diagnostic flag `aerial_graph_impossible_skip = true` on the debug payload (do not throw). Tests assert this flag is never true on Fonsica-shaped fixtures.
-
-### 6. Preserve `estimated_work_units` through preempt
-
-In `persistCpuBudgetTerminalFailure`, replace the current `estimatedWorkUnits: 0` write with:
-
-```
-estimated_work_units =
-  args.estimatedWorkUnits ??
-  priorEstimatedWorkUnits ??
-  topologyEstimate?.work_units ??
-  0
-```
-
-Source `priorEstimatedWorkUnits` from the existing row's `geometry_report_json.cpu_budget.estimated_work_units` if present (single SELECT before the UPDATE, already done for other fields).
-
-### 7. Regression tests (skill: ai-measurement-regression-harness)
-
-Add under `supabase/functions/start-ai-measurement/__tests__/`:
-
-- `fonsica-pre-phase3_5-preempt-aerial-handoff.test.ts`
-  - Fixture mirrors current Fonsica payload (registration exists, hoisted vars null).
-  - Asserts: `aerial_candidate_roof_graph.executed === true`, `edges.length >= 6`, no `skipped_reason`, `primary_geometry_source === 'aerial_registered'`.
-- `aerial-graph-skip-debug-mandatory.test.ts`
-  - Every `executed:false` return carries `skip_debug` with non-empty `reason_inputs`.
-- `aerial-graph-merge-precedence-stale-skip.test.ts`
-  - Incoming executed graph cannot be overwritten by a freshly built skipped graph.
-- `aerial-graph-impossible-skip-flag.test.ts`
-  - Fonsica-shaped inputs + `raster_transform_unavailable` → `aerial_graph_impossible_skip === true`.
-- `cpu-preempt-estimated-work-units-preserved.test.ts`
-  - Preempt with prior `estimated_work_units = 996004` preserves the value (not 0).
-
-Run via `supabase--test_edge_functions` (function: `start-ai-measurement`).
-
-## Acceptance (next Fonsica rerun)
-
-- `aerial_candidate_roof_graph.executed = true`
-- `edges.length >= 6`, `skipped_reason` absent
-- `primary_geometry_source = aerial_registered`
-- `dsm_validation_status.reason = invalid_transform`
-- `estimated_work_units` preserved (≈996004)
-- Overlay alignment unchanged, `customer_report_ready = false`
-- No DSM solver / geometry gate / customer report changes  
-  
-This plan is finally targeting the exact remaining failure correctly.
-  The latest pull proves something important:
-  # The aerial graph SHOULD already be executing
-  Because the payload already has:
-  - raster registration
-  - perimeter ring
-  - perimeter geo
-  - eave edges
-  - perimeter edges
-  - target-mask isolation
-  - aligned overlay
-  - correct raster authority
-  This is no longer a “missing geometry” problem.
-  The system already has enough information to build the aerial candidate graph.
-  ---
-  # The actual bug
-  The exact failure is now:
-  ```
-
-  ```
-  ```
-  pre_phase3_5_preempt
-  ```
-  That path is still feeding:
-  -   
-  stale registration  
-
-  -   
-  null transform package  
-
-  -   
-  null raster inputs  
-
-  into:
-  -   
-  buildPreTopologyDebugBag()  
-
-  -   
-  buildAerialCandidateGraph()  
-
-  That’s why you still get:
-  ```
-
-  ```
-  ```
-  executed = false
-  skipped_reason = raster_transform_unavailable
-  ```
-  even though the SAME row contains all the required raster data.
-  ---
-  # The biggest clue
-  This matters enormously:
-  ```
-
-  ```
-  ```
-  skip_debug is still missing
-  ```
-  That means:
-  -   
-  the wrong graph builder path is still active  
-    
-  OR  
-
-  -   
-  the final persisted graph bypasses the new helper  
-    
-  OR  
-
-  -   
-  stale graph overwrite still exists  
-
-  That’s why the plan’s:
-  -   
-  skip_debug enforcement  
-
-  -   
-  final persistence normalization  
-
-  -   
-  merge-precedence guard  
-
-  are all correct.
-  ---
-  # The 3 things I corrected in the plan
-  I reinforced:
-  ## 1. Use live locals BEFORE stale geometry object
-  This matters.
-  You do NOT want:
-  ```
-
-  ```
-  ```
-  geometry?.registration
-  ```
-  winning over:
-  -   
-  live `_transformPkg`  
-
-  -   
-  live registration package  
-
-  -   
-  live hoisted transform  
-
-  The geometry object may already be stale.
-  So:
-  -   
-  live locals first  
-
-  -   
-  persisted geometry last  
-
-  Correct.
-  ---
-  ## 2. Force skip_debug at the FINAL write boundary
-  This is critical because:  
-    
-  Lovable already “implemented” skip_debug.
-  But the latest row still has none.
-  Meaning:  
-    
-  the final write path still bypasses it.
-  So now:
-  -   
-  normalize before final persistence  
-
-  -   
-  impossible to persist skipped graph without skip_debug  
-
-  That is the right move.
-  ---
-  ## 3. Preserve estimated_work_units
-  You previously had:
-  ```
-
-  ```
-  ```
-  estimated_work_units = 996004
-  ```
-  Now suddenly:
-  ```
-
-  ```
-  ```
-  estimated_work_units = 0
-  ```
-  That’s a regression caused by the preemption path.
-  Your plan correction is right:
-  -   
-  preserve the earliest known estimate  
-
-  -   
-  do not wipe it during terminal persistence  
-
-  ---
-  # What SHOULD happen after this deploy
-  The next Fonsica pull should finally show:
-  ```
-
-  ```
-  ```
-  aerial_candidate_roof_graph.executed = true
-  ```
-  with:
-  -   
-  perimeter ring  
-
-  -   
-  candidate edges  
-
-  -   
-  corner nodes  
-
-  -   
-  debug-only eaves  
-
-  -   
-  primary_geometry_source = aerial_registered  
-
-  -   
-  dsm_validation_status = invalid_transform  
-
-  while still correctly showing:
-  ```
-
-  ```
-  ```
-  customer_report_ready = false
-  ```
-  That is the correct intermediate state.
-  ---
-  # My assessment now
-  This is the closest the repo has ever been to a stable architecture.
-  You now have:
-  -   
-  stable overlay registration  
-
-  -   
-  stable raster authority  
-
-  -   
-  stable perimeter extraction  
-
-  -   
-  stable mask isolation  
-
-  -   
-  stable CPU preemption  
-
-  -   
-  stable debug/reportable separation  
-
-  The remaining issue is:
-  -   
-  stale preemption-path handoff  
-
-  That is a very isolated engineering bug now.
-  You are no longer fighting the core concept.
+This is the riskier half because the codebase has multiple AI-adjacent features. I want to confirm scope before deleting anything.
+
+### B1. What I'd remove/disable (need your confirmation per item)
+
+- Any floating "Ask AI" button / chat widget in the app shell
+- AI copilot sidebar(s)
+- Persistent chat thread UI / chat history pages
+- AI command palette (if any "Ask AI" command exists)
+- WebSocket streaming chat client
+- Nav entries for AI chat
+- Tables `ai_conversations` and `ai_messages` — **drop or just stop writing to them?** Dropping is destructive; recommended path is: stop UI + writes now, schedule table drop after a 30-day observation window per the schema-drift guard.
+
+### B2. What I'd KEEP (your "good examples")
+
+All structured AI actions stay: Generate Estimate, Rewrite SMS, Summarize Call, Analyze Roof Report, AI autofill, AI tagging, document parsing, roof report parsing, workflow automation, smart suggestions. These already exist as discrete actions, not chat — no changes needed beyond verifying none of them depend on the removed chat plumbing.
+
+### B3. Special case — AI Admin Command Center
+
+Project memory has `mem://features/ai-admin/command-center` documenting a **master-only chat tool for database and settings management**. That sounds like exactly the kind of "AI chat" you want removed, but it's also a master/COB power-user tool — not customer-facing AI burn.
+
+**Question:** Does the chat removal apply to the master AI Admin Command Center too, or only to customer-tenant-facing chat?
+
+---
+
+## Questions before I start
+
+1. **AI Admin Command Center** — remove it, or keep it as a master-only tool? (Memory says master-only.)
+2. **`ai_conversations` / `ai_messages` tables** — stop writing now and drop after 30 days, or drop immediately?
+3. **Platform admin identity** — I'll define `is_platform_admin()` as `has_role(uid, 'master')` (the existing COB role). Confirm that's the right gate, or do you want a separate `platform_admin` role?
+4. **Hook coverage in pass 1** — OK to wire `trackUsage()` into AI/SMS/voice/measurement only this pass, with TODO stubs for storage/maps/scraping/docs in a follow-up? Or do you want all event types wired in one (much larger, harder to review) loop?
+
+Once you answer those, I'll ship Part A migration + edge router + dashboard in one go, then Part B in a second loop.
