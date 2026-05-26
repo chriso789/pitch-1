@@ -236,6 +236,25 @@ Deno.serve(async (req) => {
             duration_seconds: durationSeconds,
           }).eq('id', callId);
 
+          // Cost tracking — fire-and-forget.
+          if (durationSeconds && durationSeconds > 0) {
+            try {
+              const { trackUsage } = await import("../_shared/track-usage.ts");
+              trackUsage({
+                tenantId: clientState.tenant_id || null,
+                userId: clientState.user_id || null,
+                provider: "telnyx",
+                eventType: "voice_minute",
+                featureArea: "voice",
+                quantity: Math.max(1, Math.ceil(durationSeconds / 60)),
+                unit: "minute",
+                edgeFunction: "telnyx-call-webhook",
+                status: "success",
+                metadata: { call_id: callId, duration_seconds: durationSeconds },
+              });
+            } catch (e) { console.warn('trackUsage skipped:', (e as Error).message); }
+          }
+
           // Update dialer list item status if linked
           if (callRow?.list_item_id) {
             await admin.from('dialer_list_items').update({
