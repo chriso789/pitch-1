@@ -2669,6 +2669,7 @@ export type Database = {
           status: string
           status_message: string | null
           tenant_id: string | null
+          terminal_debug_payload: Json | null
           updated_at: string
           user_confirmed_roof_target: boolean
           user_id: string | null
@@ -2737,6 +2738,7 @@ export type Database = {
           status?: string
           status_message?: string | null
           tenant_id?: string | null
+          terminal_debug_payload?: Json | null
           updated_at?: string
           user_confirmed_roof_target?: boolean
           user_id?: string | null
@@ -2805,6 +2807,7 @@ export type Database = {
           status?: string
           status_message?: string | null
           tenant_id?: string | null
+          terminal_debug_payload?: Json | null
           updated_at?: string
           user_confirmed_roof_target?: boolean
           user_id?: string | null
