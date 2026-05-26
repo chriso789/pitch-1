@@ -6765,6 +6765,12 @@ async function processJob(input: any) {
           // cheap debug layers persisted so the row is never silently empty.
           const prePhase3A5Budget = shouldPreemptForCpuBudget(input, 0);
           if (prePhase3A5Budget.preempt) {
+            if (hoistedTransformPackage == null) {
+              console.warn(
+                "[AERIAL_GRAPH_HOIST_MISSING] site=pre_phase3_5_preempt — registration package is null; aerial candidate graph will skip with raster_transform_unavailable",
+              );
+            }
+
             await persistCpuBudgetTerminalFailure({
               input,
               coords,
