@@ -19,9 +19,24 @@ interface TokenResponse {
   x_refresh_token_expires_in: number;
 }
 
+const FRONTEND_CALLBACK_URL = Deno.env.get('QBO_FRONTEND_CALLBACK_URL') ?? 'https://pitch-crm.ai/quickbooks/callback';
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Public browser redirect from Intuit — no auth header possible.
+  // Forward code/realmId/state to the frontend callback which is authenticated.
+  const reqUrl = new URL(req.url);
+  const hasOAuthParams = reqUrl.searchParams.has('code') && reqUrl.searchParams.has('realmId');
+  if (req.method === 'GET' && (reqUrl.pathname.endsWith('/callback') || hasOAuthParams)) {
+    const fwd = new URL(FRONTEND_CALLBACK_URL);
+    for (const k of ['code', 'realmId', 'state', 'error', 'error_description']) {
+      const v = reqUrl.searchParams.get(k);
+      if (v) fwd.searchParams.set(k, v);
+    }
+    return new Response(null, { status: 302, headers: { Location: fwd.toString() } });
   }
 
   try {
@@ -30,7 +45,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
+          headers: { Authorization: req.headers.get('Authorization') ?? '' },
         },
       }
     );
@@ -38,7 +53,10 @@ Deno.serve(async (req) => {
     // Verify user is authenticated
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      throw new Error('Unauthorized');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Get user's tenant
