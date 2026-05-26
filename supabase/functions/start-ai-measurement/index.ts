@@ -14869,6 +14869,30 @@ async function insertFailedPreliminaryMeasurement(
     debug,
     input?._registration_preflight ?? null,
   );
+  // Final-payload fallback rebuild: now that the transform proof has been
+  // merged in, retry the aerial candidate graph in place so a stale
+  // `raster_transform_unavailable` skip from the preempt site can be
+  // upgraded to executed=true when registration + perimeter topology are
+  // both present on the row.
+  try {
+    rebuildAerialGraphFromFinalPayload(debugWithTransform);
+  } catch (e) {
+    console.warn("[AERIAL_GRAPH_REBUILD_FAILED]", String(e));
+  }
+  // Preserve estimated_work_units across the terminal write so a known
+  // nonzero value cannot be regressed to 0.
+  const preservedWU = preserveEstimatedWorkUnits({
+    estimatedWorkUnits: (debugWithTransform as any)?.estimated_work_units,
+    priorGeometry: (debugWithTransform as any)?.dsm_planar_graph_debug ?? null,
+    incoming: debugWithTransform as any,
+  });
+  if (preservedWU != null) {
+    (debugWithTransform as any).estimated_work_units = preservedWU;
+    if ((debugWithTransform as any).dsm_planar_graph_debug) {
+      (debugWithTransform as any).dsm_planar_graph_debug.estimated_work_units =
+        preservedWU;
+    }
+  }
   console.log(
     "VTRACE_TRANSFORM_MERGED_INTO_FAILURE_PAYLOAD",
     JSON.stringify({
