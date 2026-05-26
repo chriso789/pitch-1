@@ -10,7 +10,21 @@ import {
   assertEquals,
   assertExists,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { summarizeRow } from "../index.ts";
+
+// The module under test instantiates a Supabase client at import time. Stub
+// the required env vars so the import succeeds in the test runner — these
+// tests never touch the network, they only call the pure summarizeRow().
+Deno.env.set("SUPABASE_URL", Deno.env.get("SUPABASE_URL") ?? "http://localhost");
+Deno.env.set(
+  "SUPABASE_SERVICE_ROLE_KEY",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "test-service-role-key",
+);
+Deno.env.set(
+  "SUPABASE_ANON_KEY",
+  Deno.env.get("SUPABASE_ANON_KEY") ?? "test-anon-key",
+);
+
+const { summarizeRow } = await import("../index.ts");
 
 const BASE_REG_BOUNDS_MISSING = {
   version: "registration-v2.3",
