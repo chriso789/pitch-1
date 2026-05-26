@@ -1510,13 +1510,22 @@ function applyLiveRuntimeHoistToRegistration(
       });
       reg.geo_to_dsm_transform = reg.geo_to_dsm_transform ??
         transformPkg.geo_to_dsm_transform;
+      reg.geo_to_dsm_transform_source = reg.geo_to_dsm_transform_source ??
+        (transformPkg as any).geo_to_dsm_transform_source;
       reg.confirmed_roof_center_dsm_px = reg.confirmed_roof_center_dsm_px ??
         transformPkg.confirmed_roof_center_dsm_px;
+      reg.confirmed_roof_center_dsm_px_source =
+        reg.confirmed_roof_center_dsm_px_source ??
+          (transformPkg as any).confirmed_roof_center_dsm_px_source;
       reg.geo_to_dsm_px_success = transformPkg.geo_to_dsm_px_success === true;
       reg.dsm_tile_bounds_contain_confirmed_center =
         transformPkg.dsm_tile_bounds_contain_confirmed_center === true;
       reg.dsm_to_raster_transform = reg.dsm_to_raster_transform ??
         transformPkg.dsm_to_raster_transform;
+      reg.dsm_to_raster_transform_source = reg.dsm_to_raster_transform_source ??
+        (transformPkg as any).dsm_to_raster_transform_source;
+      reg.dsm_transform_policy_version =
+        (transformPkg as any).dsm_transform_policy_version;
       reg.dsm_raster_bounds_overlap =
         transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
       reg.dsm_raster_overlap_ratio = dsmRasterOverlapRatio(
