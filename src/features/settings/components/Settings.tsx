@@ -146,6 +146,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "production-checklist": "business",
   "material-audit": "business",
   "supplier-connections": "business",
+  "company-referrals": "business",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
