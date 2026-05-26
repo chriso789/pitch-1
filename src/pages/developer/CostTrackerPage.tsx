@@ -43,20 +43,37 @@ export default function CostTrackerPage() {
   const [providers, setProviders] = useState<ProviderCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
+  const [generatedSecret, setGeneratedSecret] = useState<string | null>(null);
 
   async function loadAll() {
     setLoading(true);
-    const [d, c, p] = await Promise.all([
+    const [d, c, p, s] = await Promise.all([
       edgeApi<Dashboard>("platform-api", "/dashboard"),
       edgeApi<{ rows: CompanyRow[] }>("platform-api", "/companies"),
       edgeApi<{ rows: ProviderCost[] }>("platform-api", "/provider-costs"),
+      edgeApi<{ configured: boolean }>("platform-api", "/internal-secret-status"),
     ]);
     if (d.error) toast.error(`Dashboard: ${d.error}`); else setDashboard(d.data);
     if (c.error) toast.error(`Companies: ${c.error}`); else setCompanies(c.data?.rows ?? []);
     if (p.error) toast.error(`Providers: ${p.error}`); else setProviders(p.data?.rows ?? []);
+    if (!s.error && s.data) setSecretConfigured(s.data.configured);
     setLoading(false);
   }
   useEffect(() => { loadAll(); }, []);
+
+  function generateSecret() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    setGeneratedSecret(`PITCH_INTERNAL_WORKER_${hex}`);
+  }
+  async function copySecret() {
+    if (!generatedSecret) return;
+    await navigator.clipboard.writeText(generatedSecret);
+    toast.success("Secret copied to clipboard");
+  }
+
 
   async function recalc() {
     const { error } = await edgeApi("platform-api", "/recalculate-rollups", {});
