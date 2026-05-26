@@ -46,6 +46,24 @@ export interface AerialCandidateFace {
   source: "solar_segment" | "mask_component";
 }
 
+export interface AerialCandidateGraphSkipDebug {
+  has_perimeter_ring_px: boolean;
+  perimeter_ring_px_source: string | null;
+  has_perimeter_ring_geo: boolean;
+  perimeter_ring_geo_source: string | null;
+  has_geo_to_raster_transform: boolean;
+  geo_to_raster_transform_source: string | null;
+  has_raster_bounds_lat_lng: boolean;
+  raster_bounds_source: string | null;
+  has_overlay_raster_url: boolean;
+  raster_registered_basis:
+    | "transform"
+    | "bounds_only"
+    | "registration_package"
+    | null;
+  reason: string;
+}
+
 export interface AerialCandidateRoofGraph {
   version: "aerial-candidate-graph-v1";
   coordinate_space: "raster_px";
@@ -53,6 +71,7 @@ export interface AerialCandidateRoofGraph {
   customer_ready: false;
   source: "registered_aerial_geometry";
   skipped_reason?: string;
+  skip_debug?: AerialCandidateGraphSkipDebug;
   perimeter_ring_px: Array<[number, number]> | null;
   perimeter_ring_geo: Array<[number, number]> | null;
   perimeter_area_sqft: number | null;
@@ -75,6 +94,7 @@ export interface AerialCandidateRoofGraph {
   };
   perimeter_source?: string | null;
 }
+
 
 const MAX_NODES = 512;
 const MAX_EDGES = 1024;
@@ -186,6 +206,7 @@ export interface BuildAerialCandidateGraphArgs {
   // builder can succeed even when the canonical perimeter_topology snapshot
   // has not been wired into a particular call site yet.
   registration?: any;
+  overlayDebug?: any;
   debugLayers?: any;
   dsmPlanarGraphDebug?: any;
   debugRoofLines?: any;
@@ -236,14 +257,20 @@ function resolvePerimeterRingPx(
 
 function resolvePerimeterRingGeo(
   args: BuildAerialCandidateGraphArgs,
-): Array<[number, number]> | null {
-  const candidates = [
-    args.perimeterTopology?.perimeter_ring_geo,
-    args.dsmPlanarGraphDebug?.perimeter_topology?.perimeter_ring_geo,
+): { ring: Array<[number, number]> | null; source: string | null } {
+  const candidates: Array<[string, any]> = [
+    [
+      "perimeter_topology.perimeter_ring_geo",
+      args.perimeterTopology?.perimeter_ring_geo,
+    ],
+    [
+      "dsm_planar_graph_debug.perimeter_topology.perimeter_ring_geo",
+      args.dsmPlanarGraphDebug?.perimeter_topology?.perimeter_ring_geo,
+    ],
   ];
-  for (const raw of candidates) {
+  for (const [src, raw] of candidates) {
     const ring = normalizeGeoRing(raw);
-    if (ring) return ring;
+    if (ring) return { ring, source: src };
   }
   // Derive from debugRoofLines[].geo only as last resort.
   if (Array.isArray(args.debugRoofLines)) {
@@ -256,30 +283,79 @@ function resolvePerimeterRingGeo(
         if (gp) flat.push(gp);
       }
     }
-    if (flat.length >= 3) return flat;
+    if (flat.length >= 3) return { ring: flat, source: "debug_roof_lines[].geo" };
   }
-  return null;
+  return { ring: null, source: null };
 }
 
-function resolveRasterRegistration(args: BuildAerialCandidateGraphArgs): {
+interface RegistrationResolution {
   registered: boolean;
   basis: "transform" | "bounds_only" | "registration_package" | null;
-} {
-  const pkg = args.registration?.transform_package ?? args.registration ?? null;
-  const transform = args.geoToRasterTransform ?? pkg?.geo_to_raster_transform;
-  const bounds = args.rasterBoundsLatLng ?? pkg?.raster_bounds_lat_lng ??
-    args.registration?.raster_bounds_lat_lng;
-  if (transform && bounds) {
-    return { registered: true, basis: "transform" };
-  }
-  if (transform) {
-    return { registered: true, basis: "registration_package" };
-  }
-  if (bounds && (args.rasterUrl ?? args.registration?.raster?.url)) {
-    return { registered: true, basis: "bounds_only" };
-  }
-  return { registered: false, basis: null };
+  geoToRasterTransform: any;
+  geoToRasterTransformSource: string | null;
+  rasterBoundsLatLng: any;
+  rasterBoundsSource: string | null;
+  rasterUrl: string | null;
+  rasterUrlSource: string | null;
 }
+
+function resolveRasterRegistration(
+  args: BuildAerialCandidateGraphArgs,
+): RegistrationResolution {
+  const pkg = args.registration?.transform_package ?? null;
+
+  // geo→raster transform sources in priority order.
+  const transformSources: Array<[string, any]> = [
+    ["args.geoToRasterTransform", args.geoToRasterTransform],
+    ["registration.transform_package.geo_to_raster_transform", pkg?.geo_to_raster_transform],
+    ["registration.geo_to_raster_transform", args.registration?.geo_to_raster_transform],
+  ];
+  let transform: any = null;
+  let transformSource: string | null = null;
+  for (const [src, v] of transformSources) {
+    if (v != null) { transform = v; transformSource = src; break; }
+  }
+
+  // raster bounds sources.
+  const boundsSources: Array<[string, any]> = [
+    ["args.rasterBoundsLatLng", args.rasterBoundsLatLng],
+    ["registration.transform_package.raster_bounds_lat_lng", pkg?.raster_bounds_lat_lng],
+    ["registration.raster_bounds_lat_lng", args.registration?.raster_bounds_lat_lng],
+  ];
+  let bounds: any = null;
+  let boundsSource: string | null = null;
+  for (const [src, v] of boundsSources) {
+    if (v != null) { bounds = v; boundsSource = src; break; }
+  }
+
+  // raster url sources.
+  const urlSources: Array<[string, any]> = [
+    ["args.rasterUrl", args.rasterUrl],
+    ["registration.raster.url", args.registration?.raster?.url],
+  ];
+  let rasterUrl: string | null = null;
+  let rasterUrlSource: string | null = null;
+  for (const [src, v] of urlSources) {
+    if (v) { rasterUrl = String(v); rasterUrlSource = src; break; }
+  }
+
+  let basis: "transform" | "bounds_only" | "registration_package" | null = null;
+  if (transform && bounds) basis = "transform";
+  else if (transform) basis = "registration_package";
+  else if (bounds && rasterUrl) basis = "bounds_only";
+
+  return {
+    registered: basis !== null,
+    basis,
+    geoToRasterTransform: transform,
+    geoToRasterTransformSource: transformSource,
+    rasterBoundsLatLng: bounds,
+    rasterBoundsSource: boundsSource,
+    rasterUrl,
+    rasterUrlSource,
+  };
+}
+
 
 export function buildAerialCandidateGraph(
   args: BuildAerialCandidateGraphArgs,
@@ -314,20 +390,43 @@ export function buildAerialCandidateGraph(
   base.evidence.raster_registered_basis = reg.basis;
 
   const { ring: ringPx, source: ringSource } = resolvePerimeterRingPx(args);
-  const ringGeo = resolvePerimeterRingGeo(args);
+  const { ring: ringGeo, source: ringGeoSource } = resolvePerimeterRingGeo(args);
   base.perimeter_source = ringSource;
 
+  const buildSkipDebug = (reason: string): AerialCandidateGraphSkipDebug => ({
+    has_perimeter_ring_px: !!ringPx,
+    perimeter_ring_px_source: ringSource,
+    has_perimeter_ring_geo: !!ringGeo,
+    perimeter_ring_geo_source: ringGeoSource,
+    has_geo_to_raster_transform: !!reg.geoToRasterTransform,
+    geo_to_raster_transform_source: reg.geoToRasterTransformSource,
+    has_raster_bounds_lat_lng: !!reg.rasterBoundsLatLng,
+    raster_bounds_source: reg.rasterBoundsSource,
+    has_overlay_raster_url: !!reg.rasterUrl,
+    raster_registered_basis: reg.basis,
+    reason,
+  });
+
   if (!reg.registered) {
-    return { ...base, skipped_reason: "raster_transform_unavailable" };
+    return {
+      ...base,
+      skipped_reason: "raster_transform_unavailable",
+      skip_debug: buildSkipDebug("raster_transform_unavailable"),
+    };
   }
   if (!ringPx && !ringGeo) {
-    return { ...base, skipped_reason: "perimeter_ring_unavailable" };
+    return {
+      ...base,
+      skipped_reason: "perimeter_ring_unavailable",
+      skip_debug: buildSkipDebug("perimeter_ring_unavailable"),
+    };
   }
 
 
   base.perimeter_ring_px = ringPx;
   base.perimeter_ring_geo = ringGeo;
   base.perimeter_area_sqft = ringAreaSqft(ringGeo);
+
 
   // Target mask diagnostics
   const tmi = args.targetMaskIsolation && typeof args.targetMaskIsolation === "object"
@@ -512,6 +611,19 @@ export function buildAerialCandidateGraph(
     });
   }
 
+  // Edge-construction guarantee: if we had perimeter evidence available
+  // (eave/rake/perimeter_edges arrays OR a ring) but produced zero edges,
+  // mark as skipped rather than reporting an executed but empty graph.
+  if (base.edges.length === 0) {
+    return {
+      ...base,
+      executed: false,
+      skipped_reason: "edge_construction_failed",
+      skip_debug: buildSkipDebug("edge_construction_failed"),
+    };
+  }
+
   base.executed = true;
   return base;
 }
+

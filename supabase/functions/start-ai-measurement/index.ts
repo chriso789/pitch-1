@@ -6062,6 +6062,8 @@ async function processJob(input: any) {
       let hoistedRasterBoundsLatLng: any = null;
       let hoistedGeoToRasterTransform: any = null;
       let hoistedConfirmedRoofCenterPx: any = null;
+      let hoistedTransformPackage: any = null;
+
 
 
       // ══════════ DSM COORDINATE MATCH GATE ══════════
@@ -6346,6 +6348,7 @@ async function processJob(input: any) {
         // starved the aerial candidate graph builder of registration data and
         // produced `skipped_reason: "raster_transform_unavailable"` even when
         // the transform package already had the values.
+        hoistedTransformPackage = _transformPkg ?? hoistedTransformPackage;
         hoistedRasterBoundsLatLng =
           (_transformPkg as any)?.raster_bounds_lat_lng ??
             hoistedRasterBoundsLatLng;
@@ -6355,6 +6358,7 @@ async function processJob(input: any) {
         hoistedConfirmedRoofCenterPx =
           (_transformPkg as any)?.confirmed_roof_center_px ??
             hoistedConfirmedRoofCenterPx;
+
         const _stageReport = classifyRegistrationStage({
           confirmed_roof_center_lat_lng: _confirmedLatLng,
           confirmed_roof_center_px: _transformPkg.confirmed_roof_center_px ??
@@ -6740,7 +6744,9 @@ async function processJob(input: any) {
                 maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
                 confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
                 staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                transformPackage: hoistedTransformPackage,
               }),
+
             });
             return;
           }
@@ -6775,7 +6781,9 @@ async function processJob(input: any) {
                 maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
                 confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
                 staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                transformPackage: hoistedTransformPackage,
               }),
+
             });
             return;
           }
@@ -7252,7 +7260,9 @@ async function processJob(input: any) {
               maskComponentsTable: targetMaskIsolation?.mask_components_table ?? [],
               confirmedRoofCenterPx: hoistedConfirmedRoofCenterPx,
               staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+              transformPackage: hoistedTransformPackage,
             }),
+
             phase3A_5: phase3A5Diagnostics,
           },
         });
