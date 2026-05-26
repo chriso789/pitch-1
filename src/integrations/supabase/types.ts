@@ -34950,46 +34950,67 @@ export type Database = {
         Row: {
           access_token: string
           connected_at: string
+          connected_by: string | null
           created_at: string
+          disconnected_at: string | null
           expires_at: string
           id: string
           is_active: boolean
+          last_refresh_at: string | null
           last_synced_at: string | null
+          metadata: Json
+          oauth_state: string | null
           qbo_company_name: string | null
           realm_id: string
           refresh_token: string
+          refresh_token_expires_at: string | null
           scopes: string[]
           tenant_id: string
+          token_expires_at: string | null
           updated_at: string
         }
         Insert: {
           access_token: string
           connected_at?: string
+          connected_by?: string | null
           created_at?: string
+          disconnected_at?: string | null
           expires_at: string
           id?: string
           is_active?: boolean
+          last_refresh_at?: string | null
           last_synced_at?: string | null
+          metadata?: Json
+          oauth_state?: string | null
           qbo_company_name?: string | null
           realm_id: string
           refresh_token: string
+          refresh_token_expires_at?: string | null
           scopes?: string[]
           tenant_id: string
+          token_expires_at?: string | null
           updated_at?: string
         }
         Update: {
           access_token?: string
           connected_at?: string
+          connected_by?: string | null
           created_at?: string
+          disconnected_at?: string | null
           expires_at?: string
           id?: string
           is_active?: boolean
+          last_refresh_at?: string | null
           last_synced_at?: string | null
+          metadata?: Json
+          oauth_state?: string | null
           qbo_company_name?: string | null
           realm_id?: string
           refresh_token?: string
+          refresh_token_expires_at?: string | null
           scopes?: string[]
           tenant_id?: string
+          token_expires_at?: string | null
           updated_at?: string
         }
         Relationships: []
