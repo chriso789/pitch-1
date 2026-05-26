@@ -198,8 +198,8 @@ Deno.serve(async (req) => {
       // Calculate token expiry
       const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-      // Store connection
-      const { data: connection, error: insertError } = await supabase
+      // Store connection (service role — RLS has no INSERT/UPDATE policy)
+      const { data: connection, error: insertError } = await adminClient
         .from('qbo_connections')
         .upsert({
           tenant_id: profile.tenant_id,
@@ -224,18 +224,36 @@ Deno.serve(async (req) => {
         .single();
 
       if (insertError) {
-        console.error('Failed to store connection:', insertError);
-        throw new Error('Failed to store connection');
+        console.error('[qbo-oauth-connect] callback upsert failed', {
+          tenant_id: profile.tenant_id,
+          realm_id: realmId,
+          is_sandbox: isSandbox,
+          code: (insertError as any).code,
+          message: insertError.message,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'qbo_connection_write_failed',
+            details: insertError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+
+      console.log('[qbo-oauth-connect] callback upsert ok', {
+        tenant_id: profile.tenant_id,
+        realm_id: realmId,
+        is_sandbox: isSandbox,
+      });
 
       return new Response(
         JSON.stringify({
           success: true,
-          connection: {
-            id: connection.id,
-            realmId: connection.realm_id,
-            companyName: connection.qbo_company_name,
-          },
+          connected: true,
+          realm_id: connection.realm_id,
+          company_name: connection.qbo_company_name,
+          is_sandbox: connection.is_sandbox === true,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -245,7 +263,7 @@ Deno.serve(async (req) => {
     if (action === 'refresh') {
       const { data: connection } = await supabase
         .from('qbo_connections')
-        .select('*')
+        .select('id, realm_id, refresh_token, is_sandbox')
         .eq('tenant_id', profile.tenant_id)
         .eq('is_active', true)
         .single();
