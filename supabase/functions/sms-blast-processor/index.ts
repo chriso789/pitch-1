@@ -10,6 +10,7 @@
 //   5. circuit-break if failure_rate > 10% on >= 20 attempts
 //   6. mark blast 'completed' when nothing remains
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
+import { trackUsage, checkUsageLimit } from '../_shared/track-usage.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
