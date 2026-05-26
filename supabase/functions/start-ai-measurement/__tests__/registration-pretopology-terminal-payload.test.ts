@@ -217,3 +217,72 @@ Deno.test("buildAerialCandidateGraph directly returns >=6 edges on Fonsica-shape
   assert(acg.edges.length >= 6, `expected >=6 edges, got ${acg.edges.length}`);
   assertEquals(acg.coordinate_space, "raster_px");
 });
+
+// ── Fixture-driven Fonsica-class regression ──────────────────────────────
+// Loads the canonical anonymized Fonsica payload from
+// supabase/functions/_shared/__fixtures__/fonsica-pretopology-payload.json so
+// that future Fonsica-class regressions reuse the same shape.
+
+const FONSICA_FIXTURE_URL = new URL(
+  "../../_shared/__fixtures__/fonsica-pretopology-payload.json",
+  import.meta.url,
+);
+
+Deno.test("Fonsica fixture: rebuild + late_cpu_preempt + work_units preserved", async () => {
+  const fixture = JSON.parse(
+    await Deno.readTextFile(FONSICA_FIXTURE_URL),
+  );
+
+  // 1. Rebuild aerial graph from fixture's final-payload shape.
+  const geometry: Record<string, unknown> = {
+    aerial_candidate_roof_graph: {
+      version: "aerial-candidate-graph-v1",
+      executed: false,
+      coordinate_space: "raster_px",
+      customer_ready: false,
+      source: "registered_aerial_geometry",
+      skipped_reason: "raster_transform_unavailable",
+      edges: [],
+      nodes: [],
+      candidate_faces: [],
+    },
+    registration: fixture.registration,
+    perimeter_topology: fixture.perimeter_topology,
+    target_mask_isolation: fixture.target_mask_isolation,
+  };
+  const rebuild = rebuildAerialGraphFromFinalPayload(geometry);
+  assert(rebuild.rebuilt, "fixture must drive a successful aerial rebuild");
+  const acg = (geometry as any).aerial_candidate_roof_graph;
+  assertEquals(acg.executed, fixture.expected.aerial_executed_after_rebuild);
+  assert(
+    acg.edges.length >= fixture.expected.aerial_min_edges,
+    `expected >=${fixture.expected.aerial_min_edges} edges, got ${acg.edges.length}`,
+  );
+  assertEquals(acg.aerial_graph_rebuilt_from_final_payload, true);
+  assertEquals(
+    (geometry as any).primary_geometry_source,
+    fixture.expected.primary_geometry_source,
+  );
+
+  // 2. Terminal payload preserves work units AND flags late_cpu_preempt.
+  const payload = buildCpuBudgetTerminalDebugPayload({
+    stage: "pre_phase3_5_preempt",
+    estimatedWorkUnits: 0,
+    debug: {},
+    budget: {
+      preempt: true,
+      elapsed_ms: fixture.cpu_budget.elapsed_ms,
+      remaining_ms: fixture.cpu_budget.remaining_ms,
+      reason: fixture.cpu_budget.reason,
+    },
+    constants: CONSTANTS,
+    priorGeometry: { estimated_work_units: fixture.estimated_work_units },
+  });
+  assertEquals(
+    (payload as any).estimated_work_units,
+    fixture.expected.work_units_preserved,
+  );
+  assertEquals((payload as any).late_cpu_preempt, fixture.expected.late_cpu_preempt);
+  assertEquals((payload as any).customer_report_ready, fixture.expected.customer_report_ready);
+});
+
