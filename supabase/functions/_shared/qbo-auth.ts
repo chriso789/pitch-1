@@ -82,19 +82,22 @@ export function buildAuthorizeUrl(opts: {
   return url.toString();
 }
 
-export async function exchangeAuthorizationCode(code: string): Promise<QboTokenResponse> {
-  const { clientId, clientSecret, redirectUri } = getQboEnv();
+export async function exchangeAuthorizationCode(
+  code: string,
+  ctx?: QboContext,
+): Promise<QboTokenResponse> {
+  const c = ctx ?? getQboContextForMode(getDefaultQboMode());
   const res = await fetch(QBO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
-      Authorization: basicAuthHeader(clientId, clientSecret),
+      Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: redirectUri,
+      redirect_uri: c.redirectUri,
     }),
   });
   if (!res.ok) {
@@ -104,14 +107,17 @@ export async function exchangeAuthorizationCode(code: string): Promise<QboTokenR
   return (await res.json()) as QboTokenResponse;
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<QboTokenResponse> {
-  const { clientId, clientSecret } = getQboEnv();
+export async function refreshAccessToken(
+  refreshToken: string,
+  ctx?: QboContext,
+): Promise<QboTokenResponse> {
+  const c = ctx ?? getQboContextForMode(getDefaultQboMode());
   const res = await fetch(QBO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
-      Authorization: basicAuthHeader(clientId, clientSecret),
+      Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
       grant_type: "refresh_token",
@@ -214,7 +220,7 @@ export async function getValidAccessToken(
     return { access_token: c.access_token, realm_id: c.realm_id, connection: c };
   }
 
-  const refreshed = await refreshAccessToken(c.refresh_token);
+  const refreshed = await refreshAccessToken(c.refresh_token, getQboContextForConnection(c));
   const updated = await persistTokens(service, {
     tenant_id: c.tenant_id,
     realm_id: c.realm_id,
@@ -223,10 +229,14 @@ export async function getValidAccessToken(
   return { access_token: updated.access_token, realm_id: updated.realm_id, connection: updated };
 }
 
-export async function fetchCompanyInfo(accessToken: string, realmId: string) {
-  const { apiBase } = getQboEnv();
+export async function fetchCompanyInfo(
+  accessToken: string,
+  realmId: string,
+  connection?: { is_sandbox?: boolean | null; oauth_app_env?: string | null },
+) {
+  const ctx = connection ? getQboContextForConnection(connection) : getQboContextForMode(getDefaultQboMode());
   const res = await fetch(
-    `${apiBase}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
+    `${ctx.accountingBaseUrl}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
     { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
   );
   if (!res.ok) return null;
@@ -244,20 +254,20 @@ export function createServiceClient(): SupabaseClient {
 export async function revokeConnection(service: SupabaseClient, tenant_id: string) {
   const { data: conn } = await service
     .from("qbo_connections")
-    .select("id, refresh_token")
+    .select("id, refresh_token, oauth_app_env, is_sandbox")
     .eq("tenant_id", tenant_id)
     .eq("is_active", true)
     .maybeSingle();
   if (!conn) return;
 
   try {
-    const { clientId, clientSecret } = getQboEnv();
+    const ctx = getQboContextForConnection(conn);
     await fetch(QBO_REVOKE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: basicAuthHeader(clientId, clientSecret),
+        Authorization: basicAuthHeader(ctx.clientId, ctx.clientSecret),
       },
       body: JSON.stringify({ token: (conn as { refresh_token: string }).refresh_token }),
     });
