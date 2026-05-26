@@ -270,22 +270,10 @@ export const Settings = () => {
       const category = TAB_TO_CATEGORY[tab.tab_key] || "general";
       if (!groups[category]) {
         groups[category] = [];
-    }
-
-    if (!groups["business"].some(t => t.tab_key === "company-referrals")) {
-      groups["business"].push({
-        id: "company-referrals-synthetic",
-        tab_key: "company-referrals",
-        label: "Company Referrals",
-        description: "B2B partner referral program",
-        icon_name: "Handshake",
-        order_index: 100,
-        is_active: true,
-        required_role: null,
-      });
-    }
+      }
       groups[category].push(tab);
     });
+
 
     // Always add synthetic "Supplier Connections" entry under Business
     if (!groups["business"]) groups["business"] = [];
