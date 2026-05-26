@@ -64,6 +64,21 @@ export default function QuickBooksSettings() {
   const [qboItems, setQboItems] = useState<QBOItem[]>([]);
   const [mappings, setMappings] = useState<Record<string, JobTypeMapping>>({});
   const [savingMappings, setSavingMappings] = useState(false);
+  const [lastAuthUrl, setLastAuthUrl] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<any>(null);
+
+  const runDiagnostic = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
+        body: { action: 'verify' },
+      });
+      if (error) throw error;
+      setDiagnostic(data);
+    } catch (e: any) {
+      setDiagnostic({ error: await extractFnError(e) });
+    }
+  };
+
 
   useEffect(() => {
     loadConnection();
@@ -120,6 +135,9 @@ export default function QuickBooksSettings() {
 
       if (error) throw error;
 
+
+
+
       const mappingsMap: Record<string, JobTypeMapping> = {};
       (data as any)?.forEach((mapping: any) => {
         mappingsMap[mapping.job_type] = {
@@ -144,6 +162,10 @@ export default function QuickBooksSettings() {
       });
 
       if (error) throw error;
+
+      setLastAuthUrl(data.authUrl);
+      console.log('[QBO] Auth URL:', data.authUrl);
+
 
       // Open OAuth window
       const width = 600;
@@ -358,21 +380,54 @@ export default function QuickBooksSettings() {
               </Button>
             </div>
           ) : (
-            <Button
-              onClick={handleConnect}
-              disabled={connecting}
-              className="w-full"
-            >
-              {connecting ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Connecting...
-                </>
-              ) : (
-                'Connect to QuickBooks'
-              )}
-            </Button>
+            <div className="space-y-3">
+              <Button
+                onClick={handleConnect}
+                disabled={connecting}
+                className="w-full"
+              >
+                {connecting ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  'Connect to QuickBooks'
+                )}
+              </Button>
+
+              {/* Diagnostic panel */}
+              <div className="rounded-md border border-dashed p-3 text-xs space-y-2 bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-muted-foreground">Troubleshooting</span>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={runDiagnostic}>
+                    Run diagnostic
+                  </Button>
+                </div>
+                {lastAuthUrl && (
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground">
+                      Popup blank/spinning? Open Intuit's URL directly to see the real error:
+                    </p>
+                    <a
+                      href={lastAuthUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline break-all"
+                    >
+                      Open OAuth URL in new tab ↗
+                    </a>
+                  </div>
+                )}
+                {diagnostic && (
+                  <pre className="bg-background border rounded p-2 overflow-x-auto text-[10px] leading-tight">
+                    {JSON.stringify(diagnostic, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </div>
           )}
+
         </CardContent>
       </Card>
 
