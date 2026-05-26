@@ -13519,7 +13519,83 @@ async function persistCpuBudgetTerminalFailure(args: {
     "failed",
     AI_MEASUREMENT_CPU_TIMEOUT_REASON,
   );
-  await supabase.from("ai_measurement_jobs").update({
+
+  // ── Slice B persistence: queryable terminal-preempt contract ───────────
+  // Mirror the proven test contract into a dedicated JSONB column so the
+  // live row can be verified the same way the regression tests are. Strings
+  // and source_context.debug are kept for backwards compat; this column is
+  // the canonical source of truth for the preempt evidence.
+  const dp: any = debugPayload || {};
+  const acg: any = dp.aerial_candidate_roof_graph || {};
+  const perim: any = dp.perimeter_topology || {};
+  const eaveEdgesLen = Array.isArray(perim?.eave_edges)
+    ? perim.eave_edges.length
+    : 0;
+  const perimeterEdgesLen = Array.isArray(perim?.perimeter_edges)
+    ? perim.perimeter_edges.length
+    : (Array.isArray(perim?.perimeter_ring_px)
+      ? Math.max(0, perim.perimeter_ring_px.length - 1)
+      : 0);
+  const overlay = (dp.overlay_registration ?? dp.overlay ?? null) as any;
+  const workUnitsPreserved =
+    typeof dp.estimated_work_units === "number" && dp.estimated_work_units > 0;
+
+  const terminalDebugPayload = {
+    contract_version: "slice_b_v1",
+    persisted_at: new Date().toISOString(),
+    cpu_budget_stage: args.stage,
+    failure_stage: AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
+    hard_fail_reason: AI_MEASUREMENT_CPU_TIMEOUT_REASON,
+    created_by_function: "start-ai-measurement",
+    canonical_measurement_route: true,
+    customer_report_ready: false,
+    // Aerial / pre-topology contract
+    pre_phase3_5_preempt: {
+      executed: acg?.executed === true,
+      aerial_graph_rebuilt_from_final_payload:
+        dp.aerial_graph_rebuilt_from_final_payload === true ||
+        acg?.aerial_graph_rebuilt_from_final_payload === true,
+      work_units_preserved: workUnitsPreserved,
+      skipped_reason: acg?.skipped_reason ?? null,
+      impossible_skip: dp.aerial_graph_impossible_skip === true,
+      impossible_skip_reason: dp.aerial_graph_impossible_skip_reason ?? null,
+      edges_count: Array.isArray(acg?.edges) ? acg.edges.length : 0,
+    },
+    eave_edges_length: eaveEdgesLen,
+    perimeter_edges_length: perimeterEdgesLen,
+    estimated_work_units: dp.estimated_work_units ?? null,
+    cpu_budget_elapsed_ms: dp.cpu_budget_elapsed_ms ?? null,
+    cpu_budget_remaining_ms: dp.cpu_budget_remaining_ms ?? null,
+    cpu_budget_ms: dp.cpu_budget_ms ?? null,
+    late_cpu_preempt: dp.late_cpu_preempt === true,
+    primary_geometry_source: dp.primary_geometry_source ?? null,
+    dsm_validation_status: dp.dsm_validation_status ?? null,
+    target_mask_isolation: {
+      checked: dp.target_mask_isolation?.checked === true,
+    },
+    phase3_5: {
+      version: dp.phase3_5?.version ?? acg?.version ?? "aerial-candidate-graph-v1",
+      skipped_reason:
+        dp.phase3_5?.refined_perimeter_missing_reason ??
+          acg?.skipped_reason ?? null,
+    },
+    overlay: overlay
+      ? {
+        transform: overlay?.transform ?? overlay?.geo_to_raster_transform ?? null,
+        rms_px: overlay?.rms_px ?? null,
+        max_error_px: overlay?.max_error_px ?? null,
+        mask_iou: overlay?.mask_iou ?? overlay?.iou ?? null,
+        coverage: overlay?.coverage ?? null,
+      }
+      : null,
+    // Full debug bag retained for deep inspection.
+    raw_debug: dp,
+  };
+
+  // Strip-and-retry: PostgREST schema cache may not see the new column
+  // immediately after deploy. Persist into source_context.debug as a
+  // mandatory fallback, then attempt the dedicated column.
+  const baseUpdate: Record<string, unknown> = {
     status: "failed",
     status_message: `AI measurement CPU budget exceeded: ${args.stage}`,
     result_state: "ai_failed_runtime",
@@ -13533,8 +13609,32 @@ async function persistCpuBudgetTerminalFailure(args: {
       failure_stage: AI_MEASUREMENT_CPU_TIMEOUT_STAGE,
       cpu_budget_stage: args.stage,
       debug: debugPayload,
+      terminal_debug_payload: terminalDebugPayload,
     },
-  }).eq("id", args.input.ai_measurement_job_id);
+  };
+  const withColumn = {
+    ...baseUpdate,
+    terminal_debug_payload: terminalDebugPayload,
+  };
+  const { error: writeErr } = await supabase
+    .from("ai_measurement_jobs")
+    .update(withColumn)
+    .eq("id", args.input.ai_measurement_job_id);
+  if (writeErr) {
+    const msg = String(writeErr?.message || "");
+    if (msg.includes("terminal_debug_payload") || msg.includes("PGRST204")) {
+      console.warn(
+        "[TERMINAL_DEBUG_PAYLOAD] schema cache miss, retrying without column",
+        msg,
+      );
+      await supabase
+        .from("ai_measurement_jobs")
+        .update(baseUpdate)
+        .eq("id", args.input.ai_measurement_job_id);
+    } else {
+      console.error("[TERMINAL_DEBUG_PAYLOAD] write failed", writeErr);
+    }
+  }
   return failedId;
 }
 
