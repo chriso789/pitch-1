@@ -71,6 +71,23 @@ Deno.serve(async (req) => {
       throw new Error('QuickBooks integration is not configured (missing QBO_CLIENT_ID/SECRET/REDIRECT_URI)');
     }
 
+    // Step 0: Verify config + auth (no side effects)
+    if (action === 'verify') {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          role: profile.role,
+          tenant_id: profile.tenant_id,
+          hasClientId: !!QBO_CLIENT_ID,
+          hasSecret: !!QBO_CLIENT_SECRET,
+          hasRedirect: !!QBO_REDIRECT_URI,
+          redirectUri: QBO_REDIRECT_URI,
+          environment: Deno.env.get('QBO_ENVIRONMENT') ?? 'unknown',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Step 1: Initiate OAuth
     if (action === 'initiate') {
       const state = crypto.randomUUID();
