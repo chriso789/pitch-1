@@ -22,19 +22,19 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-import { buildDsmRegistration } from "../../_shared/dsm-registration.ts";
-import { hoistSelectedCandidatePolygon } from "../../_shared/candidate-hoist.ts";
-import { evaluateRegistrationGate } from "../../_shared/registration-gate.ts";
+import { buildDsmRegistration } from "../dsm-registration.ts";
+import { hoistSelectedCandidatePolygon } from "../candidate-hoist.ts";
+import { evaluateRegistrationGate } from "../registration-gate.ts";
 import {
   forceRegistrationBlockedPhaseBlocks,
   quarantineRegistrationBlockedVisibleGeometry,
   REGISTRATION_BLOCKED_SKIPPED_REASON,
   stripRegistrationBlockedGeometryArtifacts,
-} from "../../_shared/registration-precedence.ts";
+} from "../registration-precedence.ts";
 import {
   ALLOWED_RESULT_STATES,
   normalizeResultStateForWrite,
-} from "../../_shared/result-state.ts";
+} from "../result-state.ts";
 
 const FONSICA = { lat: 27.9506, lng: -82.4572 };
 const FONSICA_BOUNDS = {
