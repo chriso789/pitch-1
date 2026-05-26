@@ -73,6 +73,13 @@ Deno.serve(async (req) => {
       throw new Error(`Insufficient permissions (role: ${profile?.role ?? 'none'})`);
     }
 
+    // Service-role client for qbo_connections writes only (RLS has no write policy).
+    // Created AFTER auth + role gate. Never used for reads driven by caller identity.
+    const adminClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
     const url = new URL(req.url);
     let action = url.searchParams.get('action');
     let body: any = {};
