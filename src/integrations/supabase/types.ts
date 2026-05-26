@@ -8629,6 +8629,145 @@ export type Database = {
           },
         ]
       }
+      company_usage_limits: {
+        Row: {
+          ai_prompt_monthly_limit: number
+          ai_token_monthly_limit: number
+          created_at: string
+          hard_stop_enabled: boolean
+          id: string
+          map_load_monthly_limit: number
+          monthly_price: number
+          plan_name: string
+          roof_report_monthly_limit: number
+          scrape_monthly_limit: number
+          sms_monthly_limit: number
+          storage_mb_limit: number
+          tenant_id: string
+          updated_at: string
+          voice_minute_monthly_limit: number
+          warning_threshold_percent: number
+        }
+        Insert: {
+          ai_prompt_monthly_limit?: number
+          ai_token_monthly_limit?: number
+          created_at?: string
+          hard_stop_enabled?: boolean
+          id?: string
+          map_load_monthly_limit?: number
+          monthly_price?: number
+          plan_name?: string
+          roof_report_monthly_limit?: number
+          scrape_monthly_limit?: number
+          sms_monthly_limit?: number
+          storage_mb_limit?: number
+          tenant_id: string
+          updated_at?: string
+          voice_minute_monthly_limit?: number
+          warning_threshold_percent?: number
+        }
+        Update: {
+          ai_prompt_monthly_limit?: number
+          ai_token_monthly_limit?: number
+          created_at?: string
+          hard_stop_enabled?: boolean
+          id?: string
+          map_load_monthly_limit?: number
+          monthly_price?: number
+          plan_name?: string
+          roof_report_monthly_limit?: number
+          scrape_monthly_limit?: number
+          sms_monthly_limit?: number
+          storage_mb_limit?: number
+          tenant_id?: string
+          updated_at?: string
+          voice_minute_monthly_limit?: number
+          warning_threshold_percent?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_usage_limits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_usage_monthly_rollups: {
+        Row: {
+          ai_prompt_count: number
+          ai_token_count: number
+          breakdown: Json
+          created_at: string
+          event_count: number
+          gross_margin_percent: number
+          gross_profit: number
+          id: string
+          map_loads: number
+          month: string
+          revenue: number
+          roof_report_count: number
+          scrape_count: number
+          sms_count: number
+          storage_mb: number
+          tenant_id: string
+          total_estimated_cost: number
+          updated_at: string
+          voice_minutes: number
+        }
+        Insert: {
+          ai_prompt_count?: number
+          ai_token_count?: number
+          breakdown?: Json
+          created_at?: string
+          event_count?: number
+          gross_margin_percent?: number
+          gross_profit?: number
+          id?: string
+          map_loads?: number
+          month: string
+          revenue?: number
+          roof_report_count?: number
+          scrape_count?: number
+          sms_count?: number
+          storage_mb?: number
+          tenant_id: string
+          total_estimated_cost?: number
+          updated_at?: string
+          voice_minutes?: number
+        }
+        Update: {
+          ai_prompt_count?: number
+          ai_token_count?: number
+          breakdown?: Json
+          created_at?: string
+          event_count?: number
+          gross_margin_percent?: number
+          gross_profit?: number
+          id?: string
+          map_loads?: number
+          month?: string
+          revenue?: number
+          roof_report_count?: number
+          scrape_count?: number
+          sms_count?: number
+          storage_mb?: number
+          tenant_id?: string
+          total_estimated_cost?: number
+          updated_at?: string
+          voice_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_usage_monthly_rollups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       competition_leaderboards: {
         Row: {
           competition_id: string
@@ -34407,6 +34546,42 @@ export type Database = {
           },
         ]
       }
+      provider_costs: {
+        Row: {
+          cost_per_unit: number
+          created_at: string
+          event_type: string
+          id: string
+          is_active: boolean
+          markup_percent: number
+          provider: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          cost_per_unit?: number
+          created_at?: string
+          event_type: string
+          id?: string
+          is_active?: boolean
+          markup_percent?: number
+          provider: string
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          cost_per_unit?: number
+          created_at?: string
+          event_type?: string
+          id?: string
+          is_active?: boolean
+          markup_percent?: number
+          provider?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       public_property_cache: {
         Row: {
           assessed_value: number | null
@@ -49566,6 +49741,71 @@ export type Database = {
           },
         ]
       }
+      usage_events: {
+        Row: {
+          billable_amount: number
+          created_at: string
+          edge_function: string | null
+          estimated_cost: number
+          event_type: string
+          feature_area: string | null
+          id: string
+          metadata: Json
+          provider: string
+          quantity: number
+          request_id: string | null
+          status: string
+          tenant_id: string | null
+          unit: string | null
+          unit_cost: number
+          user_id: string | null
+        }
+        Insert: {
+          billable_amount?: number
+          created_at?: string
+          edge_function?: string | null
+          estimated_cost?: number
+          event_type: string
+          feature_area?: string | null
+          id?: string
+          metadata?: Json
+          provider: string
+          quantity?: number
+          request_id?: string | null
+          status?: string
+          tenant_id?: string | null
+          unit?: string | null
+          unit_cost?: number
+          user_id?: string | null
+        }
+        Update: {
+          billable_amount?: number
+          created_at?: string
+          edge_function?: string | null
+          estimated_cost?: number
+          event_type?: string
+          feature_area?: string | null
+          id?: string
+          metadata?: Json
+          provider?: string
+          quantity?: number
+          request_id?: string | null
+          status?: string
+          tenant_id?: string | null
+          unit?: string | null
+          unit_cost?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_achievement_progress: {
         Row: {
           achievement_id: string | null
@@ -50064,6 +50304,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_usage_monthly_rollups: {
+        Row: {
+          ai_prompt_count: number
+          ai_token_count: number
+          breakdown: Json
+          created_at: string
+          event_count: number
+          id: string
+          month: string
+          sms_count: number
+          tenant_id: string | null
+          total_estimated_cost: number
+          updated_at: string
+          user_id: string
+          voice_minutes: number
+        }
+        Insert: {
+          ai_prompt_count?: number
+          ai_token_count?: number
+          breakdown?: Json
+          created_at?: string
+          event_count?: number
+          id?: string
+          month: string
+          sms_count?: number
+          tenant_id?: string | null
+          total_estimated_cost?: number
+          updated_at?: string
+          user_id: string
+          voice_minutes?: number
+        }
+        Update: {
+          ai_prompt_count?: number
+          ai_token_count?: number
+          breakdown?: Json
+          created_at?: string
+          event_count?: number
+          id?: string
+          month?: string
+          sms_count?: number
+          tenant_id?: string | null
+          total_estimated_cost?: number
+          updated_at?: string
+          user_id?: string
+          voice_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_usage_monthly_rollups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       validated_addresses: {
         Row: {
@@ -54189,6 +54485,7 @@ export type Database = {
         Returns: boolean
       }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
+      is_platform_admin: { Args: { _user_id: string }; Returns: boolean }
       is_profile_visible: {
         Args: { profile_row: Database["public"]["Tables"]["profiles"]["Row"] }
         Returns: boolean
