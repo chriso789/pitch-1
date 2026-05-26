@@ -73,6 +73,13 @@ Deno.serve(async (req) => {
       throw new Error(`Insufficient permissions (role: ${profile?.role ?? 'none'})`);
     }
 
+    // Service-role client for qbo_connections writes only (RLS has no write policy).
+    // Created AFTER auth + role gate. Never used for reads driven by caller identity.
+    const adminClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
     const url = new URL(req.url);
     let action = url.searchParams.get('action');
     let body: any = {};
@@ -191,8 +198,8 @@ Deno.serve(async (req) => {
       // Calculate token expiry
       const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-      // Store connection
-      const { data: connection, error: insertError } = await supabase
+      // Store connection (service role — RLS has no INSERT/UPDATE policy)
+      const { data: connection, error: insertError } = await adminClient
         .from('qbo_connections')
         .upsert({
           tenant_id: profile.tenant_id,
@@ -217,18 +224,36 @@ Deno.serve(async (req) => {
         .single();
 
       if (insertError) {
-        console.error('Failed to store connection:', insertError);
-        throw new Error('Failed to store connection');
+        console.error('[qbo-oauth-connect] callback upsert failed', {
+          tenant_id: profile.tenant_id,
+          realm_id: realmId,
+          is_sandbox: isSandbox,
+          code: (insertError as any).code,
+          message: insertError.message,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'qbo_connection_write_failed',
+            details: insertError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+
+      console.log('[qbo-oauth-connect] callback upsert ok', {
+        tenant_id: profile.tenant_id,
+        realm_id: realmId,
+        is_sandbox: isSandbox,
+      });
 
       return new Response(
         JSON.stringify({
           success: true,
-          connection: {
-            id: connection.id,
-            realmId: connection.realm_id,
-            companyName: connection.qbo_company_name,
-          },
+          connected: true,
+          realm_id: connection.realm_id,
+          company_name: connection.qbo_company_name,
+          is_sandbox: connection.is_sandbox === true,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -238,7 +263,7 @@ Deno.serve(async (req) => {
     if (action === 'refresh') {
       const { data: connection } = await supabase
         .from('qbo_connections')
-        .select('*')
+        .select('id, realm_id, refresh_token, is_sandbox')
         .eq('tenant_id', profile.tenant_id)
         .eq('is_active', true)
         .single();
@@ -267,7 +292,7 @@ Deno.serve(async (req) => {
       const tokens: TokenResponse = await tokenResponse.json();
       const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-      await supabase
+      const { error: refreshError } = await adminClient
         .from('qbo_connections')
         .update({
           access_token: tokens.access_token,
@@ -275,7 +300,30 @@ Deno.serve(async (req) => {
           token_expires_at: tokenExpiresAt.toISOString(),
           last_refresh_at: new Date().toISOString(),
         })
+        .eq('tenant_id', profile.tenant_id)
         .eq('id', connection.id);
+
+      if (refreshError) {
+        console.error('[qbo-oauth-connect] refresh update failed', {
+          tenant_id: profile.tenant_id,
+          realm_id: connection.realm_id,
+          code: (refreshError as any).code,
+          message: refreshError.message,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'qbo_connection_write_failed',
+            details: refreshError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('[qbo-oauth-connect] refresh ok', {
+        tenant_id: profile.tenant_id,
+        realm_id: connection.realm_id,
+      });
 
       return new Response(
         JSON.stringify({ success: true }),
@@ -285,10 +333,28 @@ Deno.serve(async (req) => {
 
     // Step 4: Disconnect
     if (action === 'disconnect') {
-      await supabase
+      const { error: disconnectError } = await adminClient
         .from('qbo_connections')
-        .update({ is_active: false })
+        .update({ is_active: false, disconnected_at: new Date().toISOString() })
         .eq('tenant_id', profile.tenant_id);
+
+      if (disconnectError) {
+        console.error('[qbo-oauth-connect] disconnect failed', {
+          tenant_id: profile.tenant_id,
+          code: (disconnectError as any).code,
+          message: disconnectError.message,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'qbo_connection_write_failed',
+            details: disconnectError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('[qbo-oauth-connect] disconnect ok', { tenant_id: profile.tenant_id });
 
       return new Response(
         JSON.stringify({ success: true }),
