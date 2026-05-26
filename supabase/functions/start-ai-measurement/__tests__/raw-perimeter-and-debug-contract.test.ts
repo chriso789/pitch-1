@@ -22,7 +22,7 @@ import {
 import {
   buildCpuBudgetTerminalDebugPayload,
   buildPreTopologyDebugBag,
-} from "../_shared/pre-topology-debug-bag.ts";
+} from "../../_shared/pre-topology-debug-bag.ts";
 
 const STAGE = "phase3_5_perimeter_refinement" as const;
 
