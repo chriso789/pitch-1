@@ -6,6 +6,8 @@
 import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
+import { ensureDsmDiagnosticsOnRegistration as _ensureDsmDiagnosticsOnRegistration } from "../_shared/dsm-diagnostic-propagation.ts";
+
 import {
   detectHipRoof,
   synthesizeHipPlanesFromFootprint,
