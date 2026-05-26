@@ -1271,7 +1271,7 @@ function ensureRegistrationProofBeforeWrite(
 // edge-function bundle (which transitively imports geotiff). The wrapper
 // below injects applyLiveRuntimeHoistToRegistration which lives in this file.
 // ─────────────────────────────────────────────────────────────────────────────
-import { ensureDsmDiagnosticsOnRegistration as _ensureDsmDiagnosticsOnRegistration } from "../_shared/dsm-diagnostic-propagation.ts";
+
 
 export function ensureDsmDiagnosticsOnRegistration(
   payload: Record<string, unknown>,
