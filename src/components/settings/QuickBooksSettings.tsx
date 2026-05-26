@@ -166,26 +166,75 @@ export default function QuickBooksSettings() {
       setLastAuthUrl(data.authUrl);
       console.log('[QBO] Auth URL:', data.authUrl);
 
-      // Persist state so the callback page can complete the exchange after
-      // the full-page redirect back from Intuit.
-      try {
-        sessionStorage.setItem('qbo_oauth_state', data.state);
-      } catch {}
+      // Open OAuth in a popup. The callback page (https://pitch-crm.ai/quickbooks/callback)
+      // posts a message back here and we finish the exchange.
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
 
-      // Full-page redirect — avoids popup/COOP/3rd-party-cookie issues that
-      // cause Intuit's appcenter to silently close the OAuth window.
-      window.location.href = data.authUrl;
-    } catch (error: any) {
-      console.error('Error connecting to QuickBooks:', error);
-      const description = await extractFnError(error);
-      toast({
-        title: "Connection Failed",
-        description,
-        variant: "destructive",
-      });
-      setConnecting(false);
-    }
-  };
+      const authWindow = window.open(
+        data.authUrl,
+        'qbo-oauth',
+        `popup=yes,width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      if (!authWindow) {
+        toast({
+          title: 'Popup blocked',
+          description: 'Please allow popups for this site and try again.',
+          variant: 'destructive',
+        });
+        setConnecting(false);
+        return;
+      }
+
+      const handleMessage = async (event: MessageEvent) => {
+        // Accept messages only from our callback origin(s).
+        const okOrigins = [
+          'https://pitch-crm.ai',
+          'https://www.pitch-crm.ai',
+          window.location.origin,
+        ];
+        if (!okOrigins.includes(event.origin)) return;
+
+        if (event.data?.type === 'qbo-oauth-success') {
+          const { code, realmId } = event.data;
+          try {
+            const { error: callbackError } = await supabase.functions.invoke('qbo-oauth-connect', {
+              body: { action: 'callback', code, realmId, state: data.state },
+            });
+            if (callbackError) throw callbackError;
+
+            toast({
+              title: 'Connected to QuickBooks',
+              description: 'Your QuickBooks account has been connected successfully.',
+            });
+            await loadConnection();
+          } catch (e: any) {
+            toast({
+              title: 'Connection Failed',
+              description: await extractFnError(e),
+              variant: 'destructive',
+            });
+          } finally {
+            window.removeEventListener('message', handleMessage);
+            try { authWindow?.close(); } catch {}
+            setConnecting(false);
+          }
+        } else if (event.data?.type === 'qbo-oauth-error') {
+          toast({
+            title: 'QuickBooks connection failed',
+            description: event.data.description ?? event.data.error ?? 'Unknown error',
+            variant: 'destructive',
+          });
+          window.removeEventListener('message', handleMessage);
+          setConnecting(false);
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+
 
 
   const handleDisconnect = async () => {
