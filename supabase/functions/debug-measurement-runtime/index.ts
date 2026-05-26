@@ -179,7 +179,7 @@ export function summarizeRegistration(g: Record<string, any> | null) {
   };
 }
 
-function summarizeRow(row: any) {
+export function summarizeRow(row: any) {
   const g = (row?.geometry_report_json ?? null) as Record<string, any> | null;
   const phase3_5 = pickPhaseBlock(g, "phase3_5") ?? pickPhaseBlock(g, "phase3A_5");
   const phase3C = pickPhaseBlock(g, "phase3C");
