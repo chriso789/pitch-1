@@ -256,6 +256,15 @@ const AI_MEASUREMENT_CPU_BUDGET_MS = Number(
 const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = Number(
   Deno.env.get("AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS") || 15_000,
 );
+// ── CPU containment v2: early-reserve safety margin ──────────────────────
+// Push the preempt point further away from the hard budget so the terminal
+// persistence path always has headroom and we never overshoot at 83s+.
+// Effective preempt = BUDGET - TERMINAL_RESERVE - SAFETY_MARGIN.
+// Default Fonsica policy: 75_000 - 15_000 - 10_000 = 50_000ms.
+const AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS = Number(
+  Deno.env.get("AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS") || 10_000,
+);
+const CPU_PREEMPT_POLICY_VERSION = "cpu-preempt-v2-early-reserve";
 const AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT = Number(
   Deno.env.get("AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT") || 950_000,
 );
