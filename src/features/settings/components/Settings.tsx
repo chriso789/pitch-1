@@ -515,6 +515,8 @@ export const Settings = () => {
             </Tabs>
           </div>
         );
+      case "company-referrals":
+        return <CompanyReferralsSection />;
       case "security":
         return (
           <div className="space-y-6">
