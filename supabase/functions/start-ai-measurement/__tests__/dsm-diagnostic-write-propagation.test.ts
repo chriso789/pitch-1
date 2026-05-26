@@ -13,17 +13,10 @@ import {
   assertExists,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-Deno.env.set("SUPABASE_URL", Deno.env.get("SUPABASE_URL") ?? "http://localhost");
-Deno.env.set(
-  "SUPABASE_SERVICE_ROLE_KEY",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "test-service-role-key",
-);
-Deno.env.set(
-  "SUPABASE_ANON_KEY",
-  Deno.env.get("SUPABASE_ANON_KEY") ?? "test-anon-key",
+const { ensureDsmDiagnosticsOnRegistration } = await import(
+  "../../_shared/dsm-diagnostic-propagation.ts"
 );
 
-const { ensureDsmDiagnosticsOnRegistration } = await import("../index.ts");
 
 const DIAGNOSTIC_FIELDS = [
   "dsm_tile_bounds_source",
