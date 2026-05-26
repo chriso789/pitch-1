@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
       try { body = await req.json(); } catch { body = {}; }
       if (!action && body?.action) action = body.action;
     }
+    console.log('[qbo-oauth-connect] method=', req.method, 'action=', action, 'bodyKeys=', Object.keys(body || {}));
 
     if (!QBO_CLIENT_ID || !QBO_CLIENT_SECRET || !QBO_REDIRECT_URI) {
       console.error('Missing QBO env vars', {
