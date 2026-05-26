@@ -341,7 +341,13 @@ export function classifyRegistrationStage(
   //  12. coordinate_registration_failed (fallback)
   let hardFail: string | null = "coordinate_registration_failed";
   let stage = "registration";
-  if (dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng) {
+  if (
+    dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng &&
+    dsmFailureReasons.includes("dsm_tile_bounds_missing_from_google_solar_metadata")
+  ) {
+    hardFail = "dsm_tile_bounds_missing_from_google_solar_metadata";
+    stage = "dsm_bounds_extraction";
+  } else if (dsmLoaded && !dsmProof.dsm_tile_bounds_lat_lng) {
     hardFail = "dsm_bounds_missing";
     stage = "dsm_bounds_extraction";
   } else if (dsmLoaded && !dsmProof.dsm_size_px) {

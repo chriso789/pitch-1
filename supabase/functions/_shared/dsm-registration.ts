@@ -22,6 +22,9 @@ export type DsmBoundsSource =
   | "derived_from_dsm_bbox_and_static_mpp"
   | "missing";
 
+/** Alias used by the dsm-registration-transform-v1 diagnostic surface. */
+export type DsmTileBoundsSource = DsmBoundsSource;
+
 export type DsmSizeSource =
   | "decoded_dsm_grid"
   | "dsm_coordinate_match.dsm_bbox"
@@ -37,6 +40,8 @@ export interface DsmRegistrationInput {
     height?: number;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null;
     resolution?: number | null;
+    /** Optional reason the GeoTIFF decoder could not derive bounds. */
+    bounds_failure?: string | null;
   } | null;
   /** Roof mask grid (RoofMask shape). */
   roofMask?: {
@@ -50,6 +55,14 @@ export interface DsmRegistrationInput {
   confirmedCenterLatLng?: LatLng | null;
   /** Raster (static map) meters-per-pixel — used only as last-resort mpp. */
   rasterMetersPerPixel?: number | null;
+  /**
+   * When false (default), derivation branches do NOT silently substitute
+   * raster bounds / mpp for DSM bounds. The result will leave
+   * `dsm_tile_bounds_lat_lng=null` and push the specific failure token
+   * `dsm_tile_bounds_missing_from_google_solar_metadata`. Callers that want
+   * the legacy approximate behavior must explicitly opt in.
+   */
+  allow_derived_bounds?: boolean;
 }
 
 export interface DsmRegistrationResult {
@@ -63,11 +76,16 @@ export interface DsmRegistrationResult {
 
   dsm_tile_bounds_lat_lng: Bounds | null;
   dsm_bounds_source: DsmBoundsSource;
+  /** Same value as `dsm_bounds_source`; exposed under the dsm-registration-transform-v1 name. */
+  dsm_tile_bounds_source: DsmTileBoundsSource;
   dsm_bounds_derived: boolean;
   dsm_bounds_warning: string | null;
   dsm_bounds_confidence: number; // 0..1
   dsm_meters_per_pixel: number | null;
   dsm_mpp_source: "decoded_dsm_grid" | "derived_from_static_raster" | "missing";
+
+  /** Reason surfaced from the GeoTIFF decoder when bounds were unavailable. */
+  dsm_tile_bounds_failure_reason: string | null;
 
   /** Specific failure tokens for the classifier (priority-ordered upstream). */
   failure_tokens: string[];
@@ -150,12 +168,14 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   let dsm_bounds_warning: string | null = null;
   let dsm_bounds_confidence = 0;
 
+  const allowDerived = input.allow_derived_bounds === true;
   const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ?? asLL(input.roofMask?.bounds ?? null);
   if (fromMetadata) {
     dsm_tile_bounds_lat_lng = fromMetadata;
     dsm_bounds_source = "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
   } else if (
+    allowDerived &&
     input.confirmedCenterLatLng &&
     dsm_size_px &&
     isNum(dsm_meters_per_pixel ?? NaN) &&
@@ -170,6 +190,7 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
       dsm_bounds_confidence = 0.7;
     }
   } else if (
+    allowDerived &&
     input.confirmedCenterLatLng &&
     dsm_size_px &&
     isNum(input.rasterMetersPerPixel ?? NaN)
@@ -183,7 +204,23 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
       dsm_bounds_confidence = 0.4;
     }
   }
-  if (attempted && !dsm_tile_bounds_lat_lng) failure_tokens.push("dsm_bounds_missing");
+
+  const decodedButBoundsMissing =
+    !!(input.effectiveDSM && (isNum(input.effectiveDSM.width) || isNum(input.effectiveDSM.height))) &&
+    !fromMetadata;
+  const dsm_tile_bounds_failure_reason: string | null = !dsm_tile_bounds_lat_lng
+    ? (input.effectiveDSM?.bounds_failure ?? (decodedButBoundsMissing ? "google_solar_metadata_missing_bounds" : null))
+    : null;
+
+  if (attempted && !dsm_tile_bounds_lat_lng) {
+    // Prefer the specific token when DSM was actually decoded but Google Solar
+    // metadata didn't carry usable tiepoints / ModelTransformation bounds.
+    if (decodedButBoundsMissing || dsm_tile_bounds_failure_reason) {
+      failure_tokens.push("dsm_tile_bounds_missing_from_google_solar_metadata");
+    } else {
+      failure_tokens.push("dsm_bounds_missing");
+    }
+  }
 
   return {
     dsm_registration_version: DSM_REGISTRATION_VERSION,
@@ -194,11 +231,13 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     dsm_size_source,
     dsm_tile_bounds_lat_lng,
     dsm_bounds_source,
+    dsm_tile_bounds_source: dsm_bounds_source,
     dsm_bounds_derived,
     dsm_bounds_warning,
     dsm_bounds_confidence,
     dsm_meters_per_pixel,
     dsm_mpp_source,
+    dsm_tile_bounds_failure_reason,
     failure_tokens,
   };
 }

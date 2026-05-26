@@ -1,210 +1,91 @@
-## Aerial Candidate Graph Diagnostic Fix (frontend-only)
+## Goal
 
-The diagnostics row reads only two paths and treats object existence as success, so it shows "present (0 candidate edges)" even when a nested location has `executed=true` with 12 edges. Backend is correct and must not change.
+Construct valid DSM↔raster registration transforms after Google Solar DSM fetch/decode so the topology phases (currently blocked at `perimeter_refinement_callsite_not_reached`) can finally execute.
 
-### Files
+Touch only DSM registration / transform construction. Do not change CPU containment, aerial candidate graph builder, frontend resolver, overlay transforms, customer-report gates, reportable-line promotion, DB schema, or the six-phase cleanup.
 
-**1. Add `src/lib/measurements/aerialCandidateGraphResolver.ts**`
+## Current state (verified in code)
 
-Exports:
+- `supabase/functions/_shared/dsm-analyzer.ts` parses the Google Solar DSM GeoTIFF and assembles `DSMGrid { width, height, bounds: {minLat,maxLat,minLng,maxLng}, resolution }` from tiepoints + pixel scale.
+- `supabase/functions/_shared/dsm-registration.ts` already produces `dsm_size_px`, `dsm_tile_bounds_lat_lng`, `dsm_meters_per_pixel` with priority‑ordered fallback and `failure_tokens`.
+- `supabase/functions/_shared/source-registration-transform.ts` already composes `geo_to_dsm_transform`, `dsm_to_raster_transform`, `confirmed_roof_center_dsm_px`, `geo_to_dsm_px_success`, `dsm_pixel_transform_valid`.
+- `start-ai-measurement/index.ts` calls `buildDsmRegistration` (≈L1436 and again ≈L6364) and `buildRegistrationTransformPackage` (≈L1485) but for Fonsica all DSM transform fields land null while `dsm_size_px = 998x998` is present — the `dsm_loaded` branch ran but `dsm_tile_bounds_lat_lng` never made it through.
 
-```ts
-export type ResolvedAerialCandidateGraph = {
-  present: boolean;
-  executed: boolean;
-  edgeCount: number;
-  source: string | null;
-};
-export function resolveAerialCandidateGraph(grj: unknown): ResolvedAerialCandidateGraph;
-```
+Diagnosis: the geo‑referencing path in `dsm-analyzer.ts` is returning a DSM grid whose `bounds` is null (or upstream we keep `effective_dsm` from a code path that strips bounds), so `buildDsmRegistration` falls through every priority branch and emits `dsm_bounds_missing` — which the classifier currently collapses into `invalid_transform`. The transform package then short‑circuits because `dsm_tile_bounds_lat_lng` is null.
 
-Walks these source paths in order, keyed as shown:
+## Scope of work (backend only — `supabase/functions/_shared/*` and the two call sites in `start-ai-measurement/index.ts`)
 
-- `root` → `aerial_candidate_roof_graph`
-- `debug_layers` → `debug_layers.aerial_candidate_roof_graph`
-- `dsm_planar_graph_debug` → `dsm_planar_graph_debug.aerial_candidate_roof_graph`
-- `terminal_preempt` → `terminal_debug_payload.pre_phase3_5_preempt.aerial_candidate_roof_graph`
-- `terminal_root` → `terminal_debug_payload.aerial_candidate_roof_graph`
+### 1. DSM tile bounds: prefer real Google Solar metadata, fail loudly
 
-For each found object: edge count comes from the first valid of `edges.length` → `candidate_faces.length` → numeric `edge_count` → numeric `edges_count`.
+- In `dsm-analyzer.ts`, when the GeoTIFF yields no usable tiepoints / ModelTransformation / GeoKeys, return the grid with `bounds = null` AND attach a diagnostic `bounds_failure: "geotiff_missing_tiepoints" | "geotiff_unprojectable" | "geotiff_decoder_threw"` on the returned grid (new optional field).
+- Plumb that reason through to the registration step.
 
-Aggregation:
+### 2. `buildDsmRegistration` — specific failure tokens
 
-- `present` = any source object exists
-- `executed` = any source has `executed === true`
-- `edgeCount` = max count across sources (so a stale 0 cannot mask a later 12); `source` = the path that produced the chosen count
-- Missing graph → `{ present:false, executed:false, edgeCount:0, source:null }`
+In `_shared/dsm-registration.ts`:
 
-Uses the `isRecord` / `getPath` / `getEdgeCount` helpers spelled out in the spec.
+- Add `dsm_tile_bounds_source` to the result (already exists as `dsm_bounds_source` — rename‑alias it in the output so the prompt's `dsm_tile_bounds_source` field name is satisfied without breaking existing readers).
+- When `attempted && !dsm_tile_bounds_lat_lng`:
+  - If the DSM grid was decoded but its `bounds` is null → push token `dsm_tile_bounds_missing_from_google_solar_metadata` instead of (or in addition to) the generic `dsm_bounds_missing`.
+  - Keep `dsm_bounds_missing` as a fallback when DSM wasn't even attempted.
+- Allow the derivation branches to run **only when explicitly opted in** (new input flag `allow_derived_bounds`, default `false` for the production path) so we don't silently substitute raster bounds. When derived bounds are used, also set `dsm_tile_bounds_source = "derived_from_*"` and warning `derived_bounds_lower_confidence`.
 
-**2. Add `src/lib/measurements/__tests__/aerialCandidateGraphResolver.test.ts**`
+### 3. `buildRegistrationTransformPackage` — diagnostics for each transform
 
-Vitest cases 1–10 exactly as specified:
+In `_shared/source-registration-transform.ts`:
 
-1. Top-level executed with 12 edges → source `root`
-2. Fonsica `dsm_planar_graph_debug` fallback → source `dsm_planar_graph_debug`
-3. `terminal_debug_payload.pre_phase3_5_preempt` fallback → source `terminal_preempt`
-4. Executed but `edges: []` → edgeCount 0, source `root`
-5. Missing graph → all-false/null result
-6. Stale root `executed:false, edges:[]` plus nested executed with 8 edges → edgeCount 8, source `dsm_planar_graph_debug`
-7. `candidate_faces` fallback → edgeCount 5
-8. numeric `edge_count` fallback → 7
-9. numeric `edges_count` fallback → 9
-10. Best non-zero count wins: empty root vs terminal_preempt with 12 → edgeCount 12, source `terminal_preempt`
+- Add to the result:
+  - `geo_to_dsm_transform_source: "composed_from_dsm_tile_bounds_and_size" | "missing"`
+  - `dsm_to_raster_transform_source: "composed_geo_to_dsm_then_geo_to_raster" | "missing"`
+  - `confirmed_roof_center_dsm_px_source: "geo_projected_via_geo_to_dsm" | "raster_center_projected_into_dsm" | "missing"`
+  - `dsm_transform_policy_version = "dsm-registration-transform-v1"`
+- Add a fallback for `confirmed_roof_center_dsm_px`: if the confirmed‑geo projection is unavailable but `geo_to_raster_transform` + `dsm_to_raster_transform` are valid, invert raster→dsm to project the raster center into DSM space. Tag with the matching source.
 
-**3. Modify `src/components/measurements/MeasurementReportDialog.tsx` (lines 774–788 only)**
+### 4. Call sites in `start-ai-measurement/index.ts`
 
-- Add import: `import { resolveAerialCandidateGraph } from "@/lib/measurements/aerialCandidateGraphResolver";`
-- Replace the existing Aerial Candidate Graph IIFE with one that calls `resolveAerialCandidateGraph(grj)` and renders:
-  - not present → `"—"`
-  - present, not executed → `"present (0 candidate edges) — graph not executed"`
-  - executed, `edgeCount > 0` → ``executed (${edgeCount} candidate edges)``
-  - executed, `edgeCount === 0` → `"executed (0 candidate edges) — empty graph"`
-- Preserve the existing DSM-unavailable suffix behavior: append `" — DSM validation unavailable"` only when one of the existing local conditions is true (`hard_fail_reason === "dsm_transform_invalid"`, `block_customer_report_reason === "dsm_validation_unavailable"`, or `dsm_validation_status.reason === "invalid_transform"` already in scope as `resolvedState.dsm_validation_status`). No other diagnostics logic touched.
+- At the DSM hoist (≈L1430 and ≈L6364):
+  - Drop the `dsmAlreadyHoisted = reg.dsm_size_px && reg.dsm_tile_bounds_lat_lng` short‑circuit when `reg.dsm_tile_bounds_lat_lng` is null — currently when `dsm_size_px` is populated from `dsm_coordinate_match.dsm_bbox` but bounds are missing, we never re‑attempt to source bounds from `effective_dsm`/`roof_mask`.
+  - Always call `buildDsmRegistration` once per hoist with the freshest `effective_dsm`/`roof_mask`, then merge fields with `??` semantics on `reg`.
+  - Persist the new source fields (`dsm_tile_bounds_source`, etc.) onto `reg` and into `geometry_report_json.dsm_registration_diagnostics` (no schema change — JSONB field on the existing column).
+- At the transform package call (≈L1485):
+  - Pass `dsm_meters_per_pixel` directly from `reg.dsm_meters_per_pixel` (don't fall back to `rasterMpp` silently — record `dsm_mpp_source` instead).
+  - Persist `geo_to_dsm_transform_source`, `dsm_to_raster_transform_source`, `confirmed_roof_center_dsm_px_source`, `dsm_transform_policy_version` onto `reg` and the diagnostics bag.
 
-### Out of scope (untouched)
+### 5. Failure surfacing (no collapse to generic `invalid_transform`)
 
-- start-ai-measurement, all edge functions, backend measurement / aerial graph / DSM solver / geometry scoring / overlay transforms
-- customer-report gates, report_blocked logic, `measurementDiagnosticState.ts`, `MeasurementVisualQAOverlay`
-- DB schema and migrations
-- Debug Roof Lines row, Reportable Roof Lines row, all other diagnostic rows
-- Any UI labels outside the Aerial Candidate Graph row
+- In whichever stage classifier maps reasons to `dsm_validation_status.reason`, prefer (in order):
+  1. `dsm_tile_bounds_missing_from_google_solar_metadata`
+  2. `dsm_size_missing`
+  3. `geo_to_dsm_projection_failed`
+  4. `dsm_to_raster_invalid`
+  5. Existing `invalid_transform` only as a last resort.
 
-### Acceptance
+### 6. Gate (unchanged)
 
-- Fonsica row reads: `Aerial Candidate Graph executed (12 candidate edges)` (plus DSM-unavailable suffix if applicable)
-- Debug Roof Lines = 6, Reportable Roof Lines = 0, `customer_report_ready` = false — all unchanged
-- No candidate/debug edges promoted into reportable roof lines
-- New resolver unit tests pass; no backend, edge-function, or DB changes  
-  
+`customer_report_ready` stays `false`. The transform fix only re‑enables topology, pitch, and facet validation; their own gates remain.
 
-  ```
-  Go.
+## Acceptance (next Fonsica rerun)
 
-  Implement the Aerial Candidate Graph Diagnostic Fix exactly as scoped.
+- All previously green items remain green (CPU, aerial candidate graph, overlay, frontend resolver row).
+- `dsm_size_px = { width: 998, height: 998 }`.
+- Either `dsm_tile_bounds_lat_lng` is populated with `dsm_tile_bounds_source = "google_solar_metadata"`, OR the run fails with `dsm_tile_bounds_missing_from_google_solar_metadata` (no generic `invalid_transform`).
+- When bounds exist: `geo_to_dsm_transform`, `dsm_to_raster_transform`, `confirmed_roof_center_dsm_px` all populated with their `_source` fields set, `dsm_transform_policy_version = "dsm-registration-transform-v1"`.
+- `dsm_pixel_transform_valid = true` only when the package is internally consistent (existing validator unchanged).
+- `phase3_5.skipped_reason` is no longer `perimeter_refinement_callsite_not_reached` — topology runs.
+- `customer_report_ready` remains `false` until topology/pitch/facets validate (separate prompt).
 
-  This is frontend-only.
+## Out of scope (deferred to later prompts)
 
-  Do not touch:
-  - start-ai-measurement
-  - edge functions
-  - backend measurement logic
-  - aerial graph builder
-  - DSM solver
-  - geometry scoring
-  - overlay transforms
-  - customer-report gates
-  - report_blocked logic
-  - measurementDiagnosticState.ts
-  - MeasurementVisualQAOverlay
-  - DB schema or migrations
-  - Debug Roof Lines row
-  - Reportable Roof Lines row
-  - any UI labels outside the Aerial Candidate Graph row
-  - six-phase cleanup
+- Phase 3A.5 / 3C / 3D / 3E execution behavior.
+- Pitch + facet validation.
+- Promotion into reportable roof lines.
+- Any UI/frontend change beyond what reads the new diagnostic fields.
 
-  Files to change:
+## Files expected to change
 
-  1. Add:
-  src/lib/measurements/aerialCandidateGraphResolver.ts
-
-  Export:
-
-  export type ResolvedAerialCandidateGraph = {
-    present: boolean;
-    executed: boolean;
-    edgeCount: number;
-    source: string | null;
-  };
-
-  export function resolveAerialCandidateGraph(grj: unknown): ResolvedAerialCandidateGraph;
-
-  Source paths, checked in order:
-
-  - root → aerial_candidate_roof_graph
-  - debug_layers → debug_layers.aerial_candidate_roof_graph
-  - dsm_planar_graph_debug → dsm_planar_graph_debug.aerial_candidate_roof_graph
-  - terminal_preempt → terminal_debug_payload.pre_phase3_5_preempt.aerial_candidate_roof_graph
-  - terminal_root → terminal_debug_payload.aerial_candidate_roof_graph
-
-  For each graph object, edge count comes from first valid:
-
-  - edges.length
-  - candidate_faces.length
-  - numeric edge_count
-  - numeric edges_count
-
-  Aggregation rules:
-
-  - present = true if any source object exists.
-  - executed = true if any source has executed === true.
-  - edgeCount = max valid count across sources.
-  - source = source key that produced the chosen count.
-  - Missing graph returns:
-    { present:false, executed:false, edgeCount:0, source:null }
-  - A stale zero-count source must not mask a later non-zero source.
-  - A stale executed=false source must not mask a later executed=true source.
-
-  2. Add tests:
-  src/lib/measurements/__tests__/aerialCandidateGraphResolver.test.ts
-
-  Use Vitest.
-
-  Required test cases:
-
-  - top-level executed graph with 12 edges returns source root and edgeCount 12
-  - dsm_planar_graph_debug fallback with 12 edges returns source dsm_planar_graph_debug and edgeCount 12
-  - terminal_debug_payload.pre_phase3_5_preempt fallback with 12 edges returns source terminal_preempt and edgeCount 12
-  - executed=true but edges=[] returns present=true, executed=true, edgeCount=0, source=root
-  - missing graph returns present=false, executed=false, edgeCount=0, source=null
-  - stale root executed=false edges=[] plus nested executed=true edges.length=8 returns executed=true, edgeCount=8, source=dsm_planar_graph_debug
-  - candidate_faces fallback returns candidate_faces.length
-  - numeric edge_count fallback works
-  - numeric edges_count fallback works
-  - best non-zero count wins when root is empty but terminal_preempt has 12 edges
-
-  3. Modify only the Aerial Candidate Graph row in:
-  src/components/measurements/MeasurementReportDialog.tsx
-
-  Add import:
-
-  import { resolveAerialCandidateGraph } from "@/lib/measurements/aerialCandidateGraphResolver";
-
-  Replace the existing Aerial Candidate Graph IIFE around lines 774–788 with resolver-based display logic:
-
-  - not present:
-    "—"
-
-  - present, not executed:
-    "present (0 candidate edges) — graph not executed"
-
-  - executed, edgeCount > 0:
-    `executed (${edgeCount} candidate edges)`
-
-  - executed, edgeCount === 0:
-    "executed (0 candidate edges) — empty graph"
-
-  Preserve existing DSM-unavailable suffix behavior only if one of the existing local conditions is already true:
-
-  - hard_fail_reason === "dsm_transform_invalid"
-  - block_customer_report_reason === "dsm_validation_unavailable"
-  - resolvedState.dsm_validation_status.reason === "invalid_transform"
-
-  Do not create new diagnostic state.
-
-  Acceptance:
-
-  - Latest Fonsica UI shows:
-    Aerial Candidate Graph executed (12 candidate edges)
-    plus DSM-unavailable suffix only if current local condition applies.
-
-  - Debug Roof Lines remains 6.
-  - Reportable Roof Lines remains 0.
-  - customer_report_ready remains false.
-  - No candidate/debug edges are promoted into reportable roof lines.
-  - No backend files changed.
-  - No edge functions changed.
-  - No DB migration.
-  - Resolver tests pass.
-  ```
-  This is the right move. After this, the diagnostics UI should finally reflect what the backend already fixed.
+- `supabase/functions/_shared/dsm-registration.ts`
+- `supabase/functions/_shared/source-registration-transform.ts`
+- `supabase/functions/_shared/dsm-analyzer.ts` (add `bounds_failure` reason only)
+- `supabase/functions/_shared/registration-stage-classifier.ts` (failure precedence)
+- `supabase/functions/start-ai-measurement/index.ts` (the two hoist call sites + transform call site)
+- Tests under `supabase/functions/_shared/__tests__/` and `supabase/functions/start-ai-measurement/__tests__/` covering: bounds present → transforms valid; bounds missing → `dsm_tile_bounds_missing_from_google_solar_metadata`; raster‑center fallback for `confirmed_roof_center_dsm_px`.
