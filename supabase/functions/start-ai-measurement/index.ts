@@ -13901,6 +13901,16 @@ async function persistCpuBudgetTerminalFailure(args: {
     cpu_budget_remaining_ms: dp.cpu_budget_remaining_ms ?? null,
     cpu_budget_ms: dp.cpu_budget_ms ?? null,
     late_cpu_preempt: dp.late_cpu_preempt === true,
+    // ── CPU containment v2 diagnostics ───────────────────────────────────
+    cpu_preempt_policy_version: CPU_PREEMPT_POLICY_VERSION,
+    cpu_preempt_safety_margin_ms: AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS,
+    cpu_effective_preempt_ms: AI_MEASUREMENT_CPU_BUDGET_MS -
+      AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS -
+      AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS,
+    cpu_checkpoint_stage: args.stage,
+    cpu_checkpoint_elapsed_ms: budget.elapsed_ms ?? null,
+    cpu_checkpoint_remaining_ms: budget.remaining_ms ?? null,
+    cpu_preempt_reason: budget.reason ?? null,
     primary_geometry_source: dp.primary_geometry_source ?? null,
     dsm_validation_status: dp.dsm_validation_status ?? null,
     target_mask_isolation: {
