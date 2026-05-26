@@ -434,6 +434,7 @@ export function buildPreTopologyDebugBag(args: {
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
     primary_geometry_source: primaryGeometrySource,
     dsm_validation_status: dsmValidationStatus,
+    registration: registrationForGraph,
   } as PreTopologyDebugBag;
 }
 
