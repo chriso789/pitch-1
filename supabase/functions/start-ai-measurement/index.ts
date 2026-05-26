@@ -152,6 +152,8 @@ import {
   applyZeroGeometryFinalDiagramGuard,
   buildCpuBudgetTerminalDebugPayload,
   buildPreTopologyDebugBag,
+  preserveEstimatedWorkUnits,
+  rebuildAerialGraphFromFinalPayload,
   ZERO_GEOMETRY_GUARD_REASON,
 } from "../_shared/pre-topology-debug-bag.ts";
 import {
