@@ -82,7 +82,7 @@ function derivePhaseStatus(block: any): "executed" | "skipped" | "missing" {
   return "missing";
 }
 
-function summarizeRegistration(g: Record<string, any> | null) {
+export function summarizeRegistration(g: Record<string, any> | null) {
   const reg = (g?.registration ?? null) as Record<string, any> | null;
   if (!reg) {
     return {
