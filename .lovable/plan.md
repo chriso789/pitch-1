@@ -1,96 +1,91 @@
+# Cost Tracker Part C — Internal Secret + Hot-Path Wiring
 
-# PITCH CRM — Infrastructure Cost Tracker & AI Chat Removal
+Part A (schema + `platform-api` + dashboard shell) is shipped. This plan completes the secret plumbing, wires `trackUsage()` into real cost hot paths, and adds the rollup cron.
 
-A large two-part build. Shipping in ordered phases so each piece is reviewable and reversible. Before I start writing migrations and edge functions, I want to confirm scope and a few decisions that materially affect the implementation.
+## 1. Internal Worker Secret
 
----
+- Add `secrets--add_secret` request for `INTERNAL_WORKER_SECRET` (you paste the value — `openssl rand -hex 32` or any 64-char random string, prefixed `PITCH_INTERNAL_WORKER_` if you want).
+- Add route `GET /platform-api/internal-secret-status` (master-only) returning `{ configured: boolean }`. Never returns the value.
+- Add dashboard card **Internal Worker Secret** on `/developer/cost-tracker`:
+  - Shows Configured / Missing badge.
+  - If missing, shows step-by-step Supabase Secrets instructions and a "Generate suggested value" button (client-side `crypto.getRandomValues` → hex string, copy-to-clipboard, one-time display). Does NOT write the value anywhere — user pastes into Supabase Secrets manually.
 
-## Part A — Cost Tracking & Profitability System
+No per-company secret. Tenant attribution is via `company_id` only.
 
-### A1. Database (one migration)
+## 2. Harden `platform-api` validation
 
-New tables in `public`:
+Update `/track-usage` and `/check-usage-limit` to accept EITHER:
+- master/platform admin JWT, OR
+- header `x-internal-secret` matching `INTERNAL_WORKER_SECRET`.
 
-- **provider_costs** — pricing catalog (provider, event_type, unit, cost_per_unit, markup_percent, is_active). Seeded with the 18 rows you listed.
-- **usage_events** — append-only event log (company_id, user_id, provider, event_type, feature_area, quantity, unit, unit_cost, estimated_cost, billable_amount, request_id, edge_function, status, metadata, created_at). Indexed on company_id, user_id, provider, event_type, feature_area, created_at.
-- **company_usage_limits** — per-tenant plan + monthly caps + `hard_stop_enabled` + `warning_threshold_percent`. Default plan `basic_50` auto-provisioned for each existing company via backfill.
-- **company_usage_monthly_rollups** — unique on (company_id, month).
-- **user_usage_monthly_rollups** — unique on (company_id, user_id, month).
+If secret env var is missing, log warning and reject internal calls with 503 `secret_not_configured` (the helper handles this as a no-op so callers never throw).
 
-RLS:
-- New SECURITY DEFINER helper `public.is_platform_admin(uuid)` checking the existing master/COB role via `has_role` (not a new role table — reusing what's already there).
-- All five tables: SELECT/INSERT/UPDATE/DELETE locked to `is_platform_admin(auth.uid())`.
-- `service_role` gets full access for edge functions.
-- No `anon` grants anywhere.
-- GRANTs explicitly included for every new table.
+## 3. Update `_shared/track-usage.ts`
 
-### A2. Edge functions
+- `trackUsage(payload)` — fire-and-forget. Reads `INTERNAL_WORKER_SECRET`; if missing, `console.warn` and return. Sends `x-internal-secret` header. Never sends `unit_cost` / `estimated_cost` — server computes from `provider_costs`.
+- `checkUsageLimit({ company_id, event_type, quantity })` — synchronous. If secret missing:
+  - SMS / mass-send / roof-report / expensive AI → return `{ allowed: false, reason: "secret_not_configured" }` (fail-closed).
+  - Low-cost logging (storage, edge invocation, map load) → return `{ allowed: true, warn: true }`.
+- Always carries `company_id` + `user_id` when caller provides them.
 
-Following your route-migration enforcer (no new standalone folders for one-off endpoints), I'll put these inside an existing or new grouped router:
+## 4. Company-id resolution helper
 
-- **`platform-api`** (new grouped router, developer-only): routes `/track-usage`, `/check-usage-limit`, `/recalculate-rollups`, `/seed-test-event`, `/get-cost-dashboard`, `/list-company-usage`, `/get-company-detail`, `/update-provider-cost`. All routes require platform-admin JWT except `/track-usage` and `/check-usage-limit`, which require **either** platform admin OR `INTERNAL_WORKER_SECRET` so other edge functions can call them server-to-server.
+New `_shared/resolve-company-id.ts`:
+1. Use explicit `company_id` if given.
+2. Else look up via `user_id → user_company_access`.
+3. Else derive from `contact_id` / `lead_id` / `job_id` / `pipeline_entry_id` when present in payload.
+4. Else write event with `company_id = null` + `metadata.needs_company_resolution = true`.
 
-- **Cron**: `pg_cron` job every hour calls `/recalculate-rollups` (idempotent upsert).
+## 5. Hot-path wiring (priority order)
 
-Server-side cost calc only — client-provided `unit_cost`/`estimated_cost` is ignored.
+Wired with `trackUsage()` + (where noted) pre-flight `checkUsageLimit()`:
 
-### A3. Shared utility
+| # | Path | File(s) | Provider / event_type |
+|---|---|---|---|
+| 1 | Outbound SMS | `messaging-api` `/sms/send` route + `telnyx-send-sms` shim | telnyx / `sms_outbound` (quantity = segments) — pre-check limit |
+| 2 | Inbound SMS | `telnyx-sms-webhook` | telnyx / `sms_inbound` |
+| 3 | Voice / call | `telnyx-call-webhook` (or `bridge-calls` end handler) | telnyx / `voice_minute` (quantity = duration_minutes) |
+| 4 | AI generation | `_shared/ai/*` callers (estimate, supplement, doc-parse, sms-rewrite, email-rewrite, call-summary, roof-report-parse, permit-parse) | openai / `ai_generation` + `ai_tokens_input` + `ai_tokens_output` — pre-check on expensive ones |
+| 5 | Storage uploads | `_shared/storage-upload.ts` server-side wrapper + `safeStorageUpload` client telemetry beacon | supabase / `storage_mb` |
+| 6 | Heavy edge functions | wrap top-of-handler in `start-ai-measurement`, `measurement-worker`, `pdf-compile`, `bulk-sms-blast` | supabase / `edge_invocation` |
+| 7 | Map loads | `useMapboxMap` hook on init (debounced) | mapbox / `map_load` |
+| 8 | Permit scraping | `permits/*` scraper edge fn | firecrawl|serpapi / `scrape_credit` — pre-check |
+| 9 | Roof reports | `roofr-order-report`, `eagleview-order-report` | roofr|eagleview / `roof_report` — pre-check |
+| 10 | Estimate/supplement gen | `generate-estimate-ai`, `generate-supplement-ai` | openai / `ai_estimate_generation` |
 
-`supabase/functions/_shared/track-usage.ts` exporting `trackUsage({...})` — fire-and-forget POST to `platform-api/track-usage` with `INTERNAL_WORKER_SECRET`, never throws into caller. I'll wire it into the highest-value hot paths only (not every function in one pass):
+Every event includes `status`: `success` | `failed` | `blocked_limit` | `provider_error` | `skipped_missing_secret`.
 
-- `start-ai-measurement` and the measurement worker (AI tokens, edge invocations, roof reports)
-- SMS send paths (Telnyx outbound/inbound webhooks)
-- Telnyx voice webhook (minutes)
-- OpenAI/Anthropic/Gemini callers in the shared AI helper
+## 6. Dashboard additions on `/developer/cost-tracker`
 
-The remaining hooks (storage, map loads, scraping, document parsing) will be stubbed with TODO comments referencing the helper — wiring them all in one pass would touch 40+ files and exceed safe review size. I'll list them in the response so you can prioritize a follow-up loop.
+- **Internal Secret Status** card (from §1).
+- **Unassigned Usage Events** card — count + drill-down for `company_id IS NULL`.
+- **Company Attribution Health** — assigned / unassigned / % over last 30d.
+- **Hot Path Coverage Checklist** — green/red per row in §5, based on whether ≥1 event of that type was seen in last 30d (live query against `usage_events`).
 
-### A4. Developer dashboard (frontend)
+## 7. Rollup cron
 
-New route `/developer/cost-tracker` (gated by `is_platform_admin`, hidden from non-platform users in the nav). Pages:
+Add `pg_cron` job (via `supabase--read_query` for safety, not migration — contains URL+anon) calling `platform-api/recalculate-rollups` daily at 02:00 UTC with `x-internal-secret`.
 
-1. **Overview** — MTD revenue, MTD cost, GP, GM%, per-provider spend cards, most-expensive company/user, daily trend chart (recharts).
-2. **Companies table** — sortable, filterable (date range, provider, event_type, status), with profitability status badge (Good/Watch/Bad/Losing Money) using your thresholds.
-3. **Company detail** — cost by provider, by feature, by user; daily trend; raw events; projected month-end; usage-limit progress bars.
-4. **User detail** — totals, breakdowns, recent events.
-5. **Provider Costs admin** — editable table (provider, event_type, cost_per_unit, markup_percent, active).
-6. **Test tools** — buttons for Log Test AI/SMS/Upload Event, Recalculate Rollups, Verify $50 Profitability. All test events tagged `metadata.test = true`.
+## 8. Explicitly NOT doing this loop
 
-Data fetched via `edgeApi("platform-api", "/...")` — no direct table reads from frontend (RLS would block anyway, but explicit gate is cleaner).
+- No removal of AI Admin Command Center.
+- No drop of `ai_conversations` / `ai_messages`.
+- No deletion of AI workflow tables / functions.
+- Open-ended chat UI removal deferred until 7–14 days of cost data exists.
 
----
+## Order of execution
 
-## Part B — Remove General AI Chat Surfaces
+1. Request `INTERNAL_WORKER_SECRET` via `secrets--add_secret`. Wait.
+2. Update `platform-api` validation + add `/internal-secret-status`.
+3. Update `_shared/track-usage.ts` + add `_shared/resolve-company-id.ts`.
+4. Wire hot paths #1–#4 (highest cost first), test each with `seed-test-event` + real call.
+5. Wire #5–#10.
+6. Dashboard cards.
+7. `pg_cron` schedule.
+8. Smoke test: trigger one event per provider, confirm rows land with correct `company_id` and `status`.
 
-This is the riskier half because the codebase has multiple AI-adjacent features. I want to confirm scope before deleting anything.
+## Technical notes
 
-### B1. What I'd remove/disable (need your confirmation per item)
-
-- Any floating "Ask AI" button / chat widget in the app shell
-- AI copilot sidebar(s)
-- Persistent chat thread UI / chat history pages
-- AI command palette (if any "Ask AI" command exists)
-- WebSocket streaming chat client
-- Nav entries for AI chat
-- Tables `ai_conversations` and `ai_messages` — **drop or just stop writing to them?** Dropping is destructive; recommended path is: stop UI + writes now, schedule table drop after a 30-day observation window per the schema-drift guard.
-
-### B2. What I'd KEEP (your "good examples")
-
-All structured AI actions stay: Generate Estimate, Rewrite SMS, Summarize Call, Analyze Roof Report, AI autofill, AI tagging, document parsing, roof report parsing, workflow automation, smart suggestions. These already exist as discrete actions, not chat — no changes needed beyond verifying none of them depend on the removed chat plumbing.
-
-### B3. Special case — AI Admin Command Center
-
-Project memory has `mem://features/ai-admin/command-center` documenting a **master-only chat tool for database and settings management**. That sounds like exactly the kind of "AI chat" you want removed, but it's also a master/COB power-user tool — not customer-facing AI burn.
-
-**Question:** Does the chat removal apply to the master AI Admin Command Center too, or only to customer-tenant-facing chat?
-
----
-
-## Questions before I start
-
-1. **AI Admin Command Center** — remove it, or keep it as a master-only tool? (Memory says master-only.)
-2. **`ai_conversations` / `ai_messages` tables** — stop writing now and drop after 30 days, or drop immediately?
-3. **Platform admin identity** — I'll define `is_platform_admin()` as `has_role(uid, 'master')` (the existing COB role). Confirm that's the right gate, or do you want a separate `platform_admin` role?
-4. **Hook coverage in pass 1** — OK to wire `trackUsage()` into AI/SMS/voice/measurement only this pass, with TODO stubs for storage/maps/scraping/docs in a follow-up? Or do you want all event types wired in one (much larger, harder to review) loop?
-
-Once you answer those, I'll ship Part A migration + edge router + dashboard in one go, then Part B in a second loop.
+- All edge code uses existing `_shared/router.ts`, `_shared/auth.ts`, `_shared/tenant.ts`, `_shared/env.ts`. No new standalone edge functions — everything lives in `platform-api` or inside existing grouped routers per the architecture guard.
+- Frontend dashboard reads through `edgeApi("platform-api", "/...")`.
+- Client-only secret generation in §1 uses `crypto.getRandomValues(new Uint8Array(32))` → hex; never sent to server, never persisted.
