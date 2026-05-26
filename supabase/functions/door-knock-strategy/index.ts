@@ -96,6 +96,10 @@ Generate the best door knock strategy for this property.`;
       system: systemPrompt,
       user: userPrompt,
       temperature: 0.5,
+      tenantId: body.tenant_id,
+      userId,
+      featureArea: "door_knock_strategy",
+      edgeFunction: "door-knock-strategy",
     });
 
     const strategy = parseAIJson(text, FALLBACK_STRATEGY);
