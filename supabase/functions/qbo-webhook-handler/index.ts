@@ -6,7 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, intuit-signature',
 };
 
-const QBO_WEBHOOK_VERIFIER = Deno.env.get('QBO_WEBHOOK_VERIFIER');
+// Accept either name; new code sets QBO_WEBHOOK_VERIFIER_TOKEN, legacy used QBO_WEBHOOK_VERIFIER.
+const QBO_WEBHOOK_VERIFIER =
+  Deno.env.get('QBO_WEBHOOK_VERIFIER_TOKEN') ??
+  Deno.env.get('QBO_WEBHOOK_VERIFIER');
 
 interface WebhookEvent {
   realmId: string;
