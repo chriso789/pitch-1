@@ -26,6 +26,7 @@ const TerritoryMapPage = () => {
   const { getActivities, getDispositions } = useStormCanvass();
   const { toast } = useToast();
   const { token: mapboxToken, loading: tokenLoading } = useMapboxToken();
+  useMapLoadTracker({ route: '/storm-canvass/territory', page: 'TerritoryMapPage', mapContext: 'canvass_territory' });
 
   // Fetch initial data
   useEffect(() => {
