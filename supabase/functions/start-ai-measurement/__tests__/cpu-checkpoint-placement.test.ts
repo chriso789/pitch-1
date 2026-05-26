@@ -112,7 +112,7 @@ Deno.test(
         AI_MEASUREMENT_CPU_TIMEOUT_REASON: "cpu_budget_exceeded",
         REQUIRED_TOPOLOGY_SOURCE: "dsm_planar_graph",
       },
-    });
+    }) as any;
 
     // (4) aerial graph survives the preempt
     assertEquals(dp.aerial_candidate_roof_graph?.executed, true);
@@ -145,6 +145,7 @@ Deno.test(
     );
   },
 );
+
 
 Deno.test(
   "checkpoint 7: prior estimated_work_units=996004 is preserved and not zeroed",
