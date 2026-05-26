@@ -634,6 +634,7 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     topologyEstimateWorkUnits: args.topologyEstimateWorkUnits ?? null,
     priorGeometry: args.priorGeometry ?? null,
     incoming,
+    topologyPixelLimit: args.constants.AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
   });
 
   const phase3_5 = {
