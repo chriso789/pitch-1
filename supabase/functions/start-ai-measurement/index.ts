@@ -7027,6 +7027,63 @@ async function processJob(input: any) {
             Math.max(1, rawPerimScorerPx.length),
           ] as [number, number];
 
+          // ── CHECKPOINT: pre_phase3a5_refinement_call ──
+          // The L6830 checkpoint runs before phase3A5WorkUnits is finalized.
+          // This second checkpoint blocks the actual refineTrueOuterRoofPerimeter
+          // call when the wall clock has already crossed the terminal-write
+          // reserve threshold (≥60s with the 75s/15s config). Without this,
+          // a slow Phase 3A.5 call can run for 90s+ unattended.
+          {
+            const ckpt = shouldPreemptForCpuBudget(input, phase3A5WorkUnits);
+            if (ckpt.preempt) {
+              const resolvedReg = resolveRegistrationForPreempt({
+                input,
+                coords,
+                hoistedTransformPackage,
+                hoistedRasterBoundsLatLng,
+                hoistedGeoToRasterTransform,
+                hoistedConfirmedRoofCenterPx,
+              });
+              if (resolvedReg.source === "rebuilt_from_input") {
+                hoistedTransformPackage = resolvedReg.transformPackage;
+                hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+                hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+                hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+              }
+              await persistCpuBudgetTerminalFailure({
+                input,
+                coords,
+                imageUrl,
+                mpp: actualMpp,
+                stage: "pre_phase3a5_refinement_call",
+                estimatedWorkUnits: phase3A5WorkUnits,
+                debug: buildPreTopologyDebugBag({
+                  stage: "pre_phase3a5_refinement_call",
+                  dsmGrid,
+                  maskedDSM,
+                  roofMask,
+                  raster,
+                  perimeterPhase0Snapshot,
+                  perimeterTopologySnapshot,
+                  targetMaskIsolation,
+                  footprintSource,
+                  footprintGeo,
+                  footprintPx: null,
+                  rasterUrl: imageUrl,
+                  rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                  geoToRasterTransform: resolvedReg.geoToRasterTransform,
+                  solarSegments,
+                  maskComponentsTable:
+                    targetMaskIsolation?.mask_components_table ?? [],
+                  confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+                  staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                  transformPackage: resolvedReg.transformPackage,
+                }),
+              });
+              return;
+            }
+          }
+
           phase3A5Result = refineTrueOuterRoofPerimeter({
             raw_perimeter_px: rawPerimScorerPx,
             raw_perimeter_source: phase3A5SelectedSource,
@@ -7108,6 +7165,64 @@ async function processJob(input: any) {
           refined_perimeter_vertex_count: 0,
           phase3_5_perimeter_refinement_enabled: true,
         };
+      }
+
+      // ── CHECKPOINT: post_phase3a5_refinement ──
+      // Even if refinement completed, the wall clock may now be past the
+      // terminal-write reserve. Bail out before topology so we still have
+      // budget to persist a clean terminal payload.
+      {
+        const ckpt = shouldPreemptForCpuBudget(input, 0);
+        if (ckpt.preempt) {
+          const resolvedReg = resolveRegistrationForPreempt({
+            input,
+            coords,
+            hoistedTransformPackage,
+            hoistedRasterBoundsLatLng,
+            hoistedGeoToRasterTransform,
+            hoistedConfirmedRoofCenterPx,
+          });
+          if (resolvedReg.source === "rebuilt_from_input") {
+            hoistedTransformPackage = resolvedReg.transformPackage;
+            hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+            hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+            hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+          }
+          await persistCpuBudgetTerminalFailure({
+            input,
+            coords,
+            imageUrl,
+            mpp: actualMpp,
+            stage: "post_phase3a5_refinement",
+            estimatedWorkUnits: 0,
+            debug: {
+              ...buildPreTopologyDebugBag({
+                stage: "post_phase3a5_refinement",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource,
+                footprintGeo,
+                footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                geoToRasterTransform: resolvedReg.geoToRasterTransform,
+                solarSegments,
+                maskComponentsTable:
+                  targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                transformPackage: resolvedReg.transformPackage,
+              }),
+              phase3A_5: phase3A5Diagnostics,
+            },
+          });
+          return;
+        }
       }
 
       // HARD GATE: only fail if refinement failed AND no provisional raw fallback is ready.
@@ -7390,6 +7505,67 @@ async function processJob(input: any) {
         return;
       }
       const graph = solveAutonomousGraph(graphInput);
+
+      // ── CHECKPOINT: post_autonomous_topology_solver ──
+      // Solver returned; downstream Phase 3C/3D/3E block builders and the
+      // final persistence layer still need budget headroom. If the solver
+      // itself burned past the reserve, persist immediately so the row
+      // doesn't get a partial customer-style write.
+      {
+        const ckpt = shouldPreemptForCpuBudget(input, 0);
+        if (ckpt.preempt) {
+          const resolvedReg = resolveRegistrationForPreempt({
+            input,
+            coords,
+            hoistedTransformPackage,
+            hoistedRasterBoundsLatLng,
+            hoistedGeoToRasterTransform,
+            hoistedConfirmedRoofCenterPx,
+          });
+          if (resolvedReg.source === "rebuilt_from_input") {
+            hoistedTransformPackage = resolvedReg.transformPackage;
+            hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+            hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+            hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+          }
+          await persistCpuBudgetTerminalFailure({
+            input,
+            coords,
+            imageUrl,
+            mpp: actualMpp,
+            stage: "post_autonomous_topology_solver",
+            estimatedWorkUnits: 0,
+            debug: {
+              ...buildPreTopologyDebugBag({
+                stage: "post_autonomous_topology_solver",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource: phase3A5SelectedSource,
+                footprintGeo: footprintGeoForSolver,
+                footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                geoToRasterTransform: resolvedReg.geoToRasterTransform,
+                solarSegments,
+                maskComponentsTable:
+                  targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                transformPackage: resolvedReg.transformPackage,
+              }),
+              phase3A_5: phase3A5Diagnostics,
+              solver_returned: true,
+            },
+          });
+          return;
+        }
+      }
+
       const phase3CBlock = buildPhase3CBlock(graph.logs || {});
       const phase3DBlock = buildPhase3DBlock(graph.logs || {});
       const phase3EBlock = buildPhase3EBlock(
@@ -12757,6 +12933,65 @@ async function processJob(input: any) {
         normalizeResultStateForWrite(s as any, d as any),
     });
 
+    // ── CHECKPOINT: pre_terminal_persistence ──
+    // Final guard before the success-path write. If everything above ran
+    // but still overshot the reserve, persist the terminal failure payload
+    // instead of allowing a slow customer-style write that risks timing
+    // out mid-persist.
+    {
+      const ckpt = shouldPreemptForCpuBudget(input, 0);
+      if (ckpt.preempt) {
+        const resolvedReg = resolveRegistrationForPreempt({
+          input,
+          coords,
+          hoistedTransformPackage,
+          hoistedRasterBoundsLatLng,
+          hoistedGeoToRasterTransform,
+          hoistedConfirmedRoofCenterPx,
+        });
+        if (resolvedReg.source === "rebuilt_from_input") {
+          hoistedTransformPackage = resolvedReg.transformPackage;
+          hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+          hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+          hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+        }
+        await persistCpuBudgetTerminalFailure({
+          input,
+          coords,
+          imageUrl,
+          mpp: actualMpp,
+          stage: "pre_terminal_persistence",
+          estimatedWorkUnits: 0,
+          debug: {
+            ...buildPreTopologyDebugBag({
+              stage: "pre_terminal_persistence",
+              dsmGrid: typeof dsmGrid !== "undefined" ? dsmGrid : null,
+              maskedDSM: typeof maskedDSM !== "undefined" ? maskedDSM : null,
+              roofMask: typeof roofMask !== "undefined" ? roofMask : null,
+              raster,
+              perimeterPhase0Snapshot,
+              perimeterTopologySnapshot,
+              targetMaskIsolation,
+              footprintSource,
+              footprintGeo,
+              footprintPx: null,
+              rasterUrl: imageUrl,
+              rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+              geoToRasterTransform: resolvedReg.geoToRasterTransform,
+              solarSegments,
+              maskComponentsTable:
+                targetMaskIsolation?.mask_components_table ?? [],
+              confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+              staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+              transformPackage: resolvedReg.transformPackage,
+            }),
+            geometry_report_json: geometryReportJson,
+          },
+        });
+        return;
+      }
+    }
+
     const { data: roofMeasurement, error: publishError } =
       await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
@@ -13486,10 +13721,58 @@ async function persistCpuBudgetTerminalFailure(args: {
     args.input,
     args.estimatedWorkUnits ?? 0,
   );
+  // ── Slice 2: Preserve estimated_work_units across the preempt write ────
+  // Resolve the first non-zero work-units value from the priority cascade
+  // BEFORE building the debug payload so the value flows through into both
+  // the top-level field and the pre_phase3_5_preempt sub-bag. Never let a
+  // known non-zero estimate regress to 0 just because this call site didn't
+  // pass one.
+  const debugBag = (args.debug ?? {}) as Record<string, unknown>;
+  const priorTerminalPayload =
+    (debugBag as any)?.terminal_debug_payload ??
+      (debugBag as any)?.source_context?.terminal_debug_payload ?? null;
+  const priorPrePhase35 = priorTerminalPayload?.pre_phase3_5_preempt ?? null;
+  const cascadeArgs = {
+    estimatedWorkUnits: args.estimatedWorkUnits,
+    topologyEstimateWorkUnits:
+      (debugBag as any)?.topology_estimate?.work_units ??
+        (debugBag as any)?.topologyEstimate?.work_units ?? null,
+    priorGeometry: ((debugBag as any)?.geometry_report_json ??
+      (debugBag as any)?.dsm_planar_graph_debug ??
+      null) as Record<string, unknown> | null,
+    incoming: {
+      ...debugBag,
+      estimated_work_units:
+        (debugBag as any)?.estimated_work_units ??
+          priorTerminalPayload?.estimated_work_units ??
+          priorPrePhase35?.estimated_work_units ?? null,
+    } as Record<string, unknown>,
+  };
+  const preservedWU = preserveEstimatedWorkUnits(cascadeArgs);
+  const effectiveWU =
+    typeof preservedWU === "number" && preservedWU > 0
+      ? preservedWU
+      : (args.estimatedWorkUnits ?? null);
+
+  // Hard rule: never overwrite a known non-zero value with 0. Mutate the
+  // incoming debug bag so downstream readers (terminalDebugPayload, source_context)
+  // observe the preserved value uniformly.
+  if (typeof preservedWU === "number" && preservedWU > 0) {
+    (debugBag as any).estimated_work_units = preservedWU;
+    if ((debugBag as any).dsm_planar_graph_debug) {
+      (debugBag as any).dsm_planar_graph_debug.estimated_work_units =
+        preservedWU;
+    } else {
+      (debugBag as any).dsm_planar_graph_debug = {
+        estimated_work_units: preservedWU,
+      };
+    }
+  }
+
   const debugPayload = buildCpuBudgetTerminalDebugPayload({
     stage: args.stage,
-    estimatedWorkUnits: args.estimatedWorkUnits ?? null,
-    debug: args.debug,
+    estimatedWorkUnits: effectiveWU,
+    debug: debugBag,
     budget,
     constants: {
       AI_MEASUREMENT_CPU_BUDGET_MS,
@@ -13500,6 +13783,19 @@ async function persistCpuBudgetTerminalFailure(args: {
       REQUIRED_TOPOLOGY_SOURCE,
     },
   });
+  // Force the preserved value onto the payload too, in case the builder
+  // didn't surface it from `estimatedWorkUnits`.
+  if (typeof preservedWU === "number" && preservedWU > 0) {
+    (debugPayload as any).estimated_work_units = preservedWU;
+    if ((debugPayload as any).dsm_planar_graph_debug) {
+      (debugPayload as any).dsm_planar_graph_debug.estimated_work_units =
+        preservedWU;
+    } else {
+      (debugPayload as any).dsm_planar_graph_debug = {
+        estimated_work_units: preservedWU,
+      };
+    }
+  }
   const failedId = await insertFailedPreliminaryMeasurement(
     args.input,
     args.coords,
@@ -13556,6 +13852,9 @@ async function persistCpuBudgetTerminalFailure(args: {
         dp.aerial_graph_rebuilt_from_final_payload === true ||
         acg?.aerial_graph_rebuilt_from_final_payload === true,
       work_units_preserved: workUnitsPreserved,
+      // Slice 2: expose the preserved value directly inside the sub-bag so
+      // the live row can be verified the same way the regression fixture is.
+      estimated_work_units: dp.estimated_work_units ?? null,
       skipped_reason: acg?.skipped_reason ?? null,
       impossible_skip: dp.aerial_graph_impossible_skip === true,
       impossible_skip_reason: dp.aerial_graph_impossible_skip_reason ?? null,
