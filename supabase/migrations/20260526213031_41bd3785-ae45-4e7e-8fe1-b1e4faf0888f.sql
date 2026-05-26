@@ -1,0 +1,1 @@
+ALTER TABLE public.qbo_connections ADD COLUMN IF NOT EXISTS is_sandbox boolean NOT NULL DEFAULT false;

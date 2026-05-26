@@ -35134,6 +35134,7 @@ export type Database = {
           expires_at: string
           id: string
           is_active: boolean
+          is_sandbox: boolean
           last_refresh_at: string | null
           last_synced_at: string | null
           metadata: Json
@@ -35156,6 +35157,7 @@ export type Database = {
           expires_at: string
           id?: string
           is_active?: boolean
+          is_sandbox?: boolean
           last_refresh_at?: string | null
           last_synced_at?: string | null
           metadata?: Json
@@ -35178,6 +35180,7 @@ export type Database = {
           expires_at?: string
           id?: string
           is_active?: boolean
+          is_sandbox?: boolean
           last_refresh_at?: string | null
           last_synced_at?: string | null
           metadata?: Json
