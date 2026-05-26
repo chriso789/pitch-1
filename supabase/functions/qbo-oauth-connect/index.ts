@@ -170,9 +170,12 @@ Deno.serve(async (req) => {
 
       const tokens: TokenResponse = await tokenResponse.json();
 
-      // Get company info
+      // Newly-connected tenants inherit the OAuth app's environment from QBO_ENVIRONMENT.
+      const isSandbox = (Deno.env.get('QBO_ENVIRONMENT') ?? 'production').toLowerCase() === 'sandbox';
+
+      // Get company info from the matching host
       const companyResponse = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
+        `${qboHost({ is_sandbox: isSandbox })}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
         {
           headers: {
             'Authorization': `Bearer ${tokens.access_token}`,
@@ -199,6 +202,7 @@ Deno.serve(async (req) => {
           scopes: 'com.intuit.quickbooks.accounting openid email profile',
           connected_by: user.id,
           is_active: true,
+          is_sandbox: isSandbox,
           qbo_company_name: companyName,
           metadata: {
             company_info: companyData.CompanyInfo,
