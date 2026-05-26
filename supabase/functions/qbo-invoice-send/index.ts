@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,7 +66,7 @@ Deno.serve(async (req) => {
 
     // First, fetch the current invoice to get sync token
     const fetchResponse = await fetch(
-      `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/invoice/${qboInvoiceId}?minorversion=75`,
+      `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${qboInvoiceId}?minorversion=75`,
       {
         method: 'GET',
         headers: {
@@ -92,7 +93,7 @@ Deno.serve(async (req) => {
     };
 
     const updateResponse = await fetch(
-      `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/invoice?minorversion=75`,
+      `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`,
       {
         method: 'POST',
         headers: {
@@ -115,7 +116,7 @@ Deno.serve(async (req) => {
     // Optionally send email via QBO
     if (send_email) {
       const sendResponse = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/invoice/${qboInvoiceId}/send?minorversion=75`,
+        `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${qboInvoiceId}/send?minorversion=75`,
         {
           method: 'POST',
           headers: {

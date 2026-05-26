@@ -1,5 +1,6 @@
 // QBO OAuth connect — v2 (accepts action via body or query)
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -82,6 +83,14 @@ Deno.serve(async (req) => {
 
     // Step 0: Verify config + auth (no side effects) — runs even if env vars missing
     if (action === 'verify') {
+      const envSecret = (Deno.env.get('QBO_ENVIRONMENT') ?? 'production').toLowerCase();
+      // Best-effort: surface the current tenant's connection environment if one exists
+      const { data: existingConn } = await supabase
+        .from('qbo_connections')
+        .select('is_sandbox, realm_id, qbo_company_name')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('is_active', true)
+        .maybeSingle();
       return new Response(
         JSON.stringify({
           ok: true,
@@ -91,7 +100,11 @@ Deno.serve(async (req) => {
           hasSecret: !!QBO_CLIENT_SECRET,
           hasRedirect: !!QBO_REDIRECT_URI,
           redirectUri: QBO_REDIRECT_URI ?? null,
-          environment: Deno.env.get('QBO_ENVIRONMENT') ?? 'unknown',
+          environment: envSecret,
+          qbo_environment_secret: envSecret,
+          connection_is_sandbox: existingConn ? existingConn.is_sandbox === true : null,
+          connection_realm_id: existingConn?.realm_id ?? null,
+          connection_company_name: existingConn?.qbo_company_name ?? null,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -157,9 +170,12 @@ Deno.serve(async (req) => {
 
       const tokens: TokenResponse = await tokenResponse.json();
 
-      // Get company info
+      // Newly-connected tenants inherit the OAuth app's environment from QBO_ENVIRONMENT.
+      const isSandbox = (Deno.env.get('QBO_ENVIRONMENT') ?? 'production').toLowerCase() === 'sandbox';
+
+      // Get company info from the matching host
       const companyResponse = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
+        `${qboHost({ is_sandbox: isSandbox })}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
         {
           headers: {
             'Authorization': `Bearer ${tokens.access_token}`,
@@ -186,6 +202,7 @@ Deno.serve(async (req) => {
           scopes: 'com.intuit.quickbooks.accounting openid email profile',
           connected_by: user.id,
           is_active: true,
+          is_sandbox: isSandbox,
           qbo_company_name: companyName,
           metadata: {
             company_info: companyData.CompanyInfo,

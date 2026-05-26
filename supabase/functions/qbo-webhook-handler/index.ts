@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts';
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
       // Get tenant for this realm
       const { data: connection } = await supabase
         .from('qbo_connections')
-        .select('tenant_id')
+        .select('tenant_id, is_sandbox')
         .eq('realm_id', realmId)
         .eq('is_active', true)
         .single();
@@ -138,7 +139,7 @@ async function processPaymentEvent(
     // Get connection tokens
     const { data: connection } = await supabase
       .from('qbo_connections')
-      .select('access_token, realm_id')
+      .select('access_token, realm_id, is_sandbox')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .single();
@@ -149,7 +150,7 @@ async function processPaymentEvent(
 
     // Fetch payment from QBO
     const paymentResponse = await fetch(
-      `https://quickbooks.api.intuit.com/v3/company/${realmId}/payment/${paymentId}?minorversion=75`,
+      `${qboHost(connection)}/v3/company/${realmId}/payment/${paymentId}?minorversion=75`,
       {
         headers: {
           'Authorization': `Bearer ${connection.access_token}`,
@@ -173,7 +174,7 @@ async function processPaymentEvent(
         if (line.LinkedTxn && line.LinkedTxn.some((txn: any) => txn.TxnType === 'Invoice')) {
           for (const linkedTxn of line.LinkedTxn) {
             if (linkedTxn.TxnType === 'Invoice') {
-              await updateInvoiceBalance(supabase, tenantId, realmId, linkedTxn.TxnId, connection.access_token);
+              await updateInvoiceBalance(supabase, tenantId, realmId, linkedTxn.TxnId, connection.access_token, connection.is_sandbox === true);
             }
           }
         }
@@ -202,12 +203,13 @@ async function updateInvoiceBalance(
   tenantId: string,
   realmId: string,
   invoiceId: string,
-  accessToken: string
+  accessToken: string,
+  isSandbox: boolean,
 ) {
   try {
     // Fetch invoice from QBO
     const invoiceResponse = await fetch(
-      `https://quickbooks.api.intuit.com/v3/company/${realmId}/invoice/${invoiceId}?minorversion=75`,
+      `${qboHost({ is_sandbox: isSandbox })}/v3/company/${realmId}/invoice/${invoiceId}?minorversion=75`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
