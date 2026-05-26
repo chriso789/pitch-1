@@ -23,7 +23,7 @@ app.get("/__health", (c) => jsonOk(c, { fn: "platform-api", ok: true }));
 
 // Master-only: report whether INTERNAL_WORKER_SECRET is configured.
 // Never returns the value itself.
-app.get("/internal-secret-status", requireAuth, requireMaster, (c) => {
+app.on(["GET", "POST"], "/internal-secret-status", requireAuth, requireMaster, (c) => {
   const configured = Boolean(Deno.env.get("INTERNAL_WORKER_SECRET"));
   return jsonOk(c, { configured });
 });
