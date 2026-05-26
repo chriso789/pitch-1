@@ -46,6 +46,24 @@ export interface AerialCandidateFace {
   source: "solar_segment" | "mask_component";
 }
 
+export interface AerialCandidateGraphSkipDebug {
+  has_perimeter_ring_px: boolean;
+  perimeter_ring_px_source: string | null;
+  has_perimeter_ring_geo: boolean;
+  perimeter_ring_geo_source: string | null;
+  has_geo_to_raster_transform: boolean;
+  geo_to_raster_transform_source: string | null;
+  has_raster_bounds_lat_lng: boolean;
+  raster_bounds_source: string | null;
+  has_overlay_raster_url: boolean;
+  raster_registered_basis:
+    | "transform"
+    | "bounds_only"
+    | "registration_package"
+    | null;
+  reason: string;
+}
+
 export interface AerialCandidateRoofGraph {
   version: "aerial-candidate-graph-v1";
   coordinate_space: "raster_px";
@@ -53,6 +71,7 @@ export interface AerialCandidateRoofGraph {
   customer_ready: false;
   source: "registered_aerial_geometry";
   skipped_reason?: string;
+  skip_debug?: AerialCandidateGraphSkipDebug;
   perimeter_ring_px: Array<[number, number]> | null;
   perimeter_ring_geo: Array<[number, number]> | null;
   perimeter_area_sqft: number | null;
@@ -75,6 +94,7 @@ export interface AerialCandidateRoofGraph {
   };
   perimeter_source?: string | null;
 }
+
 
 const MAX_NODES = 512;
 const MAX_EDGES = 1024;
