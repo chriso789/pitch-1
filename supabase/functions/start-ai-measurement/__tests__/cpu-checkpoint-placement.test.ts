@@ -41,9 +41,9 @@ function shouldPreempt(elapsedMs: number, _workUnits = 0) {
   };
 }
 
-Deno.test("checkpoint 1: elapsed=59000ms → no preempt, compute runs", () => {
+Deno.test("checkpoint 1: elapsed=49000ms → no preempt, compute runs", () => {
   const computeSpy = { called: false };
-  const ckpt = shouldPreempt(59_000);
+  const ckpt = shouldPreempt(49_000);
   if (!ckpt.preempt) {
     computeSpy.called = true; // simulates the expensive call
   }
@@ -51,22 +51,22 @@ Deno.test("checkpoint 1: elapsed=59000ms → no preempt, compute runs", () => {
   assertEquals(computeSpy.called, true);
 });
 
-Deno.test("checkpoint 2: elapsed=61000ms → preempt, compute skipped", () => {
+Deno.test("checkpoint 2: elapsed=51000ms → preempt, compute skipped", () => {
   const computeSpy = { called: false };
-  const ckpt = shouldPreempt(61_000);
+  const ckpt = shouldPreempt(51_000);
   if (!ckpt.preempt) {
     computeSpy.called = true;
   }
   assertEquals(ckpt.preempt, true);
   assertEquals(computeSpy.called, false);
-  assertEquals(ckpt.reason, "wall_clock_reserve_threshold");
+  assertEquals(ckpt.reason, "early_reserve_safety_margin");
 });
 
 Deno.test(
   "checkpoint 3: pre_phase3a5_refinement_call gate blocks refineTrueOuterRoofPerimeter",
   () => {
     const refineSpy = { called: false };
-    const ckpt = shouldPreempt(61_000);
+    const ckpt = shouldPreempt(51_000);
     if (!ckpt.preempt) {
       // Would call refineTrueOuterRoofPerimeter here.
       refineSpy.called = true;
