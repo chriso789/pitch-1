@@ -502,7 +502,16 @@ app.post("/provider-costs/update", async (c) => {
 
 app.post("/seed-test-event", async (c) => {
   let body: any; try { body = await c.req.json(); } catch { body = {}; }
-  const { provider = "openai", event_type = "ai_generation", tenant_id = null, user_id = c.get("userId"), quantity = 1 } = body ?? {};
+  const {
+    provider = "openai",
+    event_type = "ai_generation",
+    tenant_id = null,
+    user_id = c.get("userId"),
+    quantity = 1,
+    feature_area = null,
+    status = "success",
+    metadata: extraMeta = {},
+  } = body ?? {};
   const svc = serviceClient();
   const { data: cost } = await svc
     .from("provider_costs").select("cost_per_unit, unit, markup_percent")
@@ -511,11 +520,13 @@ app.post("/seed-test-event", async (c) => {
   const estimated = unitCost * Number(quantity || 1);
   const { data, error } = await svc.from("usage_events").insert({
     tenant_id, user_id, provider, event_type,
+    feature_area,
     quantity: Number(quantity || 1), unit: cost?.unit ?? null,
     unit_cost: unitCost, estimated_cost: estimated,
     billable_amount: estimated * (1 + Number(cost?.markup_percent ?? 0) / 100),
     edge_function: "platform-api/seed-test-event",
-    metadata: { test: true },
+    status,
+    metadata: { ...(extraMeta ?? {}), test: true },
   }).select().single();
   if (error) return jsonErr(c, "insert_failed", error.message, 500);
   return jsonOk(c, data);
