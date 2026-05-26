@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { trackClientUsage } from '@/lib/usage/trackClientUsage';
 
 /**
  * Tenant-safe wrapper around supabase.storage.from(bucket).upload().
