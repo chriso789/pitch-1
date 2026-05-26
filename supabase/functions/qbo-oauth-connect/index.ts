@@ -48,8 +48,9 @@ Deno.serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    if (!profile || !['admin', 'master'].includes(profile.role)) {
-      throw new Error('Insufficient permissions');
+    if (!profile || !['master', 'owner', 'office_admin', 'corporate'].includes(profile.role)) {
+      console.error('[qbo-oauth-connect] Insufficient permissions, role=', profile?.role);
+      throw new Error(`Insufficient permissions (role: ${profile?.role ?? 'none'})`);
     }
 
     const url = new URL(req.url);
