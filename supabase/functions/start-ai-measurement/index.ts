@@ -7505,6 +7505,67 @@ async function processJob(input: any) {
         return;
       }
       const graph = solveAutonomousGraph(graphInput);
+
+      // ── CHECKPOINT: post_autonomous_topology_solver ──
+      // Solver returned; downstream Phase 3C/3D/3E block builders and the
+      // final persistence layer still need budget headroom. If the solver
+      // itself burned past the reserve, persist immediately so the row
+      // doesn't get a partial customer-style write.
+      {
+        const ckpt = shouldPreemptForCpuBudget(input, 0);
+        if (ckpt.preempt) {
+          const resolvedReg = resolveRegistrationForPreempt({
+            input,
+            coords,
+            hoistedTransformPackage,
+            hoistedRasterBoundsLatLng,
+            hoistedGeoToRasterTransform,
+            hoistedConfirmedRoofCenterPx,
+          });
+          if (resolvedReg.source === "rebuilt_from_input") {
+            hoistedTransformPackage = resolvedReg.transformPackage;
+            hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+            hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+            hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+          }
+          await persistCpuBudgetTerminalFailure({
+            input,
+            coords,
+            imageUrl,
+            mpp: actualMpp,
+            stage: "post_autonomous_topology_solver",
+            estimatedWorkUnits: 0,
+            debug: {
+              ...buildPreTopologyDebugBag({
+                stage: "post_autonomous_topology_solver",
+                dsmGrid,
+                maskedDSM,
+                roofMask,
+                raster,
+                perimeterPhase0Snapshot,
+                perimeterTopologySnapshot,
+                targetMaskIsolation,
+                footprintSource: phase3A5SelectedSource,
+                footprintGeo: footprintGeoForSolver,
+                footprintPx: null,
+                rasterUrl: imageUrl,
+                rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                geoToRasterTransform: resolvedReg.geoToRasterTransform,
+                solarSegments,
+                maskComponentsTable:
+                  targetMaskIsolation?.mask_components_table ?? [],
+                confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+                staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                transformPackage: resolvedReg.transformPackage,
+              }),
+              phase3A_5: phase3A5Diagnostics,
+              solver_returned: true,
+            },
+          });
+          return;
+        }
+      }
+
       const phase3CBlock = buildPhase3CBlock(graph.logs || {});
       const phase3DBlock = buildPhase3DBlock(graph.logs || {});
       const phase3EBlock = buildPhase3EBlock(
