@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,7 +34,7 @@ Deno.serve(async (req) => {
     // Get QBO connection
     const { data: connection, error: connError } = await supabaseClient
       .from('qbo_connections')
-      .select('access_token, realm_id')
+      .select('access_token, realm_id, is_sandbox')
       .eq('tenant_id', tenant_id)
       .eq('realm_id', realm_id)
       .eq('is_active', true)
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch payment from QBO
-    const qboUrl = `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/payment/${payment_id}`;
+    const qboUrl = `${qboHost(connection)}/v3/company/${connection.realm_id}/payment/${payment_id}`;
     const qboResponse = await fetch(qboUrl, {
       headers: {
         'Authorization': `Bearer ${connection.access_token}`,
@@ -98,7 +99,7 @@ Deno.serve(async (req) => {
                 });
 
               // Update invoice balance in mirror table
-              await updateInvoiceBalance(supabaseClient, tenant_id, realm_id, invoiceId, connection.access_token);
+              await updateInvoiceBalance(supabaseClient, tenant_id, realm_id, invoiceId, connection.access_token, connection.is_sandbox === true);
             }
           }
         }
@@ -124,9 +125,10 @@ async function updateInvoiceBalance(
   tenantId: string,
   realmId: string,
   invoiceId: string,
-  accessToken: string
+  accessToken: string,
+  isSandbox: boolean,
 ) {
-  const qboUrl = `https://quickbooks.api.intuit.com/v3/company/${realmId}/invoice/${invoiceId}`;
+  const qboUrl = `${qboHost({ is_sandbox: isSandbox })}/v3/company/${realmId}/invoice/${invoiceId}`;
   const qboResponse = await fetch(qboUrl, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
