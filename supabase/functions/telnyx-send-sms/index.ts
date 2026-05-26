@@ -325,6 +325,31 @@ Deno.serve(async (req) => {
       locationId: resolvedLocationId
     });
 
+    // Cost tracking — fire-and-forget. ~160 chars per segment.
+    try {
+      const { trackUsage } = await import("../_shared/track-usage.ts");
+      const segments = Math.max(1, Math.ceil((message?.length ?? 0) / 160));
+      trackUsage({
+        tenantId,
+        userId,
+        provider: "telnyx",
+        eventType: "sms_outbound",
+        featureArea: "communications",
+        quantity: segments,
+        unit: "message",
+        edgeFunction: "telnyx-send-sms",
+        status: "success",
+        metadata: {
+          to: formattedTo,
+          from: finalFromNumber,
+          contact_id: contactId || null,
+          message_length: message?.length ?? 0,
+          segments,
+          telnyx_message_id: data.data?.id ?? null,
+        },
+      });
+    } catch (e) { console.warn('trackUsage skipped:', (e as Error).message); }
+
     // Log to communication history with location_id and initial delivery status
     if (tenantId) {
       await supabaseAdmin.from('communication_history').insert({
