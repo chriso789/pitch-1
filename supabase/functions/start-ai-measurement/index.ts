@@ -13486,10 +13486,58 @@ async function persistCpuBudgetTerminalFailure(args: {
     args.input,
     args.estimatedWorkUnits ?? 0,
   );
+  // ── Slice 2: Preserve estimated_work_units across the preempt write ────
+  // Resolve the first non-zero work-units value from the priority cascade
+  // BEFORE building the debug payload so the value flows through into both
+  // the top-level field and the pre_phase3_5_preempt sub-bag. Never let a
+  // known non-zero estimate regress to 0 just because this call site didn't
+  // pass one.
+  const debugBag = (args.debug ?? {}) as Record<string, unknown>;
+  const priorTerminalPayload =
+    (debugBag as any)?.terminal_debug_payload ??
+      (debugBag as any)?.source_context?.terminal_debug_payload ?? null;
+  const priorPrePhase35 = priorTerminalPayload?.pre_phase3_5_preempt ?? null;
+  const cascadeArgs = {
+    estimatedWorkUnits: args.estimatedWorkUnits,
+    topologyEstimateWorkUnits:
+      (debugBag as any)?.topology_estimate?.work_units ??
+        (debugBag as any)?.topologyEstimate?.work_units ?? null,
+    priorGeometry: ((debugBag as any)?.geometry_report_json ??
+      (debugBag as any)?.dsm_planar_graph_debug ??
+      null) as Record<string, unknown> | null,
+    incoming: {
+      ...debugBag,
+      estimated_work_units:
+        (debugBag as any)?.estimated_work_units ??
+          priorTerminalPayload?.estimated_work_units ??
+          priorPrePhase35?.estimated_work_units ?? null,
+    } as Record<string, unknown>,
+  };
+  const preservedWU = preserveEstimatedWorkUnits(cascadeArgs);
+  const effectiveWU =
+    typeof preservedWU === "number" && preservedWU > 0
+      ? preservedWU
+      : (args.estimatedWorkUnits ?? null);
+
+  // Hard rule: never overwrite a known non-zero value with 0. Mutate the
+  // incoming debug bag so downstream readers (terminalDebugPayload, source_context)
+  // observe the preserved value uniformly.
+  if (typeof preservedWU === "number" && preservedWU > 0) {
+    (debugBag as any).estimated_work_units = preservedWU;
+    if ((debugBag as any).dsm_planar_graph_debug) {
+      (debugBag as any).dsm_planar_graph_debug.estimated_work_units =
+        preservedWU;
+    } else {
+      (debugBag as any).dsm_planar_graph_debug = {
+        estimated_work_units: preservedWU,
+      };
+    }
+  }
+
   const debugPayload = buildCpuBudgetTerminalDebugPayload({
     stage: args.stage,
-    estimatedWorkUnits: args.estimatedWorkUnits ?? null,
-    debug: args.debug,
+    estimatedWorkUnits: effectiveWU,
+    debug: debugBag,
     budget,
     constants: {
       AI_MEASUREMENT_CPU_BUDGET_MS,
@@ -13500,6 +13548,19 @@ async function persistCpuBudgetTerminalFailure(args: {
       REQUIRED_TOPOLOGY_SOURCE,
     },
   });
+  // Force the preserved value onto the payload too, in case the builder
+  // didn't surface it from `estimatedWorkUnits`.
+  if (typeof preservedWU === "number" && preservedWU > 0) {
+    (debugPayload as any).estimated_work_units = preservedWU;
+    if ((debugPayload as any).dsm_planar_graph_debug) {
+      (debugPayload as any).dsm_planar_graph_debug.estimated_work_units =
+        preservedWU;
+    } else {
+      (debugPayload as any).dsm_planar_graph_debug = {
+        estimated_work_units: preservedWU,
+      };
+    }
+  }
   const failedId = await insertFailedPreliminaryMeasurement(
     args.input,
     args.coords,
