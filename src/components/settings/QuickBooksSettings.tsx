@@ -412,14 +412,31 @@ export default function QuickBooksSettings() {
                   </span>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                onClick={handleDisconnect}
-                className="w-full gap-2"
-              >
-                <Unplug className="h-4 w-4" />
-                Disconnect QuickBooks
-              </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button
+                  variant="default"
+                  onClick={handleSwitchAccount}
+                  disabled={connecting}
+                  className="w-full gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${connecting ? 'animate-spin' : ''}`} />
+                  Switch Account
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDisconnect}
+                  className="w-full gap-2"
+                >
+                  <Unplug className="h-4 w-4" />
+                  Disconnect QuickBooks
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tip: If Intuit auto-signs you back into the same account, open
+                {' '}<a href="https://accounts.intuit.com" target="_blank" rel="noreferrer" className="underline">accounts.intuit.com</a>{' '}
+                in another tab and sign out first, or use a private/incognito window for the popup.
+              </p>
+
             </div>
           ) : (
             <div className="space-y-3">
