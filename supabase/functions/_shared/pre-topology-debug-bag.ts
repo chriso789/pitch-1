@@ -85,6 +85,14 @@ export interface PreTopologyDebugBag {
   aerial_candidate_roof_graph: AerialCandidateRoofGraph | null;
   primary_geometry_source?: "aerial_registered" | null;
   dsm_validation_status?: { available: boolean; reason: string | null } | null;
+  /**
+   * Snapshot of the registration object passed into the aerial graph builder
+   * at bag-build time. Persisting it lets downstream consumers
+   * (e.g. `buildCpuBudgetTerminalDebugPayload` and the final-payload
+   * rebuild) detect when transform inputs are present even though the graph
+   * skipped — and rebuild instead of leaving a stale skip in place.
+   */
+  registration?: any;
 }
 
 
