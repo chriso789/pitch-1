@@ -10,6 +10,7 @@
 //   5. circuit-break if failure_rate > 10% on >= 20 attempts
 //   6. mark blast 'completed' when nothing remains
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
+import { trackUsage, checkUsageLimit } from '../_shared/track-usage.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -372,6 +373,57 @@ async function processBlast(
     }
     return { blast_id: blast.id, claimed: 0 };
   }
+
+  // 2b. Pre-flight monthly SMS quota check (Priority 7).
+  // Estimate 1 segment per recipient as the lower-bound; multi-segment
+  // messages still get logged at send time via telnyx-send-sms.
+  try {
+    const gate = await checkUsageLimit({
+      tenantId: blast.tenant_id,
+      eventType: 'sms_outbound',
+      quantity: claimed.length,
+    });
+    if (gate && gate.allowed === false) {
+      trackUsage({
+        tenantId: blast.tenant_id,
+        provider: 'telnyx',
+        eventType: 'sms_outbound',
+        featureArea: 'bulk_sms',
+        edgeFunction: 'sms-blast-processor',
+        status: 'blocked_limit',
+        quantity: claimed.length,
+        metadata: {
+          blast_id: blast.id,
+          campaign_id: blast.campaign_id ?? null,
+          contact_count: claimed.length,
+          reason: gate.reason ?? 'monthly_limit_reached',
+          current_usage: gate.current_usage,
+          limit: gate.limit,
+        },
+      });
+      await supabase
+        .from('sms_blasts')
+        .update({
+          status: 'paused',
+          last_error: 'Monthly SMS limit reached. Upgrade or purchase additional SMS.',
+          last_processor_run_at: new Date().toISOString(),
+        })
+        .eq('id', blast.id);
+      // Release claimed items back to pending so they can be retried after upgrade.
+      await supabase
+        .from('sms_blast_items')
+        .update({ status: 'pending' })
+        .eq('blast_id', blast.id)
+        .eq('status', 'claimed');
+      return {
+        blast_id: blast.id,
+        blocked_limit: true,
+        message: 'Monthly SMS limit reached. Upgrade or purchase additional SMS.',
+      };
+    }
+  } catch { /* swallow — fail open */ }
+
+
 
   // 3. Pre-check opt-outs in bulk
   const phones = claimed.map((c: any) => normalizePhone(c.phone)).filter(Boolean);

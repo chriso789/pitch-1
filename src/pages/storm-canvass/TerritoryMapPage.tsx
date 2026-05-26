@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { useMapboxToken } from '@/hooks/useMapboxToken';
+import { useMapLoadTracker } from '@/lib/usage/trackClientUsage';
 
 const TerritoryMapPage = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -25,6 +26,7 @@ const TerritoryMapPage = () => {
   const { getActivities, getDispositions } = useStormCanvass();
   const { toast } = useToast();
   const { token: mapboxToken, loading: tokenLoading } = useMapboxToken();
+  useMapLoadTracker({ route: '/storm-canvass/territory', page: 'TerritoryMapPage', mapContext: 'canvass_territory' });
 
   // Fetch initial data
   useEffect(() => {

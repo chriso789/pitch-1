@@ -37,10 +37,13 @@ const STATUS_STYLE: Record<StatusKind, string> = {
   losing_money: "bg-destructive/15 text-destructive",
 };
 
+type CoverageRow = { key: string; label: string; status: "green" | "yellow" | "red" };
+
 export default function CostTrackerPage() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [providers, setProviders] = useState<ProviderCost[]>([]);
+  const [coverage, setCoverage] = useState<CoverageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
@@ -48,16 +51,18 @@ export default function CostTrackerPage() {
 
   async function loadAll() {
     setLoading(true);
-    const [d, c, p, s] = await Promise.all([
+    const [d, c, p, s, cov] = await Promise.all([
       edgeApi<Dashboard>("platform-api", "/dashboard"),
       edgeApi<{ rows: CompanyRow[] }>("platform-api", "/companies"),
       edgeApi<{ rows: ProviderCost[] }>("platform-api", "/provider-costs"),
       edgeApi<{ configured: boolean }>("platform-api", "/internal-secret-status"),
+      edgeApi<{ rows: CoverageRow[] }>("platform-api", "/coverage-checklist"),
     ]);
     if (d.error) toast.error(`Dashboard: ${d.error}`); else setDashboard(d.data);
     if (c.error) toast.error(`Companies: ${c.error}`); else setCompanies(c.data?.rows ?? []);
     if (p.error) toast.error(`Providers: ${p.error}`); else setProviders(p.data?.rows ?? []);
     if (!s.error && s.data) setSecretConfigured(s.data.configured);
+    if (!cov.error && cov.data) setCoverage(cov.data.rows ?? []);
     setLoading(false);
   }
   useEffect(() => { loadAll(); }, []);
@@ -79,9 +84,14 @@ export default function CostTrackerPage() {
     const { error } = await edgeApi("platform-api", "/recalculate-rollups", {});
     if (error) toast.error(error); else { toast.success("Rollups recalculated"); loadAll(); }
   }
-  async function seedTest(event_type: string, provider = "openai", quantity = 1) {
-    const { error } = await edgeApi("platform-api", "/seed-test-event", { event_type, provider, quantity });
-    if (error) toast.error(error); else toast.success(`Logged ${provider}/${event_type}`);
+  async function seedTest(
+    event_type: string,
+    provider = "openai",
+    quantity = 1,
+    extra: { feature_area?: string; status?: string; metadata?: Record<string, unknown> } = {},
+  ) {
+    const { error } = await edgeApi("platform-api", "/seed-test-event", { event_type, provider, quantity, ...extra });
+    if (error) toast.error(error); else toast.success(`Logged ${provider}/${event_type}${extra.status ? ` [${extra.status}]` : ""}`);
   }
   async function updateProvider(id: string, patch: Partial<ProviderCost>) {
     const { error } = await edgeApi("platform-api", "/provider-costs/update", { id, ...patch });
@@ -97,11 +107,16 @@ export default function CostTrackerPage() {
           <h1 className="text-2xl font-bold">Cost Tracker</h1>
           <p className="text-sm text-muted-foreground">Platform infrastructure spend & per-company profitability — {dashboard?.month}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={recalc}>Recalculate Rollups</Button>
-          <Button variant="outline" size="sm" onClick={() => seedTest("ai_generation")}>Test AI Event</Button>
-          <Button variant="outline" size="sm" onClick={() => seedTest("sms_outbound", "telnyx")}>Test SMS Event</Button>
-          <Button variant="outline" size="sm" onClick={() => seedTest("storage_mb", "supabase", 100)}>Test Upload Event</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("ai_generation", "lovable-ai", 1, { feature_area: "estimate_generation" })}>Test AI</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("sms_outbound", "telnyx")}>Test SMS</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("storage_mb", "supabase", 100, { feature_area: "storage" })}>Test Upload</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("map_load", "mapbox", 1, { feature_area: "canvassing" })}>Test Map Load</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("scrape_credit", "firecrawl", 1, { feature_area: "permits" })}>Test Scrape</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("roof_report", "eagleview", 1, { feature_area: "measurements" })}>Test Roof Report</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("edge_invocation", "supabase", 1, { feature_area: "infrastructure" })}>Test Edge Invocation</Button>
+          <Button variant="outline" size="sm" onClick={() => seedTest("sms_outbound", "telnyx", 1, { status: "blocked_limit", feature_area: "bulk_sms" })}>Test Blocked Limit</Button>
         </div>
       </div>
 
@@ -151,6 +166,37 @@ export default function CostTrackerPage() {
                 </div>
               )}
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Coverage checklist */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Hot-Path Tracking Coverage (last 30 days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {coverage.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Loading coverage…</p>
+          ) : (
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              {coverage.map((row) => (
+                <li key={row.key} className="flex items-center justify-between rounded-md border p-2">
+                  <span>{row.label}</span>
+                  <Badge
+                    className={
+                      row.status === "green"
+                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                        : row.status === "yellow"
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                        : "bg-destructive/15 text-destructive"
+                    }
+                  >
+                    {row.status === "green" ? "Wired" : row.status === "yellow" ? "Pending" : "Not wired"}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>

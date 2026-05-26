@@ -502,7 +502,16 @@ app.post("/provider-costs/update", async (c) => {
 
 app.post("/seed-test-event", async (c) => {
   let body: any; try { body = await c.req.json(); } catch { body = {}; }
-  const { provider = "openai", event_type = "ai_generation", tenant_id = null, user_id = c.get("userId"), quantity = 1 } = body ?? {};
+  const {
+    provider = "openai",
+    event_type = "ai_generation",
+    tenant_id = null,
+    user_id = c.get("userId"),
+    quantity = 1,
+    feature_area = null,
+    status = "success",
+    metadata: extraMeta = {},
+  } = body ?? {};
   const svc = serviceClient();
   const { data: cost } = await svc
     .from("provider_costs").select("cost_per_unit, unit, markup_percent")
@@ -511,14 +520,127 @@ app.post("/seed-test-event", async (c) => {
   const estimated = unitCost * Number(quantity || 1);
   const { data, error } = await svc.from("usage_events").insert({
     tenant_id, user_id, provider, event_type,
+    feature_area,
     quantity: Number(quantity || 1), unit: cost?.unit ?? null,
     unit_cost: unitCost, estimated_cost: estimated,
     billable_amount: estimated * (1 + Number(cost?.markup_percent ?? 0) / 100),
     edge_function: "platform-api/seed-test-event",
-    metadata: { test: true },
+    status,
+    metadata: { ...(extraMeta ?? {}), test: true },
   }).select().single();
   if (error) return jsonErr(c, "insert_failed", error.message, 500);
   return jsonOk(c, data);
+});
+
+// ============================================================
+// /track-client-usage — authenticated; derives tenant_id from JWT/profile.
+// Used by the browser to log client-originated usage (storage uploads,
+// map loads, etc.) WITHOUT needing the internal worker secret.
+// ============================================================
+app.post("/track-client-usage", requireAuth, async (c) => {
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "bad_json", "invalid body", 400); }
+  const userId = c.get("userId");
+  if (!userId) return jsonErr(c, "unauthorized", "auth required", 401);
+
+  const {
+    provider,
+    event_type,
+    feature_area = null,
+    quantity = 1,
+    unit = null,
+    metadata = {},
+  } = body ?? {};
+  if (!provider || !event_type) {
+    return jsonErr(c, "validation", "provider and event_type required", 400);
+  }
+
+  const svc = serviceClient();
+
+  // Resolve tenant from caller's profile (server-side; never trust client).
+  let tenantId: string | null = null;
+  try {
+    const { data: prof } = await svc.from("profiles").select("tenant_id").eq("id", userId).maybeSingle();
+    tenantId = prof?.tenant_id ?? null;
+  } catch { /* swallow */ }
+
+  const qty = Number(quantity) || 0;
+  const { data: cost } = await svc
+    .from("provider_costs")
+    .select("cost_per_unit, markup_percent, unit, is_active")
+    .eq("provider", provider)
+    .eq("event_type", event_type)
+    .maybeSingle();
+  const unitCost = cost?.is_active ? Number(cost.cost_per_unit) : 0;
+  const markup = cost ? Number(cost.markup_percent || 0) : 0;
+  const estimatedCost = unitCost * qty;
+  const billableAmount = estimatedCost * (1 + markup / 100);
+  const resolvedUnit = unit ?? cost?.unit ?? null;
+
+  const meta = { ...(metadata ?? {}) };
+  if (!tenantId) meta.needs_company_resolution = true;
+
+  const { data: inserted, error } = await svc.from("usage_events").insert({
+    tenant_id: tenantId,
+    user_id: userId,
+    provider,
+    event_type,
+    feature_area,
+    quantity: qty,
+    unit: resolvedUnit,
+    unit_cost: unitCost,
+    estimated_cost: estimatedCost,
+    billable_amount: billableAmount,
+    edge_function: "client",
+    status: "success",
+    metadata: meta,
+  }).select().single();
+
+  if (error) return jsonErr(c, "insert_failed", error.message, 500);
+  return jsonOk(c, inserted);
+});
+
+// ============================================================
+// /coverage-checklist — master only. Returns wiring status of each hot path
+// based on usage_events from last 30 days.
+// ============================================================
+app.get("/coverage-checklist", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Definitions: { key, label, provider?, event_type?, statuses? }
+  const items: Array<{ key: string; label: string; provider?: string; event_type?: string; match?: (e: any) => boolean }> = [
+    { key: "sms_outbound", label: "SMS outbound wired",         provider: "telnyx",    event_type: "sms_outbound" },
+    { key: "sms_inbound",  label: "SMS inbound wired",          provider: "telnyx",    event_type: "sms_inbound"  },
+    { key: "voice",        label: "Voice wired",                provider: "telnyx",    event_type: "voice_minutes" },
+    { key: "ai_calls",     label: "AI calls wired",                                    event_type: "ai_generation" },
+    { key: "uploads",      label: "Uploads wired",              provider: "supabase",  event_type: "storage_mb" },
+    { key: "map_loads",    label: "Map loads wired",            provider: "mapbox",    event_type: "map_load" },
+    { key: "scraping",     label: "Scraping wired",                                    match: (e) => ["firecrawl", "serpapi"].includes(e.provider) || ["scrape_credit", "search"].includes(e.event_type) },
+    { key: "roof_reports", label: "Roof reports wired",                                event_type: "roof_report" },
+    { key: "heavy_edge",   label: "Heavy edge invocations wired",                      match: (e) => e.event_type === "edge_invocation" },
+    { key: "blocked_limit",label: "Limit blocking wired",                              match: (e) => e.status === "blocked_limit" },
+  ];
+
+  // Pull last-30d distinct (provider,event_type,status) slim list.
+  const { data: events, error } = await svc
+    .from("usage_events")
+    .select("provider, event_type, status, created_at")
+    .gte("created_at", since)
+    .limit(5000);
+  if (error) return jsonErr(c, "query_failed", error.message, 500);
+
+  const rows = items.map((it) => {
+    const seen = (events ?? []).some((e: any) => {
+      if (it.match) return it.match(e);
+      if (it.provider && e.provider !== it.provider) return false;
+      if (it.event_type && e.event_type !== it.event_type) return false;
+      return true;
+    });
+    return { key: it.key, label: it.label, status: seen ? "green" : "red" };
+  });
+
+  return jsonOk(c, { rows, window: "30d" });
 });
 
 Deno.serve(app.fetch);

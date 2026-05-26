@@ -166,10 +166,13 @@ COMPANY NAME: ${companyName}
 
 Generate the next best follow-up message. Keep SMS under 320 characters. For email, write 3-5 sentences max.`;
 
-    // Call Lovable AI
+    // Call Lovable AI (usage tracked automatically)
     const { text } = await generateAIResponse({
       system: systemPrompt,
       user: userPrompt,
+      tenantId: tenant_id,
+      featureArea: "ai_followup",
+      edgeFunction: "ai-followup-generate",
     });
 
     // Parse response

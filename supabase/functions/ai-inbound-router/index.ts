@@ -174,6 +174,9 @@ Generate a helpful reply. Keep it under 160 characters for SMS.`;
     const { text } = await generateAIResponse({
       system: systemPrompt,
       user: userPrompt,
+      tenantId: tenant_id,
+      featureArea: "ai_inbound_router",
+      edgeFunction: "ai-inbound-router",
     });
 
     const fallback: AIReplyResponse = {
