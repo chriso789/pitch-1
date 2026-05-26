@@ -21,6 +21,13 @@ const app = createRouter("platform-api");
 
 app.get("/__health", (c) => jsonOk(c, { fn: "platform-api", ok: true }));
 
+// Master-only: report whether INTERNAL_WORKER_SECRET is configured.
+// Never returns the value itself.
+app.get("/internal-secret-status", requireAuth, async (c, next) => requireMaster(c, next), async (c) => {
+  const configured = Boolean(Deno.env.get("INTERNAL_WORKER_SECRET"));
+  return jsonOk(c, { configured });
+});
+
 // ---- master role gate ----
 async function requireMaster(c: Context<RouterEnv>, next: Next) {
   const userId = c.get("userId");
