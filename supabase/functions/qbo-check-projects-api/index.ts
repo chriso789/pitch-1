@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
     };
 
     const graphqlResponse = await fetch(
-      `https://${connection.is_sandbox ? 'sandbox-' : ''}quickbooks.api.intuit.com/graphql`,
+      `${qboHost(connection)}/graphql`,
       {
         method: 'POST',
         headers: {
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
 
     // Also check company preferences for Projects
     const prefsResponse = await fetch(
-      `https://${connection.is_sandbox ? 'sandbox-' : ''}quickbooks.api.intuit.com/v3/company/${connection.realm_id}/preferences`,
+      `${qboHost(connection)}/v3/company/${connection.realm_id}/preferences`,
       {
         headers: {
           'Authorization': `Bearer ${connection.access_token}`,

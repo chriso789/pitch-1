@@ -66,6 +66,8 @@ export default function QuickBooksSettings() {
   const [savingMappings, setSavingMappings] = useState(false);
   const [lastAuthUrl, setLastAuthUrl] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<any>(null);
+  const [verifyInfo, setVerifyInfo] = useState<any>(null);
+  const [selectedMode, setSelectedMode] = useState<'development' | 'production'>('development');
 
   const runDiagnostic = async () => {
     try {
@@ -78,6 +80,22 @@ export default function QuickBooksSettings() {
       setDiagnostic({ error: await extractFnError(e) });
     }
   };
+
+  // Load backend-controlled defaults + credential availability on mount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.functions.invoke('qbo-oauth-connect', {
+          body: { action: 'verify' },
+        });
+        if (data) {
+          setVerifyInfo(data);
+          const def = data.qbo_default_environment === 'production' ? 'production' : 'development';
+          setSelectedMode(def);
+        }
+      } catch {}
+    })();
+  }, []);
 
 
   useEffect(() => {
@@ -158,7 +176,7 @@ export default function QuickBooksSettings() {
       setConnecting(true);
 
       const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
-        body: { action: 'initiate' },
+        body: { action: 'initiate', mode: selectedMode },
       });
 
       if (error) throw error;
@@ -406,6 +424,16 @@ export default function QuickBooksSettings() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Environment</span>
+                  <Badge variant={(connection as any).oauth_app_env === 'production' ? 'default' : 'secondary'}>
+                    {(connection as any).oauth_app_env ?? ((connection as any).is_sandbox ? 'development' : 'production')}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Realm ID</span>
+                  <span className="text-xs text-muted-foreground font-mono">{connection.realm_id}</span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Connected</span>
                   <span className="text-sm text-muted-foreground">
                     {new Date(connection.connected_at).toLocaleDateString()}
@@ -440,6 +468,25 @@ export default function QuickBooksSettings() {
             </div>
           ) : (
             <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="qbo-mode">Environment</Label>
+                <Select value={selectedMode} onValueChange={(v) => setSelectedMode(v as 'development' | 'production')}>
+                  <SelectTrigger id="qbo-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="development" disabled={verifyInfo && !verifyInfo.has_development_credentials && !verifyInfo.has_legacy_credentials}>
+                      Sandbox (development)
+                    </SelectItem>
+                    <SelectItem value="production" disabled={verifyInfo && !verifyInfo.has_production_credentials && !verifyInfo.has_legacy_credentials}>
+                      Production
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Default: <span className="font-mono">{verifyInfo?.qbo_default_environment ?? 'development'}</span>. Production connections require master-level approval until smoke-test cutover is complete.
+                </p>
+              </div>
               <Button
                 onClick={handleConnect}
                 disabled={connecting}
@@ -451,7 +498,7 @@ export default function QuickBooksSettings() {
                     Connecting...
                   </>
                 ) : (
-                  'Connect to QuickBooks'
+                  `Connect to QuickBooks (${selectedMode})`
                 )}
               </Button>
 

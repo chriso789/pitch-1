@@ -11,6 +11,12 @@
 // future-proofed via the `*_encrypted` accessor below.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  getQboContextForConnection,
+  getQboContextForMode,
+  getDefaultQboMode,
+  type QboContext,
+} from "./qbo-context.ts";
 
 export const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 export const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
@@ -18,8 +24,6 @@ export const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens
 
 export const QBO_DEFAULT_SCOPES = "com.intuit.quickbooks.accounting openid email profile";
 
-// Refresh access tokens this many seconds before they actually expire, to avoid
-// the "valid at request time, expired at server time" race documented by Intuit.
 const REFRESH_SKEW_SECONDS = 5 * 60;
 
 export interface QboTokenResponse {
@@ -41,24 +45,23 @@ export interface QboConnectionRow {
   scopes: string[] | string | null;
   is_active: boolean;
   qbo_company_name: string | null;
+  oauth_app_env?: string | null;
+  is_sandbox?: boolean | null;
 }
 
+/**
+ * @deprecated Use getQboContextForConnection(conn) or getQboContextForMode(mode) instead.
+ * Returns the default-mode context for backwards compatibility.
+ */
 export function getQboEnv() {
-  const clientId = Deno.env.get("QBO_CLIENT_ID");
-  const clientSecret = Deno.env.get("QBO_CLIENT_SECRET");
-  const redirectUri = Deno.env.get("QBO_REDIRECT_URI");
-  const environment = (Deno.env.get("QBO_ENVIRONMENT") ?? "production").toLowerCase();
-  const apiBase =
-    environment === "sandbox"
-      ? "https://sandbox-quickbooks.api.intuit.com"
-      : "https://quickbooks.api.intuit.com";
-
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error(
-      "QBO is not configured: QBO_CLIENT_ID, QBO_CLIENT_SECRET, and QBO_REDIRECT_URI must be set",
-    );
-  }
-  return { clientId, clientSecret, redirectUri, environment, apiBase };
+  const ctx = getQboContextForMode(getDefaultQboMode());
+  return {
+    clientId: ctx.clientId,
+    clientSecret: ctx.clientSecret,
+    redirectUri: ctx.redirectUri,
+    environment: ctx.mode,
+    apiBase: ctx.accountingBaseUrl,
+  };
 }
 
 function basicAuthHeader(clientId: string, clientSecret: string) {
@@ -79,19 +82,22 @@ export function buildAuthorizeUrl(opts: {
   return url.toString();
 }
 
-export async function exchangeAuthorizationCode(code: string): Promise<QboTokenResponse> {
-  const { clientId, clientSecret, redirectUri } = getQboEnv();
+export async function exchangeAuthorizationCode(
+  code: string,
+  ctx?: QboContext,
+): Promise<QboTokenResponse> {
+  const c = ctx ?? getQboContextForMode(getDefaultQboMode());
   const res = await fetch(QBO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
-      Authorization: basicAuthHeader(clientId, clientSecret),
+      Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: redirectUri,
+      redirect_uri: c.redirectUri,
     }),
   });
   if (!res.ok) {
@@ -101,14 +107,17 @@ export async function exchangeAuthorizationCode(code: string): Promise<QboTokenR
   return (await res.json()) as QboTokenResponse;
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<QboTokenResponse> {
-  const { clientId, clientSecret } = getQboEnv();
+export async function refreshAccessToken(
+  refreshToken: string,
+  ctx?: QboContext,
+): Promise<QboTokenResponse> {
+  const c = ctx ?? getQboContextForMode(getDefaultQboMode());
   const res = await fetch(QBO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
-      Authorization: basicAuthHeader(clientId, clientSecret),
+      Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
       grant_type: "refresh_token",
@@ -211,7 +220,7 @@ export async function getValidAccessToken(
     return { access_token: c.access_token, realm_id: c.realm_id, connection: c };
   }
 
-  const refreshed = await refreshAccessToken(c.refresh_token);
+  const refreshed = await refreshAccessToken(c.refresh_token, getQboContextForConnection(c));
   const updated = await persistTokens(service, {
     tenant_id: c.tenant_id,
     realm_id: c.realm_id,
@@ -220,10 +229,14 @@ export async function getValidAccessToken(
   return { access_token: updated.access_token, realm_id: updated.realm_id, connection: updated };
 }
 
-export async function fetchCompanyInfo(accessToken: string, realmId: string) {
-  const { apiBase } = getQboEnv();
+export async function fetchCompanyInfo(
+  accessToken: string,
+  realmId: string,
+  connection?: { is_sandbox?: boolean | null; oauth_app_env?: string | null },
+) {
+  const ctx = connection ? getQboContextForConnection(connection) : getQboContextForMode(getDefaultQboMode());
   const res = await fetch(
-    `${apiBase}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
+    `${ctx.accountingBaseUrl}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
     { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
   );
   if (!res.ok) return null;
@@ -241,20 +254,20 @@ export function createServiceClient(): SupabaseClient {
 export async function revokeConnection(service: SupabaseClient, tenant_id: string) {
   const { data: conn } = await service
     .from("qbo_connections")
-    .select("id, refresh_token")
+    .select("id, refresh_token, oauth_app_env, is_sandbox")
     .eq("tenant_id", tenant_id)
     .eq("is_active", true)
     .maybeSingle();
   if (!conn) return;
 
   try {
-    const { clientId, clientSecret } = getQboEnv();
+    const ctx = getQboContextForConnection(conn);
     await fetch(QBO_REVOKE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: basicAuthHeader(clientId, clientSecret),
+        Authorization: basicAuthHeader(ctx.clientId, ctx.clientSecret),
       },
       body: JSON.stringify({ token: (conn as { refresh_token: string }).refresh_token }),
     });

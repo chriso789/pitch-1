@@ -35138,6 +35138,7 @@ export type Database = {
           last_refresh_at: string | null
           last_synced_at: string | null
           metadata: Json
+          oauth_app_env: string
           oauth_state: string | null
           qbo_company_name: string | null
           realm_id: string
@@ -35161,6 +35162,7 @@ export type Database = {
           last_refresh_at?: string | null
           last_synced_at?: string | null
           metadata?: Json
+          oauth_app_env?: string
           oauth_state?: string | null
           qbo_company_name?: string | null
           realm_id: string
@@ -35184,6 +35186,7 @@ export type Database = {
           last_refresh_at?: string | null
           last_synced_at?: string | null
           metadata?: Json
+          oauth_app_env?: string
           oauth_state?: string | null
           qbo_company_name?: string | null
           realm_id?: string
@@ -35319,6 +35322,30 @@ export type Database = {
           realm_id?: string
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      qbo_oauth_state: {
+        Row: {
+          created_at: string
+          initiated_by: string | null
+          requested_mode: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          initiated_by?: string | null
+          requested_mode: string
+          state: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          initiated_by?: string | null
+          requested_mode?: string
+          state?: string
+          tenant_id?: string
         }
         Relationships: []
       }
