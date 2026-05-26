@@ -468,8 +468,17 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const targetMaskIsolation = (incoming as any).target_mask_isolation ?? null;
   const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
   const perimeterTopology = (incoming as any).perimeter_topology ?? null;
+  // Merge-precedence guard: an executed aerial candidate graph must NEVER be
+  // downgraded by a later skipped graph passed via `incoming`. In practice the
+  // upstream `buildPreTopologyDebugBag` builds the canonical graph and hands
+  // it in here, so this is belt-and-suspenders against any future caller that
+  // tries to slip a stale/empty graph into the terminal payload.
+  const _incomingGraph = (incoming as any).aerial_candidate_roof_graph ?? null;
   const aerialCandidateRoofGraph =
-    (incoming as any).aerial_candidate_roof_graph ?? null;
+    _incomingGraph && _incomingGraph.executed === true
+      ? _incomingGraph
+      : _incomingGraph ?? null;
+
   const phase3_5 = {
     raw_perimeter_px: rawPerimeterPx,
     refined_perimeter_px: null,
