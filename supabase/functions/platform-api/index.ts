@@ -326,7 +326,7 @@ app.use("/provider-costs", requireAuth, requireMaster);
 app.use("/provider-costs/update", requireAuth, requireMaster);
 app.use("/seed-test-event", requireAuth, requireMaster);
 
-app.get("/dashboard", async (c) => {
+app.on(["GET","POST"], "/dashboard", async (c) => {
   const svc = serviceClient();
   const month = monthKey();
   const { data: rollups } = await svc
@@ -374,7 +374,7 @@ app.get("/dashboard", async (c) => {
   });
 });
 
-app.get("/companies", async (c) => {
+app.on(["GET","POST"], "/companies", async (c) => {
   const svc = serviceClient();
   const month = monthKey();
   const [{ data: limits }, { data: rollups }, { data: tenants }] = await Promise.all([
@@ -418,7 +418,7 @@ app.get("/companies", async (c) => {
   return jsonOk(c, { rows, month });
 });
 
-app.get("/company-detail", async (c) => {
+app.on(["GET","POST"], "/company-detail", async (c) => {
   const tid = c.req.query("tenant_id");
   if (!tid) return jsonErr(c, "validation", "tenant_id required", 400);
   const svc = serviceClient();
@@ -462,7 +462,7 @@ app.get("/company-detail", async (c) => {
   });
 });
 
-app.get("/user-detail", async (c) => {
+app.on(["GET","POST"], "/user-detail", async (c) => {
   const uid = c.req.query("user_id");
   if (!uid) return jsonErr(c, "validation", "user_id required", 400);
   const svc = serviceClient();
@@ -480,7 +480,7 @@ app.get("/user-detail", async (c) => {
   return jsonOk(c, { user_id: uid, totals: { cost_mtd: totalCost }, event_counts: counts, events: events ?? [] });
 });
 
-app.get("/provider-costs", async (c) => {
+app.on(["GET","POST"], "/provider-costs", async (c) => {
   const svc = serviceClient();
   const { data } = await svc.from("provider_costs").select("*").order("provider").order("event_type");
   return jsonOk(c, { rows: data ?? [] });
@@ -604,7 +604,7 @@ app.post("/track-client-usage", requireAuth, async (c) => {
 // /coverage-checklist — master only. Returns wiring status of each hot path
 // based on usage_events from last 30 days.
 // ============================================================
-app.get("/coverage-checklist", requireAuth, requireMaster, async (c) => {
+app.on(["GET","POST"], "/coverage-checklist", requireAuth, requireMaster, async (c) => {
   const svc = serviceClient();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
