@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "description": "Fonsica-class pre_phase3_5_preempt terminal payload — anonymized synthetic coordinates preserving the structural shape of the last live 4063 Fonsica Ave run (roof_measurements.id=141dfff3 / job 4f238de1, 2026-05-26).",
+    "source": "Sanitized snapshot from roof_measurements.geometry_report_json — geo coordinates replaced with synthetic values centered on (-80.0, 26.0). Pixel coordinates preserved.",
+    "version": 1
+  },
+  "registration": {
+    "transform_package": {
+      "geo_to_raster_transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 0, "ty": 0 },
+      "raster_bounds_lat_lng": { "west": -80.001, "east": -79.998, "south": 25.999, "north": 26.002 },
+      "raster_url": "https://example/raster.png",
+      "raster_size_px": { "width": 1280, "height": 1280 }
+    }
+  },
+  "perimeter_topology": {
+    "perimeter_ring_px": [
+      [596.6375151714944, 550.8625390236027],
+      [708.0701792374193, 581.3238263620055],
+      [709.6000190850585, 701.8626002976898],
+      [581.8115495236035, 698.3006079006041],
+      [582.1795681345706, 592.7806712477134],
+      [580.161720953008, 568.2949937394138],
+      [596.6375151714944, 550.8625390236027]
+    ],
+    "perimeter_ring_geo": [
+      [-80.0000, 26.0000],
+      [-79.9988, 26.0000],
+      [-79.9988, 25.9985],
+      [-79.9998, 25.9985],
+      [-79.9998, 25.9992],
+      [-80.0000, 25.9994],
+      [-80.0000, 26.0000]
+    ],
+    "eave_edges": [
+      { "start_px": [596.6, 550.9], "end_px": [708.1, 581.3], "start_geo": [-80.0000, 26.0000], "end_geo": [-79.9988, 26.0000], "length_ft": 80, "confidence": 0.9 },
+      { "start_px": [708.1, 581.3], "end_px": [709.6, 701.9], "start_geo": [-79.9988, 26.0000], "end_geo": [-79.9988, 25.9985], "length_ft": 60, "confidence": 0.88 },
+      { "start_px": [709.6, 701.9], "end_px": [581.8, 698.3], "start_geo": [-79.9988, 25.9985], "end_geo": [-79.9998, 25.9985], "length_ft": 85, "confidence": 0.91 },
+      { "start_px": [581.8, 698.3], "end_px": [582.2, 592.8], "start_geo": [-79.9998, 25.9985], "end_geo": [-79.9998, 25.9992], "length_ft": 55, "confidence": 0.86 },
+      { "start_px": [582.2, 592.8], "end_px": [580.2, 568.3], "start_geo": [-79.9998, 25.9992], "end_geo": [-80.0000, 25.9994], "length_ft": 25, "confidence": 0.83 },
+      { "start_px": [580.2, 568.3], "end_px": [596.6, 550.9], "start_geo": [-80.0000, 25.9994], "end_geo": [-80.0000, 26.0000], "length_ft": 30, "confidence": 0.84 }
+    ]
+  },
+  "raster": { "width": 1280, "height": 1280 },
+  "raster_url": "https://example/raster.png",
+  "raster_bounds_lat_lng": { "west": -80.001, "east": -79.998, "south": 25.999, "north": 26.002 },
+  "geo_to_raster_transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 0, "ty": 0 },
+  "target_mask_isolation": { "checked": true, "target_mask_area_sqft": 3077, "perimeter_vs_mask_iou": 0.87 },
+  "footprint_source": "solar",
+  "confirmed_roof_center_px": { "x": 640, "y": 640 },
+  "static_map_center_lat_lng": { "lat": 26.0005, "lng": -79.9995 },
+  "cpu_budget": {
+    "stage": "pre_phase3_5_preempt",
+    "preempt": true,
+    "elapsed_ms": 96688,
+    "remaining_ms": -21688,
+    "reason": "wall_clock_reserve_threshold"
+  },
+  "estimated_work_units": 996004,
+  "expected": {
+    "aerial_executed_after_rebuild": true,
+    "aerial_min_edges": 6,
+    "primary_geometry_source": "aerial_registered",
+    "dsm_validation_reason": "invalid_transform",
+    "late_cpu_preempt": true,
+    "customer_report_ready": false,
+    "work_units_preserved": 996004
+  }
+}
