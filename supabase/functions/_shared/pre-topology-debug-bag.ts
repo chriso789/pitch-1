@@ -466,6 +466,17 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   debug: Record<string, unknown> | undefined;
   budget: CpuBudgetSnapshot;
   constants: CpuBudgetConstants;
+  /**
+   * Optional prior `geometry_report_json` (or any object carrying
+   * `estimated_work_units` / `dsm_planar_graph_debug.estimated_work_units`)
+   * — used as a fallback so a known nonzero value cannot be regressed to 0
+   * during terminal write.
+   */
+  priorGeometry?: Record<string, unknown> | null;
+  /**
+   * Optional `topologyEstimate.work_units` from an earlier estimator pass.
+   */
+  topologyEstimateWorkUnits?: number | null;
 }): Record<string, unknown> {
   const incoming = args.debug ?? {};
   const dsmSplitStatus = (incoming as any).dsm_split_status ?? null;
@@ -477,25 +488,122 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const targetMaskIsolation = (incoming as any).target_mask_isolation ?? null;
   const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
   const perimeterTopology = (incoming as any).perimeter_topology ?? null;
+  const incomingRegistration = (incoming as any).registration ?? null;
+
   // Merge-precedence guard: an executed aerial candidate graph must NEVER be
   // downgraded by a later skipped graph passed via `incoming`. The upstream
   // `buildPreTopologyDebugBag` builds the canonical graph and hands it in
   // here; this is belt-and-suspenders against any future caller that tries
   // to slip a stale/empty graph into the terminal payload.
-  const _incomingGraph = (incoming as any).aerial_candidate_roof_graph ?? null;
-  const aerialCandidateRoofGraph = _incomingGraph;
+  let aerialCandidateRoofGraph =
+    (incoming as any).aerial_candidate_roof_graph ?? null;
+  let aerialGraphRebuiltFromFinalPayload = false;
 
-  // Fonsica-shaped impossible-skip diagnostic: if every input the aerial
-  // graph builder needs is demonstrably present on this row, then a
-  // `raster_transform_unavailable` skip is internally inconsistent. Flag it
-  // (non-throwing) so tests and ops can catch it deterministically.
+  // ── Final-payload fallback rebuild ──────────────────────────────────────
+  // If the graph skipped with `raster_transform_unavailable` but the final
+  // payload now carries a complete registration package AND perimeter
+  // topology, rebuild the graph rather than persisting a stale skip.
+  if (
+    aerialCandidateRoofGraph?.skipped_reason ===
+      "raster_transform_unavailable" &&
+    incomingRegistration?.transform_package?.geo_to_raster_transform &&
+    incomingRegistration?.transform_package?.raster_bounds_lat_lng &&
+    (Array.isArray((perimeterTopology as any)?.perimeter_ring_px) &&
+      (perimeterTopology as any).perimeter_ring_px.length >= 3) &&
+    (
+      (Array.isArray((perimeterTopology as any)?.eave_edges) &&
+        (perimeterTopology as any).eave_edges.length > 0) ||
+      (Array.isArray((perimeterTopology as any)?.perimeter_edges) &&
+        (perimeterTopology as any).perimeter_edges.length > 0)
+    )
+  ) {
+    const rebuilt = buildAerialCandidateGraph({
+      registration: incomingRegistration,
+      geoToRasterTransform:
+        incomingRegistration.transform_package.geo_to_raster_transform,
+      rasterBoundsLatLng:
+        incomingRegistration.transform_package.raster_bounds_lat_lng,
+      confirmedRoofCenterPx:
+        incomingRegistration.transform_package.confirmed_roof_center_px ??
+          incomingRegistration.confirmed_roof_center_px ?? null,
+      rasterUrl: incomingRegistration?.raster?.url ?? null,
+      perimeterTopology,
+      targetMaskIsolation,
+      debugLayers: (incoming as any).debug_layers ?? null,
+      debugRoofLines: (incoming as any).debug_roof_lines ?? null,
+      dsmPlanarGraphDebug: (incoming as any).dsm_planar_graph_debug ?? null,
+    });
+    aerialCandidateRoofGraph = {
+      ...rebuilt,
+      aerial_graph_rebuilt_from_final_payload: true,
+    };
+    aerialGraphRebuiltFromFinalPayload = true;
+  }
+
+  // ── Skip-diagnostic guarantee ───────────────────────────────────────────
+  // Any executed=false aerial graph MUST carry a skip_debug block. If a
+  // caller stuffed a skipped graph in without one, synthesize it from what
+  // we know so consumers always have actionable diagnostics.
+  if (
+    aerialCandidateRoofGraph &&
+    aerialCandidateRoofGraph.executed === false &&
+    !aerialCandidateRoofGraph.skip_debug
+  ) {
+    aerialCandidateRoofGraph = {
+      ...aerialCandidateRoofGraph,
+      skip_debug: {
+        has_perimeter_ring_px: !!(
+          perimeterTopology as any
+        )?.perimeter_ring_px,
+        perimeter_ring_px_source:
+          (perimeterTopology as any)?.perimeter_ring_px
+            ? "perimeter_topology.perimeter_ring_px"
+            : null,
+        has_perimeter_ring_geo: !!(
+          perimeterTopology as any
+        )?.perimeter_ring_geo,
+        perimeter_ring_geo_source:
+          (perimeterTopology as any)?.perimeter_ring_geo
+            ? "perimeter_topology.perimeter_ring_geo"
+            : null,
+        has_geo_to_raster_transform:
+          !!incomingRegistration?.transform_package?.geo_to_raster_transform ||
+          !!incomingRegistration?.geo_to_raster_transform,
+        geo_to_raster_transform_source:
+          incomingRegistration?.transform_package?.geo_to_raster_transform
+            ? "registration.transform_package.geo_to_raster_transform"
+            : (incomingRegistration?.geo_to_raster_transform
+              ? "registration.geo_to_raster_transform"
+              : null),
+        has_raster_bounds_lat_lng:
+          !!incomingRegistration?.transform_package?.raster_bounds_lat_lng ||
+          !!incomingRegistration?.raster_bounds_lat_lng,
+        raster_bounds_source:
+          incomingRegistration?.transform_package?.raster_bounds_lat_lng
+            ? "registration.transform_package.raster_bounds_lat_lng"
+            : (incomingRegistration?.raster_bounds_lat_lng
+              ? "registration.raster_bounds_lat_lng"
+              : null),
+        has_overlay_raster_url: !!incomingRegistration?.raster?.url,
+        raster_registered_basis: null,
+        reason: aerialCandidateRoofGraph.skipped_reason ?? "unknown",
+        synthesized_at: "buildCpuBudgetTerminalDebugPayload",
+      },
+    };
+  }
+
+  // Fonsica-shaped impossible-skip diagnostic — recompute after rebuild.
   const _g2r =
-    (incoming as any)?.aerial_candidate_roof_graph?.skip_debug?.has_geo_to_raster_transform === true ||
+    (aerialCandidateRoofGraph as any)?.skip_debug?.has_geo_to_raster_transform ===
+      true ||
     !!(perimeterTopology as any)?.geo_to_raster_transform ||
+    !!incomingRegistration?.transform_package?.geo_to_raster_transform ||
     (aerialCandidateRoofGraph?.executed === true);
   const _bounds =
-    (incoming as any)?.aerial_candidate_roof_graph?.skip_debug?.has_raster_bounds_lat_lng === true ||
+    (aerialCandidateRoofGraph as any)?.skip_debug?.has_raster_bounds_lat_lng ===
+      true ||
     !!(perimeterTopology as any)?.raster_bounds_lat_lng ||
+    !!incomingRegistration?.transform_package?.raster_bounds_lat_lng ||
     (aerialCandidateRoofGraph?.executed === true);
   const _ringPx = Array.isArray((perimeterTopology as any)?.perimeter_ring_px)
     ? (perimeterTopology as any).perimeter_ring_px
@@ -512,6 +620,21 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const aerialGraphImpossibleSkip =
     fonsicaShapedInputs === true &&
     aerialCandidateRoofGraph?.skipped_reason === "raster_transform_unavailable";
+  const aerialGraphImpossibleSkipReason = aerialGraphImpossibleSkip
+    ? "final_payload_has_registration_and_perimeter_topology"
+    : null;
+
+  // ── Preempt timing diagnostics ──────────────────────────────────────────
+  const lateCpuPreempt =
+    args.budget.elapsed_ms >= args.constants.AI_MEASUREMENT_CPU_BUDGET_MS;
+
+  // ── Preserve estimated_work_units ───────────────────────────────────────
+  const preservedWorkUnits = preserveEstimatedWorkUnits({
+    estimatedWorkUnits: args.estimatedWorkUnits,
+    topologyEstimateWorkUnits: args.topologyEstimateWorkUnits ?? null,
+    priorGeometry: args.priorGeometry ?? null,
+    incoming,
+  });
 
   const phase3_5 = {
     raw_perimeter_px: rawPerimeterPx,
@@ -534,7 +657,8 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     cpu_budget_ms: args.constants.AI_MEASUREMENT_CPU_BUDGET_MS,
     cpu_terminal_write_reserve_ms:
       args.constants.AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS,
-    estimated_work_units: args.estimatedWorkUnits ?? null,
+    late_cpu_preempt: lateCpuPreempt,
+    estimated_work_units: preservedWorkUnits,
     topology_pixel_limit: args.constants.AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
     result_state: "ai_failed_runtime",
     hard_fail_reason: args.constants.AI_MEASUREMENT_CPU_TIMEOUT_REASON,
@@ -552,7 +676,9 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     perimeter_topology: perimeterTopology,
     raw_perimeter_px: rawPerimeterPx,
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
+    aerial_graph_rebuilt_from_final_payload: aerialGraphRebuiltFromFinalPayload,
     aerial_graph_impossible_skip: aerialGraphImpossibleSkip,
+    aerial_graph_impossible_skip_reason: aerialGraphImpossibleSkipReason,
     fonsica_shaped_aerial_inputs: fonsicaShapedInputs,
     primary_geometry_source: (incoming as any).primary_geometry_source ??
       (aerialCandidateRoofGraph?.executed ? "aerial_registered" : null),
@@ -560,6 +686,120 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     phase3_5,
     debug_layers,
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Helpers exported for use by start-ai-measurement and tests.
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * First non-null, finite, positive integer from the priority list. Used to
+ * preserve a known `estimated_work_units` value through the terminal write
+ * so it cannot be regressed to 0.
+ */
+export function preserveEstimatedWorkUnits(args: {
+  estimatedWorkUnits?: number | null;
+  topologyEstimateWorkUnits?: number | null;
+  priorGeometry?: Record<string, unknown> | null;
+  incoming?: Record<string, unknown> | null;
+}): number | null {
+  const pg = (args.priorGeometry ?? {}) as any;
+  const inc = (args.incoming ?? {}) as any;
+  const candidates: Array<number | null | undefined> = [
+    args.estimatedWorkUnits,
+    pg?.estimated_work_units,
+    pg?.dsm_planar_graph_debug?.estimated_work_units,
+    args.topologyEstimateWorkUnits,
+    inc?.estimated_work_units,
+    inc?.dsm_planar_graph_debug?.estimated_work_units,
+  ];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  // If everything is missing/zero but the caller still passed an explicit
+  // value (even 0), return that rather than null so the contract is honored.
+  if (typeof args.estimatedWorkUnits === "number") return args.estimatedWorkUnits;
+  return null;
+}
+
+/**
+ * Rebuilds `geometry_report_json.aerial_candidate_roof_graph` in place when
+ * the persisted skip is `raster_transform_unavailable` but the final payload
+ * now contains a complete registration package and perimeter topology.
+ *
+ * Returns:
+ *   - `rebuilt`: whether the graph was rebuilt this call
+ *   - `impossibleSkip`: whether the post-rebuild state still shows the
+ *     impossible-skip condition (registration + perimeter present but graph
+ *     still skipped with raster_transform_unavailable)
+ *
+ * Mutates `geometryReportJson` directly.
+ */
+export function rebuildAerialGraphFromFinalPayload(
+  geometryReportJson: Record<string, unknown>,
+): { rebuilt: boolean; impossibleSkip: boolean; impossibleSkipReason: string | null } {
+  const g = geometryReportJson as any;
+  const acg = g?.aerial_candidate_roof_graph ?? null;
+  const reg = g?.registration ?? g?.registration_gate ?? null;
+  const perim = g?.perimeter_topology ?? null;
+
+  const hasTransform = !!reg?.transform_package?.geo_to_raster_transform ||
+    !!reg?.geo_to_raster_transform;
+  const hasBounds = !!reg?.transform_package?.raster_bounds_lat_lng ||
+    !!reg?.raster_bounds_lat_lng;
+  const ringPx = Array.isArray(perim?.perimeter_ring_px)
+    ? perim.perimeter_ring_px
+    : null;
+  const hasEdges =
+    (Array.isArray(perim?.eave_edges) && perim.eave_edges.length > 0) ||
+    (Array.isArray(perim?.perimeter_edges) && perim.perimeter_edges.length > 0);
+
+  let rebuilt = false;
+  if (
+    acg?.skipped_reason === "raster_transform_unavailable" &&
+    hasTransform && hasBounds && ringPx && ringPx.length >= 3 && hasEdges
+  ) {
+    const rebuiltGraph = buildAerialCandidateGraph({
+      registration: reg,
+      geoToRasterTransform: reg?.transform_package?.geo_to_raster_transform ??
+        reg?.geo_to_raster_transform,
+      rasterBoundsLatLng: reg?.transform_package?.raster_bounds_lat_lng ??
+        reg?.raster_bounds_lat_lng,
+      confirmedRoofCenterPx:
+        reg?.transform_package?.confirmed_roof_center_px ??
+          reg?.confirmed_roof_center_px ?? null,
+      rasterUrl: reg?.raster?.url ?? null,
+      perimeterTopology: perim,
+      targetMaskIsolation: g?.target_mask_isolation ?? null,
+      debugLayers: g?.debug_layers ?? null,
+      debugRoofLines: g?.debug_roof_lines ?? null,
+      dsmPlanarGraphDebug: g?.dsm_planar_graph_debug ?? null,
+    });
+    g.aerial_candidate_roof_graph = {
+      ...rebuiltGraph,
+      aerial_graph_rebuilt_from_final_payload: true,
+    };
+    rebuilt = true;
+    if (rebuiltGraph.executed) {
+      g.primary_geometry_source = g.primary_geometry_source ??
+        "aerial_registered";
+    }
+  }
+
+  const finalAcg = g.aerial_candidate_roof_graph ?? null;
+  const impossibleSkip = !!(
+    finalAcg?.skipped_reason === "raster_transform_unavailable" &&
+    hasTransform && hasBounds && ringPx && ringPx.length >= 3 && hasEdges
+  );
+  const impossibleSkipReason = impossibleSkip
+    ? "final_payload_has_registration_and_perimeter_topology"
+    : null;
+  g.aerial_graph_rebuilt_from_final_payload =
+    g.aerial_graph_rebuilt_from_final_payload || rebuilt;
+  g.aerial_graph_impossible_skip = impossibleSkip;
+  g.aerial_graph_impossible_skip_reason = impossibleSkipReason;
+  return { rebuilt, impossibleSkip, impossibleSkipReason };
 }
 
 
