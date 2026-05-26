@@ -52,7 +52,21 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    const action = url.searchParams.get('action');
+    let action = url.searchParams.get('action');
+    let body: any = {};
+    if (req.method === 'POST') {
+      try { body = await req.json(); } catch { body = {}; }
+      if (!action && body?.action) action = body.action;
+    }
+
+    if (!QBO_CLIENT_ID || !QBO_CLIENT_SECRET || !QBO_REDIRECT_URI) {
+      console.error('Missing QBO env vars', {
+        hasClientId: !!QBO_CLIENT_ID,
+        hasSecret: !!QBO_CLIENT_SECRET,
+        hasRedirect: !!QBO_REDIRECT_URI,
+      });
+      throw new Error('QuickBooks integration is not configured (missing QBO_CLIENT_ID/SECRET/REDIRECT_URI)');
+    }
 
     // Step 1: Initiate OAuth
     if (action === 'initiate') {
@@ -76,7 +90,7 @@ Deno.serve(async (req) => {
 
     // Step 2: Handle OAuth callback
     if (action === 'callback') {
-      const { code, realmId, state } = await req.json();
+      const { code, realmId, state } = body;
 
       if (!code || !realmId) {
         throw new Error('Missing code or realmId');
