@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 export default function QuickBooksCallback() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [error, setError] = useState<{ code: string; description: string } | null>(null);
 
   useEffect(() => {
@@ -17,19 +20,50 @@ export default function QuickBooksCallback() {
 
     // Success path
     if (code && realmId) {
-      if (window.opener) {
-        // Use '*' as targetOrigin — the opener may be on a different origin
-        // (e.g. preview URL id-preview--*.lovable.app) than this callback page
-        // (pitch-crm.ai). A strict targetOrigin would cause the browser to
-        // silently drop the message and the parent would never complete the flow.
-        window.opener.postMessage(
-          { type: 'qbo-oauth-success', code, realmId, state },
-          '*'
-        );
+      // Popup flow — post message back to opener if present.
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(
+            { type: 'qbo-oauth-success', code, realmId, state },
+            '*'
+          );
+        } catch {}
         window.close();
-      } else {
-        navigate('/settings');
+        return;
       }
+
+      // Full-redirect flow — complete exchange here, then return to settings.
+      (async () => {
+        try {
+          const storedState = (() => {
+            try { return sessionStorage.getItem('qbo_oauth_state'); } catch { return null; }
+          })();
+
+          const { error: cbError } = await supabase.functions.invoke('qbo-oauth-connect', {
+            body: {
+              action: 'callback',
+              code,
+              realmId,
+              state: state ?? storedState,
+            },
+          });
+
+          try { sessionStorage.removeItem('qbo_oauth_state'); } catch {}
+
+          if (cbError) throw cbError;
+
+          toast({
+            title: 'Connected to QuickBooks',
+            description: 'Your QuickBooks account has been connected successfully.',
+          });
+          navigate('/settings');
+        } catch (e: any) {
+          setError({
+            code: 'callback_failed',
+            description: e?.message ?? 'Failed to complete QuickBooks connection.',
+          });
+        }
+      })();
       return;
     }
 
@@ -43,13 +77,15 @@ export default function QuickBooksCallback() {
 
     setError({ code: errCode, description: errDesc });
 
-    if (window.opener) {
-      window.opener.postMessage(
-        { type: 'qbo-oauth-error', error: errCode, description: errDesc },
-        '*'
-      );
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.postMessage(
+          { type: 'qbo-oauth-error', error: errCode, description: errDesc },
+          '*'
+        );
+      } catch {}
     }
-  }, [navigate]);
+  }, [navigate, toast]);
 
   if (error) {
     return (
