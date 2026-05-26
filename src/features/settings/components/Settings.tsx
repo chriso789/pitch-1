@@ -290,6 +290,21 @@ export const Settings = () => {
       });
     }
 
+    // Always add synthetic "Company Referrals" entry under Business
+    if (!groups["business"].some(t => t.tab_key === "company-referrals")) {
+      groups["business"].push({
+        id: "company-referrals-synthetic",
+        tab_key: "company-referrals",
+        label: "Company Referrals",
+        description: "B2B partner referral program",
+        icon_name: "Handshake",
+        order_index: 100,
+        is_active: true,
+        required_role: null,
+      });
+    }
+
+
     // Add single "Products & Pricing" entry
     if (hasProductTab) {
       if (!groups["products"]) {
