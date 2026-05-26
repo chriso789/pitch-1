@@ -295,6 +295,18 @@ export function buildPreTopologyDebugBag(args: {
   footprintGeo: Array<[number, number]> | null;
   footprintPx: Array<[number, number]> | null;
   registration?: any;
+  /**
+   * Canonical registration transform package (output of
+   * `buildRegistrationTransformPackage`). When provided, the aerial graph
+   * builder receives a fully-formed `registration` object so it can succeed
+   * even if the legacy flat `geoToRasterTransform` / `rasterBoundsLatLng`
+   * args are null at this call site.
+   */
+  transformPackage?: any;
+  overlayDebug?: any;
+  debugLayers?: any;
+  dsmPlanarGraphDebug?: any;
+  debugRoofLines?: any;
   rasterUrl?: string | null;
   rasterBoundsLatLng?: unknown;
   geoToRasterTransform?: unknown;
@@ -339,21 +351,47 @@ export function buildPreTopologyDebugBag(args: {
       >)
       : null;
 
+  // Canonical registration object passed to the aerial graph builder.
+  // Built from transformPackage + flat hoisted fields so the resolver in
+  // aerial-candidate-graph.ts always has a complete view, regardless of
+  // which call site invoked the bag.
+  const pkg = args.transformPackage ?? null;
+  const rasterSizePx = pkg?.raster_size_px ??
+    (args.raster?.width && args.raster?.height
+      ? { width: args.raster.width, height: args.raster.height }
+      : null);
+  const registrationForGraph = args.registration ?? {
+    transform_package: pkg,
+    geo_to_raster_transform: args.geoToRasterTransform ??
+      pkg?.geo_to_raster_transform ?? null,
+    raster_bounds_lat_lng: args.rasterBoundsLatLng ??
+      pkg?.raster_bounds_lat_lng ?? null,
+    confirmed_roof_center_px: args.confirmedRoofCenterPx ??
+      pkg?.confirmed_roof_center_px ?? null,
+    raster_size_px: rasterSizePx,
+    raster: { url: args.rasterUrl ?? null, size_px: rasterSizePx },
+  };
+
   const aerialCandidateRoofGraph = buildAerialCandidateGraph({
     rasterUrl: args.rasterUrl ?? null,
-    rasterBoundsLatLng: args.rasterBoundsLatLng,
-    geoToRasterTransform: args.geoToRasterTransform,
+    rasterBoundsLatLng: args.rasterBoundsLatLng ??
+      pkg?.raster_bounds_lat_lng ?? null,
+    geoToRasterTransform: args.geoToRasterTransform ??
+      pkg?.geo_to_raster_transform ?? null,
     perimeterTopology: args.perimeterTopologySnapshot,
     targetMaskIsolation: args.targetMaskIsolation,
     solarSegments: args.solarSegments,
     maskComponentsTable: args.maskComponentsTable,
-    confirmedRoofCenterPx: args.confirmedRoofCenterPx,
+    confirmedRoofCenterPx: args.confirmedRoofCenterPx ??
+      pkg?.confirmed_roof_center_px ?? null,
     staticMapCenterLatLng: args.staticMapCenterLatLng,
-    registration: args.registration,
-    debugLayers: (args as any).debugLayers ?? null,
-    dsmPlanarGraphDebug: (args as any).dsmPlanarGraphDebug ?? null,
-    debugRoofLines: (args as any).debugRoofLines ?? null,
+    registration: registrationForGraph,
+    overlayDebug: args.overlayDebug ?? null,
+    debugLayers: args.debugLayers ?? null,
+    dsmPlanarGraphDebug: args.dsmPlanarGraphDebug ?? null,
+    debugRoofLines: args.debugRoofLines ?? null,
   });
+
 
   const dsmTransformPresent =
     dsmSplit.georegistration_transform.dsm_to_raster_transform_present &&
