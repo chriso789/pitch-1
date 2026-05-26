@@ -220,9 +220,10 @@ export default function QuickBooksSettings() {
         description: "QuickBooks has been disconnected.",
       });
     } catch (error: any) {
+      const description = await extractFnError(error);
       toast({
         title: "Error",
-        description: error.message,
+        description,
         variant: "destructive",
       });
     }
