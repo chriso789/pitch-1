@@ -46,7 +46,7 @@ export default function QuickBooksCallback() {
     if (window.opener) {
       window.opener.postMessage(
         { type: 'qbo-oauth-error', error: errCode, description: errDesc },
-        window.location.origin
+        '*'
       );
     }
   }, [navigate]);
