@@ -163,6 +163,10 @@ export default function QuickBooksSettings() {
 
       if (error) throw error;
 
+      setLastAuthUrl(data.authUrl);
+      console.log('[QBO] Auth URL:', data.authUrl);
+
+
       // Open OAuth window
       const width = 600;
       const height = 700;
