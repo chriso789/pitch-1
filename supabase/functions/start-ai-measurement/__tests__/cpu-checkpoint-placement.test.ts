@@ -181,13 +181,12 @@ Deno.test(
         AI_MEASUREMENT_CPU_TIMEOUT_REASON: "cpu_budget_exceeded",
         REQUIRED_TOPOLOGY_SOURCE: "dsm_planar_graph",
       },
-    });
+    }) as any;
 
-    // The work_units_preserved flag (computed downstream in
-    // persistCpuBudgetTerminalFailure) is derived from this value being >0.
     const workUnitsPreserved =
       typeof dp.estimated_work_units === "number" && dp.estimated_work_units > 0;
     assertEquals(dp.estimated_work_units, 996_004);
     assertEquals(workUnitsPreserved, true);
   },
 );
+
