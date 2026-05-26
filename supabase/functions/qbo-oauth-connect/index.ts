@@ -1,3 +1,4 @@
+// QBO OAuth connect — v2 (accepts action via body or query)
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
