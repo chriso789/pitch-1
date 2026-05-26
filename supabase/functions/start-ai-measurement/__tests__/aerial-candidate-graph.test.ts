@@ -177,3 +177,48 @@ Deno.test("does NOT require geo_to_dsm_transform or dsm_to_raster_transform", ()
   assertEquals(g.evidence.dsm_required, false);
 });
 
+
+Deno.test("aerial graph executes using only registration.transform_package (no flat args)", () => {
+  const g = buildAerialCandidateGraph({
+    registration: {
+      transform_package: {
+        geo_to_raster_transform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+        raster_bounds_lat_lng: { west: -80.001, east: -79.998, south: 25.999, north: 26.002 },
+        raster_size_px: { width: 1280, height: 1280 },
+      },
+    },
+    perimeterTopology,
+  });
+  assertEquals(g.executed, true);
+  assertEquals(g.skipped_reason, undefined);
+  assert(g.edges.length >= perimeterTopology.eave_edges.length);
+});
+
+Deno.test("aerial graph skip_debug reports checked sources when transform missing", () => {
+  const g = buildAerialCandidateGraph({ perimeterTopology });
+  assertEquals(g.executed, false);
+  assertEquals(g.skipped_reason, "raster_transform_unavailable");
+  assert(g.skip_debug, "skip_debug must be present");
+  assertEquals(g.skip_debug!.has_perimeter_ring_px, true);
+  assertEquals(g.skip_debug!.has_geo_to_raster_transform, false);
+  assertEquals(g.skip_debug!.has_raster_bounds_lat_lng, false);
+  assertEquals(g.skip_debug!.perimeter_ring_px_source, "perimeter_topology.perimeter_ring_px");
+  assertEquals(g.skip_debug!.reason, "raster_transform_unavailable");
+});
+
+Deno.test("aerial graph falls back to ring edges when no eave/rake/perimeter_edges", () => {
+  const g = buildAerialCandidateGraph({
+    registration: {
+      transform_package: {
+        geo_to_raster_transform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+        raster_bounds_lat_lng: { west: -80.001, east: -79.998, south: 25.999, north: 26.002 },
+      },
+    },
+    perimeterTopology: {
+      perimeter_ring_px: perimeterTopology.perimeter_ring_px,
+      perimeter_ring_geo: perimeterTopology.perimeter_ring_geo,
+    },
+  });
+  assertEquals(g.executed, true);
+  assertEquals(g.edges.length, perimeterTopology.perimeter_ring_px.length);
+});

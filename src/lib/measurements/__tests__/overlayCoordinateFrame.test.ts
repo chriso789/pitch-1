@@ -146,3 +146,31 @@ describe('overlayCoordinateFrame', () => {
     });
   });
 });
+
+import { describe as describe2, it as it2, expect as expect2 } from 'vitest';
+import { resolveSourceRasterSize as resolveSourceRasterSize2 } from '../overlayCoordinateFrame';
+
+describe2('resolveSourceRasterSize precedence (transform_package wins)', () => {
+  it2('transform_package.raster_size_px (1280) wins over analysis_image_size (640)', () => {
+    const r = resolveSourceRasterSize2(
+      {
+        geometry_report_json: {
+          registration: { transform_package: { raster_size_px: { width: 1280, height: 1280 } } },
+        },
+        analysis_image_size: { width: 640, height: 640 },
+      },
+      null,
+      null,
+    );
+    expect2(r).toEqual({ width: 1280, height: 1280, source: 'transform_package' });
+  });
+
+  it2('parsed_from_url (1280) wins over analysis_image_size (640)', () => {
+    const r = resolveSourceRasterSize2(
+      { analysis_image_size: { width: 640, height: 640 } },
+      'https://maps.googleapis.com/maps/api/staticmap?size=640x640&scale=2',
+      null,
+    );
+    expect2(r).toEqual({ width: 1280, height: 1280, source: 'parsed_from_url' });
+  });
+});
