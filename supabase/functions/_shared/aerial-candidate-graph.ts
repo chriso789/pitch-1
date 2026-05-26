@@ -390,20 +390,43 @@ export function buildAerialCandidateGraph(
   base.evidence.raster_registered_basis = reg.basis;
 
   const { ring: ringPx, source: ringSource } = resolvePerimeterRingPx(args);
-  const ringGeo = resolvePerimeterRingGeo(args);
+  const { ring: ringGeo, source: ringGeoSource } = resolvePerimeterRingGeo(args);
   base.perimeter_source = ringSource;
 
+  const buildSkipDebug = (reason: string): AerialCandidateGraphSkipDebug => ({
+    has_perimeter_ring_px: !!ringPx,
+    perimeter_ring_px_source: ringSource,
+    has_perimeter_ring_geo: !!ringGeo,
+    perimeter_ring_geo_source: ringGeoSource,
+    has_geo_to_raster_transform: !!reg.geoToRasterTransform,
+    geo_to_raster_transform_source: reg.geoToRasterTransformSource,
+    has_raster_bounds_lat_lng: !!reg.rasterBoundsLatLng,
+    raster_bounds_source: reg.rasterBoundsSource,
+    has_overlay_raster_url: !!reg.rasterUrl,
+    raster_registered_basis: reg.basis,
+    reason,
+  });
+
   if (!reg.registered) {
-    return { ...base, skipped_reason: "raster_transform_unavailable" };
+    return {
+      ...base,
+      skipped_reason: "raster_transform_unavailable",
+      skip_debug: buildSkipDebug("raster_transform_unavailable"),
+    };
   }
   if (!ringPx && !ringGeo) {
-    return { ...base, skipped_reason: "perimeter_ring_unavailable" };
+    return {
+      ...base,
+      skipped_reason: "perimeter_ring_unavailable",
+      skip_debug: buildSkipDebug("perimeter_ring_unavailable"),
+    };
   }
 
 
   base.perimeter_ring_px = ringPx;
   base.perimeter_ring_geo = ringGeo;
   base.perimeter_area_sqft = ringAreaSqft(ringGeo);
+
 
   // Target mask diagnostics
   const tmi = args.targetMaskIsolation && typeof args.targetMaskIsolation === "object"
