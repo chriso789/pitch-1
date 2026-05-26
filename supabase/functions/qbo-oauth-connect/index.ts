@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
       const tokens: TokenResponse = await tokenResponse.json();
       const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-      await supabase
+      const { error: refreshError } = await adminClient
         .from('qbo_connections')
         .update({
           access_token: tokens.access_token,
@@ -300,7 +300,30 @@ Deno.serve(async (req) => {
           token_expires_at: tokenExpiresAt.toISOString(),
           last_refresh_at: new Date().toISOString(),
         })
+        .eq('tenant_id', profile.tenant_id)
         .eq('id', connection.id);
+
+      if (refreshError) {
+        console.error('[qbo-oauth-connect] refresh update failed', {
+          tenant_id: profile.tenant_id,
+          realm_id: connection.realm_id,
+          code: (refreshError as any).code,
+          message: refreshError.message,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'qbo_connection_write_failed',
+            details: refreshError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('[qbo-oauth-connect] refresh ok', {
+        tenant_id: profile.tenant_id,
+        realm_id: connection.realm_id,
+      });
 
       return new Response(
         JSON.stringify({ success: true }),
@@ -310,10 +333,28 @@ Deno.serve(async (req) => {
 
     // Step 4: Disconnect
     if (action === 'disconnect') {
-      await supabase
+      const { error: disconnectError } = await adminClient
         .from('qbo_connections')
-        .update({ is_active: false })
+        .update({ is_active: false, disconnected_at: new Date().toISOString() })
         .eq('tenant_id', profile.tenant_id);
+
+      if (disconnectError) {
+        console.error('[qbo-oauth-connect] disconnect failed', {
+          tenant_id: profile.tenant_id,
+          code: (disconnectError as any).code,
+          message: disconnectError.message,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'qbo_connection_write_failed',
+            details: disconnectError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('[qbo-oauth-connect] disconnect ok', { tenant_id: profile.tenant_id });
 
       return new Response(
         JSON.stringify({ success: true }),
