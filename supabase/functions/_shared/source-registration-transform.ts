@@ -373,9 +373,31 @@ export function buildRegistrationTransformPackage(
       : null;
   if (!dsmToRasterTransform) missing.push("dsm_to_raster_transform");
 
-  const confirmedRoofCenterDsmPx = (confirmed && geoToDsmTransform)
+  let confirmedRoofCenterDsmPx: Px | null = (confirmed && geoToDsmTransform)
     ? projectLatLngToDsmPx(confirmed, geoToDsmTransform)
     : null;
+  let confirmedRoofCenterDsmPxSource: ConfirmedRoofCenterDsmPxSource =
+    confirmedRoofCenterDsmPx ? "geo_projected_via_geo_to_dsm" : "missing";
+
+  // Fallback: if direct geo→dsm projection failed but we have a valid
+  // dsm↔raster transform plus a raster center, project the raster center
+  // back into DSM space using the linear bounds map.
+  if (!confirmedRoofCenterDsmPx && dsmToRasterTransform && confirmedRoofCenterPx) {
+    const r = dsmToRasterTransform;
+    const dx = r.raster_size_px.width;
+    const dy = r.raster_size_px.height;
+    if (dx > 0 && dy > 0) {
+      const fx = confirmedRoofCenterPx[0] / dx;
+      const fy = confirmedRoofCenterPx[1] / dy;
+      if (Number.isFinite(fx) && Number.isFinite(fy)) {
+        confirmedRoofCenterDsmPx = [
+          fx * r.dsm_size_px.width,
+          fy * r.dsm_size_px.height,
+        ];
+        confirmedRoofCenterDsmPxSource = "raster_center_projected_into_dsm";
+      }
+    }
+  }
   if (!confirmedRoofCenterDsmPx) missing.push("confirmed_roof_center_dsm_px");
   const dsmContainsConfirmed = !!(dsmBounds && confirmed &&
     pointInBounds(confirmed, dsmBounds));
@@ -404,8 +426,16 @@ export function buildRegistrationTransformPackage(
     dsm_tile_bounds_lat_lng: dsmBounds,
     dsm_size_px: dsmSizePx,
     geo_to_dsm_transform: geoToDsmTransform,
+    geo_to_dsm_transform_source: geoToDsmTransform
+      ? "composed_from_dsm_tile_bounds_and_size"
+      : "missing",
     dsm_to_raster_transform: dsmToRasterTransform,
+    dsm_to_raster_transform_source: dsmToRasterTransform
+      ? "composed_geo_to_dsm_then_geo_to_raster"
+      : "missing",
     confirmed_roof_center_dsm_px: confirmedRoofCenterDsmPx,
+    confirmed_roof_center_dsm_px_source: confirmedRoofCenterDsmPxSource,
+    dsm_transform_policy_version: DSM_TRANSFORM_POLICY_VERSION,
     dsm_tile_bounds_contain_confirmed_center: dsmContainsConfirmed,
     geo_to_dsm_px_success,
     dsm_pixel_transform_valid,
