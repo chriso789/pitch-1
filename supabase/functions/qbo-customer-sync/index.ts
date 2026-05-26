@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -113,7 +114,7 @@ Deno.serve(async (req) => {
     if (qboCustomerId) {
       // Update existing customer - need to fetch current SyncToken
       const fetchResponse = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/customer/${qboCustomerId}?minorversion=75`,
+        `${qboHost(connection)}/v3/company/${connection.realm_id}/customer/${qboCustomerId}?minorversion=75`,
         {
           headers: {
             'Authorization': `Bearer ${connection.access_token}`,
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
 
       // Sparse update
       qboResponse = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/customer?minorversion=75`,
+        `${qboHost(connection)}/v3/company/${connection.realm_id}/customer?minorversion=75`,
         {
           method: 'POST',
           headers: {
@@ -149,7 +150,7 @@ Deno.serve(async (req) => {
       // Create new customer
       operation = 'create';
       qboResponse = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/customer?minorversion=75`,
+        `${qboHost(connection)}/v3/company/${connection.realm_id}/customer?minorversion=75`,
         {
           method: 'POST',
           headers: {

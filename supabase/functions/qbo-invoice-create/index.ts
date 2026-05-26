@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { qboHost } from "../_shared/qbo-host.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -133,7 +134,7 @@ Deno.serve(async (req) => {
         };
 
         const subCustomerResponse = await fetch(
-          `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/customer?minorversion=75`,
+          `${qboHost(connection)}/v3/company/${connection.realm_id}/customer?minorversion=75`,
           {
             method: 'POST',
             headers: {
@@ -254,7 +255,7 @@ Deno.serve(async (req) => {
 
     // Create invoice in QBO
     const qboResponse = await fetch(
-      `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/invoice?minorversion=75`,
+      `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`,
       {
         method: 'POST',
         headers: {
