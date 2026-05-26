@@ -92,25 +92,25 @@ Deno.test(
     assertEquals(out.registration.present, true);
 
     // (2-3) DSM size projected, bounds null
-    assertEquals(out.registration.dsm.dsm_size_px, {
+    assertEquals((out.registration.dsm as any).dsm_size_px, {
       width: 998,
       height: 998,
     });
-    assertEquals(out.registration.dsm.dsm_tile_bounds_lat_lng, null);
+    assertEquals((out.registration.dsm as any).dsm_tile_bounds_lat_lng, null);
 
     // (4) explicit failure reason from registration-v3
     assertEquals(
-      out.registration.dsm.dsm_tile_bounds_failure_reason,
+      (out.registration.dsm as any).dsm_tile_bounds_failure_reason,
       "geotiff_missing_tiepoints",
     );
 
     // (5) bounds source still null (no derivation in this prompt)
-    assertEquals(out.registration.dsm.dsm_bounds_source, null);
-    assertEquals(out.registration.dsm.dsm_tile_bounds_source, null);
+    assertEquals((out.registration.dsm as any).dsm_bounds_source, null);
+    assertEquals((out.registration.dsm as any).dsm_tile_bounds_source, null);
 
     // (6) hoist failure tokens surfaced
-    assertExists(out.registration.dsm.dsm_hoist_failure_tokens);
-    const tokens = out.registration.dsm.dsm_hoist_failure_tokens as string[];
+    assertExists((out.registration.dsm as any).dsm_hoist_failure_tokens);
+    const tokens = (out.registration.dsm as any).dsm_hoist_failure_tokens as string[];
     assertEquals(
       tokens.includes("dsm_tile_bounds_missing_from_google_solar_metadata"),
       true,
@@ -118,23 +118,23 @@ Deno.test(
 
     // (7) transform policy version surfaced
     assertEquals(
-      out.registration.dsm.dsm_transform_policy_version,
+      (out.registration.dsm as any).dsm_transform_policy_version,
       "dsm-registration-transform-v1",
     );
 
     // (8) raster-center fallback source surfaced
     assertEquals(
-      out.registration.dsm.confirmed_roof_center_dsm_px_source,
+      (out.registration.dsm as any).confirmed_roof_center_dsm_px_source,
       "derived_from_raster_center",
     );
 
     // (9) classifier hard fail surfaced
     assertEquals(
-      out.registration.stage_classifier.stage_hard_fail_reason,
+      (out.registration.stage_classifier as any).stage_hard_fail_reason,
       "dsm_tile_bounds_missing_from_google_solar_metadata",
     );
     assertEquals(
-      out.registration.stage_classifier.stage_failure_stage,
+      (out.registration.stage_classifier as any).stage_failure_stage,
       "dsm_registration",
     );
 
@@ -182,33 +182,33 @@ Deno.test(
     const out = summarizeRow(makeRow(reg));
 
     assertEquals(
-      out.registration.dsm.dsm_tile_bounds_source,
+      (out.registration.dsm as any).dsm_tile_bounds_source,
       "geotiff_tiepoint",
     );
     assertEquals(
-      out.registration.dsm.geo_to_dsm_transform_source,
+      (out.registration.dsm as any).geo_to_dsm_transform_source,
       "computed_from_bounds",
     );
     assertEquals(
-      out.registration.dsm.dsm_to_raster_transform_source,
+      (out.registration.dsm as any).dsm_to_raster_transform_source,
       "computed_from_bounds",
     );
     assertEquals(
-      out.registration.dsm.confirmed_roof_center_dsm_px_source,
+      (out.registration.dsm as any).confirmed_roof_center_dsm_px_source,
       "computed_from_geo",
     );
     assertEquals(
-      out.registration.dsm.dsm_transform_policy_version,
+      (out.registration.dsm as any).dsm_transform_policy_version,
       "dsm-registration-transform-v1",
     );
-    assertEquals(out.registration.dsm.dsm_tile_bounds_failure_reason, null);
+    assertEquals((out.registration.dsm as any).dsm_tile_bounds_failure_reason, null);
     assertEquals(
-      (out.registration.dsm.dsm_hoist_failure_tokens as string[]).length,
+      ((out.registration.dsm as any).dsm_hoist_failure_tokens as string[]).length,
       0,
     );
     assertEquals(out.registration.dsm_pixel_transform_valid, true);
     assertEquals(
-      out.registration.stage_classifier.stage_hard_fail_reason,
+      (out.registration.stage_classifier as any).stage_hard_fail_reason,
       null,
     );
 
