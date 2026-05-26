@@ -7027,6 +7027,63 @@ async function processJob(input: any) {
             Math.max(1, rawPerimScorerPx.length),
           ] as [number, number];
 
+          // ── CHECKPOINT: pre_phase3a5_refinement_call ──
+          // The L6830 checkpoint runs before phase3A5WorkUnits is finalized.
+          // This second checkpoint blocks the actual refineTrueOuterRoofPerimeter
+          // call when the wall clock has already crossed the terminal-write
+          // reserve threshold (≥60s with the 75s/15s config). Without this,
+          // a slow Phase 3A.5 call can run for 90s+ unattended.
+          {
+            const ckpt = shouldPreemptForCpuBudget(input, phase3A5WorkUnits);
+            if (ckpt.preempt) {
+              const resolvedReg = resolveRegistrationForPreempt({
+                input,
+                coords,
+                hoistedTransformPackage,
+                hoistedRasterBoundsLatLng,
+                hoistedGeoToRasterTransform,
+                hoistedConfirmedRoofCenterPx,
+              });
+              if (resolvedReg.source === "rebuilt_from_input") {
+                hoistedTransformPackage = resolvedReg.transformPackage;
+                hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+                hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+                hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+              }
+              await persistCpuBudgetTerminalFailure({
+                input,
+                coords,
+                imageUrl,
+                mpp: actualMpp,
+                stage: "pre_phase3a5_refinement_call",
+                estimatedWorkUnits: phase3A5WorkUnits,
+                debug: buildPreTopologyDebugBag({
+                  stage: "pre_phase3a5_refinement_call",
+                  dsmGrid,
+                  maskedDSM,
+                  roofMask,
+                  raster,
+                  perimeterPhase0Snapshot,
+                  perimeterTopologySnapshot,
+                  targetMaskIsolation,
+                  footprintSource,
+                  footprintGeo,
+                  footprintPx: null,
+                  rasterUrl: imageUrl,
+                  rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+                  geoToRasterTransform: resolvedReg.geoToRasterTransform,
+                  solarSegments,
+                  maskComponentsTable:
+                    targetMaskIsolation?.mask_components_table ?? [],
+                  confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+                  staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+                  transformPackage: resolvedReg.transformPackage,
+                }),
+              });
+              return;
+            }
+          }
+
           phase3A5Result = refineTrueOuterRoofPerimeter({
             raw_perimeter_px: rawPerimScorerPx,
             raw_perimeter_source: phase3A5SelectedSource,
