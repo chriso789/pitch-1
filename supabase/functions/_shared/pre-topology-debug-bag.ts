@@ -702,9 +702,16 @@ export function preserveEstimatedWorkUnits(args: {
   topologyEstimateWorkUnits?: number | null;
   priorGeometry?: Record<string, unknown> | null;
   incoming?: Record<string, unknown> | null;
+  /**
+   * v2 fallback: when every richer source is missing/0, fall back to the
+   * topology pixel limit so the row never persists `estimated_work_units=0`
+   * for a job that clearly had a heavy-work signal upstream.
+   */
+  topologyPixelLimit?: number | null;
 }): number | null {
   const pg = (args.priorGeometry ?? {}) as any;
   const inc = (args.incoming ?? {}) as any;
+  const terminal = (inc?.terminal_debug_payload ?? null) as any;
   const candidates: Array<number | null | undefined> = [
     args.estimatedWorkUnits,
     pg?.estimated_work_units,
@@ -712,6 +719,11 @@ export function preserveEstimatedWorkUnits(args: {
     args.topologyEstimateWorkUnits,
     inc?.estimated_work_units,
     inc?.dsm_planar_graph_debug?.estimated_work_units,
+    terminal?.estimated_work_units,
+    terminal?.pre_phase3_5_preempt?.estimated_work_units,
+    // ── v2 cascade tail: topology_pixel_limit fallback ──────────────────
+    inc?.topology_pixel_limit,
+    args.topologyPixelLimit,
   ];
   for (const c of candidates) {
     const n = Number(c);
