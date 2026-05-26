@@ -1,91 +1,114 @@
+# DSM Diagnostic Propagation — Read-Side Only
+
 ## Goal
+Make the new DSM registration diagnostics that `start-ai-measurement` already writes to `geometry_report_json.registration` actually appear in the runtime payload returned by `debug-measurement-runtime` and in the Measurement Report dialog. **No topology, no solver, no DB migration, no behavior change in `start-ai-measurement`.**
 
-Construct valid DSM↔raster registration transforms after Google Solar DSM fetch/decode so the topology phases (currently blocked at `perimeter_refinement_callsite_not_reached`) can finally execute.
+## Why this is the right next step
+The previous prompt added the source/policy/derivation fields on `reg` inside `applyLiveRuntimeHoistToRegistration` (lines ~1430–1547 of `start-ai-measurement/index.ts`):
 
-Touch only DSM registration / transform construction. Do not change CPU containment, aerial candidate graph builder, frontend resolver, overlay transforms, customer-report gates, reportable-line promotion, DB schema, or the six-phase cleanup.
+- `dsm_tile_bounds_source`, `dsm_tile_bounds_failure_reason`, `dsm_bounds_derived`, `dsm_bounds_warning`, `dsm_bounds_confidence`
+- `dsm_meters_per_pixel`, `dsm_mpp_source`
+- `dsm_registration_version`, `dsm_registration_source`, `dsm_hoist_failure_tokens`
+- `geo_to_dsm_transform_source`, `dsm_to_raster_transform_source`, `confirmed_roof_center_dsm_px_source`
+- `dsm_transform_policy_version`
+- `stage_hard_fail_reason`, `stage_failure_stage`, `coordinate_space_audit` (from `classifyRegistrationStage`)
 
-## Current state (verified in code)
+Those fields **are persisted** (they ride on `geometry_report_json.registration` via `prepareRoofMeasurementPayload`), but:
 
-- `supabase/functions/_shared/dsm-analyzer.ts` parses the Google Solar DSM GeoTIFF and assembles `DSMGrid { width, height, bounds: {minLat,maxLat,minLng,maxLng}, resolution }` from tiepoints + pixel scale.
-- `supabase/functions/_shared/dsm-registration.ts` already produces `dsm_size_px`, `dsm_tile_bounds_lat_lng`, `dsm_meters_per_pixel` with priority‑ordered fallback and `failure_tokens`.
-- `supabase/functions/_shared/source-registration-transform.ts` already composes `geo_to_dsm_transform`, `dsm_to_raster_transform`, `confirmed_roof_center_dsm_px`, `geo_to_dsm_px_success`, `dsm_pixel_transform_valid`.
-- `start-ai-measurement/index.ts` calls `buildDsmRegistration` (≈L1436 and again ≈L6364) and `buildRegistrationTransformPackage` (≈L1485) but for Fonsica all DSM transform fields land null while `dsm_size_px = 998x998` is present — the `dsm_loaded` branch ran but `dsm_tile_bounds_lat_lng` never made it through.
+- `debug-measurement-runtime/index.ts → summarizeRegistration()` does not project any of them, so the runtime payload still shows the old shape.
+- `MeasurementReportDialog.tsx` only reads the legacy fields (`dsm_tile_bounds_lat_lng`, `dsm_pixel_transform_valid`, `dsm_to_raster_transform_exists`, generic `failure_reason`), so the UI still reads "invalid_transform" with no source/policy/derivation context.
 
-Diagnosis: the geo‑referencing path in `dsm-analyzer.ts` is returning a DSM grid whose `bounds` is null (or upstream we keep `effective_dsm` from a code path that strips bounds), so `buildDsmRegistration` falls through every priority branch and emits `dsm_bounds_missing` — which the classifier currently collapses into `invalid_transform`. The transform package then short‑circuits because `dsm_tile_bounds_lat_lng` is null.
+That matches the user's report: the diagnostics aren't surfacing into the runtime payload or the UI.
 
-## Scope of work (backend only — `supabase/functions/_shared/*` and the two call sites in `start-ai-measurement/index.ts`)
+## Out of scope (explicitly)
+- No changes to `start-ai-measurement`, `dsm-registration.ts`, `source-registration-transform.ts`, `registration-stage-classifier.ts`, or any solver.
+- No derived DSM bounds fallback (that is the *next* prompt — Option B).
+- No topology execution, no facets, no pitch, no `customer_report_ready` flip.
+- No DB migration. No edge-function deploy beyond `debug-measurement-runtime`.
 
-### 1. DSM tile bounds: prefer real Google Solar metadata, fail loudly
+## Changes
 
-- In `dsm-analyzer.ts`, when the GeoTIFF yields no usable tiepoints / ModelTransformation / GeoKeys, return the grid with `bounds = null` AND attach a diagnostic `bounds_failure: "geotiff_missing_tiepoints" | "geotiff_unprojectable" | "geotiff_decoder_threw"` on the returned grid (new optional field).
-- Plumb that reason through to the registration step.
+### 1. `supabase/functions/debug-measurement-runtime/index.ts` — extend `summarizeRegistration`
+Add a `dsm` sub-object and a `stage_classifier` sub-object to the returned registration summary, projecting the fields straight off `reg`. Pure passthrough — no mutation, no derivation.
 
-### 2. `buildDsmRegistration` — specific failure tokens
+```text
+registration.dsm = {
+  dsm_size_px, dsm_size_source,
+  dsm_tile_bounds_lat_lng, dsm_bounds_source, dsm_tile_bounds_source,
+  dsm_tile_bounds_failure_reason,
+  dsm_bounds_derived, dsm_bounds_warning, dsm_bounds_confidence,
+  dsm_meters_per_pixel, dsm_mpp_source,
+  dsm_registration_version, dsm_registration_source,
+  dsm_stage_attempted, dsm_stage_pending,
+  dsm_hoist_called, dsm_hoist_callsite, dsm_hoist_version,
+  dsm_hoist_failure_tokens,                  // array | null
+  dsm_raster_bounds_overlap, dsm_raster_overlap_ratio,
+  dsm_tile_bounds_contain_confirmed_center,
+  confirmed_roof_center_dsm_px,
+  geo_to_dsm_transform_source,
+  dsm_to_raster_transform_source,
+  confirmed_roof_center_dsm_px_source,
+  dsm_transform_policy_version,
+}
 
-In `_shared/dsm-registration.ts`:
+registration.stage_classifier = {
+  stage_hard_fail_reason,
+  stage_failure_stage,
+  coordinate_space_audit,                    // pass-through object
+  candidate_rejection_reason,
+}
+```
 
-- Add `dsm_tile_bounds_source` to the result (already exists as `dsm_bounds_source` — rename‑alias it in the output so the prompt's `dsm_tile_bounds_source` field name is satisfied without breaking existing readers).
-- When `attempted && !dsm_tile_bounds_lat_lng`:
-  - If the DSM grid was decoded but its `bounds` is null → push token `dsm_tile_bounds_missing_from_google_solar_metadata` instead of (or in addition to) the generic `dsm_bounds_missing`.
-  - Keep `dsm_bounds_missing` as a fallback when DSM wasn't even attempted.
-- Allow the derivation branches to run **only when explicitly opted in** (new input flag `allow_derived_bounds`, default `false` for the production path) so we don't silently substitute raster bounds. When derived bounds are used, also set `dsm_tile_bounds_source = "derived_from_*"` and warning `derived_bounds_lower_confidence`.
+Keep all the existing top-level keys in `registration` for backward compatibility (do not rename anything that already shipped).
 
-### 3. `buildRegistrationTransformPackage` — diagnostics for each transform
+### 2. `src/components/measurements/MeasurementReportDialog.tsx` — add diagnostic rows
+In the registration diagnostics block (around lines 440–520), add rows under the existing DSM section, in this order, each value coming from `registrationGate.dsm?.<field>` with a `"—"` fallback so missing fields don't break older rows:
 
-In `_shared/source-registration-transform.ts`:
+- `DSM Size` → `dsm_size_px`
+- `DSM Bounds Source` → `dsm_tile_bounds_source ?? dsm_bounds_source`
+- `DSM Bounds Failure` → `dsm_tile_bounds_failure_reason`
+- `DSM Bounds Derived` → `dsm_bounds_derived` (+ `dsm_bounds_warning` if present)
+- `DSM Bounds Confidence` → `dsm_bounds_confidence`
+- `DSM Meters/Pixel` (+ `dsm_mpp_source`)
+- `geo_to_dsm_transform_source`
+- `dsm_to_raster_transform_source`
+- `confirmed_roof_center_dsm_px_source`
+- `DSM Transform Policy` → `dsm_transform_policy_version`
+- `DSM Hoist Failure Tokens` → joined array
+- `Stage Hard Fail` → `registration.stage_classifier?.stage_hard_fail_reason`
+- `Stage Failure Stage` → `registration.stage_classifier?.stage_failure_stage`
 
-- Add to the result:
-  - `geo_to_dsm_transform_source: "composed_from_dsm_tile_bounds_and_size" | "missing"`
-  - `dsm_to_raster_transform_source: "composed_geo_to_dsm_then_geo_to_raster" | "missing"`
-  - `confirmed_roof_center_dsm_px_source: "geo_projected_via_geo_to_dsm" | "raster_center_projected_into_dsm" | "missing"`
-  - `dsm_transform_policy_version = "dsm-registration-transform-v1"`
-- Add a fallback for `confirmed_roof_center_dsm_px`: if the confirmed‑geo projection is unavailable but `geo_to_raster_transform` + `dsm_to_raster_transform` are valid, invert raster→dsm to project the raster center into DSM space. Tag with the matching source.
+Pure presentation — no logic changes elsewhere in the dialog.
 
-### 4. Call sites in `start-ai-measurement/index.ts`
+### 3. New test — `supabase/functions/debug-measurement-runtime/__tests__/dsm-diagnostic-propagation.test.ts`
+Build a synthetic `roof_measurements` row whose `geometry_report_json.registration` mirrors the latest Fonsica run (DSM loaded, bounds null, classifier hard-fail = `dsm_tile_bounds_missing_from_google_solar_metadata`, all source fields populated, `dsm_pixel_transform_valid=false`). Run `summarizeRow` and assert:
 
-- At the DSM hoist (≈L1430 and ≈L6364):
-  - Drop the `dsmAlreadyHoisted = reg.dsm_size_px && reg.dsm_tile_bounds_lat_lng` short‑circuit when `reg.dsm_tile_bounds_lat_lng` is null — currently when `dsm_size_px` is populated from `dsm_coordinate_match.dsm_bbox` but bounds are missing, we never re‑attempt to source bounds from `effective_dsm`/`roof_mask`.
-  - Always call `buildDsmRegistration` once per hoist with the freshest `effective_dsm`/`roof_mask`, then merge fields with `??` semantics on `reg`.
-  - Persist the new source fields (`dsm_tile_bounds_source`, etc.) onto `reg` and into `geometry_report_json.dsm_registration_diagnostics` (no schema change — JSONB field on the existing column).
-- At the transform package call (≈L1485):
-  - Pass `dsm_meters_per_pixel` directly from `reg.dsm_meters_per_pixel` (don't fall back to `rasterMpp` silently — record `dsm_mpp_source` instead).
-  - Persist `geo_to_dsm_transform_source`, `dsm_to_raster_transform_source`, `confirmed_roof_center_dsm_px_source`, `dsm_transform_policy_version` onto `reg` and the diagnostics bag.
+1. `registration.present === true`
+2. `registration.dsm.dsm_size_px` equals `{width:998,height:998}`
+3. `registration.dsm.dsm_tile_bounds_lat_lng === null`
+4. `registration.dsm.dsm_tile_bounds_failure_reason === "geotiff_missing_tiepoints"`
+5. `registration.dsm.dsm_bounds_source === null` (no derivation yet — Option B is the next prompt)
+6. `registration.dsm.dsm_hoist_failure_tokens` contains `"dsm_tile_bounds_missing_from_google_solar_metadata"`
+7. `registration.dsm.dsm_transform_policy_version === "dsm-registration-transform-v1"`
+8. `registration.dsm.confirmed_roof_center_dsm_px_source === "derived_from_raster_center"` (when fallback was used)
+9. `registration.stage_classifier.stage_hard_fail_reason === "dsm_tile_bounds_missing_from_google_solar_metadata"`
+10. `registration.dsm_pixel_transform_valid === false`
+11. `manual_approval_allowed === false`
+12. Top-level row contract unchanged: `customer_report_ready` still false, `result_state` unchanged, no phase block flipped.
 
-### 5. Failure surfacing (no collapse to generic `invalid_transform`)
+A second case asserts that when `dsm_tile_bounds_lat_lng` IS present and transforms succeed, the same projection fills with success-side source tags and no failure tokens.
 
-- In whichever stage classifier maps reasons to `dsm_validation_status.reason`, prefer (in order):
-  1. `dsm_tile_bounds_missing_from_google_solar_metadata`
-  2. `dsm_size_missing`
-  3. `geo_to_dsm_projection_failed`
-  4. `dsm_to_raster_invalid`
-  5. Existing `invalid_transform` only as a last resort.
+Run via `supabase--test_edge_functions` filtered to `debug-measurement-runtime`.
 
-### 6. Gate (unchanged)
+## Acceptance criteria
 
-`customer_report_ready` stays `false`. The transform fix only re‑enables topology, pitch, and facet validation; their own gates remain.
+- Calling `debug-measurement-runtime` on the latest Fonsica row returns a `registration.dsm` block populated with the new source/policy/failure fields and a `registration.stage_classifier.stage_hard_fail_reason = dsm_tile_bounds_missing_from_google_solar_metadata`.
+- The Measurement Report dialog visibly shows DSM Bounds Source, DSM Bounds Failure, DSM Transform Policy, and Stage Hard Fail rows.
+- `customer_report_ready` remains `false`, `result_state` unchanged, no topology phase newly executed.
+- Aerial Candidate Graph still shows "executed (12 candidate edges)" and Reportable Roof Lines still 0.
+- All existing edge-function tests pass; the new propagation test passes.
 
-## Acceptance (next Fonsica rerun)
-
-- All previously green items remain green (CPU, aerial candidate graph, overlay, frontend resolver row).
-- `dsm_size_px = { width: 998, height: 998 }`.
-- Either `dsm_tile_bounds_lat_lng` is populated with `dsm_tile_bounds_source = "google_solar_metadata"`, OR the run fails with `dsm_tile_bounds_missing_from_google_solar_metadata` (no generic `invalid_transform`).
-- When bounds exist: `geo_to_dsm_transform`, `dsm_to_raster_transform`, `confirmed_roof_center_dsm_px` all populated with their `_source` fields set, `dsm_transform_policy_version = "dsm-registration-transform-v1"`.
-- `dsm_pixel_transform_valid = true` only when the package is internally consistent (existing validator unchanged).
-- `phase3_5.skipped_reason` is no longer `perimeter_refinement_callsite_not_reached` — topology runs.
-- `customer_report_ready` remains `false` until topology/pitch/facets validate (separate prompt).
-
-## Out of scope (deferred to later prompts)
-
-- Phase 3A.5 / 3C / 3D / 3E execution behavior.
-- Pitch + facet validation.
-- Promotion into reportable roof lines.
-- Any UI/frontend change beyond what reads the new diagnostic fields.
-
-## Files expected to change
-
-- `supabase/functions/_shared/dsm-registration.ts`
-- `supabase/functions/_shared/source-registration-transform.ts`
-- `supabase/functions/_shared/dsm-analyzer.ts` (add `bounds_failure` reason only)
-- `supabase/functions/_shared/registration-stage-classifier.ts` (failure precedence)
-- `supabase/functions/start-ai-measurement/index.ts` (the two hoist call sites + transform call site)
-- Tests under `supabase/functions/_shared/__tests__/` and `supabase/functions/start-ai-measurement/__tests__/` covering: bounds present → transforms valid; bounds missing → `dsm_tile_bounds_missing_from_google_solar_metadata`; raster‑center fallback for `confirmed_roof_center_dsm_px`.
+## Files touched
+- `supabase/functions/debug-measurement-runtime/index.ts`
+- `src/components/measurements/MeasurementReportDialog.tsx`
+- `supabase/functions/debug-measurement-runtime/__tests__/dsm-diagnostic-propagation.test.ts` (new)
