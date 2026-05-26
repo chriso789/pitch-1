@@ -200,7 +200,9 @@ Deno.serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt.toISOString(),
-          scopes: 'com.intuit.quickbooks.accounting openid email profile',
+          scopes: tokens.scope
+            ? tokens.scope.split(/\s+/).filter(Boolean)
+            : ['com.intuit.quickbooks.accounting', 'openid', 'email', 'profile'],
           connected_by: user.id,
           is_active: true,
           is_sandbox: isSandbox,
