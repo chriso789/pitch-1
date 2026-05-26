@@ -18,9 +18,13 @@ export default function QuickBooksCallback() {
     // Success path
     if (code && realmId) {
       if (window.opener) {
+        // Use '*' as targetOrigin — the opener may be on a different origin
+        // (e.g. preview URL id-preview--*.lovable.app) than this callback page
+        // (pitch-crm.ai). A strict targetOrigin would cause the browser to
+        // silently drop the message and the parent would never complete the flow.
         window.opener.postMessage(
           { type: 'qbo-oauth-success', code, realmId, state },
-          window.location.origin
+          '*'
         );
         window.close();
       } else {
@@ -42,7 +46,7 @@ export default function QuickBooksCallback() {
     if (window.opener) {
       window.opener.postMessage(
         { type: 'qbo-oauth-error', error: errCode, description: errDesc },
-        window.location.origin
+        '*'
       );
     }
   }, [navigate]);
