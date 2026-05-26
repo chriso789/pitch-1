@@ -13780,7 +13780,13 @@ async function persistCpuBudgetTerminalFailure(args: {
         (debugBag as any)?.estimated_work_units ??
           priorTerminalPayload?.estimated_work_units ??
           priorPrePhase35?.estimated_work_units ?? null,
+      // v2 cascade tail — surface the topology pixel limit so the cascade
+      // can fall back to it when every richer source is missing/0.
+      topology_pixel_limit:
+        (debugBag as any)?.topology_pixel_limit ??
+          AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
     } as Record<string, unknown>,
+    topologyPixelLimit: AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT,
   };
   const preservedWU = preserveEstimatedWorkUnits(cascadeArgs);
   const effectiveWU =
