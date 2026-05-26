@@ -207,6 +207,7 @@ Deno.serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt.toISOString(),
+          expires_at: tokenExpiresAt.toISOString(),
           scopes: tokens.scope
             ? tokens.scope.split(/\s+/).filter(Boolean)
             : ['com.intuit.quickbooks.accounting', 'openid', 'email', 'profile'],
@@ -298,6 +299,7 @@ Deno.serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt.toISOString(),
+          expires_at: tokenExpiresAt.toISOString(),
           last_refresh_at: new Date().toISOString(),
         })
         .eq('tenant_id', profile.tenant_id)
