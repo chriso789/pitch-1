@@ -64,6 +64,21 @@ export default function QuickBooksSettings() {
   const [qboItems, setQboItems] = useState<QBOItem[]>([]);
   const [mappings, setMappings] = useState<Record<string, JobTypeMapping>>({});
   const [savingMappings, setSavingMappings] = useState(false);
+  const [lastAuthUrl, setLastAuthUrl] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<any>(null);
+
+  const runDiagnostic = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
+        body: { action: 'verify' },
+      });
+      if (error) throw error;
+      setDiagnostic(data);
+    } catch (e: any) {
+      setDiagnostic({ error: await extractFnError(e) });
+    }
+  };
+
 
   useEffect(() => {
     loadConnection();
