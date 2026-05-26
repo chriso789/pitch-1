@@ -196,9 +196,10 @@ export default function QuickBooksSettings() {
 
     } catch (error: any) {
       console.error('Error connecting to QuickBooks:', error);
+      const description = await extractFnError(error);
       toast({
         title: "Connection Failed",
-        description: error.message,
+        description,
         variant: "destructive",
       });
       setConnecting(false);
