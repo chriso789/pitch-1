@@ -469,15 +469,40 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
   const rawPerimeterPx = (incoming as any).raw_perimeter_px ?? null;
   const perimeterTopology = (incoming as any).perimeter_topology ?? null;
   // Merge-precedence guard: an executed aerial candidate graph must NEVER be
-  // downgraded by a later skipped graph passed via `incoming`. In practice the
-  // upstream `buildPreTopologyDebugBag` builds the canonical graph and hands
-  // it in here, so this is belt-and-suspenders against any future caller that
-  // tries to slip a stale/empty graph into the terminal payload.
+  // downgraded by a later skipped graph passed via `incoming`. The upstream
+  // `buildPreTopologyDebugBag` builds the canonical graph and hands it in
+  // here; this is belt-and-suspenders against any future caller that tries
+  // to slip a stale/empty graph into the terminal payload.
   const _incomingGraph = (incoming as any).aerial_candidate_roof_graph ?? null;
-  const aerialCandidateRoofGraph =
-    _incomingGraph && _incomingGraph.executed === true
-      ? _incomingGraph
-      : _incomingGraph ?? null;
+  const aerialCandidateRoofGraph = _incomingGraph;
+
+  // Fonsica-shaped impossible-skip diagnostic: if every input the aerial
+  // graph builder needs is demonstrably present on this row, then a
+  // `raster_transform_unavailable` skip is internally inconsistent. Flag it
+  // (non-throwing) so tests and ops can catch it deterministically.
+  const _g2r =
+    (incoming as any)?.aerial_candidate_roof_graph?.skip_debug?.has_geo_to_raster_transform === true ||
+    !!(perimeterTopology as any)?.geo_to_raster_transform ||
+    (aerialCandidateRoofGraph?.executed === true);
+  const _bounds =
+    (incoming as any)?.aerial_candidate_roof_graph?.skip_debug?.has_raster_bounds_lat_lng === true ||
+    !!(perimeterTopology as any)?.raster_bounds_lat_lng ||
+    (aerialCandidateRoofGraph?.executed === true);
+  const _ringPx = Array.isArray((perimeterTopology as any)?.perimeter_ring_px)
+    ? (perimeterTopology as any).perimeter_ring_px
+    : null;
+  const _eaves = Array.isArray((perimeterTopology as any)?.eave_edges)
+    ? (perimeterTopology as any).eave_edges
+    : [];
+  const _perim = Array.isArray((perimeterTopology as any)?.perimeter_edges)
+    ? (perimeterTopology as any).perimeter_edges
+    : [];
+  const fonsicaShapedInputs = _g2r && _bounds &&
+    Array.isArray(_ringPx) && _ringPx.length >= 3 &&
+    (_eaves.length > 0 || _perim.length > 0);
+  const aerialGraphImpossibleSkip =
+    fonsicaShapedInputs === true &&
+    aerialCandidateRoofGraph?.skipped_reason === "raster_transform_unavailable";
 
   const phase3_5 = {
     raw_perimeter_px: rawPerimeterPx,
@@ -518,6 +543,8 @@ export function buildCpuBudgetTerminalDebugPayload(args: {
     perimeter_topology: perimeterTopology,
     raw_perimeter_px: rawPerimeterPx,
     aerial_candidate_roof_graph: aerialCandidateRoofGraph,
+    aerial_graph_impossible_skip: aerialGraphImpossibleSkip,
+    fonsica_shaped_aerial_inputs: fonsicaShapedInputs,
     primary_geometry_source: (incoming as any).primary_geometry_source ??
       (aerialCandidateRoofGraph?.executed ? "aerial_registered" : null),
     dsm_validation_status: (incoming as any).dsm_validation_status ?? null,
