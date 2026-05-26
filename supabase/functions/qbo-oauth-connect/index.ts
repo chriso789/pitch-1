@@ -62,6 +62,23 @@ Deno.serve(async (req) => {
     }
     console.log('[qbo-oauth-connect] method=', req.method, 'action=', action, 'bodyKeys=', Object.keys(body || {}));
 
+    // Step 0: Verify config + auth (no side effects) — runs even if env vars missing
+    if (action === 'verify') {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          role: profile.role,
+          tenant_id: profile.tenant_id,
+          hasClientId: !!QBO_CLIENT_ID,
+          hasSecret: !!QBO_CLIENT_SECRET,
+          hasRedirect: !!QBO_REDIRECT_URI,
+          redirectUri: QBO_REDIRECT_URI ?? null,
+          environment: Deno.env.get('QBO_ENVIRONMENT') ?? 'unknown',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!QBO_CLIENT_ID || !QBO_CLIENT_SECRET || !QBO_REDIRECT_URI) {
       console.error('Missing QBO env vars', {
         hasClientId: !!QBO_CLIENT_ID,
