@@ -40,6 +40,8 @@ export interface DsmRegistrationInput {
     height?: number;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null;
     resolution?: number | null;
+    /** Optional reason the GeoTIFF decoder could not derive bounds. */
+    bounds_failure?: string | null;
   } | null;
   /** Roof mask grid (RoofMask shape). */
   roofMask?: {
@@ -53,6 +55,14 @@ export interface DsmRegistrationInput {
   confirmedCenterLatLng?: LatLng | null;
   /** Raster (static map) meters-per-pixel — used only as last-resort mpp. */
   rasterMetersPerPixel?: number | null;
+  /**
+   * When false (default), derivation branches do NOT silently substitute
+   * raster bounds / mpp for DSM bounds. The result will leave
+   * `dsm_tile_bounds_lat_lng=null` and push the specific failure token
+   * `dsm_tile_bounds_missing_from_google_solar_metadata`. Callers that want
+   * the legacy approximate behavior must explicitly opt in.
+   */
+  allow_derived_bounds?: boolean;
 }
 
 export interface DsmRegistrationResult {
