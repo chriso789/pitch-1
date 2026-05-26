@@ -168,12 +168,14 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   let dsm_bounds_warning: string | null = null;
   let dsm_bounds_confidence = 0;
 
+  const allowDerived = input.allow_derived_bounds === true;
   const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ?? asLL(input.roofMask?.bounds ?? null);
   if (fromMetadata) {
     dsm_tile_bounds_lat_lng = fromMetadata;
     dsm_bounds_source = "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
   } else if (
+    allowDerived &&
     input.confirmedCenterLatLng &&
     dsm_size_px &&
     isNum(dsm_meters_per_pixel ?? NaN) &&
@@ -188,6 +190,7 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
       dsm_bounds_confidence = 0.7;
     }
   } else if (
+    allowDerived &&
     input.confirmedCenterLatLng &&
     dsm_size_px &&
     isNum(input.rasterMetersPerPixel ?? NaN)
@@ -201,7 +204,23 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
       dsm_bounds_confidence = 0.4;
     }
   }
-  if (attempted && !dsm_tile_bounds_lat_lng) failure_tokens.push("dsm_bounds_missing");
+
+  const decodedButBoundsMissing =
+    !!(input.effectiveDSM && (isNum(input.effectiveDSM.width) || isNum(input.effectiveDSM.height))) &&
+    !fromMetadata;
+  const dsm_tile_bounds_failure_reason: string | null = !dsm_tile_bounds_lat_lng
+    ? (input.effectiveDSM?.bounds_failure ?? (decodedButBoundsMissing ? "google_solar_metadata_missing_bounds" : null))
+    : null;
+
+  if (attempted && !dsm_tile_bounds_lat_lng) {
+    // Prefer the specific token when DSM was actually decoded but Google Solar
+    // metadata didn't carry usable tiepoints / ModelTransformation bounds.
+    if (decodedButBoundsMissing || dsm_tile_bounds_failure_reason) {
+      failure_tokens.push("dsm_tile_bounds_missing_from_google_solar_metadata");
+    } else {
+      failure_tokens.push("dsm_bounds_missing");
+    }
+  }
 
   return {
     dsm_registration_version: DSM_REGISTRATION_VERSION,
@@ -212,11 +231,13 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     dsm_size_source,
     dsm_tile_bounds_lat_lng,
     dsm_bounds_source,
+    dsm_tile_bounds_source: dsm_bounds_source,
     dsm_bounds_derived,
     dsm_bounds_warning,
     dsm_bounds_confidence,
     dsm_meters_per_pixel,
     dsm_mpp_source,
+    dsm_tile_bounds_failure_reason,
     failure_tokens,
   };
 }
