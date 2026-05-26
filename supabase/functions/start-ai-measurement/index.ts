@@ -1241,7 +1241,8 @@ function ensureRegistrationProofBeforeWrite(
     (next as any).report_blocked = true;
     (next as any).needs_review = true;
     next.geometry_report_json = geometry;
-    return next;
+    return ensureDsmDiagnosticsOnRegistration(next);
+
   }
   (geometry as any).registration = fallback;
   (geometry as any).registration_gate = fallback;
