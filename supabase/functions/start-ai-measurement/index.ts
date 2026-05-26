@@ -12933,6 +12933,65 @@ async function processJob(input: any) {
         normalizeResultStateForWrite(s as any, d as any),
     });
 
+    // ── CHECKPOINT: pre_terminal_persistence ──
+    // Final guard before the success-path write. If everything above ran
+    // but still overshot the reserve, persist the terminal failure payload
+    // instead of allowing a slow customer-style write that risks timing
+    // out mid-persist.
+    {
+      const ckpt = shouldPreemptForCpuBudget(input, 0);
+      if (ckpt.preempt) {
+        const resolvedReg = resolveRegistrationForPreempt({
+          input,
+          coords,
+          hoistedTransformPackage,
+          hoistedRasterBoundsLatLng,
+          hoistedGeoToRasterTransform,
+          hoistedConfirmedRoofCenterPx,
+        });
+        if (resolvedReg.source === "rebuilt_from_input") {
+          hoistedTransformPackage = resolvedReg.transformPackage;
+          hoistedRasterBoundsLatLng = resolvedReg.rasterBoundsLatLng;
+          hoistedGeoToRasterTransform = resolvedReg.geoToRasterTransform;
+          hoistedConfirmedRoofCenterPx = resolvedReg.confirmedRoofCenterPx;
+        }
+        await persistCpuBudgetTerminalFailure({
+          input,
+          coords,
+          imageUrl,
+          mpp: actualMpp,
+          stage: "pre_terminal_persistence",
+          estimatedWorkUnits: 0,
+          debug: {
+            ...buildPreTopologyDebugBag({
+              stage: "pre_terminal_persistence",
+              dsmGrid: typeof dsmGrid !== "undefined" ? dsmGrid : null,
+              maskedDSM: typeof maskedDSM !== "undefined" ? maskedDSM : null,
+              roofMask: typeof roofMask !== "undefined" ? roofMask : null,
+              raster,
+              perimeterPhase0Snapshot,
+              perimeterTopologySnapshot,
+              targetMaskIsolation,
+              footprintSource,
+              footprintGeo,
+              footprintPx: null,
+              rasterUrl: imageUrl,
+              rasterBoundsLatLng: resolvedReg.rasterBoundsLatLng,
+              geoToRasterTransform: resolvedReg.geoToRasterTransform,
+              solarSegments,
+              maskComponentsTable:
+                targetMaskIsolation?.mask_components_table ?? [],
+              confirmedRoofCenterPx: resolvedReg.confirmedRoofCenterPx,
+              staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
+              transformPackage: resolvedReg.transformPackage,
+            }),
+            geometry_report_json: geometryReportJson,
+          },
+        });
+        return;
+      }
+    }
+
     const { data: roofMeasurement, error: publishError } =
       await insertRoofMeasurementWithSchemaGuard(roofMeasurementPayload);
 
