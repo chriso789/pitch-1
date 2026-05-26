@@ -1313,9 +1313,10 @@ function summarizeDsmDiagnosticReason(reg: Record<string, unknown>): string {
   return "unknown_bounds_unavailable";
 }
 
-function ensureDsmDiagnosticsOnRegistration(
+export function ensureDsmDiagnosticsOnRegistration(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
+
   const next: Record<string, unknown> = { ...payload };
   const geometry = typeof next.geometry_report_json === "object" &&
       next.geometry_report_json !== null &&
