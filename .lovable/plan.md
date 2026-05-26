@@ -1,91 +1,253 @@
-# Cost Tracker Part C — Internal Secret + Hot-Path Wiring
+## Context
 
-Part A (schema + `platform-api` + dashboard shell) is shipped. This plan completes the secret plumbing, wires `trackUsage()` into real cost hot paths, and adds the rollup cron.
+The DSM/candidate hoist wiring described in the drop-in is **already implemented** on `main` inside `supabase/functions/start-ai-measurement/index.ts`:
 
-## 1. Internal Worker Secret
+- `buildDsmRegistration` + `hoistSelectedCandidatePolygon` imported from `_shared/dsm-registration.ts` and called (lines ~1425, ~1563, ~6353).
+- Runtime proof fields stamped: `dsm_hoist_called`, `dsm_hoist_version = "dsm-bounds-candidate-hoist-v1"`, `dsm_size_source`, `dsm_bounds_source`, `dsm_bounds_derived`, `candidate_hoist_called`, `candidate_hoist_version`.
+- Specific hard_fail tokens (`dsm_bounds_missing`, `coordinate_space_mismatch`, `candidate_centroid_offset_exceeds_target`, `dsm_to_raster_transform_missing`, `dsm_center_out_of_bounds`, `dsm_raster_overlap_failed`) replace generic `coordinate_registration_failed`.
+- `stale_debug_payload` bucket quarantines pre-block perimeter/topology data.
+- `blocked_by_registration_gate` stamped on phase blocks and `footprint_source` when registration fails.
 
-- Add `secrets--add_secret` request for `INTERNAL_WORKER_SECRET` (you paste the value — `openssl rand -hex 32` or any 64-char random string, prefixed `PITCH_INTERNAL_WORKER_` if you want).
-- Add route `GET /platform-api/internal-secret-status` (master-only) returning `{ configured: boolean }`. Never returns the value.
-- Add dashboard card **Internal Worker Secret** on `/developer/cost-tracker`:
-  - Shows Configured / Missing badge.
-  - If missing, shows step-by-step Supabase Secrets instructions and a "Generate suggested value" button (client-side `crypto.getRandomValues` → hex string, copy-to-clipboard, one-time display). Does NOT write the value anywhere — user pastes into Supabase Secrets manually.
+Existing tests in `supabase/functions/_shared/__tests__/dsm-bounds-and-candidate-hoist.test.ts` cover the helper in isolation only.
 
-No per-company secret. Tenant attribution is via `company_id` only.
+**Gap**: the latest Fonsica row still shows `hard_fail_reason = coordinate_registration_failed` and `dsm_size_px = null` — meaning either the deployed function is stale, or a code path inside `start-ai-measurement` returns/throws before reaching the hoist for this specific input shape. We have no runtime-shape test that would fail loudly when that happens.
 
-## 2. Harden `platform-api` validation
+## Goal
 
-Update `/track-usage` and `/check-usage-limit` to accept EITHER:
-- master/platform admin JWT, OR
-- header `x-internal-secret` matching `INTERNAL_WORKER_SECRET`.
+Add runtime-shape regression tests (Tests A–G from the drop-in) that exercise the actual `start-ai-measurement` registration-prep code path, not the `_shared` helper. These tests must fail today if a deployed Fonsica run produces `registration.dsm_size_px = null` while `dsm_loaded = true` and `dsm_coordinate_match.dsm_bbox` exists. Then redeploy and rerun Fonsica with the tests as the proof-of-wire.
 
-If secret env var is missing, log warning and reject internal calls with 503 `secret_not_configured` (the helper handles this as a no-op so callers never throw).
+## Plan
 
-## 3. Update `_shared/track-usage.ts`
+### 1. Extract registration-prep into a testable surface
 
-- `trackUsage(payload)` — fire-and-forget. Reads `INTERNAL_WORKER_SECRET`; if missing, `console.warn` and return. Sends `x-internal-secret` header. Never sends `unit_cost` / `estimated_cost` — server computes from `provider_costs`.
-- `checkUsageLimit({ company_id, event_type, quantity })` — synchronous. If secret missing:
-  - SMS / mass-send / roof-report / expensive AI → return `{ allowed: false, reason: "secret_not_configured" }` (fail-closed).
-  - Low-cost logging (storage, edge invocation, map load) → return `{ allowed: true, warn: true }`.
-- Always carries `company_id` + `user_id` when caller provides them.
+Inside `supabase/functions/start-ai-measurement/index.ts`, identify the inline block (~lines 1300–1700) that:
 
-## 4. Company-id resolution helper
+- calls `buildDsmRegistration`
+- merges DSM hoist fields into `geometry_report_json.registration`
+- calls `hoistSelectedCandidatePolygon`
+- computes `coordinate_space_audit` and centroid-offset checks
+- maps to specific `hard_fail_reason` tokens
 
-New `_shared/resolve-company-id.ts`:
-1. Use explicit `company_id` if given.
-2. Else look up via `user_id → user_company_access`.
-3. Else derive from `contact_id` / `lead_id` / `job_id` / `pipeline_entry_id` when present in payload.
-4. Else write event with `company_id = null` + `metadata.needs_company_resolution = true`.
+Refactor it into one exported pure function:
 
-## 5. Hot-path wiring (priority order)
+```ts
+export function prepareRegistrationFromRuntimeInputs(input: RuntimeRegistrationInput): {
+  registrationPatch,
+  geometryPatch,        // includes stale_debug_payload, footprint_source override
+  phasePatches,         // phase3_5/3C/3D/3E skipped_reason stamps
+  resultState,          // normalized via normalizeResultStateForWrite
+  hardFailReason,
+  blockCustomerReportReason,
+  diagramRenderIntent,
+}
+```
 
-Wired with `trackUsage()` + (where noted) pre-flight `checkUsageLimit()`:
+No behavior change — same fields written, just callable from a test. Call site inside the handler becomes a one-liner merge.
 
-| # | Path | File(s) | Provider / event_type |
-|---|---|---|---|
-| 1 | Outbound SMS | `messaging-api` `/sms/send` route + `telnyx-send-sms` shim | telnyx / `sms_outbound` (quantity = segments) — pre-check limit |
-| 2 | Inbound SMS | `telnyx-sms-webhook` | telnyx / `sms_inbound` |
-| 3 | Voice / call | `telnyx-call-webhook` (or `bridge-calls` end handler) | telnyx / `voice_minute` (quantity = duration_minutes) |
-| 4 | AI generation | `_shared/ai/*` callers (estimate, supplement, doc-parse, sms-rewrite, email-rewrite, call-summary, roof-report-parse, permit-parse) | openai / `ai_generation` + `ai_tokens_input` + `ai_tokens_output` — pre-check on expensive ones |
-| 5 | Storage uploads | `_shared/storage-upload.ts` server-side wrapper + `safeStorageUpload` client telemetry beacon | supabase / `storage_mb` |
-| 6 | Heavy edge functions | wrap top-of-handler in `start-ai-measurement`, `measurement-worker`, `pdf-compile`, `bulk-sms-blast` | supabase / `edge_invocation` |
-| 7 | Map loads | `useMapboxMap` hook on init (debounced) | mapbox / `map_load` |
-| 8 | Permit scraping | `permits/*` scraper edge fn | firecrawl|serpapi / `scrape_credit` — pre-check |
-| 9 | Roof reports | `roofr-order-report`, `eagleview-order-report` | roofr|eagleview / `roof_report` — pre-check |
-| 10 | Estimate/supplement gen | `generate-estimate-ai`, `generate-supplement-ai` | openai / `ai_estimate_generation` |
+### 2. Test fixtures
 
-Every event includes `status`: `success` | `failed` | `blocked_limit` | `provider_error` | `skipped_missing_secret`.
+Create `supabase/functions/start-ai-measurement/__tests__/__fixtures__/`:
 
-## 6. Dashboard additions on `/developer/cost-tracker`
+- `fonsica-registration-input.json` — the exact `RuntimeRegistrationInput` shape that the live Fonsica run produces (taken from the persisted row's `geometry_report_json` and `dsm_coordinate_match`).
+- `fonsica-no-dsm-bounds.json` — same as above but with no Solar metadata bounds, so derivation must kick in.
+- `candidate-stale-only.json` — only `selected_perimeter_after_refinement` label present, no current-run polygon.
+- `candidate-dsm-px.json` and `candidate-raster-px.json` — coordinate-space variants.
+- `candidate-far-offset.json` — replicates the prior 878px centroid offset.
 
-- **Internal Secret Status** card (from §1).
-- **Unassigned Usage Events** card — count + drill-down for `company_id IS NULL`.
-- **Company Attribution Health** — assigned / unassigned / % over last 30d.
-- **Hot Path Coverage Checklist** — green/red per row in §5, based on whether ≥1 event of that type was seen in last 30d (live query against `usage_events`).
+### 3. Tests A–G (Deno tests)
 
-## 7. Rollup cron
+Create `supabase/functions/start-ai-measurement/__tests__/registration-runtime-wire.test.ts`:
 
-Add `pg_cron` job (via `supabase--read_query` for safety, not migration — contains URL+anon) calling `platform-api/recalculate-rollups` daily at 02:00 UTC with `x-internal-secret`.
+- **Test A — DSM size hoist**: with `dsm_loaded=true`, `dsm_coordinate_match.dsm_bbox={998,998}` → assert `registrationPatch.dsm_hoist_called=true`, `dsm_size_px={998,998}`, `dsm_size_source="dsm_coordinate_match.dsm_bbox"`, `dsm_stage_pending=false`, `dsm_hoist_version="dsm-bounds-candidate-hoist-v1"`.
+- **Test B — Bounds derivation or specific fail**: no explicit bounds + confirmed center + mpp → either `dsm_tile_bounds_lat_lng` populated with `dsm_bounds_source="derived_from_confirmed_center_and_mpp"` and `dsm_bounds_derived=true`, OR `hardFailReason="dsm_bounds_missing"`. Explicitly assert `hardFailReason !== "coordinate_registration_failed"`.
+- **Test C — Candidate hoist**: with current-run `perimeter_topology.perimeter_ring_px` → `candidate_hoist_called=true`, `selected_candidate_polygon_px` populated, `candidate_hoist_version="candidate-hoist-v1"`.
+- **Test D — Coordinate space dsm_px**: `center_used_for_candidate_check === confirmed_roof_center_dsm_px`, `center_used_coordinate_space="dsm_px"`.
+- **Test E — Coordinate space raster_px**: `center_used_for_candidate_check === confirmed_roof_center_px`, `center_used_coordinate_space="raster_px"`.
+- **Test F — Far-offset reject**: centroid offset 878px → `hardFailReason="candidate_centroid_offset_exceeds_target"`, `confirmed_center_inside_candidate=false`, all `phasePatches.phase3_5.skipped_reason="blocked_by_registration_gate"`.
+- **Test G — Stale-payload quarantine on block**: assert `geometryPatch.stale_debug_payload.perimeter_topology` set, top-level `perimeter_topology=null`, `footprint_source="blocked_by_registration_gate"`, `roof_lines=[]`, `diagramRenderIntent="registration_blocked"`.
 
-## 8. Explicitly NOT doing this loop
+Each test maps explicitly to the relevant Hard Rule from the AI Measurement Regression Harness skill and the Canonical Route & Runtime Provenance Auditor skill.
 
-- No removal of AI Admin Command Center.
-- No drop of `ai_conversations` / `ai_messages`.
-- No deletion of AI workflow tables / functions.
-- Open-ended chat UI removal deferred until 7–14 days of cost data exists.
+### 4. Result-state contract check
 
-## Order of execution
+Inside `registration-runtime-wire.test.ts`, add a final assertion sweep that every `resultState` produced by Tests B–G is one of the 10 canonical buckets (per Supabase Schema & DB Drift Guard / Result State Contract), and that specific solver tokens live on `hardFailReason` / `blockCustomerReportReason`, never on `resultState`.
 
-1. Request `INTERNAL_WORKER_SECRET` via `secrets--add_secret`. Wait.
-2. Update `platform-api` validation + add `/internal-secret-status`.
-3. Update `_shared/track-usage.ts` + add `_shared/resolve-company-id.ts`.
-4. Wire hot paths #1–#4 (highest cost first), test each with `seed-test-event` + real call.
-5. Wire #5–#10.
-6. Dashboard cards.
-7. `pg_cron` schedule.
-8. Smoke test: trigger one event per provider, confirm rows land with correct `company_id` and `status`.
+### 5. Run tests, then redeploy and rerun Fonsica
 
-## Technical notes
+- Run `supabase--test_edge_functions` on `start-ai-measurement` and `_shared` until A–G are green.
+- Deploy `start-ai-measurement`.
+- Trigger an AI measurement on the Fonsica lead from the UI.
+- Pull the new row via `debug-measurement-runtime` and assert against the same fixture-derived expectations: `dsm_hoist_called=true`, `dsm_size_px={998,998}`, specific `hard_fail_reason`, `stale_debug_payload` populated, no `coordinate_registration_failed` unless every more specific token is unavailable.
 
-- All edge code uses existing `_shared/router.ts`, `_shared/auth.ts`, `_shared/tenant.ts`, `_shared/env.ts`. No new standalone edge functions — everything lives in `platform-api` or inside existing grouped routers per the architecture guard.
-- Frontend dashboard reads through `edgeApi("platform-api", "/...")`.
-- Client-only secret generation in §1 uses `crypto.getRandomValues(new Uint8Array(32))` → hex; never sent to server, never persisted.
+### 6. Done definition
+
+- New tests fail loudly if any runtime-shape regression reappears (the file `__tests__/registration-runtime-wire.test.ts` is the proof, not the helper test).
+- A fresh Fonsica row shows the runtime proof fields populated, a specific `hard_fail_reason`, and no perimeter/topology/roof_lines on the visible report.
+- If the rerun *still* shows generic `coordinate_registration_failed` despite Tests A–G passing locally, that proves a deploy/cache issue (not a wiring gap) and the next step is forcing a function redeploy + invalidating Supabase function cache.
+
+## Out of scope
+
+- No new business logic, no perimeter-shape changes, no topology changes.
+- No DB migrations (no new columns; all proof fields already live under `geometry_report_json.registration`).
+- No UI changes; the report dialog already reads `registration.*`.  
+  
+
+  ```
+  Approved direction, but tighten the runtime test scope so it covers BOTH failure classes we are seeing:
+
+  1. DSM/candidate hoist registration-prep
+  2. aerial_candidate_roof_graph preemption payload
+
+  The plan is correct that helper tests are not enough. We need tests against the actual start-ai-measurement runtime/pre-topology path.
+
+  Required additions before implementation:
+
+  A. Include aerial graph assertions in the same runtime-shape test suite
+
+  The Fonsica row currently proves:
+  - registration.transform_package.geo_to_raster_transform exists
+  - registration.transform_package.raster_bounds_lat_lng exists
+  - registration.transform_package.raster_size_px = 1280x1280
+  - perimeter_topology.perimeter_ring_px exists
+  - perimeter_topology.perimeter_ring_geo exists
+  - perimeter_topology.eave_edges.length = 6
+  - perimeter_topology.perimeter_edges.length = 6
+  - target_mask_isolation.checked = true
+
+  Yet:
+  - aerial_candidate_roof_graph.executed = false
+  - skipped_reason = raster_transform_unavailable
+  - edges = []
+  - primary_geometry_source = null
+  - dsm_validation_status = null
+
+  Add runtime tests proving that with this Fonsica-shaped input:
+  - aerial_candidate_roof_graph.executed === true
+  - edges.length >= 6
+  - skipped_reason is absent/null
+  - primary_geometry_source === "aerial_registered"
+  - dsm_validation_status.reason === "invalid_transform"
+  - customer_report_ready === false
+  - report_blocked === true
+
+  B. Include CPU-preempt terminal payload tests
+
+  The latest rows also show the preemption path can still lose data.
+
+  Add tests proving:
+  - pre_phase3_5_preempt does not rebuild graph from null/stale registration
+  - preTopologyDebugBag.aerial_candidate_roof_graph survives into buildCpuBudgetTerminalDebugPayload
+  - executed graphs cannot be overwritten by skipped graphs
+  - skipped graphs always include skip_debug at final persistence
+  - estimated_work_units does not downgrade from a known value like 996004 to 0
+
+  C. Include CPU timing assertion
+
+  Latest run regressed to:
+  - cpu_budget_elapsed_ms = 96688
+  - cpu_budget_ms = 75000
+  - cpu_budget_remaining_ms = -21688
+
+  Add a test that with:
+  - cpu_budget_ms = 75000
+  - cpu_terminal_write_reserve_ms = 15000
+
+  preemption happens before reserve exhaustion:
+  - elapsed <= 60000ms + tolerance
+  - remaining_ms > 0
+  - late_cpu_preempt !== true on the normal path
+
+  D. Keep the proposed DSM tests A–G
+
+  Keep the existing proposed DSM/candidate hoist tests:
+
+  Test A — DSM size hoist:
+  - dsm_loaded=true
+  - dsm_coordinate_match.dsm_bbox={998,998}
+  Expected:
+  - registrationPatch.dsm_hoist_called=true
+  - dsm_size_px={998,998}
+  - dsm_size_source="dsm_coordinate_match.dsm_bbox"
+  - dsm_stage_pending=false
+  - dsm_hoist_version="dsm-bounds-candidate-hoist-v1"
+
+  Test B — Bounds derivation or specific fail:
+  - no explicit bounds + confirmed center + mpp
+  Expected:
+  - dsm_tile_bounds_lat_lng populated with dsm_bounds_source="derived_from_confirmed_center_and_mpp"
+  OR hardFailReason="dsm_bounds_missing"
+  - hardFailReason must not be "coordinate_registration_failed"
+
+  Test C — Candidate hoist:
+  - current-run perimeter_topology.perimeter_ring_px
+  Expected:
+  - candidate_hoist_called=true
+  - selected_candidate_polygon_px populated
+  - candidate_hoist_version="candidate-hoist-v1"
+
+  Test D — Coordinate space dsm_px:
+  - center_used_for_candidate_check === confirmed_roof_center_dsm_px
+  - center_used_coordinate_space="dsm_px"
+
+  Test E — Coordinate space raster_px:
+  - center_used_for_candidate_check === confirmed_roof_center_px
+  - center_used_coordinate_space="raster_px"
+
+  Test F — Far-offset reject:
+  - centroid offset 878px
+  Expected:
+  - hardFailReason="candidate_centroid_offset_exceeds_target"
+  - confirmed_center_inside_candidate=false
+  - all phasePatches.phase3_5.skipped_reason="blocked_by_registration_gate"
+
+  Test G — Stale-payload quarantine:
+  - stale perimeter/topology data exists on a registration block
+  Expected:
+  - geometryPatch.stale_debug_payload.perimeter_topology set
+  - top-level perimeter_topology=null
+  - footprint_source="blocked_by_registration_gate"
+  - roof_lines=[]
+  - diagramRenderIntent="registration_blocked"
+
+  E. Result-state contract
+
+  For every runtime test:
+  - resultState must be one of the canonical buckets
+  - specific failure tokens must live on hardFailReason/blockCustomerReportReason, not resultState
+
+  F. Deployment sequence
+
+  Do not rerun Fonsica until these tests pass.
+
+  Sequence:
+  1. Extract prepareRegistrationFromRuntimeInputs or equivalent testable runtime-prep surface.
+  2. Add the DSM/candidate hoist tests.
+  3. Add aerial graph preempt payload tests.
+  4. Add CPU preempt timing tests.
+  5. Run start-ai-measurement edge tests.
+  6. Deploy start-ai-measurement.
+  7. Rerun Fonsica from UI only.
+  8. Pull fresh debug-measurement-runtime.
+
+  Acceptance on fresh Fonsica:
+  - no generic coordinate_registration_failed if a more specific token exists
+  - dsm_hoist_called=true when DSM loaded/match bbox exists
+  - dsm_size_px={998,998} when bbox exists
+  - aerial_candidate_roof_graph.executed=true
+  - aerial_candidate_roof_graph.edges.length >= 6
+  - primary_geometry_source="aerial_registered"
+  - dsm_validation_status.reason="invalid_transform"
+  - estimated_work_units preserved, not 0 if known
+  - cpu_budget_elapsed_ms < cpu_budget_ms
+  - customer_report_ready=false
+  - overlay still aligned
+
+  Guardrails:
+  - no DSM solver changes
+  - no geometry scoring changes
+  - no customer report changes
+  - no DB migration
+  - no overlay transform changes
+  - preserve canonical route start-ai-measurement only
+  ```
+  My read: **do not choose “force redeploy” yet**. This plan is the right move, but only if it includes the aerial graph/preempt payload tests too. Otherwise they’ll prove the DSM helper is wired and still miss the exact failure you’re seeing in the latest report.
