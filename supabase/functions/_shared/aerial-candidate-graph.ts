@@ -206,6 +206,7 @@ export interface BuildAerialCandidateGraphArgs {
   // builder can succeed even when the canonical perimeter_topology snapshot
   // has not been wired into a particular call site yet.
   registration?: any;
+  overlayDebug?: any;
   debugLayers?: any;
   dsmPlanarGraphDebug?: any;
   debugRoofLines?: any;
@@ -256,14 +257,20 @@ function resolvePerimeterRingPx(
 
 function resolvePerimeterRingGeo(
   args: BuildAerialCandidateGraphArgs,
-): Array<[number, number]> | null {
-  const candidates = [
-    args.perimeterTopology?.perimeter_ring_geo,
-    args.dsmPlanarGraphDebug?.perimeter_topology?.perimeter_ring_geo,
+): { ring: Array<[number, number]> | null; source: string | null } {
+  const candidates: Array<[string, any]> = [
+    [
+      "perimeter_topology.perimeter_ring_geo",
+      args.perimeterTopology?.perimeter_ring_geo,
+    ],
+    [
+      "dsm_planar_graph_debug.perimeter_topology.perimeter_ring_geo",
+      args.dsmPlanarGraphDebug?.perimeter_topology?.perimeter_ring_geo,
+    ],
   ];
-  for (const raw of candidates) {
+  for (const [src, raw] of candidates) {
     const ring = normalizeGeoRing(raw);
-    if (ring) return ring;
+    if (ring) return { ring, source: src };
   }
   // Derive from debugRoofLines[].geo only as last resort.
   if (Array.isArray(args.debugRoofLines)) {
@@ -276,30 +283,79 @@ function resolvePerimeterRingGeo(
         if (gp) flat.push(gp);
       }
     }
-    if (flat.length >= 3) return flat;
+    if (flat.length >= 3) return { ring: flat, source: "debug_roof_lines[].geo" };
   }
-  return null;
+  return { ring: null, source: null };
 }
 
-function resolveRasterRegistration(args: BuildAerialCandidateGraphArgs): {
+interface RegistrationResolution {
   registered: boolean;
   basis: "transform" | "bounds_only" | "registration_package" | null;
-} {
-  const pkg = args.registration?.transform_package ?? args.registration ?? null;
-  const transform = args.geoToRasterTransform ?? pkg?.geo_to_raster_transform;
-  const bounds = args.rasterBoundsLatLng ?? pkg?.raster_bounds_lat_lng ??
-    args.registration?.raster_bounds_lat_lng;
-  if (transform && bounds) {
-    return { registered: true, basis: "transform" };
-  }
-  if (transform) {
-    return { registered: true, basis: "registration_package" };
-  }
-  if (bounds && (args.rasterUrl ?? args.registration?.raster?.url)) {
-    return { registered: true, basis: "bounds_only" };
-  }
-  return { registered: false, basis: null };
+  geoToRasterTransform: any;
+  geoToRasterTransformSource: string | null;
+  rasterBoundsLatLng: any;
+  rasterBoundsSource: string | null;
+  rasterUrl: string | null;
+  rasterUrlSource: string | null;
 }
+
+function resolveRasterRegistration(
+  args: BuildAerialCandidateGraphArgs,
+): RegistrationResolution {
+  const pkg = args.registration?.transform_package ?? null;
+
+  // geo→raster transform sources in priority order.
+  const transformSources: Array<[string, any]> = [
+    ["args.geoToRasterTransform", args.geoToRasterTransform],
+    ["registration.transform_package.geo_to_raster_transform", pkg?.geo_to_raster_transform],
+    ["registration.geo_to_raster_transform", args.registration?.geo_to_raster_transform],
+  ];
+  let transform: any = null;
+  let transformSource: string | null = null;
+  for (const [src, v] of transformSources) {
+    if (v != null) { transform = v; transformSource = src; break; }
+  }
+
+  // raster bounds sources.
+  const boundsSources: Array<[string, any]> = [
+    ["args.rasterBoundsLatLng", args.rasterBoundsLatLng],
+    ["registration.transform_package.raster_bounds_lat_lng", pkg?.raster_bounds_lat_lng],
+    ["registration.raster_bounds_lat_lng", args.registration?.raster_bounds_lat_lng],
+  ];
+  let bounds: any = null;
+  let boundsSource: string | null = null;
+  for (const [src, v] of boundsSources) {
+    if (v != null) { bounds = v; boundsSource = src; break; }
+  }
+
+  // raster url sources.
+  const urlSources: Array<[string, any]> = [
+    ["args.rasterUrl", args.rasterUrl],
+    ["registration.raster.url", args.registration?.raster?.url],
+  ];
+  let rasterUrl: string | null = null;
+  let rasterUrlSource: string | null = null;
+  for (const [src, v] of urlSources) {
+    if (v) { rasterUrl = String(v); rasterUrlSource = src; break; }
+  }
+
+  let basis: "transform" | "bounds_only" | "registration_package" | null = null;
+  if (transform && bounds) basis = "transform";
+  else if (transform) basis = "registration_package";
+  else if (bounds && rasterUrl) basis = "bounds_only";
+
+  return {
+    registered: basis !== null,
+    basis,
+    geoToRasterTransform: transform,
+    geoToRasterTransformSource: transformSource,
+    rasterBoundsLatLng: bounds,
+    rasterBoundsSource: boundsSource,
+    rasterUrl,
+    rasterUrlSource,
+  };
+}
+
 
 export function buildAerialCandidateGraph(
   args: BuildAerialCandidateGraphArgs,
