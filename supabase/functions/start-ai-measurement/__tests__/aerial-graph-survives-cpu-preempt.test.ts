@@ -69,7 +69,7 @@ Deno.test("CPU-preempt debug bag carries aerial_candidate_roof_graph", () => {
   const terminal = buildCpuBudgetTerminalDebugPayload({
     stage: "phase3_5_perimeter_refinement",
     estimatedWorkUnits: 0,
-    debug: bag,
+    debug: bag as unknown as Record<string, unknown>,
     budget: {
       preempt: true,
       elapsed_ms: 90_000,
