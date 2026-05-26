@@ -269,8 +269,12 @@ export interface RegistrationTransformPackage {
   dsm_tile_bounds_lat_lng: Bounds | null;
   dsm_size_px: SizePx | null;
   geo_to_dsm_transform: DsmTransform | null;
+  geo_to_dsm_transform_source: GeoToDsmTransformSource;
   dsm_to_raster_transform: DsmToRasterTransform | null;
+  dsm_to_raster_transform_source: DsmToRasterTransformSource;
   confirmed_roof_center_dsm_px: Px | null;
+  confirmed_roof_center_dsm_px_source: ConfirmedRoofCenterDsmPxSource;
+  dsm_transform_policy_version: typeof DSM_TRANSFORM_POLICY_VERSION;
   dsm_tile_bounds_contain_confirmed_center: boolean;
   geo_to_dsm_px_success: boolean;
   dsm_pixel_transform_valid: boolean;
