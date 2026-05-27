@@ -9,6 +9,10 @@
 // MUST stay in sync with supabase/functions/_shared/registration-gate.ts.
 // ============================================================================
 
+import { resolveFrameMismatch } from "./resolveFrameMismatch";
+
+
+
 export interface RegistrationBlock {
   version?: string;
   user_confirmed_roof_target?: boolean | null;
