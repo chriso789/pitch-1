@@ -2211,6 +2211,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                               roofTargetBboxPx={grj?.roof_target_bbox_px ||
                                 grj?.debug_geometry?.solar_bbox_px || null}
                               geometryPxSpace={grj?.geometry_px_space || null}
+                              focusPerimeterPx={fpx}
                             />
                             {isDiagnosticOnly && (
                               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
