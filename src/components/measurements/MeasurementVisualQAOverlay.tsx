@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { resolveDsmStatusFields } from '@/lib/measurement/resolveDsmStatusFields';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -815,63 +816,30 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
           <div className="space-y-4">
             {/* DSM Status card — read-only summary of DSM registration state */}
             {(() => {
-              const g: any = grj as any;
-              const pick = (...vals: any[]) => vals.find((v) => v != null);
-              const dsmSize = pick(
-                g.registration?.dsm?.dsm_size_px,
-                g.registration?.dsm_size_px,
-                g.registration?.transform_package?.dsm_size_px,
-                g.dsm_split_status?.dsm_size_px,
-                g.registration_gate?.dsm_size_px,
-                g.dsm_size_px,
-                g.dsm_size,
-                g.dsm?.size,
-              );
-              const dsmW = dsmSize?.width ?? dsmSize?.w ?? null;
-              const dsmH = dsmSize?.height ?? dsmSize?.h ?? null;
-              const dsmBoundsFailure = pick(
-                g.registration?.dsm_tile_bounds_failure_reason,
-                g.dsm_bounds_failure,
-                g.dsm?.bounds_failure,
-              );
-              const dsmTransformSource = pick(
-                g.registration?.dsm_to_raster_transform_source,
-                g.dsm_to_raster_transform_source,
-                g.dsm?.to_raster_transform_source,
-              );
+              const f = resolveDsmStatusFields(grj);
               const dsmOverlayVisible = dsmAllowed && dsmEdges.length > 0;
-              const dsmLoaded = dsmW != null || dsmH != null;
-              const dsmRegistered = pick(
-                g.registration?.dsm_pixel_transform_valid,
-                g.dsm_pixel_transform_valid,
-              ) === true;
-              const policy = pick(
-                g.registration?.derived_bounds_policy,
-                g.dsm_transform_policy,
-              ) ?? "dsm-registration-transform-v1";
-              const statusLabel = !dsmLoaded
-                ? "Missing"
-                : dsmRegistered ? "Registered" : "Loaded, not registered";
               return (
                 <div className="rounded-md border bg-muted/30 p-2.5">
                   <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">DSM Status</div>
                   <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] font-mono">
                     <div className="text-muted-foreground">Status</div>
-                    <div className="text-right">{statusLabel}</div>
+                    <div className="text-right">{f.statusLabel}</div>
                     <div className="text-muted-foreground">Size</div>
-                    <div className="text-right">{dsmLoaded ? `${dsmW ?? '?'}×${dsmH ?? '?'}` : '—'}</div>
+                    <div className="text-right">{f.dsmLoaded ? `${f.dsmW ?? '?'}×${f.dsmH ?? '?'}` : '—'}</div>
                     <div className="text-muted-foreground">Bounds</div>
-                    <div className="text-right break-all">{dsmBoundsFailure ?? 'ok'}</div>
+                    <div className="text-right break-all">{f.dsmBoundsFailure ?? 'ok'}</div>
                     <div className="text-muted-foreground">Transform</div>
-                    <div className="text-right break-all">{dsmTransformSource ?? 'unavailable'}</div>
+                    <div className="text-right break-all">{f.dsmTransformSource ?? 'unavailable'}</div>
                     <div className="text-muted-foreground">Overlay</div>
                     <div className="text-right">{dsmOverlayVisible ? 'shown' : 'suppressed'}</div>
                     <div className="text-muted-foreground">Policy</div>
-                    <div className="text-right break-all">{policy}</div>
+                    <div className="text-right break-all">{f.policy}</div>
                   </div>
                 </div>
               );
             })()}
+
+
 
 
             {/* Layer status summary — separates the three semantic layers */}
