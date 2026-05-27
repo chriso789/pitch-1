@@ -11,6 +11,13 @@ export interface InvoicePdfLineItem {
   line_total: number;
 }
 
+export interface InvoicePdfPayment {
+  date: string;
+  amount: number;
+  method?: string;
+  reference?: string;
+}
+
 export interface InvoicePdfData {
   invoiceNumber: string;
   invoiceDate: string; // formatted
@@ -25,6 +32,9 @@ export interface InvoicePdfData {
     email?: string | null;
     phone?: string | null;
   };
+  alreadyPaid?: number;
+  contractTotal?: number;
+  paymentHistory?: InvoicePdfPayment[];
 }
 
 const escape = (s: any) =>
@@ -112,11 +122,38 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 
       <!-- TOTALS -->
       <div style="display:flex;justify-content:flex-end;margin-top:16px">
-        <div style="min-width:260px">
+        <div style="min-width:300px">
           <div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:12px;color:#4b5563"><span>Subtotal</span><span>${fmt(data.amount)}</span></div>
+          ${typeof data.contractTotal === 'number' && data.contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:12px;color:#4b5563"><span>Contract Total</span><span>${fmt(data.contractTotal)}</span></div>` : ''}
+          ${typeof data.alreadyPaid === 'number' && data.alreadyPaid > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:12px;color:#047857;font-weight:600"><span>Already Paid</span><span>${fmt(data.alreadyPaid)}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;padding:12px 8px;font-size:14px;font-weight:700;color:#ffffff;background:#0a2540;border-radius:6px;margin-top:8px"><span>TOTAL DUE</span><span>${fmt(data.amount)}</span></div>
         </div>
       </div>
+
+      ${data.paymentHistory && data.paymentHistory.length > 0 ? `
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:8px">Payment History</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:#f9fafb">
+              <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Date</th>
+              <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Method</th>
+              <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Reference</th>
+              <th style="padding:8px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.paymentHistory.map(p => `
+              <tr>
+                <td style="padding:8px;border-bottom:1px solid #f3f4f6">${escape(p.date)}</td>
+                <td style="padding:8px;border-bottom:1px solid #f3f4f6;text-transform:capitalize">${escape((p.method || '').replace(/_/g, ' '))}</td>
+                <td style="padding:8px;border-bottom:1px solid #f3f4f6;color:#6b7280">${escape(p.reference || '')}</td>
+                <td style="padding:8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#047857">${fmt(p.amount)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
 
       ${data.notes ? `
       <div style="margin-top:24px;padding:14px 16px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:4px">
