@@ -198,65 +198,36 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     const items: (InvoiceLineItem & { selected: boolean })[] = [];
     const lineItems = estimate.line_items as any;
 
+    const pushItem = (raw: any, fallbackDesc: string) => {
+      items.push({
+        selected: true,
+        description: raw.item_name || raw.description || raw.name || fallbackDesc,
+        qty: Number(raw.qty || raw.quantity) || 1,
+        unit: raw.unit || 'ea',
+        unit_cost: Number(raw.unit_cost || raw.price || raw.rate) || 0,
+        line_total:
+          Number(raw.line_total || raw.total || raw.amount) ||
+          (Number(raw.qty || raw.quantity || 1) * Number(raw.unit_cost || raw.price || raw.rate || 0)),
+        trade_type: raw.trade_type || undefined,
+        trade_label: raw.trade_label || undefined,
+      });
+    };
+
     if (source === 'enhanced') {
-      // enhanced_estimates: { materials: [...], labor: [...] }
-      if (Array.isArray(lineItems.materials)) {
-        lineItems.materials.forEach((mat: any) => {
-          items.push({
-            selected: true,
-            description: mat.item_name || mat.description || 'Material',
-            qty: Number(mat.qty) || 1,
-            unit: mat.unit || 'ea',
-            unit_cost: Number(mat.unit_cost) || 0,
-            line_total: Number(mat.line_total) || 0,
-          });
-        });
-      }
-      if (Array.isArray(lineItems.labor)) {
-        lineItems.labor.forEach((lab: any) => {
-          items.push({
-            selected: true,
-            description: lab.item_name || lab.description || 'Labor',
-            qty: Number(lab.qty) || 1,
-            unit: lab.unit || 'ea',
-            unit_cost: Number(lab.unit_cost) || 0,
-            line_total: Number(lab.line_total) || 0,
-          });
-        });
-      }
+      if (Array.isArray(lineItems.materials)) lineItems.materials.forEach((m: any) => pushItem(m, 'Material'));
+      if (Array.isArray(lineItems.labor)) lineItems.labor.forEach((l: any) => pushItem(l, 'Labor'));
     } else {
-      // legacy estimates: could be array of items or { materials, labor }
       if (Array.isArray(lineItems)) {
-        lineItems.forEach((item: any) => {
-          items.push({
-            selected: true,
-            description: item.item_name || item.description || item.name || 'Item',
-            qty: Number(item.qty || item.quantity) || 1,
-            unit: item.unit || 'ea',
-            unit_cost: Number(item.unit_cost || item.price || item.rate) || 0,
-            line_total: Number(item.line_total || item.total || item.amount) || (Number(item.qty || item.quantity || 1) * Number(item.unit_cost || item.price || item.rate || 0)),
-          });
-        });
+        lineItems.forEach((it: any) => pushItem(it, 'Item'));
       } else if (typeof lineItems === 'object') {
-        // Same nested format as enhanced
-        ['materials', 'labor', 'items'].forEach(key => {
-          if (Array.isArray(lineItems[key])) {
-            lineItems[key].forEach((item: any) => {
-              items.push({
-                selected: true,
-                description: item.item_name || item.description || item.name || key,
-                qty: Number(item.qty || item.quantity) || 1,
-                unit: item.unit || 'ea',
-                unit_cost: Number(item.unit_cost || item.price || item.rate) || 0,
-                line_total: Number(item.line_total || item.total || item.amount) || (Number(item.qty || item.quantity || 1) * Number(item.unit_cost || item.price || item.rate || 0)),
-              });
-            });
-          }
+        ['materials', 'labor', 'items'].forEach((key) => {
+          if (Array.isArray(lineItems[key])) lineItems[key].forEach((it: any) => pushItem(it, key));
         });
       }
     }
     return items;
   };
+
 
   // (Auto-populate effect moved below `payments`/`invoices` declarations.)
 
