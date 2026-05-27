@@ -649,7 +649,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       setEstimateToDelete(estimate);
-                      if (estimates && estimates.length === 1) {
+                      if (displayedEstimates.length === 1) {
                         setShowCannotDeleteDialog(true);
                       } else {
                         setDeleteDialogOpen(true);
