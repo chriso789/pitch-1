@@ -68,6 +68,7 @@ Deno.test("B — no metadata bounds → derived from center+mpp OR dsm_bounds_mi
     dsm_loaded: true,
     effectiveDSM: { width: 998, height: 998, bounds: null, resolution: 0.1 },
     confirmedCenterLatLng: FONSICA,
+    allow_derived_bounds: true,
   });
   assert(derived.dsm_tile_bounds_lat_lng, "bounds should be derived");
   assertEquals(derived.dsm_bounds_source, "derived_from_confirmed_center_and_mpp");
