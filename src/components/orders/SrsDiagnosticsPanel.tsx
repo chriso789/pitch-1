@@ -45,10 +45,13 @@ interface SrsAttempt {
   job?: JobInfo;
 }
 
-function extractError(resp: any, history: StatusEvent[]): string | null {
-  // Prefer the most recent failure/rejection event from status history —
-  // the original submit response often says "Order Queued" even when the
-  // order was later dropped/rejected by SRS.
+function extractError(resp: any, history: StatusEvent[], currentStatus: string): string | null {
+  // Only surface a rejection reason when the CURRENT order status is actually
+  // a failed/rejected state. A later webhook (e.g. SRS "OU" Order Update) may
+  // promote the row back to `submitted`/`accepted`, in which case any earlier
+  // "404 after queue" history message is stale and must not be shown.
+  if (!/reject|fail|cancel|error/i.test(currentStatus)) return null;
+
   const errEvt = [...history]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .find(h =>
