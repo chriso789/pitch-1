@@ -6960,19 +6960,47 @@ async function processJob(input: any) {
               lng: Number((input as any).confirmed_roof_center_lng),
             }
             : { lat: coords.lat, lng: coords.lng };
-        const _frameMismatchEarly: string | null =
-          (dsmCoordinateMatchDebug as any)?.frame_mismatch ??
-            (dsmCoordinateMatchDebug as any)?.match_status ??
-            (Boolean((dsmCoordinateMatchDebug as any)?.is_valid) ? "ok" : null);
-        const _targetOverlapEarly: number | null =
-          (perimeterTopologySnapshot as any)?.target_mask_overlap_with_perimeter ??
-            (targetMaskIsolation as any)?.target_mask_overlap_with_perimeter ??
-            null;
-        const _selectedPerimeterPresentEarly = Boolean(
-          (perimeterTopologySnapshot as any)?.perimeter_ring_px?.length ||
-            (targetMaskIsolation as any)?.target_mask_contour?.length ||
-            (Array.isArray(footprint) && footprint.length >= 3),
+        // Resolve frame_mismatch from the same overlay-transform / registration
+        // sources the UI trusts, with raster-evidence fallback. The legacy
+        // dsmCoordinateMatchDebug is consulted last so Fonsica-shaped runs
+        // (where overlay_transform.frame_mismatch === "ok" but the legacy debug
+        // is null) no longer skip with `frame_mismatch_not_ok`.
+        const _geometryViewForFrame: any = {
+          overlay_transform:
+            (hoistedTransformPackage as any)?.overlay_transform ?? null,
+          registration: {
+            overlay_transform:
+              (hoistedTransformPackage as any)?.overlay_transform ?? null,
+            transform_package: hoistedTransformPackage ?? null,
+            raster_bounds_contain_confirmed_center:
+              (hoistedTransformPackage as any)
+                ?.raster_bounds_contain_confirmed_center ?? null,
+            confirmed_roof_center_px: hoistedConfirmedRoofCenterPx ?? null,
+          },
+          source_raster_px: { width: raster.width, height: raster.height },
+          raster_size_px: { width: raster.width, height: raster.height },
+          confirmed_roof_center_px: hoistedConfirmedRoofCenterPx ?? null,
+          raster_bounds_contain_confirmed_center:
+            (hoistedTransformPackage as any)
+              ?.raster_bounds_contain_confirmed_center ?? null,
+          selected_candidate_polygon_px:
+            (perimeterTopologySnapshot as any)?.perimeter_ring_px ??
+              (targetMaskIsolation as any)?.target_mask_contour ?? null,
+          target_mask_overlap_with_perimeter:
+            (perimeterTopologySnapshot as any)
+              ?.target_mask_overlap_with_perimeter ??
+              (targetMaskIsolation as any)
+                ?.target_mask_overlap_with_perimeter ?? null,
+        };
+        const _frameResolution = resolveFrameMismatch(
+          _geometryViewForFrame,
+          dsmCoordinateMatchDebug,
         );
+        const _frameMismatchEarly: string | null = _frameResolution
+            .frame_mismatch_ok
+          ? "ok"
+          : _frameResolution.frame_mismatch_raw ?? "mismatch";
+
 
         earlyDerivedRegistration = runEarlyDerivedDsmRegistration({
           dsm_loaded: !!_dsmForEarly,
