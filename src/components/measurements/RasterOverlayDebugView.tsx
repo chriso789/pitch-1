@@ -9,6 +9,7 @@ import {
   type OverlayBBox,
   type OverlayCalibration,
 } from '@/lib/measurements/overlayTransform';
+import { roofFocusViewport } from '@/lib/measurements/roofFocusViewport';
 
 /**
  * Dev-only debug view that overlays measured planes & edges on top of the
