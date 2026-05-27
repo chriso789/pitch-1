@@ -10,18 +10,27 @@ const supabase = createClient(
 // Endpoint is intentionally open — validation is structural (eventType/eventId).
 
 // Allowed values per srs_orders.status CHECK constraint:
-//   draft | submitted | confirmed | processing | shipped | delivered | cancelled | error
+//   draft | queued | submitted | accepted | confirmed | processing | shipped |
+//   delivered | cancelled | error | failed | rejected_by_srs
 // Anything outside this list silently fails the UPDATE, so map every RoofHub
 // event code to one of the allowed buckets and persist the granular SRS code
 // in srs_order_status_history.status_message + raw_webhook_data.
 function mapStatus(eventType: string, eventStatus: string): string {
   const s = (eventStatus || '').toLowerCase();
   switch (eventType) {
+    case 'OA': {
+      // Order Acknowledged
+      if (s.includes('reject') || s.includes('declin')) return 'rejected_by_srs';
+      return 'accepted';
+    }
     case 'OU': {
       if (s.includes('cancel')) return 'cancelled';
+      if (s.includes('reject') || s.includes('declin')) return 'rejected_by_srs';
       if (s.includes('confirm')) return 'confirmed';
       if (s.includes('ship')) return 'shipped';
       if (s.includes('deliver')) return 'delivered';
+      if (s.includes('acknowledg') || s.includes('accept')) return 'accepted';
+      if (s.includes('process')) return 'processing';
       return 'submitted';
     }
     case 'OC': return 'cancelled';
