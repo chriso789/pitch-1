@@ -7045,6 +7045,36 @@ async function processJob(input: any) {
           mask_loaded: !!roofMaskForContour,
         });
 
+        // Persist gate-input diagnostics so downstream reports/UI can see
+        // exactly what `frame_mismatch` source the early gate consumed.
+        try {
+          const _gateDiag = {
+            frame_mismatch_ok: _frameResolution.frame_mismatch_ok,
+            frame_mismatch_source: _frameResolution.frame_mismatch_source,
+            frame_mismatch_raw: _frameResolution.frame_mismatch_raw,
+            raster_registration_evidence:
+              _frameResolution.raster_registration_evidence,
+            target_mask_overlap_with_perimeter: _targetOverlapEarly,
+            selected_perimeter_present: _selectedPerimeterPresentEarly,
+            dsm_loaded: !!_dsmForEarly,
+            dsm_size_px: _dsmSizeForEarly,
+            raster_bounds_present: !!(
+              (hoistedTransformPackage as any)?.raster_bounds_lat_lng ??
+                hoistedRasterBoundsLatLng
+            ),
+            geo_to_raster_transform_present: !!(
+              (hoistedTransformPackage as any)?.geo_to_raster_transform ??
+                hoistedGeoToRasterTransform
+            ),
+          };
+          (geometryReportJson as any).derived_bounds_gate_inputs = _gateDiag;
+          (geometryReportJson as any).registration =
+            (geometryReportJson as any).registration ?? {};
+          (geometryReportJson as any).registration.derived_bounds_gate_inputs =
+            _gateDiag;
+        } catch { /* diagnostics best-effort */ }
+
+
         if (earlyDerivedRegistration && earlyDerivedRegistration.success) {
           // Overwrite hoisted vars so every downstream preempt branch +
           // resolveRegistrationForPreempt observes the derived registration.
