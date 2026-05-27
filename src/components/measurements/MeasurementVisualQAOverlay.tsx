@@ -778,6 +778,25 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           {/* Canvas */}
           <div ref={wrapRef} className="relative w-full rounded-md overflow-hidden border bg-slate-900">
+            {/* Viewport mode toggle (Full Tile / Roof Focus) */}
+            {focusBbox && (
+              <div className="absolute top-2 right-2 z-10 flex rounded border bg-background/90 backdrop-blur text-[11px] overflow-hidden shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setViewportMode("full_tile")}
+                  className={`px-2 py-1 ${viewportMode === "full_tile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Full Tile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewportMode("roof_focus")}
+                  className={`px-2 py-1 ${viewportMode === "roof_focus" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Roof Focus
+                </button>
+              </div>
+            )}
             <canvas
               ref={canvasRef}
               style={{ width: '100%', height: displayHeight ? `${displayHeight}px` : 'auto', display: 'block', touchAction: 'none', cursor: editMode ? 'crosshair' : 'default' }}
@@ -794,6 +813,73 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
 
           {/* Side panel */}
           <div className="space-y-4">
+            {/* DSM Status card — read-only summary of DSM registration state */}
+            {(() => {
+              const dsmSize = (grj as any).dsm_size ?? (grj as any).dsm?.size ?? null;
+              const dsmW = dsmSize?.width ?? dsmSize?.w ?? null;
+              const dsmH = dsmSize?.height ?? dsmSize?.h ?? null;
+              const dsmBoundsFailure =
+                (grj as any).dsm_bounds_failure ?? (grj as any).dsm?.bounds_failure ?? null;
+              const dsmTransformSource =
+                (grj as any).dsm_to_raster_transform_source ?? (grj as any).dsm?.to_raster_transform_source ?? null;
+              const dsmOverlayVisible = dsmAllowed && dsmEdges.length > 0;
+              const dsmLoaded = dsmW != null || dsmH != null;
+              const dsmRegistered = (grj as any).dsm_pixel_transform_valid === true;
+              const policy = (grj as any).dsm_transform_policy ?? "dsm-registration-transform-v1";
+              const statusLabel = !dsmLoaded
+                ? "Missing"
+                : dsmRegistered ? "Registered" : "Loaded, not registered";
+              return (
+                <div className="rounded-md border bg-muted/30 p-2.5">
+                  <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">DSM Status</div>
+                  <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] font-mono">
+                    <div className="text-muted-foreground">Status</div>
+                    <div className="text-right">{statusLabel}</div>
+                    <div className="text-muted-foreground">Size</div>
+                    <div className="text-right">{dsmLoaded ? `${dsmW ?? '?'}×${dsmH ?? '?'}` : '—'}</div>
+                    <div className="text-muted-foreground">Bounds</div>
+                    <div className="text-right break-all">{dsmBoundsFailure ?? 'ok'}</div>
+                    <div className="text-muted-foreground">Transform</div>
+                    <div className="text-right break-all">{dsmTransformSource ?? 'unavailable'}</div>
+                    <div className="text-muted-foreground">Overlay</div>
+                    <div className="text-right">{dsmOverlayVisible ? 'shown' : 'suppressed'}</div>
+                    <div className="text-muted-foreground">Policy</div>
+                    <div className="text-right break-all">{policy}</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Layer status summary — separates the three semantic layers */}
+            {(() => {
+              const aerialCandVisible =
+                !!aerialCandidateGraph || rawRing.length >= 3;
+              const dsmRegistered = (grj as any).dsm_pixel_transform_valid === true;
+              const dsmTopologyStatus = !dsmRegistered ? 'unavailable' : (dsmEdges.length > 0 ? 'visible' : 'none');
+              const reportableCount = Number(
+                (grj as any).reportable_roof_lines_count ??
+                (grj as any).reportable_roof_lines?.length ??
+                (Array.isArray((grj as any).roof_lines) ? (grj as any).roof_lines.length : 0)
+              );
+              const reportableLabel = reportableCount > 0 ? `${reportableCount} lines` : 'none';
+              const row = (label: string, status: string, tone: string) => (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span>{label}</span>
+                  <span className={`font-mono ${tone}`}>{status}</span>
+                </div>
+              );
+              return (
+                <div className="rounded-md border bg-muted/30 p-2.5">
+                  <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Layer Status</div>
+                  <div className="space-y-1">
+                    {row('Aerial perimeter candidate', aerialCandVisible ? 'visible' : 'none', aerialCandVisible ? 'text-emerald-600' : 'text-muted-foreground')}
+                    {row('DSM-derived topology', dsmTopologyStatus, dsmTopologyStatus === 'visible' ? 'text-emerald-600' : 'text-muted-foreground')}
+                    {row('Reportable roof lines', reportableLabel, reportableCount > 0 ? 'text-emerald-600' : 'text-muted-foreground')}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div>
               <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Layers</div>
               <div className="space-y-1.5">
@@ -828,6 +914,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 })}
               </div>
             </div>
+
 
             <div>
               <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Metrics</div>
