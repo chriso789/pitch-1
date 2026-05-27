@@ -454,8 +454,8 @@ export function EstimateTemplateList() {
                           <TableCell className="font-medium">{template.name}</TableCell>
                           {trade.value === 'roofing' && (
                             <TableCell>
-                              <Badge variant={getTypeBadgeVariant(template.roof_type)} className="capitalize">
-                                {template.roof_type || 'Unknown'}
+                              <Badge variant={getTypeBadgeVariant(template.roof_type)}>
+                                {getMaterialTypeLabel(template.roof_type)}
                               </Badge>
                             </TableCell>
                           )}
