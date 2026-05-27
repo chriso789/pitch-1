@@ -42,7 +42,7 @@ interface Props {
   embedded?: boolean;
 }
 
-type StageStatus = "pass" | "fail" | "warn" | "skip" | "unknown";
+type StageStatus = "pass" | "partial" | "fail" | "warn" | "skip" | "unknown";
 
 interface StageDef {
   id: string;
@@ -55,6 +55,7 @@ interface StageDef {
 
 const statusColor: Record<StageStatus, string> = {
   pass: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+  partial: "bg-amber-500/15 text-amber-600 border-amber-500/30",
   fail: "bg-destructive/15 text-destructive border-destructive/40",
   warn: "bg-amber-500/15 text-amber-600 border-amber-500/30",
   skip: "bg-muted text-muted-foreground border-border",
@@ -63,6 +64,7 @@ const statusColor: Record<StageStatus, string> = {
 
 const statusIcon: Record<StageStatus, React.ReactNode> = {
   pass: <CheckCircle2 className="h-3.5 w-3.5" />,
+  partial: <CircleAlert className="h-3.5 w-3.5" />,
   fail: <XCircle className="h-3.5 w-3.5" />,
   warn: <CircleAlert className="h-3.5 w-3.5" />,
   skip: <Activity className="h-3.5 w-3.5" />,
@@ -78,6 +80,32 @@ function pickStatus(
   if (ok === false) return "fail";
   return "warn";
 }
+
+// Worst-status roll-up for stage groups
+const STATUS_RANK: Record<StageStatus, number> = {
+  pass: 0,
+  skip: 1,
+  unknown: 2,
+  warn: 3,
+  partial: 4,
+  fail: 5,
+};
+
+function rollupStatus(statuses: StageStatus[]): StageStatus {
+  if (statuses.length === 0) return "unknown";
+  return statuses.reduce<StageStatus>(
+    (acc, s) => (STATUS_RANK[s] > STATUS_RANK[acc] ? s : acc),
+    "pass",
+  );
+}
+
+// 4-phase visual grouping for the stage timeline (same 13 stages, just grouped)
+const STAGE_GROUPS: Array<{ key: string; label: string; stageIds: string[] }> = [
+  { key: "A", label: "A. Acquisition / Registration", stageIds: ["target", "acquisition", "raster", "dsm_transform"] },
+  { key: "B", label: "B. Geometry Extraction", stageIds: ["perimeter_candidates", "layer1", "phase0", "target_mask"] },
+  { key: "C", label: "C. Topology Validation", stageIds: ["solar", "pitch", "topology", "final"] },
+  { key: "D", label: "D. Customer Promotion", stageIds: ["gate"] },
+];
 
 function buildStages(m: any): StageDef[] {
   const grj = m?.geometry_report_json || {};
@@ -151,8 +179,36 @@ function buildStages(m: any): StageDef[] {
   const finalOk = hasFinalGeometry &&
     (!!grj?.final_diagram_url || Array.isArray(grj?.roof_lines));
 
+  // Aerial candidate graph & perimeter topology — evidence the geometry layer
+  // actually produced something even when downstream promotion failed.
+  const aerialGraph = grj?.aerial_candidate_roof_graph || {};
+  const aerialEdgeCount = Array.isArray(aerialGraph?.edges) ? aerialGraph.edges.length : 0;
+  const perimeterTopologyEdges = Array.isArray(grj?.perimeter_topology?.edges)
+    ? grj.perimeter_topology.edges.length
+    : 0;
+  const hasDebugGeometry = aerialEdgeCount > 0 || perimeterTopologyEdges > 0 ||
+    !!grj?.aerial_candidate_roof_graph?.perimeter_ring_px;
+
+  // Perimeter overlap / IoU drive a partial_pass for Layer-1 even when the
+  // ring was never explicitly "accepted" (e.g. CPU-preempted before Phase 0).
+  const layer1Overlap = Number(
+    layer1?.target_mask_overlap_with_perimeter ??
+      grj?.target_mask_isolation?.target_mask_overlap_with_perimeter ??
+      NaN,
+  );
+  const layer1Iou = Number(
+    layer1?.perimeter_iou ?? grj?.target_mask_isolation?.perimeter_iou ?? NaN,
+  );
+  const ringPresent = !!grj?.true_outer_roof_perimeter_geo ||
+    !!grj?.true_outer_roof_perimeter_px ||
+    !!grj?.aerial_candidate_roof_graph?.perimeter_ring_px ||
+    !!grj?.perimeter_topology?.perimeter_ring_px;
+
   const customerReady = m?.customer_report_ready === true ||
     customerGate?.customer_report_ready === true;
+
+  // Runtime-preempted runs should not light red across the board.
+  const cpuPreempted = resolvedState.final_state_source === "runtime_cpu_budget_guard";
 
   return [
     {
@@ -240,12 +296,24 @@ function buildStages(m: any): StageDef[] {
     {
       id: "perimeter_candidates",
       label: "Perimeter candidates",
-      status: pickStatus(
-        perimeterCandidatesPresent,
-        perimeterCandidatesPresent,
-      ),
+      status: (() => {
+        const present = perimeterCandidatesPresent || aerialEdgeCount > 0 || perimeterTopologyEdges > 0;
+        if (!present) return "unknown";
+        const edgeTotal = aerialEdgeCount + perimeterTopologyEdges;
+        const ringClosed = ringPresent ||
+          layer1?.perimeter_status === "accepted" ||
+          layer1?.perimeter_status === "partial";
+        if (edgeTotal >= 4 && ringClosed) return "pass";
+        if (edgeTotal > 0) return "partial";
+        return "unknown";
+      })(),
+      reason: aerialEdgeCount > 0
+        ? `${aerialEdgeCount} aerial candidate edges detected${perimeterTopologyEdges > 0 ? ` (+${perimeterTopologyEdges} topology edges)` : ""}.`
+        : undefined,
       payload: {
         candidates: layer1?.candidates || grj?.perimeter_candidates || [],
+        aerial_candidate_edges: aerialEdgeCount,
+        perimeter_topology_edges: perimeterTopologyEdges,
         forbidden: [
           "solar_union",
           "solar_hull",
@@ -258,9 +326,25 @@ function buildStages(m: any): StageDef[] {
     {
       id: "layer1",
       label: "Layer-1 true perimeter",
-      status: pickStatus(layer1Ok, true),
+      status: (() => {
+        if (layer1Ok && Number.isFinite(layer1Overlap) && layer1Overlap >= 0.90 &&
+            Number.isFinite(layer1Iou) && layer1Iou >= 0.80) {
+          // Even with strong metrics, hold at partial_pass until topology has
+          // promoted the ring — operators should not read this as fully validated.
+          return customerReady ? "pass" : "partial";
+        }
+        if (layer1Ok || ringPresent ||
+            (Number.isFinite(layer1Overlap) && layer1Overlap >= 0.80)) {
+          return "partial";
+        }
+        return "fail";
+      })(),
       source: layer1?.selected_source,
-      reason: layer1Ok ? undefined : layer1?.rejection_reason,
+      reason: !layer1Ok && !ringPresent
+        ? layer1?.rejection_reason
+        : (!customerReady
+          ? "Perimeter is structurally strong but has not been promoted into validated topology."
+          : undefined),
       payload: {
         true_outer_roof_perimeter_px: grj?.true_outer_roof_perimeter_px,
         true_outer_roof_perimeter_geo: grj?.true_outer_roof_perimeter_geo,
@@ -269,12 +353,16 @@ function buildStages(m: any): StageDef[] {
         roof_corners: layer1?.roof_corners,
         perimeter_confidence: layer1?.perimeter_confidence,
         perimeter_status: layer1?.perimeter_status,
+        target_mask_overlap_with_perimeter: layer1Overlap,
+        perimeter_iou: layer1Iou,
       },
     },
     {
       id: "phase0",
       label: "Perimeter Phase 0 gate",
-      status: phase0Ran ? (phase0Ok ? "pass" : "fail") : "fail",
+      status: phase0Ran
+        ? (phase0Ok ? "pass" : "fail")
+        : (resolvedState.phase0_incomplete_reason === "runtime_preemption" ? "partial" : "fail"),
       reason: phase0Ran
         ? phase0?.failure_reason
         : resolvedState.phase0_incomplete_reason === "runtime_preemption"
@@ -318,8 +406,12 @@ function buildStages(m: any): StageDef[] {
     {
       id: "topology",
       label: "Phase 3A.5 / Perimeter topology",
-      status: pickStatus(topoOk, Object.keys(topo).length > 0 || topoOk),
-      reason: resolvedState.final_state_source === "runtime_cpu_budget_guard"
+      status: topoOk
+        ? "pass"
+        : cpuPreempted
+        ? "partial"
+        : pickStatus(topoOk, Object.keys(topo).length > 0),
+      reason: cpuPreempted
         ? "Phase 3A.5 stopped: CPU budget exceeded before topology completed."
         : undefined,
       payload: {
@@ -337,14 +429,19 @@ function buildStages(m: any): StageDef[] {
       label: "Final diagram",
       status: hasFinalGeometry
         ? pickStatus(finalOk, true)
-        : "fail",
+        : (hasDebugGeometry ? "partial" : "fail"),
       reason: hasFinalGeometry
         ? undefined
-        : "Final diagram blocked: zero facets and zero roof_lines persisted.",
+        : (hasDebugGeometry
+          ? "Final diagram blocked: topology validation incomplete before runtime preemption. Candidate perimeter geometry exists but was not promoted into validated roof topology."
+          : "Final diagram blocked: zero facets and zero roof_lines persisted."),
       payload: {
         final_diagram_url: grj?.final_diagram_url,
         roof_lines_count: roofLinesCount,
         facet_count: facetCount,
+        aerial_candidate_edges: aerialEdgeCount,
+        perimeter_topology_edges: perimeterTopologyEdges,
+        debug_geometry_only: hasDebugGeometry && !hasFinalGeometry,
         totals: {
           eave: m?.total_eave_length,
           rake: m?.total_rake_length,
@@ -547,47 +644,81 @@ function ViewerBody({
       {/* LEFT: stage timeline */}
       <div className="border-r overflow-y-auto">
         <ScrollArea className="h-full">
-          <div className="p-3 space-y-1">
-            {stages.map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => setActiveStage(s.id)}
-                className={cn(
-                  "w-full text-left px-3 py-2 rounded-md border text-sm transition-colors",
-                  "flex items-start gap-2",
-                  activeStage === s.id
-                    ? "bg-primary/10 border-primary/40"
-                    : "border-transparent hover:bg-muted",
-                )}
-              >
-                <span className="text-xs text-muted-foreground w-5 mt-0.5">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{s.label}</div>
-                  {s.source && (
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      src: {s.source}
-                    </div>
-                  )}
-                  {s.reason && (
-                    <div className="text-[11px] text-destructive truncate">
-                      {s.reason}
-                    </div>
-                  )}
+          <div className="p-3 space-y-4">
+            {STAGE_GROUPS.map((group) => {
+              const groupStages = group.stageIds
+                .map((id) => stages.find((s) => s.id === id))
+                .filter((s): s is StageDef => !!s);
+              if (groupStages.length === 0) return null;
+              const rollup = rollupStatus(groupStages.map((s) => s.status));
+              return (
+                <div key={group.key} className="space-y-1">
+                  <div className="flex items-center justify-between px-1 pb-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {group.label}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] px-1.5 py-0 gap-1",
+                        statusColor[rollup],
+                      )}
+                    >
+                      {statusIcon[rollup]}
+                      {rollup}
+                    </Badge>
+                  </div>
+                  {groupStages.map((s) => {
+                    const i = stages.findIndex((x) => x.id === s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setActiveStage(s.id)}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded-md border text-sm transition-colors",
+                          "flex items-start gap-2",
+                          activeStage === s.id
+                            ? "bg-primary/10 border-primary/40"
+                            : "border-transparent hover:bg-muted",
+                        )}
+                      >
+                        <span className="text-xs text-muted-foreground w-5 mt-0.5">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{s.label}</div>
+                          {s.source && (
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              src: {s.source}
+                            </div>
+                          )}
+                          {s.reason && (
+                            <div className={cn(
+                              "text-[11px] truncate",
+                              s.status === "partial" || s.status === "warn"
+                                ? "text-amber-600"
+                                : "text-destructive",
+                            )}>
+                              {s.reason}
+                            </div>
+                          )}
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] px-1.5 py-0 gap-1",
+                            statusColor[s.status],
+                          )}
+                        >
+                          {statusIcon[s.status]}
+                          {s.status}
+                        </Badge>
+                      </button>
+                    );
+                  })}
                 </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px] px-1.5 py-0 gap-1",
-                    statusColor[s.status],
-                  )}
-                >
-                  {statusIcon[s.status]}
-                  {s.status}
-                </Badge>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       </div>
@@ -595,7 +726,7 @@ function ViewerBody({
       {/* CENTER: canvas */}
       <div className="flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm flex-wrap">
             <Eye className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">{stage?.label}</span>
             <Badge
@@ -608,6 +739,14 @@ function ViewerBody({
               {statusIcon[stage?.status || "unknown"]}
               {stage?.status}
             </Badge>
+            {stage?.payload?.debug_geometry_only === true && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 gap-1 bg-amber-500/15 text-amber-700 border-amber-500/40 uppercase tracking-wide"
+              >
+                Debug geometry only — not customer validated
+              </Badge>
+            )}
           </div>
           <div className="text-xs text-muted-foreground">
             Run: {measurement?.id?.slice(0, 8)} · engine{" "}

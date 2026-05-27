@@ -517,21 +517,34 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
           "—",
       ),
     },
-    // ── NEW: DSM registration diagnostic projection (read-only pass-through) ──
-    {
-      label: "DSM Size",
-      value: JSON.stringify(registrationGate.dsm?.dsm_size_px ?? null),
-    },
+    // ── DSM registration diagnostic projection (read-only pass-through) ──
+    // Fallback chain: registration.dsm.* → registration flat → geometry.dsm_split_status.* →
+    // geometry.registration_diagnostics.* → geometry.hard_fail_reason / failure_stage.
+    (() => {
+      const dsmSplit: any = (grj as any).dsm_split_status || {};
+      const regDiag: any = (grj as any).registration_diagnostics || {};
+      const dsmSize =
+        registrationGate.dsm?.dsm_size_px ??
+        (registrationGate as any).dsm_size_px ??
+        dsmSplit.dsm_size_px ??
+        null;
+      return { label: "DSM Size", value: dsmSize ? JSON.stringify(dsmSize) : "—" };
+    })(),
     {
       label: "DSM Bounds Source",
       value: String(
         registrationGate.dsm?.dsm_tile_bounds_source ??
-          registrationGate.dsm?.dsm_bounds_source ?? "—",
+          registrationGate.dsm?.dsm_bounds_source ??
+          (grj as any).dsm_split_status?.dsm_tile_bounds_source ??
+          (grj as any).dsm_split_status?.dsm_bounds_source ?? "—",
       ),
     },
     {
       label: "DSM Bounds Failure",
-      value: String(registrationGate.dsm?.dsm_tile_bounds_failure_reason ?? "—"),
+      value: String(
+        registrationGate.dsm?.dsm_tile_bounds_failure_reason ??
+          (grj as any).dsm_split_status?.dsm_tile_bounds_failure_reason ?? "—",
+      ),
     },
     {
       label: "DSM Bounds Derived",
@@ -567,25 +580,32 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     },
     {
       label: "DSM Transform Policy",
-      value: String(registrationGate.dsm?.dsm_transform_policy_version ?? "—"),
+      value: String(
+        registrationGate.dsm?.dsm_transform_policy_version ??
+          (grj as any).registration_diagnostics?.dsm_transform_policy_version ?? "—",
+      ),
     },
     {
       label: "DSM Hoist Failure Tokens",
-      value: Array.isArray(registrationGate.dsm?.dsm_hoist_failure_tokens) &&
-          registrationGate.dsm.dsm_hoist_failure_tokens.length > 0
-        ? registrationGate.dsm.dsm_hoist_failure_tokens.join(", ")
-        : "—",
+      value: (() => {
+        const tokens =
+          (registrationGate.dsm?.dsm_hoist_failure_tokens as any[] | undefined) ??
+          ((grj as any).registration_diagnostics?.dsm_hoist_failure_tokens as any[] | undefined);
+        return Array.isArray(tokens) && tokens.length > 0 ? tokens.join(", ") : "—";
+      })(),
     },
     {
       label: "Stage Hard Fail",
       value: String(
-        registrationGate.stage_classifier?.stage_hard_fail_reason ?? "—",
+        registrationGate.stage_classifier?.stage_hard_fail_reason ??
+          (grj as any).hard_fail_reason ?? "—",
       ),
     },
     {
       label: "Stage Failure Stage",
       value: String(
-        registrationGate.stage_classifier?.stage_failure_stage ?? "—",
+        registrationGate.stage_classifier?.stage_failure_stage ??
+          (grj as any).failure_stage ?? "—",
       ),
     },
     { label: "Centroid Offset (px)", value: fmt(grj.centroid_offset_px) },

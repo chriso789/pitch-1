@@ -645,7 +645,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {banner && (
-          <Alert variant="destructive">
+          <Alert variant={banner.variant === "warning" ? "default" : "destructive"}>
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>{banner.title}</AlertTitle>
             <AlertDescription>
@@ -656,6 +656,30 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
             </AlertDescription>
           </Alert>
         )}
+        {/* Perimeter Confidence callout — surfaces the proof that target isolation worked */}
+        {(() => {
+          const layer1: any = (grj as any).layer1_perimeter || {};
+          const tmi: any = (grj as any).target_mask_isolation || {};
+          const overlap = layer1.target_mask_overlap_with_perimeter ??
+            tmi.target_mask_overlap_with_perimeter ?? null;
+          const iou = layer1.perimeter_iou ?? tmi.perimeter_iou ?? null;
+          const conf = layer1.perimeter_confidence ?? null;
+          if (overlap == null && iou == null && conf == null) return null;
+          const pill = (label: string, v: any) => (
+            <div className="flex flex-col px-3 py-1.5 rounded-md border bg-muted/40">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+              <span className="font-mono text-sm">{v == null ? '—' : fmtNum(Number(v), 3)}</span>
+            </div>
+          );
+          return (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground mr-1">Perimeter confidence:</span>
+              {pill('Mask Overlap', overlap)}
+              {pill('IoU', iou)}
+              {pill('Confidence', conf)}
+            </div>
+          );
+        })()}
         {!rasterUrl && (
           <Alert>
             <AlertTriangle className="h-4 w-4" />
