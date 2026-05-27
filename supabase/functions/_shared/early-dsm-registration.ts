@@ -227,7 +227,14 @@ export function runEarlyDerivedDsmRegistration(
       !dsmReg.dsm_tile_bounds_lat_lng ||
       !dsmReg.dsm_size_px
     ) {
-      return skip("derived_bounds_not_produced");
+      const r = skip("derived_bounds_not_produced");
+      (r.fields as any).dsm_bounds_source_actual = dsmReg.dsm_bounds_source;
+      (r.fields as any).dsm_tile_bounds_lat_lng_present =
+        !!dsmReg.dsm_tile_bounds_lat_lng;
+      (r.fields as any).dsm_size_px_present_in_inner = !!dsmReg.dsm_size_px;
+      (r.fields as any).derived_bounds_debug =
+        (dsmReg as any).derived_bounds_debug ?? null;
+      return r;
     }
 
     // ── buildRegistrationTransformPackage with derived bounds ────────
@@ -249,7 +256,17 @@ export function runEarlyDerivedDsmRegistration(
       transformPkg.dsm_pixel_transform_valid !== true ||
       transformPkg.dsm_tile_bounds_contain_confirmed_center !== true
     ) {
-      return skip("derived_rejected_validation_failure");
+      const r = skip("derived_rejected_validation_failure");
+      (r.fields as any).transform_package_valid = !!transformPkg;
+      (r.fields as any).geo_to_dsm_px_success =
+        transformPkg?.geo_to_dsm_px_success ?? false;
+      (r.fields as any).dsm_pixel_transform_valid =
+        transformPkg?.dsm_pixel_transform_valid ?? false;
+      (r.fields as any).dsm_tile_bounds_contain_confirmed_center =
+        transformPkg?.dsm_tile_bounds_contain_confirmed_center ?? false;
+      (r.fields as any).derived_bounds_debug =
+        (dsmReg as any).derived_bounds_debug ?? null;
+      return r;
     }
 
     // ── Roundtrip consistency check (raster → geo → DSM → raster) ────
@@ -267,8 +284,13 @@ export function runEarlyDerivedDsmRegistration(
       roundtrip == null ||
       roundtrip >= DSM_RASTER_ROUNDTRIP_THRESHOLD_PX
     ) {
-      return skip("derived_rejected_consistency_failure");
+      const r = skip("derived_rejected_consistency_failure");
+      (r.fields as any).dsm_raster_roundtrip_error_px = roundtrip ?? null;
+      (r.fields as any).derived_bounds_debug =
+        (dsmReg as any).derived_bounds_debug ?? null;
+      return r;
     }
+
 
     return {
       success: true,
