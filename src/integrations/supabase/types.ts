@@ -44857,6 +44857,8 @@ export type Database = {
           old_status: string | null
           order_id: string
           raw_webhook_data: Json | null
+          srs_event_id: string | null
+          srs_event_type: string | null
           status_message: string | null
         }
         Insert: {
@@ -44866,6 +44868,8 @@ export type Database = {
           old_status?: string | null
           order_id: string
           raw_webhook_data?: Json | null
+          srs_event_id?: string | null
+          srs_event_type?: string | null
           status_message?: string | null
         }
         Update: {
@@ -44875,6 +44879,8 @@ export type Database = {
           old_status?: string | null
           order_id?: string
           raw_webhook_data?: Json | null
+          srs_event_id?: string | null
+          srs_event_type?: string | null
           status_message?: string | null
         }
         Relationships: [
