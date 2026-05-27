@@ -54044,6 +54044,14 @@ export type Database = {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined
       }
+      compute_co_totals_from_line_items: {
+        Args: { p_line_items: Json }
+        Returns: {
+          cost_impact: number
+          labor_total: number
+          material_total: number
+        }[]
+      }
       confirm_demo_slot_by_token: {
         Args: { _slot: string; _token: string }
         Returns: string
