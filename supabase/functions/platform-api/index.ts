@@ -643,4 +643,258 @@ app.on(["GET","POST"], "/coverage-checklist", requireAuth, requireMaster, async 
   return jsonOk(c, { rows, window: "30d" });
 });
 
+// ============================================================
+// /users — master only. Per-user usage list, current month.
+// ============================================================
+app.on(["GET","POST"], "/users", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const month = monthKey();
+  const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
+
+  const { data: rollups } = await svc
+    .from("user_usage_monthly_rollups")
+    .select("*")
+    .eq("month", month)
+    .order("total_estimated_cost", { ascending: false })
+    .limit(limit);
+
+  const userIds = [...new Set((rollups ?? []).map((r: any) => r.user_id).filter(Boolean))];
+  const tenantIds = [...new Set((rollups ?? []).map((r: any) => r.tenant_id).filter(Boolean))];
+
+  const [profilesRes, tenantsRes] = await Promise.all([
+    userIds.length
+      ? svc.from("profiles").select("id,full_name,email").in("id", userIds)
+      : Promise.resolve({ data: [] as any[] } as any),
+    tenantIds.length
+      ? svc.from("tenants").select("id,name").in("id", tenantIds)
+      : Promise.resolve({ data: [] as any[] } as any),
+  ]);
+
+  const profileBy = new Map<string, any>((profilesRes.data ?? []).map((p: any) => [p.id, p]));
+  const tenantBy = new Map<string, string>((tenantsRes.data ?? []).map((t: any) => [t.id, t.name]));
+
+  const rows = (rollups ?? []).map((r: any) => ({
+    user_id: r.user_id,
+    tenant_id: r.tenant_id,
+    full_name: profileBy.get(r.user_id)?.full_name ?? null,
+    email: profileBy.get(r.user_id)?.email ?? null,
+    company_name: r.tenant_id ? tenantBy.get(r.tenant_id) ?? null : null,
+    event_count: r.event_count ?? 0,
+    sms_count: r.sms_count ?? 0,
+    ai_prompt_count: r.ai_prompt_count ?? 0,
+    ai_token_count: r.ai_token_count ?? 0,
+    voice_minutes: r.voice_minutes ?? 0,
+    estimated_cost: Number(r.total_estimated_cost ?? 0),
+    breakdown: r.breakdown ?? {},
+  }));
+
+  return jsonOk(c, { rows, month });
+});
+
+// ============================================================
+// /feature-breakdown — master only. Aggregate by feature_area for month.
+// ============================================================
+app.on(["GET","POST"], "/feature-breakdown", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+
+  const { data: events, error } = await svc
+    .from("usage_events")
+    .select("feature_area, provider, event_type, estimated_cost, quantity, tenant_id, user_id")
+    .gte("created_at", monthStart.toISOString())
+    .limit(50000);
+  if (error) return jsonErr(c, "query_failed", error.message, 500);
+
+  const features = new Map<string, any>();
+  for (const e of events ?? []) {
+    const key = (e as any).feature_area ?? "uncategorized";
+    const f = features.get(key) ?? {
+      feature_area: key, event_count: 0, total_cost: 0, total_quantity: 0,
+      event_types: new Set<string>(), tenants: new Map<string, number>(), users: new Map<string, number>(),
+    };
+    f.event_count += 1;
+    f.total_cost += Number((e as any).estimated_cost || 0);
+    f.total_quantity += Number((e as any).quantity || 0);
+    f.event_types.add((e as any).event_type);
+    if ((e as any).tenant_id) f.tenants.set((e as any).tenant_id, (f.tenants.get((e as any).tenant_id) ?? 0) + Number((e as any).estimated_cost || 0));
+    if ((e as any).user_id) f.users.set((e as any).user_id, (f.users.get((e as any).user_id) ?? 0) + Number((e as any).estimated_cost || 0));
+    features.set(key, f);
+  }
+
+  const rows = [...features.values()].map((f) => {
+    const topTenant = [...f.tenants.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+    const topUser = [...f.users.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+    return {
+      feature_area: f.feature_area,
+      event_count: f.event_count,
+      total_cost: f.total_cost,
+      total_quantity: f.total_quantity,
+      event_types: [...f.event_types],
+      top_tenant_id: topTenant?.[0] ?? null,
+      top_tenant_cost: topTenant?.[1] ?? 0,
+      top_user_id: topUser?.[0] ?? null,
+      top_user_cost: topUser?.[1] ?? 0,
+    };
+  }).sort((a, b) => b.total_cost - a.total_cost);
+
+  return jsonOk(c, { rows });
+});
+
+// ============================================================
+// /provider-breakdown — master only.
+// ============================================================
+app.on(["GET","POST"], "/provider-breakdown", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const { data: events, error } = await svc
+    .from("usage_events")
+    .select("provider, event_type, estimated_cost, billable_amount, quantity")
+    .gte("created_at", monthStart.toISOString())
+    .limit(50000);
+  if (error) return jsonErr(c, "query_failed", error.message, 500);
+
+  const agg = new Map<string, any>();
+  for (const e of events ?? []) {
+    const key = `${(e as any).provider}::${(e as any).event_type}`;
+    const a = agg.get(key) ?? {
+      provider: (e as any).provider, event_type: (e as any).event_type,
+      event_count: 0, total_quantity: 0, total_cost: 0, total_billable: 0,
+    };
+    a.event_count += 1;
+    a.total_quantity += Number((e as any).quantity || 0);
+    a.total_cost += Number((e as any).estimated_cost || 0);
+    a.total_billable += Number((e as any).billable_amount || 0);
+    agg.set(key, a);
+  }
+  const rows = [...agg.values()].sort((a, b) => b.total_cost - a.total_cost);
+  return jsonOk(c, { rows });
+});
+
+// ============================================================
+// /unassigned-events — master only.
+// ============================================================
+app.on(["GET","POST"], "/unassigned-events", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const includeTest = c.req.query("include_test") === "true";
+  const limit = Math.min(Number(c.req.query("limit") ?? 200), 1000);
+
+  const { data: events, error } = await svc.from("usage_events")
+    .select("id, created_at, provider, event_type, feature_area, user_id, edge_function, estimated_cost, metadata, tenant_id, status")
+    .or("tenant_id.is.null,metadata->>needs_company_resolution.eq.true")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return jsonErr(c, "query_failed", error.message, 500);
+
+  const filtered = (events ?? []).filter((e: any) => includeTest || e.metadata?.test !== true);
+  const rows = filtered.map((e: any) => {
+    let suggestion = "manual_review";
+    if (e.metadata?.contact_id) suggestion = "resolve_via_contact";
+    else if (e.metadata?.job_id) suggestion = "resolve_via_job";
+    else if (e.metadata?.report_id) suggestion = "resolve_via_report";
+    else if (e.user_id) suggestion = "resolve_via_user_membership";
+    return { ...e, suggested_resolution: suggestion };
+  });
+  return jsonOk(c, { rows, count: rows.length });
+});
+
+// ============================================================
+// /usage-events/assign-company — master only.
+// ============================================================
+app.post("/usage-events/assign-company", requireAuth, requireMaster, async (c) => {
+  let body: any; try { body = await c.req.json(); } catch { return jsonErr(c, "bad_json", "invalid body", 400); }
+  const { usage_event_id, tenant_id, reason = null } = body ?? {};
+  if (!usage_event_id || !tenant_id) return jsonErr(c, "validation", "usage_event_id and tenant_id required", 400);
+  const svc = serviceClient();
+  const userId = c.get("userId");
+
+  const { data: existing } = await svc.from("usage_events").select("id, tenant_id, metadata").eq("id", usage_event_id).maybeSingle();
+  if (!existing) return jsonErr(c, "not_found", "usage event not found", 404);
+
+  const newMeta = {
+    ...((existing as any).metadata ?? {}),
+    manual_resolution: true,
+    resolved_by: userId,
+    resolved_at: new Date().toISOString(),
+    prior_tenant_id: (existing as any).tenant_id,
+    resolution_reason: reason,
+  };
+  const { data, error } = await svc.from("usage_events")
+    .update({ tenant_id, metadata: newMeta })
+    .eq("id", usage_event_id)
+    .select().single();
+  if (error) return jsonErr(c, "update_failed", error.message, 500);
+
+  try {
+    await svc.from("audit_log").insert({
+      actor_user_id: userId,
+      action: "usage_event.assign_company",
+      target_id: usage_event_id,
+      tenant_id,
+      metadata: { old_tenant_id: (existing as any).tenant_id, new_tenant_id: tenant_id, reason },
+    });
+  } catch { /* table may not exist; non-fatal */ }
+
+  return jsonOk(c, data);
+});
+
+// ============================================================
+// /company-usage-limits/update — master only.
+// ============================================================
+app.post("/company-usage-limits/update", requireAuth, requireMaster, async (c) => {
+  let body: any; try { body = await c.req.json(); } catch { return jsonErr(c, "bad_json", "invalid body", 400); }
+  const { tenant_id } = body ?? {};
+  if (!tenant_id) return jsonErr(c, "validation", "tenant_id required", 400);
+  const svc = serviceClient();
+  const allowed = [
+    "plan_name","monthly_price",
+    "sms_monthly_limit","ai_prompt_monthly_limit","ai_token_monthly_limit",
+    "storage_mb_limit","map_load_monthly_limit","scrape_monthly_limit",
+    "roof_report_monthly_limit","voice_minute_monthly_limit",
+    "hard_stop_enabled","warning_threshold_percent",
+  ];
+  const patch: Record<string, unknown> = { tenant_id };
+  for (const k of allowed) if (body[k] !== undefined) patch[k] = body[k];
+  const { data, error } = await svc.from("company_usage_limits")
+    .upsert(patch, { onConflict: "tenant_id" }).select().single();
+  if (error) return jsonErr(c, "upsert_failed", error.message, 500);
+  return jsonOk(c, data);
+});
+
+// ============================================================
+// /rollup-status — master only. Last recalc freshness signal.
+// ============================================================
+app.on(["GET","POST"], "/rollup-status", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const month = monthKey();
+  const { data } = await svc.from("company_usage_monthly_rollups")
+    .select("updated_at,created_at").eq("month", month)
+    .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  const ts = (data as any)?.updated_at ?? (data as any)?.created_at ?? null;
+  const stale = ts ? (Date.now() - new Date(ts).getTime()) > 24 * 3600 * 1000 : true;
+  return jsonOk(c, { last_recalc_at: ts, stale, month });
+});
+
+// ============================================================
+// /zero-cost-events — master only. Likely-misconfigured costing rows.
+// ============================================================
+app.on(["GET","POST"], "/zero-cost-events", requireAuth, requireMaster, async (c) => {
+  const svc = serviceClient();
+  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const { data } = await svc.from("usage_events")
+    .select("provider,event_type,estimated_cost,id,created_at")
+    .gte("created_at", monthStart.toISOString())
+    .eq("estimated_cost", 0)
+    .limit(2000);
+  const agg = new Map<string, number>();
+  for (const e of data ?? []) {
+    const key = `${(e as any).provider}::${(e as any).event_type}`;
+    agg.set(key, (agg.get(key) ?? 0) + 1);
+  }
+  const rows = [...agg.entries()].map(([k, count]) => {
+    const [provider, event_type] = k.split("::");
+    return { provider, event_type, count };
+  }).sort((a, b) => b.count - a.count);
+  return jsonOk(c, { rows });
+});
+
 serveRouter(app);
