@@ -100,7 +100,7 @@ export default function QuickBooksSettings() {
       const reason = params.get('reason') ?? undefined;
       setReturnStatus({ status: params.get('status') as string, reason });
       if (reason && /reauth/i.test(reason)) setReauthRequired(true);
-        params.get('status') === 'connected' ? 'default' : 'destructive';
+      const tone = params.get('status') === 'connected' ? 'default' : 'destructive';
       toast({
         title: params.get('status') === 'connected' ? 'QuickBooks connected' : 'QuickBooks connection issue',
         description: params.get('reason') ?? params.get('status') ?? '',
