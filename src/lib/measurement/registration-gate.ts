@@ -9,6 +9,10 @@
 // MUST stay in sync with supabase/functions/_shared/registration-gate.ts.
 // ============================================================================
 
+import { resolveFrameMismatch } from "./resolveFrameMismatch";
+
+
+
 export interface RegistrationBlock {
   version?: string;
   user_confirmed_roof_target?: boolean | null;
@@ -38,14 +42,13 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
   if (!grj || typeof grj !== "object") return null;
   const reg = (grj as any).registration ?? (grj as any).registration_gate ?? null;
   const ov = (grj as any).overlay_debug ?? {};
-  const ot = (grj as any).overlay_transform ?? {};
-  // frame_mismatch may live on the registration block, overlay_debug, or
-  // overlay_transform. Treat the string "ok" as the explicit pass marker.
-  const frameMismatch =
-    reg?.frame_mismatch ??
-    ov?.frame_mismatch ??
-    ot?.frame_mismatch ??
-    null;
+  // Use the shared resolver so the banner reads the SAME frame_mismatch source
+  // priority as the backend early-DSM gate. This prevents the UI from showing
+  // "Coordinate frame mismatch" when the overlay transform says frame is OK.
+  const resolved = resolveFrameMismatch(grj);
+  const frameMismatch = resolved.frame_mismatch_source
+    ? (resolved.frame_mismatch_ok ? "ok" : (resolved.frame_mismatch_raw ?? "mismatch"))
+    : (reg?.frame_mismatch ?? ov?.frame_mismatch ?? null);
   if (reg && typeof reg === "object") {
     return { ...(reg as RegistrationBlock), frame_mismatch: frameMismatch ?? (reg as any).frame_mismatch ?? null };
   }
@@ -61,6 +64,7 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
     frame_mismatch: frameMismatch ?? null,
   };
 }
+
 
 
 /**
