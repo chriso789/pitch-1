@@ -42,6 +42,7 @@ import {
   registrationBanner,
   isRegistrationFailure,
 } from '@/lib/measurement/registration-gate';
+import { resolveFrameMismatch } from '@/lib/measurement/resolveFrameMismatch';
 import {
   resolveSourceRasterSize,
   classifyCoordinateSpace,
