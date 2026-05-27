@@ -6251,6 +6251,12 @@ async function processJob(input: any) {
       let hoistedGeoToRasterTransform: any = null;
       let hoistedConfirmedRoofCenterPx: any = null;
       let hoistedTransformPackage: any = null;
+      // ── Early DSM Registration (dsm-registration-derived-bounds-v1) ──
+      // Populated by the `early_dsm_registration_before_topology` callsite
+      // BEFORE Phase 3A.5 / topology can burn the CPU budget. Carried into
+      // every CPU-preempt terminal failure debug bag so the derived DSM
+      // transform is never silently dropped on preemption.
+      let earlyDerivedRegistration: EarlyDsmRegistrationResult | null = null;
 
       // ── EARLY UNCONDITIONAL REGISTRATION HOIST ──
       // Build a DSM-independent registration package from raster acquisition
