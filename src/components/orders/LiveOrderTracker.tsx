@@ -134,44 +134,59 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
       }
 
       // 3) projects lookup (projectId could itself be a projects.id)
+      // NOTE: public.projects has no `contact_id` column — derive contact from pipeline_entry.
       const { data: prjSelf } = await supabase
         .from('projects')
-        .select('id, contact_id, pipeline_entry_id')
+        .select('id, pipeline_entry_id')
         .eq('id', projectId)
         .maybeSingle();
       if (prjSelf) {
         relatedIds.add((prjSelf as any).id);
         if ((prjSelf as any).pipeline_entry_id) relatedIds.add((prjSelf as any).pipeline_entry_id);
-        if (!contactId && (prjSelf as any).contact_id) contactId = (prjSelf as any).contact_id;
       }
 
       // 4) projects linked to this pipeline_entry directly
       const { data: prjByPe } = await supabase
         .from('projects')
-        .select('id, contact_id')
+        .select('id, pipeline_entry_id')
         .eq('pipeline_entry_id', projectId)
         .eq('tenant_id', tenantId as any);
       (prjByPe || []).forEach((r: any) => {
         if (r.id) relatedIds.add(r.id);
-        if (!contactId && r.contact_id) contactId = r.contact_id;
+        if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
       });
 
       // 5) fan out across every sibling for the same contact
       if (contactId) {
-        const [{ data: peList }, { data: jobList }, { data: prjList }] = await Promise.all([
-          (supabase.from('pipeline_entries') as any).select('id').eq('contact_id', contactId).eq('tenant_id', tenantId),
-          (supabase.from('jobs') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
-          (supabase.from('projects') as any).select('id, pipeline_entry_id').eq('contact_id', contactId).eq('tenant_id', tenantId),
-        ]);
-        (peList || []).forEach((r: any) => r.id && relatedIds.add(r.id));
+        // Pipeline entries for this contact
+        const { data: peList } = await (supabase.from('pipeline_entries') as any)
+          .select('id')
+          .eq('contact_id', contactId)
+          .eq('tenant_id', tenantId);
+        const peIds = (peList || []).map((r: any) => r.id).filter(Boolean);
+        peIds.forEach((id: string) => relatedIds.add(id));
+
+        // Jobs for this contact
+        const { data: jobList } = await (supabase.from('jobs') as any)
+          .select('id, pipeline_entry_id')
+          .eq('contact_id', contactId)
+          .eq('tenant_id', tenantId);
         (jobList || []).forEach((r: any) => {
           if (r.id) relatedIds.add(r.id);
           if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
         });
-        (prjList || []).forEach((r: any) => {
-          if (r.id) relatedIds.add(r.id);
-          if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
-        });
+
+        // Projects tied to any sibling pipeline_entry (projects has no contact_id)
+        if (peIds.length) {
+          const { data: prjList } = await (supabase.from('projects') as any)
+            .select('id, pipeline_entry_id')
+            .in('pipeline_entry_id', peIds)
+            .eq('tenant_id', tenantId);
+          (prjList || []).forEach((r: any) => {
+            if (r.id) relatedIds.add(r.id);
+            if (r.pipeline_entry_id) relatedIds.add(r.pipeline_entry_id);
+          });
+        }
       }
     } catch (e) {
       // Non-fatal — fall back to direct projectId match
