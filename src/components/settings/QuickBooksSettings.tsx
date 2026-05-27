@@ -447,19 +447,17 @@ export default function QuickBooksSettings() {
                 </p>
               </div>
               <Button
-                onClick={handleConnect}
-                disabled={connecting}
+                onClick={openConnectDialog}
+                disabled={connecting || !userId || !tenantId}
                 className="w-full"
               >
-                {connecting ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  `Connect to QuickBooks (${selectedMode})`
-                )}
+                Review legal terms & connect to QuickBooks ({selectedMode})
               </Button>
+              <p className="text-xs text-muted-foreground">
+                You will be asked to accept the Privacy Policy, Terms of Service, and
+                QuickBooks Integration Consent before being redirected to Intuit.
+              </p>
+
 
               {/* Diagnostic panel */}
               <div className="rounded-md border border-dashed p-3 text-xs space-y-2 bg-muted/30">
