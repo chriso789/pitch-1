@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { getMaterialTypeLabel } from '@/lib/templates/materialTypeLabels';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -454,8 +455,8 @@ export function EstimateTemplateList() {
                           <TableCell className="font-medium">{template.name}</TableCell>
                           {trade.value === 'roofing' && (
                             <TableCell>
-                              <Badge variant={getTypeBadgeVariant(template.roof_type)} className="capitalize">
-                                {template.roof_type || 'Unknown'}
+                              <Badge variant={getTypeBadgeVariant(template.roof_type)}>
+                                {getMaterialTypeLabel(template.roof_type)}
                               </Badge>
                             </TableCell>
                           )}

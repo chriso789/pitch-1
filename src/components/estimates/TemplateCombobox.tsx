@@ -16,6 +16,10 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
+import {
+  MATERIAL_TYPE_LABELS,
+  MATERIAL_TYPE_GROUP_ORDER,
+} from '@/lib/templates/materialTypeLabels';
 
 export const BLANK_TEMPLATE_ID = '__blank__';
 
@@ -38,16 +42,8 @@ interface TemplateComboboxProps {
   showBlankOption?: boolean;
 }
 
-const ROOF_TYPE_LABELS: Record<string, string> = {
-  shingle: 'Shingle',
-  metal: 'Metal',
-  tile: 'Tile',
-  flat: 'Flat / Low Slope',
-  stone_coated: 'Stone Coated',
-  other: 'Other',
-};
-
-const ROOF_TYPE_ORDER = ['shingle', 'metal', 'tile', 'stone_coated', 'flat', 'other'];
+const ROOF_TYPE_LABELS: Record<string, string> = MATERIAL_TYPE_LABELS;
+const ROOF_TYPE_ORDER = [...MATERIAL_TYPE_GROUP_ORDER];
 
 export const TemplateCombobox: React.FC<TemplateComboboxProps> = ({
   templates,
@@ -80,9 +76,13 @@ export const TemplateCombobox: React.FC<TemplateComboboxProps> = ({
     return groups;
   }, [templates]);
 
-  // Get sorted roof types that have templates
+  // Get sorted material types that have templates (any unknown values appended at end)
   const sortedRoofTypes = useMemo(() => {
-    return ROOF_TYPE_ORDER.filter(type => groupedTemplates[type]?.length > 0);
+    const known = ROOF_TYPE_ORDER.filter(type => groupedTemplates[type]?.length > 0);
+    const extras = Object.keys(groupedTemplates).filter(
+      type => !ROOF_TYPE_ORDER.includes(type) && groupedTemplates[type]?.length > 0,
+    );
+    return [...known, ...extras];
   }, [groupedTemplates]);
 
   // Find selected template
