@@ -427,8 +427,15 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       return { ...item, unit_cost: newUnitCost, line_total: newTotal };
     });
 
-    setInvoiceLineItems(scaled);
-  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice]);
+    // Step 3: Append approved change-order line items at full selling price.
+    // COs are NOT pro-rata scaled — they represent extra-contract work that
+    // the customer owes on top of the base estimate.
+    const coItems = (approvedChangeOrders || []).flatMap((co: any) =>
+      parseChangeOrderLineItems(co)
+    );
+
+    setInvoiceLineItems([...scaled, ...coItems]);
+  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
