@@ -10,6 +10,7 @@ export interface ResolveFrameMismatchResult {
   frame_mismatch_ok: boolean;
   frame_mismatch_source: string | null;
   frame_mismatch_raw: string | null;
+  raster_registration_evidence: Record<string, unknown>;
 }
 
 const PRIORITY_PATHS: ReadonlyArray<string> = [
@@ -48,6 +49,7 @@ export function resolveFrameMismatch(geometry: unknown): ResolveFrameMismatchRes
         frame_mismatch_ok: v.toLowerCase() === "ok",
         frame_mismatch_source: path,
         frame_mismatch_raw: v,
+        raster_registration_evidence: {},
       };
     }
   }
@@ -79,6 +81,16 @@ export function resolveFrameMismatch(geometry: unknown): ResolveFrameMismatchRes
     dig(g, "target_mask_overlap_with_perimeter") ??
     dig(g, "target_mask_isolation.target_mask_overlap_with_perimeter");
 
+  const evidence: Record<string, unknown> = {
+    coordinate_space_candidate: coordSpaceCandidate ?? null,
+    coordinate_space_renderer: coordSpaceRenderer ?? null,
+    source_raster_px_present: !!sourceRasterPx,
+    confirmed_center_px_present: !!confirmedCenterPx,
+    raster_bounds_contain_confirmed_center: rasterContainsCenter ?? null,
+    selected_candidate_polygon_px_present: selectedPolyPxPresent ?? null,
+    target_mask_overlap_with_perimeter: isNum(overlap) ? overlap : null,
+  };
+
   if (
     coordSpaceCandidate === "raster_px" &&
     coordSpaceRenderer === "raster_px" &&
@@ -93,11 +105,13 @@ export function resolveFrameMismatch(geometry: unknown): ResolveFrameMismatchRes
       frame_mismatch_ok: true,
       frame_mismatch_source: "inferred_from_raster_registration_evidence",
       frame_mismatch_raw: null,
+      raster_registration_evidence: evidence,
     };
   }
   return {
     frame_mismatch_ok: false,
     frame_mismatch_source: null,
     frame_mismatch_raw: null,
+    raster_registration_evidence: evidence,
   };
 }
