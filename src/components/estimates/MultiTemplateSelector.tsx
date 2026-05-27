@@ -1435,9 +1435,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   const handleCreateEstimate = async () => {
-    // Allow creation if there's a roofing template OR any trade has items
+    // Allow creation as soon as a template is selected (line items can be added after save)
     const hasAnyTemplate = selectedTemplateId || tradeSections.some(t => !!t.templateId);
-    if (!hasAnyTemplate || lineItems.length === 0) return;
+    if (!hasAnyTemplate) return;
     
     setCreating(true);
     try {
@@ -2741,8 +2741,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         {shouldShowTemplateContent && (
           <Button
             onClick={handleSaveEstimate}
-            disabled={(!selectedTemplateId && !existingEstimateId) || lineItems.length === 0 || saving || creating || savingLineItems}
+            disabled={
+              (!selectedTemplateId && !existingEstimateId && !tradeSections.some(t => !!t.templateId)) ||
+              saving || creating || savingLineItems
+            }
             className="flex-1 min-w-[140px]"
+            title={
+              (!selectedTemplateId && !existingEstimateId && !tradeSections.some(t => !!t.templateId))
+                ? 'Select a template to start the estimate'
+                : undefined
+            }
           >
             {(saving || creating || savingLineItems) ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
