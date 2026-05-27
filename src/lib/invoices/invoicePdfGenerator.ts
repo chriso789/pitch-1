@@ -11,6 +11,13 @@ export interface InvoicePdfLineItem {
   line_total: number;
 }
 
+export interface InvoicePdfPayment {
+  date: string;
+  amount: number;
+  method?: string;
+  reference?: string;
+}
+
 export interface InvoicePdfData {
   invoiceNumber: string;
   invoiceDate: string; // formatted
@@ -25,6 +32,9 @@ export interface InvoicePdfData {
     email?: string | null;
     phone?: string | null;
   };
+  alreadyPaid?: number;
+  contractTotal?: number;
+  paymentHistory?: InvoicePdfPayment[];
 }
 
 const escape = (s: any) =>
