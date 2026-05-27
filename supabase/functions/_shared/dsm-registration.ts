@@ -20,7 +20,13 @@ export type DsmBoundsSource =
   | "google_solar_metadata"
   | "derived_from_confirmed_center_and_mpp"
   | "derived_from_dsm_bbox_and_static_mpp"
+  | "derived_from_raster_bounds"
+  | "derived_rejected_consistency_failure"
   | "missing";
+
+/** Operator-facing policy tag emitted when bounds are derived from raster footprint. */
+export const DSM_DERIVED_TRANSFORM_POLICY_VERSION =
+  "dsm-registration-derived-bounds-v1";
 
 /** Alias used by the dsm-registration-transform-v1 diagnostic surface. */
 export type DsmTileBoundsSource = DsmBoundsSource;
@@ -63,6 +69,14 @@ export interface DsmRegistrationInput {
    * the legacy approximate behavior must explicitly opt in.
    */
   allow_derived_bounds?: boolean;
+  /**
+   * Raster (static map) geographic bounds — when present alongside
+   * raster size and DSM size, enables the `derived_from_raster_bounds`
+   * fallback. Only honored when `allow_derived_bounds === true` and the
+   * Google Solar metadata branch did not produce bounds.
+   */
+  rasterBoundsLatLng?: Bounds | null;
+  rasterSizePx?: SizePx | null;
 }
 
 export interface DsmRegistrationResult {
@@ -204,6 +218,43 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
       dsm_bounds_confidence = 0.4;
     }
   }
+
+  // Final fallback: derive DSM bounds from the raster (static map) footprint.
+  // DSM and Solar static raster share the same Solar tile footprint, so when
+  // metadata is missing but the raster overlay is aligned, the raster bounds
+  // are a controlled-confidence stand-in.
+  if (
+    !dsm_tile_bounds_lat_lng &&
+    allowDerived &&
+    dsm_size_px &&
+    input.rasterBoundsLatLng &&
+    isNum(input.rasterBoundsLatLng.sw?.lat) &&
+    isNum(input.rasterBoundsLatLng.sw?.lng) &&
+    isNum(input.rasterBoundsLatLng.ne?.lat) &&
+    isNum(input.rasterBoundsLatLng.ne?.lng) &&
+    input.rasterSizePx &&
+    isNum(input.rasterSizePx.width) &&
+    isNum(input.rasterSizePx.height) &&
+    input.rasterSizePx.width > 0 &&
+    input.rasterSizePx.height > 0
+  ) {
+    dsm_tile_bounds_lat_lng = {
+      sw: { lat: input.rasterBoundsLatLng.sw.lat, lng: input.rasterBoundsLatLng.sw.lng },
+      ne: { lat: input.rasterBoundsLatLng.ne.lat, lng: input.rasterBoundsLatLng.ne.lng },
+    };
+    dsm_bounds_source = "derived_from_raster_bounds";
+    dsm_bounds_derived = true;
+    dsm_bounds_warning = "derived_bounds_lower_confidence";
+    dsm_bounds_confidence = 0.6;
+    // If DSM mpp was unknown, derive it from raster mpp scaled by size ratio.
+    if (!isNum(dsm_meters_per_pixel ?? NaN) && isNum(input.rasterMetersPerPixel ?? NaN)) {
+      dsm_meters_per_pixel = input.rasterMetersPerPixel! *
+        (input.rasterSizePx.width / dsm_size_px.width);
+      dsm_mpp_source = "derived_from_static_raster";
+    }
+    failure_tokens.push("dsm_tile_bounds_derived_from_raster_bounds");
+  }
+
 
   const decodedButBoundsMissing =
     !!(input.effectiveDSM && (isNum(input.effectiveDSM.width) || isNum(input.effectiveDSM.height))) &&

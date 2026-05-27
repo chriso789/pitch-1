@@ -1454,6 +1454,32 @@ function applyLiveRuntimeHoistToRegistration(
       ? Number(reg.raster_meters_per_pixel)
       : null;
 
+    // ── Derived-bounds gate (dsm-registration-derived-bounds-v1) ──
+    // Only allow raster-bounds-derived DSM bounds when the raster overlay is
+    // aligned AND the perimeter/mask agreement is strong. Otherwise leave the
+    // explicit `dsm_tile_bounds_missing_from_google_solar_metadata` token.
+    const _rasterBoundsForDerivation: any = (reg.raster_bounds_lat_lng as any) ??
+      (g.raster_bounds_lat_lng as any) ?? null;
+    const _rasterSizeForDerivation: any = (reg.raster_size_px as any) ??
+      (g.raster_size_px as any) ?? null;
+    const _frameMismatchOk = (g.frame_mismatch === "ok") ||
+      (g.frame_mismatch_ok === true) ||
+      ((reg.frame_mismatch as any) === "ok");
+    const _targetMaskOverlap = Number(
+      (g.target_mask_overlap_with_perimeter as any) ??
+        (g.target_mask_isolation?.target_mask_overlap_with_perimeter as any) ??
+        (reg.target_mask_overlap_with_perimeter as any) ??
+        NaN,
+    );
+    const _allowDerivedBounds = Boolean(
+      dsmLoaded &&
+        _rasterBoundsForDerivation &&
+        Number.isFinite(rasterMpp ?? NaN) &&
+        _frameMismatchOk &&
+        Number.isFinite(_targetMaskOverlap) &&
+        _targetMaskOverlap >= 0.90,
+    );
+
     // ── Only hoist DSM fields when registration is missing them ───
     const dsmAlreadyHoisted = reg.dsm_size_px != null &&
       reg.dsm_tile_bounds_lat_lng != null;
@@ -1468,7 +1494,9 @@ function applyLiveRuntimeHoistToRegistration(
         dsmCoordinateMatchDebug,
         confirmedCenterLatLng: confirmedLL,
         rasterMetersPerPixel: rasterMpp,
-        allow_derived_bounds: false,
+        allow_derived_bounds: _allowDerivedBounds,
+        rasterBoundsLatLng: _rasterBoundsForDerivation,
+        rasterSizePx: _rasterSizeForDerivation,
       });
       reg.dsm_size_px = reg.dsm_size_px ?? dsmReg.dsm_size_px;
       reg.dsm_size_source = reg.dsm_size_source ?? dsmReg.dsm_size_source;
@@ -1551,8 +1579,12 @@ function applyLiveRuntimeHoistToRegistration(
         transformPkg.dsm_to_raster_transform;
       reg.dsm_to_raster_transform_source = reg.dsm_to_raster_transform_source ??
         (transformPkg as any).dsm_to_raster_transform_source;
+      // When DSM bounds were derived from raster, override the operator-facing
+      // policy tag so the UI/diagnostic mirrors `dsm-registration-derived-bounds-v1`.
       reg.dsm_transform_policy_version =
-        (transformPkg as any).dsm_transform_policy_version;
+        reg.dsm_bounds_source === "derived_from_raster_bounds"
+          ? "dsm-registration-derived-bounds-v1"
+          : (transformPkg as any).dsm_transform_policy_version;
       reg.dsm_raster_bounds_overlap =
         transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
       reg.dsm_raster_overlap_ratio = dsmRasterOverlapRatio(
@@ -1571,6 +1603,50 @@ function applyLiveRuntimeHoistToRegistration(
       reg.transform_package = reg.transform_package ?? transformPkg;
       reg.transform_failure_reasons =
         validateRegistrationTransformPackage(transformPkg).reasons;
+
+      // ── Consistency rejection for raster-bounds-derived DSM bounds ──
+      // If we derived bounds from the raster footprint but the resulting
+      // transform fails to contain the confirmed roof center (or the pixel
+      // transform is invalid), revert the derivation and re-surface the
+      // original missing-metadata failure token.
+      if (
+        reg.dsm_bounds_source === "derived_from_raster_bounds" &&
+        (transformPkg.dsm_tile_bounds_contain_confirmed_center !== true ||
+          transformPkg.dsm_pixel_transform_valid !== true)
+      ) {
+        const _rejectionReasons: string[] = [];
+        if (transformPkg.dsm_tile_bounds_contain_confirmed_center !== true) {
+          _rejectionReasons.push("confirmed_center_outside_derived_bounds");
+        }
+        if (transformPkg.dsm_pixel_transform_valid !== true) {
+          _rejectionReasons.push("dsm_pixel_transform_invalid");
+        }
+        reg.dsm_tile_bounds_lat_lng = null;
+        reg.dsm_bounds_source = "derived_rejected_consistency_failure";
+        reg.dsm_tile_bounds_source = "derived_rejected_consistency_failure";
+        reg.dsm_bounds_derived = false;
+        reg.dsm_bounds_confidence = 0;
+        reg.geo_to_dsm_transform = null;
+        reg.dsm_to_raster_transform = null;
+        reg.confirmed_roof_center_dsm_px = null;
+        reg.geo_to_dsm_px_success = false;
+        reg.dsm_pixel_transform_valid = false;
+        reg.dsm_tile_bounds_contain_confirmed_center = false;
+        reg.dsm_derived_bounds_rejection_reasons = _rejectionReasons;
+        const existingTokens: string[] = Array.isArray(reg.dsm_hoist_failure_tokens)
+          ? (reg.dsm_hoist_failure_tokens as string[])
+          : [];
+        const newTokens = existingTokens.filter((t) =>
+          t !== "dsm_tile_bounds_derived_from_raster_bounds"
+        );
+        for (const r of _rejectionReasons) {
+          newTokens.push(`dsm_derived_bounds_rejected_${r}`);
+        }
+        if (!newTokens.includes("dsm_tile_bounds_missing_from_google_solar_metadata")) {
+          newTokens.push("dsm_tile_bounds_missing_from_google_solar_metadata");
+        }
+        reg.dsm_hoist_failure_tokens = newTokens;
+      }
     }
 
     // ── Candidate polygon hoist ───────────────────────────────────
@@ -6412,6 +6488,11 @@ async function processJob(input: any) {
           rasterMetersPerPixel: Number.isFinite(Number(actualMpp))
             ? Number(actualMpp)
             : null,
+          // Site #2 is the early failure-classification path; target-mask
+          // overlap and frame-mismatch signals are not yet available here, so
+          // raster-bounds derivation stays disabled. The authoritative DSM
+          // hoist runs later via applyLiveRuntimeHoistToRegistration (site #1)
+          // and honors the dsm-registration-derived-bounds-v1 gate there.
           allow_derived_bounds: false,
         });
         const _dsmBoundsLL = _dsmReg.dsm_tile_bounds_lat_lng;

@@ -1,194 +1,95 @@
-## Fonsica DSM Diagnostic Runtime Verification
+## Goal
 
-No code changes. This is a deploy → rerun → diff plan. Verification only.
+Unlock DSM registration when Google Solar omits `dsm_tile_bounds_lat_lng`, by deriving an approximate DSM georegistration from the already-aligned raster bounds. Gate strictly; never promote `customer_report_ready` from this path.
 
-### Step 1 — Deploy
+## Scope guardrails (do NOT touch)
 
-Deploy the edge functions that bundle `ensureDsmDiagnosticsOnRegistration`:
+CPU containment, aerial graph builder, perimeter extraction, raster overlay transforms, customer-report gates, UI stage grouping, DB schema, reportable-line promotion.
 
-- `start-ai-measurement` (primary insert path)
-- Any sibling function that calls `insertRoofMeasurementWithSchemaGuard` (audit before deploy; deploy only the ones that import the helper)
+## What already exists
 
-### Step 2 — Rerun Fonsica
+- `_shared/dsm-registration.ts` already supports `allow_derived_bounds` with two derivation modes (`derived_from_confirmed_center_and_mpp`, `derived_from_dsm_bbox_and_static_mpp`) and writes `dsm_bounds_derived`, `dsm_bounds_warning`, `dsm_bounds_confidence`.
+- `start-ai-measurement/index.ts` calls `buildDsmRegistration({ allow_derived_bounds: false })` at both hoist sites (lines ~1471 and ~6415).
+- `_shared/source-registration-transform.ts` builds `geo_to_dsm_transform`, `dsm_to_raster_transform`, and reports `geo_to_dsm_px_success` / `dsm_pixel_transform_valid` / `confirmed_center_inside_candidate` — these flip automatically once `dsm_tile_bounds_lat_lng` is populated.
 
-Trigger a fresh AI measurement for 4063 Fonsica Ave from the UI (current route already on a lead detail page — use the standard "Run AI Measurement" action). Capture the new `roof_measurements.id`.
+So the unlock is: (1) add a new explicitly-tagged derivation mode keyed on raster bounds, (2) flip the hoist sites to allow derivation under tight gates, (3) wire diagnostics for `dsm_bounds_source = derived_from_raster_bounds` and `dsm_transform_policy_version = dsm-registration-derived-bounds-v1`, (4) add consistency rejection, (5) leave customer-report gate untouched.
 
-### Step 3 — Pull persisted row
+## Implementation
 
-Query `roof_measurements` for the new row and extract `geometry_report_json`. Produce a field-level diff table.
+### 1. Add derivation mode `derived_from_raster_bounds` in `_shared/dsm-registration.ts`
 
-**Expected flat DSM fields (all six surfaces):**
+- Extend `DsmTileBoundsSource` union with `"derived_from_raster_bounds"`.
+- Add new input fields: `rasterBoundsLatLng?: Bounds | null`, `rasterSizePx?: SizePx | null`.
+- Add a third derivation branch (after the existing two), only fires when:
+  - `dsm_size_px` is present
+  - `rasterBoundsLatLng` and `rasterSizePx` are present and finite
+  - the two prior derivation branches did not fire
+- Derivation math: DSM covers the same geographic footprint as the raster (centered, scaled by `dsm_size_px / raster_size_px`). Output `dsm_tile_bounds_lat_lng` = rasterBoundsLatLng (since the DSM raster shares the Solar tile footprint), and set `dsm_meters_per_pixel = rasterMpp * (raster_size_px.width / dsm_size_px.width)` if not already set.
+- Set:
+  - `dsm_bounds_source = "derived_from_raster_bounds"`
+  - `dsm_bounds_derived = true`
+  - `dsm_bounds_warning = "derived_bounds_lower_confidence"`
+  - `dsm_bounds_confidence = "low"` (numeric, e.g. 0.6)
+- Do NOT push `dsm_tile_bounds_missing_from_google_solar_metadata` when derivation succeeded; instead push an info token `dsm_tile_bounds_derived_from_raster_bounds`.
 
+### 2. Add transform policy tag
 
-| Path                                                     | Expected                 |
-| -------------------------------------------------------- | ------------------------ |
-| `registration.dsm_size_px`                               | `{width:998,height:998}` |
-| `registration.transform_package.dsm_size_px`             | `{width:998,height:998}` |
-| `registration_gate.dsm_size_px`                          | `{width:998,height:998}` |
-| `registration_gate.transform_package.dsm_size_px`        | `{width:998,height:998}` |
-| `dsm_planar_graph_debug.registration.dsm_size_px`        | `{width:998,height:998}` |
-| `dsm_split_status.georegistration_transform.dsm_size_px` | `{width:998,height:998}` |
+In `_shared/source-registration-transform.ts` (or alongside): export `DSM_DERIVED_TRANSFORM_POLICY_VERSION = "dsm-registration-derived-bounds-v1"` and have the diagnostic writer emit it on `registration.dsm.transform_policy_version` (and mirror surfaces) whenever `dsm_bounds_derived === true`.
 
+### 3. Flip hoist sites in `start-ai-measurement/index.ts` (lines ~1471, ~6415)
 
-**Expected diagnostic tokens:**
+- Pass `allow_derived_bounds: true`, plus the new `rasterBoundsLatLng` and `rasterSizePx` already available on `reg`/`g`.
+- Gate at the caller: only allow derivation when ALL of:
+  - `dsmLoaded === true`
+  - `reg.dsm_tile_bounds_lat_lng == null` after metadata read
+  - `reg.raster_bounds_lat_lng != null`
+  - `rasterMpp` finite
+  - raster overlay alignment passed (`frame_mismatch_ok === true` / existing alignment flag)
+  - `target_mask_overlap_with_perimeter >= 0.90`
 
+  If any precondition fails, keep `allow_derived_bounds: false` and current `dsm_tile_bounds_missing_from_google_solar_metadata` behavior.
 
-| Field                                   | Expected                                             |
-| --------------------------------------- | ---------------------------------------------------- |
-| `dsm_size_source`                       | `dsm_split_status.dsm_size_px`                       |
-| `dsm_tile_bounds_failure_reason`        | `dsm_tile_bounds_missing_from_google_solar_metadata` |
-| `dsm_registration_failure_token`        | `dsm_tile_bounds_missing_from_google_solar_metadata` |
-| `dsm_transform_policy_version`          | `dsm-registration-transform-v1`                      |
-| `dsm_validation_status.reason`          | `invalid_transform` (unchanged)                      |
-| `dsm_validation_status_specific_reason` | `dsm_tile_bounds_missing_from_google_solar_metadata` |
+### 4. Consistency validation (reject bad derivations)
 
+After `buildSourceRegistrationTransform` runs with the derived bounds, validate:
+- `confirmed_center_inside_candidate` becomes `true`
+- `perimeter_vs_mask_iou` does not regress below pre-derivation value (snapshot before/after)
+- DSM↔raster reprojection round-trip error on the confirmed center ≤ 5 px (compute via the new transforms)
 
-**Green items that must remain unchanged:**
+If validation fails: revert `dsm_tile_bounds_lat_lng` to `null`, set `dsm_bounds_source = "derived_rejected_consistency_failure"`, push token `dsm_derived_bounds_rejected_<reason>`, and keep the existing `dsm_tile_bounds_missing_from_google_solar_metadata` failure surface.
 
-- Aerial Candidate Graph executed, 12 candidate edges
-- Debug Roof Lines = 6, Reportable Roof Lines = 0
-- `frame_mismatch = ok`
+### 5. Diagnostic surfaces
+
+`_shared/dsm-diagnostic-propagation.ts` must mirror to all six existing surfaces:
+- `dsm_bounds_derived: true`
+- `dsm_bounds_source: "derived_from_raster_bounds"`
+- `dsm_bounds_confidence`
+- `dsm_transform_policy_version: "dsm-registration-derived-bounds-v1"`
+- Failure tokens cleared from the "missing metadata" set when derivation succeeded; new info token surfaced.
+
+### 6. Customer-report gate untouched
+
+`assertCustomerReportReady` / `result_state` normalizer get NO changes. Topology and Phase 3A.5 may now execute because `geo_to_dsm_px_success` / `dsm_pixel_transform_valid` / `confirmed_center_inside_candidate` flip true — but `customer_report_ready` stays `false` until downstream validation gates pass on their own.
+
+## Tests (per AI Measurement Regression Harness)
+
+Add under `supabase/functions/_shared/__tests__/`:
+
+1. `dsm-derived-bounds-fonsica.test.ts` — Fonsica-shaped input with `dsm_tile_bounds_lat_lng=null` + valid raster bounds + mask overlap 0.976 → asserts `dsm_bounds_derived=true`, source=`derived_from_raster_bounds`, policy=`dsm-registration-derived-bounds-v1`, `geo_to_dsm_px_success=true`, `dsm_pixel_transform_valid=true`, `confirmed_center_inside_candidate=true`, and `customer_report_ready=false`.
+2. `dsm-derived-bounds-gate-preconditions.test.ts` — each precondition individually false (mask overlap 0.85, missing raster bounds, frame mismatch) → asserts derivation NOT attempted, `dsm_tile_bounds_missing_from_google_solar_metadata` still surfaced.
+3. `dsm-derived-bounds-consistency-rejection.test.ts` — derivation runs but reprojection error > 5 px → asserts rejection, original failure token preserved.
+4. Update existing `dsm-diagnostic-propagation-fonsica.test.ts` to cover both branches (derived vs metadata-present).
+
+## Acceptance criteria
+
+For a Fonsica re-run after this change:
+- `registration.dsm.dsm_bounds_derived = true`
+- `registration.dsm.dsm_bounds_source = "derived_from_raster_bounds"`
+- `registration.dsm.transform_policy_version = "dsm-registration-derived-bounds-v1"`
+- `geo_to_dsm_px_success = true`
+- `dsm_pixel_transform_valid = true`
+- `confirmed_roof_center_dsm_px` populated
+- `confirmed_center_inside_candidate = true`
+- `phase3_5` no longer skipped at registration stage (it will likely fail at a new downstream gate — that is expected and out of scope for this prompt)
 - `customer_report_ready = false`
-- CPU elapsed < 75000
-- No topology/customer promotion
-
-### Step 4 — UI acceptance
-
-Open Measurement Report Dialog for the new row. Confirm:
-
-- DSM Size: `998×998`
-- DSM Bounds Failure: `dsm_tile_bounds_missing_from_google_solar_metadata`
-- DSM Transform Policy: `dsm-registration-transform-v1`
-- DSM Validation Status: still `unavailable`, with specific reason visible in diagnostics
-
-### Step 5 — Diff report
-
-If every field matches → mark Phase production-confirmed, unblock next phase (controlled derived DSM bounds fallback).
-
-If any field is null/blank → produce a diff in this shape and stop:
-
-```
-path:     registration.transform_package.dsm_size_px
-expected: {width:998,height:998}
-actual:   null
-surface:  registration.transform_package
-```
-
-No further code edits before the diff is on the table.
-
-### Out of scope
-
-- No code changes
-- No promotion to `customer_report_ready`
-- No derived-bounds fallback (that is the next phase, only after this passes)  
-  
-Yes — that verification plan is correct. It is the exact next step, and it should stay **verification-only**.
-  But one thing matters: Lovable is saying the helper is already called through `ensureRegistrationProofBeforeWrite` on both success and failure paths. That is the claim we now need the fresh Fonsica row to prove. Do **not** accept “tests pass” as production-confirmed.
-  Send this:
-  ```
-
-  ```
-  ```
-  Go.
-
-  Proceed with Fonsica DSM Diagnostic Runtime Verification exactly as scoped.
-
-  No code changes.
-
-  Step 1 — Deploy
-
-  Deploy only the functions that bundle ensureDsmDiagnosticsOnRegistration.
-
-  Primary:
-  - start-ai-measurement
-
-  Audit for any sibling function that imports insertRoofMeasurementWithSchemaGuard or ensureRegistrationProofBeforeWrite. Deploy only if it directly bundles the helper into a measurement write path.
-
-  Do not deploy unrelated functions.
-
-  Step 2 — Rerun Fonsica
-
-  Trigger fresh AI Measurement from the 4063 Fonsica Ave lead detail page using the standard Run AI Measurement action.
-
-  Capture:
-  - new ai_measurement_jobs.id
-  - new roof_measurements.id
-
-  Step 3 — Pull persisted row
-
-  Query the fresh roof_measurements row and inspect geometry_report_json.
-
-  Produce a field-level diff table for these expected paths:
-
-  DSM size surfaces:
-  - registration.dsm_size_px
-  - registration.transform_package.dsm_size_px
-  - registration_gate.dsm_size_px
-  - registration_gate.transform_package.dsm_size_px
-  - dsm_planar_graph_debug.registration.dsm_size_px
-  - dsm_planar_graph_debug.registration.transform_package.dsm_size_px
-  - dsm_split_status.georegistration_transform.dsm_size_px
-
-  Expected:
-  { "width": 998, "height": 998 }
-
-  DSM diagnostic token surfaces:
-  Check all active surfaces above for:
-  - dsm_size_source = dsm_split_status.dsm_size_px
-  - dsm_tile_bounds_failure_reason = dsm_tile_bounds_missing_from_google_solar_metadata
-  - dsm_registration_failure_token = dsm_tile_bounds_missing_from_google_solar_metadata
-  - dsm_transform_policy_version = dsm-registration-transform-v1
-
-  DSM validation status:
-  - dsm_validation_status.reason remains invalid_transform
-  - dsm_validation_status_specific_reason = dsm_tile_bounds_missing_from_google_solar_metadata
-
-  Step 4 — Existing green-item check
-
-  Confirm these stayed unchanged:
-  - Aerial Candidate Graph executed with 12 candidate edges
-  - Debug Roof Lines = 6
-  - Reportable Roof Lines = 0
-  - frame_mismatch = ok
-  - customer_report_ready = false
-  - CPU elapsed < 75000
-  - no topology/customer promotion
-
-  Step 5 — UI acceptance
-
-  Open Measurement Report Dialog for the new row and confirm:
-  - DSM Size = 998×998
-  - DSM Bounds Failure = dsm_tile_bounds_missing_from_google_solar_metadata
-  - DSM Transform Policy = dsm-registration-transform-v1
-  - DSM Validation Status still unavailable
-  - the specific DSM failure reason is visible somewhere in diagnostics
-
-  Step 6 — Result
-
-  If every expected field matches:
-  Mark DSM diagnostic write/merge propagation production-confirmed.
-  Then unblock the next phase:
-  controlled derived DSM bounds fallback.
-
-  If any field is null/blank/wrong:
-  Stop.
-  Return only a field-level diff table in this shape:
-
-  path:
-  expected:
-  actual:
-  surface:
-  likely source of loss:
-
-  No further code edits until the diff is reviewed.
-
-  Out of scope:
-  - no code changes
-  - no customer_report_ready promotion
-  - no derived DSM bounds fallback
-  - no topology execution changes
-  - no UI grouping changes
-  - no DB schema changes
-  ```
-  My read: this is ready. The next Fonsica row either confirms the propagation path is finally fixed or tells us exactly which surface is still losing the DSM diagnostics.
-- &nbsp;
+- Aerial graph executed (12 candidate edges), CPU < 75000, `frame_mismatch = ok`, reportable lines = 0 — all unchanged
