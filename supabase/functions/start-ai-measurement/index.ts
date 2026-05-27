@@ -79,6 +79,13 @@ import {
   buildDsmRegistration,
   DSM_REGISTRATION_VERSION,
 } from "../_shared/dsm-registration.ts";
+import {
+  computeRasterDsmRoundtripErrorPx,
+  DSM_DERIVED_BOUNDS_RUNTIME_VERSION,
+  DSM_RASTER_ROUNDTRIP_THRESHOLD_PX,
+  gatherDerivedBoundsGateInputs,
+  isDerivedBoundsAllowed,
+} from "../_shared/dsm-derived-bounds-runtime.ts";
 import { hoistSelectedCandidatePolygon } from "../_shared/candidate-hoist.ts";
 
 import {
