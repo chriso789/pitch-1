@@ -1,6 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { qboHost } from "../_shared/qbo-host.ts";
-import { getQboContextForConnection } from "../_shared/qbo-context.ts";
+import {
+  createServiceClient,
+  getValidAccessToken,
+  QboReauthRequiredError,
+} from "../_shared/qbo-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,18 +17,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
+    // Caller client (RLS) — only used to authenticate the user and resolve their tenant.
+    const caller = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await caller.auth.getUser();
     if (userError || !user) {
       throw new Error('Unauthorized');
     }
 
-    const { data: profile } = await supabase
+    const { data: profile } = await caller
       .from('profiles')
       .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
@@ -35,79 +40,18 @@ Deno.serve(async (req) => {
       throw new Error('No tenant found');
     }
 
-    // Get active QBO connection
-    const { data: connection } = await supabase
-      .from('qbo_connections')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .single();
+    // Service client for token I/O (bypasses RLS).
+    const admin = createServiceClient();
 
-    if (!connection) {
-      throw new Error('No active QuickBooks connection found');
-    }
+    // Single source of truth for fetching/refreshing tokens.
+    // On invalid_grant this will mark the connection inactive and throw QboReauthRequiredError.
+    const { access_token, realm_id, connection } = await getValidAccessToken(admin, tenantId);
 
-    // Check if token needs refresh (add 5-minute buffer)
-    const tokenExpiresAt = new Date(connection.expires_at);
-    const now = new Date();
-    const bufferMs = 5 * 60 * 1000; // 5 minutes
-    
-    if (tokenExpiresAt.getTime() <= now.getTime() + bufferMs) {
-      console.log('QuickBooks token expired or expiring soon, refreshing...');
-
-      // Refresh using THIS connection's environment-specific credentials.
-      const ctx = getQboContextForConnection(connection);
-      const refreshResponse = await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-          'Authorization': `Basic ${btoa(`${ctx.clientId}:${ctx.clientSecret}`)}`,
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: connection.refresh_token,
-        }),
-      });
-
-      if (!refreshResponse.ok) {
-        const errorText = await refreshResponse.text();
-        console.error('Token refresh failed:', errorText);
-        throw new Error('QuickBooks token refresh failed. Please reconnect your account.');
-      }
-
-      const tokenData = await refreshResponse.json();
-      
-      // Calculate new expiry time
-      const newExpiresAt = new Date(Date.now() + (tokenData.expires_in * 1000));
-      
-      // Update tokens in database
-      const { error: updateError } = await supabase
-        .from('qbo_connections')
-        .update({
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          expires_at: newExpiresAt.toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', connection.id);
-
-      if (updateError) {
-        console.error('Failed to update tokens:', updateError);
-        throw new Error('Failed to save refreshed tokens');
-      }
-
-      // Update connection object for API call
-      connection.access_token = tokenData.access_token;
-      console.log('QuickBooks token refreshed successfully');
-    }
-
-    // Fetch Service Items from QBO
     const qboResponse = await fetch(
-      `${qboHost(connection)}/v3/company/${connection.realm_id}/query?query=SELECT * FROM Item WHERE Type='Service' AND Active=true MAXRESULTS 1000`,
+      `${qboHost(connection)}/v3/company/${realm_id}/query?query=SELECT * FROM Item WHERE Type='Service' AND Active=true MAXRESULTS 1000`,
       {
         headers: {
-          'Authorization': `Bearer ${connection.access_token}`,
+          'Authorization': `Bearer ${access_token}`,
           'Accept': 'application/json',
         },
       }
@@ -116,13 +60,20 @@ Deno.serve(async (req) => {
     if (!qboResponse.ok) {
       const errorText = await qboResponse.text();
       console.error('QBO API Error:', errorText);
+      // 401 from QBO means the access token was rejected even though refresh succeeded —
+      // surface as reauth_required so the UI can prompt.
+      if (qboResponse.status === 401) {
+        return new Response(
+          JSON.stringify({ error: 'reauth_required', details: errorText }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       throw new Error(`QuickBooks API error: ${qboResponse.status}`);
     }
 
     const qboData = await qboResponse.json();
     const items = qboData.QueryResponse?.Item || [];
 
-    // Format items for frontend
     const formattedItems = items.map((item: any) => ({
       id: item.Id,
       name: item.Name,
@@ -140,6 +91,12 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in qbo-fetch-items:', error);
+    if (error instanceof QboReauthRequiredError) {
+      return new Response(
+        JSON.stringify({ error: 'reauth_required', message: error.message }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
