@@ -35,6 +35,17 @@ interface InvoiceLineItem {
   unit: string;
   unit_cost: number;
   line_total: number;
+  trade_type?: string;
+  trade_label?: string;
+}
+
+interface InvoiceGroup {
+  key: string;
+  kind: 'trade' | 'change_order' | 'custom';
+  label: string;
+  selected: boolean;
+  expanded: boolean;
+  children: (InvoiceLineItem & { selected: boolean })[];
 }
 
 const formatCurrency = (amount: number) =>
