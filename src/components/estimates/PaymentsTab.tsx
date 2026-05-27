@@ -1305,14 +1305,19 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                   {hasLineItems && isExpanded && (
                     <div className="px-3 pb-3 border-t border-border/50">
                       <div className="mt-2 space-y-1">
-                        {lineItems.map((li, idx) => (
-                          <div key={idx} className="flex justify-between text-xs py-0.5">
-                            <span className="text-muted-foreground truncate mr-2">{li.description}</span>
-                            <span className="font-medium whitespace-nowrap">
-                              {li.qty} {li.unit} × {formatCurrency(li.unit_cost)} = {formatCurrency(li.line_total)}
-                            </span>
-                          </div>
-                        ))}
+                        {lineItems.map((li: any, idx) => {
+                          const q = Number(li.qty ?? li.quantity) || 0;
+                          const u = Number(li.unit_cost ?? li.unit_price ?? li.price ?? li.rate) || 0;
+                          const lt = Number(li.line_total ?? li.total ?? li.amount) || (q * u);
+                          return (
+                            <div key={idx} className="flex justify-between text-xs py-0.5">
+                              <span className="text-muted-foreground truncate mr-2">{li.description}</span>
+                              <span className="font-medium whitespace-nowrap">
+                                {q} {li.unit || 'ea'} × {formatCurrency(u)} = {formatCurrency(lt)}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
