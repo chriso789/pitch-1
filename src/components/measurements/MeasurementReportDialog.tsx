@@ -1298,6 +1298,35 @@ const getRasterOverlayData = (measurement: any) => {
     rasterUrl && rasterSize &&
       (planes_px.length > 0 || edges_px.length > 0 || footprint_px.length > 0),
   );
+
+  // Roof Focus perimeter priority (must match MeasurementVisualQAOverlay):
+  // selected -> refined -> raw -> footprint. Used so the SVG debug panel
+  // crops the same area as the canvas overlay.
+  const asRing = (v: any): Array<[number, number]> => {
+    if (!Array.isArray(v)) return [];
+    const out: Array<[number, number]> = [];
+    for (const p of v) {
+      if (Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+        out.push([Number(p[0]), Number(p[1])]);
+      }
+    }
+    return out;
+  };
+  const aerialCandidateGraph = (grj as any)?.aerial_candidate_roof_graph
+    ?? (grj as any)?.debug_layers?.aerial_candidate_roof_graph;
+  const focusPerimeterPx =
+    asRing((grj as any)?.selected_perimeter_px).length >= 3
+      ? asRing((grj as any)?.selected_perimeter_px)
+      : asRing((grj as any)?.phase3_5?.refined_perimeter_px).length >= 3
+      ? asRing((grj as any)?.phase3_5?.refined_perimeter_px)
+      : asRing(aerialCandidateGraph?.perimeter_ring_px).length >= 3
+      ? asRing(aerialCandidateGraph?.perimeter_ring_px)
+      : asRing((grj as any)?.phase3_5?.raw_perimeter_px).length >= 3
+      ? asRing((grj as any)?.phase3_5?.raw_perimeter_px)
+      : asRing((grj as any)?.perimeter_topology?.perimeter_ring_px).length >= 3
+      ? asRing((grj as any)?.perimeter_topology?.perimeter_ring_px)
+      : asRing(footprint_px);
+
   return {
     grj,
     rasterUrl,
@@ -1305,6 +1334,7 @@ const getRasterOverlayData = (measurement: any) => {
     planes_px,
     edges_px,
     footprint_px,
+    focusPerimeterPx,
     hasRasterOverlay,
   };
 };
