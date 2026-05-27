@@ -1,133 +1,364 @@
-# QBO Production Hardening + Legal Acceptance Gating (Phase 1)
+# DSM Diagnostic Write/Merge Propagation Fix
 
-Smallest scope that unblocks Intuit production review and creates the legal-evidence foundation. Audit confirmed: `qbo_connections` already carries `is_sandbox`, `oauth_app_env`, `refresh_token_expires_at`, `last_refresh_at`, `disconnected_at`, `connected_by`; `qbo-webhook-handler` already verifies `intuit-signature` with dual dev/prod verifiers and rejects realm/env mismatches. So this plan extends existing code rather than re-implementing it.
+Scope: backend only. No UI grouping, banner copy, aerial graph, CPU containment, overlay transform, customer-report gate, topology solver, roof-line promotion, or DB schema changes.
 
-Explicitly **out of scope** for this phase: AI disclosure/review gates, measurement liability workflow, SMS/TCPA consent center, public subprocessor page, incident model, full compliance dashboard.
+## Problem
 
----
+`dsm_split_status.dsm_size_px = { width: 998, height: 998 }` and `dsm_loaded = true` are present at runtime, but the persisted `geometry_report_json` still has:
 
-## 1. Replace client-rendered callback with server-side 302
+- `registration.dsm_size_px = null`
+- `registration.transform_package.dsm_size_px = null`
+- `dsm_tile_bounds_lat_lng = null`
+- `dsm_validation_status.reason = invalid_transform` (generic)
+- missing `dsm_tile_bounds_failure_reason`, `dsm_registration_failure_token`, `dsm_transform_policy_version`, `geo_to_dsm_transform_source`, `dsm_to_raster_transform_source`, `confirmed_roof_center_dsm_px_source`, `dsm_size_source`.
 
-**Problem.** `supabase/functions/qbo-oauth-connect/index.ts` currently catches the GET callback from Intuit and 302s the browser to `https://pitch-crm.ai/quickbooks/callback`, where `src/pages/QuickBooksCallback.tsx` renders HTML, reads `code` / `realmId` / `state` from `window.location.search`, and posts to `window.opener` with `targetOrigin: '*'`. Intuit's security guidance says token-bearing callback endpoints must not return HTML and must 302 instead.
+The existing propagation helper only writes a nested `registration.dsm` projection — it does not seed the flat fields on `registration`/`transform_package`/`dsm_planar_graph_debug` that the persisted row exposes.
 
-**Fix.** Make the `qbo-oauth-connect` GET handler perform the full server-side exchange before any browser HTML loads.
+## Files to change
 
-Flow on Intuit's redirect to `…/functions/v1/qbo-oauth-connect/callback?code=…&realmId=…&state=…`:
-1. Look up `state` in `qbo_oauth_states`; if missing/expired → 302 `…/settings/integrations?provider=qbo&status=invalid_state`.
-2. Resolve `tenant_id`, `user_id`, `expected_oauth_app_env`, `consent_id` from that row. Delete the row (single-use).
-3. If Intuit returned `error` → 302 `…?status=denied` (or `…?status=denied&reason=<error>`).
-4. If `realmId` missing → 302 `…?status=missing_realm`.
-5. Exchange `code` for tokens against the host derived from `expected_oauth_app_env`. On failure → 302 `…?status=exchange_failed`.
-6. Upsert `qbo_connections` (admin client, then `.eq('tenant_id', resolvedTenantId)`): `realm_id`, `qbo_company_name` (fetch from `/v3/company/{realmId}/companyinfo/{realmId}`), `is_sandbox`, `oauth_app_env`, `access_token`, `refresh_token`, `token_expires_at = now() + expires_in`, `refresh_token_expires_at = now() + x_refresh_token_expires_in`, `last_refresh_at = now()`, `connected_by = user_id`, `connected_at = now()`, `disconnected_at = null`, `is_active = true`, `scopes` from response.
-7. 302 → `https://pitch-crm.ai/settings/integrations?provider=qbo&status=connected&realm=<realmId>`.
+1. `supabase/functions/_shared/dsm-diagnostic-propagation.ts` — extend `ensureDsmDiagnosticsOnRegistration` to also write flat DSM fields, and mirror into the four additional targets.
+2. `supabase/functions/start-ai-measurement/index.ts` — ensure `ensureDsmDiagnosticsOnRegistration` is called at the final merge boundary (immediately before `insertRoofMeasurementWithSchemaGuard`), after all DSM writes, on both success and failure paths.
+3. `supabase/functions/_shared/__tests__/dsm-diagnostic-propagation.test.ts` — new Fonsica-shaped regression test (extend existing `dsm-diagnostic-nested-projection.test.ts` style).
 
-Status query params used by the settings page:
-- `connected`, `denied`, `invalid_state`, `exchange_failed`, `missing_realm`, `reauth_required`.
+## Helper changes
 
-**Token refresh hardening** (existing refresh paths in `qbo-oauth-connect` and `_shared/qbo-auth.ts`):
-- Always overwrite `refresh_token` with whatever Intuit returns (the response may rotate it).
-- Always update `refresh_token_expires_at = now() + x_refresh_token_expires_in` and `last_refresh_at = now()`.
-- On 400 `invalid_grant` from token endpoint → mark connection `is_active = false`, set `disconnected_at = now()`, and surface `status=reauth_required` to the UI on the next visit.
+Inside `ensureDsmDiagnosticsOnRegistration`, after step (5):
 
-**Initiate endpoint.** `qbo-oauth-connect` `POST { action: 'initiate' }` must, in this order:
-1. Validate authenticated user + role.
-2. Confirm latest required `legal_acceptances` exist for this tenant (see §2). If not → return `{ ok: false, code: 'legal_acceptance_required', required: [...] }`.
-3. Confirm a fresh `integration_consents` row was just written (consent_id in body) for `quickbooks`. If not → `consent_required`.
-4. Insert `qbo_oauth_states { state, tenant_id, user_id, expected_oauth_app_env, consent_id, expires_at = now()+15min }`.
-5. Return Intuit authorize URL with that `state`.
+A. Resolve effective DSM diagnostics (single source of truth, idempotent):
 
-**Frontend cleanup.**
-- `src/pages/QuickBooksCallback.tsx` → reduce to a thin redirect-only shell (e.g., reads `status` query, redirects to `/settings/integrations?...`) or remove from the router entirely. The Intuit redirect URI registered in the Intuit app will be changed to point at the edge function URL.
-- `src/components/settings/QuickBooksSettings.tsx` connect button → opens the initiate URL in the **same tab** (no popup, no `window.opener`).
+```text
+effectiveDsmSize  = regNext.dsm_size_px
+                  ?? transform_package.dsm_size_px
+                  ?? dsm_split_status.dsm_size_px
+                  ?? null
+dsmLoaded         = dsm_split_status.dsm_loaded === true
+boundsMissing     = regNext.dsm_tile_bounds_lat_lng == null
+                    && transform_package.dsm_tile_bounds_lat_lng == null
+```
 
----
+B. Derive missing diagnostic tokens (only when not already set):
 
-## 2. Legal acceptance gating + consent receipts
+```text
+if (effectiveDsmSize && !regNext.dsm_size_source)
+  regNext.dsm_size_source = "dsm_split_status.dsm_size_px"
 
-Greenfield. Three new tables.
+if (dsmLoaded && boundsMissing) {
+  regNext.dsm_tile_bounds_failure_reason ??= "dsm_tile_bounds_missing_from_google_solar_metadata"
+  regNext.dsm_registration_failure_token  ??= "dsm_tile_bounds_missing_from_google_solar_metadata"
+  regNext.dsm_transform_policy_version    ??= "dsm-registration-transform-v1"
+}
+```
 
-**`legal_documents`** — registry of legal doc versions.
-- Columns: `id`, `document_key` (`'privacy_policy' | 'terms_of_service' | 'qbo_integration_consent'`), `version` (semver string), `effective_at`, `body_markdown`, `body_sha256`, `is_current` (bool, partial unique index per `document_key` where `is_current = true`), `created_at`.
-- RLS: anyone authenticated can read; only master role can insert/update.
-- Seed migration inserts initial v1.0 rows for the three keys (text TBD — Phase 1 uses placeholder text and a follow-up legal-review pass replaces it).
+C. Mirror flat diagnostic surface into all four targets via a small `mergeFlatDsmFields(target)` helper that copies (without overwriting non-null values):
 
-**`legal_acceptances`** — per-user acceptance of a document version.
-- Columns: `id`, `tenant_id`, `user_id`, `document_key`, `document_version`, `document_id` (FK), `body_sha256` (snapshot), `accepted_at`, `ip inet`, `user_agent`.
-- Unique `(user_id, document_key, document_version)`.
-- RLS: user can read their own + insert their own; master sees all in their tenant.
+- `dsm_size_px`, `dsm_size_source`
+- `dsm_tile_bounds_lat_lng` (preserve null), `dsm_tile_bounds_failure_reason`
+- `dsm_registration_failure_token`, `dsm_transform_policy_version`
+- `geo_to_dsm_transform_source`, `dsm_to_raster_transform_source`, `confirmed_roof_center_dsm_px_source`
 
-**`integration_consents`** — per-connection-attempt consent receipt.
-- Columns: `id`, `tenant_id`, `user_id`, `integration text` (`'quickbooks'`), `consent_version`, `consent_text_snapshot text`, `consent_text_sha256`, `expected_oauth_app_env`, `accepted_at`, `ip`, `user_agent`, `used_for_connection_id` (nullable FK, set when used).
-- Per-attempt — not unique on user; bound to an `oauth_state` on initiate.
-- RLS: user can read/insert own; master sees tenant.
+Targets:
 
-**`qbo_oauth_states`** — already needed (single-use OAuth state).
-- Columns: `state text primary key`, `tenant_id`, `user_id`, `expected_oauth_app_env`, `consent_id` FK → `integration_consents.id`, `created_at`, `expires_at`.
-- No anon grant. Service role + edge function only.
+- `geometry.registration` and `geometry.registration.transform_package`
+- `geometry.registration_gate` and `geometry.registration_gate.transform_package`
+- `geometry.dsm_planar_graph_debug.registration` and its `.transform_package`
+- `geometry.dsm_split_status.georegistration_transform`
 
-Every `CREATE TABLE` in this migration ends with explicit `GRANT` statements per the public-schema-grants rule, then `ENABLE ROW LEVEL SECURITY`, then policies.
+If `transform_package` / `dsm_planar_graph_debug` / `dsm_split_status.georegistration_transform` are missing, create them as empty objects before merging — propagation must never throw on absent sub-objects.
 
-**Pre-connect modal** (`src/components/settings/QuickBooksConnectDialog.tsx`, new):
-- Displays current Privacy Policy + Terms + QBO integration consent text (pulled from `legal_documents` where `is_current`).
-- Three required checkboxes (separate, never bundled).
-- Lets user pick environment (Production / Sandbox) — but Production requires all three acceptances current; Sandbox can proceed without.
-- On submit: writes one row per checkbox to `legal_acceptances` (if not already present for that version), writes one `integration_consents` row with the full snapshot + sha256, then calls `qbo-oauth-connect` `POST { action: 'initiate', consent_id, oauth_app_env }`.
+D. `dsm_validation_status`: keep generic `reason` as fallback. Add a sibling field only:
 
-**Server enforcement** (initiate endpoint, see §1).
+```text
+if (regNext.dsm_validation_status?.reason && boundsMissing)
+  regNext.dsm_validation_status.dsm_validation_status_specific_reason
+    = "dsm_tile_bounds_missing_from_google_solar_metadata"
+```
 
----
+Do not overwrite `reason`.
 
-## 3. Admin / developer visibility
+E. Idempotency: every assignment uses `??=` / null-coalesce so re-running the helper is a no-op when real values exist.
 
-Extend `src/components/settings/QuickBooksSettings.tsx` to show, per active connection:
+## start-ai-measurement integration
 
-- QuickBooks company name + realm ID.
-- Environment badge: `Production` vs `Sandbox`.
-- Connected by (user display name) + connected_at.
-- `token_expires_at` (time-until).
-- `refresh_token_expires_at` (time-until, **highlight red <14 days**).
-- `last_refresh_at`.
-- Webhook signature status (count of last 24h verified vs. invalid, from a new `qbo_webhook_events` audit table — see below).
-- Latest legal-acceptance versions per `document_key` for the connecting user.
-- Disconnect button (calls existing disconnect path; sets `is_active=false`, `disconnected_at=now()`, revokes via Intuit revoke endpoint).
-- Re-connect banner when `status=reauth_required` query param present or connection inactive.
+Confirm a single call site, immediately before `insertRoofMeasurementWithSchemaGuard(...)` for both the success-write block and the failure-write block (around lines ~6700 and ~15800 in the current file). The merged result replaces the in-memory payload so the schema-guard insert sees the propagated fields.
 
-**`qbo_webhook_events`** (new table) — per audit brief:
-- Columns: `id`, `realm_id`, `oauth_app_env`, `signature_valid bool`, `event_count int`, `received_at`, `processed_at`, `error_code`, `error_message`, `tenant_id` (resolved).
-- Written from `qbo-webhook-handler` on every inbound notification (one row per delivery, not per event).
-- RLS: tenant members read own; master reads all.
+No other code paths change. The existing `applyLiveRuntimeHoistToRegistration` hoist is preserved as the `options.hoist` argument.
 
----
+## Regression test
 
-## Technical details
+`supabase/functions/_shared/__tests__/dsm-diagnostic-propagation-fonsica.test.ts`:
 
-**Files created**
-- `supabase/migrations/<ts>_qbo_legal_gating.sql` — `legal_documents`, `legal_acceptances`, `integration_consents`, `qbo_oauth_states`, `qbo_webhook_events`, seed rows, GRANTs, RLS, `NOTIFY pgrst, 'reload schema';`.
-- `src/components/settings/QuickBooksConnectDialog.tsx` — pre-connect consent modal.
-- `src/hooks/useQboConnectionStatus.ts` — combined query for connections + webhook stats + acceptance status.
+Input fixture:
 
-**Files edited**
-- `supabase/functions/qbo-oauth-connect/index.ts` — server-302 callback, state validation, consent + legal gating on initiate, token refresh writes latest refresh_token + expiry.
-- `supabase/functions/qbo-webhook-handler/index.ts` — write `qbo_webhook_events` audit row on every delivery (verified and unverified).
-- `supabase/functions/_shared/qbo-auth.ts` — token refresh helper persists `refresh_token`, `refresh_token_expires_at`, `last_refresh_at`; on `invalid_grant` marks connection inactive.
-- `src/components/settings/QuickBooksSettings.tsx` — replace popup connect with same-tab initiate; render connection status card (env, realm, expiries, webhook status, legal acceptance status, disconnect, reauth banner).
-- `src/pages/QuickBooksCallback.tsx` — reduce to redirect-only shell that reads `?status` and forwards to `/settings/integrations` (kept temporarily for any cached redirect URI; can be removed after Intuit app's Redirect URI is updated to the edge-function URL).
-- `src/App.tsx` — no route changes; callback page stays mounted as redirect shell.
+```text
+geometry_report_json: {
+  registration: { dsm_size_px: null, dsm_tile_bounds_lat_lng: null,
+                  transform_package: { dsm_size_px: null } },
+  registration_gate: { transform_package: {} },
+  dsm_planar_graph_debug: { registration: { transform_package: {} } },
+  dsm_split_status: {
+    dsm_loaded: true,
+    dsm_size_px: { width: 998, height: 998 },
+    georegistration_transform: {},
+  },
+  dsm_validation_status: { reason: "invalid_transform" },
+}
+```
 
-**Intuit dashboard step (user action, outside the codebase)**
-After this ships, the user updates Production and Development app Redirect URIs in the Intuit developer dashboard to:
-`https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback`
+Assertions after `ensureDsmDiagnosticsOnRegistration(payload)`:
 
-That swap is what activates the server-302 flow. Until then the frontend redirect shell keeps the old URI working.
+- For each of the six targets listed in step C plus `dsm_split_status.georegistration_transform`:
+  - `.dsm_size_px === { width: 998, height: 998 }`
+  - `.dsm_size_source === "dsm_split_status.dsm_size_px"`
+  - `.dsm_tile_bounds_failure_reason === "dsm_tile_bounds_missing_from_google_solar_metadata"`
+  - `.dsm_registration_failure_token === "dsm_tile_bounds_missing_from_google_solar_metadata"`
+  - `.dsm_transform_policy_version === "dsm-registration-transform-v1"`
+- `dsm_validation_status.reason === "invalid_transform"` (unchanged)
+- `dsm_validation_status.dsm_validation_status_specific_reason === "dsm_tile_bounds_missing_from_google_solar_metadata"`
+- Re-running the helper twice produces identical output (idempotency).
+- A second case where `dsm_tile_bounds_lat_lng` IS present must NOT add the failure tokens.
 
-**Auth model on edge function**
-- `qbo-oauth-connect` POST `initiate` / `refresh` / `disconnect`: authenticated tenant route — user-scoped client validates JWT and role; admin client only for the writes to `qbo_connections` / `qbo_oauth_states` / `integration_consents`.
-- `qbo-oauth-connect` GET `/callback`: public (Intuit can't authenticate), but every action is gated by `state` lookup in `qbo_oauth_states` which binds to `tenant_id` / `user_id` / `consent_id`. No body trust.
-- `qbo-webhook-handler` POST: public webhook — signature verification already implemented.
+Run command: `supabase--test_edge_functions` with `functions: ["_shared"]` (or the specific file via `pattern`).
 
-**Not changed**
-- Webhook signature verification logic (already correct).
-- `qbo_connections` schema (all needed columns present).
-- Other QBO functions (`qbo-invoice-create`, `qbo-invoice-send`, `qbo-sync-payment`, `qbo-customer-sync`, `qbo-fetch-items`, `qbo-check-projects-api`, `qbo-worker`, `qbo-api`) — they already route by `is_sandbox`/`oauth_app_env` via `_shared/qbo-host.ts`. No changes this phase.
+## Acceptance on next Fonsica run
 
-**Phase 2 (not now)**: AI disclosure gate on measurement reports, SMS/TCPA consent infra, subprocessor page, incident model, audit dashboards. These reuse the `legal_documents` / `legal_acceptances` tables introduced here.
+- Persisted `registration.dsm_size_px = { width: 998, height: 998 }`
+- `dsm_tile_bounds_failure_reason = dsm_tile_bounds_missing_from_google_solar_metadata`
+- `dsm_transform_policy_version = dsm-registration-transform-v1`
+- All existing green items unchanged: aerial graph 12 edges, CPU < 75000ms, `frame_mismatch` ok, `customer_report_ready=false`, reportable roof lines `0`.  
+  
+I checked the repo enough to say: **yes, the repo is ready for this plan**, but the plan needs one small correction before you send it.
+  The key files already exist:
+  - `supabase/functions/_shared/dsm-diagnostic-propagation.ts` exists and already contains `ensureDsmDiagnosticsOnRegistration`.
+  - There are already DSM propagation tests:
+    - `dsm-diagnostic-nested-projection.test.ts`
+    - `dsm-diagnostic-propagation-writer.test.ts`
+  - There is also a debug-runtime DSM propagation test already present.
+  So this is not a “create from scratch” situation. It is an **extend the existing helper + guarantee final merge boundary call** situation.
+  ## The one correction
+  Your plan says:
+  ```
+
+  ```
+  ```
+  all four targets
+  ```
+  But then lists more than four surfaces:
+  ```
+
+  ```
+  ```
+  registration
+  registration.transform_package
+  registration_gate
+  registration_gate.transform_package
+  dsm_planar_graph_debug.registration
+  dsm_planar_graph_debug.registration.transform_package
+  dsm_split_status.georegistration_transform
+  ```
+  So call it **all active registration surfaces**, not “four targets.”
+  ## Send this refined prompt
+  ```
+
+  ```
+  ```
+  Implement DSM Diagnostic Write/Merge Propagation Fix.
+
+  Scope:
+  Backend only.
+
+  Do not touch:
+  - UI grouping
+  - registration banner copy
+  - aerial graph builder/resolver
+  - CPU containment
+  - overlay transforms
+  - customer-report gates
+  - topology solver
+  - roof-line promotion
+  - DB schema/migrations
+
+  Repo readiness:
+  The repo already has:
+  - supabase/functions/_shared/dsm-diagnostic-propagation.ts
+  - ensureDsmDiagnosticsOnRegistration
+  - existing DSM diagnostic propagation tests
+
+  Do not create a duplicate helper. Extend the existing helper.
+
+  Problem:
+  Latest Fonsica proves runtime has:
+
+  dsm_split_status.dsm_loaded = true
+  dsm_split_status.dsm_size_px = { width: 998, height: 998 }
+
+  But persisted geometry_report_json still shows:
+
+  registration.dsm_size_px = null
+  registration.transform_package.dsm_size_px = null
+  dsm_tile_bounds_lat_lng = null
+  dsm_validation_status.reason = invalid_transform
+
+  And missing:
+
+  dsm_size_source
+  dsm_tile_bounds_failure_reason
+  dsm_registration_failure_token
+  dsm_transform_policy_version
+  geo_to_dsm_transform_source
+  dsm_to_raster_transform_source
+  confirmed_roof_center_dsm_px_source
+
+  Required changes:
+
+  1. Extend existing:
+  supabase/functions/_shared/dsm-diagnostic-propagation.ts
+
+  Inside ensureDsmDiagnosticsOnRegistration, after existing nested registration.dsm projection, resolve effective DSM diagnostics:
+
+  const effectiveDsmSize =
+    regNext.dsm_size_px
+    ?? regNext.transform_package?.dsm_size_px
+    ?? geometry.dsm_split_status?.dsm_size_px
+    ?? null;
+
+  const dsmLoaded =
+    geometry.dsm_split_status?.dsm_loaded === true;
+
+  const boundsMissing =
+    regNext.dsm_tile_bounds_lat_lng == null
+    && regNext.transform_package?.dsm_tile_bounds_lat_lng == null;
+
+  If effectiveDsmSize exists and dsm_size_source is missing, set:
+  dsm_size_source = "dsm_split_status.dsm_size_px"
+
+  If dsmLoaded && boundsMissing, set if missing:
+  dsm_tile_bounds_failure_reason = "dsm_tile_bounds_missing_from_google_solar_metadata"
+  dsm_registration_failure_token = "dsm_tile_bounds_missing_from_google_solar_metadata"
+  dsm_transform_policy_version = "dsm-registration-transform-v1"
+
+  2. Add a mergeFlatDsmFields(target) helper.
+
+  It must copy without overwriting non-null existing values:
+
+  - dsm_size_px
+  - dsm_size_source
+  - dsm_tile_bounds_lat_lng
+  - dsm_tile_bounds_failure_reason
+  - dsm_registration_failure_token
+  - dsm_transform_policy_version
+  - geo_to_dsm_transform_source
+  - dsm_to_raster_transform_source
+  - confirmed_roof_center_dsm_px_source
+
+  Important:
+  - Preserve null for dsm_tile_bounds_lat_lng if missing.
+  - Do not overwrite real future values.
+  - Use nullish coalescing / ??= where possible.
+  - Helper must be idempotent.
+
+  Mirror the flat DSM diagnostics into all active registration surfaces:
+
+  - geometry_report_json.registration
+  - geometry_report_json.registration.transform_package
+  - geometry_report_json.registration_gate
+  - geometry_report_json.registration_gate.transform_package
+  - geometry_report_json.dsm_planar_graph_debug.registration
+  - geometry_report_json.dsm_planar_graph_debug.registration.transform_package
+  - geometry_report_json.dsm_split_status.georegistration_transform
+
+  If transform_package, dsm_planar_graph_debug, registration, or georegistration_transform are missing, create safe empty objects before merging.
+  Propagation must never throw on absent sub-objects.
+
+  3. dsm_validation_status behavior
+
+  Do not overwrite:
+  dsm_validation_status.reason = "invalid_transform"
+
+  Instead add sibling:
+  dsm_validation_status_specific_reason = "dsm_tile_bounds_missing_from_google_solar_metadata"
+
+  when bounds are missing.
+
+  4. start-ai-measurement integration
+
+  Confirm ensureDsmDiagnosticsOnRegistration is called at the final geometry_report_json merge boundary immediately before insert/write of the measurement row.
+
+  It must run on both:
+  - success write path
+  - failure/runtime-preempt write path
+
+  The returned/merged object must replace the in-memory payload so the schema guard insert sees the propagated fields.
+
+  Do not rely only on early hoists. The latest live row proves early registration still lands with null DSM size.
+
+  5. Tests
+
+  Extend existing DSM diagnostic propagation tests or add:
+
+  supabase/functions/_shared/__tests__/dsm-diagnostic-propagation-fonsica.test.ts
+
+  Input:
+  geometry_report_json = {
+    registration: {
+      dsm_size_px: null,
+      dsm_tile_bounds_lat_lng: null,
+      transform_package: { dsm_size_px: null }
+    },
+    registration_gate: { transform_package: {} },
+    dsm_planar_graph_debug: {
+      registration: { transform_package: {} }
+    },
+    dsm_split_status: {
+      dsm_loaded: true,
+      dsm_size_px: { width: 998, height: 998 },
+      georegistration_transform: {}
+    },
+    dsm_validation_status: { reason: "invalid_transform" }
+  }
+
+  Expected:
+  For all active registration surfaces:
+  - registration
+  - registration.transform_package
+  - registration_gate
+  - registration_gate.transform_package
+  - dsm_planar_graph_debug.registration
+  - dsm_planar_graph_debug.registration.transform_package
+  - dsm_split_status.georegistration_transform
+
+  Assert:
+  - dsm_size_px = { width: 998, height: 998 }
+  - dsm_size_source = "dsm_split_status.dsm_size_px"
+  - dsm_tile_bounds_failure_reason = "dsm_tile_bounds_missing_from_google_solar_metadata"
+  - dsm_registration_failure_token = "dsm_tile_bounds_missing_from_google_solar_metadata"
+  - dsm_transform_policy_version = "dsm-registration-transform-v1"
+
+  Also assert:
+  - dsm_validation_status.reason remains "invalid_transform"
+  - dsm_validation_status_specific_reason = "dsm_tile_bounds_missing_from_google_solar_metadata"
+  - running ensureDsmDiagnosticsOnRegistration twice produces the same output
+  - if dsm_tile_bounds_lat_lng is present, no missing-bounds failure tokens are added
+
+  6. Run tests
+
+  Run:
+  supabase--test_edge_functions for _shared DSM diagnostic tests.
+
+  7. Deploy and rerun Fonsica
+
+  Acceptance:
+  - registration.dsm_size_px = { width: 998, height: 998 }
+  - registration.transform_package.dsm_size_px = { width: 998, height: 998 }
+  - registration_gate.transform_package.dsm_size_px = { width: 998, height: 998 }
+  - DSM Size row shows 998×998
+  - DSM Bounds Failure shows dsm_tile_bounds_missing_from_google_solar_metadata
+  - DSM Transform Policy shows dsm-registration-transform-v1
+  - dsm_validation_status_specific_reason shows dsm_tile_bounds_missing_from_google_solar_metadata
+  - Existing green items unchanged:
+    aerial graph executed with 12 edges
+    CPU elapsed under 75000ms
+    frame_mismatch ok
+    customer_report_ready false
+    Reportable Roof Lines 0
+  ```
+  Bottom line: **ready to implement**. The helper already exists; this is a targeted extension and final-write integration check, not a new subsystem.
