@@ -49,7 +49,14 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
         p_pipeline_entry_id: pipelineEntryId,
       });
       if (error) throw error;
-      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number } | null;
+      return data as {
+        materials: number;
+        labor: number;
+        sale_price: number;
+        base_sale_price?: number;
+        change_orders_total?: number;
+        sales_tax_amount: number;
+      } | null;
     },
     enabled: !!pipelineEntryId,
   });
