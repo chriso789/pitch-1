@@ -1435,9 +1435,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   const handleCreateEstimate = async () => {
-    // Allow creation if there's a roofing template OR any trade has items
+    // Allow creation as soon as a template is selected (line items can be added after save)
     const hasAnyTemplate = selectedTemplateId || tradeSections.some(t => !!t.templateId);
-    if (!hasAnyTemplate || lineItems.length === 0) return;
+    if (!hasAnyTemplate) return;
     
     setCreating(true);
     try {
