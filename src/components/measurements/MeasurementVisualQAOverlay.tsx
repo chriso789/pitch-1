@@ -242,6 +242,34 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     : rawLayers;
   const setLayer = (k: LayerKey, v: boolean) => setRawLayers((s) => ({ ...s, [k]: v }));
 
+  // ---- Viewport mode (Full Tile vs Roof Focus) ----------------------------
+  // Roof Focus crops the displayed canvas to the perimeter bbox + padding.
+  // It is a pure display transform — overlay pixel coordinates are unchanged.
+  type ViewportMode = "full_tile" | "roof_focus";
+  const focusSourceRing: Pt[] = rawRing.length >= 3 ? rawRing : refinedRing;
+  const focusBbox = useMemo(() => {
+    if (focusSourceRing.length < 3) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of focusSourceRing) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX)) return null;
+    return { minX, minY, maxX, maxY };
+  }, [focusSourceRing]);
+  const [viewportMode, setViewportMode] = useState<ViewportMode>("full_tile");
+  // Default to Roof Focus when a perimeter bbox exists (set once when ready).
+  const focusReady = !!focusBbox && rasterSizeResolved;
+  const focusInitialisedRef = useRef(false);
+  useEffect(() => {
+    if (focusReady && !focusInitialisedRef.current) {
+      setViewportMode("roof_focus");
+      focusInitialisedRef.current = true;
+    }
+  }, [focusReady]);
+
   // ---- Canvas rendering ---------------------------------------------------
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -257,10 +285,27 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const scale = containerWidth > 0 && rasterSize.width > 0
-    ? containerWidth / rasterSize.width
+  // Compute the active source-pixel viewport: either the full raster, or a
+  // padded bbox around the roof perimeter. Pad ~100px clamped to raster.
+  const viewportSrc = useMemo(() => {
+    const fullW = rasterSize.width;
+    const fullH = rasterSize.height;
+    if (viewportMode === "roof_focus" && focusBbox && fullW > 0 && fullH > 0) {
+      const pad = Math.max(80, Math.min(120, Math.round(Math.max(focusBbox.maxX - focusBbox.minX, focusBbox.maxY - focusBbox.minY) * 0.15)));
+      const minX = Math.max(0, focusBbox.minX - pad);
+      const minY = Math.max(0, focusBbox.minY - pad);
+      const maxX = Math.min(fullW, focusBbox.maxX + pad);
+      const maxY = Math.min(fullH, focusBbox.maxY + pad);
+      return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+    }
+    return { minX: 0, minY: 0, maxX: fullW, maxY: fullH, w: fullW, h: fullH };
+  }, [viewportMode, focusBbox, rasterSize.width, rasterSize.height]);
+
+  const scale = containerWidth > 0 && viewportSrc.w > 0
+    ? containerWidth / viewportSrc.w
     : 1;
-  const displayHeight = rasterSize.height > 0 ? rasterSize.height * scale : 0;
+  const displayHeight = viewportSrc.h > 0 ? viewportSrc.h * scale : 0;
+
 
   // Load the aerial image once and capture natural size for resolver fallback.
   useEffect(() => {
