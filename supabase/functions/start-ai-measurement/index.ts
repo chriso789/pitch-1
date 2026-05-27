@@ -170,6 +170,12 @@ import {
   resolveRegistrationForPreempt,
 } from "../_shared/aerial-graph-preempt-resolver.ts";
 import {
+  EARLY_DSM_REGISTRATION_CALLSITE,
+  mergeEarlyDsmRegistrationIntoDebug,
+  runEarlyDerivedDsmRegistration,
+  type EarlyDsmRegistrationResult,
+} from "../_shared/early-dsm-registration.ts";
+import {
   evaluateAerialPrimacy,
   type AerialPrimacyEvaluation,
 } from "../_shared/aerial-primary-gate.ts";
