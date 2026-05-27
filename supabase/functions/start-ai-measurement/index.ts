@@ -6931,6 +6931,118 @@ async function processJob(input: any) {
         return;
       }
 
+      // ══════════ EARLY DSM REGISTRATION (BEFORE TOPOLOGY) ══════════
+      // dsm-registration-derived-bounds-v1 callsite:
+      //   `early_dsm_registration_before_topology`
+      //
+      // Runs the already-tested derived-bounds path BEFORE Phase 3A.5 /
+      // autonomous topology can burn the CPU budget. If the gate passes and
+      // the derived transform validates (incl. raster→DSM→raster roundtrip),
+      // we overwrite `hoistedTransformPackage` and friends so every
+      // downstream preempt branch (which reads from those hoisted vars) sees
+      // the derived registration and merges it into the terminal failure
+      // debug bag instead of nulling the DSM transform fields.
+      try {
+        const _dsmForEarly: any = effectiveDSMForMatch || dsmGrid || maskedDSM;
+        const _dsmSizeForEarly = _dsmForEarly
+          ? { width: _dsmForEarly.width, height: _dsmForEarly.height }
+          : null;
+        const _dsmMppForEarly =
+          (_dsmForEarly && Number.isFinite(Number(_dsmForEarly.resolution)))
+            ? Number(_dsmForEarly.resolution)
+            : null;
+        const _confirmedLLEarly =
+          ((input as any).confirmed_roof_center_lat != null &&
+              (input as any).confirmed_roof_center_lng != null)
+            ? {
+              lat: Number((input as any).confirmed_roof_center_lat),
+              lng: Number((input as any).confirmed_roof_center_lng),
+            }
+            : { lat: coords.lat, lng: coords.lng };
+        const _frameMismatchEarly: string | null =
+          (dsmCoordinateMatchDebug as any)?.frame_mismatch ??
+            (dsmCoordinateMatchDebug as any)?.match_status ??
+            (Boolean((dsmCoordinateMatchDebug as any)?.is_valid) ? "ok" : null);
+        const _targetOverlapEarly: number | null =
+          (perimeterTopologySnapshot as any)?.target_mask_overlap_with_perimeter ??
+            (targetMaskIsolation as any)?.target_mask_overlap_with_perimeter ??
+            null;
+        const _selectedPerimeterPresentEarly = Boolean(
+          (perimeterTopologySnapshot as any)?.perimeter_ring_px?.length ||
+            (targetMaskIsolation as any)?.target_mask_contour?.length ||
+            (Array.isArray(footprint) && footprint.length >= 3),
+        );
+
+        earlyDerivedRegistration = runEarlyDerivedDsmRegistration({
+          dsm_loaded: !!_dsmForEarly,
+          dsm_size_px: _dsmSizeForEarly,
+          dsm_meters_per_pixel: _dsmMppForEarly,
+          raster_bounds_lat_lng:
+            (hoistedTransformPackage as any)?.raster_bounds_lat_lng ??
+              hoistedRasterBoundsLatLng ?? null,
+          raster_size_px: { width: raster.width, height: raster.height },
+          raster_meters_per_pixel: Number.isFinite(Number(actualMpp))
+            ? Number(actualMpp)
+            : null,
+          geo_to_raster_transform:
+            (hoistedTransformPackage as any)?.geo_to_raster_transform ??
+              hoistedGeoToRasterTransform ?? null,
+          frame_mismatch: _frameMismatchEarly,
+          target_mask_overlap_with_perimeter: _targetOverlapEarly,
+          selected_perimeter_present: _selectedPerimeterPresentEarly,
+          confirmed_roof_center_lat_lng: _confirmedLLEarly,
+          static_map_center_lat_lng: { lat: coords.lat, lng: coords.lng },
+          zoom: Number.isFinite(Number((input as any).zoom))
+            ? Number((input as any).zoom)
+            : 19,
+          logical_image_size: {
+            width: Number((input as any).logical_image_width || 640),
+            height: Number((input as any).logical_image_height || 640),
+          },
+          scale: Number((input as any).raster_scale || 2),
+          dsmCoordinateMatchDebug: dsmCoordinateMatchDebug as any,
+          effectiveDSM: _dsmForEarly,
+          roofMask: roofMaskForContour ?? null,
+          mask_loaded: !!roofMaskForContour,
+        });
+
+        if (earlyDerivedRegistration && earlyDerivedRegistration.success) {
+          // Overwrite hoisted vars so every downstream preempt branch +
+          // resolveRegistrationForPreempt observes the derived registration.
+          hoistedTransformPackage = earlyDerivedRegistration.transformPackage;
+          hoistedRasterBoundsLatLng =
+            earlyDerivedRegistration.rasterBoundsLatLng;
+          hoistedGeoToRasterTransform =
+            earlyDerivedRegistration.geoToRasterTransform;
+          hoistedConfirmedRoofCenterPx =
+            earlyDerivedRegistration.confirmedRoofCenterPx;
+          console.log(
+            "[EARLY_DSM_REGISTRATION_BEFORE_TOPOLOGY] derived bounds validated",
+            JSON.stringify({
+              callsite: EARLY_DSM_REGISTRATION_CALLSITE,
+              dsm_raster_roundtrip_error_px:
+                earlyDerivedRegistration.fields.dsm_raster_roundtrip_error_px,
+              dsm_size_px: earlyDerivedRegistration.fields.dsm_size_px,
+            }),
+          );
+        } else {
+          console.log(
+            "[EARLY_DSM_REGISTRATION_BEFORE_TOPOLOGY] skipped",
+            JSON.stringify({
+              callsite: EARLY_DSM_REGISTRATION_CALLSITE,
+              skipped_reason: earlyDerivedRegistration?.success === false
+                ? earlyDerivedRegistration.skipped_reason
+                : "unknown",
+            }),
+          );
+        }
+      } catch (e) {
+        console.warn(
+          "[EARLY_DSM_REGISTRATION_BEFORE_TOPOLOGY] threw — continuing without derived bounds",
+          (e as Error)?.message,
+        );
+      }
+
       // ══════════ PHASE 3A.5 — TRUE OUTER ROOF PERIMETER REFINEMENT (HARD GATE) ══════════
       // Refines the Layer-1 perimeter against DSM + target mask, rejecting tree
       // canopy / patio / shadow bulges. If refinement fails, we STOP here as
