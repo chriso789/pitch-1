@@ -572,7 +572,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                   </div>
                 </div>
                 <span className="text-sm font-bold shrink-0">
-                  {formatCurrency(estimate.selling_price || 0)}
+                  {estimate.is_recovered_pdf ? 'PDF only' : formatCurrency(estimate.selling_price || 0)}
                 </span>
               </div>
               
