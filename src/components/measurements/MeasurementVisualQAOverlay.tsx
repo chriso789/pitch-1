@@ -328,6 +328,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     /* eslint-disable-next-line */
   }, [
     layers, scale, editedRing, rawRing, refinedRing, maskPolygon, cornerCutMids, dsmEdges,
+    viewportSrc.minX, viewportSrc.minY, viewportSrc.w, viewportSrc.h,
   ]);
 
   const dsmAllowed = hasDsmToRasterTransform(measurement);
@@ -341,25 +342,31 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
       cvs.width = 1; cvs.height = 1;
       return;
     }
-    const W = Math.max(1, Math.round(rasterSize.width * scale));
-    const H = Math.max(1, Math.round(rasterSize.height * scale));
+    const W = Math.max(1, Math.round(viewportSrc.w * scale));
+    const H = Math.max(1, Math.round(viewportSrc.h * scale));
     cvs.width = W;
     cvs.height = H;
     const ctx = cvs.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
 
-    // Aerial background — drawImage uses the same W/H as the SVG/canvas,
-    // so the image and overlay share the exact same scale (no letterbox drift).
+    // Aerial background — draw the source-pixel sub-rect of the image so the
+    // displayed canvas focuses on the roof while overlay coords stay in the
+    // same source-pixel space.
     if (layers.aerial && imgRef.current) {
-      ctx.drawImage(imgRef.current, 0, 0, W, H);
+      ctx.drawImage(
+        imgRef.current,
+        viewportSrc.minX, viewportSrc.minY, Math.max(1, viewportSrc.w), Math.max(1, viewportSrc.h),
+        0, 0, W, H,
+      );
     } else {
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, W, H);
     }
 
-    const sx = (p: Pt) => p[0] * scale;
-    const sy = (p: Pt) => p[1] * scale;
+    const sx = (p: Pt) => (p[0] - viewportSrc.minX) * scale;
+    const sy = (p: Pt) => (p[1] - viewportSrc.minY) * scale;
+
 
     const drawRing = (
       ring: Pt[],
