@@ -355,9 +355,6 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const contractBalance = sellingPrice - totalPaid;
 
-  // Auto-populate invoice from latest estimate when dialog opens.
-  // First invoice (no payments / no prior invoices) = full estimate.
-  // Otherwise scale lines so invoice = contract − payments − outstanding invoiced.
   useEffect(() => {
     if (!showInvoiceDialog) return;
 
@@ -369,68 +366,96 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         ? parseLineItems(legacyEst, 'legacy')
         : [];
 
-    if (baseItems.length === 0) {
-      const coOnly = (approvedChangeOrders || []).flatMap((co: any) =>
-        parseChangeOrderLineItems(co)
-      );
-      setInvoiceLineItems(coOnly);
-      return;
+    // Build trade groups from base estimate items (selling-price scaled).
+    const tradeGroups: InvoiceGroup[] = [];
+    if (baseItems.length > 0) {
+      // Step 1: scale costs → selling price.
+      const costTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
+      const targetSellingPrice = enhancedEst?.selling_price
+        ? Number(enhancedEst.selling_price)
+        : sellingPrice;
+      const markupScale =
+        costTotal > 0 && targetSellingPrice > 0 ? targetSellingPrice / costTotal : 1;
+      const sellingPriceItems = baseItems.map((item) => {
+        if (markupScale === 1) return item;
+        const newTotal = Math.round(item.line_total * markupScale * 100) / 100;
+        const qty = Number(item.qty) || 1;
+        const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+        return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+      });
+
+      // Step 2: scale to remaining balance if prior payments/invoices exist.
+      const sellingTotal = sellingPriceItems.reduce((s, i) => s + i.line_total, 0);
+      const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+      const outstandingInvoiced = (invoices || [])
+        .filter((inv: any) => inv.status !== 'void')
+        .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
+      const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
+      const balanceScale =
+        remaining > 0 && sellingTotal > 0 && remaining < sellingTotal
+          ? remaining / sellingTotal
+          : 1;
+      const scaled = sellingPriceItems.map((item) => {
+        if (balanceScale === 1) return item;
+        const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
+        const qty = Number(item.qty) || 1;
+        const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+        return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+      });
+
+      // Group by trade_type, preserving order of first appearance.
+      const order: string[] = [];
+      const byTrade = new Map<string, { label: string; items: (InvoiceLineItem & { selected: boolean })[] }>();
+      scaled.forEach((it) => {
+        const tradeType = (it.trade_type || 'roofing').toString();
+        const tradeLabel =
+          it.trade_label ||
+          tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
+        if (!byTrade.has(tradeType)) {
+          order.push(tradeType);
+          byTrade.set(tradeType, { label: tradeLabel, items: [] });
+        }
+        byTrade.get(tradeType)!.items.push(it);
+      });
+      order.forEach((tradeType) => {
+        const g = byTrade.get(tradeType)!;
+        tradeGroups.push({
+          key: `trade:${tradeType}`,
+          kind: 'trade',
+          label: `${g.label} — Labor & Materials`,
+          selected: true,
+          expanded: false,
+          children: g.items,
+        });
+      });
     }
 
-    // Step 1: Scale line item COSTS up to SELLING PRICE (apply markup pro-rata).
-    // Estimate line items store internal costs; the customer-facing total is `selling_price`.
-    const costTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
-    const targetSellingPrice = enhancedEst?.selling_price
-      ? Number(enhancedEst.selling_price)
-      : sellingPrice;
-    const markupScale =
-      costTotal > 0 && targetSellingPrice > 0 ? targetSellingPrice / costTotal : 1;
-
-    const sellingPriceItems = baseItems.map((item) => {
-      if (markupScale === 1) return item;
-      const newTotal = Math.round(item.line_total * markupScale * 100) / 100;
-      const qty = Number(item.qty) || 1;
-      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
-      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+    // One group per approved change order.
+    const coGroups: InvoiceGroup[] = (approvedChangeOrders || []).map((co: any) => {
+      const children = parseChangeOrderLineItems(co);
+      const coLabel = co.co_number ? `CO #${co.co_number}` : 'CO';
+      const title = co.title ? ` — ${co.title}` : '';
+      return {
+        key: `co:${co.id}`,
+        kind: 'change_order' as const,
+        label: `${coLabel}${title}`,
+        selected: true,
+        expanded: false,
+        children,
+      };
     });
 
-    // Step 2: If prior payments/invoices exist, scale further to remaining balance.
-    const sellingTotal = sellingPriceItems.reduce((s, i) => s + i.line_total, 0);
-    const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-    const outstandingInvoiced = (invoices || [])
-      .filter((inv: any) => inv.status !== 'void')
-      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
-
-    const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
-    const balanceScale =
-      remaining > 0 && sellingTotal > 0 && remaining < sellingTotal
-        ? remaining / sellingTotal
-        : 1;
-
-    const scaled = sellingPriceItems.map((item) => {
-      if (balanceScale === 1) return item;
-      const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
-      const qty = Number(item.qty) || 1;
-      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
-      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
-    });
-
-    // Step 3: Append approved change-order line items at full selling price.
-    // COs are NOT pro-rata scaled — they represent extra-contract work that
-    // the customer owes on top of the base estimate.
-    const coItems = (approvedChangeOrders || []).flatMap((co: any) =>
-      parseChangeOrderLineItems(co)
-    );
-
-    setInvoiceLineItems([...scaled, ...coItems]);
+    setInvoiceGroups([...tradeGroups, ...coGroups]);
   }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
-      const selectedItems = invoiceLineItems.filter(i => i.selected);
-      if (selectedItems.length === 0) throw new Error('Select at least one line item');
-      
-      const amount = selectedItems.reduce((sum, i) => sum + i.line_total, 0);
+      const selectedGroups = invoiceGroups
+        .map((g) => ({ g, total: groupTotal(g) }))
+        .filter(({ g, total }) => g.selected && total > 0);
+      if (selectedGroups.length === 0) throw new Error('Select at least one line item');
+
+      const amount = Math.round(selectedGroups.reduce((s, { total }) => s + total, 0) * 100) / 100;
       if (amount <= 0) throw new Error('Invoice total must be greater than zero');
 
       // Get auth user directly to avoid profile mismatch
