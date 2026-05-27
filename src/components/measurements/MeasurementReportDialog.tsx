@@ -1502,7 +1502,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     wrapper.style.left = "-10000px";
     wrapper.style.top = "0";
     wrapper.style.width = `${page.offsetWidth || 900}px`;
-    wrapper.style.background = "hsl(var(--background))";
+    wrapper.style.background = "#ffffff";
     wrapper.style.zIndex = "-1";
 
     const clone = page.cloneNode(true) as HTMLElement;
