@@ -45,10 +45,13 @@ interface SrsAttempt {
   job?: JobInfo;
 }
 
-function extractError(resp: any, history: StatusEvent[]): string | null {
-  // Prefer the most recent failure/rejection event from status history —
-  // the original submit response often says "Order Queued" even when the
-  // order was later dropped/rejected by SRS.
+function extractError(resp: any, history: StatusEvent[], currentStatus: string): string | null {
+  // Only surface a rejection reason when the CURRENT order status is actually
+  // a failed/rejected state. A later webhook (e.g. SRS "OU" Order Update) may
+  // promote the row back to `submitted`/`accepted`, in which case any earlier
+  // "404 after queue" history message is stale and must not be shown.
+  if (!/reject|fail|cancel|error/i.test(currentStatus)) return null;
+
   const errEvt = [...history]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .find(h =>
@@ -244,10 +247,12 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
         ) : (
           <div className="space-y-3">
             {attempts.map(a => {
-              const errMsg = extractError(a.srs_response, a.history);
+              const errMsg = extractError(a.srs_response, a.history, a.status);
               const webhookCount = a.history.filter(h => h.raw_webhook_data).length;
+              const lastWebhook = a.history.find(h => h.raw_webhook_data);
               const isExpanded = expanded === a.id;
-              const failed = /fail|reject|error|cancel/i.test(a.status) || !!errMsg;
+              const failed = /reject|fail|cancel|error/i.test(a.status);
+              const received = !failed && webhookCount > 0;
               return (
                 <div key={a.id} className="rounded-md border p-3 text-sm">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -264,10 +269,22 @@ export function SrsDiagnosticsPanel({ projectId }: Props) {
                             <CheckCircle2 className="h-3 w-3" /> {a.status}
                           </Badge>
                         )}
+                        {received && (
+                          <Badge className="gap-1 bg-emerald-600 text-white">
+                            <CheckCircle2 className="h-3 w-3" /> Received
+                            {lastWebhook && ` · ${format(new Date(lastWebhook.created_at), 'MMM d, h:mm a')}`}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="gap-1">
                           <Webhook className="h-3 w-3" /> {webhookCount} webhook{webhookCount === 1 ? '' : 's'}
                         </Badge>
                       </div>
+                      {received && lastWebhook && (lastWebhook.new_status || lastWebhook.status_message) && (
+                        <div className="rounded border border-emerald-600/30 bg-emerald-600/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-400">
+                          Last SRS update: <code className="font-semibold">{lastWebhook.new_status || '—'}</code>
+                          {lastWebhook.status_message && <span className="ml-1">— {lastWebhook.status_message}</span>}
+                        </div>
+                      )}
                       {(a.job?.job_number || a.job?.customer_name || a.job?.address) && (
                         <div className="rounded-md bg-muted/50 border px-2 py-1.5 text-xs space-y-0.5">
                           {a.job?.job_number && (
