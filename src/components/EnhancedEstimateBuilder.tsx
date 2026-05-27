@@ -2347,7 +2347,12 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
                 <Button
                   onClick={handleSaveEstimate}
-                  disabled={!calculationResults || savingEstimate || calculationResults.selling_price === 0}
+                  disabled={savingEstimate}
+                  title={
+                    !calculationResults || calculationResults.selling_price === 0
+                      ? 'Saving with $0 — you can edit quantities and pricing after saving'
+                      : undefined
+                  }
                   size="lg"
                   className="w-full gradient-primary"
                 >
