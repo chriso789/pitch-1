@@ -1,264 +1,161 @@
-## Why GitHub is spamming failures
+## Scope
 
-Two factors are compounding:
+Display/PDF-only fix. No backend, no DSM/topology/gate changes, no DB schema. Underlying coordinates (`selected_perimeter_px`, geo, DSM transforms, measurements) are untouched.
 
-**1. CI runs on EVERY push to EVERY branch.** `.github/workflows/ci.yml` triggers on `push: branches: ['**']` and `pull_request`. Lovable creates many commits per chat loop on the same branch, so every iteration fires the full CI suite. Even with `concurrency: cancel-in-progress`, each cancelled run still emits a "Run failed" notification.
+## Why the PDF still has a black block
 
-**2. Two brittle jobs that fail loudly:**
-
-- `**Deno • Edge Function Typecheck**` runs `deno check` over `supabase/functions/**/index.ts` — currently 400+ functions. A single unresolved `npm:` import, missing shared file, or a Deno-only API used in shared TS makes the WHOLE job red. This is the most-frequent failure mode in the screenshot (most rows say "Deno • Edge Function Typecheck failed").
-- `**Typecheck • Lint • Unit Tests • Build**` is a single sequential job. One TS error / one lint warning that's promoted to error / one flaky vitest = whole job red, "Build failed (2 annotations)".
-
-There are also three `claude-*.yml` workflows. Those only run on PRs / cron / manual dispatch, so they are NOT the source of the spam — leave them alone.
+1. `RasterOverlayDebugView` (the "Roof Overlay" panel at `MeasurementReportDialog.tsx:2170`) renders an SVG with `viewBox="0 0 W H"` — full raster (typically 1024×1024 or 1280×1280) — wrapped in `<div className="relative w-full bg-muted rounded overflow-hidden">`. When the actual roof bbox is small (e.g. `500,471→790,782` ≈ 290×311 of a 1280-px tile), the rendered SVG is a near-square tile where the aerial `<image href={imageUrl}>` is the Google Static Maps URL. In `capturePageImage` (`html2canvas`, `useCORS:true, allowTaint:false`), CORS commonly fails for the static map and the `<image>` paints empty / dark, leaving a large empty rectangle around a tiny roof. That is the "black area".
+2. The first aerial diagram (Roof Overlay) is full-tile; the second (`MeasurementVisualQAOverlay`, lines 247–304) already has Roof Focus math and auto-switches to it once a perimeter is available. So the two diagrams disagree on zoom.
+3. Roof Focus math currently lives only inside `MeasurementVisualQAOverlay` — there is no shared helper, so `RasterOverlayDebugView` and any PDF block can't reuse it.
 
 ## Plan
 
-### 1. Stop the email spam at the source — narrow CI triggers
+### 1. Extract a single Roof Focus helper
 
-Update `.github/workflows/ci.yml`:
+New file: `src/lib/measurements/roofFocusViewport.ts`.
 
-- `push:` only on `branches: [main]` (so Lovable's working-branch pushes stop firing CI).
-- Keep `pull_request:` so PR review still gets coverage.
-- Add `paths-ignore` for docs/markdown/asset-only changes (`*.md`, `docs/**`, `public/**`, `mem://` files do not live in git but `*.md` are common).
-- Keep `concurrency.cancel-in-progress: true` (already there).
+Pure functions, no React:
 
-Expected effect: CI runs drop from ~every commit to ~once per merge to main + once per PR push. The email volume in the screenshot disappears immediately.
-
-### 2. Split the monolithic quality job so one failure ≠ whole job red
-
-Replace the single `quality` job with four parallel jobs sharing one `setup` job that caches `node_modules`:
-
-```text
-setup (npm ci, upload node_modules cache)
-  ├── typecheck   (npm run typecheck)
-  ├── lint        (npm run lint)
-  ├── unit-tests  (npm run test:unit)
-  └── build       (npm run build)
+```ts
+export interface RoofFocusInput {
+  rasterSize: { width: number; height: number };
+  perimeterPx: Array<[number, number]>;        // selected, refined, or raw — caller decides priority
+  padFraction?: number;                         // default 0.15
+  minPadPx?: number;                            // default 80
+  maxPadPx?: number;                            // default 120
+  displayWidth: number;                         // px the panel renders at
+}
+export interface RoofFocusViewport {
+  cropBboxPx: { minX: number; minY: number; maxX: number; maxY: number; w: number; h: number };
+  cropScale: number;                            // displayWidth / cropBboxPx.w
+  cropOffset: { x: number; y: number };         // = (-minX*scale, -minY*scale)
+  displayPxWithinCrop: { width: number; height: number };
+  /** source raster px → display px inside the crop */
+  project: (pt: [number, number]) => [number, number];
+  /** Convenience: SVG viewBox string for the crop. */
+  viewBox: string;                              // "minX minY w h"
+  isFocused: boolean;                           // false when perimeter empty → returns full-tile viewport
+}
 ```
 
-Each becomes its own check on the PR. A flaky unit test no longer hides a real typecheck failure, and the failure annotation points at the actual problem instead of the umbrella "Build failed (2 annotations)".
+`MeasurementVisualQAOverlay` is refactored to consume this helper instead of its inline `viewportSrc` math (lines 247–308). Same numbers, just centralised. The diagnostics card that prints `crop_bbox_px` / `display_px_within_crop` / `first_pt_disp` / `bbox_center_disp` continues to render — values now sourced from the helper so they match the projected geometry exactly.
 
-### 3. Tame the Deno edge-function typecheck
+### 2. Make `RasterOverlayDebugView` roof-focused
 
-`deno check` over 400+ functions is the single biggest source of red runs. Make it scoped and non-fatal for unrelated functions:
+`src/components/measurements/RasterOverlayDebugView.tsx`
 
-- **Scope to changed functions only on PRs**: use `tj-actions/changed-files` (already used in `claude-code-review.yml`) to compute the list of changed `supabase/functions/*/index.ts` and run `deno check` on just those. Full-tree check stays only on push to `main`.
-- **Add `--no-npm` / explicit `--allow-import` flags** consistent with how the functions actually deploy, so legitimate `npm:` specifiers don't fail locally.
-- **Make the `main`-branch full sweep `continue-on-error: true` for now** and instead publish a JSON report as a workflow artifact. We'll wire a follow-up job that opens a single tracking issue when the count of broken functions changes, instead of emailing on every push.
+- Accept new optional prop `focusPerimeterPx?: Array<[number, number]>` (caller passes selected perimeter, or refined / raw fallback).
+- When `focusPerimeterPx.length >= 3`, compute `roofFocusViewport(...)` and set the SVG `viewBox` to `roofFocusViewport.viewBox` (i.e. the crop bbox in source raster pixels, NOT `0 0 W H`).
+- Keep the underlying point data unchanged — the SVG continues to draw in raster source pixels; only the viewBox changes, so all existing polygon/edge points still line up.
+- Drop `preserveAspectRatio="xMidYMid meet"` letterboxing risk by giving the wrapper a dynamic height: replace `<div className="relative w-full bg-muted ...">` with a wrapper whose `paddingBottom` = `(crop.h / crop.w) * 100%` (aspect-ratio box). Background becomes `bg-white` (not `bg-muted`, never black) to satisfy the "no black fill" requirement.
+- Provide a fallback inline note "aerial unavailable" when the `<image>` `onError` fires, so a CORS failure shows a labeled white panel rather than empty space.
 
-### 4. Fix the real underlying failures (separate follow-up tickets)
+`MeasurementReportDialog.tsx` (both call sites, lines 2091 and 2170) passes `focusPerimeterPx` derived from the same priority used in Visual QA (selected → refined → raw → footprint).
 
-Triggers above will reduce email noise even if real failures remain. To actually get CI green, after step 1–3 ship:
+### 3. PDF capture: ensure no dark/black backgrounds slip in
 
-- Inventory current failures by downloading the latest red run's annotations (the "2 annotations" referenced in the email subjects) and bucket them: TS errors vs Deno import errors vs vitest failures vs lint.
-- Address each bucket in its own small PR. Likely candidates based on the project's edge-function rules: missing `npm:` prefix, `serve(handler)` instead of `Deno.serve(handler)`, shared files importing from `src/`, edge functions importing types from frontend.
-- For lint: confirm `eslint .` isn't promoting warnings to errors on files Lovable touches frequently; if it is, demote to warn for the noisy rules.
+`MeasurementReportDialog.tsx`, `createExportReadyClone` / `capturePageImage`:
 
-### 5. Optional — kill notifications on cancelled runs
+- `wrapper.style.background` is currently `hsl(var(--background))` (theme-dependent — dark in dark mode). Force `#ffffff` for the export wrapper to match the existing `backgroundColor: "#ffffff"` in `captureOptions`.
+- In the clone, walk descendants and rewrite any element with computed `background-color` darker than `#404040` that is NOT explicitly a chart/canvas/img to `#ffffff`. (Conservative — only affects the off-screen clone used for capture.)
+- For overlay panels specifically, mark the new aspect-ratio wrapper with `data-pdf-overlay-panel="true"` and in the export clone force its background to `#ffffff` and remove any `bg-muted` class.
+- When the aerial `<image>` fails to load (detected via `onError`), substitute a same-aspect `<rect fill="#ffffff" stroke="#cbd5e1" stroke-dasharray="4 4"/>` and a centered `<text>` "aerial unavailable in export" inside the SVG so the PDF never shows raw black.
 
-`concurrency.cancel-in-progress` produces "cancelled" events that GitHub still emails about for some user notification settings. Add `if: github.event.action != 'cancelled'` is not a thing, but we can instead set `concurrency.group` to include `github.workflow` (already implicit) and document that the user should switch GitHub notification preferences to "Only notify for failed workflows I triggered" — this is a one-line settings change in github.com/settings/notifications.
+### 4. Reorder the PDF page so the visual leads
+
+`MeasurementReportDialog.tsx` report layout (around the `measurement-report-page` blocks ~2080–2200): introduce explicit visual-first ordering for the diagnostic page:
+
+1. Header / status badges (existing).
+2. **Roof-focused aerial overlay** (the updated `RasterOverlayDebugView` with focus, OR `MeasurementVisualQAOverlay`'s overlay canvas snapshot). One of them, top of page — not both stacked.
+3. Compact key diagnostics card (existing summary chips).
+4. Detailed debug table.
+5. Raw JSON dumps stay tagged `data-pdf-exclude="true"` (already removed in `createExportReadyClone`) — keep them out of the PDF.
+
+Implementation: wrap the two overlays in a small `MeasurementReportVisualSection` component that picks the "best" overlay (Visual QA if `rasterSizeResolved && focusPerimeterPx≥3`, else `RasterOverlayDebugView` with focus, else a "no overlay available" placeholder). The placeholder is white/transparent, never black.
+
+### 5. Overlay legend cleanup for current state
+
+`MeasurementVisualQAOverlay` legend (and the new visual section): when `dsm` layer is unavailable (`dsmAllowed === false` or `dsmEdges.length === 0`) AND there are no reportable roof_lines, render the legend exactly as:
+
+- Aerial perimeter candidate — visible
+- Selected perimeter — visible / editable
+- DSM topology — unavailable (greyed, with "not persisted" tooltip)
+- Reportable roof lines — none
+
+No phantom "visible" rows for layers that have no data.
+
+### 6. Tests
+
+New file `tests/unit/lib/measurements/roofFocusViewport.test.ts`:
+
+- Input: raster 1280×1280, perimeter sampled so bbox = `500,471 → 790,782`, displayWidth = 715.
+- Assert `cropBboxPx.w === 290` (pre-pad) → padded by ~44 (15% × 290) clamped to `[80,120]`, so pad = 80 → `cropBboxPx` ≈ `{ minX:420, minY:391, maxX:870, maxY:862, w:450, h:471 }` (exact values asserted from the helper, not hand-fudged).
+- Assert `displayPxWithinCrop.width === 715` and height = `715 × h/w`.
+- Project first source point `[596.6, 550.9]` → assert result is inside `[0, displayWidth] × [0, displayHeight]`.
+- Project bbox center `[(500+790)/2, (471+782)/2]` → assert inside viewport and within `±1px` of the analytical center.
+- Assert when `perimeterPx.length < 3`, `isFocused === false` and `viewBox === "0 0 1280 1280"`.
+
+New file `tests/unit/components/measurements/RasterOverlayDebugView.dom.test.tsx`:
+
+- Render with a small perimeter; assert the rendered `<svg>` has `viewBox` matching the crop bbox (not `"0 0 1024 1024"`).
+- Assert the outer wrapper has `data-pdf-overlay-panel="true"` and `background-color: rgb(255, 255, 255)` (no `bg-muted`, no black).
+- Assert no descendant of the panel has computed `background-color` darker than `#202020`.
+
+Optional: `tests/unit/components/measurements/MeasurementReportDialog.export.test.tsx` snapshot of the cloned export tree confirming `wrapper.style.background === '#ffffff'` and that overlay panels have white background after the export-clone pass.
+
+Tests are run via `bunx vitest run <path>`.
 
 ## Files touched
 
-- `.github/workflows/ci.yml` — rewrite (steps 1–3).
-- No code or app changes in this plan. Underlying CI failures in step 4 will be addressed in follow-up PRs once the noise is gone and we can actually read the real annotations.
+- `src/lib/measurements/roofFocusViewport.ts` (new)
+- `src/components/measurements/MeasurementVisualQAOverlay.tsx` — refactor `viewportSrc` to use the helper; diagnostics card now reads from helper outputs.
+- `src/components/measurements/RasterOverlayDebugView.tsx` — accept `focusPerimeterPx`; viewBox = focus crop; aspect-ratio wrapper; white background; `<image onError>` fallback.
+- `src/components/measurements/MeasurementReportDialog.tsx` — both `RasterOverlayDebugView` call sites pass `focusPerimeterPx`; export wrapper background forced `#ffffff`; visual-first ordering via small `MeasurementReportVisualSection` helper inline or as a sibling file.
+- New tests under `tests/unit/...` as above.
 
-## Out of scope
+## Out of scope (per user)
 
-- Editing the three `claude-*.yml` workflows (they're not the source of spam).
-- Refactoring edge functions — the architecture guard owns that work, and the consolidation skill should drive any function merges.
-- Changing branch-protection or required-checks rules on the GitHub side (user-side config).  
+Backend measurement logic, DSM registration, derived bounds runtime, CPU policy, topology/pitch/facet logic, `customer_report_ready` gates, reportable roof-line promotion, DB schema.
+
+## Separate follow-up (not in this PR)
+
+`derived_bounds_debug` is currently not surfaced in the visible PDF debug table. To verify after this PR ships: re-run Fonsica, open the PDF, confirm the debug table includes a `derived_bounds_debug` row. If still missing, that's a separate "expose `derived_bounds_debug` in the debug table" ticket — not bundled here because it would expand scope beyond display fixes.  
   
-The repo confirms the cause.
-  Your `.github/workflows/ci.yml` is set to run CI on **every push to every branch**:
-  ```
+I reviewed the latest PDF/report and the Lovable plan is correct.
 
-  ```
-  ```
-  on:
-    push:
-      branches: ['**']
-    pull_request:
-  ```
-  That means every Lovable/Codex/GitHub commit loop is firing the whole CI workflow. Since your workflow has `concurrency.cancel-in-progress: true`, GitHub cancels older runs when new commits come in — but those failed/cancelled runs can still email you. That is why your inbox is getting hammered. 
-  The two failing jobs are also exactly what the emails show:
-  ```
+You were right about both issues:
 
-  ```
-  ```
-  quality:
-    name: Typecheck • Lint • Unit Tests • Build
-  ```
-  and:
-  ```
+1. The large black area is not a measurement failure — it is a PDF/export rendering problem caused by the overlay panel still using a full-raster SVG/container with a dark background when the Google static map image fails or the crop does not fill the fixed container.
+2. The second aerial image is now the correct one because the Roof Focus crop math is finally working. The first aerial/overlay panel is still using a different/full-tile viewport, so the report visually disagrees with itself.
 
-  ```
-  ```
-  edge-functions-check:
-    name: Deno • Edge Function Typecheck
-  ```
-  The Deno job is checking **every Supabase edge function index file**:
-  ```
+The good news is the crop math is now objectively correct:
 
-  ```
-  ```
-  files=(supabase/functions/**/index.ts)
-  deno check --no-lock "${files[@]}"
-  ```
-  So one bad import, one broken shared file, one Deno incompatibility, or one function that Lovable half-edited makes the entire CI run red. 
-  ### What is causing it
-  You have a bad CI design for a fast-moving Lovable/Codex project.
-  The problem is not just “code is broken.” The bigger issue is:
-  1. **CI runs on every branch push**  
+```
 
-  2. **Lovable/Codex creates a lot of commits**  
+```
 
-  3. **The Deno check scans all edge functions every time**  
+```
+crop_bbox_px: 500,471→790,782
+display_px_within_crop: 715×768
+first_pt_disp: 238.3,197.6
+bbox_center_disp: 357.5,384.1
+```
 
-  4. **The frontend job combines typecheck, lint, tests, and build into one red failure**  
+Those projected display points are finally inside the visible viewport, which means the overlay alignment math itself is now solid. 
 
-  5. **GitHub emails you for every failed workflow run**  
+The next fix is exactly what the plan targets:
 
-  So the inbox spam is expected behavior with this workflow.
-  ### Fix this first
-  Change `.github/workflows/ci.yml` so CI only runs on `main` pushes and pull requests, not every random branch push.
-  Use this as the immediate replacement header:
-  ```
+-   
+unify all aerial visuals under the same Roof Focus helper  
 
-  ```
-  ```
-  name: CI
+-   
+make PDF export use the same crop-aware viewport  
 
-  on:
-    push:
-      branches:
-        - main
-      paths-ignore:
-        - '**/*.md'
-        - 'docs/**'
-        - 'public/**'
-        - '.github/ISSUE_TEMPLATE/**'
+-   
+eliminate dark/black export containers  
 
-    pull_request:
-      paths-ignore:
-        - '**/*.md'
-        - 'docs/**'
-        - 'public/**'
-        - '.github/ISSUE_TEMPLATE/**'
+-   
+move the useful roof-focused visual to the top of the report  
 
-  concurrency:
-    group: ci-${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
-  ```
-  That alone should stop most of the email flood.
-  ### Then fix the Deno job
-  Right now this is too aggressive:
-  ```
 
-  ```
-  ```
-  deno check --no-lock "${files[@]}"
-  ```
-  For a repo with hundreds of Supabase functions, that is asking for constant red runs.
-  Better structure:
-  ```
-
-  ```
-  ```
-  edge-functions-check:
-    name: Deno • Changed Edge Functions
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-
-      - name: Find changed edge functions
-        id: changed
-        uses: tj-actions/changed-files@v45
-        with:
-          files: |
-            supabase/functions/**/index.ts
-            supabase/functions/_shared/**/*.ts
-
-      - name: Deno type-check changed edge functions
-        if: steps.changed.outputs.any_changed == 'true'
-        run: |
-          deno check --no-lock ${{ steps.changed.outputs.all_changed_files }}
-
-      - name: No changed edge functions
-        if: steps.changed.outputs.any_changed != 'true'
-        run: echo "No changed edge functions to check"
-  ```
-  This prevents one old broken edge function from making every unrelated commit fail.
-  ### Then split the quality job
-  Right now this one job does everything:
-  ```
-
-  ```
-  ```
-  Typecheck • Lint • Unit Tests • Build
-  ```
-  That makes debugging worse. Split it into separate jobs:
-  ```
-
-  ```
-  ```
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --no-audit --no-fund
-      - run: npm run lint
-
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --no-audit --no-fund
-      - run: npm run test:unit
-        env:
-          VITE_SUPABASE_URL: https://example.supabase.co
-          VITE_SUPABASE_PUBLISHABLE_KEY: test-anon-key
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --no-audit --no-fund
-      - run: npm run build
-  ```
-  This makes GitHub tell you **exactly** what failed instead of hiding everything under one umbrella failure.
-  ### Bottom line
-  Your repo is not “randomly broken.” Your CI is too broad for the way you are building.
-  Immediate move: update `.github/workflows/ci.yml` so push only runs on `main`, PRs still run normally, and Deno only checks changed edge functions. That will stop the GitHub email flood and make the remaining real errors much easier to fix.
+I approved the plan and pushed the refined implementation/acceptance details into the repo issue.

@@ -9,6 +9,7 @@ import {
   type OverlayBBox,
   type OverlayCalibration,
 } from '@/lib/measurements/overlayTransform';
+import { roofFocusViewport } from '@/lib/measurements/roofFocusViewport';
 
 /**
  * Dev-only debug view that overlays measured planes & edges on top of the
@@ -127,6 +128,7 @@ export function RasterOverlayDebugView({
   overlayCalibration,
   roofTargetBboxPx,
   geometryPxSpace,
+  focusPerimeterPx,
 }: {
   imageUrl: string | null | undefined;
   rasterSize: { width: number; height: number } | null | undefined;
@@ -136,17 +138,31 @@ export function RasterOverlayDebugView({
   overlayCalibration?: OverlayCalibration | null;
   roofTargetBboxPx?: Partial<OverlayBBox> | null;
   geometryPxSpace?: string | null;
+  /** Optional perimeter (raster px) to crop the displayed view around. */
+  focusPerimeterPx?: Pt[] | null;
 }) {
   const [showPlanes, setShowPlanes] = useState(true);
   const [showEdges, setShowEdges] = useState(true);
   const [showFootprint, setShowFootprint] = useState(true);
   const [showRaster, setShowRaster] = useState(true);
+  const [imageFailed, setImageFailed] = useState(false);
 
-  const viewBox = useMemo(() => {
-    const w = rasterSize?.width || 1024;
-    const h = rasterSize?.height || 1024;
-    return `0 0 ${w} ${h}`;
-  }, [rasterSize]);
+  // Roof Focus crop — shared with MeasurementVisualQAOverlay so both aerials
+  // render at the same zoom. Falls back to full tile when no perimeter is
+  // available (helper returns isFocused=false).
+  const focus = useMemo(() => {
+    const fullW = rasterSize?.width || 1024;
+    const fullH = rasterSize?.height || 1024;
+    return roofFocusViewport({
+      rasterSize: { width: fullW, height: fullH },
+      perimeterPx: Array.isArray(focusPerimeterPx) ? focusPerimeterPx : [],
+      // displayWidth is arbitrary here — only crop bbox + viewBox are used.
+      displayWidth: 1000,
+    });
+  }, [focusPerimeterPx, rasterSize?.width, rasterSize?.height]);
+
+  const viewBox = focus.viewBox;
+  const aspectPct = (focus.cropBboxPx.h / focus.cropBboxPx.w) * 100;
 
   const calibration = useMemo(() => {
     if (!rasterSize) return null;
@@ -246,13 +262,18 @@ export function RasterOverlayDebugView({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="relative w-full bg-muted rounded overflow-hidden">
+        <div
+          data-pdf-overlay-panel="true"
+          className="relative w-full bg-white rounded overflow-hidden border border-border"
+          style={{ paddingBottom: `${aspectPct}%` }}
+        >
           <svg
             viewBox={viewBox}
             preserveAspectRatio="xMidYMid meet"
-            className="w-full h-auto block"
+            className="absolute inset-0 w-full h-full block"
+            style={{ background: '#ffffff' }}
           >
-            {showRaster && (
+            {showRaster && !imageFailed && (
               <image
                 href={imageUrl}
                 x={0}
@@ -260,7 +281,34 @@ export function RasterOverlayDebugView({
                 width={rasterSize.width}
                 height={rasterSize.height}
                 opacity={0.95}
+                preserveAspectRatio="none"
+                onError={() => setImageFailed(true)}
               />
+            )}
+            {showRaster && imageFailed && (
+              <g>
+                <rect
+                  x={focus.cropBboxPx.minX}
+                  y={focus.cropBboxPx.minY}
+                  width={focus.cropBboxPx.w}
+                  height={focus.cropBboxPx.h}
+                  fill="#ffffff"
+                  stroke="#cbd5e1"
+                  strokeDasharray="12 8"
+                  strokeWidth={2}
+                />
+                <text
+                  x={focus.cropBboxPx.minX + focus.cropBboxPx.w / 2}
+                  y={focus.cropBboxPx.minY + focus.cropBboxPx.h / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#64748b"
+                  fontSize={Math.max(16, focus.cropBboxPx.w / 28)}
+                  fontFamily="system-ui, sans-serif"
+                >
+                  aerial unavailable in export
+                </text>
+              </g>
             )}
             {targetBbox && (
               <rect
