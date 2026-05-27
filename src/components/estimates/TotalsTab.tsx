@@ -101,10 +101,14 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   );
   const coBudgetTotal = approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
 
-  const baseSellingPrice = barData?.sale_price ?? 0;
+  // The RPC's sale_price ALREADY includes approved CO cost_impact. Do NOT add it
+  // again here or the contract value will be double-counted (e.g. $113k base + $14.4k CO
+  // would incorrectly show as $141.8k instead of $127.4k).
+  const contractValue = barData?.sale_price ?? 0;
+  const baseSellingPrice = barData?.base_sale_price ?? (contractValue - (barData?.change_orders_total ?? 0));
+  const coBudgetTotal = barData?.change_orders_total ?? approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
   const materialCost = barData?.materials ?? 0;
   const laborCost = barData?.labor ?? 0;
-  const contractValue = baseSellingPrice + coBudgetTotal;
   const totalPaid = (payments || []).reduce((s, p) => s + Number(p.amount), 0);
   const balance = contractValue - totalPaid;
 
