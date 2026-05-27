@@ -104,6 +104,39 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   if (reg.confirmed_center_inside_candidate === false) failed.push("confirmed_center_inside_candidate");
   if (reg.coordinate_registration_gate_passed === false) failed.push("coordinate_registration_gate_passed");
   if (failed.length === 0) return null;
+
+  // Classify into the actual failure bucket so the banner copy matches reality.
+  const targetFailed = reg.user_confirmed_roof_target === false;
+  const frameFailed =
+    reg.confirmed_center_inside_candidate === false ||
+    reg.coordinate_registration_gate_passed === false;
+  const dsmOnly =
+    !targetFailed &&
+    !frameFailed &&
+    (reg.geo_to_dsm_px_success === false ||
+      reg.dsm_pixel_transform_valid === false);
+
+  if (targetFailed) {
+    return {
+      variant: "destructive",
+      title: "Roof target not confirmed — re-place PIN to continue",
+      description:
+        "The AI measurement cannot proceed until the operator confirms which roof to measure. Re-open Structure Selection and drop the PIN on the target building.",
+      failedFlags: failed,
+    };
+  }
+
+  if (dsmOnly) {
+    return {
+      variant: "warning",
+      title: "DSM registration incomplete — overlay locked from approval",
+      description:
+        "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
+      failedFlags: failed,
+    };
+  }
+
+  // Default: true coordinate-frame mismatch.
   return {
     variant: "destructive",
     title: "Coordinate frame mismatch — overlay not eligible for manual approval",
