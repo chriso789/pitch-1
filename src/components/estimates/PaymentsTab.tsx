@@ -529,6 +529,14 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
             amount,
             company: companyInfo,
             customer,
+            alreadyPaid: totalPaid || 0,
+            paymentHistory: (payments || []).map((p: any) => ({
+              date: format(new Date(p.payment_date), 'MMM d, yyyy'),
+              amount: Number(p.amount) || 0,
+              method: p.payment_method || '',
+              reference: p.reference_number || '',
+            })),
+            contractTotal: Number(sellingPrice) || 0,
           },
         });
         if (result.error) {
