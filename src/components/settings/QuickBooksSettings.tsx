@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug } from "lucide-react";
+import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug, AlertTriangle } from "lucide-react";
 import { QuickBooksSyncErrors } from "./QuickBooksSyncErrors";
+import { QuickBooksConnectDialog } from "./QuickBooksConnectDialog";
 
 const JOB_TYPES = [
   { key: 'roof_repair', label: 'Roof Repair' },
