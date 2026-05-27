@@ -1,152 +1,283 @@
-Scope is narrow: backend frame source resolution + frontend Visual QA/Roof Focus display only. No DSM math, topology, pitch, customer_report_ready, DB schema, CPU policy, aerial graph, or roof-line promotion changes.
+# Instrument derived-bounds runtime (no logic changes)
 
-## Rules this honors
+## Goal
 
-- Roof Measurement Vision QA Rule 3/11: DSM/topology/customer export stays gated; this only removes a false coordinate-frame block.
-- Visual QA Overlay Rule 1/3/4: failed/topology-blocked reports still show aerial-backed diagnostics, not a misleading blank or wrong-frame message.
-- Regression Harness Rule 1: add/update tests for the measurement pipeline regression.
+The early DSM registration gate now PASSES, but `buildDsmRegistration` returns `dsm_bounds_source = "missing"` and the wrapper exits with `derived_bounds_not_produced`. We cannot tell from the persisted row WHY the inner derivation failed. This plan adds structured diagnostics around the derived-bounds branch — no behavior changes, no new fixes — so the next Fonsica run reveals the exact failure point.
 
-## Key finding
+## Hypothesis (what the instrumentation must disprove or confirm)
 
-The visible Overlay transform table is computing `frame_mismatch = ok` from render/crop evidence, but the backend and banner resolver miss the latest live JSON shape:
+Looking at `supabase/functions/_shared/dsm-registration.ts:178–227`, the `derived_from_raster_bounds` branch only fires when ALL of the following are true at the moment `buildDsmRegistration` runs:
 
-- `registration.transform_package.coordinate_space_renderer = raster_px`
-- `registration.transform_package.coordinate_space_candidate = raster_px`
-- no top-level `frame_mismatch`
-- `dsmCoordinateMatchDebug = null`
+1. `dsm_tile_bounds_lat_lng` not already set from `effectiveDSM.bounds`/`roofMask.bounds`.
+2. `allow_derived_bounds === true`.
+3. `**dsm_size_px` is non-null** — and `dsm_size_px` is computed internally from `effectiveDSM.width/height`, `dsmCoordinateMatchDebug.dsm_bbox`, or `roofMask.width/height`. The wrapper's `inp.dsm_size_px = 998×998` is NOT used here.
+4. `rasterBoundsLatLng` shape must be `{ sw: {lat, lng}, ne: {lat, lng} }` (lines 202–205). Any other shape (e.g. `{north, south, east, west}`) silently fails the `isNum` checks.
+5. `rasterSizePx.width/height` both numeric and > 0.
 
-Current resolver inference does not read those nested `registration.transform_package.*` coordinate-space fields, and `gatherDerivedBoundsGateInputs()` still has its own older frame check instead of the shared resolver. Roof Focus diagnostics also compute `first_pt_disp` as full-raster display coords instead of crop-relative coords.
+The gate in `early-dsm-registration.ts:190` only checks `!inp.raster_bounds_lat_lng` (truthiness) and the wrapper passes its OWN `inp.dsm_size_px` field — neither matches what the inner derivation actually consumes. So both #3 (`effectiveDSM`/`roofMask` width/height missing) and #4 (wrong bounds shape) are plausible silent-failure causes that the current diagnostics cannot distinguish.
 
-## Backend plan
+## Scope
 
-1. Update `supabase/functions/_shared/resolveFrameMismatch.ts`
-  - Add live payload inference paths:
-    - `registration.transform_package.coordinate_space_candidate`
-    - `registration.transform_package.coordinate_space_renderer`
-    - `registration.transform_package.source_raster_px` / `raster_size_px`
-    - `registration.selected_candidate_polygon_px_present`
-    - `registration.raster_bounds_contain_confirmed_center`
-  - Return source `inferred_from_live_overlay_transform_evidence` for this runtime-shaped evidence set.
-  - Keep explicit `overlay_transform.frame_mismatch = ok` as highest priority.
-  - Keep `dsmCoordinateMatchDebug` as fallback only; never let null/missing DSM debug override overlay/raster OK.
-2. Update `supabase/functions/_shared/dsm-derived-bounds-runtime.ts`
-  - Replace the local `frameMismatchRaw === "ok"` logic in `gatherDerivedBoundsGateInputs()` with `resolveFrameMismatch(g, dsmCoordinateMatchDebug)`.
-  - Extend `DerivedBoundsGateInputs` to carry:
-    - `frame_mismatch_source`
-    - `frame_mismatch_raw`
-    - `raster_registration_evidence`
-  - Ensure `derived_bounds_gate_inputs` can persist the resolved source/raw values.
-3. Update `supabase/functions/start-ai-measurement/index.ts`
-  - In the early DSM registration callsite, build `_geometryViewForFrame` with the exact same live shape the report JSON uses, including `registration.transform_package.coordinate_space_renderer/candidate` and selected polygon presence.
-  - Persist gate diagnostics:
-    - `derived_bounds_gate_inputs.frame_mismatch_ok = true`
-    - `derived_bounds_gate_inputs.frame_mismatch_source = inferred_from_live_overlay_transform_evidence` or exact explicit source path
-    - `derived_bounds_gate_inputs.frame_mismatch_raw = "ok"` when explicit; null for inferred
-  - Pass `frame_mismatch: "ok"` into `runEarlyDerivedDsmRegistration()` when resolver says OK.
-  - Preserve existing behavior that `customer_report_ready = false` and reportable roof lines remain 0.
+Read-only/diagnostic additions in three files. No new branches, no behavior changes, no schema changes.
 
-## Frontend plan
+### 1. `supabase/functions/_shared/dsm-registration.ts`
 
-4. Update `src/lib/measurement/resolveFrameMismatch.ts`
-  - Mirror backend resolver paths and source naming exactly.
-  - This keeps Visual QA banner and backend gate source-aligned.
-5. Update `src/lib/measurement/registration-gate.ts`
-  - Keep banner classification driven by the shared frontend resolver.
-  - Ensure when resolved frame is OK, the banner cannot say “Coordinate frame mismatch”; it must return the DSM registration incomplete copy.
-6. Update `src/components/measurements/MeasurementVisualQAOverlay.tsx`
-  - Add an “Overlay Truth” card/row near the banner:
-    - `Overlay frame: OK`
-    - `Overlay source: <resolved source path>`
-    - `DSM transform: missing` or available
-    - `Manual approval: locked by DSM registration`
-  - Make Overlay transform diagnostics crop-aware in Roof Focus:
-    - `source_px`
-    - `crop_bbox_px`
-    - `display_px_within_crop`
-    - `crop_scale`
-    - `crop_offset`
-  - Fix `first_pt_disp` / bbox center display values to subtract `viewportSrc.minX/minY` before scaling so displayed points are within the visible Roof Focus viewport.
-  - Do not alter stored measurement coordinates.
+Extend `DsmRegistrationResult` (or its `failure_tokens` / a new `derived_bounds_debug` field) to persist, for every call where `allow_derived_bounds === true`:
 
-## Regression tests
-
-Test files:
-
-- `supabase/functions/_shared/__tests__/resolveFrameMismatch.test.ts`
-- `supabase/functions/start-ai-measurement/__tests__/early-dsm-registration-frame-mismatch-source.test.ts`
-- `src/lib/measurement/__tests__/registrationBanner.frame-ok.test.ts`
-- Add `src/components/measurements/__tests__/MeasurementVisualQAOverlay.roof-focus-transform.test.tsx` if the existing test setup supports this component; otherwise keep the crop math extracted into a small pure helper and test that helper.
-
-Mock payload shape:
-
-```json
-{
-  "registration": {
-    "transform_package": {
-      "coordinate_space_renderer": "raster_px",
-      "coordinate_space_candidate": "raster_px",
-      "raster_size_px": { "width": 1280, "height": 1280 }
-    },
-    "raster_bounds_contain_confirmed_center": true,
-    "selected_candidate_polygon_px_present": true,
-    "confirmed_roof_center_px": [640, 640]
-  },
-  "target_mask_isolation": {
-    "target_mask_overlap_with_perimeter": 0.976
-  },
-  "dsmCoordinateMatchDebug": null
+```text
+derived_bounds_debug: {
+  allow_derived_bounds: boolean,
+  dsm_size_px_internal: { width, height } | null,
+  dsm_size_px_internal_source: "decoded_dsm_grid" | "dsm_coordinate_match.dsm_bbox" | "roof_mask_grid" | "missing",
+  metadata_bounds_present: boolean,            // from effectiveDSM.bounds/roofMask.bounds
+  raster_bounds_input_present: boolean,
+  raster_bounds_input_shape:
+    | "sw_ne"
+    | "north_south_east_west"
+    | "object_unknown_shape"
+    | "null",
+  raster_bounds_input_keys: string[],          // Object.keys of input
+  raster_bounds_sw_lat_numeric: boolean,
+  raster_bounds_sw_lng_numeric: boolean,
+  raster_bounds_ne_lat_numeric: boolean,
+  raster_bounds_ne_lng_numeric: boolean,
+  raster_size_px_present: boolean,
+  raster_size_px_positive: boolean,
+  derived_branch_entered:
+    | "derived_from_raster_bounds"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
+    | "none",
+  derived_branch_skipped_reason:
+    | "metadata_bounds_won"
+    | "internal_dsm_size_missing"
+    | "raster_bounds_shape_mismatch"
+    | "raster_size_invalid"
+    | "no_confirmed_center"
+    | "no_mpp"
+    | null,
 }
 ```
 
-Assertions:
+No logic changes — `derived_branch_skipped_reason` is derived from the same booleans the existing `if` already evaluates.
 
-- `resolveFrameMismatch(payload).frame_mismatch_ok === true`
-- `frame_mismatch_source === "inferred_from_live_overlay_transform_evidence"` or exact explicit overlay path when explicit frame exists
-- `gatherDerivedBoundsGateInputs(...).frame_mismatch_ok === true`
-- Early DSM result does not skip with `frame_mismatch_not_ok`
-- When enough DSM/raster inputs are present, `derived_bounds_enabled === true`
-- Registration banner title is `DSM registration incomplete — manual approval locked` when frame OK and DSM transform missing
-- Roof Focus projected display point and bbox center are within the visible crop display bounds
+### 2. `supabase/functions/_shared/early-dsm-registration.ts`
 
-Acceptance thresholds:
+When `dsmReg.dsm_bounds_source !== "derived_from_raster_bounds"` (the line that currently returns `derived_bounds_not_produced`), persist the new `derived_bounds_debug` block from `dsmReg` into the skip result's `fields`, alongside:
 
-- Target mask overlap gate remains `>= 0.90`.
-- DSM/raster roundtrip gate remains existing `<= 8px`.
-- Customer report stays blocked: `customer_report_ready=false`, reportable roof lines `0`.
+```text
+fields.dsm_bounds_source_actual: dsmReg.dsm_bounds_source,
+fields.dsm_tile_bounds_lat_lng_present: !!dsmReg.dsm_tile_bounds_lat_lng,
+fields.dsm_size_px_present_in_inner: !!dsmReg.dsm_size_px,
+fields.derived_bounds_debug: dsmReg.derived_bounds_debug,
+```
 
-## Commands I will run after implementation
+Same for the `derived_rejected_validation_failure` and `derived_rejected_consistency_failure` skip paths — attach the relevant `transformPkg` validation booleans and the roundtrip px value so future failures don't need another instrumentation pass.
 
-- `supabase--test_edge_functions` for `start-ai-measurement` / shared Deno tests.
-- `bunx vitest run` for the frontend resolver/banner/Roof Focus tests.  
+### 3. `supabase/functions/start-ai-measurement/index.ts`
+
+Where the early-DSM result is merged onto `geometry_report_json` / the terminal debug payload, propagate `derived_bounds_debug` into both:
+
+- `geometry_report_json.early_dsm_registration.derived_bounds_debug`
+- `terminal_debug_payload.raw_debug.derived_bounds_debug`
+
+This guarantees the next acceptance diff shows it without any UI changes.
+
+### 4. Tests (must accompany the change per regression-harness skill)
+
+Add one Deno unit test under `supabase/functions/_shared/__tests__/dsm-derived-bounds-debug-instrumentation.test.ts` that asserts, for three fixtures, that `derived_bounds_debug.derived_branch_skipped_reason` equals:
+
+- `"raster_bounds_shape_mismatch"` when `rasterBoundsLatLng = { north, south, east, west, ... }`
+- `"internal_dsm_size_missing"` when `effectiveDSM` and `roofMask` lack `width`/`height`
+- `null` (and `derived_branch_entered === "derived_from_raster_bounds"`) on a known-good Fonsica-shaped input
+
+No new feature behavior is asserted — only that the diagnostics correctly mirror the existing branch decisions.
+
+## What this does NOT do
+
+- Does NOT change any gate thresholds or branch ordering.
+- Does NOT add a fallback bounds shape coercion (e.g. NSEW → sw/ne). That decision waits until the diagnostics confirm shape mismatch is actually the cause.
+- Does NOT touch the PDF banner ("Coordinate frame mismatch — overlay not eligible for manual approval") — user explicitly deferred that as secondary.
+- Does NOT change `customer_report_ready`, `result_state`, or any registration call sites outside the early branch.
+
+## Acceptance (next Fonsica run)
+
+After deploying, re-run Fonsica. The terminal debug payload MUST contain `derived_bounds_debug` with a single, unambiguous answer to one of these questions:
+
+1. Was `dsm_size_px` null inside `buildDsmRegistration`? → fix is to plumb `effectiveDSM.width/height` or `roofMask.width/height` into the inner call (separate prompt).
+2. Was `rasterBoundsLatLng` in the wrong shape? → fix is to normalize bounds shape at the boundary (separate prompt).
+3. Did the derived branch enter but `buildRegistrationTransformPackage` reject it? → `derived_rejected_validation_failure` / `derived_rejected_consistency_failure` with the new sub-fields will show which validator (`geo_to_dsm_px_success`, `dsm_pixel_transform_valid`, `dsm_tile_bounds_contain_confirmed_center`, or roundtrip px) failed.
+
+Only after that diff is reviewed do we patch the real root cause.  
   
-I reviewed the latest report/PDF and the Lovable plan is correct. The system is now blocked by a **live source-plumbing mismatch**, not by bad geometry or missing DSM math.
-  The report proves:
-  - Overlay transform table says:
-    - `frame_mismatch = ok`
-    - `coord_space = raster_px`
-    - `source_raster_px = 1280×1280`
-  - Aerial candidate graph is still strong:
-    - `executed (12 candidate edges)`
-    - target overlap `0.976`
-  - DSM is loaded:
-    - `998×998`
-  - CPU is healthy:
-    - `26.9s / 75s`
-    - `48.1s remaining`
-  But the backend gate still persists:
-  ```
+Approve this plan. It is the right move because it **does not try to fix the suspected root cause yet**. It instruments the exact silent failure point so the next Fonsica run tells us whether the inner derived branch is missing DSM size, getting the wrong raster-bounds shape, or getting rejected by transform validation.
 
-  ```
-  ```
-  derived_bounds_gate_inputs.frame_mismatch_ok = false
-  dsm_registration_callsite_skipped_reason = frame_mismatch_not_ok
-  derived_bounds_enabled = false
-  ```
-  So the next fix is exactly what the plan targets:
-  -   
-  unify the backend gate with the same overlay/raster truth the UI already trusts  
+Send this:
 
-  -   
-  make Roof Focus coordinates crop-relative so the overlay is visually centered and readable  
+```
 
-  I approved the plan and pushed the refined implementation/acceptance details into the repo issue.
+```
+
+```
+Go.
+
+Implement derived-bounds runtime instrumentation exactly as scoped.
+
+This is diagnostic-only.
+
+Do not change:
+- DSM math
+- derived-bounds branch ordering
+- gate thresholds
+- bounds normalization behavior
+- topology / pitch / facet promotion
+- customer_report_ready
+- reportable roof line promotion
+- result_state behavior
+- DB schema
+- UI / PDF banner
+- CPU policy
+- aerial graph builder
+
+Current runtime truth:
+- early DSM registration gate now passes
+- frame_mismatch_ok = true
+- early_dsm_registration_before_topology is attempted
+- but it exits with derived_bounds_not_produced
+- registration.transform_package.geo_to_dsm_transform remains null
+- dsm_tile_bounds_lat_lng remains null
+- dsm_pixel_transform_valid remains false
+
+Goal:
+Add structured diagnostics around buildDsmRegistration and early-dsm-registration so the next Fonsica run shows exactly why derived bounds were not produced.
+
+Files allowed:
+1. supabase/functions/_shared/dsm-registration.ts
+2. supabase/functions/_shared/early-dsm-registration.ts
+3. supabase/functions/start-ai-measurement/index.ts
+4. targeted Deno test only
+
+Required implementation:
+
+1. In supabase/functions/_shared/dsm-registration.ts
+
+Extend DsmRegistrationResult with:
+
+derived_bounds_debug?: {
+  allow_derived_bounds: boolean;
+  dsm_size_px_internal: { width: number; height: number } | null;
+  dsm_size_px_internal_source:
+    | "decoded_dsm_grid"
+    | "dsm_coordinate_match.dsm_bbox"
+    | "roof_mask_grid"
+    | "missing";
+  metadata_bounds_present: boolean;
+  raster_bounds_input_present: boolean;
+  raster_bounds_input_shape:
+    | "sw_ne"
+    | "north_south_east_west"
+    | "object_unknown_shape"
+    | "null";
+  raster_bounds_input_keys: string[];
+  raster_bounds_sw_lat_numeric: boolean;
+  raster_bounds_sw_lng_numeric: boolean;
+  raster_bounds_ne_lat_numeric: boolean;
+  raster_bounds_ne_lng_numeric: boolean;
+  raster_size_px_present: boolean;
+  raster_size_px_positive: boolean;
+  derived_branch_entered:
+    | "derived_from_raster_bounds"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
+    | "none";
+  derived_branch_skipped_reason:
+    | "metadata_bounds_won"
+    | "internal_dsm_size_missing"
+    | "raster_bounds_shape_mismatch"
+    | "raster_size_invalid"
+    | "no_confirmed_center"
+    | "no_mpp"
+    | null;
+};
+
+Populate this whenever allow_derived_bounds === true.
+
+No logic changes.
+
+This debug object must mirror the same booleans the existing derived-branch if-statements already evaluate.
+
+2. In supabase/functions/_shared/early-dsm-registration.ts
+
+When dsmReg.dsm_bounds_source !== "derived_from_raster_bounds" and the code currently returns derived_bounds_not_produced, attach:
+
+fields.dsm_bounds_source_actual = dsmReg.dsm_bounds_source
+fields.dsm_tile_bounds_lat_lng_present = !!dsmReg.dsm_tile_bounds_lat_lng
+fields.dsm_size_px_present_in_inner = !!dsmReg.dsm_size_px
+fields.derived_bounds_debug = dsmReg.derived_bounds_debug
+
+For derived_rejected_validation_failure and derived_rejected_consistency_failure, also attach:
+- transform_package_valid
+- geo_to_dsm_px_success
+- dsm_pixel_transform_valid
+- dsm_tile_bounds_contain_confirmed_center
+- dsm_raster_roundtrip_error_px
+- derived_bounds_debug
+
+Do not change whether those paths pass/fail.
+
+3. In supabase/functions/start-ai-measurement/index.ts
+
+When merging early DSM result into geometry_report_json and terminal debug payload, propagate:
+
+geometry_report_json.early_dsm_registration.derived_bounds_debug
+terminal_debug_payload.raw_debug.derived_bounds_debug
+
+Also persist:
+geometry_report_json.early_dsm_registration.skip_reason
+geometry_report_json.early_dsm_registration.dsm_bounds_source_actual
+geometry_report_json.early_dsm_registration.dsm_tile_bounds_lat_lng_present
+geometry_report_json.early_dsm_registration.dsm_size_px_present_in_inner
+
+And equivalent raw_debug fields if terminal payload exists.
+
+4. Tests
+
+Add:
+supabase/functions/_shared/__tests__/dsm-derived-bounds-debug-instrumentation.test.ts
+
+Test A — bounds shape mismatch:
+Input rasterBoundsLatLng = { north, south, east, west }
+allow_derived_bounds = true
+Expected:
+derived_bounds_debug.raster_bounds_input_shape = "north_south_east_west"
+derived_bounds_debug.derived_branch_skipped_reason = "raster_bounds_shape_mismatch"
+
+Test B — internal DSM size missing:
+effectiveDSM and roofMask lack width/height
+allow_derived_bounds = true
+Expected:
+derived_bounds_debug.dsm_size_px_internal = null
+derived_bounds_debug.dsm_size_px_internal_source = "missing"
+derived_bounds_debug.derived_branch_skipped_reason = "internal_dsm_size_missing"
+
+Test C — known-good Fonsica-shaped input:
+rasterBoundsLatLng = { sw:{lat,lng}, ne:{lat,lng} }
+rasterSizePx = { width:1280, height:1280 }
+internal DSM size source present
+allow_derived_bounds = true
+Expected:
+derived_bounds_debug.derived_branch_entered = "derived_from_raster_bounds"
+derived_bounds_debug.derived_branch_skipped_reason = null
+derived_bounds_debug.raster_bounds_input_shape = "sw_ne"
+
+Acceptance on next Fonsica run:
+terminal_debug_payload.raw_debug.derived_bounds_debug exists and clearly answers one of:
+- internal_dsm_size_missing
+- raster_bounds_shape_mismatch
+- raster_size_invalid
+- derived branch entered but transform package rejected
+
+No functional behavior changes in this patch.
+```
+
+My read: this is exactly the discipline you need here. Don’t “fix” the derived bounds yet. First make the failure impossible to hide.
