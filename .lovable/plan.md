@@ -217,3 +217,10 @@ Yes — that is exactly where this is heading, and you should make that **explic
   - deploy canvass-api only
   ```
   Strong opinion: this is the correct business direction. Third-party measurement reports are a margin leak. Pitch should eventually turn those into **training data**, not a permanent dependency.
+---
+
+## Follow-ups (queued, not in this slice)
+
+- **Tenant support email cleanup**: `send-account-deactivation` and `send-user-invitation` still hardcode `support@pitch-crm.ai`. Migrate to the same `tenants.support_email` lookup we used in `send-company-onboarding`.
+- **Legacy canvass functions**: `canvass-auth` and `canvass-pin-sync` standalone functions still serve existing mobile traffic (API-key + session-token model). Once all callers move to `edgeApi("canvass-api", "/auth"|"/pin/sync")` with a real Supabase JWT, replace them with `_shared/shim.ts` forwarders.
+- **Native Pitch Measurement Engine (strategic milestone)**: long-term goal is for Pitch to generate its own roof/wall measurements + reports so contractors do NOT need GAF Measure / Roofr / Hover / EagleView orders for normal estimating. Existing vendor reports become training/validation data, not a permanent dependency. Customer-facing reports gated on topology + DSM + confidence thresholds. Not part of any current backend slice.
