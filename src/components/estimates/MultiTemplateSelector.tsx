@@ -2742,12 +2742,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           <Button
             onClick={handleSaveEstimate}
             disabled={
-              (!selectedTemplateId && !existingEstimateId && !tradeSections.some(t => !!t.templateId)) ||
+              (!selectedTemplateId &&
+                !existingEstimateId &&
+                !isEditingLoadedEstimate &&
+                lineItems.length === 0 &&
+                !tradeSections.some(t => !!t.templateId)) ||
               saving || creating || savingLineItems
             }
             className="flex-1 min-w-[140px]"
             title={
-              (!selectedTemplateId && !existingEstimateId && !tradeSections.some(t => !!t.templateId))
+              (!selectedTemplateId &&
+                !existingEstimateId &&
+                !isEditingLoadedEstimate &&
+                lineItems.length === 0 &&
+                !tradeSections.some(t => !!t.templateId))
                 ? 'Select a template to start the estimate'
                 : undefined
             }
