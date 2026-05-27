@@ -75,6 +75,8 @@ export default function QuickBooksSettings() {
   const [userId, setUserId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [returnStatus, setReturnStatus] = useState<{ status: string; reason?: string } | null>(null);
+  const [reauthRequired, setReauthRequired] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState(false);
 
   useEffect(() => {
     (async () => {
