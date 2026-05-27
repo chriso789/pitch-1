@@ -7131,6 +7131,7 @@ async function processJob(input: any) {
                 transformPackage: resolvedReg.transformPackage,
               }),
 
+              earlyDerivedRegistration,
             });
             return;
           }
@@ -7190,6 +7191,7 @@ async function processJob(input: any) {
                 transformPackage: resolvedReg.transformPackage,
               }),
 
+              earlyDerivedRegistration,
             });
             return;
           }
@@ -7386,6 +7388,7 @@ async function processJob(input: any) {
                   staticMapCenterLatLng: { lat: coords.lat, lng: coords.lng },
                   transformPackage: resolvedReg.transformPackage,
                 }),
+                earlyDerivedRegistration,
               });
               return;
             }
@@ -7527,6 +7530,7 @@ async function processJob(input: any) {
               }),
               phase3A_5: phase3A5Diagnostics,
             },
+            earlyDerivedRegistration,
           });
           return;
         }
@@ -7808,6 +7812,7 @@ async function processJob(input: any) {
 
             phase3A_5: phase3A5Diagnostics,
           },
+          earlyDerivedRegistration,
         });
         return;
       }
@@ -7868,6 +7873,7 @@ async function processJob(input: any) {
               phase3A_5: phase3A5Diagnostics,
               solver_returned: true,
             },
+            earlyDerivedRegistration,
           });
           return;
         }
@@ -13294,6 +13300,7 @@ async function processJob(input: any) {
             }),
             geometry_report_json: geometryReportJson,
           },
+          earlyDerivedRegistration,
         });
         return;
       }
