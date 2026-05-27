@@ -106,7 +106,7 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   // would incorrectly show as $141.8k instead of $127.4k).
   const contractValue = barData?.sale_price ?? 0;
   const baseSellingPrice = barData?.base_sale_price ?? (contractValue - (barData?.change_orders_total ?? 0));
-  const coBudgetTotal = barData?.change_orders_total ?? approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
+  const coBudgetTotal = barData?.change_orders_total ?? approvedCoLocalTotal;
   const materialCost = barData?.materials ?? 0;
   const laborCost = barData?.labor ?? 0;
   const totalPaid = (payments || []).reduce((s, p) => s + Number(p.amount), 0);
