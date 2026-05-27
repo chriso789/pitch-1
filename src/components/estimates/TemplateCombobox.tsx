@@ -76,9 +76,13 @@ export const TemplateCombobox: React.FC<TemplateComboboxProps> = ({
     return groups;
   }, [templates]);
 
-  // Get sorted roof types that have templates
+  // Get sorted material types that have templates (any unknown values appended at end)
   const sortedRoofTypes = useMemo(() => {
-    return ROOF_TYPE_ORDER.filter(type => groupedTemplates[type]?.length > 0);
+    const known = ROOF_TYPE_ORDER.filter(type => groupedTemplates[type]?.length > 0);
+    const extras = Object.keys(groupedTemplates).filter(
+      type => !ROOF_TYPE_ORDER.includes(type) && groupedTemplates[type]?.length > 0,
+    );
+    return [...known, ...extras];
   }, [groupedTemplates]);
 
   // Find selected template
