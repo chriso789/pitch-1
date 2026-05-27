@@ -21035,6 +21035,51 @@ export type Database = {
           },
         ]
       }
+      integration_consents: {
+        Row: {
+          accepted_at: string
+          consent_text_sha256: string
+          consent_text_snapshot: string
+          consent_version: string
+          expected_oauth_app_env: string
+          id: string
+          integration: string
+          ip: unknown
+          tenant_id: string
+          used_for_connection_id: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          consent_text_sha256: string
+          consent_text_snapshot: string
+          consent_version: string
+          expected_oauth_app_env: string
+          id?: string
+          integration: string
+          ip?: unknown
+          tenant_id: string
+          used_for_connection_id?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          consent_text_sha256?: string
+          consent_text_snapshot?: string
+          consent_version?: string
+          expected_oauth_app_env?: string
+          id?: string
+          integration?: string
+          ip?: unknown
+          tenant_id?: string
+          used_for_connection_id?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       integration_sync_logs: {
         Row: {
           completed_at: string | null
@@ -22519,6 +22564,86 @@ export type Database = {
           tenant_id?: string
           tracking_url?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      legal_acceptances: {
+        Row: {
+          accepted_at: string
+          body_sha256: string
+          document_id: string
+          document_key: string
+          document_version: string
+          id: string
+          ip: unknown
+          tenant_id: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          body_sha256: string
+          document_id: string
+          document_key: string
+          document_version: string
+          id?: string
+          ip?: unknown
+          tenant_id: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          body_sha256?: string
+          document_id?: string
+          document_key?: string
+          document_version?: string
+          id?: string
+          ip?: unknown
+          tenant_id?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_acceptances_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_documents: {
+        Row: {
+          body_markdown: string
+          body_sha256: string
+          created_at: string
+          document_key: string
+          effective_at: string
+          id: string
+          is_current: boolean
+          version: string
+        }
+        Insert: {
+          body_markdown: string
+          body_sha256: string
+          created_at?: string
+          document_key: string
+          effective_at?: string
+          id?: string
+          is_current?: boolean
+          version: string
+        }
+        Update: {
+          body_markdown?: string
+          body_sha256?: string
+          created_at?: string
+          document_key?: string
+          effective_at?: string
+          id?: string
+          is_current?: boolean
+          version?: string
         }
         Relationships: []
       }
@@ -35363,21 +35488,30 @@ export type Database = {
       }
       qbo_oauth_state: {
         Row: {
+          consent_id: string | null
           created_at: string
+          expected_oauth_app_env: string | null
+          expires_at: string | null
           initiated_by: string | null
           requested_mode: string
           state: string
           tenant_id: string
         }
         Insert: {
+          consent_id?: string | null
           created_at?: string
+          expected_oauth_app_env?: string | null
+          expires_at?: string | null
           initiated_by?: string | null
           requested_mode: string
           state: string
           tenant_id: string
         }
         Update: {
+          consent_id?: string | null
           created_at?: string
+          expected_oauth_app_env?: string | null
+          expires_at?: string | null
           initiated_by?: string | null
           requested_mode?: string
           state?: string
@@ -35483,6 +35617,45 @@ export type Database = {
           resolved_by?: string | null
           retry_count?: number | null
           tenant_id?: string
+        }
+        Relationships: []
+      }
+      qbo_webhook_events: {
+        Row: {
+          error_code: string | null
+          error_message: string | null
+          event_count: number
+          id: string
+          oauth_app_env: string | null
+          processed_at: string | null
+          realm_id: string | null
+          received_at: string
+          signature_valid: boolean
+          tenant_id: string | null
+        }
+        Insert: {
+          error_code?: string | null
+          error_message?: string | null
+          event_count?: number
+          id?: string
+          oauth_app_env?: string | null
+          processed_at?: string | null
+          realm_id?: string | null
+          received_at?: string
+          signature_valid: boolean
+          tenant_id?: string | null
+        }
+        Update: {
+          error_code?: string | null
+          error_message?: string | null
+          event_count?: number
+          id?: string
+          oauth_app_env?: string | null
+          processed_at?: string | null
+          realm_id?: string | null
+          received_at?: string
+          signature_valid?: boolean
+          tenant_id?: string | null
         }
         Relationships: []
       }
