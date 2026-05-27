@@ -1,95 +1,177 @@
 ## Goal
 
-Unlock DSM registration when Google Solar omits `dsm_tile_bounds_lat_lng`, by deriving an approximate DSM georegistration from the already-aligned raster bounds. Gate strictly; never promote `customer_report_ready` from this path.
+Frontend-only cleanup of the Measurement Visual QA / Report dialog so the UI matches actual runtime truth. **No backend, solver, DSM, edge-function, schema, or gate logic changes.** Reportable lines (0), debug lines (6), candidate edges (12), `customer_report_ready=false` all stay exactly as they are today.
 
-## Scope guardrails (do NOT touch)
+## Files to change
 
-CPU containment, aerial graph builder, perimeter extraction, raster overlay transforms, customer-report gates, UI stage grouping, DB schema, reportable-line promotion.
+1. `src/lib/measurement/registration-gate.ts` — banner classifier
+2. `src/components/measurements/MeasurementVisualQAOverlay.tsx` — DSM status card, layer legend, frame_mismatch read
+3. `src/components/measurements/RoofOverlayViewer.tsx` — add Roof Focus / Full Tile viewport toggle
+4. `src/components/measurements/MeasurementReportDialog.tsx` — top diagnostic wording, CPU-late display, pass `frame_mismatch` + perimeter bbox into the viewer
 
-## What already exists
+## Changes
 
-- `_shared/dsm-registration.ts` already supports `allow_derived_bounds` with two derivation modes (`derived_from_confirmed_center_and_mpp`, `derived_from_dsm_bbox_and_static_mpp`) and writes `dsm_bounds_derived`, `dsm_bounds_warning`, `dsm_bounds_confidence`.
-- `start-ai-measurement/index.ts` calls `buildDsmRegistration({ allow_derived_bounds: false })` at both hoist sites (lines ~1471 and ~6415).
-- `_shared/source-registration-transform.ts` builds `geo_to_dsm_transform`, `dsm_to_raster_transform`, and reports `geo_to_dsm_px_success` / `dsm_pixel_transform_valid` / `confirmed_center_inside_candidate` — these flip automatically once `dsm_tile_bounds_lat_lng` is populated.
+### 1. Banner copy: stop blaming the coordinate frame when raster overlay is fine
 
-So the unlock is: (1) add a new explicitly-tagged derivation mode keyed on raster bounds, (2) flip the hoist sites to allow derivation under tight gates, (3) wire diagnostics for `dsm_bounds_source = derived_from_raster_bounds` and `dsm_transform_policy_version = dsm-registration-derived-bounds-v1`, (4) add consistency rejection, (5) leave customer-report gate untouched.
+In `registration-gate.ts → registrationBanner()`, also read the actual overlay transform's `frame_mismatch` flag (from `geometry_report_json.overlay_debug.frame_mismatch` / `overlay_transform.frame_mismatch`).
 
-## Implementation
+Logic:
 
-### 1. Add derivation mode `derived_from_raster_bounds` in `_shared/dsm-registration.ts`
+- `frameOk = frame_mismatch === "ok"` (explicit string check).
+- If `frameOk && dsmFailed` (any of `geo_to_dsm_px_success`, `dsm_pixel_transform_valid`, `confirmed_center_inside_candidate` false) → **warning** banner:
+  - Title: `DSM registration incomplete — manual approval locked`
+  - Body: `The aerial perimeter is aligned to the satellite image, but DSM georegistration is missing. Manual approval is locked because the system cannot safely validate pitch/topology until geo→DSM and DSM→raster transforms are available.`
+  - Keep the `failedFlags` list (`geo_to_dsm_px_success`, `dsm_pixel_transform_valid`, `confirmed_center_inside_candidate`) rendered below.
+  - Do NOT suggest re-placing the PIN.
+- Only keep the existing `Coordinate frame mismatch — overlay not eligible for manual approval` copy when `frame_mismatch !== "ok"` AND `confirmed_center_inside_candidate === false`.
+- `targetFailed` (PIN unconfirmed) branch unchanged.
 
-- Extend `DsmTileBoundsSource` union with `"derived_from_raster_bounds"`.
-- Add new input fields: `rasterBoundsLatLng?: Bounds | null`, `rasterSizePx?: SizePx | null`.
-- Add a third derivation branch (after the existing two), only fires when:
-  - `dsm_size_px` is present
-  - `rasterBoundsLatLng` and `rasterSizePx` are present and finite
-  - the two prior derivation branches did not fire
-- Derivation math: DSM covers the same geographic footprint as the raster (centered, scaled by `dsm_size_px / raster_size_px`). Output `dsm_tile_bounds_lat_lng` = rasterBoundsLatLng (since the DSM raster shares the Solar tile footprint), and set `dsm_meters_per_pixel = rasterMpp * (raster_size_px.width / dsm_size_px.width)` if not already set.
-- Set:
-  - `dsm_bounds_source = "derived_from_raster_bounds"`
-  - `dsm_bounds_derived = true`
-  - `dsm_bounds_warning = "derived_bounds_lower_confidence"`
-  - `dsm_bounds_confidence = "low"` (numeric, e.g. 0.6)
-- Do NOT push `dsm_tile_bounds_missing_from_google_solar_metadata` when derivation succeeded; instead push an info token `dsm_tile_bounds_derived_from_raster_bounds`.
+`canApproveManualPerimeter()` unchanged — DSM failure still locks approval.
 
-### 2. Add transform policy tag
+### 2. DSM Status card inside Visual QA
 
-In `_shared/source-registration-transform.ts` (or alongside): export `DSM_DERIVED_TRANSFORM_POLICY_VERSION = "dsm-registration-derived-bounds-v1"` and have the diagnostic writer emit it on `registration.dsm.transform_policy_version` (and mirror surfaces) whenever `dsm_bounds_derived === true`.
+In `MeasurementVisualQAOverlay.tsx`, add a small card (alongside the existing diagnostic grid) reading from `geometry_report_json`:
 
-### 3. Flip hoist sites in `start-ai-measurement/index.ts` (lines ~1471, ~6415)
+```
+DSM Status:     Loaded, not registered   (or: Registered / Missing)
+DSM Size:       {dsm_size.w}×{dsm_size.h}
+DSM Bounds:     {dsm_bounds_failure || "ok"}
+DSM Transform:  {dsm_to_raster_transform_source || "unavailable"}
+DSM Overlay:    {dsm_overlay_visible ? "shown" : "suppressed"}
+Policy:         {dsm_transform_policy || "dsm-registration-transform-v1"}
+```
 
-- Pass `allow_derived_bounds: true`, plus the new `rasterBoundsLatLng` and `rasterSizePx` already available on `reg`/`g`.
-- Gate at the caller: only allow derivation when ALL of:
-  - `dsmLoaded === true`
-  - `reg.dsm_tile_bounds_lat_lng == null` after metadata read
-  - `reg.raster_bounds_lat_lng != null`
-  - `rasterMpp` finite
-  - raster overlay alignment passed (`frame_mismatch_ok === true` / existing alignment flag)
-  - `target_mask_overlap_with_perimeter >= 0.90`
+Derivation rules (read-only, no fallbacks invented): loaded if `dsm_size` present; registered if `dsm_pixel_transform_valid === true`.
 
-  If any precondition fails, keep `allow_derived_bounds: false` and current `dsm_tile_bounds_missing_from_google_solar_metadata` behavior.
+### 3. Layer legend clarity
 
-### 4. Consistency validation (reject bad derivations)
+In the overlay legend, replace the flat color legend with three explicit rows showing presence:
 
-After `buildSourceRegistrationTransform` runs with the derived bounds, validate:
-- `confirmed_center_inside_candidate` becomes `true`
-- `perimeter_vs_mask_iou` does not regress below pre-derivation value (snapshot before/after)
-- DSM↔raster reprojection round-trip error on the confirmed center ≤ 5 px (compute via the new transforms)
+- Aerial perimeter candidate — `visible` when `aerial_candidate_roof_graph` or `selected_perimeter_px` present.
+- DSM-derived topology — `unavailable` when DSM registration failed; otherwise `visible`.
+- Reportable roof lines — `none` when reportable count == 0; otherwise `N lines`.
 
-If validation fails: revert `dsm_tile_bounds_lat_lng` to `null`, set `dsm_bounds_source = "derived_rejected_consistency_failure"`, push token `dsm_derived_bounds_rejected_<reason>`, and keep the existing `dsm_tile_bounds_missing_from_google_solar_metadata` failure surface.
+### 4. Roof Focus zoom toggle in `RoofOverlayViewer.tsx`
 
-### 5. Diagnostic surfaces
+Add an optional `focusBboxPx?: { minX,minY,maxX,maxY }` prop and a `defaultMode?: "roof_focus" | "full_tile"` prop. Internal state toggles between the two; two small buttons render top-right: **Full Tile** / **Roof Focus**.
 
-`_shared/dsm-diagnostic-propagation.ts` must mirror to all six existing surfaces:
-- `dsm_bounds_derived: true`
-- `dsm_bounds_source: "derived_from_raster_bounds"`
-- `dsm_bounds_confidence`
-- `dsm_transform_policy_version: "dsm-registration-derived-bounds-v1"`
-- Failure tokens cleared from the "missing metadata" set when derivation succeeded; new info token surfaced.
+Implementation:
 
-### 6. Customer-report gate untouched
+- When `focusBboxPx` is provided, default to `roof_focus`.
+- In `roof_focus` mode, change the SVG `viewBox` to `minX-pad minY-pad (w+2pad) (h+2pad)` (pad ≈ 100px, clamped to image bounds). The `<img>` is wrapped in the same scaled container using CSS `object-fit:none` + `transform: scale()/translate()` so the underlying pixels align with the SVG viewBox. Existing line/polygon/label coords already live in image-pixel space, so the overlay continues to map correctly — no transform math changes.
+- In `full_tile` mode, current behavior (viewBox = `0 0 image.width image.height`, `object-cover`).
 
-`assertCustomerReportReady` / `result_state` normalizer get NO changes. Topology and Phase 3A.5 may now execute because `geo_to_dsm_px_success` / `dsm_pixel_transform_valid` / `confirmed_center_inside_candidate` flip true — but `customer_report_ready` stays `false` until downstream validation gates pass on their own.
+`MeasurementReportDialog.tsx` (and any other call sites) computes `focusBboxPx` from `selected_perimeter_px` or `aerial_candidate_roof_graph.perimeter_ring_px` and passes it in. If neither exists, prop is omitted and viewer falls back to Full Tile.
 
-## Tests (per AI Measurement Regression Harness)
+### 5. Top diagnostic wording
 
-Add under `supabase/functions/_shared/__tests__/`:
+In `MeasurementReportDialog.tsx` line ~992, replace:
 
-1. `dsm-derived-bounds-fonsica.test.ts` — Fonsica-shaped input with `dsm_tile_bounds_lat_lng=null` + valid raster bounds + mask overlap 0.976 → asserts `dsm_bounds_derived=true`, source=`derived_from_raster_bounds`, policy=`dsm-registration-derived-bounds-v1`, `geo_to_dsm_px_success=true`, `dsm_pixel_transform_valid=true`, `confirmed_center_inside_candidate=true`, and `customer_report_ready=false`.
-2. `dsm-derived-bounds-gate-preconditions.test.ts` — each precondition individually false (mask overlap 0.85, missing raster bounds, frame mismatch) → asserts derivation NOT attempted, `dsm_tile_bounds_missing_from_google_solar_metadata` still surfaced.
-3. `dsm-derived-bounds-consistency-rejection.test.ts` — derivation runs but reprojection error > 5 px → asserts rejection, original failure token preserved.
-4. Update existing `dsm-diagnostic-propagation-fonsica.test.ts` to cover both branches (derived vs metadata-present).
+> "AI Measurement stopped during perimeter topology validation because the runtime budget was exceeded. No customer report was generated."
 
-## Acceptance criteria
+with:
 
-For a Fonsica re-run after this change:
-- `registration.dsm.dsm_bounds_derived = true`
-- `registration.dsm.dsm_bounds_source = "derived_from_raster_bounds"`
-- `registration.dsm.transform_policy_version = "dsm-registration-derived-bounds-v1"`
-- `geo_to_dsm_px_success = true`
-- `dsm_pixel_transform_valid = true`
-- `confirmed_roof_center_dsm_px` populated
-- `confirmed_center_inside_candidate = true`
-- `phase3_5` no longer skipped at registration stage (it will likely fail at a new downstream gate — that is expected and out of scope for this prompt)
-- `customer_report_ready = false`
-- Aerial graph executed (12 candidate edges), CPU < 75000, `frame_mismatch = ok`, reportable lines = 0 — all unchanged
+> "AI Measurement found an aerial roof perimeter, but customer-ready topology was blocked. DSM georegistration is missing and the run exceeded the CPU reserve before validated topology could complete."
+
+### 6. CPU status display
+
+Where CPU budget is rendered, when `late_cpu_preempt === true` OR `cpu_budget_remaining_ms < 0`, show:
+
+```
+CPU reserve missed
+Elapsed:        88.8s / 75s
+Remaining:      -13.8s
+Preempt reason: wall_clock_reserve_threshold
+```
+
+(values pulled from `cpu_budget_elapsed_ms`, target budget, `cpu_budget_remaining_ms`, `cpu_preempt_reason`). Existing "normal preemption" copy used only when neither condition is true.
+
+### 7. Bonus runtime fix (quiet)
+
+Fix the `Failed to fetch dynamically imported module: LeadDetails.tsx` runtime error if a stale chunk reference is the cause (verify by reading the file; only adjust imports if there's a real broken reference — otherwise leave alone).
+
+## Out of scope (explicitly untouched)
+
+`customer_report_ready`, reportable line count, debug line count, aerial candidate graph resolver, all edge functions, DSM solver, derived DSM fallback, DB schema, approval gating logic.
+
+## Acceptance
+
+- Banner reads "DSM registration incomplete — manual approval locked" on this Fonsica run (frame_mismatch=ok, DSM invalid).
+- Old coordinate-mismatch copy only renders when frame_mismatch ≠ ok.
+- DSM Status card visible with the six lines above.
+- Layer legend shows the three explicit rows with current statuses (visible / unavailable / none).
+- Overlay viewer defaults to Roof Focus when perimeter bbox exists; Full Tile / Roof Focus toggle works; overlay lines remain pixel-correct.
+- Top diagnostic uses the new wording.
+- CPU panel shows "CPU reserve missed" with elapsed 88.8s / 75s, remaining -13.8s.
+- Reportable=0, Debug=6, Candidates=12, customer_report_ready=false all unchanged.  
+  
+
+  ```
+  Go.
+
+  Implement the frontend-only Measurement Visual QA / Report dialog cleanup exactly as scoped.
+
+  This is UI-only.
+
+  Do not touch:
+  - customer_report_ready
+  - reportable line count
+  - debug line count
+  - aerial candidate graph resolver
+  - edge functions
+  - DSM solver
+  - derived DSM fallback
+  - DB schema
+  - approval gating logic
+  - backend measurement logic
+
+  Critical guardrail:
+  Roof Focus must not alter measurement coordinates or overlay source data. It may only change the viewport/viewBox/crop display around existing image-pixel coordinates.
+
+  Approved files:
+  - src/lib/measurement/registration-gate.ts
+  - src/components/measurements/MeasurementVisualQAOverlay.tsx
+  - src/components/measurements/RoofOverlayViewer.tsx
+  - src/components/measurements/MeasurementReportDialog.tsx
+
+  Required acceptance:
+  - Fonsica banner reads:
+    DSM registration incomplete — manual approval locked
+    when frame_mismatch=ok and DSM invalid.
+
+  - Coordinate frame mismatch copy only appears when frame_mismatch !== ok.
+
+  - DSM Status card shows:
+    DSM Status: Loaded, not registered
+    DSM Size: 998×998
+    DSM Bounds: dsm_tile_bounds_missing_from_google_solar_metadata
+    DSM Transform: unavailable
+    DSM Overlay: suppressed
+    Policy: dsm-registration-transform-v1
+
+  - Layer legend shows:
+    Aerial perimeter candidate — visible
+    DSM-derived topology — unavailable
+    Reportable roof lines — none
+
+  - Overlay viewer defaults to Roof Focus when selected_perimeter_px or aerial_candidate_roof_graph.perimeter_ring_px exists.
+
+  - Full Tile / Roof Focus toggle works.
+
+  - Overlay lines remain pixel-correct in both modes.
+
+  - Top diagnostic says:
+    AI Measurement found an aerial roof perimeter, but customer-ready topology was blocked. DSM georegistration is missing and the run exceeded the CPU reserve before validated topology could complete.
+
+  - CPU panel shows:
+    CPU reserve missed
+    Elapsed: 88.8s / 75s
+    Remaining: -13.8s
+    Preempt reason: wall_clock_reserve_threshold
+
+  - Reportable Roof Lines remains 0.
+  - Debug Roof Lines remains 6.
+  - Aerial Candidate Graph remains executed (12 candidate edges).
+  - customer_report_ready remains false.
+  ```
+  After this UI cleanup, the next backend prompt should still be **Controlled Derived DSM Bounds Fallback v1**.

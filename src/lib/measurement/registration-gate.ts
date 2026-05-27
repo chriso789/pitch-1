@@ -18,6 +18,8 @@ export interface RegistrationBlock {
   confirmed_center_inside_candidate?: boolean | null;
   coordinate_registration_gate_passed?: boolean | null;
   raster_bounds_contain_confirmed_center?: boolean | null;
+  /** "ok" when raster overlay frame matches; any other value indicates aerial/raster mismatch. */
+  frame_mismatch?: string | null;
   original_geocode_lat_lng?: { lat: number; lng: number } | null;
   confirmed_roof_center_lat_lng?: { lat: number; lng: number } | null;
   confirmed_roof_center_px?: [number, number] | null;
@@ -25,6 +27,7 @@ export interface RegistrationBlock {
   google_solar_building_center_lat_lng?: { lat: number; lng: number } | null;
   candidate_centroid_offset_from_confirmed_center_px?: number | null;
 }
+
 
 /**
  * Extract the registration block from a measurement row. Falls back to the
@@ -34,12 +37,20 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
   const grj = measurement?.geometry_report_json;
   if (!grj || typeof grj !== "object") return null;
   const reg = (grj as any).registration ?? (grj as any).registration_gate ?? null;
+  const ov = (grj as any).overlay_debug ?? {};
+  const ot = (grj as any).overlay_transform ?? {};
+  // frame_mismatch may live on the registration block, overlay_debug, or
+  // overlay_transform. Treat the string "ok" as the explicit pass marker.
+  const frameMismatch =
+    reg?.frame_mismatch ??
+    ov?.frame_mismatch ??
+    ot?.frame_mismatch ??
+    null;
   if (reg && typeof reg === "object") {
-    return reg as RegistrationBlock;
+    return { ...(reg as RegistrationBlock), frame_mismatch: frameMismatch ?? (reg as any).frame_mismatch ?? null };
   }
   // Legacy fallback — synthesize a minimal block from overlay_debug flags so
   // historical rows still trigger the UI banner / disable approve.
-  const ov = (grj as any).overlay_debug ?? {};
   const sourceDebug = (grj as any).source_acquisition_debug ?? measurement?.source_context?.debug?.source_acquisition_debug ?? {};
   return {
     user_confirmed_roof_target: (grj as any).user_confirmed_roof_target ?? sourceDebug.user_confirmed_roof_target ?? null,
@@ -47,8 +58,10 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
     dsm_pixel_transform_valid: (grj as any).dsm_pixel_transform_valid ?? ov.dsm_pixel_transform_valid ?? null,
     confirmed_center_inside_candidate: (grj as any).confirmed_center_inside_candidate ?? null,
     coordinate_registration_gate_passed: (grj as any).coordinate_registration_gate_passed ?? false,
+    frame_mismatch: frameMismatch ?? null,
   };
 }
+
 
 /**
  * True when a measurement row has a registration-class failure — used by
@@ -106,18 +119,19 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   if (failed.length === 0) return null;
 
   // Classify into the actual failure bucket so the banner copy matches reality.
-  // IMPORTANT: only call it a coordinate-frame mismatch when frame evidence is
-  // explicitly bad (confirmed_center_inside_candidate === false). The aggregate
-  // `coordinate_registration_gate_passed` flag can be false purely because DSM
-  // sub-flags failed — in that case the user-facing message must blame DSM, not
-  // the raster frame.
+  // The raster overlay's actual frame check (`frame_mismatch`) is authoritative:
+  //   - "ok" → the aerial perimeter IS aligned to the satellite image, so we
+  //     must NEVER show "coordinate frame mismatch" copy, even if DSM sub-flags
+  //     are false or the aggregate gate is false.
+  //   - anything else (or `confirmed_center_inside_candidate === false`) → real
+  //     frame mismatch.
   const targetFailed = reg.user_confirmed_roof_target === false;
-  const frameFailed = reg.confirmed_center_inside_candidate === false;
+  const frameOkExplicit = typeof reg.frame_mismatch === "string"
+    && reg.frame_mismatch.toLowerCase() === "ok";
+  const frameFailed = !frameOkExplicit && reg.confirmed_center_inside_candidate === false;
   const dsmFailed =
     reg.geo_to_dsm_px_success === false ||
     reg.dsm_pixel_transform_valid === false;
-  const dsmOnly = !targetFailed && !frameFailed && dsmFailed;
-
 
   if (targetFailed) {
     return {
@@ -129,19 +143,7 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
     };
   }
 
-  if (dsmOnly) {
-    return {
-      variant: "warning",
-      title: "DSM registration incomplete — overlay locked from approval",
-      description:
-        "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
-      failedFlags: failed,
-    };
-  }
-
-  // Default: aggregate gate failed but neither target nor frame nor DSM is the
-  // explicit cause — prefer the DSM-incomplete copy (safer; matches the most
-  // common cause) rather than incorrectly accusing the coordinate frame.
+  // True coordinate mismatch only — frame evidence explicitly bad.
   if (frameFailed) {
     return {
       variant: "destructive",
@@ -151,12 +153,16 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
       failedFlags: failed,
     };
   }
+
+  // Frame is OK (or unknown but not explicitly failed) and DSM is incomplete.
+  // Show DSM-specific copy and do NOT suggest re-placing the PIN.
   return {
     variant: "warning",
-    title: "DSM registration incomplete — overlay locked from approval",
+    title: "DSM registration incomplete — manual approval locked",
     description:
-      "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
+      "The aerial perimeter is aligned to the satellite image, but DSM georegistration is missing. Manual approval is locked because the system cannot safely validate pitch/topology until geo→DSM and DSM→raster transforms are available.",
     failedFlags: failed,
   };
 }
+
 

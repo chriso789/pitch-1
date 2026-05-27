@@ -991,8 +991,9 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
 
   if (resolvedState.final_state_source === "runtime_cpu_budget_guard") {
     errorList.push(
-      "AI Measurement stopped during perimeter topology validation because the runtime budget was exceeded. No customer report was generated.",
+      "AI Measurement found an aerial roof perimeter, but customer-ready topology was blocked. DSM georegistration is missing and the run exceeded the CPU reserve before validated topology could complete.",
     );
+
   } else if (registrationBlocked) {
     errorList.push(
       `Registration failure: ${String(registrationPrecedenceReason)}`,
@@ -1075,6 +1076,38 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
             ))}
           </div>
         )}
+
+        {/* CPU reserve diagnostic panel */}
+        {(() => {
+          const elapsed = Number((grj as any).cpu_budget_elapsed_ms ?? (grj as any).cpu?.elapsed_ms ?? NaN);
+          const remaining = Number((grj as any).cpu_budget_remaining_ms ?? (grj as any).cpu?.remaining_ms ?? NaN);
+          const total = Number(
+            (grj as any).cpu_budget_total_ms ??
+            (grj as any).cpu_budget_ms ??
+            (grj as any).cpu?.budget_ms ??
+            ((Number.isFinite(elapsed) && Number.isFinite(remaining)) ? elapsed + remaining : NaN)
+          );
+          const late = (grj as any).late_cpu_preempt === true || (Number.isFinite(remaining) && remaining < 0);
+          if (!Number.isFinite(elapsed) && !Number.isFinite(remaining)) return null;
+          const reason = (grj as any).cpu_preempt_reason ?? (grj as any).cpu?.preempt_reason ?? (late ? 'wall_clock_reserve_threshold' : 'within_budget');
+          const fmtS = (ms: number) => Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}s` : '—';
+          return (
+            <div className={`rounded-md border px-3 py-2 ${late ? 'border-destructive/40 bg-destructive/10' : 'bg-muted/30'}`}>
+              <div className={`text-xs font-bold mb-1 ${late ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {late ? 'CPU reserve missed' : 'CPU budget'}
+              </div>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] font-mono">
+                <div className="text-muted-foreground">Elapsed</div>
+                <div>{fmtS(elapsed)}{Number.isFinite(total) ? ` / ${fmtS(total)}` : ''}</div>
+                <div className="text-muted-foreground">Remaining</div>
+                <div className={late ? 'text-destructive' : ''}>{fmtS(remaining)}</div>
+                <div className="text-muted-foreground">Preempt reason</div>
+                <div className="break-all">{String(reason)}</div>
+              </div>
+            </div>
+          );
+        })()}
+
 
         {/* Main measurements */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">

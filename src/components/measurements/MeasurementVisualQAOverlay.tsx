@@ -242,6 +242,34 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     : rawLayers;
   const setLayer = (k: LayerKey, v: boolean) => setRawLayers((s) => ({ ...s, [k]: v }));
 
+  // ---- Viewport mode (Full Tile vs Roof Focus) ----------------------------
+  // Roof Focus crops the displayed canvas to the perimeter bbox + padding.
+  // It is a pure display transform — overlay pixel coordinates are unchanged.
+  type ViewportMode = "full_tile" | "roof_focus";
+  const focusSourceRing: Pt[] = rawRing.length >= 3 ? rawRing : refinedRing;
+  const focusBbox = useMemo(() => {
+    if (focusSourceRing.length < 3) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of focusSourceRing) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX)) return null;
+    return { minX, minY, maxX, maxY };
+  }, [focusSourceRing]);
+  const [viewportMode, setViewportMode] = useState<ViewportMode>("full_tile");
+  // Default to Roof Focus when a perimeter bbox exists (set once when ready).
+  const focusReady = !!focusBbox && rasterSizeResolved;
+  const focusInitialisedRef = useRef(false);
+  useEffect(() => {
+    if (focusReady && !focusInitialisedRef.current) {
+      setViewportMode("roof_focus");
+      focusInitialisedRef.current = true;
+    }
+  }, [focusReady]);
+
   // ---- Canvas rendering ---------------------------------------------------
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -257,10 +285,27 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const scale = containerWidth > 0 && rasterSize.width > 0
-    ? containerWidth / rasterSize.width
+  // Compute the active source-pixel viewport: either the full raster, or a
+  // padded bbox around the roof perimeter. Pad ~100px clamped to raster.
+  const viewportSrc = useMemo(() => {
+    const fullW = rasterSize.width;
+    const fullH = rasterSize.height;
+    if (viewportMode === "roof_focus" && focusBbox && fullW > 0 && fullH > 0) {
+      const pad = Math.max(80, Math.min(120, Math.round(Math.max(focusBbox.maxX - focusBbox.minX, focusBbox.maxY - focusBbox.minY) * 0.15)));
+      const minX = Math.max(0, focusBbox.minX - pad);
+      const minY = Math.max(0, focusBbox.minY - pad);
+      const maxX = Math.min(fullW, focusBbox.maxX + pad);
+      const maxY = Math.min(fullH, focusBbox.maxY + pad);
+      return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+    }
+    return { minX: 0, minY: 0, maxX: fullW, maxY: fullH, w: fullW, h: fullH };
+  }, [viewportMode, focusBbox, rasterSize.width, rasterSize.height]);
+
+  const scale = containerWidth > 0 && viewportSrc.w > 0
+    ? containerWidth / viewportSrc.w
     : 1;
-  const displayHeight = rasterSize.height > 0 ? rasterSize.height * scale : 0;
+  const displayHeight = viewportSrc.h > 0 ? viewportSrc.h * scale : 0;
+
 
   // Load the aerial image once and capture natural size for resolver fallback.
   useEffect(() => {
@@ -283,6 +328,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     /* eslint-disable-next-line */
   }, [
     layers, scale, editedRing, rawRing, refinedRing, maskPolygon, cornerCutMids, dsmEdges,
+    viewportSrc.minX, viewportSrc.minY, viewportSrc.w, viewportSrc.h,
   ]);
 
   const dsmAllowed = hasDsmToRasterTransform(measurement);
@@ -296,25 +342,31 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
       cvs.width = 1; cvs.height = 1;
       return;
     }
-    const W = Math.max(1, Math.round(rasterSize.width * scale));
-    const H = Math.max(1, Math.round(rasterSize.height * scale));
+    const W = Math.max(1, Math.round(viewportSrc.w * scale));
+    const H = Math.max(1, Math.round(viewportSrc.h * scale));
     cvs.width = W;
     cvs.height = H;
     const ctx = cvs.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
 
-    // Aerial background — drawImage uses the same W/H as the SVG/canvas,
-    // so the image and overlay share the exact same scale (no letterbox drift).
+    // Aerial background — draw the source-pixel sub-rect of the image so the
+    // displayed canvas focuses on the roof while overlay coords stay in the
+    // same source-pixel space.
     if (layers.aerial && imgRef.current) {
-      ctx.drawImage(imgRef.current, 0, 0, W, H);
+      ctx.drawImage(
+        imgRef.current,
+        viewportSrc.minX, viewportSrc.minY, Math.max(1, viewportSrc.w), Math.max(1, viewportSrc.h),
+        0, 0, W, H,
+      );
     } else {
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, W, H);
     }
 
-    const sx = (p: Pt) => p[0] * scale;
-    const sy = (p: Pt) => p[1] * scale;
+    const sx = (p: Pt) => (p[0] - viewportSrc.minX) * scale;
+    const sy = (p: Pt) => (p[1] - viewportSrc.minY) * scale;
+
 
     const drawRing = (
       ring: Pt[],
@@ -416,11 +468,18 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // ---- Vertex editor ------------------------------------------------------
   const dragIdxRef = useRef<number | null>(null);
 
+  // Convert ring source-pixel coords → canvas display coords using the active
+  // viewport offset so hit-testing still works in Roof Focus.
+  const ringSx = (x: number) => (x - viewportSrc.minX) * scale;
+  const ringSy = (y: number) => (y - viewportSrc.minY) * scale;
+  const dispToSrcX = (lx: number) => lx / scale + viewportSrc.minX;
+  const dispToSrcY = (ly: number) => ly / scale + viewportSrc.minY;
+
   function pickVertex(localX: number, localY: number): number {
     const tol = 10;
     for (let i = 0; i < editedRing.length; i++) {
-      const dx = editedRing[i][0] * scale - localX;
-      const dy = editedRing[i][1] * scale - localY;
+      const dx = ringSx(editedRing[i][0]) - localX;
+      const dy = ringSy(editedRing[i][1]) - localY;
       if (Math.hypot(dx, dy) <= tol) return i;
     }
     return -1;
@@ -432,8 +491,8 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     for (let i = 0; i < editedRing.length; i++) {
       const a = editedRing[i];
       const b = editedRing[(i + 1) % editedRing.length];
-      const ax = a[0] * scale, ay = a[1] * scale;
-      const bx = b[0] * scale, by = b[1] * scale;
+      const ax = ringSx(a[0]), ay = ringSy(a[1]);
+      const bx = ringSx(b[0]), by = ringSy(b[1]);
       const dx = bx - ax, dy = by - ay;
       const len2 = dx * dx + dy * dy;
       if (len2 === 0) continue;
@@ -474,7 +533,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     const ei = pickEdge(x, y);
     if (ei >= 0) {
       const next = editedRing.slice();
-      next.splice(ei + 1, 0, [x / scale, y / scale]);
+      next.splice(ei + 1, 0, [dispToSrcX(x), dispToSrcY(y)]);
       setEditedRing(next);
       setDirty(true);
     }
@@ -483,13 +542,14 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!editMode || dragIdxRef.current === null) return;
     const rect = (e.currentTarget as HTMLCanvasElement).getBoundingClientRect();
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
+    const x = dispToSrcX(e.clientX - rect.left);
+    const y = dispToSrcY(e.clientY - rect.top);
     const next = editedRing.slice();
     next[dragIdxRef.current] = [x, y];
     setEditedRing(next);
     setDirty(true);
   }
+
 
   function onPointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     dragIdxRef.current = null;
@@ -718,6 +778,25 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           {/* Canvas */}
           <div ref={wrapRef} className="relative w-full rounded-md overflow-hidden border bg-slate-900">
+            {/* Viewport mode toggle (Full Tile / Roof Focus) */}
+            {focusBbox && (
+              <div className="absolute top-2 right-2 z-10 flex rounded border bg-background/90 backdrop-blur text-[11px] overflow-hidden shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setViewportMode("full_tile")}
+                  className={`px-2 py-1 ${viewportMode === "full_tile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Full Tile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewportMode("roof_focus")}
+                  className={`px-2 py-1 ${viewportMode === "roof_focus" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Roof Focus
+                </button>
+              </div>
+            )}
             <canvas
               ref={canvasRef}
               style={{ width: '100%', height: displayHeight ? `${displayHeight}px` : 'auto', display: 'block', touchAction: 'none', cursor: editMode ? 'crosshair' : 'default' }}
@@ -734,6 +813,73 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
 
           {/* Side panel */}
           <div className="space-y-4">
+            {/* DSM Status card — read-only summary of DSM registration state */}
+            {(() => {
+              const dsmSize = (grj as any).dsm_size ?? (grj as any).dsm?.size ?? null;
+              const dsmW = dsmSize?.width ?? dsmSize?.w ?? null;
+              const dsmH = dsmSize?.height ?? dsmSize?.h ?? null;
+              const dsmBoundsFailure =
+                (grj as any).dsm_bounds_failure ?? (grj as any).dsm?.bounds_failure ?? null;
+              const dsmTransformSource =
+                (grj as any).dsm_to_raster_transform_source ?? (grj as any).dsm?.to_raster_transform_source ?? null;
+              const dsmOverlayVisible = dsmAllowed && dsmEdges.length > 0;
+              const dsmLoaded = dsmW != null || dsmH != null;
+              const dsmRegistered = (grj as any).dsm_pixel_transform_valid === true;
+              const policy = (grj as any).dsm_transform_policy ?? "dsm-registration-transform-v1";
+              const statusLabel = !dsmLoaded
+                ? "Missing"
+                : dsmRegistered ? "Registered" : "Loaded, not registered";
+              return (
+                <div className="rounded-md border bg-muted/30 p-2.5">
+                  <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">DSM Status</div>
+                  <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] font-mono">
+                    <div className="text-muted-foreground">Status</div>
+                    <div className="text-right">{statusLabel}</div>
+                    <div className="text-muted-foreground">Size</div>
+                    <div className="text-right">{dsmLoaded ? `${dsmW ?? '?'}×${dsmH ?? '?'}` : '—'}</div>
+                    <div className="text-muted-foreground">Bounds</div>
+                    <div className="text-right break-all">{dsmBoundsFailure ?? 'ok'}</div>
+                    <div className="text-muted-foreground">Transform</div>
+                    <div className="text-right break-all">{dsmTransformSource ?? 'unavailable'}</div>
+                    <div className="text-muted-foreground">Overlay</div>
+                    <div className="text-right">{dsmOverlayVisible ? 'shown' : 'suppressed'}</div>
+                    <div className="text-muted-foreground">Policy</div>
+                    <div className="text-right break-all">{policy}</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Layer status summary — separates the three semantic layers */}
+            {(() => {
+              const aerialCandVisible =
+                !!aerialCandidateGraph || rawRing.length >= 3;
+              const dsmRegistered = (grj as any).dsm_pixel_transform_valid === true;
+              const dsmTopologyStatus = !dsmRegistered ? 'unavailable' : (dsmEdges.length > 0 ? 'visible' : 'none');
+              const reportableCount = Number(
+                (grj as any).reportable_roof_lines_count ??
+                (grj as any).reportable_roof_lines?.length ??
+                (Array.isArray((grj as any).roof_lines) ? (grj as any).roof_lines.length : 0)
+              );
+              const reportableLabel = reportableCount > 0 ? `${reportableCount} lines` : 'none';
+              const row = (label: string, status: string, tone: string) => (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span>{label}</span>
+                  <span className={`font-mono ${tone}`}>{status}</span>
+                </div>
+              );
+              return (
+                <div className="rounded-md border bg-muted/30 p-2.5">
+                  <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Layer Status</div>
+                  <div className="space-y-1">
+                    {row('Aerial perimeter candidate', aerialCandVisible ? 'visible' : 'none', aerialCandVisible ? 'text-emerald-600' : 'text-muted-foreground')}
+                    {row('DSM-derived topology', dsmTopologyStatus, dsmTopologyStatus === 'visible' ? 'text-emerald-600' : 'text-muted-foreground')}
+                    {row('Reportable roof lines', reportableLabel, reportableCount > 0 ? 'text-emerald-600' : 'text-muted-foreground')}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div>
               <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Layers</div>
               <div className="space-y-1.5">
@@ -768,6 +914,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 })}
               </div>
             </div>
+
 
             <div>
               <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Metrics</div>
