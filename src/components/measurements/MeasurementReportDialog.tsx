@@ -518,82 +518,73 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
       ),
     },
     // ── DSM registration diagnostic projection (read-only pass-through) ──
-    // Fallback chain: registration.dsm.* → registration flat → geometry.dsm_split_status.* →
-    // geometry.registration_diagnostics.* → geometry.hard_fail_reason / failure_stage.
-    (() => {
-      const dsmSplit: any = (grj as any).dsm_split_status || {};
+    // Fallback chain (in priority order):
+    //   registration.dsm.*
+    //   registration.transform_package.*
+    //   registration.* (flat)
+    //   registration_gate.dsm.*
+    //   registration_gate.transform_package.*
+    //   registration_gate.* (flat)
+    //   geometry.registration_diagnostics.*
+    //   geometry.dsm_split_status.georegistration_transform.*
+    //   geometry.dsm_split_status.* (flat)
+    ...(() => {
+      const reg: any = (grj as any).registration || {};
+      const regGate: any = (grj as any).registration_gate || {};
       const regDiag: any = (grj as any).registration_diagnostics || {};
-      const dsmSize =
-        registrationGate.dsm?.dsm_size_px ??
-        (registrationGate as any).dsm_size_px ??
-        dsmSplit.dsm_size_px ??
+      const dsmSplit: any = (grj as any).dsm_split_status || {};
+      const gxform: any = dsmSplit.georegistration_transform || {};
+      const pick = (key: string): any =>
+        reg?.dsm?.[key] ??
+        reg?.transform_package?.[key] ??
+        reg?.[key] ??
+        regGate?.dsm?.[key] ??
+        regGate?.transform_package?.[key] ??
+        regGate?.[key] ??
+        regDiag?.[key] ??
+        gxform?.[key] ??
+        dsmSplit?.[key] ??
         null;
-      return { label: "DSM Size", value: dsmSize ? JSON.stringify(dsmSize) : "—" };
+      const fmtVal = (v: any): string => {
+        if (v === null || v === undefined || v === "") return "—";
+        if (typeof v === "object") {
+          if (typeof v.width === "number" && typeof v.height === "number") {
+            return `${v.width}×${v.height}`;
+          }
+          return JSON.stringify(v);
+        }
+        return String(v);
+      };
+      const dsmSize = pick("dsm_size_px");
+      const boundsWarning = pick("dsm_bounds_warning");
+      const mpp = pick("dsm_meters_per_pixel");
+      const mppSrc = pick("dsm_mpp_source");
+      const tokens = pick("dsm_hoist_failure_tokens");
+      return [
+        { label: "DSM Size", value: fmtVal(dsmSize) },
+        { label: "DSM Bounds Source", value: fmtVal(pick("dsm_tile_bounds_source") ?? pick("dsm_bounds_source")) },
+        { label: "DSM Bounds Failure", value: fmtVal(pick("dsm_tile_bounds_failure_reason")) },
+        {
+          label: "DSM Bounds Derived",
+          value: fmtVal(pick("dsm_bounds_derived")) +
+            (boundsWarning ? ` (${boundsWarning})` : ""),
+        },
+        { label: "DSM Bounds Confidence", value: fmtVal(pick("dsm_bounds_confidence")) },
+        {
+          label: "DSM Meters/Pixel",
+          value: fmtVal(mpp) + (mppSrc ? ` (${mppSrc})` : ""),
+        },
+        { label: "geo_to_dsm_transform_source", value: fmtVal(pick("geo_to_dsm_transform_source")) },
+        { label: "dsm_to_raster_transform_source", value: fmtVal(pick("dsm_to_raster_transform_source")) },
+        { label: "confirmed_roof_center_dsm_px_source", value: fmtVal(pick("confirmed_roof_center_dsm_px_source")) },
+        { label: "DSM Transform Policy", value: fmtVal(pick("dsm_transform_policy_version")) },
+        {
+          label: "DSM Hoist Failure Tokens",
+          value: Array.isArray(tokens) && tokens.length > 0 ? tokens.join(", ") : "—",
+        },
+      ];
     })(),
-    {
-      label: "DSM Bounds Source",
-      value: String(
-        registrationGate.dsm?.dsm_tile_bounds_source ??
-          registrationGate.dsm?.dsm_bounds_source ??
-          (grj as any).dsm_split_status?.dsm_tile_bounds_source ??
-          (grj as any).dsm_split_status?.dsm_bounds_source ?? "—",
-      ),
-    },
-    {
-      label: "DSM Bounds Failure",
-      value: String(
-        registrationGate.dsm?.dsm_tile_bounds_failure_reason ??
-          (grj as any).dsm_split_status?.dsm_tile_bounds_failure_reason ?? "—",
-      ),
-    },
-    {
-      label: "DSM Bounds Derived",
-      value: String(registrationGate.dsm?.dsm_bounds_derived ?? "—") +
-        (registrationGate.dsm?.dsm_bounds_warning
-          ? ` (${registrationGate.dsm.dsm_bounds_warning})`
-          : ""),
-    },
-    {
-      label: "DSM Bounds Confidence",
-      value: String(registrationGate.dsm?.dsm_bounds_confidence ?? "—"),
-    },
-    {
-      label: "DSM Meters/Pixel",
-      value: String(registrationGate.dsm?.dsm_meters_per_pixel ?? "—") +
-        (registrationGate.dsm?.dsm_mpp_source
-          ? ` (${registrationGate.dsm.dsm_mpp_source})`
-          : ""),
-    },
-    {
-      label: "geo_to_dsm_transform_source",
-      value: String(registrationGate.dsm?.geo_to_dsm_transform_source ?? "—"),
-    },
-    {
-      label: "dsm_to_raster_transform_source",
-      value: String(registrationGate.dsm?.dsm_to_raster_transform_source ?? "—"),
-    },
-    {
-      label: "confirmed_roof_center_dsm_px_source",
-      value: String(
-        registrationGate.dsm?.confirmed_roof_center_dsm_px_source ?? "—",
-      ),
-    },
-    {
-      label: "DSM Transform Policy",
-      value: String(
-        registrationGate.dsm?.dsm_transform_policy_version ??
-          (grj as any).registration_diagnostics?.dsm_transform_policy_version ?? "—",
-      ),
-    },
-    {
-      label: "DSM Hoist Failure Tokens",
-      value: (() => {
-        const tokens =
-          (registrationGate.dsm?.dsm_hoist_failure_tokens as any[] | undefined) ??
-          ((grj as any).registration_diagnostics?.dsm_hoist_failure_tokens as any[] | undefined);
-        return Array.isArray(tokens) && tokens.length > 0 ? tokens.join(", ") : "—";
-      })(),
-    },
+
     {
       label: "Stage Hard Fail",
       value: String(
