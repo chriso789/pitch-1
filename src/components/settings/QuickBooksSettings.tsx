@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug } from "lucide-react";
+import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug, AlertTriangle } from "lucide-react";
 import { QuickBooksSyncErrors } from "./QuickBooksSyncErrors";
+import { QuickBooksConnectDialog } from "./QuickBooksConnectDialog";
 
 const JOB_TYPES = [
   { key: 'roof_repair', label: 'Roof Repair' },
@@ -68,6 +69,32 @@ export default function QuickBooksSettings() {
   const [diagnostic, setDiagnostic] = useState<any>(null);
   const [verifyInfo, setVerifyInfo] = useState<any>(null);
   const [selectedMode, setSelectedMode] = useState<'development' | 'production'>('development');
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [returnStatus, setReturnStatus] = useState<{ status: string; reason?: string } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('provider') === 'qbo' && params.get('status')) {
+      setReturnStatus({ status: params.get('status') as string, reason: params.get('reason') ?? undefined });
+      const tone =
+        params.get('status') === 'connected' ? 'default' : 'destructive';
+      toast({
+        title: params.get('status') === 'connected' ? 'QuickBooks connected' : 'QuickBooks connection issue',
+        description: params.get('reason') ?? params.get('status') ?? '',
+        variant: tone as any,
+      });
+      // Clean the URL so reloads don't re-fire.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('provider');
+      url.searchParams.delete('status');
+      url.searchParams.delete('reason');
+      url.searchParams.delete('realm');
+      url.searchParams.delete('env');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [toast]);
 
   const runDiagnostic = async () => {
     try {
