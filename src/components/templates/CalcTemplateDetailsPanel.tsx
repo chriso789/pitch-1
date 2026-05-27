@@ -23,7 +23,33 @@ const ROOF_TYPES = [
   { value: 'metal', label: 'Metal' },
   { value: 'tile', label: 'Tile' },
   { value: 'flat', label: 'Flat' },
+  { value: 'slate', label: 'Slate' },
+  { value: 'cedar', label: 'Cedar Shake' },
+  { value: 'other', label: 'Other' },
 ];
+
+const SIDING_TYPES = [
+  { value: 'vinyl_siding', label: 'Vinyl' },
+  { value: 'insulated_vinyl_siding', label: 'Insulated Vinyl' },
+  { value: 'fiber_cement_siding', label: 'Fiber Cement (Hardie)' },
+  { value: 'aluminum_siding', label: 'Aluminum' },
+  { value: 'wood_siding', label: 'Wood' },
+  { value: 'engineered_wood_siding', label: 'Engineered Wood (LP SmartSide)' },
+  { value: 'stucco', label: 'Stucco' },
+  { value: 'stone_veneer', label: 'Stone Veneer' },
+  { value: 'brick_veneer', label: 'Brick Veneer' },
+  { value: 'other', label: 'Other' },
+];
+
+const SIDING_VALUES = new Set(SIDING_TYPES.map((t) => t.value).filter((v) => v !== 'other'));
+
+const isSidingTemplate = (template: { name?: string; roof_type?: string }) => {
+  if (template.roof_type && SIDING_VALUES.has(template.roof_type)) return true;
+  const name = (template.name || '').toLowerCase();
+  return /(siding|vinyl|hardie|fiber\s*cement|alside|stucco|lp\s*smartside|james\s*hardie)/.test(
+    name,
+  );
+};
 
 const CATEGORIES = [
   { value: 'standard', label: 'Standard' },
@@ -58,25 +84,36 @@ export const CalcTemplateDetailsPanel: React.FC<CalcTemplateDetailsPanelProps> =
           />
         </div>
 
-        {/* Roof Type */}
-        <div className="space-y-2">
-          <Label>Roof Type</Label>
-          <Select
-            value={template.roof_type}
-            onValueChange={(value) => onUpdate({ roof_type: value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROOF_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Material Type (Roof or Siding depending on template trade) */}
+        {(() => {
+          const siding = isSidingTemplate(template);
+          const options = siding ? SIDING_TYPES : ROOF_TYPES;
+          const label = siding ? 'Siding Type' : 'Roof Type';
+          // If template's current value doesn't belong to the active list, fall back to 'other'
+          const currentValue = options.some((o) => o.value === template.roof_type)
+            ? template.roof_type
+            : 'other';
+          return (
+            <div className="space-y-2">
+              <Label>{label}</Label>
+              <Select
+                value={currentValue}
+                onValueChange={(value) => onUpdate({ roof_type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })()}
 
         {/* Category */}
         <div className="space-y-2">

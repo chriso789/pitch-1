@@ -55865,6 +55865,15 @@ export type Database = {
         | "slate"
         | "cedar"
         | "other"
+        | "vinyl_siding"
+        | "fiber_cement_siding"
+        | "aluminum_siding"
+        | "wood_siding"
+        | "engineered_wood_siding"
+        | "stucco"
+        | "stone_veneer"
+        | "brick_veneer"
+        | "insulated_vinyl_siding"
       smartdoc_context_type:
         | "CONTACT"
         | "LEAD"
@@ -56275,6 +56284,15 @@ export const Constants = {
         "slate",
         "cedar",
         "other",
+        "vinyl_siding",
+        "fiber_cement_siding",
+        "aluminum_siding",
+        "wood_siding",
+        "engineered_wood_siding",
+        "stucco",
+        "stone_veneer",
+        "brick_veneer",
+        "insulated_vinyl_siding",
       ],
       smartdoc_context_type: [
         "CONTACT",

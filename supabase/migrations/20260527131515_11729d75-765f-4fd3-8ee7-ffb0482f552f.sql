@@ -1,0 +1,9 @@
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'vinyl_siding';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'fiber_cement_siding';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'aluminum_siding';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'wood_siding';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'engineered_wood_siding';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'stucco';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'stone_veneer';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'brick_veneer';
+ALTER TYPE roof_type ADD VALUE IF NOT EXISTS 'insulated_vinyl_siding';
