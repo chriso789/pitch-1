@@ -79,6 +79,13 @@ import {
   buildDsmRegistration,
   DSM_REGISTRATION_VERSION,
 } from "../_shared/dsm-registration.ts";
+import {
+  computeRasterDsmRoundtripErrorPx,
+  DSM_DERIVED_BOUNDS_RUNTIME_VERSION,
+  DSM_RASTER_ROUNDTRIP_THRESHOLD_PX,
+  gatherDerivedBoundsGateInputs,
+  isDerivedBoundsAllowed,
+} from "../_shared/dsm-derived-bounds-runtime.ts";
 import { hoistSelectedCandidatePolygon } from "../_shared/candidate-hoist.ts";
 
 import {
@@ -1422,7 +1429,7 @@ function dsmRasterOverlapRatio(
   return overlapArea / dsmArea;
 }
 
-function applyLiveRuntimeHoistToRegistration(
+export function applyLiveRuntimeHoistToRegistration(
   registrationBlock: Record<string, unknown>,
   geometry: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1434,51 +1441,35 @@ function applyLiveRuntimeHoistToRegistration(
     const dsmCoordinateMatchDebug = g.dsm_coordinate_match ??
       g.source_acquisition_debug?.dsm_coordinate_match ??
       null;
-    const dsmLoaded = Boolean(
-      g.dsm_loaded ??
-        g.source_acquisition_debug?.dsm_loaded ??
-        reg.dsm_stage_attempted ??
-        (dsmCoordinateMatchDebug?.dsm_bbox != null),
-    );
-    const maskLoaded = Boolean(
-      g.mask_loaded ?? g.source_acquisition_debug?.mask_loaded,
-    );
-    const confirmedLL = reg.confirmed_roof_center_lat_lng ??
-      g.confirmed_roof_center_lat_lng ??
-      null;
-    const rasterMpp = Number.isFinite(Number(g.meters_per_pixel))
-      ? Number(g.meters_per_pixel)
-      : Number.isFinite(Number(reg.meters_per_pixel))
-      ? Number(reg.meters_per_pixel)
-      : Number.isFinite(Number(reg.raster_meters_per_pixel))
-      ? Number(reg.raster_meters_per_pixel)
-      : null;
 
-    // ── Derived-bounds gate (dsm-registration-derived-bounds-v1) ──
-    // Only allow raster-bounds-derived DSM bounds when the raster overlay is
-    // aligned AND the perimeter/mask agreement is strong. Otherwise leave the
-    // explicit `dsm_tile_bounds_missing_from_google_solar_metadata` token.
-    const _rasterBoundsForDerivation: any = (reg.raster_bounds_lat_lng as any) ??
-      (g.raster_bounds_lat_lng as any) ?? null;
-    const _rasterSizeForDerivation: any = (reg.raster_size_px as any) ??
-      (g.raster_size_px as any) ?? null;
-    const _frameMismatchOk = (g.frame_mismatch === "ok") ||
-      (g.frame_mismatch_ok === true) ||
-      ((reg.frame_mismatch as any) === "ok");
-    const _targetMaskOverlap = Number(
-      (g.target_mask_overlap_with_perimeter as any) ??
-        (g.target_mask_isolation?.target_mask_overlap_with_perimeter as any) ??
-        (reg.target_mask_overlap_with_perimeter as any) ??
-        NaN,
-    );
-    const _allowDerivedBounds = Boolean(
-      dsmLoaded &&
-        _rasterBoundsForDerivation &&
-        Number.isFinite(rasterMpp ?? NaN) &&
-        _frameMismatchOk &&
-        Number.isFinite(_targetMaskOverlap) &&
-        _targetMaskOverlap >= 0.90,
-    );
+    // ── Derived-bounds gate inputs (dsm-registration-derived-bounds-v1) ──
+    // Read from every known runtime payload location so the gate doesn't
+    // silently miss because a field moved (see helper for full list).
+    const gateInputs = gatherDerivedBoundsGateInputs(g, reg);
+    const dsmLoaded = gateInputs.dsm_loaded ||
+      Boolean(dsmCoordinateMatchDebug?.dsm_bbox != null);
+    const maskLoaded = gateInputs.mask_loaded;
+    const confirmedLL = gateInputs.confirmed_roof_center_lat_lng ?? null;
+    const rasterMpp = gateInputs.raster_meters_per_pixel;
+    const _rasterBoundsForDerivation = gateInputs.raster_bounds_lat_lng;
+    const _rasterSizeForDerivation = gateInputs.raster_size_px;
+    const _frameMismatchOk = gateInputs.frame_mismatch_ok;
+    const _targetMaskOverlap = gateInputs.target_mask_overlap;
+    const _allowDerivedBounds = isDerivedBoundsAllowed({
+      ...gateInputs,
+      dsm_loaded: dsmLoaded,
+    });
+
+    // ── v1 diagnostic surface (persisted regardless of outcome) ───
+    reg.derived_bounds_enabled = _allowDerivedBounds;
+    reg.derived_bounds_policy = DSM_DERIVED_BOUNDS_RUNTIME_VERSION;
+    reg.derived_bounds_gate_inputs = {
+      dsm_loaded: dsmLoaded,
+      raster_bounds_present: !!_rasterBoundsForDerivation,
+      raster_mpp: rasterMpp,
+      frame_mismatch_ok: _frameMismatchOk,
+      target_mask_overlap: _targetMaskOverlap,
+    };
 
     // ── Only hoist DSM fields when registration is missing them ───
     const dsmAlreadyHoisted = reg.dsm_size_px != null &&
@@ -1511,6 +1502,11 @@ function applyLiveRuntimeHoistToRegistration(
         dsmReg.dsm_bounds_derived;
       reg.dsm_bounds_warning = reg.dsm_bounds_warning ??
         dsmReg.dsm_bounds_warning;
+      // Spec-mandated operator-facing warning when raster fallback is in use.
+      if (dsmReg.dsm_bounds_source === "derived_from_raster_bounds") {
+        reg.dsm_bounds_warning =
+          "google_solar_dsm_bounds_missing_using_raster_bounds_fallback";
+      }
       reg.dsm_bounds_confidence = reg.dsm_bounds_confidence ??
         dsmReg.dsm_bounds_confidence;
       reg.dsm_meters_per_pixel = reg.dsm_meters_per_pixel ??
@@ -1563,28 +1559,35 @@ function applyLiveRuntimeHoistToRegistration(
           ? Number(reg.dsm_meters_per_pixel)
           : rasterMpp,
       });
+      const _derivedBranch =
+        reg.dsm_bounds_source === "derived_from_raster_bounds";
       reg.geo_to_dsm_transform = reg.geo_to_dsm_transform ??
         transformPkg.geo_to_dsm_transform;
       reg.geo_to_dsm_transform_source = reg.geo_to_dsm_transform_source ??
-        (transformPkg as any).geo_to_dsm_transform_source;
+        (_derivedBranch && transformPkg.geo_to_dsm_transform
+          ? "derived_raster_bounds+dsm_size_px"
+          : (transformPkg as any).geo_to_dsm_transform_source);
       reg.confirmed_roof_center_dsm_px = reg.confirmed_roof_center_dsm_px ??
         transformPkg.confirmed_roof_center_dsm_px;
       reg.confirmed_roof_center_dsm_px_source =
         reg.confirmed_roof_center_dsm_px_source ??
-          (transformPkg as any).confirmed_roof_center_dsm_px_source;
+          (_derivedBranch && transformPkg.confirmed_roof_center_dsm_px
+            ? "raster_center_to_geo_to_dsm"
+            : (transformPkg as any).confirmed_roof_center_dsm_px_source);
       reg.geo_to_dsm_px_success = transformPkg.geo_to_dsm_px_success === true;
       reg.dsm_tile_bounds_contain_confirmed_center =
         transformPkg.dsm_tile_bounds_contain_confirmed_center === true;
       reg.dsm_to_raster_transform = reg.dsm_to_raster_transform ??
         transformPkg.dsm_to_raster_transform;
       reg.dsm_to_raster_transform_source = reg.dsm_to_raster_transform_source ??
-        (transformPkg as any).dsm_to_raster_transform_source;
+        (_derivedBranch && transformPkg.dsm_to_raster_transform
+          ? "geo_to_dsm_transform+geo_to_raster_transform"
+          : (transformPkg as any).dsm_to_raster_transform_source);
       // When DSM bounds were derived from raster, override the operator-facing
       // policy tag so the UI/diagnostic mirrors `dsm-registration-derived-bounds-v1`.
-      reg.dsm_transform_policy_version =
-        reg.dsm_bounds_source === "derived_from_raster_bounds"
-          ? "dsm-registration-derived-bounds-v1"
-          : (transformPkg as any).dsm_transform_policy_version;
+      reg.dsm_transform_policy_version = _derivedBranch
+        ? DSM_DERIVED_BOUNDS_RUNTIME_VERSION
+        : (transformPkg as any).dsm_transform_policy_version;
       reg.dsm_raster_bounds_overlap =
         transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
       reg.dsm_raster_overlap_ratio = dsmRasterOverlapRatio(
@@ -1604,23 +1607,53 @@ function applyLiveRuntimeHoistToRegistration(
       reg.transform_failure_reasons =
         validateRegistrationTransformPackage(transformPkg).reasons;
 
+      // ── Roundtrip validation (dsm-registration-derived-bounds-v1) ──
+      // Map confirmed roof center: raster_px → geo → dsm_px → raster_px and
+      // measure the Euclidean error. Threshold = 8px.
+      const _startRasterPx = (reg.confirmed_roof_center_px as any) ??
+        transformPkg.confirmed_roof_center_px ??
+        (transformPkg.raster_size_px
+          ? [
+            transformPkg.raster_size_px.width / 2,
+            transformPkg.raster_size_px.height / 2,
+          ]
+          : null);
+      let _roundtripErr: number | null = null;
+      if (_startRasterPx) {
+        _roundtripErr = computeRasterDsmRoundtripErrorPx({
+          start_raster_px: _startRasterPx as any,
+          geo_to_raster_transform: transformPkg.geo_to_raster_transform,
+          geo_to_dsm_transform: transformPkg.geo_to_dsm_transform,
+          dsm_to_raster_transform: transformPkg.dsm_to_raster_transform,
+        });
+      }
+      reg.dsm_raster_roundtrip_error_px = _roundtripErr;
+
       // ── Consistency rejection for raster-bounds-derived DSM bounds ──
-      // If we derived bounds from the raster footprint but the resulting
-      // transform fails to contain the confirmed roof center (or the pixel
-      // transform is invalid), revert the derivation and re-surface the
-      // original missing-metadata failure token.
-      if (
-        reg.dsm_bounds_source === "derived_from_raster_bounds" &&
-        (transformPkg.dsm_tile_bounds_contain_confirmed_center !== true ||
-          transformPkg.dsm_pixel_transform_valid !== true)
-      ) {
-        const _rejectionReasons: string[] = [];
+      // Reject when the derived transform fails to contain the confirmed roof
+      // center, the pixel transform is invalid, OR the roundtrip exceeds the
+      // 8px threshold. On reject: revert and restore the missing-metadata
+      // failure token.
+      const _validationFailures: string[] = [];
+      if (_derivedBranch) {
         if (transformPkg.dsm_tile_bounds_contain_confirmed_center !== true) {
-          _rejectionReasons.push("confirmed_center_outside_derived_bounds");
+          _validationFailures.push("confirmed_center_outside_derived_bounds");
         }
         if (transformPkg.dsm_pixel_transform_valid !== true) {
-          _rejectionReasons.push("dsm_pixel_transform_invalid");
+          _validationFailures.push("dsm_pixel_transform_invalid");
         }
+        if (
+          _roundtripErr != null &&
+          _roundtripErr > DSM_RASTER_ROUNDTRIP_THRESHOLD_PX
+        ) {
+          _validationFailures.push("dsm_raster_roundtrip_exceeds_threshold");
+        }
+      }
+      reg.derived_bounds_validation_failures = _validationFailures;
+      reg.derived_bounds_validation_passed = _derivedBranch &&
+        _validationFailures.length === 0;
+
+      if (_derivedBranch && _validationFailures.length > 0) {
         reg.dsm_tile_bounds_lat_lng = null;
         reg.dsm_bounds_source = "derived_rejected_consistency_failure";
         reg.dsm_tile_bounds_source = "derived_rejected_consistency_failure";
@@ -1632,20 +1665,37 @@ function applyLiveRuntimeHoistToRegistration(
         reg.geo_to_dsm_px_success = false;
         reg.dsm_pixel_transform_valid = false;
         reg.dsm_tile_bounds_contain_confirmed_center = false;
-        reg.dsm_derived_bounds_rejection_reasons = _rejectionReasons;
+        reg.dsm_derived_bounds_rejection_reasons = _validationFailures;
+        reg.dsm_validation_status = {
+          available: false,
+          reason: "dsm_tile_bounds_missing_from_google_solar_metadata",
+        };
         const existingTokens: string[] = Array.isArray(reg.dsm_hoist_failure_tokens)
           ? (reg.dsm_hoist_failure_tokens as string[])
           : [];
         const newTokens = existingTokens.filter((t) =>
           t !== "dsm_tile_bounds_derived_from_raster_bounds"
         );
-        for (const r of _rejectionReasons) {
+        for (const r of _validationFailures) {
           newTokens.push(`dsm_derived_bounds_rejected_${r}`);
         }
         if (!newTokens.includes("dsm_tile_bounds_missing_from_google_solar_metadata")) {
           newTokens.push("dsm_tile_bounds_missing_from_google_solar_metadata");
         }
         reg.dsm_hoist_failure_tokens = newTokens;
+      } else if (_derivedBranch) {
+        reg.dsm_validation_status = {
+          available: true,
+          reason: "derived_bounds_validated",
+        };
+      } else if (reg.geo_to_dsm_px_success === true &&
+        reg.dsm_pixel_transform_valid === true) {
+        reg.dsm_validation_status = reg.dsm_validation_status ?? {
+          available: true,
+          reason: reg.dsm_bounds_source === "google_solar_metadata"
+            ? "google_solar_metadata_validated"
+            : "registration_validated",
+        };
       }
     }
 
