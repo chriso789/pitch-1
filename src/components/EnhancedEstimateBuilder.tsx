@@ -1436,7 +1436,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       return;
     }
 
-    if (!calculationResults || calculationResults.selling_price === 0) {
+    if (!calculationResults) {
       toast({
         title: "Error",
         description: "Please calculate the estimate first",
@@ -1444,6 +1444,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       });
       return;
     }
+    // Note: zero selling_price is allowed (e.g. siding templates without measurement-driven qty).
+    // User can adjust quantities and pricing after save.
 
     setSavingEstimate(true);
     
