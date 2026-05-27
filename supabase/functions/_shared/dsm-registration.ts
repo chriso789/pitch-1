@@ -20,7 +20,13 @@ export type DsmBoundsSource =
   | "google_solar_metadata"
   | "derived_from_confirmed_center_and_mpp"
   | "derived_from_dsm_bbox_and_static_mpp"
+  | "derived_from_raster_bounds"
+  | "derived_rejected_consistency_failure"
   | "missing";
+
+/** Operator-facing policy tag emitted when bounds are derived from raster footprint. */
+export const DSM_DERIVED_TRANSFORM_POLICY_VERSION =
+  "dsm-registration-derived-bounds-v1";
 
 /** Alias used by the dsm-registration-transform-v1 diagnostic surface. */
 export type DsmTileBoundsSource = DsmBoundsSource;
