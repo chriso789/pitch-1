@@ -69,6 +69,32 @@ export default function QuickBooksSettings() {
   const [diagnostic, setDiagnostic] = useState<any>(null);
   const [verifyInfo, setVerifyInfo] = useState<any>(null);
   const [selectedMode, setSelectedMode] = useState<'development' | 'production'>('development');
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [returnStatus, setReturnStatus] = useState<{ status: string; reason?: string } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('provider') === 'qbo' && params.get('status')) {
+      setReturnStatus({ status: params.get('status') as string, reason: params.get('reason') ?? undefined });
+      const tone =
+        params.get('status') === 'connected' ? 'default' : 'destructive';
+      toast({
+        title: params.get('status') === 'connected' ? 'QuickBooks connected' : 'QuickBooks connection issue',
+        description: params.get('reason') ?? params.get('status') ?? '',
+        variant: tone as any,
+      });
+      // Clean the URL so reloads don't re-fire.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('provider');
+      url.searchParams.delete('status');
+      url.searchParams.delete('reason');
+      url.searchParams.delete('realm');
+      url.searchParams.delete('env');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [toast]);
 
   const runDiagnostic = async () => {
     try {
