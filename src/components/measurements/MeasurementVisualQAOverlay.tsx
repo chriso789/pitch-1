@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { resolveDsmStatusFields } from '@/lib/measurement/resolveDsmStatusFields';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
