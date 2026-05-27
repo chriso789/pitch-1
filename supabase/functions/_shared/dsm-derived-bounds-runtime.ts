@@ -20,6 +20,7 @@ import type {
   RasterTransform,
   SizePx,
 } from "./source-registration-transform.ts";
+import { resolveFrameMismatch } from "./resolveFrameMismatch.ts";
 
 export const DSM_DERIVED_BOUNDS_RUNTIME_VERSION =
   "dsm-registration-derived-bounds-v1";
