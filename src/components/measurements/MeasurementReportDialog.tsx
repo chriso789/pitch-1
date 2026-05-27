@@ -2161,6 +2161,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     footprint_px,
                     hasRasterOverlay,
                   } = getRasterOverlayData(effectiveMeasurement);
+                  const fpx = (getRasterOverlayData(effectiveMeasurement) as any).focusPerimeterPx;
                   const showDebugOverlay = hasRasterOverlay;
 
                   const isDiagnosticOnly = !pdfGate.ok;
