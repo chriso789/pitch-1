@@ -99,11 +99,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Idempotency: if we've already recorded this exact RoofHub event for this
+    // order, skip the side effects. SRS occasionally replays webhooks.
+    const evtIdStr = String(eventId);
+    const { data: priorEvt } = await supabase
+      .from('srs_order_status_history')
+      .select('id, new_status')
+      .eq('order_id', order.id)
+      .eq('srs_event_id', evtIdStr)
+      .maybeSingle();
+    if (priorEvt) {
+      return new Response(JSON.stringify({ ok: true, matched: true, duplicate: true, orderId: order.id, status: priorEvt.new_status }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const oldStatus = order.status;
     const updates: Record<string, any> = { status: newStatus, updated_at: new Date().toISOString() };
 
-    // Capture sales order id on first OU
-    if (eventType === 'OU' && !order.srs_order_id && eventId) updates.srs_order_id = String(eventId);
+    // Capture sales order id on the FIRST event from SRS that carries it
+    // (OU is most common, but OA/DU/IU can also be the first to arrive).
+    if (!order.srs_order_id && eventId) updates.srs_order_id = evtIdStr;
     if (txId && !order.srs_transaction_id) updates.srs_transaction_id = txId;
 
     if (eventType === 'DU' && newStatus === 'delivered' && eventDateTime) {
@@ -112,13 +128,15 @@ Deno.serve(async (req) => {
 
     await supabase.from('srs_orders').update(updates).eq('id', order.id);
 
-    // Append status history
+    // Append status history (unique on order_id + srs_event_id)
     await supabase.from('srs_order_status_history').insert({
       order_id: order.id,
       old_status: oldStatus,
       new_status: newStatus,
       status_message: `${eventType}: ${eventStatus || ''}`.trim(),
       raw_webhook_data: payload,
+      srs_event_id: evtIdStr,
+      srs_event_type: eventType,
     });
 
     // Extract any delivery photos / documents (BOL, POD, signed slips) from the
