@@ -327,6 +327,17 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     return existingEstimateId !== null && lineItems.some(item => item.is_override);
   }, [existingEstimateId, lineItems]);
 
+  const hasSaveableEstimateContent = useMemo(() => {
+    return Boolean(
+      existingEstimateId ||
+      isEditingLoadedEstimate ||
+      selectedTemplateId ||
+      tradeSections.some(t => !!t.templateId) ||
+      lineItems.length > 0 ||
+      breakdown.sellingPrice > 0
+    );
+  }, [existingEstimateId, isEditingLoadedEstimate, selectedTemplateId, tradeSections, lineItems.length, breakdown.sellingPrice]);
+
   // Get current estimate display name for the dialog
   const currentEstimateName = estimateDisplayName || editingEstimateNumber || 'current estimate';
 
@@ -1437,9 +1448,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   const handleCreateEstimate = async () => {
-    // Allow creation as soon as a template is selected (line items can be added after save)
-    const hasAnyTemplate = selectedTemplateId || tradeSections.some(t => !!t.templateId);
-    if (!hasAnyTemplate) return;
+    // Allow creation when there is priced estimate content, even if the optional tier/template state is blank.
+    if (!hasSaveableEstimateContent) {
+      toast({
+        title: 'Nothing to save yet',
+        description: 'Select a template or add estimate items before saving.',
+        variant: 'destructive'
+      });
+      return;
+    }
     
     setCreating(true);
     try {
@@ -1537,6 +1554,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const priceWord = breakdown.sellingPrice > 20000 ? 'Premium' : 
                         breakdown.sellingPrice > 10000 ? 'Standard' : 'Basic';
       const shortDescription = `${descriptor} ${priceWord}`;
+      const normalizedTemplateId = selectedTemplateId && selectedTemplateId !== BLANK_TEMPLATE_ID
+        ? selectedTemplateId
+        : null;
 
       // Build line items JSON for storage
       const lineItemsJson = {
@@ -1586,7 +1606,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           pipeline_entry_id: pipelineEntryId,
           estimate_number: estimateNumber,
           status: 'draft',
-          template_id: selectedTemplateId === '__blank__' ? null : selectedTemplateId,
+          template_id: normalizedTemplateId,
           display_name: estimateDisplayName.trim() || null,
           pricing_tier: estimatePricingTier || null,
           customer_name: customerName,
@@ -1616,7 +1636,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           short_description: shortDescription,
           calculation_metadata: {
             source: 'multi_template_selector',
-            selected_template_id: selectedTemplateId,
+            selected_template_id: normalizedTemplateId,
             pricing_config: config,
           },
           created_by: user.id
