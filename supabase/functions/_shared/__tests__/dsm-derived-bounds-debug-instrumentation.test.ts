@@ -14,29 +14,11 @@ const FONSICA_BOUNDS = {
   ne: { lat: 28.00, lng: -82.70 },
 };
 
-Deno.test("Test A — raster bounds in {north,south,east,west} shape → raster_bounds_shape_mismatch", () => {
-  const r = buildDsmRegistration({
-    dsm_loaded: true,
-    effectiveDSM: { width: 998, height: 998, resolution: 0.1 },
-    allow_derived_bounds: true,
-    rasterBoundsLatLng: {
-      // Intentionally wrong shape — exact bug class the user suspects.
-      north: 28.00,
-      south: 27.99,
-      east: -82.70,
-      west: -82.71,
-    } as any,
-    rasterSizePx: { width: 1280, height: 1280 },
-    confirmedCenterLatLng: { lat: 27.995, lng: -82.705 },
-    rasterMetersPerPixel: 0.15,
-  });
-  const dbg = r.derived_bounds_debug!;
-  assertEquals(dbg.allow_derived_bounds, true);
-  assertEquals(dbg.raster_bounds_input_shape, "north_south_east_west");
-  assertEquals(dbg.raster_bounds_sw_lat_numeric, false);
-  assertEquals(dbg.derived_branch_entered, "derived_from_raster_bounds"); // ⚠ confirms NOT raster_from_bounds
-  // ^ Wait: if shape mismatch, raster-from-bounds branch is NOT entered.
-});
+// (Test A merged into "Test A (real)" below — the wrong-shape branch causes
+// the raster-from-bounds branch to be skipped, and the next branch decides
+// whether anything else can fire.)
+
+
 
 Deno.test("Test A (real) — wrong-shape raster bounds skip raster branch", () => {
   const r = buildDsmRegistration({
