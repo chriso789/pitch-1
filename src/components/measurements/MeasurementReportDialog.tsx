@@ -2097,8 +2097,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     footprint_px,
                     hasRasterOverlay,
                   } = getRasterOverlayData(effectiveMeasurement);
-
-                  return (
+                  const fpx = (getRasterOverlayData(effectiveMeasurement) as any).focusPerimeterPx;
                     <div className="space-y-4">
                       <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
