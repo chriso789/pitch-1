@@ -354,16 +354,23 @@ export function LiveOrderTracker({ projectId, compact = false }: Props) {
     );
   }
 
+  // Show only the latest order here; full history lives in the Connections window.
+  const latestOrders = orders.slice(0, 1);
+
   return (
     <Card>
       <CardHeader className={compact ? 'py-3' : ''}>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Truck className="h-4 w-4" /> Live Order Tracking
-          <Badge variant="outline" className="ml-auto">{orders.length} active</Badge>
+          <Truck className="h-4 w-4" /> Latest Supplier Order
+          {orders.length > 1 && (
+            <Badge variant="outline" className="ml-auto">
+              {orders.length - 1} more in Connections
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {orders.map(o => {
+        {latestOrders.map(o => {
           const activeIdx = stageIndex(o.status, !!o.externalId);
           return (
             <div key={o.id} className="rounded-md border p-3">
