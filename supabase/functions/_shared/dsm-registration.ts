@@ -318,6 +318,96 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     }
   }
 
+  // ── Derived-bounds diagnostic mirror ────────────────────
+  // Pure mirror of the same booleans the if-statements above already
+  // evaluate. Populated whenever the caller opted into derived bounds.
+  let derived_bounds_debug: DerivedBoundsDebug | undefined;
+  if (allowDerived) {
+    const rb = input.rasterBoundsLatLng as any;
+    const rbPresent = rb != null && typeof rb === "object";
+    const rbKeys = rbPresent ? Object.keys(rb) : [];
+    const looksSwNe =
+      rbPresent && rb.sw != null && rb.ne != null;
+    const looksNsew =
+      rbPresent && (("north" in rb) || ("south" in rb) || ("east" in rb) ||
+        ("west" in rb));
+    const shape: DerivedBoundsDebug["raster_bounds_input_shape"] = !rbPresent
+      ? "null"
+      : looksSwNe
+      ? "sw_ne"
+      : looksNsew
+      ? "north_south_east_west"
+      : "object_unknown_shape";
+    const swLatOk = !!(rbPresent && isNum(rb.sw?.lat));
+    const swLngOk = !!(rbPresent && isNum(rb.sw?.lng));
+    const neLatOk = !!(rbPresent && isNum(rb.ne?.lat));
+    const neLngOk = !!(rbPresent && isNum(rb.ne?.lng));
+    const sizePresent = !!(input.rasterSizePx &&
+      isNum(input.rasterSizePx.width) && isNum(input.rasterSizePx.height));
+    const sizePositive = !!(input.rasterSizePx &&
+      (input.rasterSizePx.width ?? 0) > 0 &&
+      (input.rasterSizePx.height ?? 0) > 0);
+
+    let entered: DerivedBoundsDebug["derived_branch_entered"] = "none";
+    if (dsm_bounds_source === "derived_from_raster_bounds") {
+      entered = "derived_from_raster_bounds";
+    } else if (dsm_bounds_source === "derived_from_confirmed_center_and_mpp") {
+      entered = "derived_from_confirmed_center_and_mpp";
+    } else if (dsm_bounds_source === "derived_from_dsm_bbox_and_static_mpp") {
+      entered = "derived_from_dsm_bbox_and_static_mpp";
+    }
+
+    let skipped: DerivedBoundsDebug["derived_branch_skipped_reason"] = null;
+    if (entered === "none") {
+      if (fromMetadata) {
+        skipped = "metadata_bounds_won";
+      } else if (!dsm_size_px) {
+        skipped = "internal_dsm_size_missing";
+      } else if (
+        !rbPresent || shape !== "sw_ne" ||
+        !(swLatOk && swLngOk && neLatOk && neLngOk)
+      ) {
+        // Raster-bounds branch is the first/highest-confidence derivation;
+        // a shape/numeric failure there is the most actionable single reason.
+        if (rbPresent && (shape !== "sw_ne" || !(swLatOk && swLngOk && neLatOk && neLngOk))) {
+          skipped = "raster_bounds_shape_mismatch";
+        } else if (!sizePresent || !sizePositive) {
+          skipped = "raster_size_invalid";
+        } else if (!input.confirmedCenterLatLng) {
+          skipped = "no_confirmed_center";
+        } else if (!isNum(dsm_meters_per_pixel ?? NaN) && !isNum(input.rasterMetersPerPixel ?? NaN)) {
+          skipped = "no_mpp";
+        } else {
+          skipped = "raster_bounds_shape_mismatch";
+        }
+      } else if (!sizePresent || !sizePositive) {
+        skipped = "raster_size_invalid";
+      } else if (!input.confirmedCenterLatLng) {
+        skipped = "no_confirmed_center";
+      } else if (!isNum(dsm_meters_per_pixel ?? NaN) && !isNum(input.rasterMetersPerPixel ?? NaN)) {
+        skipped = "no_mpp";
+      }
+    }
+
+    derived_bounds_debug = {
+      allow_derived_bounds: true,
+      dsm_size_px_internal: dsm_size_px,
+      dsm_size_px_internal_source: dsm_size_source,
+      metadata_bounds_present: !!fromMetadata,
+      raster_bounds_input_present: rbPresent,
+      raster_bounds_input_shape: shape,
+      raster_bounds_input_keys: rbKeys,
+      raster_bounds_sw_lat_numeric: swLatOk,
+      raster_bounds_sw_lng_numeric: swLngOk,
+      raster_bounds_ne_lat_numeric: neLatOk,
+      raster_bounds_ne_lng_numeric: neLngOk,
+      raster_size_px_present: sizePresent,
+      raster_size_px_positive: sizePositive,
+      derived_branch_entered: entered,
+      derived_branch_skipped_reason: skipped,
+    };
+  }
+
   return {
     dsm_registration_version: DSM_REGISTRATION_VERSION,
     dsm_registration_source: "google_solar_data_layers",
@@ -335,5 +425,6 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     dsm_mpp_source,
     dsm_tile_bounds_failure_reason,
     failure_tokens,
+    ...(derived_bounds_debug ? { derived_bounds_debug } : {}),
   };
 }
