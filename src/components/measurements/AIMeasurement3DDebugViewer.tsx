@@ -296,12 +296,24 @@ function buildStages(m: any): StageDef[] {
     {
       id: "perimeter_candidates",
       label: "Perimeter candidates",
-      status: pickStatus(
-        perimeterCandidatesPresent,
-        perimeterCandidatesPresent,
-      ),
+      status: (() => {
+        const present = perimeterCandidatesPresent || aerialEdgeCount > 0 || perimeterTopologyEdges > 0;
+        if (!present) return "unknown";
+        const edgeTotal = aerialEdgeCount + perimeterTopologyEdges;
+        const ringClosed = ringPresent ||
+          layer1?.perimeter_status === "accepted" ||
+          layer1?.perimeter_status === "partial";
+        if (edgeTotal >= 4 && ringClosed) return "pass";
+        if (edgeTotal > 0) return "partial";
+        return "unknown";
+      })(),
+      reason: aerialEdgeCount > 0
+        ? `${aerialEdgeCount} aerial candidate edges detected${perimeterTopologyEdges > 0 ? ` (+${perimeterTopologyEdges} topology edges)` : ""}.`
+        : undefined,
       payload: {
         candidates: layer1?.candidates || grj?.perimeter_candidates || [],
+        aerial_candidate_edges: aerialEdgeCount,
+        perimeter_topology_edges: perimeterTopologyEdges,
         forbidden: [
           "solar_union",
           "solar_hull",
@@ -314,9 +326,25 @@ function buildStages(m: any): StageDef[] {
     {
       id: "layer1",
       label: "Layer-1 true perimeter",
-      status: pickStatus(layer1Ok, true),
+      status: (() => {
+        if (layer1Ok && Number.isFinite(layer1Overlap) && layer1Overlap >= 0.90 &&
+            Number.isFinite(layer1Iou) && layer1Iou >= 0.80) {
+          // Even with strong metrics, hold at partial_pass until topology has
+          // promoted the ring — operators should not read this as fully validated.
+          return customerReady ? "pass" : "partial";
+        }
+        if (layer1Ok || ringPresent ||
+            (Number.isFinite(layer1Overlap) && layer1Overlap >= 0.80)) {
+          return "partial";
+        }
+        return "fail";
+      })(),
       source: layer1?.selected_source,
-      reason: layer1Ok ? undefined : layer1?.rejection_reason,
+      reason: !layer1Ok && !ringPresent
+        ? layer1?.rejection_reason
+        : (!customerReady
+          ? "Perimeter is structurally strong but has not been promoted into validated topology."
+          : undefined),
       payload: {
         true_outer_roof_perimeter_px: grj?.true_outer_roof_perimeter_px,
         true_outer_roof_perimeter_geo: grj?.true_outer_roof_perimeter_geo,
@@ -325,12 +353,16 @@ function buildStages(m: any): StageDef[] {
         roof_corners: layer1?.roof_corners,
         perimeter_confidence: layer1?.perimeter_confidence,
         perimeter_status: layer1?.perimeter_status,
+        target_mask_overlap_with_perimeter: layer1Overlap,
+        perimeter_iou: layer1Iou,
       },
     },
     {
       id: "phase0",
       label: "Perimeter Phase 0 gate",
-      status: phase0Ran ? (phase0Ok ? "pass" : "fail") : "fail",
+      status: phase0Ran
+        ? (phase0Ok ? "pass" : "fail")
+        : (resolvedState.phase0_incomplete_reason === "runtime_preemption" ? "partial" : "fail"),
       reason: phase0Ran
         ? phase0?.failure_reason
         : resolvedState.phase0_incomplete_reason === "runtime_preemption"
@@ -374,8 +406,12 @@ function buildStages(m: any): StageDef[] {
     {
       id: "topology",
       label: "Phase 3A.5 / Perimeter topology",
-      status: pickStatus(topoOk, Object.keys(topo).length > 0 || topoOk),
-      reason: resolvedState.final_state_source === "runtime_cpu_budget_guard"
+      status: topoOk
+        ? "pass"
+        : cpuPreempted
+        ? "partial"
+        : pickStatus(topoOk, Object.keys(topo).length > 0),
+      reason: cpuPreempted
         ? "Phase 3A.5 stopped: CPU budget exceeded before topology completed."
         : undefined,
       payload: {
@@ -393,14 +429,19 @@ function buildStages(m: any): StageDef[] {
       label: "Final diagram",
       status: hasFinalGeometry
         ? pickStatus(finalOk, true)
-        : "fail",
+        : (hasDebugGeometry ? "partial" : "fail"),
       reason: hasFinalGeometry
         ? undefined
-        : "Final diagram blocked: zero facets and zero roof_lines persisted.",
+        : (hasDebugGeometry
+          ? "Final diagram blocked: topology validation incomplete before runtime preemption. Candidate perimeter geometry exists but was not promoted into validated roof topology."
+          : "Final diagram blocked: zero facets and zero roof_lines persisted."),
       payload: {
         final_diagram_url: grj?.final_diagram_url,
         roof_lines_count: roofLinesCount,
         facet_count: facetCount,
+        aerial_candidate_edges: aerialEdgeCount,
+        perimeter_topology_edges: perimeterTopologyEdges,
+        debug_geometry_only: hasDebugGeometry && !hasFinalGeometry,
         totals: {
           eave: m?.total_eave_length,
           rake: m?.total_rake_length,
