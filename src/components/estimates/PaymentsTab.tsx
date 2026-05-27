@@ -75,11 +75,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [scanningPayment, setScanningPayment] = useState(false);
   const scanInputRef = useRef<HTMLInputElement>(null);
 
-  // Invoice builder state
-  const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
+  // Invoice builder state — grouped per trade / per change order.
+  const [invoiceGroups, setInvoiceGroups] = useState<InvoiceGroup[]>([]);
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
-  const [showLineDetails, setShowLineDetails] = useState(true);
+  const [showLineDetails, setShowLineDetails] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Edit invoice state
