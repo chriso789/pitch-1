@@ -109,7 +109,7 @@ Deno.test("buildCpuBudgetTerminalDebugPayload: lifts cheap evidence + forces cus
   const out = buildCpuBudgetTerminalDebugPayload({
     stage: STAGE,
     estimatedWorkUnits: 12345,
-    debug: bag,
+    debug: bag as unknown as Record<string, unknown>,
     budget: { preempt: true, elapsed_ms: 9000, remaining_ms: 500, reason: "x" },
     constants: {
       AI_MEASUREMENT_CPU_BUDGET_MS: 10000,
