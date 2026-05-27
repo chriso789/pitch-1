@@ -99,7 +99,7 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   const approvedCOs = (changeOrders || []).filter(
     (co: any) => APPROVED_STATUSES.has(String(co.status || '').toLowerCase()) || co.customer_approved === true
   );
-  const coBudgetTotal = approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
+  const approvedCoLocalTotal = approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
 
   // The RPC's sale_price ALREADY includes approved CO cost_impact. Do NOT add it
   // again here or the contract value will be double-counted (e.g. $113k base + $14.4k CO
