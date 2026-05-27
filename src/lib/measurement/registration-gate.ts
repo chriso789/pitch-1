@@ -139,12 +139,24 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
     };
   }
 
-  // Default: true coordinate-frame mismatch.
+  // Default: aggregate gate failed but neither target nor frame nor DSM is the
+  // explicit cause — prefer the DSM-incomplete copy (safer; matches the most
+  // common cause) rather than incorrectly accusing the coordinate frame.
+  if (frameFailed) {
+    return {
+      variant: "destructive",
+      title: "Coordinate frame mismatch — overlay not eligible for manual approval",
+      description:
+        "The displayed perimeter may be drawn over the wrong house or in a different coordinate frame than the aerial image. Re-run AI Measurement after re-placing the PIN on the actual roof. Manual approval is disabled until target roof registration passes.",
+      failedFlags: failed,
+    };
+  }
   return {
-    variant: "destructive",
-    title: "Coordinate frame mismatch — overlay not eligible for manual approval",
+    variant: "warning",
+    title: "DSM registration incomplete — overlay locked from approval",
     description:
-      "The displayed perimeter may be drawn over the wrong house or in a different coordinate frame than the aerial image. Re-run AI Measurement after re-placing the PIN on the actual roof. Manual approval is disabled until target roof registration passes.",
+      "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
     failedFlags: failed,
   };
 }
+
