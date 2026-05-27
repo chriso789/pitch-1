@@ -42,7 +42,7 @@ interface Props {
   embedded?: boolean;
 }
 
-type StageStatus = "pass" | "fail" | "warn" | "skip" | "unknown";
+type StageStatus = "pass" | "partial" | "fail" | "warn" | "skip" | "unknown";
 
 interface StageDef {
   id: string;
@@ -55,6 +55,7 @@ interface StageDef {
 
 const statusColor: Record<StageStatus, string> = {
   pass: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+  partial: "bg-amber-500/15 text-amber-600 border-amber-500/30",
   fail: "bg-destructive/15 text-destructive border-destructive/40",
   warn: "bg-amber-500/15 text-amber-600 border-amber-500/30",
   skip: "bg-muted text-muted-foreground border-border",
@@ -63,6 +64,7 @@ const statusColor: Record<StageStatus, string> = {
 
 const statusIcon: Record<StageStatus, React.ReactNode> = {
   pass: <CheckCircle2 className="h-3.5 w-3.5" />,
+  partial: <CircleAlert className="h-3.5 w-3.5" />,
   fail: <XCircle className="h-3.5 w-3.5" />,
   warn: <CircleAlert className="h-3.5 w-3.5" />,
   skip: <Activity className="h-3.5 w-3.5" />,
@@ -78,6 +80,32 @@ function pickStatus(
   if (ok === false) return "fail";
   return "warn";
 }
+
+// Worst-status roll-up for stage groups
+const STATUS_RANK: Record<StageStatus, number> = {
+  pass: 0,
+  skip: 1,
+  unknown: 2,
+  warn: 3,
+  partial: 4,
+  fail: 5,
+};
+
+function rollupStatus(statuses: StageStatus[]): StageStatus {
+  if (statuses.length === 0) return "unknown";
+  return statuses.reduce<StageStatus>(
+    (acc, s) => (STATUS_RANK[s] > STATUS_RANK[acc] ? s : acc),
+    "pass",
+  );
+}
+
+// 4-phase visual grouping for the stage timeline (same 13 stages, just grouped)
+const STAGE_GROUPS: Array<{ key: string; label: string; stageIds: string[] }> = [
+  { key: "A", label: "A. Acquisition / Registration", stageIds: ["target", "acquisition", "raster", "dsm_transform"] },
+  { key: "B", label: "B. Geometry Extraction", stageIds: ["perimeter_candidates", "layer1", "phase0", "target_mask"] },
+  { key: "C", label: "C. Topology Validation", stageIds: ["solar", "pitch", "topology", "final"] },
+  { key: "D", label: "D. Customer Promotion", stageIds: ["gate"] },
+];
 
 function buildStages(m: any): StageDef[] {
   const grj = m?.geometry_report_json || {};
