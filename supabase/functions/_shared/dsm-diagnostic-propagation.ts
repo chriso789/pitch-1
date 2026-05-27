@@ -208,8 +208,181 @@ export function ensureDsmDiagnosticsOnRegistration(
       (regNext as any).stage_classifier_version ?? null,
   };
 
+  // ─────────────────────────────────────────────────────────────────────
+  // (6) Flat DSM diagnostic mirroring across ALL active registration
+  // surfaces. The UI / persisted row reads flat fields on:
+  //   - geometry.registration               (+ .transform_package)
+  //   - geometry.registration_gate          (+ .transform_package)
+  //   - geometry.dsm_planar_graph_debug.registration (+ .transform_package)
+  //   - geometry.dsm_split_status.georegistration_transform
+  // Idempotent — never overwrites a non-null existing value.
+  // ─────────────────────────────────────────────────────────────────────
+  const splitStatusForFlat: Record<string, unknown> =
+    ((geometry as any).dsm_split_status &&
+        typeof (geometry as any).dsm_split_status === "object")
+      ? ((geometry as any).dsm_split_status as Record<string, unknown>)
+      : {};
+
+  const transformPkgOnReg: Record<string, unknown> =
+    (regNext.transform_package &&
+        typeof regNext.transform_package === "object" &&
+        !Array.isArray(regNext.transform_package))
+      ? (regNext.transform_package as Record<string, unknown>)
+      : {};
+
+  const effectiveDsmSize =
+    (regNext as any).dsm_size_px ??
+      (transformPkgOnReg as any).dsm_size_px ??
+      (splitStatusForFlat as any).dsm_size_px ?? null;
+
+  const dsmLoaded = (splitStatusForFlat as any).dsm_loaded === true;
+
+  const boundsMissing =
+    (regNext as any).dsm_tile_bounds_lat_lng == null &&
+    (transformPkgOnReg as any).dsm_tile_bounds_lat_lng == null;
+
+  if (effectiveDsmSize && (regNext as any).dsm_size_source == null) {
+    (regNext as any).dsm_size_source = "dsm_split_status.dsm_size_px";
+  }
+  if (dsmLoaded && boundsMissing) {
+    if ((regNext as any).dsm_tile_bounds_failure_reason == null) {
+      (regNext as any).dsm_tile_bounds_failure_reason =
+        "dsm_tile_bounds_missing_from_google_solar_metadata";
+    }
+    if ((regNext as any).dsm_registration_failure_token == null) {
+      (regNext as any).dsm_registration_failure_token =
+        "dsm_tile_bounds_missing_from_google_solar_metadata";
+    }
+    if ((regNext as any).dsm_transform_policy_version == null) {
+      (regNext as any).dsm_transform_policy_version =
+        "dsm-registration-transform-v1";
+    }
+  }
+
+  const FLAT_DSM_FIELDS = [
+    "dsm_size_px",
+    "dsm_size_source",
+    "dsm_tile_bounds_lat_lng",
+    "dsm_tile_bounds_failure_reason",
+    "dsm_registration_failure_token",
+    "dsm_transform_policy_version",
+    "geo_to_dsm_transform_source",
+    "dsm_to_raster_transform_source",
+    "confirmed_roof_center_dsm_px_source",
+  ] as const;
+
+  const flatSource: Record<string, unknown> = {};
+  for (const f of FLAT_DSM_FIELDS) {
+    flatSource[f] = (regNext as any)[f] ?? null;
+  }
+  if (flatSource.dsm_size_px == null && effectiveDsmSize) {
+    flatSource.dsm_size_px = effectiveDsmSize;
+    if ((regNext as any).dsm_size_px == null) {
+      (regNext as any).dsm_size_px = effectiveDsmSize;
+    }
+    if (flatSource.dsm_size_source == null) {
+      flatSource.dsm_size_source = "dsm_split_status.dsm_size_px";
+      if ((regNext as any).dsm_size_source == null) {
+        (regNext as any).dsm_size_source = "dsm_split_status.dsm_size_px";
+      }
+    }
+  }
+
+  function mergeFlatDsmFields(
+    target: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> {
+    const dst: Record<string, unknown> =
+      (target && typeof target === "object" && !Array.isArray(target))
+        ? { ...(target as Record<string, unknown>) }
+        : {};
+    for (const f of FLAT_DSM_FIELDS) {
+      const src = (flatSource as any)[f];
+      if (src == null) {
+        if (!(f in dst)) dst[f] = null;
+        continue;
+      }
+      if (dst[f] == null) dst[f] = src;
+    }
+    return dst;
+  }
+
+  regNext.transform_package = mergeFlatDsmFields(
+    (regNext as any).transform_package as any,
+  );
+
+  const regGate: Record<string, unknown> =
+    ((geometry as any).registration_gate &&
+        typeof (geometry as any).registration_gate === "object" &&
+        !Array.isArray((geometry as any).registration_gate))
+      ? { ...((geometry as any).registration_gate as Record<string, unknown>) }
+      : {};
+  const regGateMerged = mergeFlatDsmFields(regGate);
+  regGateMerged.transform_package = mergeFlatDsmFields(
+    (regGate as any).transform_package as any,
+  );
+
+  const dsmDebugRaw: Record<string, unknown> =
+    ((geometry as any).dsm_planar_graph_debug &&
+        typeof (geometry as any).dsm_planar_graph_debug === "object" &&
+        !Array.isArray((geometry as any).dsm_planar_graph_debug))
+      ? {
+        ...((geometry as any).dsm_planar_graph_debug as Record<
+          string,
+          unknown
+        >),
+      }
+      : {};
+  const dsmDebugReg: Record<string, unknown> =
+    ((dsmDebugRaw as any).registration &&
+        typeof (dsmDebugRaw as any).registration === "object" &&
+        !Array.isArray((dsmDebugRaw as any).registration))
+      ? { ...((dsmDebugRaw as any).registration as Record<string, unknown>) }
+      : {};
+  const dsmDebugRegMerged = mergeFlatDsmFields(dsmDebugReg);
+  dsmDebugRegMerged.transform_package = mergeFlatDsmFields(
+    (dsmDebugReg as any).transform_package as any,
+  );
+  dsmDebugRaw.registration = dsmDebugRegMerged;
+
+  const splitStatusNext: Record<string, unknown> = { ...splitStatusForFlat };
+  splitStatusNext.georegistration_transform = mergeFlatDsmFields(
+    (splitStatusForFlat as any).georegistration_transform as any,
+  );
+
+  for (const f of FLAT_DSM_FIELDS) {
+    const src = (flatSource as any)[f];
+    if (src != null && (regNext as any)[f] == null) {
+      (regNext as any)[f] = src;
+    }
+  }
+
+  // (7) dsm_validation_status: keep generic `reason`, add sibling specific.
+  const dvsExists = (geometry as any).dsm_validation_status &&
+    typeof (geometry as any).dsm_validation_status === "object" &&
+    !Array.isArray((geometry as any).dsm_validation_status);
+  if (dvsExists || (dsmLoaded && boundsMissing)) {
+    const dvs: Record<string, unknown> = dvsExists
+      ? {
+        ...((geometry as any).dsm_validation_status as Record<
+          string,
+          unknown
+        >),
+      }
+      : {};
+    if (
+      boundsMissing &&
+      (dvs as any).dsm_validation_status_specific_reason == null
+    ) {
+      (dvs as any).dsm_validation_status_specific_reason =
+        "dsm_tile_bounds_missing_from_google_solar_metadata";
+    }
+    (geometry as any).dsm_validation_status = dvs;
+  }
+
   (geometry as any).registration = regNext;
-  (geometry as any).registration_gate = regNext;
+  (geometry as any).registration_gate = regGateMerged;
+  (geometry as any).dsm_planar_graph_debug = dsmDebugRaw;
+  (geometry as any).dsm_split_status = splitStatusNext;
   next.geometry_report_json = geometry;
   return next;
 }
