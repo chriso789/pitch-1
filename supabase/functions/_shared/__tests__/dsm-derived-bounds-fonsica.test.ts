@@ -3,6 +3,13 @@ import {
   buildDsmRegistration,
   DSM_DERIVED_TRANSFORM_POLICY_VERSION,
 } from "../dsm-registration.ts";
+import {
+  buildRegistrationTransformPackage,
+} from "../source-registration-transform.ts";
+import {
+  computeRasterDsmRoundtripErrorPx,
+  DSM_RASTER_ROUNDTRIP_THRESHOLD_PX,
+} from "../dsm-derived-bounds-runtime.ts";
 
 // 4063 Fonsica Ave — confirmed roof center
 const CENTER = { lat: 27.0820246, lng: -82.1962156 };
