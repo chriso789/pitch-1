@@ -1447,6 +1447,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     clone.querySelectorAll('img[aria-hidden="true"], img.hidden').forEach((
       img,
     ) => img.remove());
+    // Drop diagnostic JSON dumps from the exported PDF. These render as dark
+    // <pre> blocks that look like a stray black image in the rasterized PDF.
+    clone
+      .querySelectorAll('[data-pdf-exclude="true"]')
+      .forEach((el) => el.remove());
+
 
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
