@@ -991,8 +991,9 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
 
   if (resolvedState.final_state_source === "runtime_cpu_budget_guard") {
     errorList.push(
-      "AI Measurement stopped during perimeter topology validation because the runtime budget was exceeded. No customer report was generated.",
+      "AI Measurement found an aerial roof perimeter, but customer-ready topology was blocked. DSM georegistration is missing and the run exceeded the CPU reserve before validated topology could complete.",
     );
+
   } else if (registrationBlocked) {
     errorList.push(
       `Registration failure: ${String(registrationPrecedenceReason)}`,
