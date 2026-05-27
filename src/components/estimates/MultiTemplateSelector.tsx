@@ -61,6 +61,8 @@ interface ParsedMeasurements {
 
 const supabaseClient = supabase as any;
 
+const clampProfitPercent = (percent: number) => Math.round(Math.max(-100, Math.min(85, percent)) * 100) / 100;
+
 interface CompanyInfo {
   name: string;
   logo_url?: string | null;
@@ -1572,6 +1574,58 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         })),
       };
 
+      const preTaxGrossProfit = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
+      const actualProfitPercent = breakdown.preTaxSellingPrice > 0
+        ? clampProfitPercent((preTaxGrossProfit / breakdown.preTaxSellingPrice) * 100)
+        : 0;
+
+      const { data: newEstimate, error: createError } = await supabaseClient
+        .from('enhanced_estimates')
+        .insert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          estimate_number: estimateNumber,
+          status: 'draft',
+          template_id: selectedTemplateId === '__blank__' ? null : selectedTemplateId,
+          display_name: estimateDisplayName.trim() || null,
+          pricing_tier: estimatePricingTier || null,
+          customer_name: customerName,
+          customer_address: customerAddress,
+          property_details: propertyDetails,
+          roof_area_sq_ft: roofAreaSqFt,
+          material_cost: breakdown.materialsTotal,
+          material_total: breakdown.materialsTotal,
+          labor_cost: breakdown.laborTotal,
+          labor_total: breakdown.laborTotal,
+          materials_total: breakdown.materialsTotal,
+          overhead_amount: breakdown.overheadAmount,
+          overhead_percent: config.overheadPercent,
+          subtotal: breakdown.totalCost,
+          selling_price: breakdown.sellingPrice,
+          fixed_selling_price: isFixedPrice ? fixedPrice : null,
+          is_fixed_price: isFixedPrice,
+          rep_commission_percent: config.repCommissionPercent,
+          rep_commission_amount: breakdown.repCommissionAmount,
+          actual_profit_amount: Math.round(preTaxGrossProfit * 100) / 100,
+          actual_profit_percent: actualProfitPercent,
+          sales_tax_rate: config.salesTaxEnabled ? config.salesTaxRate : 0,
+          sales_tax_amount: breakdown.salesTaxAmount,
+          total_with_tax: breakdown.totalWithTax,
+          line_items: lineItemsJson,
+          pdf_url: null,
+          short_description: shortDescription,
+          calculation_metadata: {
+            source: 'multi_template_selector',
+            selected_template_id: selectedTemplateId,
+            pricing_config: config,
+          },
+          created_by: user.id
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
       // Prepare PDF data and show template for capture
       // Use robust fallback for estimate name: user-set display name > template name > default
       const pdfEstimateName = estimateDisplayName || selectedTemplate?.name || 'ROOFING ESTIMATE';
@@ -1705,63 +1759,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         console.warn('Estimate saved without PDF - generation failed');
       }
 
-      const { data: newEstimate, error: createError } = await supabaseClient
-        .from('enhanced_estimates')
-        .insert({
-          tenant_id: tenantId,
-          pipeline_entry_id: pipelineEntryId,
-          estimate_number: estimateNumber,
-          status: 'draft',
-          template_id: selectedTemplateId === '__blank__' ? null : selectedTemplateId,
-          display_name: estimateDisplayName.trim() || null,
-          pricing_tier: estimatePricingTier || null,
-          customer_name: customerName,
-          customer_address: customerAddress,
-          property_details: propertyDetails,
-          roof_area_sq_ft: roofAreaSqFt,
-          material_cost: breakdown.materialsTotal,
-          material_total: breakdown.materialsTotal,
-          labor_cost: breakdown.laborTotal,
-          labor_total: breakdown.laborTotal,
-          materials_total: breakdown.materialsTotal,
-          overhead_amount: breakdown.overheadAmount,
-          overhead_percent: config.overheadPercent,
-          subtotal: breakdown.totalCost,
-          selling_price: breakdown.sellingPrice,
-          fixed_selling_price: isFixedPrice ? fixedPrice : null,
-          is_fixed_price: isFixedPrice,
-          rep_commission_percent: config.repCommissionPercent,
-          rep_commission_amount: breakdown.repCommissionAmount,
-          // Always compute actual profit from PRE-TAX selling price (tax collected is not profit)
-          actual_profit_amount: (() => {
-            const gp = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
-            return Math.round(gp * 100) / 100;
-          })(),
-          actual_profit_percent: (() => {
-            const gp = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
-            const pct = breakdown.preTaxSellingPrice > 0 ? (gp / breakdown.preTaxSellingPrice) * 100 : 0;
-            // DB trigger constrains to [-100, 85]
-            const clamped = Math.max(-100, Math.min(85, pct));
-            return Math.round(clamped * 100) / 100;
-          })(),
-          sales_tax_rate: config.salesTaxEnabled ? config.salesTaxRate : 0,
-          sales_tax_amount: breakdown.salesTaxAmount,
-          total_with_tax: breakdown.totalWithTax,
-          line_items: lineItemsJson,
-          pdf_url: pdfUrl,
-          signature_anchor: signatureAnchorCaptured,
-          short_description: shortDescription,
-          calculation_metadata: {
-            source: 'multi_template_selector',
-            selected_template_id: selectedTemplateId,
-            pricing_config: config,
-          },
-          created_by: user.id
-        })
-        .select()
-        .single();
-
-      if (createError) throw createError;
+      if (pdfUrl || signatureAnchorCaptured) {
+        await supabaseClient
+          .from('enhanced_estimates')
+          .update({
+            pdf_url: pdfUrl,
+            signature_anchor: signatureAnchorCaptured,
+          })
+          .eq('id', newEstimate.id);
+      }
 
       // Update pipeline entry metadata - set BOTH enhanced_estimate_id and selected_estimate_id
       await supabaseClient

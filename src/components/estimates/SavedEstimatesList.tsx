@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy } from 'lucide-react';
+import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -42,6 +42,7 @@ interface SavedEstimate {
   created_at: string;
   template_name?: string;
   created_by_name?: string;
+  is_recovered_pdf?: boolean;
 }
 
 interface SavedEstimatesListProps {
@@ -245,6 +246,43 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     },
     enabled: !!pipelineEntryId,
   });
+
+  const { data: recoveredPdfEstimates = [] } = useQuery({
+    queryKey: ['orphaned-estimate-pdfs', pipelineEntryId, estimates?.map(e => `${e.id}:${e.pdf_url}`).join('|')],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, filename, file_path, description, estimate_display_name, estimate_pricing_tier, created_at')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('document_type', 'estimate')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const linkedPdfPaths = new Set((estimates || []).map(est => est.pdf_url).filter(Boolean));
+      const linkedFilenames = new Set((estimates || []).map(est => `${est.estimate_number}.pdf`));
+
+      return (data || [])
+        .filter((doc: any) => doc.file_path && !linkedPdfPaths.has(doc.file_path) && !linkedFilenames.has(doc.filename))
+        .map((doc: any) => ({
+          id: `recovered-pdf:${doc.id}`,
+          estimate_number: doc.filename?.replace(/\.pdf$/i, '') || 'Recovered PDF',
+          short_description: doc.description || 'Recovered estimate PDF',
+          display_name: doc.estimate_display_name || doc.filename?.replace(/\.pdf$/i, '') || 'Recovered PDF',
+          pricing_tier: doc.estimate_pricing_tier || null,
+          selling_price: 0,
+          actual_profit_percent: 0,
+          status: 'pdf-only',
+          pdf_url: doc.file_path,
+          created_at: doc.created_at,
+          template_name: 'Recovered PDF',
+          is_recovered_pdf: true,
+        })) as SavedEstimate[];
+    },
+    enabled: !!pipelineEntryId && !!estimates,
+  });
+
+  const displayedEstimates = [...(estimates || []), ...recoveredPdfEstimates];
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes } = useQuery({
@@ -462,7 +500,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     );
   }
 
-  if (!estimates || estimates.length === 0) {
+  if (displayedEstimates.length === 0) {
     return null;
   }
 
@@ -472,7 +510,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            Saved Estimates ({estimates.length})
+            Saved Estimates ({displayedEstimates.length})
           </CardTitle>
           {onCreateNew && (
             <Button variant="outline" size="sm" onClick={onCreateNew}>
@@ -482,7 +520,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-1.5">
-        {estimates.map((estimate) => {
+        {displayedEstimates.map((estimate) => {
           const isSelected = currentSelectedId === estimate.id;
           return (
             <div
@@ -498,6 +536,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                 <Checkbox
                   checked={isSelected}
                   onCheckedChange={() => handleSelectEstimate(estimate.id)}
+                  disabled={estimate.is_recovered_pdf}
                   className="h-4 w-4 shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -524,10 +563,16 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                         {estimate.pricing_tier.charAt(0).toUpperCase() + estimate.pricing_tier.slice(1)}
                       </Badge>
                     )}
+                    {estimate.is_recovered_pdf && (
+                      <Badge variant="outline" className="border-warning/50 bg-warning/10 text-warning text-[10px] h-4 px-1">
+                        <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                        PDF only
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <span className="text-sm font-bold shrink-0">
-                  {formatCurrency(estimate.selling_price || 0)}
+                  {estimate.is_recovered_pdf ? 'PDF only' : formatCurrency(estimate.selling_price || 0)}
                 </span>
               </div>
               
@@ -551,10 +596,12 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       {signatureEnvelopes[estimate.id] === 'completed' ? 'Signed' : 'Awaiting Signature'}
                     </Badge>
                   )}
-                  <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
-                    <Percent className="h-2.5 w-2.5" />
-                    {(estimate.actual_profit_percent || 0).toFixed(1)}%
-                  </span>
+                  {!estimate.is_recovered_pdf && (
+                    <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
+                      <Percent className="h-2.5 w-2.5" />
+                      {(estimate.actual_profit_percent || 0).toFixed(1)}%
+                    </span>
+                  )}
                   {estimate.created_by_name && (
                     <span className="text-muted-foreground hidden sm:inline">by {estimate.created_by_name}</span>
                   )}
@@ -573,6 +620,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       }
                       onEditEstimate?.(estimate.id);
                     }}
+                    disabled={estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0"
                     title="Edit"
                   >
@@ -585,7 +633,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       e.stopPropagation();
                       handleDuplicateEstimate(estimate.id);
                     }}
-                    disabled={duplicatingId === estimate.id}
+                    disabled={duplicatingId === estimate.id || estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0"
                     title="Duplicate"
                   >
@@ -601,12 +649,13 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       setEstimateToDelete(estimate);
-                      if (estimates && estimates.length === 1) {
+                      if (displayedEstimates.length === 1) {
                         setShowCannotDeleteDialog(true);
                       } else {
                         setDeleteDialogOpen(true);
                       }
                     }}
+                    disabled={estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     title="Delete"
                   >
@@ -617,10 +666,14 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onShareEstimate?.(estimate.id);
+                      if (estimate.is_recovered_pdf && estimate.pdf_url) {
+                        handleViewPDF(estimate.pdf_url);
+                      } else {
+                        onShareEstimate?.(estimate.id);
+                      }
                     }}
                     className="h-6 w-6 p-0"
-                    title="Share"
+                    title={estimate.is_recovered_pdf ? 'Open recovered PDF' : 'Share'}
                   >
                     <ExternalLink className="h-3 w-3" />
                   </Button>
