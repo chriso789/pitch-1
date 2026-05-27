@@ -106,15 +106,18 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   if (failed.length === 0) return null;
 
   // Classify into the actual failure bucket so the banner copy matches reality.
+  // IMPORTANT: only call it a coordinate-frame mismatch when frame evidence is
+  // explicitly bad (confirmed_center_inside_candidate === false). The aggregate
+  // `coordinate_registration_gate_passed` flag can be false purely because DSM
+  // sub-flags failed — in that case the user-facing message must blame DSM, not
+  // the raster frame.
   const targetFailed = reg.user_confirmed_roof_target === false;
-  const frameFailed =
-    reg.confirmed_center_inside_candidate === false ||
-    reg.coordinate_registration_gate_passed === false;
-  const dsmOnly =
-    !targetFailed &&
-    !frameFailed &&
-    (reg.geo_to_dsm_px_success === false ||
-      reg.dsm_pixel_transform_valid === false);
+  const frameFailed = reg.confirmed_center_inside_candidate === false;
+  const dsmFailed =
+    reg.geo_to_dsm_px_success === false ||
+    reg.dsm_pixel_transform_valid === false;
+  const dsmOnly = !targetFailed && !frameFailed && dsmFailed;
+
 
   if (targetFailed) {
     return {
@@ -136,12 +139,24 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
     };
   }
 
-  // Default: true coordinate-frame mismatch.
+  // Default: aggregate gate failed but neither target nor frame nor DSM is the
+  // explicit cause — prefer the DSM-incomplete copy (safer; matches the most
+  // common cause) rather than incorrectly accusing the coordinate frame.
+  if (frameFailed) {
+    return {
+      variant: "destructive",
+      title: "Coordinate frame mismatch — overlay not eligible for manual approval",
+      description:
+        "The displayed perimeter may be drawn over the wrong house or in a different coordinate frame than the aerial image. Re-run AI Measurement after re-placing the PIN on the actual roof. Manual approval is disabled until target roof registration passes.",
+      failedFlags: failed,
+    };
+  }
   return {
-    variant: "destructive",
-    title: "Coordinate frame mismatch — overlay not eligible for manual approval",
+    variant: "warning",
+    title: "DSM registration incomplete — overlay locked from approval",
     description:
-      "The displayed perimeter may be drawn over the wrong house or in a different coordinate frame than the aerial image. Re-run AI Measurement after re-placing the PIN on the actual roof. Manual approval is disabled until target roof registration passes.",
+      "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
     failedFlags: failed,
   };
 }
+
