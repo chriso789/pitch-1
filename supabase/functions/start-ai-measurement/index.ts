@@ -1599,6 +1599,50 @@ function applyLiveRuntimeHoistToRegistration(
       reg.transform_package = reg.transform_package ?? transformPkg;
       reg.transform_failure_reasons =
         validateRegistrationTransformPackage(transformPkg).reasons;
+
+      // ── Consistency rejection for raster-bounds-derived DSM bounds ──
+      // If we derived bounds from the raster footprint but the resulting
+      // transform fails to contain the confirmed roof center (or the pixel
+      // transform is invalid), revert the derivation and re-surface the
+      // original missing-metadata failure token.
+      if (
+        reg.dsm_bounds_source === "derived_from_raster_bounds" &&
+        (transformPkg.dsm_tile_bounds_contain_confirmed_center !== true ||
+          transformPkg.dsm_pixel_transform_valid !== true)
+      ) {
+        const _rejectionReasons: string[] = [];
+        if (transformPkg.dsm_tile_bounds_contain_confirmed_center !== true) {
+          _rejectionReasons.push("confirmed_center_outside_derived_bounds");
+        }
+        if (transformPkg.dsm_pixel_transform_valid !== true) {
+          _rejectionReasons.push("dsm_pixel_transform_invalid");
+        }
+        reg.dsm_tile_bounds_lat_lng = null;
+        reg.dsm_bounds_source = "derived_rejected_consistency_failure";
+        reg.dsm_tile_bounds_source = "derived_rejected_consistency_failure";
+        reg.dsm_bounds_derived = false;
+        reg.dsm_bounds_confidence = 0;
+        reg.geo_to_dsm_transform = null;
+        reg.dsm_to_raster_transform = null;
+        reg.confirmed_roof_center_dsm_px = null;
+        reg.geo_to_dsm_px_success = false;
+        reg.dsm_pixel_transform_valid = false;
+        reg.dsm_tile_bounds_contain_confirmed_center = false;
+        reg.dsm_derived_bounds_rejection_reasons = _rejectionReasons;
+        const existingTokens: string[] = Array.isArray(reg.dsm_hoist_failure_tokens)
+          ? (reg.dsm_hoist_failure_tokens as string[])
+          : [];
+        const newTokens = existingTokens.filter((t) =>
+          t !== "dsm_tile_bounds_derived_from_raster_bounds"
+        );
+        for (const r of _rejectionReasons) {
+          newTokens.push(`dsm_derived_bounds_rejected_${r}`);
+        }
+        if (!newTokens.includes("dsm_tile_bounds_missing_from_google_solar_metadata")) {
+          newTokens.push("dsm_tile_bounds_missing_from_google_solar_metadata");
+        }
+        reg.dsm_hoist_failure_tokens = newTokens;
+      }
     }
 
     // ── Candidate polygon hoist ───────────────────────────────────
