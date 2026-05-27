@@ -24,6 +24,7 @@ Deno.test("B: metadata missing → derived bounds from center+mpp", () => {
     dsm_loaded: true,
     effectiveDSM: { width: 998, height: 998, bounds: null, resolution: 0.1 },
     confirmedCenterLatLng: CENTER,
+    allow_derived_bounds: true,
   });
   assert(r.dsm_tile_bounds_lat_lng !== null);
   assertEquals(r.dsm_bounds_source, "derived_from_confirmed_center_and_mpp");
