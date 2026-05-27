@@ -1579,8 +1579,12 @@ function applyLiveRuntimeHoistToRegistration(
         transformPkg.dsm_to_raster_transform;
       reg.dsm_to_raster_transform_source = reg.dsm_to_raster_transform_source ??
         (transformPkg as any).dsm_to_raster_transform_source;
+      // When DSM bounds were derived from raster, override the operator-facing
+      // policy tag so the UI/diagnostic mirrors `dsm-registration-derived-bounds-v1`.
       reg.dsm_transform_policy_version =
-        (transformPkg as any).dsm_transform_policy_version;
+        reg.dsm_bounds_source === "derived_from_raster_bounds"
+          ? "dsm-registration-derived-bounds-v1"
+          : (transformPkg as any).dsm_transform_policy_version;
       reg.dsm_raster_bounds_overlap =
         transformPkg.dsm_to_raster_transform?.bounds_overlap === true;
       reg.dsm_raster_overlap_ratio = dsmRasterOverlapRatio(
