@@ -56,6 +56,12 @@ export interface DerivedBoundsGateInputs {
   raster_meters_per_pixel: number | null;
   geo_to_raster_transform: RasterTransform | null;
   frame_mismatch_ok: boolean;
+  /** Path/source label returned by resolveFrameMismatch. */
+  frame_mismatch_source: string | null;
+  /** Raw frame_mismatch string when an explicit source was found. */
+  frame_mismatch_raw: string | null;
+  /** Evidence snapshot used when frame_mismatch was inferred. */
+  raster_registration_evidence: Record<string, unknown>;
   target_mask_overlap: number | null;
   confirmed_roof_center_lat_lng: LatLng | null;
   confirmed_roof_center_px: Px | null;
