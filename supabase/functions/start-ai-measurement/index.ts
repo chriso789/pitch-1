@@ -7001,6 +7001,16 @@ async function processJob(input: any) {
           ? "ok"
           : _frameResolution.frame_mismatch_raw ?? "mismatch";
 
+        const _targetOverlapEarly: number | null = (() => {
+          const v = _geometryViewForFrame.target_mask_overlap_with_perimeter;
+          return typeof v === "number" && Number.isFinite(v) ? v : null;
+        })();
+        const _selectedPerimeterPresentEarly = Boolean(
+          (perimeterTopologySnapshot as any)?.perimeter_ring_px?.length ||
+            (targetMaskIsolation as any)?.target_mask_contour?.length ||
+            (Array.isArray(footprint) && footprint.length >= 3),
+        );
+
 
         earlyDerivedRegistration = runEarlyDerivedDsmRegistration({
           dsm_loaded: !!_dsmForEarly,
