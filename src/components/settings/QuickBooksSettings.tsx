@@ -424,18 +424,48 @@ export default function QuickBooksSettings() {
         </CardHeader>
         <CardContent>
           {connection ? (
+            (() => {
+              // Prefer fresh verify data when available (carries timestamps).
+              const v = verifyInfo?.connection ?? {};
+              const companyName = v.qbo_company_name ?? connection.qbo_company_name;
+              const env = v.oauth_app_env ?? (connection as any).oauth_app_env ?? ((connection as any).is_sandbox ? 'development' : 'production');
+              const tokenExp = v.token_expires_at ?? (connection as any).token_expires_at ?? null;
+              const refreshExp = v.refresh_token_expires_at ?? (connection as any).refresh_token_expires_at ?? null;
+              const lastRefresh = v.last_refresh_at ?? (connection as any).last_refresh_at ?? null;
+              const refreshExpMs = refreshExp ? new Date(refreshExp).getTime() : 0;
+              const refreshNearExpiry = refreshExpMs > 0 && refreshExpMs - Date.now() < 7 * 24 * 3600 * 1000;
+              return (
             <div className="space-y-4">
+              {reauthRequired && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+                  <ShieldAlert className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <div className="font-medium text-destructive">Reauthorization required</div>
+                    <p className="text-destructive/90 text-xs">
+                      Intuit rejected the saved refresh token (invalid_grant). Reconnect QuickBooks to resume syncing.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {!reauthRequired && refreshNearExpiry && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-amber-800 dark:text-amber-200">
+                    Refresh token expires {formatDistanceToNow(new Date(refreshExp), { addSuffix: true })}. Reconnect soon to avoid an interruption.
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg border p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Company</span>
                   <span className="text-sm text-muted-foreground">
-                    {connection.qbo_company_name}
+                    {companyName ?? '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Environment</span>
-                  <Badge variant={(connection as any).oauth_app_env === 'production' ? 'default' : 'secondary'}>
-                    {(connection as any).oauth_app_env ?? ((connection as any).is_sandbox ? 'development' : 'production')}
+                  <Badge variant={env === 'production' ? 'default' : 'secondary'}>
+                    {env}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
@@ -448,25 +478,66 @@ export default function QuickBooksSettings() {
                     {new Date(connection.connected_at).toLocaleDateString()}
                   </span>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Last token refresh</span>
+                  <span className="text-sm text-muted-foreground">
+                    {lastRefresh ? formatDistanceToNow(new Date(lastRefresh), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Access token expires</span>
+                  <span className="text-sm text-muted-foreground">
+                    {tokenExp ? formatDistanceToNow(new Date(tokenExp), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Refresh token expires</span>
+                  <span className={`text-sm ${refreshNearExpiry ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                    {refreshExp ? formatDistanceToNow(new Date(refreshExp), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  variant="default"
-                  onClick={handleSwitchAccount}
-                  disabled={connecting}
-                  className="w-full gap-2"
-                >
-                  <RefreshCw className={`h-4 w-4 ${connecting ? 'animate-spin' : ''}`} />
-                  Switch Account
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleDisconnect}
-                  className="w-full gap-2"
-                >
-                  <Unplug className="h-4 w-4" />
-                  Disconnect QuickBooks
-                </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {reauthRequired ? (
+                  <Button
+                    variant="destructive"
+                    onClick={openConnectDialog}
+                    disabled={!userId || !tenantId}
+                    className="w-full gap-2 sm:col-span-3"
+                  >
+                    <ShieldAlert className="h-4 w-4" />
+                    Reauthorize QuickBooks
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="default"
+                      onClick={handleSwitchAccount}
+                      disabled={connecting}
+                      className="w-full gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${connecting ? 'animate-spin' : ''}`} />
+                      Switch Account
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={handleRefreshToken}
+                      disabled={refreshingToken}
+                      className="w-full gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${refreshingToken ? 'animate-spin' : ''}`} />
+                      Refresh token now
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleDisconnect}
+                      className="w-full gap-2"
+                    >
+                      <Unplug className="h-4 w-4" />
+                      Disconnect
+                    </Button>
+                  </>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 Tip: If Intuit auto-signs you back into the same account, open
@@ -475,6 +546,8 @@ export default function QuickBooksSettings() {
               </p>
 
             </div>
+              );
+            })()
           ) : (
             <div className="space-y-3">
               <div className="space-y-2">
