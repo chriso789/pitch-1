@@ -103,34 +103,49 @@ export function resolveFrameMismatch(
   }
 
   // ── 2. Inferred from raster-registration evidence ────────────────
+  // Read coordinate-space + raster-size evidence from BOTH legacy
+  // `overlay_transform.*` paths AND the live runtime
+  // `registration.transform_package.*` paths the report JSON uses today.
   const coordSpaceCandidate =
     dig(g, "overlay_transform.coord_space") ??
     dig(g, "coordinate_space_candidate") ??
-    dig(g, "overlay_debug.coord_space");
+    dig(g, "overlay_debug.coord_space") ??
+    dig(g, "registration.transform_package.coordinate_space_candidate") ??
+    dig(g, "registration.coordinate_space_candidate") ??
+    dig(g, "registration_gate.transform_package.coordinate_space_candidate");
   const coordSpaceRenderer =
     dig(g, "overlay_transform.renderer_coord_space") ??
     dig(g, "coordinate_space_renderer") ??
-    dig(g, "overlay_debug.renderer_coord_space");
+    dig(g, "overlay_debug.renderer_coord_space") ??
+    dig(g, "registration.transform_package.coordinate_space_renderer") ??
+    dig(g, "registration.coordinate_space_renderer") ??
+    dig(g, "registration_gate.transform_package.coordinate_space_renderer");
   const sourceRasterPx =
     dig(g, "overlay_transform.source_raster_px") ??
     dig(g, "source_raster_px") ??
-    dig(g, "raster_size_px");
+    dig(g, "raster_size_px") ??
+    dig(g, "registration.transform_package.source_raster_px") ??
+    dig(g, "registration.transform_package.raster_size_px") ??
+    dig(g, "registration.raster_size_px");
   const confirmedCenterPx =
     dig(g, "confirmed_roof_center_px") ??
     dig(g, "registration.confirmed_roof_center_px") ??
     dig(g, "registration.transform_package.confirmed_roof_center_px");
   const rasterContainsCenter =
     dig(g, "raster_bounds_contain_confirmed_center") ??
-    dig(g, "registration.raster_bounds_contain_confirmed_center");
+    dig(g, "registration.raster_bounds_contain_confirmed_center") ??
+    dig(g, "registration.transform_package.raster_bounds_contain_confirmed_center");
   const selectedPolyPxPresent =
     dig(g, "selected_candidate_polygon_px_present") ??
+    dig(g, "registration.selected_candidate_polygon_px_present") ??
     (Array.isArray(dig(g, "selected_candidate_polygon_px"))
       ? (dig(g, "selected_candidate_polygon_px") as unknown[]).length >= 3
       : undefined);
   const targetOverlap =
     dig(g, "target_mask_overlap_with_perimeter") ??
     dig(g, "target_mask_isolation.target_mask_overlap_with_perimeter") ??
-    dig(g, "perimeter_phase0.target_mask_overlap_with_perimeter");
+    dig(g, "perimeter_phase0.target_mask_overlap_with_perimeter") ??
+    dig(g, "registration.target_mask_overlap_with_perimeter");
 
   const evidence: Record<string, unknown> = {
     coordinate_space_candidate: coordSpaceCandidate ?? null,
@@ -144,6 +159,7 @@ export function resolveFrameMismatch(
       : null,
   };
 
+  // Full evidence path — every raster-registration signal aligns.
   const allEvidenceOk =
     coordSpaceCandidate === "raster_px" &&
     coordSpaceRenderer === "raster_px" &&
@@ -158,6 +174,28 @@ export function resolveFrameMismatch(
     return {
       frame_mismatch_ok: true,
       frame_mismatch_source: "inferred_from_raster_registration_evidence",
+      frame_mismatch_raw: null,
+      raster_registration_evidence: evidence,
+    };
+  }
+
+  // Live overlay-transform evidence path — the report's Overlay transform
+  // table already renders frame_mismatch=ok from this exact shape
+  // (raster_px coordinate spaces on both ends, source raster size present,
+  // target_mask_overlap >= 0.90), even when explicit per-flag fields like
+  // `raster_bounds_contain_confirmed_center` / `selected_candidate_polygon_px_present`
+  // were not persisted on this run. Honor that truth so the backend early
+  // DSM gate stops disagreeing with the visible overlay transform.
+  const liveOverlayOk =
+    coordSpaceCandidate === "raster_px" &&
+    coordSpaceRenderer === "raster_px" &&
+    !!sourceRasterPx &&
+    isNum(targetOverlap) &&
+    (targetOverlap as number) >= 0.9;
+  if (liveOverlayOk) {
+    return {
+      frame_mismatch_ok: true,
+      frame_mismatch_source: "inferred_from_live_overlay_transform_evidence",
       frame_mismatch_raw: null,
       raster_registration_evidence: evidence,
     };

@@ -64,3 +64,23 @@ Deno.test("no explicit + weak evidence -> not ok", () => {
   assertEquals(r.frame_mismatch_ok, false);
   assertEquals(r.frame_mismatch_source, null);
 });
+
+Deno.test("live overlay evidence: nested registration.transform_package coordinate spaces + overlap >=0.9 -> ok", () => {
+  const r = resolveFrameMismatch({
+    registration: {
+      transform_package: {
+        coordinate_space_renderer: "raster_px",
+        coordinate_space_candidate: "raster_px",
+        raster_size_px: { width: 1280, height: 1280 },
+      },
+    },
+    target_mask_isolation: {
+      target_mask_overlap_with_perimeter: 0.976,
+    },
+  });
+  assertEquals(r.frame_mismatch_ok, true);
+  assertEquals(
+    r.frame_mismatch_source,
+    "inferred_from_live_overlay_transform_evidence",
+  );
+});

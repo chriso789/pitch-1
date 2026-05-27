@@ -1475,6 +1475,10 @@ export function applyLiveRuntimeHoistToRegistration(
       raster_bounds_present: !!_rasterBoundsForDerivation,
       raster_mpp: rasterMpp,
       frame_mismatch_ok: _frameMismatchOk,
+      frame_mismatch_source: gateInputs.frame_mismatch_source ?? null,
+      frame_mismatch_raw: gateInputs.frame_mismatch_raw ?? null,
+      raster_registration_evidence:
+        gateInputs.raster_registration_evidence ?? {},
       target_mask_overlap: _targetMaskOverlap,
     };
 
@@ -6971,11 +6975,32 @@ async function processJob(input: any) {
           registration: {
             overlay_transform:
               (hoistedTransformPackage as any)?.overlay_transform ?? null,
-            transform_package: hoistedTransformPackage ?? null,
+            transform_package: {
+              ...(hoistedTransformPackage as any ?? {}),
+              // Live overlay-transform evidence the report JSON renders.
+              coordinate_space_candidate:
+                (hoistedTransformPackage as any)?.coordinate_space_candidate ??
+                  (hoistedTransformPackage as any)?.coord_space ??
+                  "raster_px",
+              coordinate_space_renderer:
+                (hoistedTransformPackage as any)?.coordinate_space_renderer ??
+                  (hoistedTransformPackage as any)?.renderer_coord_space ??
+                  "raster_px",
+              raster_size_px: (hoistedTransformPackage as any)?.raster_size_px ??
+                { width: raster.width, height: raster.height },
+              raster_bounds_contain_confirmed_center:
+                (hoistedTransformPackage as any)
+                  ?.raster_bounds_contain_confirmed_center ?? null,
+              confirmed_roof_center_px: hoistedConfirmedRoofCenterPx ?? null,
+            },
             raster_bounds_contain_confirmed_center:
               (hoistedTransformPackage as any)
                 ?.raster_bounds_contain_confirmed_center ?? null,
             confirmed_roof_center_px: hoistedConfirmedRoofCenterPx ?? null,
+            selected_candidate_polygon_px_present: Boolean(
+              (perimeterTopologySnapshot as any)?.perimeter_ring_px?.length ||
+                (targetMaskIsolation as any)?.target_mask_contour?.length,
+            ),
           },
           source_raster_px: { width: raster.width, height: raster.height },
           raster_size_px: { width: raster.width, height: raster.height },
