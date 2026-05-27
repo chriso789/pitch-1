@@ -7045,8 +7045,10 @@ async function processJob(input: any) {
           mask_loaded: !!roofMaskForContour,
         });
 
-        // Persist gate-input diagnostics so downstream reports/UI can see
-        // exactly what `frame_mismatch` source the early gate consumed.
+        // Attach gate-input diagnostics to the result so
+        // mergeEarlyDsmRegistrationIntoDebug surfaces them in every downstream
+        // debug bag (terminal failure, preempt, success) under
+        // `derived_bounds_gate_inputs`.
         try {
           const _gateDiag = {
             frame_mismatch_ok: _frameResolution.frame_mismatch_ok,
@@ -7067,12 +7069,11 @@ async function processJob(input: any) {
                 hoistedGeoToRasterTransform
             ),
           };
-          (geometryReportJson as any).derived_bounds_gate_inputs = _gateDiag;
-          (geometryReportJson as any).registration =
-            (geometryReportJson as any).registration ?? {};
-          (geometryReportJson as any).registration.derived_bounds_gate_inputs =
-            _gateDiag;
+          if (earlyDerivedRegistration) {
+            (earlyDerivedRegistration as any).gate_inputs = _gateDiag;
+          }
         } catch { /* diagnostics best-effort */ }
+
 
 
         if (earlyDerivedRegistration && earlyDerivedRegistration.success) {
