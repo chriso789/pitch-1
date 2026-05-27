@@ -432,12 +432,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     // One group per approved change order.
     const coGroups: InvoiceGroup[] = (approvedChangeOrders || []).map((co: any) => {
       const children = parseChangeOrderLineItems(co);
-      const coLabel = co.co_number ? `CO #${co.co_number}` : 'CO';
-      const title = co.title ? ` — ${co.title}` : '';
+      const title = co.title ? co.title : 'Untitled';
       return {
         key: `co:${co.id}`,
         kind: 'change_order' as const,
-        label: `${coLabel}${title}`,
+        label: `Change Order — ${title}`,
         selected: true,
         expanded: false,
         children,
