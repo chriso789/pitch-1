@@ -50,6 +50,10 @@ import {
   bboxOf,
   detectFrameMismatch,
 } from '@/lib/measurements/overlayCoordinateFrame';
+import {
+  roofFocusViewport,
+  pickFocusPerimeter,
+} from '@/lib/measurements/roofFocusViewport';
 
 type Pt = [number, number];
 
