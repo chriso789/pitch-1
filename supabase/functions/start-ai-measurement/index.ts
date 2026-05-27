@@ -1475,6 +1475,10 @@ export function applyLiveRuntimeHoistToRegistration(
       raster_bounds_present: !!_rasterBoundsForDerivation,
       raster_mpp: rasterMpp,
       frame_mismatch_ok: _frameMismatchOk,
+      frame_mismatch_source: gateInputs.frame_mismatch_source ?? null,
+      frame_mismatch_raw: gateInputs.frame_mismatch_raw ?? null,
+      raster_registration_evidence:
+        gateInputs.raster_registration_evidence ?? {},
       target_mask_overlap: _targetMaskOverlap,
     };
 
