@@ -63,7 +63,7 @@ export const CalcTemplateDetailsPanel: React.FC<CalcTemplateDetailsPanelProps> =
         {/* Material Type (Roof or Siding depending on template trade) */}
         {(() => {
           const siding = isSidingTemplate(template);
-          const options = siding ? SIDING_TYPES : ROOF_TYPES;
+          const options = siding ? SIDING_TYPES_WITH_OTHER : ROOF_TYPES;
           const label = siding ? 'Siding Type' : 'Roof Type';
           // If template's current value doesn't belong to the active list, fall back to 'other'
           const currentValue = options.some((o) => o.value === template.roof_type)
