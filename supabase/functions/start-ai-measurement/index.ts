@@ -14048,6 +14048,7 @@ async function persistCpuBudgetTerminalFailure(args: {
   stage: string;
   estimatedWorkUnits?: number;
   debug?: Record<string, unknown>;
+  earlyDerivedRegistration?: EarlyDsmRegistrationResult | null;
 }): Promise<string | null> {
   const budget = shouldPreemptForCpuBudget(
     args.input,
@@ -14059,7 +14060,18 @@ async function persistCpuBudgetTerminalFailure(args: {
   // the top-level field and the pre_phase3_5_preempt sub-bag. Never let a
   // known non-zero estimate regress to 0 just because this call site didn't
   // pass one.
-  const debugBag = (args.debug ?? {}) as Record<string, unknown>;
+  // ── Early DSM derived registration preserve ───────────────────────────
+  // Merge the `early_dsm_registration_before_topology` derived-bounds
+  // fields into the debug bag BEFORE any other terminal-payload work, so
+  // that derived `geo_to_dsm_transform`, `dsm_to_raster_transform`,
+  // `dsm_validation_status.reason = derived_bounds_validated`, etc. flow
+  // through into the persisted CPU-preempt failure payload instead of
+  // being reset to nulls / `dsm_tile_bounds_missing_from_google_solar_metadata`.
+  const debugBag = mergeEarlyDsmRegistrationIntoDebug(
+    args.debug,
+    args.earlyDerivedRegistration ?? null,
+  );
+
   const priorTerminalPayload =
     (debugBag as any)?.terminal_debug_payload ??
       (debugBag as any)?.source_context?.terminal_debug_payload ?? null;
