@@ -2098,6 +2098,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     hasRasterOverlay,
                   } = getRasterOverlayData(effectiveMeasurement);
                   const fpx = (getRasterOverlayData(effectiveMeasurement) as any).focusPerimeterPx;
+
+                  return (
                     <div className="space-y-4">
                       <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
@@ -2128,6 +2130,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                               roofTargetBboxPx={grj?.roof_target_bbox_px ||
                                 grj?.debug_geometry?.solar_bbox_px || null}
                               geometryPxSpace={grj?.geometry_px_space || null}
+                              focusPerimeterPx={fpx}
                             />
                           </div>
                         </div>
