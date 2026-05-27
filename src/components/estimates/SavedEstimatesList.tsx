@@ -500,7 +500,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     );
   }
 
-  if (!estimates || estimates.length === 0) {
+  if (displayedEstimates.length === 0) {
     return null;
   }
 
@@ -510,7 +510,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            Saved Estimates ({estimates.length})
+            Saved Estimates ({displayedEstimates.length})
           </CardTitle>
           {onCreateNew && (
             <Button variant="outline" size="sm" onClick={onCreateNew}>
@@ -520,7 +520,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-1.5">
-        {estimates.map((estimate) => {
+        {displayedEstimates.map((estimate) => {
           const isSelected = currentSelectedId === estimate.id;
           return (
             <div
@@ -562,6 +562,12 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                         {estimate.pricing_tier.charAt(0).toUpperCase() + estimate.pricing_tier.slice(1)}
                       </Badge>
                     )}
+                    {estimate.is_recovered_pdf && (
+                      <Badge variant="outline" className="border-warning/50 bg-warning/10 text-warning text-[10px] h-4 px-1">
+                        <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                        PDF only
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <span className="text-sm font-bold shrink-0">
@@ -589,10 +595,12 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       {signatureEnvelopes[estimate.id] === 'completed' ? 'Signed' : 'Awaiting Signature'}
                     </Badge>
                   )}
-                  <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
-                    <Percent className="h-2.5 w-2.5" />
-                    {(estimate.actual_profit_percent || 0).toFixed(1)}%
-                  </span>
+                  {!estimate.is_recovered_pdf && (
+                    <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
+                      <Percent className="h-2.5 w-2.5" />
+                      {(estimate.actual_profit_percent || 0).toFixed(1)}%
+                    </span>
+                  )}
                   {estimate.created_by_name && (
                     <span className="text-muted-foreground hidden sm:inline">by {estimate.created_by_name}</span>
                   )}
