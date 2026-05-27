@@ -262,13 +262,18 @@ export function RasterOverlayDebugView({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="relative w-full bg-muted rounded overflow-hidden">
+        <div
+          data-pdf-overlay-panel="true"
+          className="relative w-full bg-white rounded overflow-hidden border border-border"
+          style={{ paddingBottom: `${aspectPct}%` }}
+        >
           <svg
             viewBox={viewBox}
             preserveAspectRatio="xMidYMid meet"
-            className="w-full h-auto block"
+            className="absolute inset-0 w-full h-full block"
+            style={{ background: '#ffffff' }}
           >
-            {showRaster && (
+            {showRaster && !imageFailed && (
               <image
                 href={imageUrl}
                 x={0}
@@ -276,7 +281,34 @@ export function RasterOverlayDebugView({
                 width={rasterSize.width}
                 height={rasterSize.height}
                 opacity={0.95}
+                preserveAspectRatio="none"
+                onError={() => setImageFailed(true)}
               />
+            )}
+            {showRaster && imageFailed && (
+              <g>
+                <rect
+                  x={focus.cropBboxPx.minX}
+                  y={focus.cropBboxPx.minY}
+                  width={focus.cropBboxPx.w}
+                  height={focus.cropBboxPx.h}
+                  fill="#ffffff"
+                  stroke="#cbd5e1"
+                  strokeDasharray="12 8"
+                  strokeWidth={2}
+                />
+                <text
+                  x={focus.cropBboxPx.minX + focus.cropBboxPx.w / 2}
+                  y={focus.cropBboxPx.minY + focus.cropBboxPx.h / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#64748b"
+                  fontSize={Math.max(16, focus.cropBboxPx.w / 28)}
+                  fontFamily="system-ui, sans-serif"
+                >
+                  aerial unavailable in export
+                </text>
+              </g>
             )}
             {targetBbox && (
               <rect
