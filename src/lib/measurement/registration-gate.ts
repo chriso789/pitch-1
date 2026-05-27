@@ -119,18 +119,19 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   if (failed.length === 0) return null;
 
   // Classify into the actual failure bucket so the banner copy matches reality.
-  // IMPORTANT: only call it a coordinate-frame mismatch when frame evidence is
-  // explicitly bad (confirmed_center_inside_candidate === false). The aggregate
-  // `coordinate_registration_gate_passed` flag can be false purely because DSM
-  // sub-flags failed — in that case the user-facing message must blame DSM, not
-  // the raster frame.
+  // The raster overlay's actual frame check (`frame_mismatch`) is authoritative:
+  //   - "ok" → the aerial perimeter IS aligned to the satellite image, so we
+  //     must NEVER show "coordinate frame mismatch" copy, even if DSM sub-flags
+  //     are false or the aggregate gate is false.
+  //   - anything else (or `confirmed_center_inside_candidate === false`) → real
+  //     frame mismatch.
   const targetFailed = reg.user_confirmed_roof_target === false;
-  const frameFailed = reg.confirmed_center_inside_candidate === false;
+  const frameOkExplicit = typeof reg.frame_mismatch === "string"
+    && reg.frame_mismatch.toLowerCase() === "ok";
+  const frameFailed = !frameOkExplicit && reg.confirmed_center_inside_candidate === false;
   const dsmFailed =
     reg.geo_to_dsm_px_success === false ||
     reg.dsm_pixel_transform_valid === false;
-  const dsmOnly = !targetFailed && !frameFailed && dsmFailed;
-
 
   if (targetFailed) {
     return {
@@ -142,19 +143,7 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
     };
   }
 
-  if (dsmOnly) {
-    return {
-      variant: "warning",
-      title: "DSM registration incomplete — overlay locked from approval",
-      description:
-        "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
-      failedFlags: failed,
-    };
-  }
-
-  // Default: aggregate gate failed but neither target nor frame nor DSM is the
-  // explicit cause — prefer the DSM-incomplete copy (safer; matches the most
-  // common cause) rather than incorrectly accusing the coordinate frame.
+  // True coordinate mismatch only — frame evidence explicitly bad.
   if (frameFailed) {
     return {
       variant: "destructive",
@@ -164,12 +153,16 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
       failedFlags: failed,
     };
   }
+
+  // Frame is OK (or unknown but not explicitly failed) and DSM is incomplete.
+  // Show DSM-specific copy and do NOT suggest re-placing the PIN.
   return {
     variant: "warning",
-    title: "DSM registration incomplete — overlay locked from approval",
+    title: "DSM registration incomplete — manual approval locked",
     description:
-      "Raster overlay aligned successfully. DSM georegistration transform is incomplete or invalid, so topology cannot be promoted to a customer report. Re-run AI Measurement once DSM coverage is available.",
+      "The aerial perimeter is aligned to the satellite image, but DSM georegistration is missing. Manual approval is locked because the system cannot safely validate pitch/topology until geo→DSM and DSM→raster transforms are available.",
     failedFlags: failed,
   };
 }
+
 
