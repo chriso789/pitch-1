@@ -285,9 +285,12 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     }
   };
 
-  const invoiceSubtotal = useMemo(() => 
-    invoiceLineItems.filter(i => i.selected).reduce((sum, i) => sum + i.line_total, 0),
-    [invoiceLineItems]
+  const groupTotal = (g: InvoiceGroup) =>
+    g.children.filter((c) => c.selected).reduce((s, c) => s + (Number(c.line_total) || 0), 0);
+
+  const invoiceSubtotal = useMemo(
+    () => invoiceGroups.filter((g) => g.selected).reduce((sum, g) => sum + groupTotal(g), 0),
+    [invoiceGroups]
   );
 
   const { data: invoices, isLoading: loadingInvoices } = useQuery({
