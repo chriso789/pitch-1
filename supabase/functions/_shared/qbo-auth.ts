@@ -231,13 +231,23 @@ export async function getValidAccessToken(
     return { access_token: c.access_token, realm_id: c.realm_id, connection: c };
   }
 
-  const refreshed = await refreshAccessToken(c.refresh_token, getQboContextForConnection(c));
-  const updated = await persistTokens(service, {
-    tenant_id: c.tenant_id,
-    realm_id: c.realm_id,
-    tokens: refreshed,
-  });
-  return { access_token: updated.access_token, realm_id: updated.realm_id, connection: updated };
+  try {
+    const refreshed = await refreshAccessToken(c.refresh_token, getQboContextForConnection(c));
+    const updated = await persistTokens(service, {
+      tenant_id: c.tenant_id,
+      realm_id: c.realm_id,
+      tokens: refreshed,
+    });
+    return { access_token: updated.access_token, realm_id: updated.realm_id, connection: updated };
+  } catch (e) {
+    if (e instanceof QboReauthRequiredError) {
+      await service
+        .from("qbo_connections")
+        .update({ is_active: false, disconnected_at: new Date().toISOString() })
+        .eq("id", c.id);
+    }
+    throw e;
+  }
 }
 
 export async function fetchCompanyInfo(
