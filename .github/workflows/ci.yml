@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck • Lint • Unit Tests • Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+        env:
+          # Test runner uses jsdom; integration tests that need real
+          # Supabase creds run in a separate job/workflow.
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: test-anon-key
+
+      - name: Build
+        run: npm run build
+
+  edge-functions-check:
+    name: Deno • Edge Function Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Deno type-check all edge functions
+        run: |
+          set -e
+          shopt -s globstar nullglob
+          files=(supabase/functions/**/index.ts)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No edge functions found"
+            exit 0
+          fi
+          deno check --no-lock "${files[@]}"
+        shell: bash

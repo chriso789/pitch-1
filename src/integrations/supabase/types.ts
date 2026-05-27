@@ -48811,6 +48811,7 @@ export type Database = {
           subscription_expires_at: string | null
           subscription_status: string | null
           subscription_tier: string | null
+          support_email: string | null
           updated_at: string | null
           warranty_terms: string | null
           website: string | null
@@ -48863,6 +48864,7 @@ export type Database = {
           subscription_expires_at?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          support_email?: string | null
           updated_at?: string | null
           warranty_terms?: string | null
           website?: string | null
@@ -48915,6 +48917,7 @@ export type Database = {
           subscription_expires_at?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          support_email?: string | null
           updated_at?: string | null
           warranty_terms?: string | null
           website?: string | null
