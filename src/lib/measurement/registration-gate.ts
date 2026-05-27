@@ -37,12 +37,20 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
   const grj = measurement?.geometry_report_json;
   if (!grj || typeof grj !== "object") return null;
   const reg = (grj as any).registration ?? (grj as any).registration_gate ?? null;
+  const ov = (grj as any).overlay_debug ?? {};
+  const ot = (grj as any).overlay_transform ?? {};
+  // frame_mismatch may live on the registration block, overlay_debug, or
+  // overlay_transform. Treat the string "ok" as the explicit pass marker.
+  const frameMismatch =
+    reg?.frame_mismatch ??
+    ov?.frame_mismatch ??
+    ot?.frame_mismatch ??
+    null;
   if (reg && typeof reg === "object") {
-    return reg as RegistrationBlock;
+    return { ...(reg as RegistrationBlock), frame_mismatch: frameMismatch ?? (reg as any).frame_mismatch ?? null };
   }
   // Legacy fallback — synthesize a minimal block from overlay_debug flags so
   // historical rows still trigger the UI banner / disable approve.
-  const ov = (grj as any).overlay_debug ?? {};
   const sourceDebug = (grj as any).source_acquisition_debug ?? measurement?.source_context?.debug?.source_acquisition_debug ?? {};
   return {
     user_confirmed_roof_target: (grj as any).user_confirmed_roof_target ?? sourceDebug.user_confirmed_roof_target ?? null,
@@ -50,8 +58,10 @@ export function readRegistrationBlock(measurement: any): RegistrationBlock | nul
     dsm_pixel_transform_valid: (grj as any).dsm_pixel_transform_valid ?? ov.dsm_pixel_transform_valid ?? null,
     confirmed_center_inside_candidate: (grj as any).confirmed_center_inside_candidate ?? null,
     coordinate_registration_gate_passed: (grj as any).coordinate_registration_gate_passed ?? false,
+    frame_mismatch: frameMismatch ?? null,
   };
 }
+
 
 /**
  * True when a measurement row has a registration-class failure — used by
