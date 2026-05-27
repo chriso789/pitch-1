@@ -156,7 +156,6 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     const overheadPct = Number(container.overhead_pct ?? 10);
     const profitPct = Number(container.profit_pct ?? 25);
     const denom = Math.max(0.01, 1 - overheadPct / 100 - profitPct / 100);
-    const coLabel = co.co_number ? `CO #${co.co_number}` : 'CO';
     return items.map((it: any) => {
       const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
       const unitCost = Number(it.unit_price ?? it.price ?? it.rate ?? 0) || 0;
@@ -166,7 +165,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const desc = it.item_name || it.description || it.name || 'Change order item';
       return {
         selected: true,
-        description: `${coLabel} — ${desc}`,
+        description: desc,
         qty,
         unit: it.unit || 'ea',
         unit_cost: sellingUnit,
