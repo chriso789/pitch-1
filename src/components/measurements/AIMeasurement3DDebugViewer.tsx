@@ -179,8 +179,36 @@ function buildStages(m: any): StageDef[] {
   const finalOk = hasFinalGeometry &&
     (!!grj?.final_diagram_url || Array.isArray(grj?.roof_lines));
 
+  // Aerial candidate graph & perimeter topology — evidence the geometry layer
+  // actually produced something even when downstream promotion failed.
+  const aerialGraph = grj?.aerial_candidate_roof_graph || {};
+  const aerialEdgeCount = Array.isArray(aerialGraph?.edges) ? aerialGraph.edges.length : 0;
+  const perimeterTopologyEdges = Array.isArray(grj?.perimeter_topology?.edges)
+    ? grj.perimeter_topology.edges.length
+    : 0;
+  const hasDebugGeometry = aerialEdgeCount > 0 || perimeterTopologyEdges > 0 ||
+    !!grj?.aerial_candidate_roof_graph?.perimeter_ring_px;
+
+  // Perimeter overlap / IoU drive a partial_pass for Layer-1 even when the
+  // ring was never explicitly "accepted" (e.g. CPU-preempted before Phase 0).
+  const layer1Overlap = Number(
+    layer1?.target_mask_overlap_with_perimeter ??
+      grj?.target_mask_isolation?.target_mask_overlap_with_perimeter ??
+      NaN,
+  );
+  const layer1Iou = Number(
+    layer1?.perimeter_iou ?? grj?.target_mask_isolation?.perimeter_iou ?? NaN,
+  );
+  const ringPresent = !!grj?.true_outer_roof_perimeter_geo ||
+    !!grj?.true_outer_roof_perimeter_px ||
+    !!grj?.aerial_candidate_roof_graph?.perimeter_ring_px ||
+    !!grj?.perimeter_topology?.perimeter_ring_px;
+
   const customerReady = m?.customer_report_ready === true ||
     customerGate?.customer_report_ready === true;
+
+  // Runtime-preempted runs should not light red across the board.
+  const cpuPreempted = resolvedState.final_state_source === "runtime_cpu_budget_guard";
 
   return [
     {
