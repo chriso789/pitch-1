@@ -291,26 +291,31 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  // Compute the active source-pixel viewport: either the full raster, or a
-  // padded bbox around the roof perimeter. Pad ~100px clamped to raster.
-  const viewportSrc = useMemo(() => {
-    const fullW = rasterSize.width;
-    const fullH = rasterSize.height;
-    if (viewportMode === "roof_focus" && focusBbox && fullW > 0 && fullH > 0) {
-      const pad = Math.max(80, Math.min(120, Math.round(Math.max(focusBbox.maxX - focusBbox.minX, focusBbox.maxY - focusBbox.minY) * 0.15)));
-      const minX = Math.max(0, focusBbox.minX - pad);
-      const minY = Math.max(0, focusBbox.minY - pad);
-      const maxX = Math.min(fullW, focusBbox.maxX + pad);
-      const maxY = Math.min(fullH, focusBbox.maxY + pad);
-      return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
-    }
-    return { minX: 0, minY: 0, maxX: fullW, maxY: fullH, w: fullW, h: fullH };
-  }, [viewportMode, focusBbox, rasterSize.width, rasterSize.height]);
+  // Compute the active source-pixel viewport via the shared Roof Focus helper
+  // so RasterOverlayDebugView, the PDF export panel, and this canvas all crop
+  // identically. Falls back to full tile when no perimeter is available or
+  // viewportMode is "full_tile".
+  const focusRing = viewportMode === 'roof_focus' ? focusSourceRing : [];
+  const focus = useMemo(
+    () =>
+      roofFocusViewport({
+        rasterSize: { width: rasterSize.width, height: rasterSize.height },
+        perimeterPx: focusRing,
+        displayWidth: containerWidth || 1,
+      }),
+    [rasterSize.width, rasterSize.height, focusRing, containerWidth],
+  );
+  const viewportSrc = {
+    minX: focus.cropBboxPx.minX,
+    minY: focus.cropBboxPx.minY,
+    maxX: focus.cropBboxPx.maxX,
+    maxY: focus.cropBboxPx.maxY,
+    w: focus.cropBboxPx.w,
+    h: focus.cropBboxPx.h,
+  };
 
-  const scale = containerWidth > 0 && viewportSrc.w > 0
-    ? containerWidth / viewportSrc.w
-    : 1;
-  const displayHeight = viewportSrc.h > 0 ? viewportSrc.h * scale : 0;
+  const scale = focus.cropScale;
+  const displayHeight = focus.displayPxWithinCrop.height;
 
 
   // Load the aerial image once and capture natural size for resolver fallback.
