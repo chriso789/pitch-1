@@ -6004,6 +6004,42 @@ export type Database = {
           },
         ]
       }
+      canvass_pin_mutations: {
+        Row: {
+          client_created_at: string | null
+          client_mutation_id: string
+          contact_id: string | null
+          id: string
+          result_code: string
+          result_payload: Json
+          server_created_at: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          client_created_at?: string | null
+          client_mutation_id: string
+          contact_id?: string | null
+          id?: string
+          result_code: string
+          result_payload?: Json
+          server_created_at?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          client_created_at?: string | null
+          client_mutation_id?: string
+          contact_id?: string | null
+          id?: string
+          result_code?: string
+          result_payload?: Json
+          server_created_at?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       canvass_property_contacts: {
         Row: {
           age: number | null
