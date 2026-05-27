@@ -46,32 +46,73 @@ function verifyAgainstVerifiers(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
 
+  // Always write one qbo_webhook_events row per inbound delivery (verified or not).
+  const auditEvent = async (row: {
+    tenant_id?: string | null;
+    realm_id?: string | null;
+    oauth_app_env?: string | null;
+    signature_valid: boolean;
+    event_count?: number;
+    error_code?: string | null;
+    error_message?: string | null;
+    processed?: boolean;
+  }) => {
+    try {
+      await supabase.from("qbo_webhook_events").insert({
+        tenant_id: row.tenant_id ?? null,
+        realm_id: row.realm_id ?? null,
+        oauth_app_env: row.oauth_app_env ?? null,
+        signature_valid: row.signature_valid,
+        event_count: row.event_count ?? 0,
+        error_code: row.error_code ?? null,
+        error_message: row.error_message ?? null,
+        processed_at: row.processed ? new Date().toISOString() : null,
+      });
+    } catch (e) {
+      console.error("qbo_webhook_events_insert_failed", e);
+    }
+  };
+
+  try {
     const signature = req.headers.get("intuit-signature");
     const rawPayload = await req.text();
 
     if (!signature) {
       console.error("qbo_webhook_signature_missing");
+      await auditEvent({ signature_valid: false, error_code: "signature_missing" });
       return new Response("Unauthorized", { status: 401 });
     }
 
     const verifyResult = verifyAgainstVerifiers(rawPayload, signature);
     if (!verifyResult) {
       console.error("qbo_webhook_signature_invalid");
+      await auditEvent({ signature_valid: false, error_code: "signature_invalid" });
       return new Response("Unauthorized", { status: 401 });
     }
     const webhookMode = verifyResult.mode;
 
-    const payload: WebhookPayload = JSON.parse(rawPayload);
+    let payload: WebhookPayload;
+    try {
+      payload = JSON.parse(rawPayload);
+    } catch (e) {
+      await auditEvent({
+        signature_valid: true,
+        oauth_app_env: webhookMode,
+        error_code: "payload_parse_failed",
+        error_message: e instanceof Error ? e.message : String(e),
+      });
+      return new Response("Bad payload", { status: 400 });
+    }
     console.log("qbo_webhook_received", { webhook_mode: webhookMode, notifications: payload.eventNotifications?.length ?? 0 });
 
     for (const notification of payload.eventNotifications) {
       const realmId = notification.realmId;
+      const entityCount = notification.dataChangeEvent?.entities?.length ?? 0;
 
       const { data: connection } = await supabase
         .from("qbo_connections")
@@ -82,6 +123,13 @@ Deno.serve(async (req) => {
 
       if (!connection) {
         console.warn("qbo_webhook_no_connection", { realm_id: realmId });
+        await auditEvent({
+          realm_id: realmId,
+          oauth_app_env: webhookMode,
+          signature_valid: true,
+          event_count: entityCount,
+          error_code: "no_active_connection",
+        });
         continue;
       }
 
@@ -98,9 +146,19 @@ Deno.serve(async (req) => {
           webhook_mode: webhookMode,
           connection_mode: connMode,
         });
+        await auditEvent({
+          tenant_id: connection.tenant_id,
+          realm_id: realmId,
+          oauth_app_env: connMode,
+          signature_valid: true,
+          event_count: entityCount,
+          error_code: "realm_mode_mismatch",
+          error_message: `webhook_mode=${webhookMode} connection_mode=${connMode}`,
+        });
         continue;
       }
 
+      let entityError: { code: string; message: string } | null = null;
       for (const entity of notification.dataChangeEvent.entities) {
         const { error: logError } = await supabase
           .from("qbo_webhook_journal")
@@ -114,12 +172,33 @@ Deno.serve(async (req) => {
             signature_verified: true,
             processed: false,
           });
-        if (logError) console.error("qbo_webhook_journal_insert_failed", logError);
+        if (logError) {
+          console.error("qbo_webhook_journal_insert_failed", logError);
+          entityError = { code: "journal_insert_failed", message: logError.message };
+        }
 
         if (entity.name === "Payment" && (entity.operation === "Create" || entity.operation === "Update")) {
-          await processPaymentEvent(supabase, connection.tenant_id, realmId, entity.id);
+          try {
+            await processPaymentEvent(supabase, connection.tenant_id, realmId, entity.id);
+          } catch (e) {
+            entityError = {
+              code: "payment_processing_failed",
+              message: e instanceof Error ? e.message : String(e),
+            };
+          }
         }
       }
+
+      await auditEvent({
+        tenant_id: connection.tenant_id,
+        realm_id: realmId,
+        oauth_app_env: connMode,
+        signature_valid: true,
+        event_count: entityCount,
+        processed: !entityError,
+        error_code: entityError?.code ?? null,
+        error_message: entityError?.message ?? null,
+      });
     }
 
     return new Response(JSON.stringify({ success: true }), {
