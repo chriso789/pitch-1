@@ -708,39 +708,90 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onError: (err: Error) => toast.error(err.message || 'Failed to record payment'),
   });
 
-  const updateLineItem = (index: number, field: keyof InvoiceLineItem, value: any) => {
-    setInvoiceLineItems(prev => {
-      const updated = [...prev];
-      (updated[index] as any)[field] = value;
-      if (field === 'qty' || field === 'unit_cost') {
-        updated[index].line_total = Number(updated[index].qty) * Number(updated[index].unit_cost);
-      }
-      return updated;
-    });
+  const toggleGroupSelected = (gIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => (i === gIdx ? { ...g, selected: !g.selected } : g))
+    );
   };
 
-  const toggleLineItem = (index: number) => {
-    setInvoiceLineItems(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], selected: !updated[index].selected };
-      return updated;
-    });
+  const toggleGroupExpanded = (gIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => (i === gIdx ? { ...g, expanded: !g.expanded } : g))
+    );
   };
 
-  const addCustomLineItem = () => {
-    setInvoiceLineItems(prev => [...prev, {
-      selected: true,
-      description: '',
-      qty: 1,
-      unit: 'ea',
-      unit_cost: 0,
-      line_total: 0,
-    }]);
+  const updateGroupLabel = (gIdx: number, label: string) => {
+    setInvoiceGroups((prev) => prev.map((g, i) => (i === gIdx ? { ...g, label } : g)));
   };
 
-  const removeLineItem = (index: number) => {
-    setInvoiceLineItems(prev => prev.filter((_, i) => i !== index));
+  const removeGroup = (gIdx: number) => {
+    setInvoiceGroups((prev) => prev.filter((_, i) => i !== gIdx));
   };
+
+  const toggleChildSelected = (gIdx: number, cIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => {
+        if (i !== gIdx) return g;
+        const children = g.children.map((c, j) =>
+          j === cIdx ? { ...c, selected: !c.selected } : c
+        );
+        return { ...g, children };
+      })
+    );
+  };
+
+  const updateChild = (
+    gIdx: number,
+    cIdx: number,
+    field: keyof InvoiceLineItem,
+    value: any
+  ) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => {
+        if (i !== gIdx) return g;
+        const children = g.children.map((c, j) => {
+          if (j !== cIdx) return c;
+          const merged: any = { ...c, [field]: value };
+          if (field === 'qty' || field === 'unit_cost') {
+            merged.line_total =
+              Math.round((Number(merged.qty) || 0) * (Number(merged.unit_cost) || 0) * 100) / 100;
+          }
+          return merged;
+        });
+        return { ...g, children };
+      })
+    );
+  };
+
+  const removeChild = (gIdx: number, cIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) =>
+        i === gIdx ? { ...g, children: g.children.filter((_, j) => j !== cIdx) } : g
+      )
+    );
+  };
+
+  const addCustomGroup = () => {
+    setInvoiceGroups((prev) => [
+      ...prev,
+      {
+        key: `custom:${Date.now()}`,
+        kind: 'custom',
+        label: 'Custom line',
+        selected: true,
+        expanded: true,
+        children: [
+          { selected: true, description: '', qty: 1, unit: 'ea', unit_cost: 0, line_total: 0 },
+        ],
+      },
+    ]);
+  };
+
+  // When "Show item details" is toggled, expand/collapse all groups.
+  useEffect(() => {
+    setInvoiceGroups((prev) => prev.map((g) => ({ ...g, expanded: showLineDetails })));
+  }, [showLineDetails]);
+
 
   const handleSendPaymentLink = async (invoice: any) => {
     setGeneratingLinkForInvoice(invoice.id);
