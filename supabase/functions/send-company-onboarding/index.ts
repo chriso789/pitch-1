@@ -6,8 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Admin BCC for all onboarding emails - PITCH CRM support
-const ADMIN_BCC = 'support@pitch-crm.ai';
+// Admin BCC for all onboarding emails - O'Brien Contracting support
+const ADMIN_BCC = 'support@obriencontractingusa.com';
 
 interface OnboardingEmailRequest {
   tenant_id: string;
