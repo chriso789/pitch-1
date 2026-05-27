@@ -1454,6 +1454,32 @@ function applyLiveRuntimeHoistToRegistration(
       ? Number(reg.raster_meters_per_pixel)
       : null;
 
+    // ── Derived-bounds gate (dsm-registration-derived-bounds-v1) ──
+    // Only allow raster-bounds-derived DSM bounds when the raster overlay is
+    // aligned AND the perimeter/mask agreement is strong. Otherwise leave the
+    // explicit `dsm_tile_bounds_missing_from_google_solar_metadata` token.
+    const _rasterBoundsForDerivation: any = (reg.raster_bounds_lat_lng as any) ??
+      (g.raster_bounds_lat_lng as any) ?? null;
+    const _rasterSizeForDerivation: any = (reg.raster_size_px as any) ??
+      (g.raster_size_px as any) ?? null;
+    const _frameMismatchOk = (g.frame_mismatch === "ok") ||
+      (g.frame_mismatch_ok === true) ||
+      ((reg.frame_mismatch as any) === "ok");
+    const _targetMaskOverlap = Number(
+      (g.target_mask_overlap_with_perimeter as any) ??
+        (g.target_mask_isolation?.target_mask_overlap_with_perimeter as any) ??
+        (reg.target_mask_overlap_with_perimeter as any) ??
+        NaN,
+    );
+    const _allowDerivedBounds = Boolean(
+      dsmLoaded &&
+        _rasterBoundsForDerivation &&
+        Number.isFinite(rasterMpp ?? NaN) &&
+        _frameMismatchOk &&
+        Number.isFinite(_targetMaskOverlap) &&
+        _targetMaskOverlap >= 0.90,
+    );
+
     // ── Only hoist DSM fields when registration is missing them ───
     const dsmAlreadyHoisted = reg.dsm_size_px != null &&
       reg.dsm_tile_bounds_lat_lng != null;
@@ -1468,7 +1494,9 @@ function applyLiveRuntimeHoistToRegistration(
         dsmCoordinateMatchDebug,
         confirmedCenterLatLng: confirmedLL,
         rasterMetersPerPixel: rasterMpp,
-        allow_derived_bounds: false,
+        allow_derived_bounds: _allowDerivedBounds,
+        rasterBoundsLatLng: _rasterBoundsForDerivation,
+        rasterSizePx: _rasterSizeForDerivation,
       });
       reg.dsm_size_px = reg.dsm_size_px ?? dsmReg.dsm_size_px;
       reg.dsm_size_source = reg.dsm_size_source ?? dsmReg.dsm_size_source;
