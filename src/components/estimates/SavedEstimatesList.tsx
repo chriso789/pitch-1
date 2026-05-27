@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy } from 'lucide-react';
+import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -42,6 +42,7 @@ interface SavedEstimate {
   created_at: string;
   template_name?: string;
   created_by_name?: string;
+  is_recovered_pdf?: boolean;
 }
 
 interface SavedEstimatesListProps {
@@ -245,6 +246,43 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     },
     enabled: !!pipelineEntryId,
   });
+
+  const { data: recoveredPdfEstimates = [] } = useQuery({
+    queryKey: ['orphaned-estimate-pdfs', pipelineEntryId, estimates?.map(e => `${e.id}:${e.pdf_url}`).join('|')],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, filename, file_path, description, estimate_display_name, estimate_pricing_tier, created_at')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('document_type', 'estimate')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const linkedPdfPaths = new Set((estimates || []).map(est => est.pdf_url).filter(Boolean));
+      const linkedFilenames = new Set((estimates || []).map(est => `${est.estimate_number}.pdf`));
+
+      return (data || [])
+        .filter((doc: any) => doc.file_path && !linkedPdfPaths.has(doc.file_path) && !linkedFilenames.has(doc.filename))
+        .map((doc: any) => ({
+          id: `recovered-pdf:${doc.id}`,
+          estimate_number: doc.filename?.replace(/\.pdf$/i, '') || 'Recovered PDF',
+          short_description: doc.description || 'Recovered estimate PDF',
+          display_name: doc.estimate_display_name || doc.filename?.replace(/\.pdf$/i, '') || 'Recovered PDF',
+          pricing_tier: doc.estimate_pricing_tier || null,
+          selling_price: 0,
+          actual_profit_percent: 0,
+          status: 'pdf-only',
+          pdf_url: doc.file_path,
+          created_at: doc.created_at,
+          template_name: 'Recovered PDF',
+          is_recovered_pdf: true,
+        })) as SavedEstimate[];
+    },
+    enabled: !!pipelineEntryId && !!estimates,
+  });
+
+  const displayedEstimates = [...(estimates || []), ...recoveredPdfEstimates];
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes } = useQuery({
