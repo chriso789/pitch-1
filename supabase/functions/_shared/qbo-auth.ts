@@ -107,6 +107,13 @@ export async function exchangeAuthorizationCode(
   return (await res.json()) as QboTokenResponse;
 }
 
+export class QboReauthRequiredError extends Error {
+  constructor(message = "QuickBooks reauthorization required") {
+    super(message);
+    this.name = "QboReauthRequiredError";
+  }
+}
+
 export async function refreshAccessToken(
   refreshToken: string,
   ctx?: QboContext,
@@ -126,6 +133,10 @@ export async function refreshAccessToken(
   });
   if (!res.ok) {
     const body = await res.text();
+    // invalid_grant => refresh token revoked/expired by Intuit; surface as reauth.
+    if (res.status === 400 && /invalid_grant/i.test(body)) {
+      throw new QboReauthRequiredError(`QBO refresh rejected (invalid_grant): ${body}`);
+    }
     throw new Error(`QBO token refresh failed [${res.status}]: ${body}`);
   }
   return (await res.json()) as QboTokenResponse;
@@ -220,13 +231,23 @@ export async function getValidAccessToken(
     return { access_token: c.access_token, realm_id: c.realm_id, connection: c };
   }
 
-  const refreshed = await refreshAccessToken(c.refresh_token, getQboContextForConnection(c));
-  const updated = await persistTokens(service, {
-    tenant_id: c.tenant_id,
-    realm_id: c.realm_id,
-    tokens: refreshed,
-  });
-  return { access_token: updated.access_token, realm_id: updated.realm_id, connection: updated };
+  try {
+    const refreshed = await refreshAccessToken(c.refresh_token, getQboContextForConnection(c));
+    const updated = await persistTokens(service, {
+      tenant_id: c.tenant_id,
+      realm_id: c.realm_id,
+      tokens: refreshed,
+    });
+    return { access_token: updated.access_token, realm_id: updated.realm_id, connection: updated };
+  } catch (e) {
+    if (e instanceof QboReauthRequiredError) {
+      await service
+        .from("qbo_connections")
+        .update({ is_active: false, disconnected_at: new Date().toISOString() })
+        .eq("id", c.id);
+    }
+    throw e;
+  }
 }
 
 export async function fetchCompanyInfo(

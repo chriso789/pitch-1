@@ -6,9 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug, AlertTriangle } from "lucide-react";
+import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug, AlertTriangle, ShieldAlert } from "lucide-react";
 import { QuickBooksSyncErrors } from "./QuickBooksSyncErrors";
 import { QuickBooksConnectDialog } from "./QuickBooksConnectDialog";
+import { QuickBooksWebhookEvents } from "./QuickBooksWebhookEvents";
+import { formatDistanceToNow } from "date-fns";
 
 const JOB_TYPES = [
   { key: 'roof_repair', label: 'Roof Repair' },
@@ -73,6 +75,8 @@ export default function QuickBooksSettings() {
   const [userId, setUserId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [returnStatus, setReturnStatus] = useState<{ status: string; reason?: string } | null>(null);
+  const [reauthRequired, setReauthRequired] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -93,9 +97,10 @@ export default function QuickBooksSettings() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('provider') === 'qbo' && params.get('status')) {
-      setReturnStatus({ status: params.get('status') as string, reason: params.get('reason') ?? undefined });
-      const tone =
-        params.get('status') === 'connected' ? 'default' : 'destructive';
+      const reason = params.get('reason') ?? undefined;
+      setReturnStatus({ status: params.get('status') as string, reason });
+      if (reason && /reauth/i.test(reason)) setReauthRequired(true);
+      const tone = params.get('status') === 'connected' ? 'default' : 'destructive';
       toast({
         title: params.get('status') === 'connected' ? 'QuickBooks connected' : 'QuickBooks connection issue',
         description: params.get('reason') ?? params.get('status') ?? '',
@@ -257,6 +262,7 @@ export default function QuickBooksSettings() {
       });
       if (error) throw error;
       setConnection(null);
+      setReauthRequired(false);
       toast({
         title: 'Disconnected',
         description: 'Review the legal acceptances again to connect a different QuickBooks account.',
@@ -265,6 +271,50 @@ export default function QuickBooksSettings() {
     } catch (error: any) {
       const description = await extractFnError(error);
       toast({ title: 'Error', description, variant: 'destructive' });
+    }
+  };
+
+  const handleRefreshToken = async () => {
+    setRefreshingToken(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
+        body: { action: 'refresh' },
+      });
+      if (error) {
+        const description = await extractFnError(error);
+        if (/reauth_required/i.test(description)) {
+          setReauthRequired(true);
+          toast({
+            title: 'Reauthorization required',
+            description: 'QuickBooks rejected the saved refresh token. Reconnect to continue syncing.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({ title: 'Refresh failed', description, variant: 'destructive' });
+        }
+        return;
+      }
+      if (data?.error === 'reauth_required') {
+        setReauthRequired(true);
+        toast({
+          title: 'Reauthorization required',
+          description: 'QuickBooks rejected the saved refresh token. Reconnect to continue syncing.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setReauthRequired(false);
+      toast({ title: 'Token refreshed', description: 'QuickBooks access token is fresh.' });
+      // Pull updated timestamps into the banner.
+      try {
+        const { data: v } = await supabase.functions.invoke('qbo-oauth-connect', { body: { action: 'verify' } });
+        if (v) setVerifyInfo(v);
+      } catch { /* ignore */ }
+    } catch (e: any) {
+      const description = await extractFnError(e);
+      toast({ title: 'Refresh failed', description, variant: 'destructive' });
+    } finally {
+      setRefreshingToken(false);
     }
   };
 
@@ -374,18 +424,48 @@ export default function QuickBooksSettings() {
         </CardHeader>
         <CardContent>
           {connection ? (
+            (() => {
+              // Prefer fresh verify data when available (carries timestamps).
+              const v = verifyInfo?.connection ?? {};
+              const companyName = v.qbo_company_name ?? connection.qbo_company_name;
+              const env = v.oauth_app_env ?? (connection as any).oauth_app_env ?? ((connection as any).is_sandbox ? 'development' : 'production');
+              const tokenExp = v.token_expires_at ?? (connection as any).token_expires_at ?? null;
+              const refreshExp = v.refresh_token_expires_at ?? (connection as any).refresh_token_expires_at ?? null;
+              const lastRefresh = v.last_refresh_at ?? (connection as any).last_refresh_at ?? null;
+              const refreshExpMs = refreshExp ? new Date(refreshExp).getTime() : 0;
+              const refreshNearExpiry = refreshExpMs > 0 && refreshExpMs - Date.now() < 7 * 24 * 3600 * 1000;
+              return (
             <div className="space-y-4">
+              {reauthRequired && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+                  <ShieldAlert className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <div className="font-medium text-destructive">Reauthorization required</div>
+                    <p className="text-destructive/90 text-xs">
+                      Intuit rejected the saved refresh token (invalid_grant). Reconnect QuickBooks to resume syncing.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {!reauthRequired && refreshNearExpiry && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-amber-800 dark:text-amber-200">
+                    Refresh token expires {formatDistanceToNow(new Date(refreshExp), { addSuffix: true })}. Reconnect soon to avoid an interruption.
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg border p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Company</span>
                   <span className="text-sm text-muted-foreground">
-                    {connection.qbo_company_name}
+                    {companyName ?? '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Environment</span>
-                  <Badge variant={(connection as any).oauth_app_env === 'production' ? 'default' : 'secondary'}>
-                    {(connection as any).oauth_app_env ?? ((connection as any).is_sandbox ? 'development' : 'production')}
+                  <Badge variant={env === 'production' ? 'default' : 'secondary'}>
+                    {env}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
@@ -398,25 +478,66 @@ export default function QuickBooksSettings() {
                     {new Date(connection.connected_at).toLocaleDateString()}
                   </span>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Last token refresh</span>
+                  <span className="text-sm text-muted-foreground">
+                    {lastRefresh ? formatDistanceToNow(new Date(lastRefresh), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Access token expires</span>
+                  <span className="text-sm text-muted-foreground">
+                    {tokenExp ? formatDistanceToNow(new Date(tokenExp), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Refresh token expires</span>
+                  <span className={`text-sm ${refreshNearExpiry ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                    {refreshExp ? formatDistanceToNow(new Date(refreshExp), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  variant="default"
-                  onClick={handleSwitchAccount}
-                  disabled={connecting}
-                  className="w-full gap-2"
-                >
-                  <RefreshCw className={`h-4 w-4 ${connecting ? 'animate-spin' : ''}`} />
-                  Switch Account
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleDisconnect}
-                  className="w-full gap-2"
-                >
-                  <Unplug className="h-4 w-4" />
-                  Disconnect QuickBooks
-                </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {reauthRequired ? (
+                  <Button
+                    variant="destructive"
+                    onClick={openConnectDialog}
+                    disabled={!userId || !tenantId}
+                    className="w-full gap-2 sm:col-span-3"
+                  >
+                    <ShieldAlert className="h-4 w-4" />
+                    Reauthorize QuickBooks
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="default"
+                      onClick={handleSwitchAccount}
+                      disabled={connecting}
+                      className="w-full gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${connecting ? 'animate-spin' : ''}`} />
+                      Switch Account
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={handleRefreshToken}
+                      disabled={refreshingToken}
+                      className="w-full gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${refreshingToken ? 'animate-spin' : ''}`} />
+                      Refresh token now
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleDisconnect}
+                      className="w-full gap-2"
+                    >
+                      <Unplug className="h-4 w-4" />
+                      Disconnect
+                    </Button>
+                  </>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 Tip: If Intuit auto-signs you back into the same account, open
@@ -425,6 +546,8 @@ export default function QuickBooksSettings() {
               </p>
 
             </div>
+              );
+            })()
           ) : (
             <div className="space-y-3">
               <div className="space-y-2">
@@ -577,6 +700,10 @@ export default function QuickBooksSettings() {
           hasDevelopmentCredentials={!!(verifyInfo?.has_development_credentials || verifyInfo?.has_legacy_credentials)}
           hasProductionCredentials={!!(verifyInfo?.has_production_credentials || verifyInfo?.has_legacy_credentials)}
         />
+      )}
+
+      {connection && tenantId && (
+        <QuickBooksWebhookEvents tenantId={tenantId} />
       )}
     </div>
   );
