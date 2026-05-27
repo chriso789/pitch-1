@@ -97,8 +97,9 @@ export default function QuickBooksSettings() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('provider') === 'qbo' && params.get('status')) {
-      setReturnStatus({ status: params.get('status') as string, reason: params.get('reason') ?? undefined });
-      const tone =
+      const reason = params.get('reason') ?? undefined;
+      setReturnStatus({ status: params.get('status') as string, reason });
+      if (reason && /reauth/i.test(reason)) setReauthRequired(true);
         params.get('status') === 'connected' ? 'default' : 'destructive';
       toast({
         title: params.get('status') === 'connected' ? 'QuickBooks connected' : 'QuickBooks connection issue',
