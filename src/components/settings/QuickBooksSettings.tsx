@@ -75,6 +75,22 @@ export default function QuickBooksSettings() {
   const [returnStatus, setReturnStatus] = useState<{ status: string; reason?: string } | null>(null);
 
   useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (uid) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', uid)
+          .single();
+        setTenantId((prof as any)?.tenant_id ?? null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('provider') === 'qbo' && params.get('status')) {
       setReturnStatus({ status: params.get('status') as string, reason: params.get('reason') ?? undefined });
@@ -95,6 +111,7 @@ export default function QuickBooksSettings() {
       window.history.replaceState({}, '', url.toString());
     }
   }, [toast]);
+
 
   const runDiagnostic = async () => {
     try {
