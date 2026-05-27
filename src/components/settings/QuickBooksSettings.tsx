@@ -701,6 +701,10 @@ export default function QuickBooksSettings() {
           hasProductionCredentials={!!(verifyInfo?.has_production_credentials || verifyInfo?.has_legacy_credentials)}
         />
       )}
+
+      {connection && tenantId && (
+        <QuickBooksWebhookEvents tenantId={tenantId} />
+      )}
     </div>
   );
 }
