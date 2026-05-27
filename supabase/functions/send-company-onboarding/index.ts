@@ -6,8 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Admin BCC for all onboarding emails - O'Brien Contracting support
-const ADMIN_BCC = 'support@obriencontractingusa.com';
+// Platform support BCC for all onboarding emails.
+// Per-tenant support inbox is read from tenants.support_email at send time
+// and added as CC (multi-tenant safe — never hardcode one tenant's address here).
+const PLATFORM_SUPPORT_BCC = 'support@pitch-crm.ai';
 
 interface OnboardingEmailRequest {
   tenant_id: string;
@@ -736,6 +738,24 @@ Deno.serve(async (req: Request) => {
     let resendMessageId = null;
     let emailError: string | null = null;
 
+    // Resolve tenant support_email (CC) — multi-tenant safe
+    let tenantSupportEmail: string | null = null;
+    try {
+      const { data: tenantRow, error: tenantErr } = await supabase
+        .from('tenants')
+        .select('support_email')
+        .eq('id', tenant_id)
+        .maybeSingle();
+      if (tenantErr) {
+        console.warn('[send-company-onboarding] Failed to load tenant support_email:', tenantErr);
+      } else if (tenantRow?.support_email) {
+        tenantSupportEmail = tenantRow.support_email;
+      }
+    } catch (e) {
+      console.warn('[send-company-onboarding] tenant support_email lookup threw:', e);
+    }
+    const ccList = tenantSupportEmail ? [tenantSupportEmail] : [];
+
     // Send email via Resend with RETRY LOGIC
     if (resendApiKey) {
       const resend = new Resend(resendApiKey);
@@ -747,13 +767,14 @@ Deno.serve(async (req: Request) => {
       
       while (!resendMessageId && attempts < maxAttempts) {
         attempts++;
-        console.log(`[send-company-onboarding] Attempt ${attempts}/${maxAttempts} - Sending from: ${fromAddress} to: ${email}`);
+        console.log(`[send-company-onboarding] Attempt ${attempts}/${maxAttempts} - Sending from: ${fromAddress} to: ${email} cc: ${ccList.join(',') || '(none)'} bcc: ${PLATFORM_SUPPORT_BCC}`);
         
         try {
           const emailResult = await resend.emails.send({
             from: fromAddress,
             to: [email],
-            bcc: [ADMIN_BCC], // Always BCC admin
+            cc: ccList,
+            bcc: [PLATFORM_SUPPORT_BCC],
             subject: emailSubject,
             html: emailHtml,
             tags: [
@@ -804,7 +825,8 @@ Deno.serve(async (req: Request) => {
           company_name, 
           onboarding_url: onboardingUrl,
           error: emailError,
-          bcc_admin: ADMIN_BCC,
+          bcc_platform: PLATFORM_SUPPORT_BCC,
+          cc_tenant_support: tenantSupportEmail,
           email_type: 'enterprise_5_step'
         }
       });
