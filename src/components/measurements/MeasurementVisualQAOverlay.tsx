@@ -815,17 +815,40 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
           <div className="space-y-4">
             {/* DSM Status card — read-only summary of DSM registration state */}
             {(() => {
-              const dsmSize = (grj as any).dsm_size ?? (grj as any).dsm?.size ?? null;
+              const g: any = grj as any;
+              const pick = (...vals: any[]) => vals.find((v) => v != null);
+              const dsmSize = pick(
+                g.registration?.dsm?.dsm_size_px,
+                g.registration?.dsm_size_px,
+                g.registration?.transform_package?.dsm_size_px,
+                g.dsm_split_status?.dsm_size_px,
+                g.registration_gate?.dsm_size_px,
+                g.dsm_size_px,
+                g.dsm_size,
+                g.dsm?.size,
+              );
               const dsmW = dsmSize?.width ?? dsmSize?.w ?? null;
               const dsmH = dsmSize?.height ?? dsmSize?.h ?? null;
-              const dsmBoundsFailure =
-                (grj as any).dsm_bounds_failure ?? (grj as any).dsm?.bounds_failure ?? null;
-              const dsmTransformSource =
-                (grj as any).dsm_to_raster_transform_source ?? (grj as any).dsm?.to_raster_transform_source ?? null;
+              const dsmBoundsFailure = pick(
+                g.registration?.dsm_tile_bounds_failure_reason,
+                g.dsm_bounds_failure,
+                g.dsm?.bounds_failure,
+              );
+              const dsmTransformSource = pick(
+                g.registration?.dsm_to_raster_transform_source,
+                g.dsm_to_raster_transform_source,
+                g.dsm?.to_raster_transform_source,
+              );
               const dsmOverlayVisible = dsmAllowed && dsmEdges.length > 0;
               const dsmLoaded = dsmW != null || dsmH != null;
-              const dsmRegistered = (grj as any).dsm_pixel_transform_valid === true;
-              const policy = (grj as any).dsm_transform_policy ?? "dsm-registration-transform-v1";
+              const dsmRegistered = pick(
+                g.registration?.dsm_pixel_transform_valid,
+                g.dsm_pixel_transform_valid,
+              ) === true;
+              const policy = pick(
+                g.registration?.derived_bounds_policy,
+                g.dsm_transform_policy,
+              ) ?? "dsm-registration-transform-v1";
               const statusLabel = !dsmLoaded
                 ? "Missing"
                 : dsmRegistered ? "Registered" : "Loaded, not registered";
@@ -849,6 +872,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 </div>
               );
             })()}
+
 
             {/* Layer status summary — separates the three semantic layers */}
             {(() => {
