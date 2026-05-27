@@ -69,6 +69,14 @@ export interface DsmRegistrationInput {
    * the legacy approximate behavior must explicitly opt in.
    */
   allow_derived_bounds?: boolean;
+  /**
+   * Raster (static map) geographic bounds — when present alongside
+   * raster size and DSM size, enables the `derived_from_raster_bounds`
+   * fallback. Only honored when `allow_derived_bounds === true` and the
+   * Google Solar metadata branch did not produce bounds.
+   */
+  rasterBoundsLatLng?: Bounds | null;
+  rasterSizePx?: SizePx | null;
 }
 
 export interface DsmRegistrationResult {
