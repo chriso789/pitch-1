@@ -18,38 +18,14 @@ interface CalcTemplateDetailsPanelProps {
   saving: boolean;
 }
 
-const ROOF_TYPES = [
-  { value: 'shingle', label: 'Shingle' },
-  { value: 'metal', label: 'Metal' },
-  { value: 'tile', label: 'Tile' },
-  { value: 'flat', label: 'Flat' },
-  { value: 'slate', label: 'Slate' },
-  { value: 'cedar', label: 'Cedar Shake' },
-  { value: 'other', label: 'Other' },
-];
+import {
+  ROOFING_TYPES,
+  SIDING_TYPES,
+  isSidingTemplate,
+} from '@/lib/templates/materialTypeLabels';
 
-const SIDING_TYPES = [
-  { value: 'vinyl_siding', label: 'Vinyl' },
-  { value: 'insulated_vinyl_siding', label: 'Insulated Vinyl' },
-  { value: 'fiber_cement_siding', label: 'Fiber Cement (Hardie)' },
-  { value: 'aluminum_siding', label: 'Aluminum' },
-  { value: 'wood_siding', label: 'Wood' },
-  { value: 'engineered_wood_siding', label: 'Engineered Wood (LP SmartSide)' },
-  { value: 'stucco', label: 'Stucco' },
-  { value: 'stone_veneer', label: 'Stone Veneer' },
-  { value: 'brick_veneer', label: 'Brick Veneer' },
-  { value: 'other', label: 'Other' },
-];
-
-const SIDING_VALUES = new Set(SIDING_TYPES.map((t) => t.value).filter((v) => v !== 'other'));
-
-const isSidingTemplate = (template: { name?: string; roof_type?: string }) => {
-  if (template.roof_type && SIDING_VALUES.has(template.roof_type)) return true;
-  const name = (template.name || '').toLowerCase();
-  return /(siding|vinyl|hardie|fiber\s*cement|alside|stucco|lp\s*smartside|james\s*hardie)/.test(
-    name,
-  );
-};
+const ROOF_TYPES = [...ROOFING_TYPES, { value: 'other', label: 'Other' }];
+const SIDING_TYPES_WITH_OTHER = [...SIDING_TYPES, { value: 'other', label: 'Other' }];
 
 const CATEGORIES = [
   { value: 'standard', label: 'Standard' },
