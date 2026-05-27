@@ -35,6 +35,17 @@ interface InvoiceLineItem {
   unit: string;
   unit_cost: number;
   line_total: number;
+  trade_type?: string;
+  trade_label?: string;
+}
+
+interface InvoiceGroup {
+  key: string;
+  kind: 'trade' | 'change_order' | 'custom';
+  label: string;
+  selected: boolean;
+  expanded: boolean;
+  children: (InvoiceLineItem & { selected: boolean })[];
 }
 
 const formatCurrency = (amount: number) =>
@@ -64,11 +75,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [scanningPayment, setScanningPayment] = useState(false);
   const scanInputRef = useRef<HTMLInputElement>(null);
 
-  // Invoice builder state
-  const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
+  // Invoice builder state — grouped per trade / per change order.
+  const [invoiceGroups, setInvoiceGroups] = useState<InvoiceGroup[]>([]);
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
-  const [showLineDetails, setShowLineDetails] = useState(true);
+  const [showLineDetails, setShowLineDetails] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Edit invoice state
@@ -187,65 +198,36 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     const items: (InvoiceLineItem & { selected: boolean })[] = [];
     const lineItems = estimate.line_items as any;
 
+    const pushItem = (raw: any, fallbackDesc: string) => {
+      items.push({
+        selected: true,
+        description: raw.item_name || raw.description || raw.name || fallbackDesc,
+        qty: Number(raw.qty || raw.quantity) || 1,
+        unit: raw.unit || 'ea',
+        unit_cost: Number(raw.unit_cost || raw.price || raw.rate) || 0,
+        line_total:
+          Number(raw.line_total || raw.total || raw.amount) ||
+          (Number(raw.qty || raw.quantity || 1) * Number(raw.unit_cost || raw.price || raw.rate || 0)),
+        trade_type: raw.trade_type || undefined,
+        trade_label: raw.trade_label || undefined,
+      });
+    };
+
     if (source === 'enhanced') {
-      // enhanced_estimates: { materials: [...], labor: [...] }
-      if (Array.isArray(lineItems.materials)) {
-        lineItems.materials.forEach((mat: any) => {
-          items.push({
-            selected: true,
-            description: mat.item_name || mat.description || 'Material',
-            qty: Number(mat.qty) || 1,
-            unit: mat.unit || 'ea',
-            unit_cost: Number(mat.unit_cost) || 0,
-            line_total: Number(mat.line_total) || 0,
-          });
-        });
-      }
-      if (Array.isArray(lineItems.labor)) {
-        lineItems.labor.forEach((lab: any) => {
-          items.push({
-            selected: true,
-            description: lab.item_name || lab.description || 'Labor',
-            qty: Number(lab.qty) || 1,
-            unit: lab.unit || 'ea',
-            unit_cost: Number(lab.unit_cost) || 0,
-            line_total: Number(lab.line_total) || 0,
-          });
-        });
-      }
+      if (Array.isArray(lineItems.materials)) lineItems.materials.forEach((m: any) => pushItem(m, 'Material'));
+      if (Array.isArray(lineItems.labor)) lineItems.labor.forEach((l: any) => pushItem(l, 'Labor'));
     } else {
-      // legacy estimates: could be array of items or { materials, labor }
       if (Array.isArray(lineItems)) {
-        lineItems.forEach((item: any) => {
-          items.push({
-            selected: true,
-            description: item.item_name || item.description || item.name || 'Item',
-            qty: Number(item.qty || item.quantity) || 1,
-            unit: item.unit || 'ea',
-            unit_cost: Number(item.unit_cost || item.price || item.rate) || 0,
-            line_total: Number(item.line_total || item.total || item.amount) || (Number(item.qty || item.quantity || 1) * Number(item.unit_cost || item.price || item.rate || 0)),
-          });
-        });
+        lineItems.forEach((it: any) => pushItem(it, 'Item'));
       } else if (typeof lineItems === 'object') {
-        // Same nested format as enhanced
-        ['materials', 'labor', 'items'].forEach(key => {
-          if (Array.isArray(lineItems[key])) {
-            lineItems[key].forEach((item: any) => {
-              items.push({
-                selected: true,
-                description: item.item_name || item.description || item.name || key,
-                qty: Number(item.qty || item.quantity) || 1,
-                unit: item.unit || 'ea',
-                unit_cost: Number(item.unit_cost || item.price || item.rate) || 0,
-                line_total: Number(item.line_total || item.total || item.amount) || (Number(item.qty || item.quantity || 1) * Number(item.unit_cost || item.price || item.rate || 0)),
-              });
-            });
-          }
+        ['materials', 'labor', 'items'].forEach((key) => {
+          if (Array.isArray(lineItems[key])) lineItems[key].forEach((it: any) => pushItem(it, key));
         });
       }
     }
     return items;
   };
+
 
   // (Auto-populate effect moved below `payments`/`invoices` declarations.)
 
@@ -303,9 +285,12 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     }
   };
 
-  const invoiceSubtotal = useMemo(() => 
-    invoiceLineItems.filter(i => i.selected).reduce((sum, i) => sum + i.line_total, 0),
-    [invoiceLineItems]
+  const groupTotal = (g: InvoiceGroup) =>
+    g.children.filter((c) => c.selected).reduce((s, c) => s + (Number(c.line_total) || 0), 0);
+
+  const invoiceSubtotal = useMemo(
+    () => invoiceGroups.filter((g) => g.selected).reduce((sum, g) => sum + groupTotal(g), 0),
+    [invoiceGroups]
   );
 
   const { data: invoices, isLoading: loadingInvoices } = useQuery({
@@ -370,9 +355,6 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const contractBalance = sellingPrice - totalPaid;
 
-  // Auto-populate invoice from latest estimate when dialog opens.
-  // First invoice (no payments / no prior invoices) = full estimate.
-  // Otherwise scale lines so invoice = contract − payments − outstanding invoiced.
   useEffect(() => {
     if (!showInvoiceDialog) return;
 
@@ -384,68 +366,96 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         ? parseLineItems(legacyEst, 'legacy')
         : [];
 
-    if (baseItems.length === 0) {
-      const coOnly = (approvedChangeOrders || []).flatMap((co: any) =>
-        parseChangeOrderLineItems(co)
-      );
-      setInvoiceLineItems(coOnly);
-      return;
+    // Build trade groups from base estimate items (selling-price scaled).
+    const tradeGroups: InvoiceGroup[] = [];
+    if (baseItems.length > 0) {
+      // Step 1: scale costs → selling price.
+      const costTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
+      const targetSellingPrice = enhancedEst?.selling_price
+        ? Number(enhancedEst.selling_price)
+        : sellingPrice;
+      const markupScale =
+        costTotal > 0 && targetSellingPrice > 0 ? targetSellingPrice / costTotal : 1;
+      const sellingPriceItems = baseItems.map((item) => {
+        if (markupScale === 1) return item;
+        const newTotal = Math.round(item.line_total * markupScale * 100) / 100;
+        const qty = Number(item.qty) || 1;
+        const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+        return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+      });
+
+      // Step 2: scale to remaining balance if prior payments/invoices exist.
+      const sellingTotal = sellingPriceItems.reduce((s, i) => s + i.line_total, 0);
+      const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+      const outstandingInvoiced = (invoices || [])
+        .filter((inv: any) => inv.status !== 'void')
+        .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
+      const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
+      const balanceScale =
+        remaining > 0 && sellingTotal > 0 && remaining < sellingTotal
+          ? remaining / sellingTotal
+          : 1;
+      const scaled = sellingPriceItems.map((item) => {
+        if (balanceScale === 1) return item;
+        const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
+        const qty = Number(item.qty) || 1;
+        const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+        return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+      });
+
+      // Group by trade_type, preserving order of first appearance.
+      const order: string[] = [];
+      const byTrade = new Map<string, { label: string; items: (InvoiceLineItem & { selected: boolean })[] }>();
+      scaled.forEach((it) => {
+        const tradeType = (it.trade_type || 'roofing').toString();
+        const tradeLabel =
+          it.trade_label ||
+          tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
+        if (!byTrade.has(tradeType)) {
+          order.push(tradeType);
+          byTrade.set(tradeType, { label: tradeLabel, items: [] });
+        }
+        byTrade.get(tradeType)!.items.push(it);
+      });
+      order.forEach((tradeType) => {
+        const g = byTrade.get(tradeType)!;
+        tradeGroups.push({
+          key: `trade:${tradeType}`,
+          kind: 'trade',
+          label: `${g.label} — Labor & Materials`,
+          selected: true,
+          expanded: false,
+          children: g.items,
+        });
+      });
     }
 
-    // Step 1: Scale line item COSTS up to SELLING PRICE (apply markup pro-rata).
-    // Estimate line items store internal costs; the customer-facing total is `selling_price`.
-    const costTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
-    const targetSellingPrice = enhancedEst?.selling_price
-      ? Number(enhancedEst.selling_price)
-      : sellingPrice;
-    const markupScale =
-      costTotal > 0 && targetSellingPrice > 0 ? targetSellingPrice / costTotal : 1;
-
-    const sellingPriceItems = baseItems.map((item) => {
-      if (markupScale === 1) return item;
-      const newTotal = Math.round(item.line_total * markupScale * 100) / 100;
-      const qty = Number(item.qty) || 1;
-      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
-      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+    // One group per approved change order.
+    const coGroups: InvoiceGroup[] = (approvedChangeOrders || []).map((co: any) => {
+      const children = parseChangeOrderLineItems(co);
+      const coLabel = co.co_number ? `CO #${co.co_number}` : 'CO';
+      const title = co.title ? ` — ${co.title}` : '';
+      return {
+        key: `co:${co.id}`,
+        kind: 'change_order' as const,
+        label: `${coLabel}${title}`,
+        selected: true,
+        expanded: false,
+        children,
+      };
     });
 
-    // Step 2: If prior payments/invoices exist, scale further to remaining balance.
-    const sellingTotal = sellingPriceItems.reduce((s, i) => s + i.line_total, 0);
-    const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-    const outstandingInvoiced = (invoices || [])
-      .filter((inv: any) => inv.status !== 'void')
-      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
-
-    const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
-    const balanceScale =
-      remaining > 0 && sellingTotal > 0 && remaining < sellingTotal
-        ? remaining / sellingTotal
-        : 1;
-
-    const scaled = sellingPriceItems.map((item) => {
-      if (balanceScale === 1) return item;
-      const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
-      const qty = Number(item.qty) || 1;
-      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
-      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
-    });
-
-    // Step 3: Append approved change-order line items at full selling price.
-    // COs are NOT pro-rata scaled — they represent extra-contract work that
-    // the customer owes on top of the base estimate.
-    const coItems = (approvedChangeOrders || []).flatMap((co: any) =>
-      parseChangeOrderLineItems(co)
-    );
-
-    setInvoiceLineItems([...scaled, ...coItems]);
+    setInvoiceGroups([...tradeGroups, ...coGroups]);
   }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
-      const selectedItems = invoiceLineItems.filter(i => i.selected);
-      if (selectedItems.length === 0) throw new Error('Select at least one line item');
-      
-      const amount = selectedItems.reduce((sum, i) => sum + i.line_total, 0);
+      const selectedGroups = invoiceGroups
+        .map((g) => ({ g, total: groupTotal(g) }))
+        .filter(({ g, total }) => g.selected && total > 0);
+      if (selectedGroups.length === 0) throw new Error('Select at least one line item');
+
+      const amount = Math.round(selectedGroups.reduce((s, { total }) => s + total, 0) * 100) / 100;
       if (amount <= 0) throw new Error('Invoice total must be greater than zero');
 
       // Get auth user directly to avoid profile mismatch
@@ -455,7 +465,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const invoiceCount = (invoices || []).length + 1;
       const invoiceNumber = `INV-${pipelineEntryId.slice(0, 6).toUpperCase()}-${String(invoiceCount).padStart(3, '0')}`;
       
-      const lineItemsPayload: InvoiceLineItem[] = selectedItems.map(({ selected: _selected, ...item }) => item);
+      const lineItemsPayload: InvoiceLineItem[] = selectedGroups.map(({ g, total }) => ({
+        description: g.label,
+        qty: 1,
+        unit: 'lot',
+        unit_cost: total,
+        line_total: total,
+      }));
 
       const { error } = await supabase.from('project_invoices').insert({
         tenant_id: activeTenantId!,
@@ -692,39 +708,90 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onError: (err: Error) => toast.error(err.message || 'Failed to record payment'),
   });
 
-  const updateLineItem = (index: number, field: keyof InvoiceLineItem, value: any) => {
-    setInvoiceLineItems(prev => {
-      const updated = [...prev];
-      (updated[index] as any)[field] = value;
-      if (field === 'qty' || field === 'unit_cost') {
-        updated[index].line_total = Number(updated[index].qty) * Number(updated[index].unit_cost);
-      }
-      return updated;
-    });
+  const toggleGroupSelected = (gIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => (i === gIdx ? { ...g, selected: !g.selected } : g))
+    );
   };
 
-  const toggleLineItem = (index: number) => {
-    setInvoiceLineItems(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], selected: !updated[index].selected };
-      return updated;
-    });
+  const toggleGroupExpanded = (gIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => (i === gIdx ? { ...g, expanded: !g.expanded } : g))
+    );
   };
 
-  const addCustomLineItem = () => {
-    setInvoiceLineItems(prev => [...prev, {
-      selected: true,
-      description: '',
-      qty: 1,
-      unit: 'ea',
-      unit_cost: 0,
-      line_total: 0,
-    }]);
+  const updateGroupLabel = (gIdx: number, label: string) => {
+    setInvoiceGroups((prev) => prev.map((g, i) => (i === gIdx ? { ...g, label } : g)));
   };
 
-  const removeLineItem = (index: number) => {
-    setInvoiceLineItems(prev => prev.filter((_, i) => i !== index));
+  const removeGroup = (gIdx: number) => {
+    setInvoiceGroups((prev) => prev.filter((_, i) => i !== gIdx));
   };
+
+  const toggleChildSelected = (gIdx: number, cIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => {
+        if (i !== gIdx) return g;
+        const children = g.children.map((c, j) =>
+          j === cIdx ? { ...c, selected: !c.selected } : c
+        );
+        return { ...g, children };
+      })
+    );
+  };
+
+  const updateChild = (
+    gIdx: number,
+    cIdx: number,
+    field: keyof InvoiceLineItem,
+    value: any
+  ) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) => {
+        if (i !== gIdx) return g;
+        const children = g.children.map((c, j) => {
+          if (j !== cIdx) return c;
+          const merged: any = { ...c, [field]: value };
+          if (field === 'qty' || field === 'unit_cost') {
+            merged.line_total =
+              Math.round((Number(merged.qty) || 0) * (Number(merged.unit_cost) || 0) * 100) / 100;
+          }
+          return merged;
+        });
+        return { ...g, children };
+      })
+    );
+  };
+
+  const removeChild = (gIdx: number, cIdx: number) => {
+    setInvoiceGroups((prev) =>
+      prev.map((g, i) =>
+        i === gIdx ? { ...g, children: g.children.filter((_, j) => j !== cIdx) } : g
+      )
+    );
+  };
+
+  const addCustomGroup = () => {
+    setInvoiceGroups((prev) => [
+      ...prev,
+      {
+        key: `custom:${Date.now()}`,
+        kind: 'custom',
+        label: 'Custom line',
+        selected: true,
+        expanded: true,
+        children: [
+          { selected: true, description: '', qty: 1, unit: 'ea', unit_cost: 0, line_total: 0 },
+        ],
+      },
+    ]);
+  };
+
+  // When "Show item details" is toggled, expand/collapse all groups.
+  useEffect(() => {
+    setInvoiceGroups((prev) => prev.map((g) => ({ ...g, expanded: showLineDetails })));
+  }, [showLineDetails]);
+
 
   const handleSendPaymentLink = async (invoice: any) => {
     setGeneratingLinkForInvoice(invoice.id);
@@ -939,7 +1006,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 </div>
               )}
 
-              {/* Line Items Table */}
+              {/* Grouped Line Items */}
               <div>
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold">Line Items</Label>
@@ -948,83 +1015,132 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       checked={showLineDetails}
                       onCheckedChange={(v) => setShowLineDetails(!!v)}
                     />
-                    Show qty &amp; price
+                    Show item details
                   </label>
                 </div>
-                {invoiceLineItems.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-3">No estimate found. Add line items manually.</p>
+                {invoiceGroups.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-3">No estimate or change orders found. Add a line manually.</p>
                 )}
                 <div className="mt-2 space-y-1">
-                  {/* Header */}
-                  {invoiceLineItems.length > 0 && (
-                    <div className={cn(
-                      "grid gap-1 text-xs font-medium text-muted-foreground px-1",
-                      showLineDetails
-                        ? "grid-cols-[28px_1fr_60px_60px_80px_90px_28px]"
-                        : "grid-cols-[28px_1fr_90px_28px]"
-                    )}>
-                      <div></div>
-                      <div>Description</div>
-                      {showLineDetails && <div className="text-right">Qty</div>}
-                      {showLineDetails && <div>Unit</div>}
-                      {showLineDetails && <div className="text-right">Price</div>}
-                      <div className="text-right">Total</div>
-                      <div></div>
-                    </div>
-                  )}
-                  {invoiceLineItems.map((item, idx) => (
-                    <div key={idx} className={cn(
-                      "grid gap-1 items-center px-1 py-1 rounded",
-                      showLineDetails
-                        ? "grid-cols-[28px_1fr_60px_60px_80px_90px_28px]"
-                        : "grid-cols-[28px_1fr_90px_28px]",
-                      !item.selected && "opacity-50"
-                    )}>
-                      <Checkbox
-                        checked={item.selected}
-                        onCheckedChange={() => toggleLineItem(idx)}
-                      />
-                      <Input
-                        value={item.description}
-                        onChange={e => updateLineItem(idx, 'description', e.target.value)}
-                        className="h-8 text-xs"
-                        placeholder="Description"
-                      />
-                      {showLineDetails && (
-                        <Input
-                          type="number"
-                          value={item.qty}
-                          onChange={e => updateLineItem(idx, 'qty', parseFloat(e.target.value) || 0)}
-                          className="h-8 text-xs text-right"
-                        />
-                      )}
-                      {showLineDetails && (
-                        <Input
-                          value={item.unit}
-                          onChange={e => updateLineItem(idx, 'unit', e.target.value)}
-                          className="h-8 text-xs"
-                        />
-                      )}
-                      {showLineDetails && (
-                        <Input
-                          type="number"
-                          value={item.unit_cost}
-                          onChange={e => updateLineItem(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                          className="h-8 text-xs text-right"
-                          step="0.01"
-                        />
-                      )}
-                      <p className="text-xs text-right font-medium">{formatCurrency(item.line_total)}</p>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeLineItem(idx)}>
-                        <Trash2 className="h-3 w-3 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  ))}
+                  {invoiceGroups.map((group, gIdx) => {
+                    const total = groupTotal(group);
+                    return (
+                      <div
+                        key={group.key}
+                        className={cn(
+                          'rounded border bg-muted/30',
+                          !group.selected && 'opacity-50'
+                        )}
+                      >
+                        {/* Group header row */}
+                        <div className="grid grid-cols-[28px_20px_1fr_110px_28px] gap-1 items-center px-2 py-2">
+                          <Checkbox
+                            checked={group.selected}
+                            onCheckedChange={() => toggleGroupSelected(gIdx)}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => toggleGroupExpanded(gIdx)}
+                            aria-label={group.expanded ? 'Collapse' : 'Expand'}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                'h-4 w-4 transition-transform',
+                                !group.expanded && '-rotate-90'
+                              )}
+                            />
+                          </Button>
+                          <Input
+                            value={group.label}
+                            onChange={(e) => updateGroupLabel(gIdx, e.target.value)}
+                            className="h-8 text-xs font-medium"
+                          />
+                          <p className="text-sm text-right font-semibold">
+                            {formatCurrency(total)}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => removeGroup(gIdx)}
+                          >
+                            <Trash2 className="h-3 w-3 text-muted-foreground" />
+                          </Button>
+                        </div>
+
+                        {/* Children (expanded) */}
+                        {group.expanded && group.children.length > 0 && (
+                          <div className="border-t bg-background px-2 py-2 space-y-1">
+                            <div className="grid grid-cols-[28px_1fr_60px_60px_80px_90px_28px] gap-1 text-[10px] uppercase font-medium text-muted-foreground px-1">
+                              <div></div>
+                              <div>Description</div>
+                              <div className="text-right">Qty</div>
+                              <div>Unit</div>
+                              <div className="text-right">Price</div>
+                              <div className="text-right">Total</div>
+                              <div></div>
+                            </div>
+                            {group.children.map((item, cIdx) => (
+                              <div
+                                key={cIdx}
+                                className={cn(
+                                  'grid grid-cols-[28px_1fr_60px_60px_80px_90px_28px] gap-1 items-center px-1 py-1 rounded',
+                                  !item.selected && 'opacity-50'
+                                )}
+                              >
+                                <Checkbox
+                                  checked={item.selected}
+                                  onCheckedChange={() => toggleChildSelected(gIdx, cIdx)}
+                                />
+                                <Input
+                                  value={item.description}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'description', e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                                <Input
+                                  type="number"
+                                  value={item.qty}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'qty', parseFloat(e.target.value) || 0)}
+                                  className="h-7 text-xs text-right"
+                                />
+                                <Input
+                                  value={item.unit}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'unit', e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                                <Input
+                                  type="number"
+                                  value={item.unit_cost}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'unit_cost', parseFloat(e.target.value) || 0)}
+                                  className="h-7 text-xs text-right"
+                                  step="0.01"
+                                />
+                                <p className="text-xs text-right font-medium">
+                                  {formatCurrency(item.line_total)}
+                                </p>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => removeChild(gIdx, cIdx)}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={addCustomLineItem}>
+                <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={addCustomGroup}>
                   <Plus className="h-3 w-3 mr-1" /> Add Line Item
                 </Button>
               </div>
+
 
               <Separator />
 
