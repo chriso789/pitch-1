@@ -1154,37 +1154,47 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
         {innerTraceFired && sourceCtxDebug && (
           <details
             className="group rounded-md border border-destructive/40 bg-destructive/5 p-3"
+            data-pdf-exclude="true"
             open
           >
             <summary className="cursor-pointer text-xs font-bold text-destructive">
               Perimeter inner-trace debug payload (full gate context) ▸
             </summary>
-            <pre className="mt-2 max-h-96 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+            <pre className="mt-2 max-h-96 overflow-auto rounded border bg-background text-foreground p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
               {JSON.stringify(sourceCtxDebug, null, 2)}
             </pre>
           </details>
         )}
 
         {acquisitionAudit && (
-          <details className="group rounded-md border bg-muted/20 p-3">
+          <details
+            className="group rounded-md border bg-muted/20 p-3"
+            data-pdf-exclude="true"
+          >
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
-              Source acquisition audit ▸
+              Source acquisition audit — diagnostic JSON ▸
             </summary>
-            <pre className="mt-2 max-h-72 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+            <pre className="mt-2 max-h-72 overflow-auto rounded border bg-background text-foreground p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
               {JSON.stringify({ acquisition_audit: acquisitionAudit, source_acquisition_debug: sourceAcquisitionDebug }, null, 2)}
             </pre>
           </details>
         )}
 
         {/* Raw geometry_report_json dump for ChatGPT analysis */}
-        <details className="group">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
-            Raw JSON (for analysis) ▸
-          </summary>
-          <pre className="mt-2 max-h-60 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
-            {JSON.stringify(grj, null, 2)}
-          </pre>
-        </details>
+        <div data-pdf-exclude="true">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+            Raw JSON — diagnostic payload
+          </div>
+          <details className="group">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+              Raw JSON (for analysis) ▸
+            </summary>
+            <pre className="mt-2 max-h-60 overflow-auto rounded border bg-background text-foreground p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+              {JSON.stringify(grj, null, 2)}
+            </pre>
+          </details>
+        </div>
+
       </div>
     </div>
   );
