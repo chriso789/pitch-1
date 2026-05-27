@@ -188,41 +188,12 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     dsm_tile_bounds_lat_lng = fromMetadata;
     dsm_bounds_source = "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
-  } else if (
-    allowDerived &&
-    input.confirmedCenterLatLng &&
-    dsm_size_px &&
-    isNum(dsm_meters_per_pixel ?? NaN) &&
-    dsm_mpp_source === "decoded_dsm_grid"
-  ) {
-    const derived = deriveBoundsFromCenterAndMpp(input.confirmedCenterLatLng, dsm_size_px, dsm_meters_per_pixel!);
-    if (derived) {
-      dsm_tile_bounds_lat_lng = derived;
-      dsm_bounds_source = "derived_from_confirmed_center_and_mpp";
-      dsm_bounds_derived = true;
-      dsm_bounds_warning = "derived_bounds_lower_confidence";
-      dsm_bounds_confidence = 0.7;
-    }
-  } else if (
-    allowDerived &&
-    input.confirmedCenterLatLng &&
-    dsm_size_px &&
-    isNum(input.rasterMetersPerPixel ?? NaN)
-  ) {
-    const derived = deriveBoundsFromCenterAndMpp(input.confirmedCenterLatLng, dsm_size_px, input.rasterMetersPerPixel!);
-    if (derived) {
-      dsm_tile_bounds_lat_lng = derived;
-      dsm_bounds_source = "derived_from_dsm_bbox_and_static_mpp";
-      dsm_bounds_derived = true;
-      dsm_bounds_warning = "derived_bounds_lower_confidence";
-      dsm_bounds_confidence = 0.4;
-    }
   }
 
-  // Final fallback: derive DSM bounds from the raster (static map) footprint.
-  // DSM and Solar static raster share the same Solar tile footprint, so when
-  // metadata is missing but the raster overlay is aligned, the raster bounds
-  // are a controlled-confidence stand-in.
+  // dsm-registration-derived-bounds-v1: when metadata is missing but the
+  // raster (static map) overlay is aligned, the raster bounds + size are the
+  // highest-confidence stand-in (DSM and Solar static raster share the same
+  // Solar tile footprint). Try this BEFORE the looser center+mpp derivations.
   if (
     !dsm_tile_bounds_lat_lng &&
     allowDerived &&
@@ -254,6 +225,40 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     }
     failure_tokens.push("dsm_tile_bounds_derived_from_raster_bounds");
   }
+
+  if (
+    !dsm_tile_bounds_lat_lng &&
+    allowDerived &&
+    input.confirmedCenterLatLng &&
+    dsm_size_px &&
+    isNum(dsm_meters_per_pixel ?? NaN) &&
+    dsm_mpp_source === "decoded_dsm_grid"
+  ) {
+    const derived = deriveBoundsFromCenterAndMpp(input.confirmedCenterLatLng, dsm_size_px, dsm_meters_per_pixel!);
+    if (derived) {
+      dsm_tile_bounds_lat_lng = derived;
+      dsm_bounds_source = "derived_from_confirmed_center_and_mpp";
+      dsm_bounds_derived = true;
+      dsm_bounds_warning = "derived_bounds_lower_confidence";
+      dsm_bounds_confidence = 0.7;
+    }
+  } else if (
+    !dsm_tile_bounds_lat_lng &&
+    allowDerived &&
+    input.confirmedCenterLatLng &&
+    dsm_size_px &&
+    isNum(input.rasterMetersPerPixel ?? NaN)
+  ) {
+    const derived = deriveBoundsFromCenterAndMpp(input.confirmedCenterLatLng, dsm_size_px, input.rasterMetersPerPixel!);
+    if (derived) {
+      dsm_tile_bounds_lat_lng = derived;
+      dsm_bounds_source = "derived_from_dsm_bbox_and_static_mpp";
+      dsm_bounds_derived = true;
+      dsm_bounds_warning = "derived_bounds_lower_confidence";
+      dsm_bounds_confidence = 0.4;
+    }
+  }
+
 
 
   const decodedButBoundsMissing =
