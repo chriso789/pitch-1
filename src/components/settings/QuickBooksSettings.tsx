@@ -75,6 +75,22 @@ export default function QuickBooksSettings() {
   const [returnStatus, setReturnStatus] = useState<{ status: string; reason?: string } | null>(null);
 
   useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (uid) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', uid)
+          .single();
+        setTenantId((prof as any)?.tenant_id ?? null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('provider') === 'qbo' && params.get('status')) {
       setReturnStatus({ status: params.get('status') as string, reason: params.get('reason') ?? undefined });
@@ -95,6 +111,7 @@ export default function QuickBooksSettings() {
       window.history.replaceState({}, '', url.toString());
     }
   }, [toast]);
+
 
   const runDiagnostic = async () => {
     try {
@@ -198,102 +215,17 @@ export default function QuickBooksSettings() {
     }
   };
 
-  const handleConnect = async () => {
-    try {
-      setConnecting(true);
-
-      const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
-        body: { action: 'initiate', mode: selectedMode },
-      });
-
-      if (error) throw error;
-
-      setLastAuthUrl(data.authUrl);
-      console.log('[QBO] Auth URL:', data.authUrl);
-
-      // Open OAuth in a popup. The callback page (https://pitch-crm.ai/quickbooks/callback)
-      // posts a message back here and we finish the exchange.
-      const width = 600;
-      const height = 700;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      const authWindow = window.open(
-        data.authUrl,
-        'qbo-oauth',
-        `popup=yes,width=${width},height=${height},left=${left},top=${top}`
-      );
-
-      if (!authWindow) {
-        toast({
-          title: 'Popup blocked',
-          description: 'Please allow popups for this site and try again.',
-          variant: 'destructive',
-        });
-        setConnecting(false);
-        return;
-      }
-
-      const handleMessage = async (event: MessageEvent) => {
-        // Accept messages only from our callback origin(s).
-        const okOrigins = [
-          'https://pitch-crm.ai',
-          'https://www.pitch-crm.ai',
-          window.location.origin,
-        ];
-        if (!okOrigins.includes(event.origin)) return;
-
-        if (event.data?.type === 'qbo-oauth-success') {
-          const { code, realmId } = event.data;
-          try {
-            const { error: callbackError } = await supabase.functions.invoke('qbo-oauth-connect', {
-              body: { action: 'callback', code, realmId, state: data.state },
-            });
-            if (callbackError) throw callbackError;
-
-            toast({
-              title: 'Connected to QuickBooks',
-              description: 'Your QuickBooks account has been connected successfully.',
-            });
-            await loadConnection();
-          } catch (e: any) {
-            toast({
-              title: 'Connection Failed',
-              description: await extractFnError(e),
-              variant: 'destructive',
-            });
-          } finally {
-            window.removeEventListener('message', handleMessage);
-            try { authWindow?.close(); } catch {}
-            setConnecting(false);
-          }
-        } else if (event.data?.type === 'qbo-oauth-error') {
-          toast({
-            title: 'QuickBooks connection failed',
-            description: event.data.description ?? event.data.error ?? 'Unknown error',
-            variant: 'destructive',
-          });
-          window.removeEventListener('message', handleMessage);
-          setConnecting(false);
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-    } catch (error: any) {
-      console.error('Error connecting to QuickBooks:', error);
-      const description = await extractFnError(error);
+  const openConnectDialog = () => {
+    if (!userId || !tenantId) {
       toast({
-        title: 'Connection Failed',
-        description,
+        title: 'Not ready',
+        description: 'Loading your profile — try again in a moment.',
         variant: 'destructive',
       });
-      setConnecting(false);
+      return;
     }
+    setConnectOpen(true);
   };
-
-
-
-
 
   const handleDisconnect = async () => {
     try {
@@ -327,15 +259,15 @@ export default function QuickBooksSettings() {
       setConnection(null);
       toast({
         title: 'Disconnected',
-        description: 'Sign in with a different QuickBooks account in the popup. If Intuit auto-signs you in, click "Sign in with a different account" on Intuit.',
+        description: 'Review the legal acceptances again to connect a different QuickBooks account.',
       });
-      // Kick off a fresh OAuth flow immediately.
-      await handleConnect();
+      openConnectDialog();
     } catch (error: any) {
       const description = await extractFnError(error);
       toast({ title: 'Error', description, variant: 'destructive' });
     }
   };
+
 
 
   const handleMappingChange = (jobType: string, itemId: string, itemName: string) => {
@@ -515,19 +447,17 @@ export default function QuickBooksSettings() {
                 </p>
               </div>
               <Button
-                onClick={handleConnect}
-                disabled={connecting}
+                onClick={openConnectDialog}
+                disabled={connecting || !userId || !tenantId}
                 className="w-full"
               >
-                {connecting ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  `Connect to QuickBooks (${selectedMode})`
-                )}
+                Review legal terms & connect to QuickBooks ({selectedMode})
               </Button>
+              <p className="text-xs text-muted-foreground">
+                You will be asked to accept the Privacy Policy, Terms of Service, and
+                QuickBooks Integration Consent before being redirected to Intuit.
+              </p>
+
 
               {/* Diagnostic panel */}
               <div className="rounded-md border border-dashed p-3 text-xs space-y-2 bg-muted/30">
@@ -636,6 +566,19 @@ export default function QuickBooksSettings() {
           </CardContent>
         </Card>
       )}
+
+      {userId && tenantId && (
+        <QuickBooksConnectDialog
+          open={connectOpen}
+          onOpenChange={setConnectOpen}
+          tenantId={tenantId}
+          userId={userId}
+          defaultMode={selectedMode}
+          hasDevelopmentCredentials={!!(verifyInfo?.has_development_credentials || verifyInfo?.has_legacy_credentials)}
+          hasProductionCredentials={!!(verifyInfo?.has_production_credentials || verifyInfo?.has_legacy_credentials)}
+        />
+      )}
     </div>
   );
 }
+
