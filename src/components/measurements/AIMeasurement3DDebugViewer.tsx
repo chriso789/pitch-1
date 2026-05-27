@@ -726,7 +726,7 @@ function ViewerBody({
       {/* CENTER: canvas */}
       <div className="flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm flex-wrap">
             <Eye className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">{stage?.label}</span>
             <Badge
@@ -739,6 +739,14 @@ function ViewerBody({
               {statusIcon[stage?.status || "unknown"]}
               {stage?.status}
             </Badge>
+            {stage?.payload?.debug_geometry_only === true && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 gap-1 bg-amber-500/15 text-amber-700 border-amber-500/40 uppercase tracking-wide"
+              >
+                Debug geometry only — not customer validated
+              </Badge>
+            )}
           </div>
           <div className="text-xs text-muted-foreground">
             Run: {measurement?.id?.slice(0, 8)} · engine{" "}
