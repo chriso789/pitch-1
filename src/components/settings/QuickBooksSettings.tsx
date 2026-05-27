@@ -261,6 +261,7 @@ export default function QuickBooksSettings() {
       });
       if (error) throw error;
       setConnection(null);
+      setReauthRequired(false);
       toast({
         title: 'Disconnected',
         description: 'Review the legal acceptances again to connect a different QuickBooks account.',
@@ -269,6 +270,50 @@ export default function QuickBooksSettings() {
     } catch (error: any) {
       const description = await extractFnError(error);
       toast({ title: 'Error', description, variant: 'destructive' });
+    }
+  };
+
+  const handleRefreshToken = async () => {
+    setRefreshingToken(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-oauth-connect', {
+        body: { action: 'refresh' },
+      });
+      if (error) {
+        const description = await extractFnError(error);
+        if (/reauth_required/i.test(description)) {
+          setReauthRequired(true);
+          toast({
+            title: 'Reauthorization required',
+            description: 'QuickBooks rejected the saved refresh token. Reconnect to continue syncing.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({ title: 'Refresh failed', description, variant: 'destructive' });
+        }
+        return;
+      }
+      if (data?.error === 'reauth_required') {
+        setReauthRequired(true);
+        toast({
+          title: 'Reauthorization required',
+          description: 'QuickBooks rejected the saved refresh token. Reconnect to continue syncing.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setReauthRequired(false);
+      toast({ title: 'Token refreshed', description: 'QuickBooks access token is fresh.' });
+      // Pull updated timestamps into the banner.
+      try {
+        const { data: v } = await supabase.functions.invoke('qbo-oauth-connect', { body: { action: 'verify' } });
+        if (v) setVerifyInfo(v);
+      } catch { /* ignore */ }
+    } catch (e: any) {
+      const description = await extractFnError(e);
+      toast({ title: 'Refresh failed', description, variant: 'destructive' });
+    } finally {
+      setRefreshingToken(false);
     }
   };
 
