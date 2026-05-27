@@ -323,6 +323,11 @@ export function mergeEarlyDsmRegistrationIntoDebug(
   early: EarlyDsmRegistrationResult | null | undefined,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...(debug ?? {}) };
+  // Always surface gate inputs if the caller attached them (skipped or not).
+  const gateInputs = (early as any)?.gate_inputs ?? null;
+  if (gateInputs) {
+    (out as any).derived_bounds_gate_inputs = gateInputs;
+  }
   if (!early || !early.success) {
     if (early && !early.success) {
       (out as any).dsm_registration_callsite_attempted =
@@ -359,3 +364,4 @@ export function mergeEarlyDsmRegistrationIntoDebug(
     f.dsm_bounds_warning;
   return out;
 }
+
