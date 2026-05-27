@@ -45,10 +45,8 @@ function makeEarlyInput(frame: string | null): EarlyDsmRegistrationInput {
     dsm_size_px: { width: 998, height: 998 },
     dsm_meters_per_pixel: 0.15,
     raster_bounds_lat_lng: {
-      north: 28.01,
-      south: 27.99,
-      east: -82.71,
-      west: -82.73,
+      sw: { lat: 27.99, lng: -82.73 },
+      ne: { lat: 28.01, lng: -82.71 },
     },
     raster_size_px: { width: 1280, height: 1280 },
     raster_meters_per_pixel: 0.15,
