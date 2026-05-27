@@ -49,7 +49,14 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
         p_pipeline_entry_id: pipelineEntryId,
       });
       if (error) throw error;
-      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number } | null;
+      return data as {
+        materials: number;
+        labor: number;
+        sale_price: number;
+        base_sale_price?: number;
+        change_orders_total?: number;
+        sales_tax_amount: number;
+      } | null;
     },
     enabled: !!pipelineEntryId,
   });
@@ -92,12 +99,16 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   const approvedCOs = (changeOrders || []).filter(
     (co: any) => APPROVED_STATUSES.has(String(co.status || '').toLowerCase()) || co.customer_approved === true
   );
-  const coBudgetTotal = approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
+  const approvedCoLocalTotal = approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
 
-  const baseSellingPrice = barData?.sale_price ?? 0;
+  // The RPC's sale_price ALREADY includes approved CO cost_impact. Do NOT add it
+  // again here or the contract value will be double-counted (e.g. $113k base + $14.4k CO
+  // would incorrectly show as $141.8k instead of $127.4k).
+  const contractValue = barData?.sale_price ?? 0;
+  const baseSellingPrice = barData?.base_sale_price ?? (contractValue - (barData?.change_orders_total ?? 0));
+  const coBudgetTotal = barData?.change_orders_total ?? approvedCoLocalTotal;
   const materialCost = barData?.materials ?? 0;
   const laborCost = barData?.labor ?? 0;
-  const contractValue = baseSellingPrice + coBudgetTotal;
   const totalPaid = (payments || []).reduce((s, p) => s + Number(p.amount), 0);
   const balance = contractValue - totalPaid;
 
