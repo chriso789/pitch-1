@@ -84,25 +84,36 @@ export const CalcTemplateDetailsPanel: React.FC<CalcTemplateDetailsPanelProps> =
           />
         </div>
 
-        {/* Roof Type */}
-        <div className="space-y-2">
-          <Label>Roof Type</Label>
-          <Select
-            value={template.roof_type}
-            onValueChange={(value) => onUpdate({ roof_type: value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROOF_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Material Type (Roof or Siding depending on template trade) */}
+        {(() => {
+          const siding = isSidingTemplate(template);
+          const options = siding ? SIDING_TYPES : ROOF_TYPES;
+          const label = siding ? 'Siding Type' : 'Roof Type';
+          // If template's current value doesn't belong to the active list, fall back to 'other'
+          const currentValue = options.some((o) => o.value === template.roof_type)
+            ? template.roof_type
+            : 'other';
+          return (
+            <div className="space-y-2">
+              <Label>{label}</Label>
+              <Select
+                value={currentValue}
+                onValueChange={(value) => onUpdate({ roof_type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })()}
 
         {/* Category */}
         <div className="space-y-2">
