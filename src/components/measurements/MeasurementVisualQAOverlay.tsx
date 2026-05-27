@@ -671,8 +671,23 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
       })
     : { mismatch: false, distancePx: 0, tolerancePx: 0 };
   const firstPt = rawRing[0];
-  const projectedFirst = firstPt ? [firstPt[0] * scale, firstPt[1] * scale] : null;
+  // Crop-aware display projection: subtract the active viewport offset so
+  // Roof Focus displayed coordinates land INSIDE the visible canvas
+  // (not at full-raster coordinates that exceed the cropped viewport).
+  const projectedFirst = firstPt
+    ? [(firstPt[0] - viewportSrc.minX) * scale, (firstPt[1] - viewportSrc.minY) * scale]
+    : null;
   const bb = bboxOf(rawRing);
+  const bbDisp = bb
+    ? { cx: (bb.cx - viewportSrc.minX) * scale, cy: (bb.cy - viewportSrc.minY) * scale }
+    : null;
+
+  // Overlay Truth — the resolved frame source the report JSON authoritatively
+  // exposes. Mirrors the backend early-DSM gate's resolveFrameMismatch so the
+  // banner, debug card and gate read the same source.
+  const overlayFrameResolution = resolveFrameMismatch(grj);
+  const dsmTransformAvailable = dsmAllowed;
+
 
   return (
     <Card className="overflow-hidden">
