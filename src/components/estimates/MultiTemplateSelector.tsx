@@ -1799,13 +1799,19 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setIsCreatingNewEstimate(false);
       resetToOriginal();
 
-    } catch (error) {
-      console.error('Error creating estimate:', error);
+    } catch (error: any) {
+      console.error('Error creating estimate:', error, {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+      });
       setShowPDFTemplate(false);
       setPdfData(null);
+      const detail = error?.message || error?.details || error?.hint || 'Unknown error';
       toast({
-        title: 'Error',
-        description: 'Failed to create estimate',
+        title: 'Failed to create estimate',
+        description: detail,
         variant: 'destructive'
       });
     } finally {
