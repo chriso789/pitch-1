@@ -135,12 +135,47 @@ export function gatherDerivedBoundsGateInputs(
     gateTp.geo_to_raster_transform,
   );
 
-  const frameMismatchRaw = g.overlay_transform?.frame_mismatch ??
-    g.overlay_debug?.frame_mismatch ??
-    g.frame_mismatch ??
-    reg.frame_mismatch;
-  const frame_mismatch_ok = frameMismatchRaw === "ok" ||
+  // Unified frame-mismatch resolution — mirrors the early-DSM gate so a single
+  // source of truth decides whether the overlay frame is OK. Reads the live
+  // overlay_transform + registration.transform_package paths (raster_px on
+  // both ends, source raster size present, target_mask_overlap >= 0.9) before
+  // falling back to the legacy dsmCoordinateMatchDebug bag.
+  const dsmCoordinateMatchDebugForFrame = g.dsm_coordinate_match ??
+    g.source_acquisition_debug?.dsm_coordinate_match ?? null;
+  const geometryViewForFrame = {
+    ...g,
+    registration: {
+      ...(g.registration ?? {}),
+      transform_package: {
+        ...(g.registration?.transform_package ?? {}),
+        ...regTp,
+        coordinate_space_candidate:
+          g.registration?.transform_package?.coordinate_space_candidate ??
+            regTp?.coordinate_space_candidate ??
+            g.coordinate_space_candidate,
+        coordinate_space_renderer:
+          g.registration?.transform_package?.coordinate_space_renderer ??
+            regTp?.coordinate_space_renderer ??
+            g.coordinate_space_renderer,
+        raster_size_px: g.registration?.transform_package?.raster_size_px ??
+          regTp?.raster_size_px ?? raster_size_px,
+        raster_bounds_contain_confirmed_center:
+          g.registration?.transform_package
+            ?.raster_bounds_contain_confirmed_center ??
+            regTp?.raster_bounds_contain_confirmed_center,
+      },
+    },
+  };
+  const frameResolution = resolveFrameMismatch(
+    geometryViewForFrame,
+    dsmCoordinateMatchDebugForFrame,
+  );
+  const frame_mismatch_ok = frameResolution.frame_mismatch_ok ||
     g.frame_mismatch_ok === true;
+  const frame_mismatch_source = frameResolution.frame_mismatch_source;
+  const frame_mismatch_raw = frameResolution.frame_mismatch_raw;
+  const raster_registration_evidence =
+    frameResolution.raster_registration_evidence;
 
   const target_mask_overlap = firstFinite(
     g.target_mask_overlap_with_perimeter,
@@ -181,6 +216,9 @@ export function gatherDerivedBoundsGateInputs(
     raster_meters_per_pixel,
     geo_to_raster_transform,
     frame_mismatch_ok,
+    frame_mismatch_source,
+    frame_mismatch_raw,
+    raster_registration_evidence,
     target_mask_overlap,
     confirmed_roof_center_lat_lng,
     confirmed_roof_center_px,
