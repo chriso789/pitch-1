@@ -644,47 +644,81 @@ function ViewerBody({
       {/* LEFT: stage timeline */}
       <div className="border-r overflow-y-auto">
         <ScrollArea className="h-full">
-          <div className="p-3 space-y-1">
-            {stages.map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => setActiveStage(s.id)}
-                className={cn(
-                  "w-full text-left px-3 py-2 rounded-md border text-sm transition-colors",
-                  "flex items-start gap-2",
-                  activeStage === s.id
-                    ? "bg-primary/10 border-primary/40"
-                    : "border-transparent hover:bg-muted",
-                )}
-              >
-                <span className="text-xs text-muted-foreground w-5 mt-0.5">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{s.label}</div>
-                  {s.source && (
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      src: {s.source}
-                    </div>
-                  )}
-                  {s.reason && (
-                    <div className="text-[11px] text-destructive truncate">
-                      {s.reason}
-                    </div>
-                  )}
+          <div className="p-3 space-y-4">
+            {STAGE_GROUPS.map((group) => {
+              const groupStages = group.stageIds
+                .map((id) => stages.find((s) => s.id === id))
+                .filter((s): s is StageDef => !!s);
+              if (groupStages.length === 0) return null;
+              const rollup = rollupStatus(groupStages.map((s) => s.status));
+              return (
+                <div key={group.key} className="space-y-1">
+                  <div className="flex items-center justify-between px-1 pb-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {group.label}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] px-1.5 py-0 gap-1",
+                        statusColor[rollup],
+                      )}
+                    >
+                      {statusIcon[rollup]}
+                      {rollup}
+                    </Badge>
+                  </div>
+                  {groupStages.map((s) => {
+                    const i = stages.findIndex((x) => x.id === s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setActiveStage(s.id)}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded-md border text-sm transition-colors",
+                          "flex items-start gap-2",
+                          activeStage === s.id
+                            ? "bg-primary/10 border-primary/40"
+                            : "border-transparent hover:bg-muted",
+                        )}
+                      >
+                        <span className="text-xs text-muted-foreground w-5 mt-0.5">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{s.label}</div>
+                          {s.source && (
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              src: {s.source}
+                            </div>
+                          )}
+                          {s.reason && (
+                            <div className={cn(
+                              "text-[11px] truncate",
+                              s.status === "partial" || s.status === "warn"
+                                ? "text-amber-600"
+                                : "text-destructive",
+                            )}>
+                              {s.reason}
+                            </div>
+                          )}
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] px-1.5 py-0 gap-1",
+                            statusColor[s.status],
+                          )}
+                        >
+                          {statusIcon[s.status]}
+                          {s.status}
+                        </Badge>
+                      </button>
+                    );
+                  })}
                 </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px] px-1.5 py-0 gap-1",
-                    statusColor[s.status],
-                  )}
-                >
-                  {statusIcon[s.status]}
-                  {s.status}
-                </Badge>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       </div>
