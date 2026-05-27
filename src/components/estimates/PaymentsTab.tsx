@@ -1006,7 +1006,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 </div>
               )}
 
-              {/* Line Items Table */}
+              {/* Grouped Line Items */}
               <div>
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold">Line Items</Label>
@@ -1015,83 +1015,132 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       checked={showLineDetails}
                       onCheckedChange={(v) => setShowLineDetails(!!v)}
                     />
-                    Show qty &amp; price
+                    Show item details
                   </label>
                 </div>
-                {invoiceLineItems.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-3">No estimate found. Add line items manually.</p>
+                {invoiceGroups.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-3">No estimate or change orders found. Add a line manually.</p>
                 )}
                 <div className="mt-2 space-y-1">
-                  {/* Header */}
-                  {invoiceLineItems.length > 0 && (
-                    <div className={cn(
-                      "grid gap-1 text-xs font-medium text-muted-foreground px-1",
-                      showLineDetails
-                        ? "grid-cols-[28px_1fr_60px_60px_80px_90px_28px]"
-                        : "grid-cols-[28px_1fr_90px_28px]"
-                    )}>
-                      <div></div>
-                      <div>Description</div>
-                      {showLineDetails && <div className="text-right">Qty</div>}
-                      {showLineDetails && <div>Unit</div>}
-                      {showLineDetails && <div className="text-right">Price</div>}
-                      <div className="text-right">Total</div>
-                      <div></div>
-                    </div>
-                  )}
-                  {invoiceLineItems.map((item, idx) => (
-                    <div key={idx} className={cn(
-                      "grid gap-1 items-center px-1 py-1 rounded",
-                      showLineDetails
-                        ? "grid-cols-[28px_1fr_60px_60px_80px_90px_28px]"
-                        : "grid-cols-[28px_1fr_90px_28px]",
-                      !item.selected && "opacity-50"
-                    )}>
-                      <Checkbox
-                        checked={item.selected}
-                        onCheckedChange={() => toggleLineItem(idx)}
-                      />
-                      <Input
-                        value={item.description}
-                        onChange={e => updateLineItem(idx, 'description', e.target.value)}
-                        className="h-8 text-xs"
-                        placeholder="Description"
-                      />
-                      {showLineDetails && (
-                        <Input
-                          type="number"
-                          value={item.qty}
-                          onChange={e => updateLineItem(idx, 'qty', parseFloat(e.target.value) || 0)}
-                          className="h-8 text-xs text-right"
-                        />
-                      )}
-                      {showLineDetails && (
-                        <Input
-                          value={item.unit}
-                          onChange={e => updateLineItem(idx, 'unit', e.target.value)}
-                          className="h-8 text-xs"
-                        />
-                      )}
-                      {showLineDetails && (
-                        <Input
-                          type="number"
-                          value={item.unit_cost}
-                          onChange={e => updateLineItem(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                          className="h-8 text-xs text-right"
-                          step="0.01"
-                        />
-                      )}
-                      <p className="text-xs text-right font-medium">{formatCurrency(item.line_total)}</p>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeLineItem(idx)}>
-                        <Trash2 className="h-3 w-3 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  ))}
+                  {invoiceGroups.map((group, gIdx) => {
+                    const total = groupTotal(group);
+                    return (
+                      <div
+                        key={group.key}
+                        className={cn(
+                          'rounded border bg-muted/30',
+                          !group.selected && 'opacity-50'
+                        )}
+                      >
+                        {/* Group header row */}
+                        <div className="grid grid-cols-[28px_20px_1fr_110px_28px] gap-1 items-center px-2 py-2">
+                          <Checkbox
+                            checked={group.selected}
+                            onCheckedChange={() => toggleGroupSelected(gIdx)}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => toggleGroupExpanded(gIdx)}
+                            aria-label={group.expanded ? 'Collapse' : 'Expand'}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                'h-4 w-4 transition-transform',
+                                !group.expanded && '-rotate-90'
+                              )}
+                            />
+                          </Button>
+                          <Input
+                            value={group.label}
+                            onChange={(e) => updateGroupLabel(gIdx, e.target.value)}
+                            className="h-8 text-xs font-medium"
+                          />
+                          <p className="text-sm text-right font-semibold">
+                            {formatCurrency(total)}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => removeGroup(gIdx)}
+                          >
+                            <Trash2 className="h-3 w-3 text-muted-foreground" />
+                          </Button>
+                        </div>
+
+                        {/* Children (expanded) */}
+                        {group.expanded && group.children.length > 0 && (
+                          <div className="border-t bg-background px-2 py-2 space-y-1">
+                            <div className="grid grid-cols-[28px_1fr_60px_60px_80px_90px_28px] gap-1 text-[10px] uppercase font-medium text-muted-foreground px-1">
+                              <div></div>
+                              <div>Description</div>
+                              <div className="text-right">Qty</div>
+                              <div>Unit</div>
+                              <div className="text-right">Price</div>
+                              <div className="text-right">Total</div>
+                              <div></div>
+                            </div>
+                            {group.children.map((item, cIdx) => (
+                              <div
+                                key={cIdx}
+                                className={cn(
+                                  'grid grid-cols-[28px_1fr_60px_60px_80px_90px_28px] gap-1 items-center px-1 py-1 rounded',
+                                  !item.selected && 'opacity-50'
+                                )}
+                              >
+                                <Checkbox
+                                  checked={item.selected}
+                                  onCheckedChange={() => toggleChildSelected(gIdx, cIdx)}
+                                />
+                                <Input
+                                  value={item.description}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'description', e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                                <Input
+                                  type="number"
+                                  value={item.qty}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'qty', parseFloat(e.target.value) || 0)}
+                                  className="h-7 text-xs text-right"
+                                />
+                                <Input
+                                  value={item.unit}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'unit', e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                                <Input
+                                  type="number"
+                                  value={item.unit_cost}
+                                  onChange={(e) => updateChild(gIdx, cIdx, 'unit_cost', parseFloat(e.target.value) || 0)}
+                                  className="h-7 text-xs text-right"
+                                  step="0.01"
+                                />
+                                <p className="text-xs text-right font-medium">
+                                  {formatCurrency(item.line_total)}
+                                </p>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => removeChild(gIdx, cIdx)}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={addCustomLineItem}>
+                <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={addCustomGroup}>
                   <Plus className="h-3 w-3 mr-1" /> Add Line Item
                 </Button>
               </div>
+
 
               <Separator />
 
