@@ -536,6 +536,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                 <Checkbox
                   checked={isSelected}
                   onCheckedChange={() => handleSelectEstimate(estimate.id)}
+                  disabled={estimate.is_recovered_pdf}
                   className="h-4 w-4 shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -619,6 +620,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       }
                       onEditEstimate?.(estimate.id);
                     }}
+                    disabled={estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0"
                     title="Edit"
                   >
@@ -631,7 +633,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       e.stopPropagation();
                       handleDuplicateEstimate(estimate.id);
                     }}
-                    disabled={duplicatingId === estimate.id}
+                    disabled={duplicatingId === estimate.id || estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0"
                     title="Duplicate"
                   >
@@ -653,6 +655,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                         setDeleteDialogOpen(true);
                       }
                     }}
+                    disabled={estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     title="Delete"
                   >
@@ -663,10 +666,14 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onShareEstimate?.(estimate.id);
+                      if (estimate.is_recovered_pdf && estimate.pdf_url) {
+                        handleViewPDF(estimate.pdf_url);
+                      } else {
+                        onShareEstimate?.(estimate.id);
+                      }
                     }}
                     className="h-6 w-6 p-0"
-                    title="Share"
+                    title={estimate.is_recovered_pdf ? 'Open recovered PDF' : 'Share'}
                   >
                     <ExternalLink className="h-3 w-3" />
                   </Button>
