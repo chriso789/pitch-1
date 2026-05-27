@@ -385,7 +385,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         : [];
 
     if (baseItems.length === 0) {
-      setInvoiceLineItems([]);
+      const coOnly = (approvedChangeOrders || []).flatMap((co: any) =>
+        parseChangeOrderLineItems(co)
+      );
+      setInvoiceLineItems(coOnly);
       return;
     }
 
