@@ -18,6 +18,8 @@ export interface RegistrationBlock {
   confirmed_center_inside_candidate?: boolean | null;
   coordinate_registration_gate_passed?: boolean | null;
   raster_bounds_contain_confirmed_center?: boolean | null;
+  /** "ok" when raster overlay frame matches; any other value indicates aerial/raster mismatch. */
+  frame_mismatch?: string | null;
   original_geocode_lat_lng?: { lat: number; lng: number } | null;
   confirmed_roof_center_lat_lng?: { lat: number; lng: number } | null;
   confirmed_roof_center_px?: [number, number] | null;
@@ -25,6 +27,7 @@ export interface RegistrationBlock {
   google_solar_building_center_lat_lng?: { lat: number; lng: number } | null;
   candidate_centroid_offset_from_confirmed_center_px?: number | null;
 }
+
 
 /**
  * Extract the registration block from a measurement row. Falls back to the
