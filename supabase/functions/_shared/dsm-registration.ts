@@ -79,6 +79,39 @@ export interface DsmRegistrationInput {
   rasterSizePx?: SizePx | null;
 }
 
+export type DerivedBoundsDebug = {
+  allow_derived_bounds: boolean;
+  dsm_size_px_internal: SizePx | null;
+  dsm_size_px_internal_source: DsmSizeSource;
+  metadata_bounds_present: boolean;
+  raster_bounds_input_present: boolean;
+  raster_bounds_input_shape:
+    | "sw_ne"
+    | "north_south_east_west"
+    | "object_unknown_shape"
+    | "null";
+  raster_bounds_input_keys: string[];
+  raster_bounds_sw_lat_numeric: boolean;
+  raster_bounds_sw_lng_numeric: boolean;
+  raster_bounds_ne_lat_numeric: boolean;
+  raster_bounds_ne_lng_numeric: boolean;
+  raster_size_px_present: boolean;
+  raster_size_px_positive: boolean;
+  derived_branch_entered:
+    | "derived_from_raster_bounds"
+    | "derived_from_confirmed_center_and_mpp"
+    | "derived_from_dsm_bbox_and_static_mpp"
+    | "none";
+  derived_branch_skipped_reason:
+    | "metadata_bounds_won"
+    | "internal_dsm_size_missing"
+    | "raster_bounds_shape_mismatch"
+    | "raster_size_invalid"
+    | "no_confirmed_center"
+    | "no_mpp"
+    | null;
+};
+
 export interface DsmRegistrationResult {
   dsm_registration_version: typeof DSM_REGISTRATION_VERSION;
   dsm_registration_source: "google_solar_data_layers";
@@ -103,6 +136,13 @@ export interface DsmRegistrationResult {
 
   /** Specific failure tokens for the classifier (priority-ordered upstream). */
   failure_tokens: string[];
+
+  /**
+   * Diagnostic-only mirror of the derived-bounds branch decision. Populated
+   * whenever `allow_derived_bounds === true`. Pure mirror of the same booleans
+   * the existing if-statements already evaluate — adds no logic.
+   */
+  derived_bounds_debug?: DerivedBoundsDebug;
 }
 
 function isNum(v: unknown): v is number {
