@@ -18,7 +18,7 @@ import {
   EARLY_DSM_REGISTRATION_CALLSITE,
   mergeEarlyDsmRegistrationIntoDebug,
   runEarlyDerivedDsmRegistration,
-} from "../_shared/early-dsm-registration.ts";
+} from "../../_shared/early-dsm-registration.ts";
 
 // ── Fonsica-shaped raster bounds ──
 // 1280×1280 static-map raster covering a small lat/lng window centered on the
