@@ -356,9 +356,32 @@ export function mergeEarlyDsmRegistrationIntoDebug(
         early.fields.dsm_registration_callsite_attempted;
       (out as any).dsm_registration_callsite_skipped_reason =
         early.fields.dsm_registration_callsite_skipped_reason;
+      // Diagnostic-only: propagate inner derived-bounds debug + extra
+      // skip-path fields so failure cause is visible without code changes.
+      const f = early.fields as any;
+      const debugExtras: Record<string, unknown> = {
+        skip_reason: f.dsm_registration_callsite_skipped_reason,
+        dsm_bounds_source_actual: f.dsm_bounds_source_actual ?? null,
+        dsm_tile_bounds_lat_lng_present:
+          f.dsm_tile_bounds_lat_lng_present ?? null,
+        dsm_size_px_present_in_inner: f.dsm_size_px_present_in_inner ?? null,
+        transform_package_valid: f.transform_package_valid ?? null,
+        geo_to_dsm_px_success: f.geo_to_dsm_px_success ?? null,
+        dsm_pixel_transform_valid: f.dsm_pixel_transform_valid ?? null,
+        dsm_tile_bounds_contain_confirmed_center:
+          f.dsm_tile_bounds_contain_confirmed_center ?? null,
+        dsm_raster_roundtrip_error_px:
+          f.dsm_raster_roundtrip_error_px ?? null,
+        derived_bounds_debug: f.derived_bounds_debug ?? null,
+      };
+      (out as any).early_dsm_registration = debugExtras;
+      if (f.derived_bounds_debug) {
+        (out as any).derived_bounds_debug = f.derived_bounds_debug;
+      }
     }
     return out;
   }
+
   const f = early.fields;
   // Authoritative tokens — always overwrite so terminal failure can't drop them.
   (out as any).dsm_bounds_derived = true;
