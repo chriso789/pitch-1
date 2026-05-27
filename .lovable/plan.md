@@ -1,209 +1,204 @@
-## Problem
+## Context
 
-The Fonsica runtime shows:
+Most of this spec was implemented in the previous turn:
 
-- `dsm_registration_callsite_attempted = early_dsm_registration_before_topology`
-- `dsm_registration_callsite_skipped_reason = frame_mismatch_not_ok`
-- `derived_bounds_enabled = false`
+- `supabase/functions/_shared/resolveFrameMismatch.ts` — exists with 9 explicit paths + legacy `dsmCoordinateMatchDebug` arg + inference fallback + `raster_registration_evidence`.
+- `start-ai-measurement/index.ts` — builds `_geometryViewForFrame`, calls `resolveFrameMismatch(...)`, passes resolved `frame_mismatch` into `runEarlyDerivedDsmRegistration`, attaches `gate_inputs` (frame_mismatch_ok/source/raw/evidence + overlap + selected_perimeter_present + dsm/raster flags) so `mergeEarlyDsmRegistrationIntoDebug` surfaces them as `derived_bounds_gate_inputs`.
+- `supabase/functions/_shared/__tests__/resolveFrameMismatch.test.ts` — covers priority wins, explicit mismatch, Fonsica inference fallback.
+- `src/lib/measurement/resolveFrameMismatch.ts` — frontend mirror.
+- `src/lib/measurement/registration-gate.ts` — uses resolver; emits DSM-incomplete copy (not coord-mismatch) when frame is OK.
+- `src/components/measurements/MeasurementVisualQAOverlay.tsx` — DSM Status card fans out across the 6 canonical `dsm_size_px` paths and reads `dsm_bounds_failure`, `dsm_to_raster_transform_source`, `dsm_pixel_transform_valid`.
 
-…even though the same payload has `overlay_transform.frame_mismatch = "ok"`, `coord_space = raster_px`, `target_mask_overlap = 0.976`, DSM loaded at 998×998, raster bounds + geo→raster transform present.
+What's still missing vs. the spec, and the only work this plan covers:
 
-Root cause is narrow: in `supabase/functions/start-ai-measurement/index.ts` (lines 6962–6990) the value handed to `runEarlyDerivedDsmRegistration({ frame_mismatch })` is sourced **only** from `dsmCoordinateMatchDebug.frame_mismatch / match_status / is_valid`. It does not read the overlay transform / registration package frame mismatch, and there is no raster-evidence fallback. So Fonsica fails the strict `frame_mismatch !== "ok"` gate in `_shared/early-dsm-registration.ts:199`.
+## Gaps to close
 
-Secondary UI bugs on the same report:
+### 1. Backend integration regression test
 
-- `src/lib/measurement/registration-gate.ts` banner still says "Coordinate frame mismatch …" in the wrong branch.
-- `MeasurementVisualQAOverlay.tsx` DSM Status card reads only `grj.dsm_size / grj.dsm.size` and misses the `registration.*` / `transform_package.*` / `dsm_split_status.*` paths, so it renders Status: Missing / Size: — even when the report summary has DSM 998×998.
+Create `supabase/functions/start-ai-measurement/__tests__/early-dsm-registration-frame-mismatch-source.test.ts`:
 
-## Scope (do NOT touch)
+- **Explicit Fonsica positive** — geometry view with no top-level `frame_mismatch` but `overlay_transform.frame_mismatch="ok"`, full raster+DSM evidence. Assert `runEarlyDerivedDsmRegistration` is invoked with `frame_mismatch:"ok"`, result is not skipped with `frame_mismatch_not_ok`, and `gate_inputs.frame_mismatch_source==="overlay_transform.frame_mismatch"`.
+- **Inferred Fonsica positive** — no explicit string anywhere; raster_px coord space, overlap 0.976, bounds contain center, selected perimeter present. Assert `gate_inputs.frame_mismatch_source==="inferred_from_raster_registration_evidence"` and registration runs.
+- **Negative** — explicit `frame_mismatch:"raster_outside_dsm"` with weak fallback evidence. Assert early registration skips with `frame_mismatch_not_ok` and `gate_inputs.frame_mismatch_ok===false`.
 
-DSM math, `dsm-registration.ts` algorithms, customer_report_ready gates, reportable roof line promotion, topology / pitch / facet promotion, DB schema, CPU containment policy, aerial graph builder.
+The test imports `runEarlyDerivedDsmRegistration` and `resolveFrameMismatch` directly and exercises the wiring as a unit (no full edge-function bootstrap) to keep it fast and deterministic.
 
-## Backend changes
+### 2. Frontend resolver: add `raster_registration_evidence`
 
-### 1. New helper: `_shared/resolveFrameMismatch.ts`
+`src/lib/measurement/resolveFrameMismatch.ts` currently omits `raster_registration_evidence` from its return shape. Add it (mirror of backend) so any future consumer (banner tooltips, debug panel) can introspect the same fields. No call-site changes required.
 
-Pure function. Walks the geometry payload in priority order and returns `{ frame_mismatch_ok, frame_mismatch_source, frame_mismatch_raw, raster_registration_evidence }`.
+### 3. Frontend tests
 
-Priority (first explicit string wins; `"ok"` → true, anything else → false):
+Add `src/lib/measurement/__tests__/registrationBanner.frame-ok.test.ts`:
 
-1. `geometry.overlay_transform.frame_mismatch`
-2. `geometry.overlayCoordinateFrame.frame_mismatch`
-3. `geometry.visual_qa.overlay_transform.frame_mismatch`
-4. `geometry.overlay_debug.frame_mismatch`
-5. `geometry.registration.overlay_transform.frame_mismatch`
-6. `geometry.registration.transform_package.frame_mismatch`
-7. `geometry.registration_gate.overlay_transform.frame_mismatch`
-8. `geometry.registration_gate.transform_package.frame_mismatch`
-9. `geometry.frame_mismatch`
-10. Legacy: `dsmCoordinateMatchDebug.frame_mismatch / match_status / is_valid`
+- When `geometry_report_json.overlay_transform.frame_mismatch==="ok"` and DSM flags are false, `registrationBanner(...)` returns variant `"warning"` with title `"DSM registration incomplete — manual approval locked"` (never coordinate-mismatch copy).
+- When `overlay_transform.frame_mismatch==="raster_outside_dsm"` and `confirmed_center_inside_candidate===false`, banner returns destructive coordinate-mismatch copy.
 
-Fallback inference (only when no explicit string found) — `frame_mismatch_ok = true` when ALL hold:
+Add `src/components/measurements/__tests__/MeasurementVisualQAOverlay.dsm-status.test.tsx`:
 
-- `coordinate_space_candidate === "raster_px"`
-- `coordinate_space_renderer === "raster_px"`
-- `source_raster_px || raster_size_px` exists
-- `confirmed_center_px` exists
-- `raster_bounds_contain_confirmed_center === true`
-- `selected_candidate_polygon_px_present === true`
-- `target_mask_overlap_with_perimeter >= 0.90`
+- DSM Status card resolves size `998×998` when only `registration.dsm.dsm_size_px` is set; same for each of the other 5 canonical paths.
+- Renders `Status: Loaded, not registered` when `dsm_loaded===true` and `dsm_pixel_transform_valid===false`.
 
-Source label: `inferred_from_raster_registration_evidence`.
+### 4. (Optional, low risk) Verify 10th legacy priority source
 
-Returns `raster_registration_evidence` object recording each input it checked so we can persist diagnostics.
+Confirm `resolveFrameMismatch` checks `dsmCoordinateMatchDebug.frame_mismatch || .match_status || .is_valid` after all 9 geometry paths. If absent, add it and cover with a unit test case.
 
-### 2. Wire helper into early DSM registration callsite
+## Out of scope (explicitly not touched)
 
-In `supabase/functions/start-ai-measurement/index.ts` around lines 6962–6990:
+DSM transform math, `_shared/dsm-registration.ts` algorithms, `customer_report_ready` gating, reportable roof line promotion, topology / pitch / facet promotion, DB schema, CPU containment policy, aerial graph builder.
 
-- Build a `geometryView` object from already-hoisted values (`hoistedTransformPackage`, `perimeterTopologySnapshot`, `targetMaskIsolation`, `overlay_debug`, `registration*` blocks the route already assembles).
-- Call `resolveFrameMismatch(geometryView, dsmCoordinateMatchDebug)`.
-- Pass `frame_mismatch: result.frame_mismatch_ok ? "ok" : (result.frame_mismatch_raw ?? "mismatch")` into `runEarlyDerivedDsmRegistration` — this preserves the existing `EarlyDsmRegistrationInput.frame_mismatch: string | null` contract with zero shape change to `_shared/early-dsm-registration.ts`.
-- Stash the resolution onto a new `derived_bounds_gate_inputs` block:
-  ```
-  derived_bounds_gate_inputs = {
-    frame_mismatch_ok,
-    frame_mismatch_source,
-    frame_mismatch_raw,
-    raster_registration_evidence,
-    target_mask_overlap_with_perimeter,
-    selected_perimeter_present,
-    dsm_loaded, dsm_size_px,
-    raster_bounds_present, geo_to_raster_transform_present,
-  }
-  ```
-  Merge this onto `geometry_report_json` and into the early-preempt debug bag alongside the existing `dsm_registration_callsite_*` fields.
+## Acceptance
 
-This preserves rule "re-run early derived DSM registration if the only previous skip reason was frame_mismatch_not_ok and the corrected gate resolves true" — by virtue of being a single call after correct resolution, no retry plumbing is needed.
-
-### 3. Regression tests
-
-`supabase/functions/start-ai-measurement/__tests__/early-dsm-registration-frame-mismatch-source.test.ts` (new):
-
-- **Fonsica positive (explicit)**: geometry has no top-level `frame_mismatch`, but `overlay_transform.frame_mismatch === "ok"`, full raster + DSM evidence. Asserts:
-  - `derived_bounds_gate_inputs.frame_mismatch_ok === true`
-  - `frame_mismatch_source === "overlay_transform.frame_mismatch"`
-  - early derived registration runs (success branch)
-  - skipped_reason absent
-  - `dsm_bounds_derived === true`, `dsm_pixel_transform_valid === true`
-- **Fonsica positive (inferred)**: no explicit `frame_mismatch` anywhere; raster evidence complete + overlap 0.976. Asserts inferred source label and success.
-- **Negative**: explicit `frame_mismatch = "raster_outside_dsm"` and no strong fallback → early registration skipped with `frame_mismatch_not_ok`.
-
-Plus a unit test for `resolveFrameMismatch` covering each of the 10 priority sources.
-
-## Frontend changes (same PR)
-
-### 4. Banner copy — `src/lib/measurement/registration-gate.ts`
-
-`registrationBanner()` already special-cases `frame_mismatch === "ok"` (line ~143–164). Tighten:
-
-- When any of the canonical overlay paths surface `frame_mismatch === "ok"` (use the new `resolveFrameMismatch` logic on the client; mirror as `src/lib/measurement/resolveFrameMismatch.ts`), force the DSM-only copy:
-  > **DSM registration incomplete — manual approval locked.** The aerial perimeter is aligned to the satellite image, but DSM georegistration is missing. …
-- Never emit "Coordinate frame mismatch — overlay not eligible for manual approval" when frame is OK by any source.
-
-### 5. DSM Status card — `src/components/measurements/MeasurementVisualQAOverlay.tsx` (≈ lines 817–851)
-
-Replace `dsmSize` lookup with a helper that picks the first present:
-
-- `grj.registration.dsm.dsm_size_px`
-- `grj.registration.dsm_size_px`
-- `grj.registration.transform_package.dsm_size_px`
-- `grj.dsm_split_status.dsm_size_px`
-- `grj.registration_gate.dsm_size_px`
-- legacy `grj.dsm_size`, `grj.dsm.size`
-
-Same fan-out for `dsm_bounds_failure`, `dsm_to_raster_transform_source`, and `dsm_pixel_transform_valid`.
-
-For Fonsica this will render:
-
-```
-Status:    Loaded, not registered
-Size:      998×998
-Bounds:    dsm_tile_bounds_missing_from_google_solar_metadata
-Transform: unavailable
-Overlay:   suppressed
-Policy:    dsm-registration-transform-v1
-```
-
-### 6. Frontend tests
-
-Extend `src/lib/measurements/measurementDiagnosticState.test.ts` (or sibling) with:
-
-- DSM Status card resolution from each of the 6 canonical paths.
-- `registrationBanner` returns DSM-only copy (not coord-mismatch copy) when any overlay path reports `frame_mismatch === "ok"` but `dsm_pixel_transform_valid === false`.
-
-## Acceptance (next Fonsica run)
-
-- `derived_bounds_gate_inputs.frame_mismatch_ok = true`
-- `derived_bounds_gate_inputs.frame_mismatch_source` = `overlay_transform.frame_mismatch` OR `inferred_from_raster_registration_evidence`
-- `dsm_registration_callsite_attempted = early_dsm_registration_before_topology`
-- No `frame_mismatch_not_ok` skip
-- `derived_bounds_enabled = true`, `dsm_bounds_derived = true`, `dsm_tile_bounds_source = derived_from_raster_bounds`
-- `geo_to_dsm_transform`, `dsm_to_raster_transform`, `confirmed_roof_center_dsm_px` populated
-- `geo_to_dsm_px_success = true`, `dsm_pixel_transform_valid = true`
-- `dsm_validation_status.reason = derived_bounds_validated`
-- `customer_report_ready` still false; reportable roof lines still 0 (unchanged by this fix)
-- Visual QA banner: "DSM registration incomplete — manual approval locked" (not coord-mismatch)
-- DSM Status card: Status Loaded, not registered; Size 998×998
-
-## Files touched
-
-Backend:
-
-- `supabase/functions/_shared/resolveFrameMismatch.ts` *(new)*
-- `supabase/functions/start-ai-measurement/index.ts` (≈ lines 6960–7010 + nearby diagnostics stash)
-- `supabase/functions/start-ai-measurement/__tests__/early-dsm-registration-frame-mismatch-source.test.ts` *(new)*
-- `supabase/functions/_shared/__tests__/resolveFrameMismatch.test.ts` *(new)*
-
-Frontend:
-
-- `src/lib/measurement/resolveFrameMismatch.ts` *(new, mirror of backend helper)*
-- `src/lib/measurement/registration-gate.ts` (banner branch)
-- `src/components/measurements/MeasurementVisualQAOverlay.tsx` (DSM Status card resolution)
-- `src/lib/measurements/measurementDiagnosticState.test.ts` (extend)  
+- New backend test passes; failing it would have caught the original `frame_mismatch_not_ok` bug.
+- New frontend tests lock the banner copy and DSM Status card resolution.
+- Next Fonsica run shows `derived_bounds_gate_inputs.frame_mismatch_ok=true` with `frame_mismatch_source` set to either `overlay_transform.frame_mismatch` or `inferred_from_raster_registration_evidence`, no `frame_mismatch_not_ok` skip, `dsm_bounds_derived=true`, and Visual QA shows the DSM-incomplete banner with `998×998` size.  
   
-I reviewed the latest report/PDF carefully. The important thing is: the system is now **one narrow gate-resolution bug away** from actually activating the derived DSM fallback in production.
-  The smoking gun is here:
+Approve this plan. It is the right follow-up because it **does not reopen DSM math**. It only locks down the fix with tests and completes the frontend parity.
+  One correction: this should be treated as **test hardening + UI parity**, not a new backend feature. The actual runtime fix was already mostly implemented.
+  Send this:
   ```
 
   ```
   ```
-  dsm_registration_callsite_attempted = early_dsm_registration_before_topology
-  dsm_registration_callsite_skipped_reason = frame_mismatch_not_ok
-  derived_bounds_enabled = false
+  Go.
+
+  Implement the remaining frame-mismatch source resolver hardening exactly as scoped.
+
+  This is test hardening + UI parity only.
+
+  Do not touch:
+  - DSM transform math
+  - _shared/dsm-registration.ts algorithms
+  - customer_report_ready gates
+  - reportable roof line promotion
+  - topology / pitch / facet promotion
+  - DB schema
+  - CPU containment policy
+  - aerial graph builder
+
+  Context:
+  Most of the runtime fix already exists:
+  - backend resolveFrameMismatch helper exists
+  - start-ai-measurement already calls it before early derived DSM registration
+  - derived_bounds_gate_inputs are already persisted
+  - frontend resolveFrameMismatch helper exists
+  - registration banner uses the resolver
+  - DSM Status card now fans out across the canonical DSM paths
+
+  Remaining work:
+
+  1. Backend integration regression test
+
+  Add:
+  supabase/functions/start-ai-measurement/__tests__/early-dsm-registration-frame-mismatch-source.test.ts
+
+  Test A — Explicit Fonsica positive:
+  - geometry view has no top-level frame_mismatch
+  - overlay_transform.frame_mismatch = "ok"
+  - full raster + DSM evidence
+  - target_mask_overlap_with_perimeter = 0.976
+  - DSM loaded = true
+  - DSM size = 998×998
+  - raster bounds present
+  - geo_to_raster_transform present
+
+  Assert:
+  - runEarlyDerivedDsmRegistration receives frame_mismatch: "ok"
+  - result is not skipped with frame_mismatch_not_ok
+  - gate_inputs.frame_mismatch_ok = true
+  - gate_inputs.frame_mismatch_source = "overlay_transform.frame_mismatch"
+  - early derived registration succeeds or at minimum reaches the success branch fixture path
+  - dsm_bounds_derived = true
+  - dsm_pixel_transform_valid = true
+
+  Test B — Inferred Fonsica positive:
+  - no explicit frame_mismatch anywhere
+  - coordinate_space_candidate = raster_px
+  - coordinate_space_renderer = raster_px
+  - raster size exists
+  - confirmed_center_px exists
+  - raster_bounds_contain_confirmed_center = true
+  - selected_candidate_polygon_px_present = true
+  - target_mask_overlap_with_perimeter = 0.976
+
+  Assert:
+  - gate_inputs.frame_mismatch_ok = true
+  - gate_inputs.frame_mismatch_source = "inferred_from_raster_registration_evidence"
+  - early registration runs
+
+  Test C — Negative:
+  - explicit frame_mismatch = "raster_outside_dsm"
+  - weak fallback evidence
+
+  Assert:
+  - early registration skips with frame_mismatch_not_ok
+  - gate_inputs.frame_mismatch_ok = false
+  - geo_to_dsm_px_success = false
+  - dsm_pixel_transform_valid = false
+
+  2. Frontend resolver parity
+
+  Update:
+  src/lib/measurement/resolveFrameMismatch.ts
+
+  Add raster_registration_evidence to the return shape, mirroring backend.
+
+  No call-site behavior changes required.
+
+  3. Frontend banner tests
+
+  Add:
+  src/lib/measurement/__tests__/registrationBanner.frame-ok.test.ts
+
+  Cases:
+  - overlay_transform.frame_mismatch = "ok" and DSM flags false:
+    registrationBanner returns warning with title:
+    "DSM registration incomplete — manual approval locked"
+    and does NOT return coordinate-mismatch copy.
+
+  - overlay_transform.frame_mismatch = "raster_outside_dsm" and confirmed_center_inside_candidate = false:
+    registrationBanner returns destructive coordinate-mismatch copy.
+
+  4. DSM Status card tests
+
+  Add:
+  src/components/measurements/__tests__/MeasurementVisualQAOverlay.dsm-status.test.tsx
+
+  Cases:
+  - DSM Status card resolves size 998×998 from each canonical path:
+    - registration.dsm.dsm_size_px
+    - registration.dsm_size_px
+    - registration.transform_package.dsm_size_px
+    - dsm_split_status.dsm_size_px
+    - registration_gate.dsm_size_px
+    - legacy dsm_size / dsm.size
+
+  - Renders:
+    Status: Loaded, not registered
+    when dsm_loaded = true and dsm_pixel_transform_valid = false.
+
+  5. Verify legacy source
+
+  Confirm backend resolveFrameMismatch checks legacy:
+  - dsmCoordinateMatchDebug.frame_mismatch
+  - dsmCoordinateMatchDebug.match_status
+  - dsmCoordinateMatchDebug.is_valid
+
+  after all geometry paths.
+
+  If missing, add it and cover with a unit test.
+
+  Acceptance:
+  - New backend integration test would have caught the original frame_mismatch_not_ok bug.
+  - Frontend banner test locks DSM-incomplete copy when frame is OK.
+  - DSM Status card test locks 998×998 path fan-out.
+  - No production behavior changes except frontend resolver return shape adding raster_registration_evidence.
+  - Next Fonsica run should show:
+    derived_bounds_gate_inputs.frame_mismatch_ok = true
+    frame_mismatch_source = overlay_transform.frame_mismatch OR inferred_from_raster_registration_evidence
+    no frame_mismatch_not_ok skip
+    derived_bounds_enabled = true
+    dsm_bounds_derived = true
   ```
-  But the same payload says:
-  ```
-
-  ```
-  ```
-  frame_mismatch = ok
-  coord_space = raster_px
-  target_mask_overlap_with_perimeter = 0.976
-  DSM loaded = true
-  DSM size = 998×998
-  ```
-  So:
-  -   
-  the derived DSM fallback DID try to run  
-
-  -   
-  the raster registration is actually aligned  
-
-  -   
-  but the early DSM gate is reading the wrong frame mismatch source  
-
-  That means:
-  -   
-  the DSM math is no longer the problem  
-
-  -   
-  the topology engine is no longer the problem  
-
-  -   
-  the aerial geometry is no longer the problem  
-
-  The next fix is correctly scoped:  
-    
-  **resolve frame_mismatch from the same overlay transform source the UI already trusts.**
-  The Lovable plan is correct. I approved it and pushed the refined implementation details into the repo issue.
+  After this passes, rerun Fonsica. If the live row still skips, the next diff should show exactly which gate input is false.
+- &nbsp;
