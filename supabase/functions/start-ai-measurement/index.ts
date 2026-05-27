@@ -6484,6 +6484,11 @@ async function processJob(input: any) {
           rasterMetersPerPixel: Number.isFinite(Number(actualMpp))
             ? Number(actualMpp)
             : null,
+          // Site #2 is the early failure-classification path; target-mask
+          // overlap and frame-mismatch signals are not yet available here, so
+          // raster-bounds derivation stays disabled. The authoritative DSM
+          // hoist runs later via applyLiveRuntimeHoistToRegistration (site #1)
+          // and honors the dsm-registration-derived-bounds-v1 gate there.
           allow_derived_bounds: false,
         });
         const _dsmBoundsLL = _dsmReg.dsm_tile_bounds_lat_lng;
