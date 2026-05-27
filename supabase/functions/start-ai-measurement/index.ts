@@ -175,6 +175,7 @@ import {
   runEarlyDerivedDsmRegistration,
   type EarlyDsmRegistrationResult,
 } from "../_shared/early-dsm-registration.ts";
+import { resolveFrameMismatch } from "../_shared/resolveFrameMismatch.ts";
 import {
   evaluateAerialPrimacy,
   type AerialPrimacyEvaluation,
