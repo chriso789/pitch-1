@@ -118,6 +118,55 @@ export function ensureDsmDiagnosticsOnRegistration(
     regNext.dsm_split_status = (geometry as any).dsm_split_status;
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // (3.5) Flat DSM diagnostic derivation. Must run BEFORE the summary in
+  // step (4) and the nested projection in step (5) so those downstream
+  // steps see the populated tokens — otherwise re-running this helper
+  // would produce different output (non-idempotent).
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    const splitStatusForDeriv: Record<string, unknown> =
+      ((geometry as any).dsm_split_status &&
+          typeof (geometry as any).dsm_split_status === "object")
+        ? ((geometry as any).dsm_split_status as Record<string, unknown>)
+        : {};
+    const transformPkgOnRegDeriv: Record<string, unknown> =
+      (regNext.transform_package &&
+          typeof regNext.transform_package === "object" &&
+          !Array.isArray(regNext.transform_package))
+        ? (regNext.transform_package as Record<string, unknown>)
+        : {};
+    const effectiveDsmSize =
+      (regNext as any).dsm_size_px ??
+        (transformPkgOnRegDeriv as any).dsm_size_px ??
+        (splitStatusForDeriv as any).dsm_size_px ?? null;
+    const dsmLoaded = (splitStatusForDeriv as any).dsm_loaded === true;
+    const boundsMissing =
+      (regNext as any).dsm_tile_bounds_lat_lng == null &&
+      (transformPkgOnRegDeriv as any).dsm_tile_bounds_lat_lng == null;
+
+    if (effectiveDsmSize && (regNext as any).dsm_size_px == null) {
+      (regNext as any).dsm_size_px = effectiveDsmSize;
+    }
+    if (effectiveDsmSize && (regNext as any).dsm_size_source == null) {
+      (regNext as any).dsm_size_source = "dsm_split_status.dsm_size_px";
+    }
+    if (dsmLoaded && boundsMissing) {
+      if ((regNext as any).dsm_tile_bounds_failure_reason == null) {
+        (regNext as any).dsm_tile_bounds_failure_reason =
+          "dsm_tile_bounds_missing_from_google_solar_metadata";
+      }
+      if ((regNext as any).dsm_registration_failure_token == null) {
+        (regNext as any).dsm_registration_failure_token =
+          "dsm_tile_bounds_missing_from_google_solar_metadata";
+      }
+      if ((regNext as any).dsm_transform_policy_version == null) {
+        (regNext as any).dsm_transform_policy_version =
+          "dsm-registration-transform-v1";
+      }
+    }
+  }
+
   // (4) Read-only human summary + version + timestamp for the UI and grep.
   regNext.dsm_diagnostic_propagation_summary = summarizeDsmDiagnosticReason(
     regNext,
