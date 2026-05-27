@@ -468,11 +468,18 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // ---- Vertex editor ------------------------------------------------------
   const dragIdxRef = useRef<number | null>(null);
 
+  // Convert ring source-pixel coords → canvas display coords using the active
+  // viewport offset so hit-testing still works in Roof Focus.
+  const ringSx = (x: number) => (x - viewportSrc.minX) * scale;
+  const ringSy = (y: number) => (y - viewportSrc.minY) * scale;
+  const dispToSrcX = (lx: number) => lx / scale + viewportSrc.minX;
+  const dispToSrcY = (ly: number) => ly / scale + viewportSrc.minY;
+
   function pickVertex(localX: number, localY: number): number {
     const tol = 10;
     for (let i = 0; i < editedRing.length; i++) {
-      const dx = editedRing[i][0] * scale - localX;
-      const dy = editedRing[i][1] * scale - localY;
+      const dx = ringSx(editedRing[i][0]) - localX;
+      const dy = ringSy(editedRing[i][1]) - localY;
       if (Math.hypot(dx, dy) <= tol) return i;
     }
     return -1;
@@ -484,8 +491,8 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     for (let i = 0; i < editedRing.length; i++) {
       const a = editedRing[i];
       const b = editedRing[(i + 1) % editedRing.length];
-      const ax = a[0] * scale, ay = a[1] * scale;
-      const bx = b[0] * scale, by = b[1] * scale;
+      const ax = ringSx(a[0]), ay = ringSy(a[1]);
+      const bx = ringSx(b[0]), by = ringSy(b[1]);
       const dx = bx - ax, dy = by - ay;
       const len2 = dx * dx + dy * dy;
       if (len2 === 0) continue;
@@ -526,7 +533,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     const ei = pickEdge(x, y);
     if (ei >= 0) {
       const next = editedRing.slice();
-      next.splice(ei + 1, 0, [x / scale, y / scale]);
+      next.splice(ei + 1, 0, [dispToSrcX(x), dispToSrcY(y)]);
       setEditedRing(next);
       setDirty(true);
     }
@@ -535,13 +542,14 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!editMode || dragIdxRef.current === null) return;
     const rect = (e.currentTarget as HTMLCanvasElement).getBoundingClientRect();
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
+    const x = dispToSrcX(e.clientX - rect.left);
+    const y = dispToSrcY(e.clientY - rect.top);
     const next = editedRing.slice();
     next[dragIdxRef.current] = [x, y];
     setEditedRing(next);
     setDirty(true);
   }
+
 
   function onPointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     dragIdxRef.current = null;
