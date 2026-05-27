@@ -2773,22 +2773,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         {shouldShowTemplateContent && (
           <Button
             onClick={handleSaveEstimate}
-            disabled={
-              (!selectedTemplateId &&
-                !existingEstimateId &&
-                !isEditingLoadedEstimate &&
-                lineItems.length === 0 &&
-                !tradeSections.some(t => !!t.templateId)) ||
-              saving || creating || savingLineItems
-            }
+            disabled={!hasSaveableEstimateContent || saving || creating || savingLineItems}
             className="flex-1 min-w-[140px]"
             title={
-              (!selectedTemplateId &&
-                !existingEstimateId &&
-                !isEditingLoadedEstimate &&
-                lineItems.length === 0 &&
-                !tradeSections.some(t => !!t.templateId))
-                ? 'Select a template to start the estimate'
+              !hasSaveableEstimateContent
+                ? 'Select a template or add estimate items to start the estimate'
                 : undefined
             }
           >
