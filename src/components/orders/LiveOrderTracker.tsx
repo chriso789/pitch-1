@@ -55,7 +55,7 @@ function stageIndex(status?: string | null, hasExternalId?: boolean): number {
   const s = (status || '').toLowerCase();
   if (s.includes('deliver') || s === 'iu') return 3;
   if (s.includes('ship') || s === 'du' || s.includes('out_for')) return 2;
-  if (s.includes('confirm') || s.includes('process') || s.includes('received') || s === 'oc' || s === 'acknowledged') return 1;
+  if (s.includes('confirm') || s.includes('process') || s.includes('received') || s === 'oc' || s === 'oa' || s === 'accepted' || s === 'acknowledged') return 1;
   if (s.includes('submit') || s === 'ou' || s === 'queued' || hasExternalId) return 0;
   return 0;
 }
