@@ -566,6 +566,19 @@ export default function QuickBooksSettings() {
           </CardContent>
         </Card>
       )}
+
+      {userId && tenantId && (
+        <QuickBooksConnectDialog
+          open={connectOpen}
+          onOpenChange={setConnectOpen}
+          tenantId={tenantId}
+          userId={userId}
+          defaultMode={selectedMode}
+          hasDevelopmentCredentials={!!(verifyInfo?.has_development_credentials || verifyInfo?.has_legacy_credentials)}
+          hasProductionCredentials={!!(verifyInfo?.has_production_credentials || verifyInfo?.has_legacy_credentials)}
+        />
+      )}
     </div>
   );
 }
+
