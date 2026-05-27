@@ -111,6 +111,59 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     enabled: (enhancedEstimates || []).length === 0,
   });
 
+  // Fetch approved change orders for this pipeline entry so their line items
+  // can be added to the invoice builder.
+  const { data: approvedChangeOrders } = useQuery({
+    queryKey: ['invoice-builder-change-orders', pipelineEntryId],
+    queryFn: async () => {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('pipeline_entry_id', pipelineEntryId);
+      const projectIds = (projects || []).map((p: any) => p.id);
+      if (projectIds.length === 0) return [];
+      const { data, error } = await (supabase as any)
+        .from('change_orders')
+        .select('id, co_number, title, status, cost_impact, customer_approved, line_items')
+        .in('project_id', projectIds);
+      if (error) throw error;
+      const APPROVED = new Set(['approved', 'invoiced', 'completed']);
+      return (data || []).filter((co: any) =>
+        APPROVED.has(String(co.status || '').toLowerCase()) || co.customer_approved === true
+      );
+    },
+  });
+
+  // Build invoice-ready line items from an approved CO. Mirrors the selling-price
+  // rollup used in TotalsTab/ChangeOrdersTab: cost / (1 - overhead% - profit%).
+  const parseChangeOrderLineItems = (
+    co: any
+  ): (InvoiceLineItem & { selected: boolean })[] => {
+    const container: any = co?.line_items || {};
+    const items: any[] = Array.isArray(container.items) ? container.items : [];
+    if (items.length === 0) return [];
+    const overheadPct = Number(container.overhead_pct ?? 10);
+    const profitPct = Number(container.profit_pct ?? 25);
+    const denom = Math.max(0.01, 1 - overheadPct / 100 - profitPct / 100);
+    const coLabel = co.co_number ? `CO #${co.co_number}` : 'CO';
+    return items.map((it: any) => {
+      const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
+      const unitCost = Number(it.unit_price ?? it.price ?? it.rate ?? 0) || 0;
+      const costTotal = Number(it.line_total ?? it.total ?? qty * unitCost) || 0;
+      const sellingTotal = Math.round((costTotal / denom) * 100) / 100;
+      const sellingUnit = qty > 0 ? Math.round((sellingTotal / qty) * 100) / 100 : sellingTotal;
+      const desc = it.item_name || it.description || it.name || 'Change order item';
+      return {
+        selected: true,
+        description: `${coLabel} — ${desc}`,
+        qty,
+        unit: it.unit || 'ea',
+        unit_cost: sellingUnit,
+        line_total: sellingTotal,
+      };
+    });
+  };
+
   // Fetch QBO connection status
   const { data: qboConnection } = useQuery({
     queryKey: ['qbo-connection', activeTenantId],
