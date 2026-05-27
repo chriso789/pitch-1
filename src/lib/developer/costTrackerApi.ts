@@ -70,7 +70,7 @@ export type CoverageRow = { key: string; label: string; status: "green" | "yello
 export type RollupStatus = { last_recalc_at: string | null; stale: boolean; month: string };
 export type ZeroCostRow = { provider: string; event_type: string; count: number };
 
-const call = <T,>(path: string, body?: unknown) => edgeApi<T>("platform-api", path, body);
+const call = <T,>(path: string, body?: Record<string, unknown>) => edgeApi<T>("platform-api", path, body);
 
 export const costTrackerApi = {
   getDashboard: () => call<Dashboard>("/dashboard"),
