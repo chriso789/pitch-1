@@ -126,6 +126,88 @@ export function ensureDsmDiagnosticsOnRegistration(
     DSM_DIAGNOSTIC_PROPAGATION_VERSION;
   regNext.dsm_diagnostic_propagation_at = new Date().toISOString();
 
+  // (5) Project flat diagnostic fields into the nested `dsm` and
+  // `stage_classifier` sub-objects the UI reads from. The runtime already
+  // writes flat fields on registration root (see start-ai-measurement) — the
+  // UI binds to registration.dsm.* and registration.stage_classifier.*, so
+  // without this projection the row renders blank even when truth is
+  // present. We never overwrite an existing nested value.
+  const splitStatus = (geometry as any).dsm_split_status ?? {};
+  const dsmSizePxFromSplit =
+    (splitStatus && typeof splitStatus === "object" &&
+        (splitStatus as any).dsm_size_px) || null;
+
+  const existingDsm: Record<string, unknown> =
+    (regNext.dsm && typeof regNext.dsm === "object" &&
+        !Array.isArray(regNext.dsm))
+      ? { ...(regNext.dsm as Record<string, unknown>) }
+      : {};
+  regNext.dsm = {
+    dsm_size_px: existingDsm.dsm_size_px ?? (regNext as any).dsm_size_px ??
+      dsmSizePxFromSplit ?? null,
+    dsm_tile_bounds_source: existingDsm.dsm_tile_bounds_source ??
+      regNext.dsm_tile_bounds_source ?? null,
+    dsm_tile_bounds_failure_reason:
+      existingDsm.dsm_tile_bounds_failure_reason ??
+        regNext.dsm_tile_bounds_failure_reason ?? null,
+    dsm_bounds_source: existingDsm.dsm_bounds_source ??
+      regNext.dsm_bounds_source ?? null,
+    dsm_bounds_derived: existingDsm.dsm_bounds_derived ??
+      regNext.dsm_bounds_derived ?? null,
+    dsm_bounds_warning: existingDsm.dsm_bounds_warning ??
+      regNext.dsm_bounds_warning ?? null,
+    dsm_bounds_confidence: existingDsm.dsm_bounds_confidence ??
+      regNext.dsm_bounds_confidence ?? null,
+    dsm_meters_per_pixel: existingDsm.dsm_meters_per_pixel ??
+      regNext.dsm_meters_per_pixel ?? null,
+    dsm_mpp_source: existingDsm.dsm_mpp_source ?? regNext.dsm_mpp_source ??
+      null,
+    geo_to_dsm_transform_source: existingDsm.geo_to_dsm_transform_source ??
+      (regNext as any).geo_to_dsm_transform_source ?? null,
+    dsm_to_raster_transform_source:
+      existingDsm.dsm_to_raster_transform_source ??
+        (regNext as any).dsm_to_raster_transform_source ?? null,
+    confirmed_roof_center_dsm_px_source:
+      existingDsm.confirmed_roof_center_dsm_px_source ??
+        (regNext as any).confirmed_roof_center_dsm_px_source ?? null,
+    dsm_transform_policy_version: existingDsm.dsm_transform_policy_version ??
+      (regNext as any).dsm_transform_policy_version ?? null,
+    dsm_hoist_failure_tokens: existingDsm.dsm_hoist_failure_tokens ??
+      regNext.dsm_hoist_failure_tokens ?? null,
+    dsm_hoist_called: existingDsm.dsm_hoist_called ??
+      regNext.dsm_hoist_called ?? null,
+    dsm_hoist_callsite: existingDsm.dsm_hoist_callsite ??
+      regNext.dsm_hoist_callsite ?? null,
+    dsm_hoist_version: existingDsm.dsm_hoist_version ??
+      regNext.dsm_hoist_version ?? null,
+    dsm_stage_attempted: existingDsm.dsm_stage_attempted ??
+      regNext.dsm_stage_attempted ?? null,
+    dsm_stage_pending: existingDsm.dsm_stage_pending ??
+      regNext.dsm_stage_pending ?? null,
+    dsm_registration_version: existingDsm.dsm_registration_version ??
+      regNext.dsm_registration_version ?? null,
+    dsm_registration_source: existingDsm.dsm_registration_source ??
+      regNext.dsm_registration_source ?? null,
+  };
+
+  const existingStage: Record<string, unknown> =
+    (regNext.stage_classifier &&
+        typeof regNext.stage_classifier === "object" &&
+        !Array.isArray(regNext.stage_classifier))
+      ? { ...(regNext.stage_classifier as Record<string, unknown>) }
+      : {};
+  regNext.stage_classifier = {
+    stage_hard_fail_reason: existingStage.stage_hard_fail_reason ??
+      (regNext as any).stage_hard_fail_reason ??
+      (geometry as any).hard_fail_reason ?? (next as any).hard_fail_reason ??
+      null,
+    stage_failure_stage: existingStage.stage_failure_stage ??
+      (regNext as any).stage_failure_stage ??
+      (geometry as any).failure_stage ?? null,
+    stage_classifier_version: existingStage.stage_classifier_version ??
+      (regNext as any).stage_classifier_version ?? null,
+  };
+
   (geometry as any).registration = regNext;
   (geometry as any).registration_gate = regNext;
   next.geometry_report_json = geometry;
