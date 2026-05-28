@@ -9,6 +9,7 @@ import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 import { getTemplateComponents } from './templates/registry';
+import { DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
