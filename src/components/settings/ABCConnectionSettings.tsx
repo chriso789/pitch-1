@@ -472,6 +472,8 @@ export function ABCConnectionSettings() {
           .eq('tenant_id', effectiveTenantId)
           .order('created_at', { ascending: false })
           .limit(1)
+          .maybeSingle(),
+      ]);
       setReadiness({ callbackLog: cbLog, auditLog: auditRow });
       if (cbLog?.has_error) setForceAdvancedOpen('advanced');
       // Refresh sandbox test login readiness (server-side; password is never returned).
@@ -497,7 +499,6 @@ export function ABCConnectionSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveTenantId, environment]);
 
-  }, [effectiveTenantId, environment]);
 
   const fetchOAuthDebug = async () => {
     if (!effectiveTenantId) {
