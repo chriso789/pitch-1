@@ -31,7 +31,10 @@ interface LineItem {
   material_cost: number;
   labor_cost: number;
   total_cost: number;
+  /** Pass-through cost: excluded from overhead/profit; added at raw cost. */
+  exclude_from_overhead?: boolean;
 }
+
 
 interface EstimateCalculation {
   roof_area: number;
