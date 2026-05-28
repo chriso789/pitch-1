@@ -1,51 +1,25 @@
-## Goal
-Rework `AbcDiagnosticsPanel` so each ABC order shows a clear lifecycle (Sent → API Response → Confirmation → Webhook) instead of a single confusing `submitted` + `0 webhooks` row.
+## Diagnosis
+
+`SectionedLineItemsTable.tsx:415` does `item.qty.toFixed(2)` with no null guard. When any row on the estimate has `qty = null/undefined` (which happens for blank labor lines, headers, or rows imported without a quantity), this throws `Cannot read properties of undefined (reading 'toFixed')`, the React error boundary trips, and the estimate page renders the generic "Something went wrong" card you screenshotted. Console confirms the stack: `SortableItemRow → SectionedLineItemsTable.tsx:866:92` (line 415 in source).
+
+## Fix (one line, presentation layer only)
+
+Coerce `qty` and `unit` to safe values before formatting:
+
+```ts
+// before
+`${Number(item.qty.toFixed(2))} ${item.unit}`
+
+// after
+`${Number(Number(item.qty ?? 0).toFixed(2))} ${item.unit ?? ''}`
+```
+
+Also do a quick scan of the same file for any other unguarded numeric reads on `item.unit_cost` / `item.line_total` that could trip the same boundary on a malformed row, and apply the same `?? 0` guard. `formatCurrency` already tolerates undefined in most of the codebase, but I'll verify before touching anything else.
 
 ## Scope
-Frontend-only refactor of `src/components/settings/AbcDiagnosticsPanel.tsx`. No DB or edge-function changes — we already persist enough in `abc_orders`, `abc_api_audit`, and `abc_webhook_events`. Refresh Status already accepts confirmationNumber.
 
-## Changes
+- Single file: `src/components/estimates/SectionedLineItemsTable.tsx`
+- No database changes, no business-logic changes, no row clean-up.
+- The bad row stays in the DB and renders as `0 ` for qty — you can then edit it normally instead of being locked out of the whole estimate. If you want, I can follow up with a separate pass that finds and flags `qty IS NULL` rows on this estimate for review.
 
-### 1. Per-order header pills
-Replace the single `submitted` + `N webhooks` pills with an explicit lifecycle row:
-
-`[ABC] {PO/requestId} [Sent] [API accepted | API error {code}] [Confirmation received | Order # received | No order ref returned] [N webhook(s) | No webhook updates yet] [sandbox|production]`
-
-Color rules:
-- Sent → green if request fired, red if invoke threw
-- API response → green for 2xx, red for non-2xx (from `abc_api_audit.status_code`)
-- Confirmation → green if `confirmation_number` or `order_number`; yellow "Submitted, no order reference returned" if 2xx with neither
-- Webhooks → green if count>0, muted (not red) if 0
-
-### 2. Main banner
-Single sentence chosen from:
-- "ABC API accepted order — confirmation received" (2xx + confirmation/order #)
-- "ABC API accepted order — waiting on order reference" (2xx, no refs)
-- "Last ABC webhook: {event_type} ({when})" (overrides above when webhooks exist)
-- "ABC API rejected request — inspect response" (non-2xx)
-
-### 3. Body
-Always show `confirmationNumber: …` prominently when present. When `order_number` is missing show muted `orderNumber: Not returned by ABC sandbox response`. Remove the existing scary "ABC did not return an order/confirmation number…" warning block (replaced by the yellow pill + banner).
-
-### 4. Inspect (expanded) section
-Restructure into three labeled subsections instead of the current single dump:
-
-- **A. Sent Request** — endpoint, method, payload (from latest matching `abc_api_audit` row), created_at
-- **B. API Response** — HTTP status, response body, extracted `confirmationNumber` / `orderNumber` / `transactionID`
-- **C. Webhook / Status Timeline** — list of `abc_webhook_events` rows, or muted "No ABC webhook events received for this order yet."
-
-Raw JSON stays only inside Inspect.
-
-### 5. Refresh Status
-Already prefers `order_number` then falls back to `confirmation_number` — keep, but after the call append a "Status lookup" entry in section C showing HTTP status + body/error so the demo can show the result inline (transient component state, no DB write).
-
-### 6. Wording sweep
-- Replace any "0 webhooks" / "N webhooks" label with "No webhook updates yet" / "{N} webhook update(s)"
-- Replace bare "Received" with one of: "API response received", "Confirmation received", "Webhook received"
-
-## Files
-- `src/components/settings/AbcDiagnosticsPanel.tsx` (only file touched)
-
-## Out of scope
-- No new DB columns; we read `abc_api_audit.status_code/response_body/request_body/endpoint/method` that already exist (will verify in build mode and adjust selectors if column names differ).
-- No edge-function changes.
+Switch to build mode and I'll ship the guard.
