@@ -417,7 +417,11 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                         </Badge>
 
                         {/* 2. API response */}
-                        {apiErrored ? (
+                        {wafBlocked ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <AlertCircle className="h-3 w-3" /> WAF blocked
+                          </Badge>
+                        ) : apiErrored ? (
                           <Badge variant="destructive" className="gap-1">
                             <AlertCircle className="h-3 w-3" /> API error{httpStatus ? ` ${httpStatus}` : ''}
                           </Badge>
