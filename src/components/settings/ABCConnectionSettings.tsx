@@ -964,8 +964,9 @@ export function ABCConnectionSettings() {
             <Send className="h-4 w-4" /> Submit Sandbox Test Order
           </div>
           <p className="text-xs text-muted-foreground">
-            Posts an array body to <code className="font-mono">/order/v2/orders</code>. Requires a real item from product search.
+            Submits a non-production ABC sandbox order to ABC QA. Requires a real item from product search.
           </p>
+
           <Button
             onClick={handleSubmitTestOrder}
             disabled={submittingOrder || !canSubmitOrder || environment !== 'sandbox'}
