@@ -69,13 +69,17 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
     .join('');
 
   // Derive original contract vs change orders from line items when possible.
-  const changeOrdersTotal = data.lineItems
-    .filter((li) => /change\s*order/i.test(li.description))
-    .reduce((s, li) => s + (li.line_total || 0), 0);
+  const changeOrderItems = data.lineItems.filter((li) => /change\s*order/i.test(li.description));
+  const changeOrdersTotal = changeOrderItems.reduce((s, li) => s + (li.line_total || 0), 0);
   const contractTotal = typeof data.contractTotal === 'number' ? data.contractTotal : 0;
   const originalContract = contractTotal > 0 ? Math.max(0, contractTotal - changeOrdersTotal) : 0;
   const alreadyPaid = data.alreadyPaid || 0;
   const balanceDue = data.amount;
+
+  // Pretty name for each change order (strip leading "Change Order —/-/:" prefix)
+  const changeOrderName = (desc: string) =>
+    desc.replace(/^\s*change\s*order\s*[—\-:]\s*/i, '').trim() || 'Change Order';
+
 
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;box-sizing:border-box">
