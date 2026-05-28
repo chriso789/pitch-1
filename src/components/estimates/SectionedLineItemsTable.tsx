@@ -126,6 +126,19 @@ export function SectionedLineItemsTable({
   const [editingCell, setEditingCell] = useState<EditableCell | null>(null);
   const [editValue, setEditValue] = useState('');
 
+  // Pass-through items are billed at cost separately and should NOT
+  // be rolled into Materials/Labor subtotals or the Direct Cost Total.
+  const materialsPassThrough = materialItems
+    .filter(i => i.exclude_from_overhead)
+    .reduce((s, i) => s + (i.line_total || 0), 0);
+  const laborPassThrough = laborItems
+    .filter(i => i.exclude_from_overhead)
+    .reduce((s, i) => s + (i.line_total || 0), 0);
+  const passThroughTotal = materialsPassThrough + laborPassThrough;
+  const displayMaterialsTotal = materialsTotal - materialsPassThrough;
+  const displayLaborTotal = laborTotal - laborPassThrough;
+  const displayDirectCostTotal = displayMaterialsTotal + displayLaborTotal;
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -598,7 +611,7 @@ export function SectionedLineItemsTable({
                       {renderSortableItems(group.materials)}
                       {renderSectionSubtotal(
                         'Materials Subtotal',
-                        group.materials.reduce((sum, i) => sum + i.line_total, 0)
+                        group.materials.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
                   )}
@@ -614,7 +627,7 @@ export function SectionedLineItemsTable({
                       {renderSortableItems(group.labor)}
                       {renderSectionSubtotal(
                         'Labor Subtotal',
-                        group.labor.reduce((sum, i) => sum + i.line_total, 0)
+                        group.labor.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
                   )}
@@ -810,7 +823,7 @@ export function SectionedLineItemsTable({
                   </TableCell>
                 </TableRow>
               )}
-              {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
+              {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', displayMaterialsTotal)}
 
               {/* Labor Section (Tear Off + Installation combined) */}
               {renderSectionHeader(
@@ -901,7 +914,7 @@ export function SectionedLineItemsTable({
                   </TableCell>
                 </TableRow>
               )}
-              {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', laborTotal)}
+              {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', displayLaborTotal)}
             </>
           )}
 
@@ -922,10 +935,21 @@ export function SectionedLineItemsTable({
                   Direct Cost Total
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold text-lg">
-                  {formatCurrency(materialsTotal + laborTotal)}
+                  {formatCurrency(displayDirectCostTotal)}
                 </TableCell>
                 {editable && <TableCell />}
               </TableRow>
+              {passThroughTotal > 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={subtotalLabelCols} className="text-right text-xs text-amber-600">
+                    Pass-through (billed at cost, no overhead/profit)
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-amber-600">
+                    {formatCurrency(passThroughTotal)}
+                  </TableCell>
+                  {editable && <TableCell />}
+                </TableRow>
+              )}
             </>
           )}
 
