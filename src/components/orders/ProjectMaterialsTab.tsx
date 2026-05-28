@@ -117,6 +117,8 @@ export function ProjectMaterialsTab({
 
       <SrsDiagnosticsPanel projectId={projectId} />
 
+      <AbcDiagnosticsPanel projectId={projectId} />
+
       <PushToSupplierDialog
         open={pushOpen}
         onOpenChange={setPushOpen}
