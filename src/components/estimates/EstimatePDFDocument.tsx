@@ -521,10 +521,19 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   templateAttachments,
   skipCoverPage = false,
   skipWarrantyAndTerms = false,
+  skipExtraPages = false,
+  pageOrder,
   templateStyle,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
   const tmpl = getTemplateComponents(templateStyle);
+  const effectivePageOrder = pageOrder && pageOrder.length > 0 ? pageOrder : DEFAULT_PAGE_ORDER;
+  // Helper: is a section enabled in the user's page order?
+  const sectionEnabled = (id: string): boolean => {
+    const entry = effectivePageOrder.find((p) => p.id === id);
+    // If not found, treat as enabled (back-compat)
+    return entry ? entry.enabled : true;
+  };
 
   const dateStr = createdAt 
     ? new Date(createdAt).toLocaleDateString('en-US', { 
