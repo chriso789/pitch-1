@@ -823,7 +823,7 @@ export function SectionedLineItemsTable({
                   </TableCell>
                 </TableRow>
               )}
-              {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
+              {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', displayMaterialsTotal)}
 
               {/* Labor Section (Tear Off + Installation combined) */}
               {renderSectionHeader(
