@@ -96,15 +96,16 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
         ${data.customer.email ? `<div style="font-size:12px;color:#4b5563;margin-top:2px">${escape(data.customer.email)}</div>` : ''}
         ${data.customer.phone ? `<div style="font-size:12px;color:#4b5563;margin-top:2px">${escape(data.customer.phone)}</div>` : ''}
       </div>
-      <div style="text-align:right;min-width:200px">
+      <div style="text-align:right;min-width:220px">
         <div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Invoice Date:</span><span style="font-weight:600">${escape(data.invoiceDate)}</span></div>
         ${data.dueDate ? `<div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Due Date:</span><span style="font-weight:600">${escape(data.dueDate)}</span></div>` : ''}
+        ${typeof data.contractTotal === 'number' && data.contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Contract Amount:</span><span style="font-weight:600">${fmt(data.contractTotal)}</span></div>` : ''}
         <div style="margin-top:12px;padding:10px 14px;background:#f3f4f6;border-radius:6px">
           <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280">Amount Due</div>
           <div style="font-size:22px;font-weight:700;color:#0a2540">${fmt(data.amount)}</div>
         </div>
       </div>
-    </div>
+
 
     <!-- LINE ITEMS -->
     <div style="padding:0 32px">
