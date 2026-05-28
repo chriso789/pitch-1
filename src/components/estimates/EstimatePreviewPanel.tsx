@@ -1652,9 +1652,11 @@ export function EstimatePreviewPanel({
                           options={options}
                           measurementSummary={measurementSummary || undefined}
                           createdAt={new Date().toISOString()}
-                          jobPhotos={previewJobPhotos}
+                          jobPhotos={[]}
                           skipCoverPage={true}
                           skipWarrantyAndTerms={!isLast}
+                          skipExtraPages={true}
+                          pageOrder={pageOrder}
                           templateStyle={activeTemplateStyle}
                         />
                       );
