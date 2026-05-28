@@ -40,6 +40,8 @@ import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings
 import { SRSConnectionSettings } from "@/components/settings/SRSConnectionSettings";
 import { QXOConnectionSettings } from "@/components/settings/QXOConnectionSettings";
 import { ABCConnectionSettings } from "@/components/settings/ABCConnectionSettings";
+import { SupplierIntegrationsPanel } from "@/components/settings/SupplierIntegrationsPanel";
+import { useSupplierDeveloperMode } from "@/lib/supplierAccess";
 import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { TrustedDevices } from "@/components/settings/TrustedDevices";
 import { CacheManagement } from "@/components/settings/CacheManagement";
