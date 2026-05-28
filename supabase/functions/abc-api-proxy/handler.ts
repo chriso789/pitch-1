@@ -91,6 +91,15 @@ function mapAbcError(status: number, body: any): string {
   return `abc_${status}`;
 }
 
+function interpretAbcError(errorCode: string | null, status: number, body: any): string | null {
+  if (errorCode === "abc_waf_blocked") {
+    return "ABC/Imperva blocked the server-to-server request before ABC order validation. The sandbox payload shape is valid; ABC must allowlist the Supabase Edge Function egress/WAF path for this environment.";
+  }
+  const message = typeof body?.errorMessage === "string" ? body.errorMessage : "";
+  if (status === 400 && message) return message;
+  return null;
+}
+
 
 interface TokenLookup {
   token?: string;
@@ -895,7 +904,6 @@ export const handle = async (req) => {
           contacts: [{
             name: "ABC Sandbox Test",
             functionCode: "SM",
-            phone: "9415550100",
             email: "connect_user@test.com",
             phones: [{ number: "9415550100", type: "MOBILE", ext: "" }],
           }],
@@ -1032,6 +1040,7 @@ export const handle = async (req) => {
         branchNumber,
         shipToNumber,
         error_code,
+        interpretation: interpretAbcError(error_code, r.status, r.json),
         timestamp: new Date().toISOString(),
       });
     }
