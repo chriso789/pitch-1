@@ -282,7 +282,13 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     enabled: !!pipelineEntryId && !!estimates,
   });
 
-  const displayedEstimates = [...(estimates || []), ...recoveredPdfEstimates];
+  // Only surface recovered PDF rows when they actually have an openable file.
+  // Inaccessible "PDF only" rows (no pdf_url) are hidden because every action
+  // on them is disabled, so listing them just clutters the UI.
+  const accessibleRecoveredPdfs = (recoveredPdfEstimates || []).filter(
+    (est) => !!est.pdf_url
+  );
+  const displayedEstimates = [...(estimates || []), ...accessibleRecoveredPdfs];
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes } = useQuery({
