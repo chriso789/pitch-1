@@ -125,11 +125,18 @@ export function ABCConnectionSettings() {
   const [oauthDebug, setOauthDebug] = useState<any | null>(null);
   const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
 
+  // Demo-required inputs for live Sandy walkthrough
+  const [demoShipTo, setDemoShipTo] = useState('');
+  const [demoBranch, setDemoBranch] = useState('');
+  const [demoItemNumber, setDemoItemNumber] = useState('');
+  const [readiness, setReadiness] = useState<any | null>(null);
+  const [readinessBusy, setReadinessBusy] = useState(false);
+
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
-  const [environment, setEnvironment] = useState<ABCEnvironment>('production');
+  const [environment, setEnvironment] = useState<ABCEnvironment>('sandbox');
 
 
   useEffect(() => {
