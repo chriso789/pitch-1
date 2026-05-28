@@ -125,7 +125,6 @@ export const EstimateBuilder = () => {
     setCalculatedEstimate(estimate);
     toast.success("Estimate calculated successfully!");
   };
-
   const addLineItem = () => {
     const newItem: LineItem = {
       id: Date.now().toString(),
@@ -134,9 +133,12 @@ export const EstimateBuilder = () => {
       unit: "sq",
       material_cost: 0,
       labor_cost: 0,
-      total_cost: 0
+      total_cost: 0,
+      exclude_from_overhead: false,
     };
     setLineItems([...lineItems, newItem]);
+  };
+
   };
 
   const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
