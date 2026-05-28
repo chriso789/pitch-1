@@ -46,6 +46,27 @@ export interface AlignmentStatus {
   metrics: AlignmentMetrics;
 }
 
+/**
+ * Already-resolved Overlay Transform diagnostics object as rendered by the
+ * "Overlay transform" diagnostics card in MeasurementVisualQAOverlay. Passing
+ * this in lets the helper trust the same crop-valid evidence the UI displays,
+ * instead of re-deriving partial values from geometry_report_json.
+ */
+export interface ResolvedOverlayTransform {
+  coord_space?: string | null;
+  source_px?: { width: number; height: number } | null;
+  crop_bbox_px?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  display_px_within_crop?: { width: number; height: number } | null;
+  first_pt_disp?: [number, number] | null;
+  bbox_center_disp?: [number, number] | null;
+  target_mask_overlap?: number | null;
+}
+
+export interface ComputeAlignmentStatusOptions {
+  overlayTransform?: ResolvedOverlayTransform | null;
+}
+
+
 const isNum = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
