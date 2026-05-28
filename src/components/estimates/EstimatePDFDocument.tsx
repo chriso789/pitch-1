@@ -132,6 +132,10 @@ interface EstimatePDFDocumentProps {
   // Multi-estimate deduplication flags
   skipCoverPage?: boolean;
   skipWarrantyAndTerms?: boolean;
+  /** Skip ALL extra pages (cover, measurement details, job photos, warranty). Used for appended additional estimates. */
+  skipExtraPages?: boolean;
+  /** Optional user-defined page order (drag-reorder). Falls back to DEFAULT_PAGE_ORDER. */
+  pageOrder?: PageOrderItem[];
   // Per-company template style
   templateStyle?: string | null;
 }
