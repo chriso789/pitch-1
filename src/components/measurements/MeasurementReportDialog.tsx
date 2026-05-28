@@ -1964,7 +1964,31 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         )}
 
         <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
-          <div ref={reportContentRef}>
+          <div ref={reportContentRef} className="relative">
+            {/* PDF-only export root. Rendered off-screen but in the DOM so
+                html2canvas can capture it. Excludes interactive controls,
+                raw JSON, and the debug grid that previously dominated the
+                exported PDF. The download path captures THIS root only. */}
+            {effectiveMeasurement && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: '-100000px',
+                  top: 0,
+                  width: '900px',
+                  background: '#ffffff',
+                  pointerEvents: 'none',
+                  zIndex: -1,
+                }}
+              >
+                <MeasurementReportPdfVisualSection
+                  measurement={effectiveMeasurement}
+                  address={address}
+                />
+              </div>
+            )}
+
             {effectiveMeasurement?.id && (
               <div className="mb-6">
                 <AIMeasurement3DDebugViewer
@@ -1973,6 +1997,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                 />
               </div>
             )}
+
 
             {!previewGate.ok
               ? (
