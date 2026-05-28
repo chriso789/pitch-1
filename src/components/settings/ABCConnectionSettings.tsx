@@ -35,6 +35,7 @@ import {
   RefreshCw,
   ChevronRight,
 } from 'lucide-react';
+import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
 
 const ABC_CONFIG = {
   authBase: {
