@@ -193,6 +193,7 @@ export const Settings = () => {
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>("general");
   const [productSubTab, setProductSubTab] = useState<string>("materials");
+  const [supplierSubTab, setSupplierSubTab] = useState<string>("abc");
   const [activeSubTab, setActiveSubTab] = useState<string>("settings");
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -210,7 +211,14 @@ export const Settings = () => {
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
     const subFromUrl = searchParams.get('sub');
+    const supplierFromUrl = searchParams.get('supplier');
+    const abcCallback = searchParams.get('abc');
     let resolvedTab = tabFromUrl || locationState?.activeTab || null;
+
+    if (abcCallback) {
+      resolvedTab = "supplier-connections";
+      setSupplierSubTab("abc");
+    }
     
     if (resolvedTab) {
       // If user navigated to an old product tab key, redirect to consolidated view
@@ -220,6 +228,7 @@ export const Settings = () => {
       }
       setActiveTab(resolvedTab);
       if (subFromUrl) setProductSubTab(subFromUrl);
+      if (supplierFromUrl) setSupplierSubTab(supplierFromUrl);
     }
     
     if (locationState?.activeTab) {
@@ -534,7 +543,7 @@ export const Settings = () => {
                 Connect your supplier accounts for live pricing and ordering
               </p>
             </div>
-            <Tabs defaultValue="srs" className="space-y-6">
+            <Tabs value={supplierSubTab} onValueChange={setSupplierSubTab} className="space-y-6">
               <TabsList className="flex-wrap">
                 <TabsTrigger value="srs" className="flex items-center gap-2">
                   <LucideIcons.Truck className="h-4 w-4" />
