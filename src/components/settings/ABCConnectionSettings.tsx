@@ -592,13 +592,8 @@ export function ABCConnectionSettings() {
   const hasSecret = !!connection?.client_secret_last_four;
   const canSubmitOrder =
     !!shipToNumber.trim() && !!branchNumber.trim() && !!itemNumber.trim();
-  const trackingBody = trackResult?.body || orderResult?.orderResponse?.body;
-  const trackingFirst = useMemo(() => {
-    if (!trackingBody) return null;
-    if (Array.isArray(trackingBody)) return trackingBody[0];
-    if (Array.isArray(trackingBody?.orders)) return trackingBody.orders[0];
-    return trackingBody;
-  }, [trackingBody]);
+  // (Order tracking now lives in <AbcDiagnosticsPanel /> — persistent + tenant-scoped.)
+
 
   // ────────────────────────────────────────────────────────────────────
   // A. Header / Status Card
