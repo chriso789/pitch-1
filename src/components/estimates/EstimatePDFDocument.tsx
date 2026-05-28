@@ -736,6 +736,52 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         </div>
       );
     }
+    // --- Append additional estimates inline so they group with the main estimate
+    //     content BEFORE photos/warranty/attachments, respecting page order. ---
+    if (additionalEstimates && additionalEstimates.length > 0) {
+      additionalEstimates.forEach((addEst, addIdx) => {
+        const addItems = [...addEst.materialItems, ...addEst.laborItems];
+        const { itemChunks: addItemChunks, blockChunks: addBlockChunks } = chunkItems(
+          addItems,
+          MAX_ROWS_FIRST_PAGE,
+          MAX_ROWS_CONTINUATION,
+          opts,
+        );
+        estimateNodes.push(
+          <FirstPage
+            key={`add-est-${addIdx}-page-1`}
+            customerName={customerName}
+            customerAddress={customerAddress}
+            customerPhone={customerPhone}
+            customerEmail={customerEmail}
+            items={addItemChunks[0] || []}
+            blocks={addBlockChunks[0] || []}
+            isOnlyChunk={addItemChunks.length <= 1}
+            breakdown={addEst.breakdown}
+            config={addEst.config}
+            opts={opts}
+            showTerms={false}
+            estimateName={addEst.estimateName}
+          />
+        );
+        for (let i = 1; i < addItemChunks.length; i++) {
+          const isLast = i === addItemChunks.length - 1;
+          estimateNodes.push(
+            <ItemsContinuationPage
+              key={`add-est-${addIdx}-page-${i + 1}`}
+              items={addItemChunks[i]}
+              blocks={addBlockChunks[i]}
+              isLastPage={isLast}
+              breakdown={isLast ? addEst.breakdown : undefined}
+              config={isLast ? addEst.config : undefined}
+              opts={opts}
+              showTerms={false}
+            />
+          );
+        }
+      });
+    }
+
     sections['estimate_content'] = {
       nodes: estimateNodes,
       isStandalone: false,
