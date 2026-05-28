@@ -914,7 +914,7 @@ export function SectionedLineItemsTable({
                   </TableCell>
                 </TableRow>
               )}
-              {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', laborTotal)}
+              {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', displayLaborTotal)}
             </>
           )}
 
