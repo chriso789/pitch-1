@@ -104,9 +104,29 @@ describe("MeasurementReportPdfVisualSection — PDF root contract", () => {
       '[data-pdf-overlay-panel="true"]',
     )!;
     expect(panel.textContent ?? "").toMatch(/aerial image unavailable in pdf export/i);
-    expect(panel.textContent ?? "").toMatch(/overlay lines are still shown/i);
+    expect(panel.textContent ?? "").toMatch(/overlay geometry shown without aerial background/i);
     expect(panel.style.background.toLowerCase()).toMatch(/^(#ffffff|rgb\(255, 255, 255\))$/);
+    // Clamped panel dimensions for PDF export.
+    expect(parseInt(panel.style.maxHeight, 10)).toBeLessThanOrEqual(360);
+    expect(parseInt(panel.style.minHeight, 10)).toBeGreaterThanOrEqual(200);
+    expect(panel.style.aspectRatio).toBe("4 / 3");
   });
+
+  it("renders perimeter polygon with non-scaling stroke and meet preserveAspectRatio", () => {
+    const { container } = render(
+      <MeasurementReportPdfVisualSection measurement={measurement} />,
+    );
+    const panel = container.querySelector<HTMLElement>(
+      '[data-pdf-overlay-panel="true"]',
+    )!;
+    const svg = panel.querySelector("svg")!;
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
+    const polygon = panel.querySelector("polygon")!;
+    expect(polygon.getAttribute("vector-effect")).toBe("non-scaling-stroke");
+    const sw = parseFloat(polygon.getAttribute("stroke-width") || "0");
+    expect(sw).toBeLessThanOrEqual(2);
+  });
+
 
   it("still renders the perimeter polygon over the placeholder when aerial fails", () => {
     const { container } = render(

@@ -154,25 +154,33 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
     const minY = Math.min(...ys);
     const maxX = Math.max(...xs);
     const maxY = Math.max(...ys);
-    const pad = Math.max(8, (maxX - minX) * 0.05);
+    // Generous padding so polygon is not flush against the panel edge.
+    const pad = Math.max(40, Math.max(maxX - minX, maxY - minY) * 0.3);
     const vb = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
     const pts = focusPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(' ');
     return (
       <svg
         viewBox={vb}
         preserveAspectRatio="xMidYMid meet"
+        width="100%"
+        height="100%"
         style={{
           position: 'absolute',
           inset: 0,
-          width: '100%',
-          height: '100%',
           pointerEvents: 'none',
         }}
       >
-        <polygon points={pts} fill="rgba(59,130,246,0.08)" stroke="#2563eb" strokeWidth={2} />
+        <polygon
+          points={pts}
+          fill="rgba(59,130,246,0.10)"
+          stroke="#2563eb"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
     );
   }, [focusPerimeterPx]);
+
 
   const showAerial = hasRasterOverlay && aerialState !== 'failed';
 
@@ -262,30 +270,34 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
               padding: 0,
               aspectRatio: '4 / 3',
               width: '100%',
+              maxHeight: 360,
+              minHeight: 220,
               overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {overlaySvg}
             <div
               style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                padding: '8px 12px',
-                background: 'rgba(255,255,255,0.92)',
-                borderTop: '1px solid #e2e8f0',
+                position: 'relative',
+                zIndex: 1,
                 textAlign: 'center',
+                padding: '8px 16px',
+                background: 'rgba(255,255,255,0.85)',
+                borderRadius: 4,
               }}
             >
               <div style={{ fontSize: 12, color: '#0f172a', fontWeight: 600 }}>
                 Aerial image unavailable in PDF export
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                Overlay lines are still shown for diagnostic review.
+                Overlay geometry shown without aerial background
               </div>
             </div>
           </div>
+
         )}
       </div>
 
