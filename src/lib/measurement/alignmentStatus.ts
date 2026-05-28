@@ -130,17 +130,18 @@ export function computeAlignmentStatus(
     null;
 
   const sourcePx =
-    (ot?.source_px ?? null) ??
-    dig(grj, "overlay_transform.source_raster_px") ??
-    dig(grj, "source_raster_px") ??
-    dig(grj, "raster_size_px") ??
+    ot?.source_px ??
+    (dig(grj, "overlay_transform.source_raster_px") as any) ??
+    (dig(grj, "source_raster_px") as any) ??
+    (dig(grj, "raster_size_px") as any) ??
     null;
 
   const cropBbox =
-    (ot?.crop_bbox_px ?? null) ??
+    ot?.crop_bbox_px ??
     asBbox(dig(grj, "overlay_transform.crop_bbox_px")) ??
     asBbox(dig(grj, "crop_bbox_px")) ??
     asBbox(dig(grj, "overlay_debug.crop_bbox_px"));
+
 
 
 
