@@ -177,11 +177,15 @@ export function computeAlignmentStatus(measurement: any): AlignmentStatus {
   ) {
     rasterOverlayDisplacement = "ok";
   } else if (
-    // Crop-valid evidence: when the overlay transform exposes a valid crop
-    // bbox and the selected perimeter projects inside it, treat the aerial
-    // overlay as aligned even if coord_space wasn't explicitly raster_px.
+    // Crop-valid evidence: the Overlay Transform card already proves the
+    // crop math is valid and raster-aligned. When the overlay transform
+    // exposes a valid crop bbox AND either (a) the selected perimeter is
+    // surfaced or (b) the perimeter bbox center projects inside the crop,
+    // treat the aerial overlay as aligned even if coord_space wasn't
+    // explicitly the literal string "raster_px". This stops the UI from
+    // reporting "unknown" while the diagnostics show a valid crop.
     hasCrop &&
-    selectedPerimeterPresent &&
+    (selectedPerimeterPresent || pointInBbox(bboxCenterSrc, cropBbox)) &&
     !frameRawMismatch
   ) {
     rasterOverlayDisplacement = "ok";
