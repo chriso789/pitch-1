@@ -42,7 +42,8 @@ Deno.serve(async (req) => {
   const errParam = url.searchParams.get("error");
   const errDesc = url.searchParams.get("error_description");
 
-  const returnTo = `${APP_BASE}/settings?tab=supplier-connections&supplier=abc&abc=`;
+  let returnTo = `${APP_BASE}/settings?tab=supplier-connections&supplier=abc&abc=`;
+
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
