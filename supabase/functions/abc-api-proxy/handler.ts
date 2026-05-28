@@ -271,8 +271,13 @@ async function callAbc(
   const text = await resp.text();
   let json: any = null;
   try { json = JSON.parse(text); } catch { /* keep text */ }
+  // WAF sentinel: Imperva/Incapsula blocks are not real ABC responses.
+  if (!resp.ok && detectWaf(resp.status, text)) {
+    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false };
+  }
   return { status: resp.status, json, text, ok: resp.ok };
 }
+
 
 interface ProxyRequest {
   action:
