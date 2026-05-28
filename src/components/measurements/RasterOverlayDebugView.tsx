@@ -129,6 +129,7 @@ export function RasterOverlayDebugView({
   roofTargetBboxPx,
   geometryPxSpace,
   focusPerimeterPx,
+  pdfMode = false,
 }: {
   imageUrl: string | null | undefined;
   rasterSize: { width: number; height: number } | null | undefined;
@@ -140,6 +141,12 @@ export function RasterOverlayDebugView({
   geometryPxSpace?: string | null;
   /** Optional perimeter (raster px) to crop the displayed view around. */
   focusPerimeterPx?: Pt[] | null;
+  /**
+   * PDF-safe mode: hides interactive toggles + legend, forces white surfaces,
+   * and renders only the aerial + overlay SVG. Used by the dedicated PDF
+   * export section so the captured DOM contains exactly one clean visual.
+   */
+  pdfMode?: boolean;
 }) {
   const [showPlanes, setShowPlanes] = useState(true);
   const [showEdges, setShowEdges] = useState(true);
