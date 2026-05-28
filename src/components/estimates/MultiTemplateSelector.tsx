@@ -572,6 +572,38 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   }, [existingEstimateId]);
 
+  // Open the preview directly from the saved-estimates list without navigating.
+  // Navigation was remounting the lead page/auth shell and made the preview appear
+  // to close immediately after clicking the share/preview icon.
+  useEffect(() => {
+    if (!previewEstimateRequestId) return;
+
+    if (previewEstimateRequestId === existingEstimateId && lineItems.length > 0) {
+      setShowPreviewPanel(true);
+      onPreviewEstimateRequestHandled?.();
+      return;
+    }
+
+    setPendingPreviewEstimateId(previewEstimateRequestId);
+    setEditEstimateProcessed(true);
+    setLineItems([]);
+    setFixedPrice(null);
+    setEstimateDisplayName('');
+    setEstimatePricingTier(null);
+    setTradeSections([]);
+    setTradeLineItems({});
+    loadEstimateForEditing(previewEstimateRequestId);
+    onPreviewEstimateRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewEstimateRequestId]);
+
+  useEffect(() => {
+    if (pendingPreviewEstimateId && existingEstimateId === pendingPreviewEstimateId && lineItems.length > 0) {
+      setPendingPreviewEstimateId(null);
+      setShowPreviewPanel(true);
+    }
+  }, [pendingPreviewEstimateId, existingEstimateId, lineItems.length]);
+
   // Clear editing state when a deleted estimate ID matches what we're editing
   useEffect(() => {
     if (clearEditingEstimateId && clearEditingEstimateId === existingEstimateId) {
