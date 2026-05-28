@@ -69,13 +69,17 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
     .join('');
 
   // Derive original contract vs change orders from line items when possible.
-  const changeOrdersTotal = data.lineItems
-    .filter((li) => /change\s*order/i.test(li.description))
-    .reduce((s, li) => s + (li.line_total || 0), 0);
+  const changeOrderItems = data.lineItems.filter((li) => /change\s*order/i.test(li.description));
+  const changeOrdersTotal = changeOrderItems.reduce((s, li) => s + (li.line_total || 0), 0);
   const contractTotal = typeof data.contractTotal === 'number' ? data.contractTotal : 0;
   const originalContract = contractTotal > 0 ? Math.max(0, contractTotal - changeOrdersTotal) : 0;
   const alreadyPaid = data.alreadyPaid || 0;
   const balanceDue = data.amount;
+
+  // Pretty name for each change order (strip leading "Change Order —/-/:" prefix)
+  const changeOrderName = (desc: string) =>
+    desc.replace(/^\s*change\s*order\s*[—\-:]\s*/i, '').trim() || 'Change Order';
+
 
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;box-sizing:border-box">
@@ -101,7 +105,15 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
       <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
         <div style="background:#f9fafb;padding:12px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Balance Summary</div>
         <div style="padding:14px 16px">
-          ${originalContract > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#374151"><span>Original Contract Amount</span><span style="font-weight:600">${fmt(originalContract)}</span></div>` : ''}
+          ${changeOrderItems.length > 0 ? `
+            <div style="padding:6px 0 2px;font-size:13px;color:#374151;font-weight:600">+ Change Orders</div>
+            ${changeOrderItems.map((li) => `
+              <div style="display:flex;justify-content:space-between;padding:3px 0 3px 16px;font-size:12px;color:#4b5563">
+                <span>${escape(changeOrderName(li.description))}</span>
+                <span style="font-weight:600">${fmt(li.line_total)}</span>
+              </div>`).join('')}
+          ` : ''}
+
           ${changeOrdersTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#374151"><span>+ Change Orders</span><span style="font-weight:600">${fmt(changeOrdersTotal)}</span></div>` : ''}
           ${contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:#111827;border-top:1px solid #e5e7eb;margin-top:4px"><span style="font-weight:600">Total Contract</span><span style="font-weight:700">${fmt(contractTotal)}</span></div>` : ''}
           ${alreadyPaid > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#047857"><span>− Payments Received</span><span style="font-weight:600">${fmt(alreadyPaid)}</span></div>` : ''}
