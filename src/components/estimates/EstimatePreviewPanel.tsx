@@ -223,7 +223,7 @@ export function EstimatePreviewPanel({
   const [additionalAttachments, setAdditionalAttachments] = useState<TemplateAttachment[]>([]);
   const [removedTemplateIds, setRemovedTemplateIds] = useState<Set<string>>(new Set());
   const [pageOrder, setPageOrder] = useState<PageOrderItem[]>(DEFAULT_PAGE_ORDER);
-  const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
+  const [isPageOrderOpen, setIsPageOrderOpen] = useState(true);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
