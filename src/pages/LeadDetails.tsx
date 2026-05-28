@@ -251,6 +251,7 @@ const LeadDetails = () => {
   const [currentEditingEstimateName, setCurrentEditingEstimateName] = useState<string | undefined>(undefined);
   const saveEstimateChangesRef = useRef<(() => Promise<void>) | null>(null);
   const [deletedEstimateId, setDeletedEstimateId] = useState<string | null>(null);
+  const [previewEstimateRequestId, setPreviewEstimateRequestId] = useState<string | null>(null);
 
 
   // Handle unsaved changes state from MultiTemplateSelector
@@ -713,8 +714,8 @@ const LeadDetails = () => {
                 navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
               }}
               onShareEstimate={(estimateId) => {
-                // Navigate to estimate in edit mode AND trigger preview panel to open
-                navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}&showPreview=true`);
+                // Open the preview in-place; navigating here remounts the lead page and closes the dialog.
+                setPreviewEstimateRequestId(estimateId);
               }}
               hasUnsavedChanges={estimateHasUnsavedChanges}
               currentEditingName={currentEditingEstimateName}
@@ -744,6 +745,8 @@ const LeadDetails = () => {
               onUnsavedChangesChange={handleUnsavedChangesChange}
               saveChangesRef={saveEstimateChangesRef}
               clearEditingEstimateId={deletedEstimateId}
+              previewEstimateRequestId={previewEstimateRequestId}
+              onPreviewEstimateRequestHandled={() => setPreviewEstimateRequestId(null)}
             />
 
           </div>

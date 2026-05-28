@@ -177,6 +177,8 @@ interface MultiTemplateSelectorProps {
   onSaveChanges?: () => Promise<void>;
   saveChangesRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   clearEditingEstimateId?: string | null;
+  previewEstimateRequestId?: string | null;
+  onPreviewEstimateRequestHandled?: () => void;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
@@ -185,7 +187,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   onEstimateCreated,
   onUnsavedChangesChange,
   saveChangesRef,
-  clearEditingEstimateId
+  clearEditingEstimateId,
+  previewEstimateRequestId,
+  onPreviewEstimateRequestHandled
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -218,6 +222,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const [showUpdateTemplateDialog, setShowUpdateTemplateDialog] = useState(false);
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
+  const [pendingPreviewEstimateId, setPendingPreviewEstimateId] = useState<string | null>(null);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   const [isCreatingNewEstimate, setIsCreatingNewEstimate] = useState(false);
@@ -566,6 +571,38 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setShowPreviewPanel(true);
     }
   }, [existingEstimateId]);
+
+  // Open the preview directly from the saved-estimates list without navigating.
+  // Navigation was remounting the lead page/auth shell and made the preview appear
+  // to close immediately after clicking the share/preview icon.
+  useEffect(() => {
+    if (!previewEstimateRequestId) return;
+
+    if (previewEstimateRequestId === existingEstimateId) {
+      setShowPreviewPanel(true);
+      onPreviewEstimateRequestHandled?.();
+      return;
+    }
+
+    setPendingPreviewEstimateId(previewEstimateRequestId);
+    setEditEstimateProcessed(true);
+    setLineItems([]);
+    setFixedPrice(null);
+    setEstimateDisplayName('');
+    setEstimatePricingTier(null);
+    setTradeSections([]);
+    setTradeLineItems({});
+    loadEstimateForEditing(previewEstimateRequestId);
+    onPreviewEstimateRequestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewEstimateRequestId]);
+
+  useEffect(() => {
+    if (pendingPreviewEstimateId && existingEstimateId === pendingPreviewEstimateId) {
+      setPendingPreviewEstimateId(null);
+      setShowPreviewPanel(true);
+    }
+  }, [pendingPreviewEstimateId, existingEstimateId]);
 
   // Clear editing state when a deleted estimate ID matches what we're editing
   useEffect(() => {
