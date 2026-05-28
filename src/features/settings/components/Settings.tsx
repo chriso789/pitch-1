@@ -144,7 +144,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "calendar-sync": "general",
   payments: "business",
   "production-checklist": "business",
-  "material-audit": "business",
+  "material-audit": "products",
   "supplier-connections": "business",
   "company-referrals": "business",
 };
@@ -278,6 +278,10 @@ export const Settings = () => {
           tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system' && TAB_TO_CATEGORY[tab.tab_key] !== 'platform'
         );
       }
+
+      // Hide tabs that are surfaced elsewhere in the app
+      const HIDDEN_TAB_KEYS = new Set(["my-money", "commissions"]);
+      filteredTabs = filteredTabs.filter(t => !HIDDEN_TAB_KEYS.has(t.tab_key));
 
       setTabConfig(filteredTabs);
       const hasProductTabs = filteredTabs.some(t => PRODUCT_TAB_KEYS.includes(t.tab_key));
