@@ -23,14 +23,15 @@ const APP_BASE = Deno.env.get("APP_BASE_URL") || "https://pitch-crm.ai";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://alxelfrbjzkmtnsulcei.supabase.co";
 const CANONICAL_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/abc-oauth-callback`;
 
-function htmlRedirect(target: string, message: string) {
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><title>ABC Supply</title>
-     <p style="font:16px system-ui;padding:24px">${message}</p>
-     <script>setTimeout(()=>{window.location.replace(${JSON.stringify(target)})},1500)</script>`,
-    { headers: { "Content-Type": "text/html" } }
-  );
+function htmlRedirect(target: string, _message: string) {
+  // Use a real HTTP 302 redirect — more reliable than meta/JS redirect
+  // (some browsers render the callback body as plain text and never run the script).
+  return new Response(null, {
+    status: 302,
+    headers: { Location: target, "Cache-Control": "no-store" },
+  });
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
