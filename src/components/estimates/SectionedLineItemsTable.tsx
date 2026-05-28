@@ -446,9 +446,8 @@ export function SectionedLineItemsTable({
             </div>
           </TableCell>
         )}
+      </TableRow>
 
-          </TableCell>
-        )}
       </TableRow>
     );
   };
