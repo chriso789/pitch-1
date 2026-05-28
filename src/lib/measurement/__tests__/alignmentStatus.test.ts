@@ -94,3 +94,24 @@ describe("computeAlignmentStatus — validated DSM", () => {
     expect(s.banner).toBeNull();
   });
 });
+
+describe("computeAlignmentStatus — crop valid, coord_space missing", () => {
+  it("returns aerial overlay = ok when crop bbox is valid and perimeter bbox center projects inside it", () => {
+    // Live Fonsica-like payload: overlay_transform exposes a valid crop and
+    // perimeter_bbox_center_src, but coord_space is not the literal
+    // "raster_px" string and selected_perimeter_px isn't surfaced under that
+    // exact key. The Overlay Transform diagnostics already prove the crop is
+    // valid; the alignment helper must agree instead of reporting "unknown".
+    const s = computeAlignmentStatus({
+      geometry_report_json: {
+        overlay_transform: {
+          crop_bbox_px: { minX: 500, minY: 471, maxX: 790, maxY: 782 },
+          perimeter_bbox_center_src: [644.9, 626.4],
+          source_raster_px: { width: 1280, height: 1280 },
+        },
+      },
+    });
+    expect(s.raster_overlay_displacement).toBe("ok");
+  });
+});
+
