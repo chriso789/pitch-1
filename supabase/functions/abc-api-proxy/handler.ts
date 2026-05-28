@@ -248,6 +248,7 @@ async function callAbc(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      "User-Agent": "PitchCRM/1.0 (+https://pitch-crm.ai)",
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
