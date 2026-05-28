@@ -830,7 +830,9 @@ export const handle = async (req) => {
       }
       const ts = Date.now();
       const requestId = `PITCH-TEST-${ts}`;
-      const purchaseOrder = `PITCH-TEST-${ts}`;
+      // ABC currently limits purchaseOrder to 20 chars; keep requestId long/unique
+      // but use a compact purchase order for sandbox validation.
+      const purchaseOrder = `PITCH-${ts}`;
 
       const delivery = new Date();
       delivery.setUTCDate(delivery.getUTCDate() + 1);
@@ -839,14 +841,15 @@ export const handle = async (req) => {
       // ABC order submission requires unitPrice on each line. Pull a live price
       // first using the same pricing contract as the UI; if ABC cannot price the
       // sandbox item, keep a nominal QA value so payload-shape validation can run.
-      let unitPrice = 0.01;
+      let unitPriceValue = 0.01;
+      let unitPriceUom = "EA";
       try {
         const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
         const pricePayload = {
           requestId: `PITCH-PRICE-${ts}`,
           shipToNumber,
           branchNumber,
-          purpose: "estimating",
+          purpose: "ordering",
           lines: [{ id: "1", itemNumber, quantity: 1, uom: "EA" }],
         };
         const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
@@ -861,7 +864,8 @@ export const handle = async (req) => {
           firstLine?.price ??
           pj?.unitPrice;
         const numericPrice = Number(firstPrice);
-        if (Number.isFinite(numericPrice) && numericPrice > 0) unitPrice = numericPrice;
+        if (Number.isFinite(numericPrice) && numericPrice > 0) unitPriceValue = numericPrice;
+        unitPriceUom = String(firstLine?.uom ?? firstLine?.unitPrice?.uom ?? firstLine?.unitPrice?.uomCode ?? "EA").toUpperCase();
       } catch (_e) { /* non-fatal — proceed with fallback price */ }
 
       const orderObj = body.order ?? {
@@ -886,9 +890,10 @@ export const handle = async (req) => {
           },
           contacts: [{
             name: "ABC Sandbox Test",
+            functionCode: "SM",
             phone: "9415550100",
             email: "connect_user@test.com",
-            type: "PRIMARY",
+            phones: [{ number: "9415550100", type: "MOBILE", ext: "" }],
           }],
         },
         orderComments: [
@@ -902,7 +907,7 @@ export const handle = async (req) => {
           itemNumber,
           itemDescription: "Sandbox test item",
           orderedQty: { value: 1, uom: "EA" },
-          unitPrice,
+          unitPrice: { value: unitPriceValue, uom: unitPriceUom, instructions: "PITCH sandbox test" },
         }],
       };
 
