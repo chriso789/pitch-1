@@ -472,10 +472,19 @@ export function ABCConnectionSettings() {
           .eq('tenant_id', effectiveTenantId)
           .order('created_at', { ascending: false })
           .limit(1)
-          .maybeSingle(),
-      ]);
       setReadiness({ callbackLog: cbLog, auditLog: auditRow });
       if (cbLog?.has_error) setForceAdvancedOpen('advanced');
+      // Refresh sandbox test login readiness (server-side; password is never returned).
+      try {
+        const { data: sl } = await supabase.functions.invoke('abc-api-proxy', {
+          body: { tenant_id: effectiveTenantId, environment, action: 'sandbox_test_login_status' },
+        });
+        if (sl && typeof sl === 'object') {
+          setSandboxLogin({ configured: !!(sl as any).configured, username: (sl as any).username ?? null });
+        }
+      } catch {
+        // non-fatal
+      }
     } catch (e: any) {
       setReadiness({ error: formatErrorMessage(e) });
     } finally {
@@ -486,6 +495,8 @@ export function ABCConnectionSettings() {
   useEffect(() => {
     if (effectiveTenantId) loadReadiness();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTenantId, environment]);
+
   }, [effectiveTenantId, environment]);
 
   const fetchOAuthDebug = async () => {
