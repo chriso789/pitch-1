@@ -405,15 +405,26 @@ export function SectionedLineItemsTable({
           {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
         </TableCell>
         <TableCell className="text-right font-mono font-medium">
-          {formatCurrency(item.line_total)}
-        </TableCell>
         {editable && (
           <TableCell className="w-10">
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                size="icon"
+                variant="ghost"
+                className={`h-6 w-6 ${item.exclude_from_overhead ? 'text-amber-600 opacity-100' : ''}`}
+                onClick={() => onUpdateItem(item.id, { exclude_from_overhead: !item.exclude_from_overhead })}
+                title={
+                  item.exclude_from_overhead
+                    ? 'Pass-through: not applied to overhead/profit. Click to include.'
+                    : 'Exclude from overhead & profit (pass-through at cost)'
+                }
+              >
+                <PiggyBank className="h-3 w-3" />
+              </Button>
               {item.is_override && onResetItem && (
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
+                <Button
+                  size="icon"
+                  variant="ghost"
                   className="h-6 w-6"
                   onClick={() => onResetItem(item.id)}
                   title="Reset to original"
@@ -422,9 +433,9 @@ export function SectionedLineItemsTable({
                 </Button>
               )}
               {onDeleteItem && (
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
+                <Button
+                  size="icon"
+                  variant="ghost"
                   className="h-6 w-6 text-destructive"
                   onClick={() => onDeleteItem(item.id)}
                   title="Remove item"
@@ -433,6 +444,9 @@ export function SectionedLineItemsTable({
                 </Button>
               )}
             </div>
+          </TableCell>
+        )}
+
           </TableCell>
         )}
       </TableRow>
