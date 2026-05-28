@@ -145,7 +145,15 @@ Deno.serve(async (req) => {
           .eq("tenant_id", preTenantId);
         for (const i of ints ?? []) await setIntegrationError(i.id, "invalid_state");
       }
-      return htmlRedirect(returnTo + "error&msg=invalid_state", "Invalid or expired state.");
+    }
+
+    // If the start_oauth call captured the originating app origin (e.g. preview URL),
+    // redirect the user back there instead of the hardcoded production domain.
+    const stateOrigin = (stateRow as any).return_origin as string | null | undefined;
+    if (stateOrigin && /^https?:\/\//.test(stateOrigin)) {
+      returnTo = `${stateOrigin.replace(/\/$/, "")}/settings?tab=supplier-connections&supplier=abc&abc=`;
+    }
+
     }
     if (new Date(stateRow.expires_at).getTime() < Date.now()) {
       await setIntegrationError(stateRow.integration_id, "state_expired");
