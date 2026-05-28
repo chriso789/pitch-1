@@ -1,352 +1,282 @@
 ## Goal
 
-Turn the ABC Supply settings page from an engineering console into a demo-ready integration workflow for Sandy's call, while keeping every existing capability behind an "Advanced / Developer Details" accordion. ABC order tracking should look like the existing SRS / material order tracking UI.
+Replace the ephemeral in-memory "Order Tracking" card on the ABC Supply settings page with a persistent **ABC Submit Diagnostics** panel that mirrors the existing `SrsDiagnosticsPanel`, reads from `abc_orders` / `abc_api_audit` / `abc_webhook_events`, and updates live as ABC responds.
 
-## Sandy-confirmed sandbox defaults (UI only, never hardcoded server-side)
+## Changes
 
-- Ship-To: `2010466-2`
-- Branch: `1209`
-- Item: discovered via product search at branch 1209
-- Default product search query: `shingle`
+### 1. Backend — persist `submit_test_order` results
 
-## Files touched
+`supabase/functions/abc-api-proxy/handler.ts` and `supabase/functions/supplier-api/abc-proxy-handler.ts` (mirror edits):
 
-- **EDIT** `src/components/settings/ABCConnectionSettings.tsx` — full restructure into Simple Mode + Advanced accordion; all current state, queries, and edge-function calls preserved.
-- **EDIT (minor)** `supabase/functions/abc-api-proxy/handler.ts` and `supabase/functions/supplier-api/abc-proxy-handler.ts` — confirm `search_products` filters/pagination shape (already correct), add `select_item` passthrough only if needed; ensure `submit_test_order` returns `orderNumber`/`confirmationNumber` fields hoisted to the top of the response for the UI to read.
-- **EDIT** `docs/ABC_DEMO_READINESS.md` — add Sandy confirmation note + sandbox defaults table.
+- In the `submit_test_order` branch, after the `auditCall(...)`, upsert an `abc_orders` row on the `(tenant_id, request_id)` natural key (use `purchase_order` as fallback uniqueness when ABC echoes nothing):
+  - `request_id`, `purchase_order`, `order_number` (hoisted), `confirmation_number` (hoisted)
+  - `order_status`: `'submitted'` on `r.ok`, `'error'` otherwise
+  - `branch_number`, `ship_to_number`, `sold_to_number = shipToNumber`
+  - `ordered_on = today`, `delivery_requested_for`
+  - `source = 'sandbox'`
+  - `raw_payload = { request: payload, response: { status, body } }`
+- Insert a single `abc_order_lines` row from `orderObj.lines[0]` (item number + qty + uom).
+- Do not touch `abc_order_job_links` for sandbox submits (no project context).
+- Return value unchanged (UI already uses the hoisted `orderNumber` / `confirmationNumber`).
 
-No DB migrations. No new edge functions. No changes to `abc-oauth-callback`.
+No migration needed — tables, indexes, and grants for `abc_orders` / `abc_order_lines` already exist.
 
-## New page structure (top → bottom)
+### 2. New component — `src/components/settings/AbcDiagnosticsPanel.tsx`
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ A. Header / Status Card                                     │
-│   logo · "ABC Supply" · subtitle · status badge             │
-│   environment selector (Sandbox / Production)               │
-│   sandbox info badge OR production red warning              │
-├─────────────────────────────────────────────────────────────┤
-│ B. Connection Setup Card                                    │
-│   OAuth Client ID, OAuth Client Secret                      │
-│   [Save Credentials] [Connect ABC Supply]                   │
-│   [Test Token] [Disconnect]                                 │
-│   (Account # + Default Branch in "Account Defaults" subacc.)│
-├─────────────────────────────────────────────────────────────┤
-│ C. Compact Demo Readiness strip (Simple)                    │
-│   Credentials · Token · Sandbox · Last API call             │
-├─────────────────────────────────────────────────────────────┤
-│ D. Demo Workflow Card (sandbox only)                        │
-│   Stepper: 1 Connect · 2 Search · 3 Price · 4 Submit/Track  │
-│   Shared inputs: shipToNumber, branchNumber, itemNumber     │
-│   Pre-filled: 2010466-2 / 1209 / (blank)                    │
-├─────────────────────────────────────────────────────────────┤
-│ E. Sandbox Test Console                                     │
-│   Product Search (query, branch) → result table w/ "Use"    │
-│   Price Item (shipTo, branch, item, qty)                    │
-│   Submit Sandbox Test Order (disabled until item set)       │
-│   Track Order (orderNumber/confirmationNumber + Refresh)    │
-├─────────────────────────────────────────────────────────────┤
-│ F. Latest Result Card                                       │
-│   action · endpoint · status · success/fail · message       │
-│   [View Raw JSON] accordion (collapsed)                     │
-├─────────────────────────────────────────────────────────────┤
-│ G. Order Tracking Card (SRS-style)                          │
-│   PO · ABC Order # · Confirmation # · Status · Branch       │
-│   Ship-To · Requested delivery · Last updated               │
-│   Line items table (item, desc, qty, uom, status)           │
-│   [Refresh Order Status]                                    │
-├─────────────────────────────────────────────────────────────┤
-│ H. Advanced / Developer Details (accordion, collapsed)      │
-│   Authorization URL, Token URL, Redirect URI, Scopes,       │
-│   API Base · Inspect / Copy OAuth URL · full readiness grid │
-│   latest abc_oauth_callback_logs row                        │
-│   latest abc_api_audit row · raw request/response JSON      │
-│   OAuth troubleshooting text (auto-expands on ?abc=error)   │
-└─────────────────────────────────────────────────────────────┘
-```
+Mirror `src/components/orders/SrsDiagnosticsPanel.tsx` 1:1 visually (card header, badges, pills, banners, spacing, expanded "Inspect" section). ABC-specific wiring:
 
-## Behaviour rules
+- Tenant-scoped query (`useEffectiveTenantId` + `.eq('tenant_id', …)`).
+- Fetch latest 5 rows from `abc_orders` ordered by `created_at desc`. Optional `projectId` prop filters via `abc_order_job_links`.
+- For each order, fetch in parallel:
+  - `abc_webhook_events` matched on `(tenant_id, order_number)` OR `(tenant_id, confirmation_number)` — newest first. Treat these as the "webhook timeline" (count + Received pill + Last ABC update banner showing `event_type`).
+  - Latest `abc_api_audit` row(s) where `request_body_redacted ->> 'requestId' = request_id` (or `action='submit_test_order'` matching `purchase_order`) for the Inspect section (endpoint, status_code, response_body, duration).
+  - Job/customer/address via `abc_order_job_links → projects → pipeline_entries → contacts` using the explicit `contacts!pipeline_entries_contact_id_fkey` hint. Sandbox rows show no job box.
+- Realtime channel on `abc_orders` and `abc_webhook_events` (same tenant) → `load()`.
+- Card layout per row:
+  - Header: `ABC` badge (use existing `Badge` variants, ABC = orange/secondary), `purchase_order` as title, status pill (`submitted` / `accepted` / `rejected` / `error` / `pending`), Received pill with webhook timestamp, webhook count pill.
+  - "Last ABC update" banner: `{order_status} — {latest webhook event_type or "Order Update"}`.
+  - Job/Customer/Address box (only if link found).
+  - Metadata rows: `Submitted`, `Branch`, `Ship-To`, `ABC orderNumber`, `confirmationNumber`, `requestId`, `purchaseOrder`, `transactionID` (read from `raw_payload.response[0].transactionID` if present). Each long ID gets a copy button (same `Copy` icon pattern as SRS).
+  - Buttons: **Inspect** (toggles raw payload/response, audit row, webhook list) and **Refresh Status** (calls `abc-api-proxy` action `get_order_status` with `orderNumber || confirmationNumber`; toast on missing).
+  - Red rejection box when status matches `/reject|fail|cancel|error/i`, message mapped from `error_code` or `response_body.error/message`.
+- "Inspect" drawer content: endpoint, request payload (`raw_payload.request`), response status + body (`raw_payload.response`), latest audit row summary, and webhook events list with raw payload `<details>` toggles. Raw JSON lives ONLY inside Inspect.
+- Empty state: "No ABC submit attempts yet."
+- Sandbox no-tracker fallback row: when `order_number` and `confirmation_number` are both null, show muted message "Sandbox order submitted. ABC did not return an order/confirmation number in this response." while still rendering `requestId` and `purchaseOrder`.
 
-- **Environment selector** stays at top; sandbox shows green/blue info badge ("Sandbox orders run in ABC QA only and are non-production."), production shows red warning ("Production is live. Do not submit test orders in Production.").
-- **Renames**: "Begin OAuth Authorization" → "Connect ABC Supply"; "Test Connection" → "Test Token".
-- **Pre-fill on sandbox**: `demoShipTo=2010466-2`, `demoBranch=1209`, `productQuery=shingle`. Never pre-fill `itemNumber`. Submit Sandbox Test Order is disabled until itemNumber is non-empty.
-- **Product search → Use this item**: each row in the search result table gets a button that copies `itemNumber` into the shared `demoItemNumber` field used by Price + Submit Order.
-- **Auto-track after submit**: when `submit_test_order` returns `orderNumber` or `confirmationNumber`, populate the Order Tracking card and immediately call `get_order_status`. If ABC returns neither, show: *"Sandbox order submitted. ABC did not return an order/confirmation number in this response."*
-- **Order Tracking card** visually mirrors `src/components/orders/MaterialOrderDetail.tsx` (same Card + Badge + Table layout, same status badge styling) so ABC tracking matches the existing supplier tracking experience. No new shared component — the layout is copied locally to keep ABC self-contained.
-- **Compact readiness strip** in Simple Mode shows four pills only; the full grid moves into Advanced.
-- **OAuth troubleshooting text** lives in Advanced by default, but auto-expands Advanced if URL has `?abc=error` or last callback log has `has_error=true`.
+### 3. Wire into `src/components/settings/ABCConnectionSettings.tsx`
 
-## Backend payloads (verify only — handler already matches)
+- Import and render `<AbcDiagnosticsPanel />` in Simple Mode where the current ephemeral `OrderTrackingCard` sits (Section G).
+- Remove the ephemeral `OrderTrackingCard` JSX and its now-unused helpers (`trackingFirst`, `trackingBody`, `orderLines`, `trackingStatus`, `hasTracker`, `OrderTrackingCard`). Keep `orderResult` / `trackResult` state only as needed by the existing Submit + Refresh buttons (toast messaging). The persistent panel becomes the single source of truth for tracking.
+- Keep all OAuth / endpoints / raw logs inside the existing Advanced / Developer Details accordion.
+- Wording: line 860 already reads "Submits a non-production ABC sandbox order to ABC QA." — no change needed. Sweep the file once more to confirm no remaining "canned PITCH sandbox payload" copy.
 
-`search_products` body (already correct in `handler.ts` lines ~609-641):
+### 4. Verification
 
-```json
-{
-  "filters": [
-    { "key": "itemDescription", "condition": "contains", "values": ["shingle"], "joinCondition": "and" },
-    { "key": "branchNumber",    "condition": "equals",   "values": ["1209"],    "joinCondition": "and" }
-  ],
-  "pagination": { "itemsPerPage": 10, "pageNumber": 1 }
-}
-```
+- Run `supabase--curl_edge_functions` against `abc-api-proxy` with `action=submit_test_order` using `2010466-2` / `1209` and a real item once the user is connected, then `read_query` `abc_orders` ordered desc to confirm the new row, then load Settings → ABC Supply and confirm the diagnostics card renders with the correct pills, metadata, and Inspect contents. `Refresh Status` should call `get_order_status` and update the banner via realtime.
 
-If `itemNumber` is provided, swap to `{ key: "itemNumber", condition: "equals", values: [itemNumber] }`. Confirm this branch exists; add it if missing.
+## Out of Scope
 
-`price_items` → `POST {apiBase}/pricing/v2/prices` with `requestId`, `shipToNumber`, `branchNumber`, `purpose: "estimating"`, `lines[{ id, itemNumber, quantity, uom }]`. Verify shape, adjust only if drifted.
+- Webhook receiver changes (`abc_webhook_events` is consumed read-only; assumed already populated by existing webhook function).
+- Job linking UI for sandbox orders.
+- Production order path / `submit_order` legacy persistence (already writes to `abc_orders`).
+- Any SRS-side changes.
 
-`submit_test_order` → `POST {apiBase}/order/v2/orders` with an **array** body matching the spec already in `docs/ABC_DEMO_READINESS.md`. Verify, and ensure the response surfaced to the client hoists `orderNumber` and `confirmationNumber` from the ABC response so the UI can auto-track.
+## Files Touched
 
-## Docs update
-
-Add to `docs/ABC_DEMO_READINESS.md`:
-
-> **Sandbox is non-production.** Sandy (ABC) confirmed the Sandbox environment and all orders sent in that environment are non-production and connect with ABC's QA environment internally. Sandbox accounts are test accounts, not live production accounts.
->
-> **Sandy-approved sandbox demo values**
->
-> - Ship-To: `2010466-2`
-> - Branch: `1209`
-> - Item: any item available at branch `1209` (use product search first)
-
-## Acceptance checks (run after build, logged in)
-
-1. **Inspect OAuth URL** — contains `response_type=code`, `client_id`, `redirect_uri=https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-oauth-callback`, full scope string, `state`, `code_challenge`, `code_challenge_method=S256`.
-2. **Product Search** with `query=shingle`, `branchNumber=1209` — request body shows `filters` + `pagination`, not `{ query, branchNumber }`.
-3. **Price Item** with `shipToNumber=2010466-2`, `branchNumber=1209`, `itemNumber=<from search>` — hits `https://partners-sb.abcsupply.com/api/pricing/v2/prices`.
-4. **Submit Sandbox Test Order** — hits `https://partners-sb.abcsupply.com/api/order/v2/orders`, body is an array. Will only be run with a real item from step 2 (no placeholders).
-5. **Track Order** — if response carries `orderNumber`/`confirmationNumber`, tracking card auto-populates and `get_order_status` runs; otherwise the sandbox-no-number message is shown.
-
-## Out of scope
-
-- Re-architecting `abc-api-proxy` ↔ `supplier-api` (already deployed via local handler copy).
-- Production OAuth client setup or ABC dashboard configuration.
-- Any change to existing SRS, QXO, or material order code paths.
-- Persisting ABC orders to a new table — order tracking reads live from ABC via `get_order_status`.  
+- EDIT `supabase/functions/abc-api-proxy/handler.ts` — persist `submit_test_order` to `abc_orders` + `abc_order_lines`.
+- EDIT `supabase/functions/supplier-api/abc-proxy-handler.ts` — same mirror edit.
+- NEW `src/components/settings/AbcDiagnosticsPanel.tsx` — diagnostics card (SRS pattern, ABC fields).
+- EDIT `src/components/settings/ABCConnectionSettings.tsx` — mount panel, remove ephemeral tracking card.  
   
 
   ```
-  Approved. Execute this ABC Supply UI cleanup plan.
+  Approved. Execute the ABC persistent Submit Diagnostics plan with the following required clarifications.
 
-  Keep the scope tight:
-  - No DB migrations
-  - No new edge functions
-  - No changes to abc-oauth-callback unless a compile issue is found
-  - No changes to SRS/QXO/material order code paths
-  - No server-side hardcoding of Sandy’s sandbox values
+  Main goal:
+  Replace the ephemeral ABC order tracking card with a persistent “ABC Submit Diagnostics” panel that mirrors the existing SrsDiagnosticsPanel behavior and reads from:
+  - abc_orders
+  - abc_order_lines
+  - abc_api_audit
+  - abc_webhook_events if present
 
-  Sandy-confirmed sandbox values are UI defaults only:
-  - Ship-To: 2010466-2
-  - Branch: 1209
-  - Product search query: shingle
-  - Item Number: must be selected from product search results at branch 1209
+  This is the right direction. ABC submitted orders must survive refresh and must show up like SRS diagnostics.
 
-  Main objective:
-  Turn ABCConnectionSettings.tsx from a debug console into a clean demo workflow while preserving every existing tool under Advanced / Developer Details.
+  Required adjustments before coding:
 
-  Required implementation details:
+  1. Persistence key / upsert safety
 
-  1. Page structure
-  Build the page in this order:
+  The plan says upsert abc_orders on (tenant_id, request_id), but I need you to verify a unique constraint/index exists for that. If it does not exist, do not assume upsert will work.
 
-  A. Header / Status Card
-  - ABC Supply icon
-  - Title: ABC Supply
-  - Subtitle: Connect ABC Supply to sync pricing, product availability, material ordering, and order tracking.
-  - Status badge
-  - Environment selector
-  - Sandbox info badge:
-    “Sandbox orders run in ABC QA only and are non-production.”
-  - Production warning only when production is selected:
-    “Production is live. Do not submit test orders in Production.”
+  Since the plan says no DB migrations, use safe logic:
 
-  B. Connection Setup Card
-  Default-visible fields only:
-  - OAuth Client ID
-  - OAuth Client Secret
-  - Save Credentials
-  - Connect ABC Supply
-  - Test Token
-  - Disconnect
+  A. First query:
+  select id from abc_orders
+  where tenant_id = tenant_id
+  and (
+    request_id = requestId
+    or purchase_order = purchaseOrder
+    or confirmation_number = confirmationNumber
+    or order_number = orderNumber
+  )
+  limit 1
 
-  Move ABC Account # and Default Branch Code into a collapsed Account Defaults sub-accordion.
+  B. If found, update that row.
+  C. If not found, insert new row.
 
-  C. Compact Demo Readiness Strip
-  Simple Mode only. Four pills:
-  - Credentials
-  - Token
-  - Sandbox
-  - Last API Call
+  Do not use upsert on a non-unique natural key unless the unique index exists.
 
-  Full readiness grid goes into Advanced.
+  2. abc_order_lines duplicate prevention
 
-  D. Sandbox Demo Workflow Card
-  Only show in sandbox.
-  Stepper:
-  1. Connect
-  2. Search
-  3. Price
-  4. Submit / Track
+  Before inserting the sandbox test line:
+  - delete existing abc_order_lines for that order_id and tenant_id
+  or
+  - check whether the same line exists
 
-  Shared demo inputs:
-  - shipToNumber default 2010466-2
-  - branchNumber default 1209
-  - productQuery default shingle
-  - itemNumber blank
+  For sandbox submit_test_order, deleting and reinserting lines is fine.
 
-  Submit Sandbox Test Order must stay disabled until itemNumber is non-empty.
+  3. Persist both success and failure
 
-  E. Sandbox Test Console
-  Keep compact:
-  - Product Search
-  - Price Item
-  - Submit Sandbox Test Order
-  - Track Order
+  Even if ABC returns error, persist the abc_orders row with:
+  - order_status = 'error'
+  - request_id
+  - purchase_order
+  - branch_number
+  - ship_to_number
+  - source = 'sandbox'
+  - raw_payload = request/response
 
-  Use one shared set of inputs. No duplicate forms.
+  That way rejected/error submissions also appear in ABC Submit Diagnostics like SRS rejected submissions.
 
-  F. Latest Result Card
-  Show only:
-  - action
+  4. Status mapping
+
+  Map ABC statuses consistently:
+  - r.ok with orderNumber/confirmationNumber → submitted
+  - r.ok without orderNumber/confirmationNumber → submitted_pending_reference
+  - non-2xx → error
+  - webhook rejected/failure/cancel/error → rejected or error visually
+
+  In the UI, status pill text can still be friendly:
+  submitted
+  pending reference
+  error
+  rejected
+
+  5. Hoist response values robustly
+
+  In submit_test_order response, hoist these top-level values:
+  - requestId
+  - purchaseOrder
+  - orderNumber
+  - confirmationNumber
+  - transactionID
+  - branchNumber
+  - shipToNumber
+
+  ABC may return an array or object. Handle both:
+  const first = Array.isArray(responseBody) ? responseBody[0] : responseBody;
+
+  Look for:
+  first.orderNumber
+  first.order_number
+  first.confirmationNumber
+  first.confirmation_number
+  first.transactionID
+  first.transactionId
+  first.transaction_id
+
+  6. AbcDiagnosticsPanel data loading
+
+  Build src/components/settings/AbcDiagnosticsPanel.tsx to visually mirror SrsDiagnosticsPanel, but keep ABC self-contained.
+
+  Important:
+  - If job/customer/address linkage is not available for sandbox rows, do not show an empty job box.
+  - Show “Sandbox test order” or “No job linked” only in muted text if needed.
+  - Do not let missing job links break the panel.
+
+  7. Webhook/event matching
+
+  When matching abc_webhook_events:
+  - match tenant_id
+  - match order_number OR confirmation_number
+  - if both are missing, optionally match requestId/purchaseOrder inside payload if available
+  - if no events, still show the card using abc_orders and abc_api_audit
+
+  8. Audit matching
+
+  abc_api_audit may store request body as:
+  - request_body_redacted.requestId
+  - request_body_redacted[0].requestId
+  - request_body_redacted.purchaseOrder
+  - request_body_redacted[0].purchaseOrder
+
+  Support both object and array forms.
+
+  9. Realtime
+
+  Realtime should subscribe to:
+  - abc_orders tenant rows
+  - abc_webhook_events tenant rows
+  - optionally abc_api_audit tenant rows
+
+  If abc_api_audit realtime is too noisy, use manual refresh only. Do not risk performance problems.
+
+  10. Refresh Status button
+
+  Refresh Status should call:
+  abc-api-proxy action=get_order_status
+
+  Use:
+  orderNumber if present
+  else confirmationNumber if present
+
+  If neither exists, disable Refresh Status and show:
+  “ABC did not return an order or confirmation number for status lookup.”
+
+  11. Inspect section
+
+  Raw JSON must only appear inside Inspect.
+  Main card stays clean.
+
+  Inspect should include:
   - endpoint
-  - HTTP status
-  - success/fail
-  - human message
-  - collapsed View Raw JSON accordion
+  - request payload
+  - response status
+  - response body
+  - latest audit row
+  - webhook events timeline
 
-  G. ABC Submit Diagnostics / Order Tracking Card
-  Make this visually mirror the existing SRS Submit Diagnostics / material order tracking style.
+  12. UI placement
 
-  It must display:
-  - ABC supplier badge
-  - purchaseOrder / requestId as main title
-  - status pill
-  - received/update timestamp pill
-  - API/webhook update count if available
-  - Last ABC update banner
-  - Job / Customer / Address box if job context exists
-  - Submitted timestamp
-  - Branch
-  - Ship-To
-  - orderNumber
-  - confirmationNumber
-  - requestId
-  - purchaseOrder
-  - Inspect button
-  - Refresh Status button
-  - Line items table: itemNumber, description, quantity, uom, status
+  In ABCConnectionSettings.tsx:
+  - Replace ephemeral OrderTrackingCard with <AbcDiagnosticsPanel />
+  - Keep Latest Result Card for immediate feedback from the last clicked action
+  - ABC Submit Diagnostics becomes the persistent historical tracking section
 
-  If ABC returns an error/rejection, show red rejection box:
-  Title: Rejection reason
-  Message: mapped ABC error or response body summary
+  13. Backend mirror edit rule
 
-  Raw request/response JSON only inside Inspect, not on the main card.
+  Any change to:
+  supabase/functions/abc-api-proxy/handler.ts
 
-  H. Advanced / Developer Details
-  Collapsed by default.
-  Move all debug details here:
-  - Authorization URL
-  - Token URL
-  - Redirect URI
-  - Scopes
-  - API Base
-  - Inspect OAuth URL
-  - Copy OAuth URL
-  - latest abc_oauth_callback_logs row
-  - latest abc_api_audit row
-  - raw request/response JSON
-  - OAuth troubleshooting text
+  must be mirrored exactly to:
+  supabase/functions/supplier-api/abc-proxy-handler.ts
 
-  Auto-expand Advanced only when:
-  - URL has ?abc=error
-  - latest callback log has has_error=true
-  - OAuth connect fails
+  After edits, redeploy:
+  - supplier-api
+  - abc-api-proxy
 
-  2. Backend verification
-  Verify both copies remain aligned:
-  - supabase/functions/abc-api-proxy/handler.ts
-  - supabase/functions/supplier-api/abc-proxy-handler.ts
+  14. Test sequence after deploy
 
-  Confirm:
-  A. search_products uses filters + pagination.
-  B. itemNumber search branch exists and uses itemNumber equals.
-  C. branchNumber filter appends correctly.
-  D. price_items payload matches ABC docs.
-  E. submit_test_order posts array body to /order/v2/orders.
-  F. submit_test_order response hoists:
-  - orderNumber
-  - confirmationNumber
-  - requestId
-  - purchaseOrder
-  to the top-level response so the UI can auto-track.
+  Run from logged-in app session:
 
-  3. Auto-track behavior
-  After Submit Sandbox Test Order:
-  - If orderNumber or confirmationNumber returns, populate the tracking field and auto-call get_order_status.
-  - If neither returns, show:
-  “Sandbox order submitted. ABC did not return an order/confirmation number in this response.”
-  - Still show requestId and purchaseOrder in ABC Submit Diagnostics.
+  A. Product Search
+  query=shingle
+  branchNumber=1209
+  Confirm filters + pagination.
 
-  4. Product Search selection
-  Product Search results must render a small result table.
-  Each row must have:
-  - itemNumber
-  - description
-  - availability/status if returned
-  - Use button
+  B. Pick real item from product search.
 
-  Clicking Use copies itemNumber into the shared itemNumber field.
+  C. Price Item
+  shipToNumber=2010466-2
+  branchNumber=1209
+  itemNumber=<selected item>
+  Confirm /pricing/v2/prices.
 
-  5. Copy cleanup
-  Replace:
-  “POSTs the canned PITCH sandbox payload to /order/v2/orders.”
+  D. Submit Sandbox Test Order
+  shipToNumber=2010466-2
+  branchNumber=1209
+  itemNumber=<selected item>
+  Confirm /order/v2/orders with array body.
 
-  With:
-  “Submits a non-production ABC sandbox order to ABC QA.”
+  E. Confirm abc_orders row exists.
+  F. Confirm abc_order_lines row exists.
+  G. Confirm ABC Submit Diagnostics renders after page refresh.
+  H. Confirm Inspect opens raw details.
+  I. If orderNumber/confirmationNumber returned, confirm Refresh Status calls get_order_status.
 
-  6. Docs
-  Update docs/ABC_DEMO_READINESS.md with Sandy confirmation:
-  “The Sandbox environment and all orders sent in that environment are non-production and connect with ABC’s QA environment internally. Sandbox accounts are test accounts, not live production accounts.”
+  15. Docs
 
-  Add:
-  - Ship-To: 2010466-2
-  - Branch: 1209
-  - Item: any item available at branch 1209; use product search first
-  - Default product search query: shingle
+  Update docs/ABC_DEMO_READINESS.md with Sandy confirmation and add that ABC Submit Diagnostics persists sandbox attempts in abc_orders for demo traceability.
 
-  7. Acceptance checks after build
-  Run in logged-in app session:
-
-  A. Inspect OAuth URL
-  Confirm response_type=code, client_id, redirect_uri, scopes, state, code_challenge, code_challenge_method=S256.
-
-  B. Product Search
-  Use query=shingle and branchNumber=1209.
-  Confirm request body shows filters + pagination, not { query, branchNumber }.
-
-  C. Select item
-  Click Use on a product search result and confirm itemNumber fills.
-
-  D. Price Item
-  Use shipToNumber=2010466-2, branchNumber=1209, selected itemNumber.
-  Confirm endpoint:
-  https://partners-sb.abcsupply.com/api/pricing/v2/prices
-
-  E. Submit Sandbox Test Order
-  Confirm endpoint:
-  https://partners-sb.abcsupply.com/api/order/v2/orders
-  Confirm body is an array.
-  Confirm no placeholder TEST-ACCOUNT / 0001 / TEST-SHINGLE-001 is submitted.
-
-  F. Track Order
-  If orderNumber/confirmationNumber returns, confirm tracking card auto-runs get_order_status.
-
-  Deploy after changes and report:
-  - files changed
-  - deploy status
-  - product search request/response
-  - price request/response
-  - sandbox order request/response
-  - tracking result
+  Proceed.
   ```
-  One concern: Lovable says **order tracking reads live from ABC via** `get_order_status` and is not persisting to a new table. That’s fine for demo, but long-term you’ll want successful ABC order submissions persisted like SRS so users can revisit order history without needing a fresh API pull every time.
-  For Sandy’s demo, the plan is acceptable. The most important rule is: **search first, select a real branch-1209 item, then price and order that selected item.**
+  My main warning: their “no migration needed” assumption is only safe if they **don’t use database upsert without a unique constraint**. If `abc_orders` does not have a unique index on `(tenant_id, request_id)` or `(tenant_id, purchase_order)`, Supabase upsert will fail or silently not behave how they expect. The safer query-then-update/insert approach above avoids that.
