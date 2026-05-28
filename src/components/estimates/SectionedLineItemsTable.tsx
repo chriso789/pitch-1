@@ -935,10 +935,21 @@ export function SectionedLineItemsTable({
                   Direct Cost Total
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold text-lg">
-                  {formatCurrency(materialsTotal + laborTotal)}
+                  {formatCurrency(displayDirectCostTotal)}
                 </TableCell>
                 {editable && <TableCell />}
               </TableRow>
+              {passThroughTotal > 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={subtotalLabelCols} className="text-right text-xs text-amber-600">
+                    Pass-through (billed at cost, no overhead/profit)
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-amber-600">
+                    {formatCurrency(passThroughTotal)}
+                  </TableCell>
+                  {editable && <TableCell />}
+                </TableRow>
+              )}
             </>
           )}
 
