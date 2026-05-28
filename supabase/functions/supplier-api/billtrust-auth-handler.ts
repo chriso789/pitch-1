@@ -337,7 +337,7 @@ export const handle = async (req) => {
       }
     );
   }
-});
+};
 
 // Helper function to log audit events
 async function logAuditEvent(
