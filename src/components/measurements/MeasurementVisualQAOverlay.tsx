@@ -323,7 +323,11 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   useEffect(() => {
     if (!rasterUrl) { imgRef.current = null; setImageNatural(null); return; }
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // NOTE: do NOT set crossOrigin here. Google Static Maps does not return
+    // CORS headers, so requesting CORS makes the image fail to load entirely
+    // and the canvas falls through to the fallback fill (previously black).
+    // We only display the canvas; we never read pixels back, so a tainted
+    // canvas is acceptable and the raster actually renders.
     img.onload = () => {
       imgRef.current = img;
       setImageNatural({ width: img.naturalWidth, height: img.naturalHeight });
