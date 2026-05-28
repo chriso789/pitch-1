@@ -100,14 +100,29 @@ Deno.serve(async (req) => {
     console.error("abc_oauth_callback_logs insert failed", e);
   }
 
+  const setIntegrationError = async (integrationId: string | null, code: string) => {
+    if (!integrationId) return;
+    try {
+      await supabase
+        .from("abc_integrations")
+        .update({ status: "error", last_error: code })
+        .eq("id", integrationId);
+    } catch (e) {
+      console.error("abc_integrations last_error update failed", e);
+    }
+  };
+
   if (errParam) {
     return htmlRedirect(
       returnTo + "error&msg=" + encodeURIComponent(errDesc || errParam),
       `ABC returned error: ${errDesc || errParam}`
     );
   }
-  if (!code || !state) {
-    return htmlRedirect(returnTo + "error&msg=missing_code_or_state", "Missing code or state.");
+  if (!code) {
+    return htmlRedirect(returnTo + "error&msg=missing_code", "Missing authorization code.");
+  }
+  if (!state) {
+    return htmlRedirect(returnTo + "error&msg=missing_state", "Missing state parameter.");
   }
 
 
@@ -120,9 +135,18 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (stateErr || !stateRow) {
+      // Best-effort: tag any error on the tenant's integrations.
+      if (preTenantId) {
+        const { data: ints } = await supabase
+          .from("abc_integrations")
+          .select("id")
+          .eq("tenant_id", preTenantId);
+        for (const i of ints ?? []) await setIntegrationError(i.id, "invalid_state");
+      }
       return htmlRedirect(returnTo + "error&msg=invalid_state", "Invalid or expired state.");
     }
     if (new Date(stateRow.expires_at).getTime() < Date.now()) {
+      await setIntegrationError(stateRow.integration_id, "state_expired");
       await supabase.from("abc_oauth_states").delete().eq("state", state);
       return htmlRedirect(returnTo + "error&msg=state_expired", "State expired. Please retry.");
     }
