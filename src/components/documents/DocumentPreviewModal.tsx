@@ -61,6 +61,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   
   const cleanupPdf = useCallback(() => {
     const docToCleanup = pdfDocRef.current;
+  const cleanupPdf = useCallback(() => {
+    const docToCleanup = pdfDocRef.current;
     if (docToCleanup) {
       try {
         docToCleanup.destroy();
@@ -71,31 +73,36 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     pdfDocRef.current = null;
     setPdfDoc(null);
     setPdfNumPages(0);
-    setPdfCurrentPage(1);
-    setPdfRenderedPage(null);
+    setPdfRenderedPages([]);
     clearPageCache();
   }, []);
 
-  // Render current PDF page when page or scale changes
+  // Re-render all pages when scale changes
   useEffect(() => {
-    if (!pdfDoc || pdfCurrentPage < 1 || pdfCurrentPage > pdfNumPages) return;
+    if (!pdfDoc || pdfNumPages < 1) return;
+    let cancelled = false;
 
-    const renderPage = async () => {
+    const renderAll = async () => {
       setPdfLoading(true);
       try {
-        const rendered = await renderPageToDataUrl(pdfDoc, pdfCurrentPage, pdfScale);
-        setPdfRenderedPage(rendered);
+        const pages: RenderedPage[] = [];
+        for (let i = 1; i <= pdfNumPages; i++) {
+          const rendered = await renderPageToDataUrl(pdfDoc, i, pdfScale);
+          if (cancelled) return;
+          pages.push(rendered);
+          // Progressive display
+          setPdfRenderedPages([...pages]);
+        }
       } catch (error) {
-        console.error('[PDF] Error rendering page:', error);
+        console.error('[PDF] Error rendering pages:', error);
       } finally {
-        setPdfLoading(false);
+        if (!cancelled) setPdfLoading(false);
       }
     };
 
-    renderPage();
-  }, [pdfDoc, pdfCurrentPage, pdfScale, pdfNumPages]);
-
-  useEffect(() => {
+    renderAll();
+    return () => { cancelled = true; };
+  }, [pdfDoc, pdfNumPages, pdfScale]);
     // Clear previous state immediately when document changes
     if (!currentDoc || !isOpen) {
       setPreviewUrl(null);
