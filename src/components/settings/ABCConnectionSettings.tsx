@@ -1188,7 +1188,12 @@ export function ABCConnectionSettings() {
                   </p>
                 </div>
 
+                {allowSandboxDefaults && (
+                  <AbcWebhookPanel tenantId={effectiveTenantId ?? null} environment={environment} />
+                )}
+
               </div>
+
             </AccordionContent>
           </AccordionItem>
         </Accordion>
