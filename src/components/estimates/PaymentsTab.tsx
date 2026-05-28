@@ -626,6 +626,60 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         })
         .eq('id', editingInvoice.id);
       if (error) throw new Error(error.message || 'Failed to update invoice');
+
+      // Regenerate the PDF so updated totals + contract total are reflected
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        let customer = { name: '', address: '', email: '', phone: '' } as Record<string, string>;
+        try {
+          const { data: pe } = await supabase
+            .from('pipeline_entries')
+            .select('contact_id, contacts!pipeline_entries_contact_id_fkey(first_name,last_name,email,phone,address_street,address_city,address_state,address_zip)')
+            .eq('id', pipelineEntryId)
+            .maybeSingle();
+          const c: any = (pe as any)?.contacts;
+          if (c) {
+            customer.name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+            customer.email = c.email || '';
+            customer.phone = c.phone || '';
+            customer.address = [
+              c.address_street,
+              [c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', '),
+            ].filter(Boolean).join('\n');
+          }
+        } catch {}
+
+        const createdAt = editingInvoice.created_at ? new Date(editingInvoice.created_at) : new Date();
+        const due = editDueDate ? new Date(editDueDate + 'T00:00:00') : null;
+        await generateAndSaveInvoicePdf({
+          tenantId: activeTenantId!,
+          pipelineEntryId,
+          userId: user.id,
+          data: {
+            invoiceNumber: editingInvoice.invoice_number,
+            invoiceDate: format(createdAt, 'MMM d, yyyy'),
+            dueDate: due ? format(due, 'MMM d, yyyy') : null,
+            notes: editNotes || null,
+            lineItems: editLineItems,
+            amount: newAmount,
+            company: companyInfo,
+            customer,
+            alreadyPaid: totalPaid || 0,
+            paymentHistory: (payments || []).map((p: any) => ({
+              date: format(new Date(p.payment_date), 'MMM d, yyyy'),
+              amount: Number(p.amount) || 0,
+              method: p.payment_method || '',
+              reference: p.reference_number || '',
+            })),
+            contractTotal: Number(sellingPrice) || 0,
+          },
+        });
+      } catch (pdfErr) {
+        console.warn('Invoice PDF regen failed on edit:', pdfErr);
+      }
+
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
