@@ -627,7 +627,7 @@ export function SectionedLineItemsTable({
                       {renderSortableItems(group.labor)}
                       {renderSectionSubtotal(
                         'Labor Subtotal',
-                        group.labor.reduce((sum, i) => sum + i.line_total, 0)
+                        group.labor.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
                   )}
