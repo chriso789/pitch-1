@@ -934,6 +934,9 @@ export const handle = async (req) => {
         tenant_id, environment: env, action, endpoint,
         request_body_redacted: payload,
         status_code: r.status, response_body: r.json ?? r.text, error_code,
+        duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+
       // Hoist any tracking identifiers ABC returned so the UI can auto-track.
       const respBody: any = r.json ?? null;
       const first = Array.isArray(respBody) ? respBody[0] : respBody?.orders?.[0] ?? respBody;
@@ -960,9 +963,6 @@ export const handle = async (req) => {
         const asyncRef = headerRef || locTail || transactionID || null;
         if (asyncRef) confirmationNumber = String(asyncRef);
       }
-
-      const transactionID =
-        first?.transactionID ?? first?.transactionId ?? first?.transaction_id ?? null;
 
       // Persist sandbox attempt to abc_orders (query-then-insert/update; no unique
       // index on request_id exists so we cannot rely on upsert).
