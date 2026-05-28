@@ -223,7 +223,7 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
       heightLeft -= pageHeight;
     }
 
-    }
+
 
     return pdf.output('blob');
   } finally {
