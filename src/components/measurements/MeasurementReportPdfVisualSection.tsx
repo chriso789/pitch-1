@@ -233,6 +233,89 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
         <Chip label="Customer Ready" value={String(customerReady)} />
         <Chip label="CPU Status" value={cpuStatus} />
       </div>
+
+      {/* Compact debug table — PDF-safe, after the visual. Read-only,
+          whitelisted fields only, no buttons, no <pre>, no Raw JSON.
+          Never reintroduces the full interactive Measurement Data Summary. */}
+      <PdfDebugTable measurement={measurement} />
+    </div>
+  );
+};
+
+const DEBUG_FIELDS: Array<{ label: string; path: (m: any) => any }> = [
+  { label: 'result_state', path: (m) => m?.result_state ?? m?.geometry_report_json?.result_state },
+  { label: 'geometry_source', path: (m) => m?.geometry_report_json?.geometry_source ?? m?.geometry_source },
+  { label: 'pitch_source', path: (m) => m?.geometry_report_json?.pitch_source ?? m?.pitch_source },
+  { label: 'facet_count', path: (m) => m?.geometry_report_json?.facet_count ?? m?.facet_count },
+  { label: 'ridge_lf', path: (m) => m?.geometry_report_json?.ridge_lf ?? m?.ridge_lf },
+  { label: 'hip_lf', path: (m) => m?.geometry_report_json?.hip_lf ?? m?.hip_lf },
+  { label: 'valley_lf', path: (m) => m?.geometry_report_json?.valley_lf ?? m?.valley_lf },
+  { label: 'eave_lf', path: (m) => m?.geometry_report_json?.eave_lf ?? m?.eave_lf },
+  { label: 'rake_lf', path: (m) => m?.geometry_report_json?.rake_lf ?? m?.rake_lf },
+  { label: 'coverage', path: (m) => m?.geometry_report_json?.coverage },
+  { label: 'validated_faces_pct', path: (m) => m?.geometry_report_json?.validated_faces_pct },
+  { label: 'footprint_confidence', path: (m) => m?.geometry_report_json?.footprint_confidence },
+  { label: 'area_ratio', path: (m) => m?.geometry_report_json?.area_ratio },
+  { label: 'topology_score_vs_vendor', path: (m) => m?.geometry_report_json?.topology_score_vs_vendor },
+  { label: 'block_customer_report_reason', path: (m) => m?.geometry_report_json?.block_customer_report_reason },
+  { label: 'hard_fail_reason', path: (m) => m?.geometry_report_json?.hard_fail_reason },
+];
+
+const PdfDebugTable: React.FC<{ measurement: any }> = ({ measurement }) => {
+  const rows = DEBUG_FIELDS
+    .map(({ label, path }) => {
+      let v: any;
+      try { v = path(measurement); } catch { v = undefined; }
+      if (v == null || v === '') return null;
+      const str = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      const truncated = str.length > 80 ? str.slice(0, 77) + '…' : str;
+      return { label, value: truncated };
+    })
+    .filter(Boolean) as Array<{ label: string; value: string }>;
+
+  if (rows.length === 0) return null;
+  const limited = rows.slice(0, 20);
+
+  return (
+    <div
+      data-pdf-debug-table="true"
+      style={{
+        marginTop: 12,
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 4,
+        padding: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          color: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: 0.4,
+          marginBottom: 6,
+        }}
+      >
+        Diagnostics
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          rowGap: 2,
+          columnGap: 8,
+          fontSize: 11,
+          fontFamily: 'monospace',
+          color: '#0f172a',
+        }}
+      >
+        {limited.map((r) => (
+          <React.Fragment key={r.label}>
+            <div style={{ color: '#475569' }}>{r.label}</div>
+            <div style={{ wordBreak: 'break-word' }}>{r.value}</div>
+          </React.Fragment>
+        ))}
+      </div>
     </div>
   );
 };
