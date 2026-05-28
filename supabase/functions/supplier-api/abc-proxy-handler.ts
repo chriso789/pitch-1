@@ -303,7 +303,9 @@ interface ProxyRequest {
     | "place_order"
     | "submit_order"           // legacy alias for place_order
     | "submit_test_order"
-    | "get_order_status";
+    | "get_order_status"
+    | "register_webhook"
+    | "list_webhooks";
 
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
