@@ -662,6 +662,36 @@ export function EstimatePreviewPanel({
     if (photoUploadRef.current) photoUploadRef.current.value = '';
   }, [pipelineEntryId, contactId, tenantId, userId, toast]);
 
+  // Single source of truth: mirror pageOrder[id].enabled into options.show* keys.
+  // This keeps the existing render code working while letting the Page Order panel
+  // be the only place a user toggles section visibility.
+  useEffect(() => {
+    const map: Record<string, keyof PDFComponentOptions> = {
+      cover_page: 'showCoverPage',
+      measurement_details: 'showMeasurementDetails',
+      job_photos: 'showJobPhotos',
+    };
+    setOptions(prev => {
+      let changed = false;
+      const next: PDFComponentOptions = { ...prev };
+      for (const item of pageOrder) {
+        const key = map[item.id];
+        if (key && (next as any)[key] !== item.enabled) {
+          (next as any)[key] = item.enabled;
+          changed = true;
+        }
+      }
+      // Warranty is one slot in pageOrder controlling both manufacturer + workmanship
+      const warranty = pageOrder.find(p => p.id === 'warranty_info');
+      if (warranty && !warranty.enabled) {
+        if (next.showManufacturerWarranty) { next.showManufacturerWarranty = false; changed = true; }
+        if (next.showWorkmanshipWarranty) { next.showWorkmanshipWarranty = false; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [pageOrder]);
+
+
   // Filter template attachments to exclude removed ones
   const activeTemplateAttachments = useMemo(() => 
     templateAttachments.filter(a => !removedTemplateIds.has(a.document_id)),
