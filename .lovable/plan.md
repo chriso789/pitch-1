@@ -1,41 +1,36 @@
-## Goal
-Fix the two visible problems:
-1. Stop GitHub Actions failure-email spam from normal pushes.
-2. Remove the black box/letterbox from measurement report debug views.
+## Problem
 
-## Plan
+In `AddItemDialog.tsx` the "Assign to Sections" row is hardcoded to: Roofing, Gutters, Exterior, Interior, Labor. Siding is missing, and the list does not reflect the trades/sections the company actually uses across its templates. When the dialog is opened from a Siding template, "Siding" should already be present and pre-checked.
 
-### 1. CI email spam
-- Keep `.github/workflows/ci.yml` PR-only/manual by ensuring there is no `push: main` trigger.
-- If the workflow already matches that state, make no CI workflow change.
-- Do not try to fix unrelated Build/Lint/Typecheck/Unit failures in this pass unless they are caused by the black-box UI changes.
+## Changes
 
-### 2. Measurement Visual QA black box
-Update `src/components/measurements/MeasurementVisualQAOverlay.tsx`:
-- Replace the canvas wrapper `bg-slate-900` with a neutral semantic/light surface so unused crop space or image loading never appears as a giant dark rectangle.
-- Keep the existing canvas fill behavior that uses a light fallback instead of `#0f172a`.
-- Add/adjust test coverage if there is an existing DOM test location for this component.
+### 1. `src/components/templates/AddItemDialog.tsx`
+- Remove the hardcoded `SECTION_OPTIONS` constant.
+- Accept new props:
+  - `availableSections: { value: string; label: string }[]` — the full list to render as toggles.
+  - `defaultSections?: string[]` — pre-checked values (derived from the current template's trade).
+- Drive the rendered checkboxes and the initial `sections` state from these props (fall back to a sane built-in default only if none provided).
+- Keep the existing "save to catalog" behavior unchanged.
 
-### 3. AI Process Viewer black letterbox
-Update `src/components/measurements/AIMeasurement3DDebugViewer.tsx`:
-- Remove `bg-black` from the aerial `<img>` that currently uses `object-contain bg-black`.
-- Use a neutral themed wrapper/background instead, so any letterboxing is light/transparent rather than black.
-- Keep the aerial as the background when available; do not change geometry logic, gates, DSM logic, or report data.
+### 2. `src/components/templates/CalcTemplateEditor.tsx`
+- Build the section list for the dialog from two sources:
+  1. The current template's trade (derived via `isSidingTemplate(template)` → `siding`, else `roofing`).
+  2. The distinct trade/section values already used by the company's other calc templates (queried via the existing template list / a lightweight `useCompanyTemplateSections` hook against `calc_templates` scoped by `useEffectiveTenantId()`).
+- Always include the current template's trade first and pre-check it.
+- Always include "Labor" as a stable option (it represents a row type, not a trade).
+- Pass `availableSections` and `defaultSections` to `<AddItemDialog />`.
 
-### 4. PDF/debug export safety check
-Review the report PDF visual path using `MeasurementReportPdfVisualSection.tsx` and `RasterOverlayDebugView.tsx`:
-- Preserve the existing single-overlay-panel contract.
-- Ensure PDF-mode surfaces stay white and no dark placeholder is introduced.
-- Leave export logic alone unless a dark background is still present in the PDF root/panel.
+### 3. New hook `src/components/templates/hooks/useCompanyTemplateSections.ts`
+- Read-only query: `select distinct` trade / section identifier from `calc_templates` for the effective tenant.
+- Map known values to friendly labels via `MATERIAL_TYPE_LABELS` plus a small map for `roofing`, `siding`, `gutter`, `exterior`, `interior`.
+- Return `{ sections, loading }`.
 
-### 5. Verify
-- Run the targeted measurement visual/PDF tests only, not the full build.
-- Confirm the codebase no longer has the specific dark backgrounds in these two report/debug overlay spots:
-  - `MeasurementVisualQAOverlay` canvas wrapper
-  - `AIMeasurement3DDebugViewer` aerial image/background
+### 4. Section label map
+- Add `roofing → Roofing`, `siding → Siding`, `gutter → Gutters`, `exterior → Exterior`, `interior → Interior`, `labor → Labor` to a small constant inside the hook (no DB change). This keeps the section vocabulary consistent across dialogs.
 
 ## Out of scope
-- GitHub account notification settings.
-- Branch protection / repo settings.
-- Full cleanup/refactor into a shared overlay component.
-- Fixing unrelated existing CI failures across the whole app.
+- No DB schema change. `sections` on items remains a `string[]` of trade-like identifiers; we only widen the allowed vocabulary in the UI.
+- No change to how downstream estimate rendering groups items by `trade_type`.
+
+## Result
+Opening "Add Custom Item" from a Siding template shows Siding (pre-checked) alongside any other sections the company uses in its templates, plus Labor. New trades a company adds in the future automatically appear here without code changes.

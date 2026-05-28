@@ -25,6 +25,8 @@ import { CalcTemplateDetailsPanel } from './CalcTemplateDetailsPanel';
 import { AddGroupDialog } from './AddGroupDialog';
 import { AddItemDialog } from './AddItemDialog';
 import { MaterialCheatSheet } from './MaterialCheatSheet';
+import { useCompanyTemplateSections } from './hooks/useCompanyTemplateSections';
+import { isSidingTemplate } from '@/lib/templates/materialTypeLabels';
 import { useToast } from '@/hooks/use-toast';
 
 const CalcTemplateEditor: React.FC = () => {
@@ -58,6 +60,17 @@ const CalcTemplateEditor: React.FC = () => {
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
   const [addToGroupId, setAddToGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(template?.name || '');
+
+  // Section options reflect this company's templates; current template's trade is pre-checked.
+  const { sections: companySections } = useCompanyTemplateSections();
+  const currentTradeValue = template && isSidingTemplate(template) ? 'siding' : 'roofing';
+  const sectionOptions = React.useMemo(() => {
+    const ordered = [...companySections];
+    // Surface the current trade first for visibility.
+    ordered.sort((a, b) => (a.value === currentTradeValue ? -1 : b.value === currentTradeValue ? 1 : 0));
+    return ordered;
+  }, [companySections, currentTradeValue]);
+  const defaultSections = React.useMemo(() => [currentTradeValue], [currentTradeValue]);
 
   // Sync local editing state when template loads or changes externally
   useEffect(() => {
@@ -295,6 +308,8 @@ const CalcTemplateEditor: React.FC = () => {
       <AddItemDialog
         open={showAddItemDialog}
         onOpenChange={setShowAddItemDialog}
+        availableSections={sectionOptions}
+        defaultSections={defaultSections}
         onAdd={(item) => {
           if (addToGroupId) {
             addItem(addToGroupId, {
