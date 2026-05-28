@@ -509,8 +509,9 @@ export function ABCConnectionSettings() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-        body: { action: 'start_oauth', tenant_id: effectiveTenantId, environment },
+        body: { action: 'start_oauth', tenant_id: effectiveTenantId, environment, return_origin: window.location.origin },
       });
+
       if (error) throw error;
       setOauthDebug({ ...data, _authed: !!session?.user, _user_email: session?.user?.email ?? null });
     } catch (e: any) {
