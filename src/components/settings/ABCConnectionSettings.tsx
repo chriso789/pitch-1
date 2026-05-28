@@ -667,6 +667,58 @@ export function ABCConnectionSettings() {
             </p>
           </div>
 
+          {environment === 'production' && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              <strong>Production is live.</strong> ABC demo order validation should use Sandbox unless ABC explicitly instructs otherwise.
+            </div>
+          )}
+
+          {/* Demo Readiness panel */}
+          <div className="rounded-md border p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" /> Demo Readiness
+              </div>
+              <Button size="sm" variant="ghost" onClick={loadReadiness} disabled={readinessBusy}>
+                {readinessBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Refresh'}
+              </Button>
+            </div>
+            <div className="grid gap-1 md:grid-cols-2 text-xs">
+              <EndpointRow label="OAuth Client ID" value={clientId || ''} />
+              <EndpointRow label="Client secret on server" value={hasSecret ? `••••${connection?.client_secret_last_four}` : ''} hint={!hasSecret ? 'Not set' : undefined} />
+              <EndpointRow label="Redirect URI" value={SERVER_REDIRECT_URI} hint="Must match ABC app registration EXACTLY" />
+              <EndpointRow label="Environment" value={environment} />
+              <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} />
+              <EndpointRow label="Token status" value={isConnected ? 'connected' : (connection?.connection_status || 'disconnected')} />
+              <EndpointRow label="Last token refresh" value={connection?.last_validated_at ? new Date(connection.last_validated_at).toLocaleString() : ''} />
+              <EndpointRow
+                label="Last callback hit"
+                value={readiness?.callbackLog
+                  ? `${new Date(readiness.callbackLog.created_at).toLocaleString()} · code=${readiness.callbackLog.has_code} · err=${readiness.callbackLog.error || '—'}`
+                  : ''}
+              />
+              <EndpointRow
+                label="Last ABC API call"
+                value={readiness?.auditLog
+                  ? `${new Date(readiness.auditLog.created_at).toLocaleString()} · ${readiness.auditLog.action} · HTTP ${readiness.auditLog.status_code} · ${readiness.auditLog.error_code || 'ok'}`
+                  : ''}
+              />
+            </div>
+            <div className="border-t pt-3 space-y-2">
+              <div className="text-xs font-medium">Sandbox demo inputs (required to submit test order)</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input placeholder="Ship-To Number" value={demoShipTo} onChange={(e) => setDemoShipTo(e.target.value)} />
+                <Input placeholder="Branch Number" value={demoBranch} onChange={(e) => setDemoBranch(e.target.value)} />
+                <Input placeholder="Item Number" value={demoItemNumber} onChange={(e) => setDemoItemNumber(e.target.value)} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Get these values from Sandy before the demo. Submission is blocked until all three are filled to prevent sending placeholder values to ABC.
+              </p>
+            </div>
+          </div>
+
+
+
 
 
           {(testResult || orderResult) && (
