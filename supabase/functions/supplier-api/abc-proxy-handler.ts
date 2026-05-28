@@ -1218,7 +1218,133 @@ export const handle = async (req) => {
         error_code,
         timestamp: new Date().toISOString(),
       });
+    // ---------------- register_webhook ----------------
+    if (action === "register_webhook") {
+      if (!userId) return json({ success: false, error: "unauthenticated_user" }, 401);
+      if (!tenant_id) return json({ success: false, error: "missing_tenant_id" }, 400);
+
+      const tl = await getValidAccessToken(supabase, tenant_id, env);
+      if (tl.error || !tl.token) {
+        return json({ success: false, error: tl.error || "no_token" }, 400);
+      }
+
+      // 1. Insert a local pending row so we have a stable id for the callback URL.
+      const callbackBase = `${SUPABASE_URL}/functions/v1/supplier-webhook/abc/events`;
+      const events = ["ORDER_UPDATE", "ORDER_INVOICED"];
+      const { data: pending, error: pendErr } = await supabase
+        .from("abc_webhooks")
+        .insert({
+          tenant_id,
+          integration_id: tl.integration_id ?? null,
+          webhook_type: "ORDER",
+          events,
+          url: "", // filled after we know our row id
+          status: "pending",
+          environment: env,
+          raw_payload: {},
+        })
+        .select("id")
+        .single();
+      if (pendErr || !pending) {
+        return json({ success: false, error: pendErr?.message || "pending_insert_failed" }, 500);
+      }
+
+      const localId = (pending as any).id as string;
+      const callbackUrl = `${callbackBase}/${localId}`;
+
+      // 2. Patch pending row with its callback URL so it's recoverable even if ABC call fails.
+      await supabase.from("abc_webhooks").update({ url: callbackUrl }).eq("id", localId);
+
+      // 3. Register with ABC.
+      const abcUrl = `${cfg.apiBase}/notification/v2/webhooks`;
+      const regBody = { type: "ORDER", events, url: callbackUrl };
+      const callStart = Date.now();
+      const r = await callAbc(tl.token, "POST", abcUrl, regBody);
+      const duration = Date.now() - callStart;
+
+      // Redacted audit: never log the secret itself.
+      await auditCall(supabase, {
+        tenant_id,
+        environment: env,
+        action: "register_webhook",
+        endpoint: abcUrl,
+        request_body_redacted: regBody,
+        status_code: r.status,
+        response_body: r.ok
+          ? { ok: true, webhook_id: r.json?.id || r.json?.webhookId, secret_stored: !!r.json?.secret }
+          : { error: mapAbcError(r.status, r.json), upstream_status: r.status },
+        error_code: r.ok ? null : mapAbcError(r.status, r.json),
+        duration_ms: duration,
+        created_by: userId,
+      });
+
+      if (!r.ok) {
+        await supabase
+          .from("abc_webhooks")
+          .update({ status: "error", raw_payload: { error: r.json ?? r.text } })
+          .eq("id", localId);
+        return json({
+          success: false,
+          error: "abc_register_failed",
+          status: r.status,
+          error_code: mapAbcError(r.status, r.json),
+          interpretation: interpretAbcError(mapAbcError(r.status, r.json), r.status, r.json),
+        }, 200);
+      }
+
+      const abcWebhookId = r.json?.id || r.json?.webhookId || null;
+      const abcSecret = r.json?.secret || r.json?.apiKey || null;
+
+      if (!abcSecret) {
+        // ABC docs: secret is returned ONCE. If missing, mark error so user can retry.
+        await supabase
+          .from("abc_webhooks")
+          .update({ status: "error", raw_payload: { warning: "no_secret_in_response", response: r.json } })
+          .eq("id", localId);
+        return json({
+          success: false,
+          error: "no_secret_returned",
+          interpretation: "ABC did not return a webhook secret. Delete this registration and try again.",
+        }, 200);
+      }
+
+      // 4. Store immediately (secret is single-use from ABC's side).
+      await supabase
+        .from("abc_webhooks")
+        .update({
+          webhook_id: abcWebhookId,
+          secret: abcSecret,
+          status: "active",
+          active_since: new Date().toISOString(),
+          raw_payload: { registered_response: { ...r.json, secret: "[REDACTED]" } },
+        })
+        .eq("id", localId);
+
+      return json({
+        success: true,
+        registration_id: localId,
+        abc_webhook_id: abcWebhookId,
+        callback_url: callbackUrl,
+        events,
+        environment: env,
+        secret_stored: true,
+      });
     }
+
+    // ---------------- list_webhooks ----------------
+    if (action === "list_webhooks") {
+      if (!tenant_id) return json({ success: false, error: "missing_tenant_id" }, 400);
+      const { data, error } = await supabase
+        .from("abc_webhooks")
+        .select("id, webhook_id, status, environment, events, url, active_since, last_event_received_at, created_at, updated_at")
+        .eq("tenant_id", tenant_id)
+        .order("created_at", { ascending: false });
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, webhooks: data ?? [], secret_stored_note: "Secret never returned to client." });
+    }
+
+    return json({ success: false, error: `Unknown action: ${action}` }, 400);
+
 
     return json({ success: false, error: `Unknown action: ${action}` }, 400);
   } catch (error) {
