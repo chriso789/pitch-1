@@ -210,37 +210,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       window.open(previewUrl, '_blank');
       return;
     }
-    
-    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
-    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars', 
-                            'roof-reports', 'customer-photos', 'documents',
-                            'measurement-visualizations', 'measurement-reports'];
-    const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
-    
-    if (isPublicBucket) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-      window.open(data.publicUrl, '_blank');
-    } else {
-      const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
-      if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
-      }
-    }
+
+    const { url } = await getAuthorizedStorageUrl(currentDoc);
+    window.open(url, '_blank');
   };
 
   const getDocUrl = async (): Promise<string | null> => {
     if (!currentDoc) return null;
     if (previewUrl && previewUrl.startsWith('http')) return previewUrl;
-    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
-    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars',
-                            'roof-reports', 'customer-photos', 'documents',
-                            'measurement-visualizations', 'measurement-reports'];
-    if (PUBLIC_BUCKETS.includes(bucket)) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-      return data.publicUrl;
-    }
-    const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
-    return data?.signedUrl || null;
+    const { url } = await getAuthorizedStorageUrl(currentDoc);
+    return url;
   };
 
   const handlePrint = async () => {
