@@ -836,6 +836,34 @@ export const handle = async (req) => {
       delivery.setUTCDate(delivery.getUTCDate() + 1);
       const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
 
+      // ABC order submission requires unitPrice on each line. Pull a live price
+      // first using the same pricing contract as the UI; if ABC cannot price the
+      // sandbox item, keep a nominal QA value so payload-shape validation can run.
+      let unitPrice = 0.01;
+      try {
+        const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
+        const pricePayload = {
+          requestId: `PITCH-PRICE-${ts}`,
+          shipToNumber,
+          branchNumber,
+          purpose: "estimating",
+          lines: [{ id: "1", itemNumber, quantity: 1, uom: "EA" }],
+        };
+        const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
+        const pj: any = pr.json;
+        const firstLine = Array.isArray(pj?.lines) ? pj.lines[0]
+          : Array.isArray(pj?.items) ? pj.items[0]
+            : Array.isArray(pj) ? pj[0]?.lines?.[0] ?? pj[0]?.items?.[0] ?? pj[0]
+              : pj;
+        const firstPrice =
+          firstLine?.unitPrice ??
+          firstLine?.netPrice ??
+          firstLine?.price ??
+          pj?.unitPrice;
+        const numericPrice = Number(firstPrice);
+        if (Number.isFinite(numericPrice) && numericPrice > 0) unitPrice = numericPrice;
+      } catch (_e) { /* non-fatal — proceed with fallback price */ }
+
       const orderObj = body.order ?? {
         requestId,
         purchaseOrder,
@@ -849,11 +877,19 @@ export const handle = async (req) => {
           number: shipToNumber,
           address: {
             line1: "123 Test Street",
+            line2: "",
+            line3: "",
             city: "North Port",
             state: "FL",
             postal: "34286",
             country: "USA",
           },
+          contacts: [{
+            name: "ABC Sandbox Test",
+            phone: "9415550100",
+            email: "connect_user@test.com",
+            type: "PRIMARY",
+          }],
         },
         orderComments: [
           {
@@ -862,10 +898,11 @@ export const handle = async (req) => {
           },
         ],
         lines: [{
-          id: 1,
+          id: "1",
           itemNumber,
           itemDescription: "Sandbox test item",
           orderedQty: { value: 1, uom: "EA" },
+          unitPrice,
         }],
       };
 

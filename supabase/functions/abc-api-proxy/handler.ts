@@ -845,20 +845,27 @@ export const handle = async (req) => {
       // Falls back to 0.01 if pricing call fails — sandbox still validates payload shape.
       let unitPrice = 0.01;
       try {
-        const priceEndpoint = `${cfg.apiBase}/price/v2/items`;
-        const pricePayload = [{
-          branchNumber,
+        const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
+        const pricePayload = {
+          requestId: `PITCH-PRICE-${ts}`,
           shipToNumber,
-          items: [{ itemNumber, quantity: 1, uom: "EA" }],
-        }];
+          branchNumber,
+          purpose: "estimating",
+          lines: [{ id: "1", itemNumber, quantity: 1, uom: "EA" }],
+        };
         const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
         const pj: any = pr.json;
+        const firstLine = Array.isArray(pj?.lines) ? pj.lines[0]
+          : Array.isArray(pj?.items) ? pj.items[0]
+            : Array.isArray(pj) ? pj[0]?.lines?.[0] ?? pj[0]?.items?.[0] ?? pj[0]
+              : pj;
         const firstPrice =
-          pj?.[0]?.items?.[0]?.unitPrice ??
-          pj?.[0]?.items?.[0]?.netPrice ??
-          pj?.items?.[0]?.unitPrice ??
+          firstLine?.unitPrice ??
+          firstLine?.netPrice ??
+          firstLine?.price ??
           pj?.unitPrice;
-        if (typeof firstPrice === "number" && firstPrice > 0) unitPrice = firstPrice;
+        const numericPrice = Number(firstPrice);
+        if (Number.isFinite(numericPrice) && numericPrice > 0) unitPrice = numericPrice;
       } catch (_e) { /* non-fatal — proceed with fallback price */ }
 
       const orderObj = body.order ?? {
