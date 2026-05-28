@@ -1616,6 +1616,7 @@ export function EstimatePreviewPanel({
                     templateAttachments={[]}
                     jobPhotos={previewJobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
+                    pageOrder={pageOrder}
                     templateStyle={activeTemplateStyle}
                   />
                   
