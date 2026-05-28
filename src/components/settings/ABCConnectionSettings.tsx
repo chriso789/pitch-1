@@ -195,7 +195,9 @@ export function ABCConnectionSettings() {
   const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
   const [readiness, setReadiness] = useState<any | null>(null);
   const [readinessBusy, setReadinessBusy] = useState(false);
+  const [sandboxLogin, setSandboxLogin] = useState<{ configured: boolean; username: string | null } | null>(null);
   const [forceAdvancedOpen, setForceAdvancedOpen] = useState<string | undefined>(undefined);
+
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -474,6 +476,17 @@ export function ABCConnectionSettings() {
       ]);
       setReadiness({ callbackLog: cbLog, auditLog: auditRow });
       if (cbLog?.has_error) setForceAdvancedOpen('advanced');
+      // Refresh sandbox test login readiness (server-side; password is never returned).
+      try {
+        const { data: sl } = await supabase.functions.invoke('abc-api-proxy', {
+          body: { tenant_id: effectiveTenantId, environment, action: 'sandbox_test_login_status' },
+        });
+        if (sl && typeof sl === 'object') {
+          setSandboxLogin({ configured: !!(sl as any).configured, username: (sl as any).username ?? null });
+        }
+      } catch {
+        // non-fatal
+      }
     } catch (e: any) {
       setReadiness({ error: formatErrorMessage(e) });
     } finally {
@@ -485,6 +498,7 @@ export function ABCConnectionSettings() {
     if (effectiveTenantId) loadReadiness();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveTenantId, environment]);
+
 
   const fetchOAuthDebug = async () => {
     if (!effectiveTenantId) {
@@ -1143,6 +1157,15 @@ export function ABCConnectionSettings() {
                         ? `${new Date(readiness.auditLog.created_at).toLocaleString()} · ${readiness.auditLog.action} · HTTP ${readiness.auditLog.status_code} · ${readiness.auditLog.error_code || 'ok'}`
                         : ''}
                     />
+                    <EndpointRow
+                      label="Sandbox test login configured"
+                      value={sandboxLogin ? (sandboxLogin.configured ? 'yes' : 'no') : '—'}
+                    />
+                    <EndpointRow
+                      label="Sandbox test username"
+                      value={sandboxLogin?.username ?? ''}
+                      hint={sandboxLogin?.configured ? 'Password: ******** (stored as Supabase secret; never displayed or logged)' : undefined}
+                    />
                   </div>
                 </div>
 
@@ -1153,7 +1176,11 @@ export function ABCConnectionSettings() {
                   <p className="text-muted-foreground">
                     If ABC sends you to the developer dashboard instead of redirecting back to Pitch, ABC did not complete the OAuth redirect. Confirm the redirect URI is registered exactly, the test user is assigned to the app, and login is performed with the customer test account rather than the developer portal account.
                   </p>
+                  <p className="text-muted-foreground">
+                    ABC sandbox OAuth test user: <code>connect_user@test.com</code>. Password is stored temporarily as a Supabase secret (<code>ABC_SANDBOX_TEST_PASSWORD</code>) and must not be committed, logged, displayed, or exposed.
+                  </p>
                 </div>
+
               </div>
             </AccordionContent>
           </AccordionItem>

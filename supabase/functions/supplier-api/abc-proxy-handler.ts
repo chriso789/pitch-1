@@ -62,8 +62,21 @@ async function pkce() {
   return { verifier, challenge: b64url(digest) };
 }
 
+/** Detect Imperva/Incapsula WAF challenges in upstream responses. */
+function detectWaf(status: number, text: string | null | undefined): boolean {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  if (t.includes("_incapsula_resource")) return true;
+  if (t.includes("incident_id") && t.includes("incapsula")) return true;
+  if (t.includes("incident id") && (t.includes("imperva") || t.includes("incapsula"))) return true;
+  if ((status === 403 || status === 406 || status === 503) && t.includes("<html") &&
+      (t.includes("incapsula") || t.includes("imperva") || t.includes("request unsuccessful"))) return true;
+  return false;
+}
+
 /** Map ABC/transport errors to stable codes the UI can act on. */
 function mapAbcError(status: number, body: any): string {
+  if (status === 499) return "abc_waf_blocked"; // sentinel injected by callAbc on WAF detection
   if (status === 0) return "abc_network_error";
   if (status === 400) return "abc_400_bad_payload";
   if (status === 401) return "abc_401_unauthorized";
@@ -77,6 +90,7 @@ function mapAbcError(status: number, body: any): string {
   if (err.includes("scope")) return "missing_scope";
   return `abc_${status}`;
 }
+
 
 interface TokenLookup {
   token?: string;
@@ -257,6 +271,10 @@ async function callAbc(
   const text = await resp.text();
   let json: any = null;
   try { json = JSON.parse(text); } catch { /* keep text */ }
+  // WAF sentinel: Imperva/Incapsula blocks are not real ABC responses.
+  if (!resp.ok && detectWaf(resp.status, text)) {
+    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false };
+  }
   return { status: resp.status, json, text, ok: resp.ok };
 }
 
@@ -264,6 +282,7 @@ interface ProxyRequest {
   action:
     | "test_connection"
     | "get_status"
+    | "sandbox_test_login_status"
     | "start_oauth"
     | "price_items"
     | "get_branches"
@@ -274,6 +293,7 @@ interface ProxyRequest {
     | "submit_order"           // legacy alias for place_order
     | "submit_test_order"
     | "get_order_status";
+
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
   // pricing
@@ -518,7 +538,23 @@ export const handle = async (req) => {
       });
     }
 
+
+    // ---------------- sandbox_test_login_status ----------------
+    if (action === "sandbox_test_login_status") {
+      const username = Deno.env.get("ABC_SANDBOX_TEST_USERNAME") || null;
+      const passwordSet = !!Deno.env.get("ABC_SANDBOX_TEST_PASSWORD");
+      return json({
+        success: true,
+        configured: !!username && passwordSet,
+        username: username ?? null,
+        password_masked: passwordSet ? "********" : null,
+        environment: env,
+        note: "Sandbox test login is used only for the manual OAuth consent step. ABC sandbox is non-production QA.",
+      });
+    }
+
     // ---------------- test_connection ----------------
+
     if (action === "test_connection") {
       let metaOk = false;
       let metaStatus = 0;
