@@ -43,6 +43,7 @@ import {
   isRegistrationFailure,
 } from '@/lib/measurement/registration-gate';
 import { resolveFrameMismatch } from '@/lib/measurement/resolveFrameMismatch';
+import { computeAlignmentStatus } from '@/lib/measurement/alignmentStatus';
 import {
   resolveSourceRasterSize,
   classifyCoordinateSpace,
@@ -697,6 +698,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // banner, debug card and gate read the same source.
   const overlayFrameResolution = resolveFrameMismatch(grj);
   const dsmTransformAvailable = dsmAllowed;
+  const alignmentStatus = computeAlignmentStatus(measurement);
 
 
   return (
@@ -953,22 +955,103 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
               )}
             </div>
 
-            {/* Overlay Truth — authoritative frame source the backend gate reads. */}
+            {/* Measurement Alignment — splits raster overlay drift vs DSM
+                registration so the lock reason and copy reflect the real
+                failure (see alignmentStatus helper). */}
+            <div className="rounded-md border bg-muted/30 p-2.5">
+              <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Measurement Alignment</div>
+              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] font-mono">
+                <div className="text-muted-foreground">Aerial overlay</div>
+                <div className={`text-right ${alignmentStatus.raster_overlay_displacement === 'ok' ? 'text-emerald-600' : alignmentStatus.raster_overlay_displacement === 'mismatch' ? 'text-destructive' : ''}`}>
+                  {alignmentStatus.raster_overlay_displacement === 'ok' ? 'aligned to raster crop' : alignmentStatus.raster_overlay_displacement}
+                </div>
+                <div className="text-muted-foreground">Roof focus crop</div>
+                <div className="text-right">{focusRing && focusRing.length >= 3 ? 'active' : 'inactive'}</div>
+                <div className="text-muted-foreground">DSM registration</div>
+                <div className={`text-right ${alignmentStatus.dsm_registration_displacement === 'validated' ? 'text-emerald-600' : 'text-destructive'}`}>
+                  {alignmentStatus.dsm_registration_displacement}
+                </div>
+                <div className="text-muted-foreground">Manual approval</div>
+                <div className="text-right">
+                  {alignmentStatus.manual_approval_lock_reason === null
+                    ? 'allowed'
+                    : alignmentStatus.manual_approval_lock_reason === 'dsm_registration_missing'
+                    ? 'locked by DSM registration'
+                    : alignmentStatus.manual_approval_lock_reason === 'frame_mismatch'
+                    ? 'locked by frame mismatch'
+                    : 'locked by unconfirmed roof target'}
+                </div>
+                <div className="text-muted-foreground">Displacement source</div>
+                <div className="text-right">
+                  {alignmentStatus.raster_overlay_displacement === 'ok' && alignmentStatus.dsm_registration_displacement !== 'validated'
+                    ? 'DSM transform unavailable, not aerial overlay drift'
+                    : alignmentStatus.raster_overlay_displacement === 'mismatch'
+                    ? 'aerial overlay drift'
+                    : '—'}
+                </div>
+              </div>
+            </div>
+
+            {/* Overlay Truth — labels are driven by the alignment helper so
+                a valid raster crop is never labelled "unknown" or "frame
+                mismatch" when the real lock is DSM registration. */}
             <div className="rounded-md border bg-muted/30 p-2.5">
               <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Overlay Truth</div>
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] font-mono">
                 <div className="text-muted-foreground">Overlay frame</div>
-                <div className={`text-right ${overlayFrameResolution.frame_mismatch_ok ? 'text-emerald-600' : 'text-destructive'}`}>
-                  {overlayFrameResolution.frame_mismatch_ok ? 'OK' : (overlayFrameResolution.frame_mismatch_raw ?? 'unknown')}
+                <div className={`text-right ${alignmentStatus.raster_overlay_displacement === 'ok' ? 'text-emerald-600' : alignmentStatus.raster_overlay_displacement === 'mismatch' ? 'text-destructive' : ''}`}>
+                  {alignmentStatus.raster_overlay_displacement === 'ok'
+                    ? 'OK / crop-valid'
+                    : alignmentStatus.raster_overlay_displacement === 'mismatch'
+                    ? (overlayFrameResolution.frame_mismatch_raw ?? 'mismatch')
+                    : 'unknown'}
                 </div>
                 <div className="text-muted-foreground">Overlay source</div>
-                <div className="text-right break-all">{overlayFrameResolution.frame_mismatch_source ?? '—'}</div>
+                <div className="text-right break-all">
+                  {alignmentStatus.raster_overlay_displacement === 'ok'
+                    ? (focusRing && focusRing.length >= 3 ? 'roof_focus_crop / raster_px' : (overlayFrameResolution.frame_mismatch_source ?? 'raster_px'))
+                    : (overlayFrameResolution.frame_mismatch_source ?? '—')}
+                </div>
                 <div className="text-muted-foreground">DSM transform</div>
-                <div className="text-right">{dsmTransformAvailable ? 'available' : 'missing'}</div>
+                <div className="text-right">
+                  {alignmentStatus.dsm_registration_displacement === 'validated' ? 'available' : alignmentStatus.dsm_registration_displacement}
+                </div>
                 <div className="text-muted-foreground">Manual approval</div>
-                <div className="text-right">{approvalAllowed ? 'allowed' : (overlayFrameResolution.frame_mismatch_ok ? 'locked by DSM registration' : 'locked by frame mismatch')}</div>
+                <div className="text-right">
+                  {approvalAllowed
+                    ? 'allowed'
+                    : alignmentStatus.manual_approval_lock_reason === 'dsm_registration_missing'
+                    ? 'locked by DSM registration'
+                    : alignmentStatus.manual_approval_lock_reason === 'frame_mismatch'
+                    ? 'locked by frame mismatch'
+                    : alignmentStatus.manual_approval_lock_reason === 'target_unconfirmed'
+                    ? 'locked by unconfirmed roof target'
+                    : 'locked'}
+                </div>
+              </div>
+              {/* Explicit displacement metrics — distinguishes Roof Focus
+                  visual displacement from the legacy global centroid offset. */}
+              <div className="mt-2 pt-2 border-t border-border/40 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] font-mono">
+                <div className="text-muted-foreground">Perimeter bbox center src</div>
+                <div className="text-right">{alignmentStatus.metrics.perimeter_bbox_center_src ? `${alignmentStatus.metrics.perimeter_bbox_center_src[0].toFixed(1)},${alignmentStatus.metrics.perimeter_bbox_center_src[1].toFixed(1)}` : '—'}</div>
+                <div className="text-muted-foreground">Confirmed center src</div>
+                <div className="text-right">{alignmentStatus.metrics.confirmed_center_src ? `${alignmentStatus.metrics.confirmed_center_src[0].toFixed(0)},${alignmentStatus.metrics.confirmed_center_src[1].toFixed(0)}` : '—'}</div>
+                <div className="text-muted-foreground">Raster center offset</div>
+                <div className="text-right">{alignmentStatus.metrics.raster_center_offset_px != null ? `${alignmentStatus.metrics.raster_center_offset_px.toFixed(1)} px` : '—'}</div>
+                <div className="text-muted-foreground">Target mask overlap</div>
+                <div className="text-right">{alignmentStatus.metrics.target_mask_overlap != null ? alignmentStatus.metrics.target_mask_overlap.toFixed(3) : '—'}</div>
+                <div className="text-muted-foreground">Perimeter vs mask IoU</div>
+                <div className="text-right">{alignmentStatus.metrics.perimeter_vs_mask_iou != null ? alignmentStatus.metrics.perimeter_vs_mask_iou.toFixed(3) : '—'}</div>
+                {alignmentStatus.metrics.legacy_centroid_offset_px != null && (
+                  <>
+                    <div className="text-muted-foreground col-span-2 mt-1 text-[10px] italic">
+                      Legacy centroid offset: {alignmentStatus.metrics.legacy_centroid_offset_px.toFixed(0)} px (legacy/global diagnostic; not Roof Focus visual displacement)
+                    </div>
+                  </>
+                )}
               </div>
             </div>
+
 
             <details open={!rasterSizeResolved || frameCheck.mismatch || registrationFailed} className="border rounded p-2">
               <summary className="text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer">
