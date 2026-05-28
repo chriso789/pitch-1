@@ -271,6 +271,10 @@ async function callAbc(
   const text = await resp.text();
   let json: any = null;
   try { json = JSON.parse(text); } catch { /* keep text */ }
+  // WAF sentinel: Imperva/Incapsula blocks are not real ABC responses.
+  if (!resp.ok && detectWaf(resp.status, text)) {
+    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false };
+  }
   return { status: resp.status, json, text, ok: resp.ok };
 }
 
@@ -278,6 +282,7 @@ interface ProxyRequest {
   action:
     | "test_connection"
     | "get_status"
+    | "sandbox_test_login_status"
     | "start_oauth"
     | "price_items"
     | "get_branches"
@@ -288,6 +293,7 @@ interface ProxyRequest {
     | "submit_order"           // legacy alias for place_order
     | "submit_test_order"
     | "get_order_status";
+
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
   // pricing
