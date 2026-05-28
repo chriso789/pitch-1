@@ -283,6 +283,7 @@ interface ProxyRequest {
   action:
     | "test_connection"
     | "get_status"
+    | "sandbox_test_login_status"
     | "start_oauth"
     | "price_items"
     | "get_branches"
@@ -293,6 +294,7 @@ interface ProxyRequest {
     | "submit_order"           // legacy alias for place_order
     | "submit_test_order"
     | "get_order_status";
+
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
   // pricing
