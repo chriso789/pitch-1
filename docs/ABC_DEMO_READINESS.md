@@ -152,7 +152,7 @@ Every call writes a row to `abc_api_audit` with URL, payload, status, and respon
     "orderComments": [],
     "lines": [
       {
-        "id": 1,
+        "id": "1",
         "itemNumber": "TEST-SHINGLE-001",
         "itemDescription": "Sandbox test item",
         "orderedQty": { "value": 1, "uom": "EA" },
