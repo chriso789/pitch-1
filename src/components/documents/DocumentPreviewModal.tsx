@@ -413,8 +413,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
                 <div className="h-4 w-px bg-border" />
                 
-                <div className="h-4 w-px bg-border" />
-                
                 {/* Actions */}
                 <Button size="sm" variant="ghost" onClick={openInNewTab}>
                   <ExternalLink className="h-4 w-4 mr-2" />
