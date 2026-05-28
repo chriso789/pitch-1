@@ -1,0 +1,1 @@
+DELETE FROM public.documents WHERE id = '2af9757e-18eb-4b91-bdf8-3bfe8482a21a';
