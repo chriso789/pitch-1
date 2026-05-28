@@ -966,7 +966,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   {alignmentStatus.raster_overlay_displacement === 'ok' ? 'aligned to raster crop' : alignmentStatus.raster_overlay_displacement}
                 </div>
                 <div className="text-muted-foreground">Roof focus crop</div>
-                <div className="text-right">{focusPerimeter && focusPerimeter.length >= 3 ? 'active' : 'inactive'}</div>
+                <div className="text-right">{focusRing && focusRing.length >= 3 ? 'active' : 'inactive'}</div>
                 <div className="text-muted-foreground">DSM registration</div>
                 <div className={`text-right ${alignmentStatus.dsm_registration_displacement === 'validated' ? 'text-emerald-600' : 'text-destructive'}`}>
                   {alignmentStatus.dsm_registration_displacement}
@@ -1009,7 +1009,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 <div className="text-muted-foreground">Overlay source</div>
                 <div className="text-right break-all">
                   {alignmentStatus.raster_overlay_displacement === 'ok'
-                    ? (focusPerimeter && focusPerimeter.length >= 3 ? 'roof_focus_crop / raster_px' : (overlayFrameResolution.frame_mismatch_source ?? 'raster_px'))
+                    ? (focusRing && focusRing.length >= 3 ? 'roof_focus_crop / raster_px' : (overlayFrameResolution.frame_mismatch_source ?? 'raster_px'))
                     : (overlayFrameResolution.frame_mismatch_source ?? '—')}
                 </div>
                 <div className="text-muted-foreground">DSM transform</div>
