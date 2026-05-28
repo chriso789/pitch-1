@@ -36,6 +36,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 const ABC_CONFIG = {
   authBase: {
@@ -167,6 +168,7 @@ interface SearchHit {
 export function ABCConnectionSettings() {
   const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
+  const { allowSandboxDefaults } = useSupplierDeveloperMode();
 
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,13 +207,15 @@ export function ABCConnectionSettings() {
   const [defaultBranch, setDefaultBranch] = useState('');
   const [environment, setEnvironment] = useState<ABCEnvironment>('sandbox');
 
-  // Apply sandbox UI defaults whenever the environment is sandbox and a field is empty
+  // Apply sandbox UI defaults only for O'Brien sandbox tenant or developers.
+  // Other tenants must NEVER see Sandy's ship-to / branch / sample query.
   useEffect(() => {
     if (environment !== 'sandbox') return;
+    if (!allowSandboxDefaults) return;
     setShipToNumber((v) => v || SANDBOX_DEFAULTS.shipTo);
     setBranchNumber((v) => v || SANDBOX_DEFAULTS.branch);
     setProductQuery((v) => v || SANDBOX_DEFAULTS.query);
-  }, [environment]);
+  }, [environment, allowSandboxDefaults]);
 
   useEffect(() => {
     if (effectiveTenantId) loadConnection();
