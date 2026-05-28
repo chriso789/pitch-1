@@ -154,7 +154,9 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const registration = readRegistrationBlock(measurement);
   const registrationFailed = isRegistrationFailure(measurement);
   const approvalAllowed = !registrationFailed && canApproveManualPerimeter(registration);
-  const banner = registrationBanner(registration);
+  // Banner is computed below, AFTER alignmentStatus, so the resolved Overlay
+  // Transform diagnostics can override the registration block's frame source.
+
 
   const rasterUrl: string | null =
     overlayDbg?.raster_url ||
@@ -695,9 +697,61 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // Overlay Truth — the resolved frame source the report JSON authoritatively
   // exposes. Mirrors the backend early-DSM gate's resolveFrameMismatch so the
   // banner, debug card and gate read the same source.
+
+  // exposes. Mirrors the backend early-DSM gate's resolveFrameMismatch so the
+  // banner, debug card and gate read the same source.
   const overlayFrameResolution = resolveFrameMismatch(grj);
   const dsmTransformAvailable = dsmAllowed;
-  const alignmentStatus = computeAlignmentStatus(measurement);
+
+  // Build the SAME Overlay Transform object the diagnostics card renders and
+  // pass it into computeAlignmentStatus. This is the wiring fix: alignment
+  // logic now sees the already-resolved crop math, not a partial JSON re-read.
+  const resolvedOverlayTransformDiagnostics = {
+    coord_space: overlayCoordSpace,
+    source_px: rasterSizeResolved
+      ? { width: rasterSize.width, height: rasterSize.height }
+      : null,
+    crop_bbox_px: rasterSizeResolved
+      ? {
+          minX: viewportSrc.minX,
+          minY: viewportSrc.minY,
+          maxX: viewportSrc.maxX,
+          maxY: viewportSrc.maxY,
+        }
+      : null,
+    display_px_within_crop: rasterSizeResolved
+      ? { width: containerWidth, height: displayHeight }
+      : null,
+    first_pt_disp: projectedFirst
+      ? ([projectedFirst[0], projectedFirst[1]] as [number, number])
+      : null,
+    bbox_center_disp: bbDisp ? ([bbDisp.cx, bbDisp.cy] as [number, number]) : null,
+    target_mask_overlap:
+      typeof (phase35 as any)?.target_mask_overlap_with_perimeter === 'number'
+        ? (phase35 as any).target_mask_overlap_with_perimeter
+        : typeof (grj as any)?.target_mask_isolation?.target_mask_overlap_with_perimeter === 'number'
+          ? (grj as any).target_mask_isolation.target_mask_overlap_with_perimeter
+          : typeof (overlayDbg as any)?.target_mask_overlap === 'number'
+            ? (overlayDbg as any).target_mask_overlap
+            : null,
+  };
+
+  const alignmentStatus = computeAlignmentStatus(measurement, {
+    overlayTransform: resolvedOverlayTransformDiagnostics,
+  });
+
+  // Banner source: when the resolved Overlay Transform proves the aerial crop
+  // is valid (alignmentStatus === "ok"), force frame_mismatch="ok" into the
+  // registration block before calling registrationBanner. This stops the UI
+  // from showing "Coordinate frame mismatch" when the real failure is missing
+  // DSM registration. Banner copy then correctly reads
+  // "DSM registration incomplete — manual approval locked".
+  const effectiveRegistration =
+    alignmentStatus.raster_overlay_displacement === 'ok' && registration
+      ? { ...registration, frame_mismatch: 'ok' as const }
+      : registration;
+  const banner = registrationBanner(effectiveRegistration);
+
   const showRasterImage = layers.aerial && !!rasterUrl && rasterSizeResolved;
   const rasterImageStyle: CSSProperties = {
     width: `${rasterSize.width * scale}px`,
@@ -705,6 +759,8 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     left: `${-viewportSrc.minX * scale}px`,
     top: `${-viewportSrc.minY * scale}px`,
   };
+
+
 
 
   return (

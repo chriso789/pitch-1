@@ -46,6 +46,27 @@ export interface AlignmentStatus {
   metrics: AlignmentMetrics;
 }
 
+/**
+ * Already-resolved Overlay Transform diagnostics object as rendered by the
+ * "Overlay transform" diagnostics card in MeasurementVisualQAOverlay. Passing
+ * this in lets the helper trust the same crop-valid evidence the UI displays,
+ * instead of re-deriving partial values from geometry_report_json.
+ */
+export interface ResolvedOverlayTransform {
+  coord_space?: string | null;
+  source_px?: { width: number; height: number } | null;
+  crop_bbox_px?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  display_px_within_crop?: { width: number; height: number } | null;
+  first_pt_disp?: [number, number] | null;
+  bbox_center_disp?: [number, number] | null;
+  target_mask_overlap?: number | null;
+}
+
+export interface ComputeAlignmentStatusOptions {
+  overlayTransform?: ResolvedOverlayTransform | null;
+}
+
+
 const isNum = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
@@ -91,35 +112,38 @@ function pointInBbox(p: [number, number] | null, bb: ReturnType<typeof asBbox>):
   return p[0] >= bb.minX && p[0] <= bb.maxX && p[1] >= bb.minY && p[1] <= bb.maxY;
 }
 
-/**
- * computeAlignmentStatus
- * ----------------------
- * Reads geometry_report_json and derives the split displacement statuses,
- * the manual-approval lock reason, the banner copy, and the explicit metric
- * block the Visual QA UI renders.
- */
-export function computeAlignmentStatus(measurement: any): AlignmentStatus {
+export function computeAlignmentStatus(
+  measurement: any,
+  options: ComputeAlignmentStatusOptions = {},
+): AlignmentStatus {
   const grj = (measurement?.geometry_report_json ?? {}) as any;
+  const ot = options.overlayTransform ?? null;
 
   // --- inputs ------------------------------------------------------------
   const resolved = resolveFrameMismatch(grj);
 
   const coordSpace =
+    (ot?.coord_space as string | undefined) ??
     (dig(grj, "overlay_transform.coord_space") as string | undefined) ??
     (dig(grj, "coordinate_space_candidate") as string | undefined) ??
     (dig(grj, "overlay_debug.coord_space") as string | undefined) ??
     null;
 
   const sourcePx =
-    dig(grj, "overlay_transform.source_raster_px") ??
-    dig(grj, "source_raster_px") ??
-    dig(grj, "raster_size_px") ??
+    ot?.source_px ??
+    (dig(grj, "overlay_transform.source_raster_px") as any) ??
+    (dig(grj, "source_raster_px") as any) ??
+    (dig(grj, "raster_size_px") as any) ??
     null;
 
   const cropBbox =
+    ot?.crop_bbox_px ??
     asBbox(dig(grj, "overlay_transform.crop_bbox_px")) ??
     asBbox(dig(grj, "crop_bbox_px")) ??
     asBbox(dig(grj, "overlay_debug.crop_bbox_px"));
+
+
+
 
   const bboxCenterSrc =
     asPoint(dig(grj, "overlay_transform.perimeter_bbox_center_src")) ??
@@ -165,8 +189,35 @@ export function computeAlignmentStatus(measurement: any): AlignmentStatus {
     resolved.frame_mismatch_raw.toLowerCase() !== "ok" &&
     !!resolved.frame_mismatch_source;
 
+  // ---- Crop-valid evidence directly from the rendered Overlay Transform
+  // diagnostics object. If the UI is already showing valid crop math
+  // (source_px + crop_bbox + first_pt_disp + bbox_center_disp inside the
+  // display crop + target_mask_overlap >= 0.90), trust it. This is what
+  // closes the wiring gap between the diagnostics card and the alignment
+  // helper — the helper no longer has to re-derive from raw JSON.
+  const inDisp = (
+    p: [number, number] | null | undefined,
+    box: { width: number; height: number } | null | undefined,
+  ): boolean =>
+    !!p && !!box && isNum(p[0]) && isNum(p[1]) &&
+    p[0] >= 0 && p[1] >= 0 && p[0] <= box.width && p[1] <= box.height;
+
+  const otOverlap = isNum(ot?.target_mask_overlap as number | undefined)
+    ? (ot!.target_mask_overlap as number)
+    : null;
+  const otOverlapOk = otOverlap == null || otOverlap >= 0.9;
+  const overlayDiagnosticsCropValid =
+    !!ot &&
+    !!ot.crop_bbox_px &&
+    !!ot.source_px &&
+    inDisp(ot.first_pt_disp ?? null, ot.display_px_within_crop ?? null) &&
+    inDisp(ot.bbox_center_disp ?? null, ot.display_px_within_crop ?? null) &&
+    otOverlapOk;
+
   let rasterOverlayDisplacement: RasterOverlayDisplacement;
-  if (resolved.frame_mismatch_ok) {
+  if (overlayDiagnosticsCropValid && !frameRawMismatch) {
+    rasterOverlayDisplacement = "ok";
+  } else if (resolved.frame_mismatch_ok) {
     rasterOverlayDisplacement = "ok";
   } else if (
     hasCoordSpace &&
@@ -177,13 +228,6 @@ export function computeAlignmentStatus(measurement: any): AlignmentStatus {
   ) {
     rasterOverlayDisplacement = "ok";
   } else if (
-    // Crop-valid evidence: the Overlay Transform card already proves the
-    // crop math is valid and raster-aligned. When the overlay transform
-    // exposes a valid crop bbox AND either (a) the selected perimeter is
-    // surfaced or (b) the perimeter bbox center projects inside the crop,
-    // treat the aerial overlay as aligned even if coord_space wasn't
-    // explicitly the literal string "raster_px". This stops the UI from
-    // reporting "unknown" while the diagnostics show a valid crop.
     hasCrop &&
     (selectedPerimeterPresent || pointInBbox(bboxCenterSrc, cropBbox)) &&
     !frameRawMismatch
@@ -194,6 +238,7 @@ export function computeAlignmentStatus(measurement: any): AlignmentStatus {
   } else {
     rasterOverlayDisplacement = "unknown";
   }
+
 
   // --- DSM registration displacement -------------------------------------
   const geoToDsm = dig(grj, "geo_to_dsm_transform");
