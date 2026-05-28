@@ -512,13 +512,25 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle editEstimate URL parameter to load estimate for editing
+  // Ref to remember that a share/preview was requested via URL and should
+  // open the Preview panel as soon as the estimate finishes loading.
+  const pendingShowPreviewRef = React.useRef(false);
+
+  // Handle editEstimate + showPreview URL parameters atomically to avoid a
+  // race where two effects fight over `searchParams` updates and the
+  // preview dialog opens then immediately closes.
   useEffect(() => {
     const editEstimateId = searchParams.get('editEstimate');
-    
-    // Load if:
-    // 1. There's an editEstimate param in URL
-    // 2. It's different from what we're currently editing (or nothing is being edited)
+    const showPreview = searchParams.get('showPreview');
+
+    if (!editEstimateId && showPreview !== 'true') return;
+
+    // Capture intent BEFORE mutating the URL so the post-load effect knows
+    // to open the preview panel even after the param is cleared.
+    if (showPreview === 'true') {
+      pendingShowPreviewRef.current = true;
+    }
+
     if (editEstimateId && editEstimateId !== existingEstimateId) {
       // Reset previous editing state before loading new estimate
       setEditEstimateProcessed(true);
@@ -526,39 +538,34 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setFixedPrice(null);
       setEstimateDisplayName('');
       setEstimatePricingTier(null);
-      // Reset trade state before loading new estimate
       setTradeSections([]);
       setTradeLineItems({});
-      
+
       loadEstimateForEditing(editEstimateId);
-      
-      // Clear the editEstimate URL param after loading using React Router
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.delete('editEstimate');
-        return next;
-      }, { replace: true });
+    } else if (showPreview === 'true' && existingEstimateId) {
+      // No load needed (already editing this estimate) — open immediately.
+      setShowPreviewPanel(true);
+      pendingShowPreviewRef.current = false;
     }
+
+    // Clear both URL params in a single update.
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('editEstimate');
+      next.delete('showPreview');
+      return next;
+    }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, existingEstimateId]);
 
-  // Handle showPreview URL parameter to auto-open Preview Estimate panel after loading
+  // Once the requested estimate finishes loading, honor a pending preview
+  // request from the URL by opening the Preview panel.
   useEffect(() => {
-    const showPreview = searchParams.get('showPreview');
-    
-    // Open preview if showPreview=true is in URL and an estimate is loaded
-    if (showPreview === 'true' && existingEstimateId) {
+    if (pendingShowPreviewRef.current && existingEstimateId) {
+      pendingShowPreviewRef.current = false;
       setShowPreviewPanel(true);
-      
-      // Clear the showPreview URL param using React Router's setSearchParams
-      // so React Router is aware of the change (window.history.replaceState doesn't update it)
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.delete('showPreview');
-        return next;
-      }, { replace: true });
     }
-  }, [searchParams, existingEstimateId, setSearchParams]);
+  }, [existingEstimateId]);
 
   // Clear editing state when a deleted estimate ID matches what we're editing
   useEffect(() => {
