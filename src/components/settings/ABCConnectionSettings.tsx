@@ -256,11 +256,28 @@ export function ABCConnectionSettings() {
   };
 
   const handleSubmitTestOrder = async () => {
+    const shipTo = (demoShipTo || accountNumber || '').trim();
+    const branch = (demoBranch || defaultBranch || '').trim();
+    const item = demoItemNumber.trim();
+    if (!shipTo || !branch || !item) {
+      toast({
+        title: 'Demo inputs required',
+        description: 'ABC sandbox Ship-To, Branch, and Item Number are required for demo validation.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSubmittingOrder(true);
     setOrderResult(null);
     try {
       const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-        body: { action: 'submit_test_order', environment },
+        body: {
+          action: 'submit_test_order',
+          environment,
+          shipToNumber: shipTo,
+          branchNumber: branch,
+          itemNumber: item,
+        },
       });
       if (error) throw error;
       setOrderResult(data);
@@ -281,6 +298,39 @@ export function ABCConnectionSettings() {
       setSubmittingOrder(false);
     }
   };
+
+  const loadReadiness = async () => {
+    if (!effectiveTenantId) return;
+    setReadinessBusy(true);
+    try {
+      const [{ data: cbLog }, { data: auditRow }] = await Promise.all([
+        (supabase as any)
+          .from('abc_oauth_callback_logs')
+          .select('created_at, environment, has_code, has_error, error, error_description, state')
+          .eq('tenant_id', effectiveTenantId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        (supabase as any)
+          .from('abc_api_audit')
+          .select('created_at, environment, action, endpoint, status_code, error_code, duration_ms')
+          .eq('tenant_id', effectiveTenantId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      setReadiness({ callbackLog: cbLog, auditLog: auditRow });
+    } catch (e: any) {
+      setReadiness({ error: formatErrorMessage(e) });
+    } finally {
+      setReadinessBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (effectiveTenantId) loadReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTenantId, environment]);
 
   const handleRevoke = async () => {
     if (!effectiveTenantId || !connection) return;
