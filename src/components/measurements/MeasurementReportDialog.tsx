@@ -35,6 +35,8 @@ import MeasurementVisualQAOverlay from "./MeasurementVisualQAOverlay";
 import { useMeasurementJob } from "@/hooks/useMeasurementJob";
 import { Layers as LayersIcon } from "lucide-react";
 import { resolveMeasurementDiagnosticState } from "@/lib/measurements/measurementDiagnosticState";
+import { getRasterOverlayData as getRasterOverlayDataShared, parseRasterSizeFromUrl as parseRasterSizeFromUrlShared } from "@/lib/measurements/rasterOverlayData";
+import MeasurementReportPdfVisualSection from "./MeasurementReportPdfVisualSection";
 
 interface MeasurementReportDialogProps {
   open: boolean;
