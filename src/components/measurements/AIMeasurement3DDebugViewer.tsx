@@ -1003,7 +1003,7 @@ function DebugCanvas({ measurement, stage, layers, rasterUrl }: CanvasProps) {
           <img
             src={rasterUrl}
             alt="Aerial raster"
-            className="absolute inset-0 w-full h-full object-contain bg-black"
+            className="absolute inset-0 w-full h-full object-contain"
           />
         )
         : (

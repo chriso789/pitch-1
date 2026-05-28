@@ -1,48 +1,41 @@
 ## Goal
+Fix the two visible problems:
+1. Stop GitHub Actions failure-email spam from normal pushes.
+2. Remove the black box/letterbox from measurement report debug views.
 
-Stop CI email spam by removing the `push: main` trigger from `.github/workflows/ci.yml`. CI will run on pull requests and manual dispatch only.
+## Plan
 
-## Change
+### 1. CI email spam
+- Keep `.github/workflows/ci.yml` PR-only/manual by ensuring there is no `push: main` trigger.
+- If the workflow already matches that state, make no CI workflow change.
+- Do not try to fix unrelated Build/Lint/Typecheck/Unit failures in this pass unless they are caused by the black-box UI changes.
 
-Edit `.github/workflows/ci.yml` — replace the current `on:` block:
+### 2. Measurement Visual QA black box
+Update `src/components/measurements/MeasurementVisualQAOverlay.tsx`:
+- Replace the canvas wrapper `bg-slate-900` with a neutral semantic/light surface so unused crop space or image loading never appears as a giant dark rectangle.
+- Keep the existing canvas fill behavior that uses a light fallback instead of `#0f172a`.
+- Add/adjust test coverage if there is an existing DOM test location for this component.
 
-```yaml
-on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'public/**'
-      - '.github/ISSUE_TEMPLATE/**'
-  pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'public/**'
-      - '.github/ISSUE_TEMPLATE/**'
-```
+### 3. AI Process Viewer black letterbox
+Update `src/components/measurements/AIMeasurement3DDebugViewer.tsx`:
+- Remove `bg-black` from the aerial `<img>` that currently uses `object-contain bg-black`.
+- Use a neutral themed wrapper/background instead, so any letterboxing is light/transparent rather than black.
+- Keep the aerial as the background when available; do not change geometry logic, gates, DSM logic, or report data.
 
-with:
+### 4. PDF/debug export safety check
+Review the report PDF visual path using `MeasurementReportPdfVisualSection.tsx` and `RasterOverlayDebugView.tsx`:
+- Preserve the existing single-overlay-panel contract.
+- Ensure PDF-mode surfaces stay white and no dark placeholder is introduced.
+- Leave export logic alone unless a dark background is still present in the PDF root/panel.
 
-```yaml
-on:
-  pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'public/**'
-      - '.github/ISSUE_TEMPLATE/**'
-  workflow_dispatch:
-```
-
-## Side effect to be aware of
-
-The `edge-functions-check` job has a `main`-only step ("Deno type-check ALL edge functions") guarded by `github.ref == 'refs/heads/main'`. After this change that branch is unreachable (CI no longer runs on main push). I will leave it in place — harmless, and it re-activates if you ever add `push: main` back. No other workflow logic is impacted.
+### 5. Verify
+- Run the targeted measurement visual/PDF tests only, not the full build.
+- Confirm the codebase no longer has the specific dark backgrounds in these two report/debug overlay spots:
+  - `MeasurementVisualQAOverlay` canvas wrapper
+  - `AIMeasurement3DDebugViewer` aerial image/background
 
 ## Out of scope
-
-- No code/test fixes for the current Build/Lint/Typecheck/Unit failures (those are separate; address via PRs going forward).
-- No GitHub notification settings — that's a per-account UI change you do yourself.
-- No branch protection / merge-queue setup (recommend doing it manually in GitHub repo settings).
+- GitHub account notification settings.
+- Branch protection / repo settings.
+- Full cleanup/refactor into a shared overlay component.
+- Fixing unrelated existing CI failures across the whole app.
