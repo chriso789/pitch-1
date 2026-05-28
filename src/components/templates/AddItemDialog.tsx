@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,7 +108,7 @@ export const AddItemDialog = ({
     setUnitCost('');
     setSku('');
     setItemType('material');
-    setSections(['roof']);
+    setSections(initialSections);
     setSaveToCatalog(false);
   };
 
@@ -211,7 +211,7 @@ export const AddItemDialog = ({
             <div className="space-y-2">
               <Label>Assign to Sections</Label>
               <div className="flex flex-wrap gap-x-4 gap-y-2 p-3 border rounded-md bg-muted/30">
-                {SECTION_OPTIONS.map((section) => (
+                {sectionOptions.map((section) => (
                   <label key={section.value} className="flex items-center gap-2 text-sm cursor-pointer">
                     <Checkbox
                       checked={sections.includes(section.value)}
