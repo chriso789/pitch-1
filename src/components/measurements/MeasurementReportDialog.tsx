@@ -1235,8 +1235,8 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   );
 };
 
-const parseRasterSizeFromUrl = parseRasterSizeFromUrlShared;
 const getRasterOverlayData = getRasterOverlayDataShared;
+
 
 
 const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
