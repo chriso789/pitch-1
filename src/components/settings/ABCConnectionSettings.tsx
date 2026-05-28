@@ -744,9 +744,9 @@ export function ABCConnectionSettings() {
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {hasSecret ? 'Save & Replace Secret' : 'Save Credentials'}
           </Button>
-          <Button onClick={startOAuth} disabled={!hasSecret}>
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Connect ABC Supply
+          <Button onClick={startOAuth} disabled={!hasSecret || isConnected}>
+            {isConnected ? <CheckCircle className="h-4 w-4 mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
+            {isConnected ? 'ABC Supply Connected' : connection?.connection_status === 'error' ? 'Reconnect ABC Supply' : 'Connect ABC Supply'}
           </Button>
           <Button variant="outline" onClick={handleTest} disabled={testing}>
             {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
