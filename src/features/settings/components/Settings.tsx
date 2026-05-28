@@ -537,35 +537,7 @@ export const Settings = () => {
       case "integrations":
         return <IntegrationsSettings />;
       case "supplier-connections":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold">Supplier Connections</h2>
-              <p className="text-muted-foreground">
-                Connect your supplier accounts for live pricing and ordering
-              </p>
-            </div>
-            <Tabs value={supplierSubTab} onValueChange={setSupplierSubTab} className="space-y-6">
-              <TabsList className="flex-wrap">
-                <TabsTrigger value="srs" className="flex items-center gap-2">
-                  <LucideIcons.Truck className="h-4 w-4" />
-                  SRS Distribution
-                </TabsTrigger>
-                <TabsTrigger value="qxo" className="flex items-center gap-2">
-                  <LucideIcons.Package className="h-4 w-4" />
-                  QXO / Beacon
-                </TabsTrigger>
-                <TabsTrigger value="abc" className="flex items-center gap-2">
-                  <LucideIcons.Building2 className="h-4 w-4" />
-                  ABC Supply
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="srs"><SRSConnectionSettings /></TabsContent>
-              <TabsContent value="qxo"><QXOConnectionSettings /></TabsContent>
-              <TabsContent value="abc"><ABCConnectionSettings /></TabsContent>
-            </Tabs>
-          </div>
-        );
+        return <SupplierConnectionsSection supplierSubTab={supplierSubTab} setSupplierSubTab={setSupplierSubTab} />;
       case "company-referrals":
         return <CompanyReferralsSection />;
       case "security":
