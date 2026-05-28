@@ -863,7 +863,7 @@ export const handle = async (req) => {
         try {
           const respFirst = Array.isArray(r.json) ? r.json[0] : r.json;
           const orderObj = payload[0];
-          const orderNumber = respFirst?.orderNumber || respFirst?.order_number || orderObj.purchaseOrderNumber;
+          const orderNumber = respFirst?.orderNumber || respFirst?.order_number || orderObj.purchaseOrder;
           const confirmation = respFirst?.confirmationNumber || respFirst?.confirmation_number || null;
           const totalAmount =
             Number(respFirst?.totalAmount || respFirst?.total_amount || 0) ||
@@ -874,12 +874,12 @@ export const handle = async (req) => {
             .insert({
               tenant_id,
               order_number: orderNumber,
-              purchase_order: orderObj.purchaseOrderNumber,
+              purchase_order: orderObj.purchaseOrder,
               confirmation_number: confirmation,
               order_status: respFirst?.status || "submitted",
               branch_number: orderObj.branchNumber || null,
-              sold_to_number: orderObj.shipToNumber || null,
-              ship_to_number: orderObj.shipToNumber || null,
+              sold_to_number: orderObj.shipTo?.number || null,
+              ship_to_number: orderObj.shipTo?.number || null,
               ordered_on: new Date().toISOString().slice(0, 10),
               delivery_requested_for: body.delivery_date || null,
               total_amount: totalAmount,
