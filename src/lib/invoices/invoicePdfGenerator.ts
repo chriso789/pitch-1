@@ -68,6 +68,15 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
     )
     .join('');
 
+  // Derive original contract vs change orders from line items when possible.
+  const changeOrdersTotal = data.lineItems
+    .filter((li) => /change\s*order/i.test(li.description))
+    .reduce((s, li) => s + (li.line_total || 0), 0);
+  const contractTotal = typeof data.contractTotal === 'number' ? data.contractTotal : 0;
+  const originalContract = contractTotal > 0 ? Math.max(0, contractTotal - changeOrdersTotal) : 0;
+  const alreadyPaid = data.alreadyPaid || 0;
+  const balanceDue = data.amount;
+
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;box-sizing:border-box">
     <!-- HEADER -->
@@ -87,8 +96,25 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
       </div>
     </div>
 
+    <!-- BALANCE SUMMARY (top, owner-facing) -->
+    <div style="padding:24px 32px 8px">
+      <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+        <div style="background:#f9fafb;padding:12px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Balance Summary</div>
+        <div style="padding:14px 16px">
+          ${originalContract > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#374151"><span>Original Contract Amount</span><span style="font-weight:600">${fmt(originalContract)}</span></div>` : ''}
+          ${changeOrdersTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#374151"><span>+ Change Orders</span><span style="font-weight:600">${fmt(changeOrdersTotal)}</span></div>` : ''}
+          ${contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:#111827;border-top:1px solid #e5e7eb;margin-top:4px"><span style="font-weight:600">Total Contract</span><span style="font-weight:700">${fmt(contractTotal)}</span></div>` : ''}
+          ${alreadyPaid > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#047857"><span>− Payments Received</span><span style="font-weight:600">${fmt(alreadyPaid)}</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;margin:10px -16px -14px;background:#0a2540;color:#ffffff;border-radius:0 0 8px 8px">
+            <span style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Balance Due</span>
+            <span style="font-size:24px;font-weight:700">${fmt(balanceDue)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- META + BILL TO -->
-    <div style="padding:24px 32px;display:flex;justify-content:space-between;gap:24px">
+    <div style="padding:16px 32px 8px;display:flex;justify-content:space-between;gap:24px">
       <div style="flex:1">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:8px">Bill To</div>
         <div style="font-size:14px;font-weight:600;color:#111827">${escape(data.customer.name || '—')}</div>
@@ -99,16 +125,12 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
       <div style="text-align:right;min-width:220px">
         <div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Invoice Date:</span><span style="font-weight:600">${escape(data.invoiceDate)}</span></div>
         ${data.dueDate ? `<div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Due Date:</span><span style="font-weight:600">${escape(data.dueDate)}</span></div>` : ''}
-        ${typeof data.contractTotal === 'number' && data.contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Contract Amount:</span><span style="font-weight:600">${fmt(data.contractTotal)}</span></div>` : ''}
-        <div style="margin-top:12px;padding:10px 14px;background:#f3f4f6;border-radius:6px">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280">Amount Due</div>
-          <div style="font-size:22px;font-weight:700;color:#0a2540">${fmt(data.amount)}</div>
-        </div>
       </div>
-
+    </div>
 
     <!-- LINE ITEMS -->
     <div style="padding:0 32px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin:8px 0">This Invoice</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead>
           <tr style="background:#f9fafb">
@@ -122,14 +144,12 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
       </table>
 
       <!-- TOTALS -->
-      <div style="display:flex;justify-content:flex-end;margin-top:16px">
-        <div style="min-width:300px">
-          <div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:12px;color:#4b5563"><span>Subtotal</span><span>${fmt(data.amount)}</span></div>
-          ${typeof data.contractTotal === 'number' && data.contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:12px;color:#4b5563"><span>Contract Total</span><span>${fmt(data.contractTotal)}</span></div>` : ''}
-          ${typeof data.alreadyPaid === 'number' && data.alreadyPaid > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:12px;color:#047857;font-weight:600"><span>Already Paid</span><span>${fmt(data.alreadyPaid)}</span></div>` : ''}
-          <div style="display:flex;justify-content:space-between;padding:12px 8px;font-size:14px;font-weight:700;color:#ffffff;background:#0a2540;border-radius:6px;margin-top:8px"><span>TOTAL DUE</span><span>${fmt(data.amount)}</span></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <div style="min-width:260px">
+          <div style="display:flex;justify-content:space-between;padding:8px;font-size:13px;font-weight:700;color:#111827;border-top:2px solid #0a2540"><span>Invoice Total</span><span>${fmt(data.amount)}</span></div>
         </div>
       </div>
+
 
       ${data.paymentHistory && data.paymentHistory.length > 0 ? `
       <div style="margin-top:24px">
