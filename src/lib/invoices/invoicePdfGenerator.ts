@@ -240,20 +240,18 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
     const pageHeight = 792;
     // PNG keeps text crisp; jsPDF still compresses it.
     const imgData = canvas.toDataURL('image/png');
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position -= pageHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
+    // Fit entire invoice onto a single Letter page.
+    const ratio = canvas.width / canvas.height;
+    let renderWidth = pageWidth;
+    let renderHeight = renderWidth / ratio;
+    if (renderHeight > pageHeight) {
+      renderHeight = pageHeight;
+      renderWidth = renderHeight * ratio;
     }
+    const offsetX = (pageWidth - renderWidth) / 2;
+    const offsetY = (pageHeight - renderHeight) / 2;
+    pdf.addImage(imgData, 'PNG', offsetX, offsetY, renderWidth, renderHeight, undefined, 'FAST');
+
 
 
 
