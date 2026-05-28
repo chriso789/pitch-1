@@ -543,9 +543,10 @@ export function ABCConnectionSettings() {
     } catch {
       oauthWindow = null;
     }
-    try {
       const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-        body: { action: 'start_oauth', tenant_id: effectiveTenantId, environment },
+        body: { action: 'start_oauth', tenant_id: effectiveTenantId, environment, return_origin: window.location.origin },
+      });
+
       });
       if (error) throw error;
       if (!data?.authorization_url) {
