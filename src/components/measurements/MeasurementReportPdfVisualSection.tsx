@@ -20,9 +20,16 @@
 // logic, or any backend value.
 // ============================================================================
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import RasterOverlayDebugView from './RasterOverlayDebugView';
 import { getRasterOverlayData } from '@/lib/measurements/rasterOverlayData';
+import {
+  formatDsmSize,
+  resolveAerialCandidateEdgeCount,
+  resolveDebugRoofLinesCount,
+  resolveDsmStatusLabel,
+} from '@/lib/measurements/pdfChipFields';
+import { fetchAsDataUrl } from '@/lib/measurements/exportImageLoader';
 
 const fmtNum = (v: any): string => {
   if (v == null || v === '' || (typeof v === 'number' && Number.isNaN(v))) {
@@ -70,6 +77,38 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
     hasRasterOverlay,
   } = getRasterOverlayData(measurement);
 
+  // ---- Export-safe aerial: pre-resolve to data: URL so html2canvas can
+  // rasterize it even when the upstream host blocks tainted canvas reads.
+  const [aerialState, setAerialState] = useState<
+    'pending' | 'loaded' | 'failed'
+  >(rasterUrl ? 'pending' : 'failed');
+  const [aerialDataUrl, setAerialDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!rasterUrl) {
+      setAerialState('failed');
+      setAerialDataUrl(null);
+      return;
+    }
+    setAerialState('pending');
+    fetchAsDataUrl(rasterUrl, { timeoutMs: 5000 }).then((res) => {
+      if (cancelled) return;
+      if (res.state === 'loaded' && res.dataUrl) {
+        setAerialDataUrl(res.dataUrl);
+        setAerialState('loaded');
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('PDF aerial fetch failed', { state: res.state, error: res.error });
+        setAerialDataUrl(null);
+        setAerialState('failed');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rasterUrl]);
+
   const customerReady = measurement?.customer_report_ready === true;
   const resultState: string = String(
     measurement?.result_state ?? grj?.result_state ?? '—',
@@ -79,30 +118,11 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
     measurement?.gate_reason ??
     null;
 
-  // Compact diagnostic chip values — read-only mirrors of the live UI.
-  const dsmRegistered = grj?.dsm_pixel_transform_valid === true;
-  const dsmLoaded = grj?.dsm_loaded === true || !!grj?.dsm_size ||
-    !!grj?.dsm_planar_graph_debug;
-  const dsmStatus = dsmRegistered
-    ? 'Registered'
-    : dsmLoaded
-    ? 'Loaded, not registered'
-    : 'unavailable';
-  const dsmSize = grj?.dsm_size
-    ? `${grj.dsm_size.width ?? grj.dsm_size.w ?? '?'}×${grj.dsm_size.height ?? grj.dsm_size.h ?? '?'}`
-    : rasterSize
-    ? `${rasterSize.width}×${rasterSize.height}`
-    : '—';
-  const aerialEdgeCount = Array.isArray(grj?.aerial_candidate_roof_graph?.edges)
-    ? grj.aerial_candidate_roof_graph.edges.length
-    : Array.isArray(grj?.aerial_candidate_roof_graph?.edges_px)
-    ? grj.aerial_candidate_roof_graph.edges_px.length
-    : 0;
-  const debugRoofLines = Array.isArray(grj?.roof_lines)
-    ? grj.roof_lines.length
-    : Array.isArray(grj?._debug_only_edges_px)
-    ? grj._debug_only_edges_px.length
-    : edges_px.length;
+  // Compact diagnostic chip values — pure resolvers shared with tests.
+  const dsmStatus = resolveDsmStatusLabel(grj);
+  const dsmSize = formatDsmSize(grj);
+  const aerialEdgeCount = resolveAerialCandidateEdgeCount(grj);
+  const debugRoofLines = resolveDebugRoofLinesCount(grj);
   const reportableCount = Number(
     grj?.reportable_roof_lines_count ??
       (Array.isArray(grj?.reportable_roof_lines)
@@ -123,6 +143,38 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
           : ''
       }`
     : 'n/a';
+
+  // Overlay SVG (lines/polygon) used when aerial cannot be embedded — keeps
+  // diagnostic value of the export even in the placeholder case.
+  const overlaySvg = useMemo(() => {
+    if (!Array.isArray(focusPerimeterPx) || focusPerimeterPx.length < 3) return null;
+    const xs = focusPerimeterPx.map((p) => p[0]);
+    const ys = focusPerimeterPx.map((p) => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const pad = Math.max(8, (maxX - minX) * 0.05);
+    const vb = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+    const pts = focusPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(' ');
+    return (
+      <svg
+        viewBox={vb}
+        preserveAspectRatio="xMidYMid meet"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+        }}
+      >
+        <polygon points={pts} fill="rgba(59,130,246,0.08)" stroke="#2563eb" strokeWidth={2} />
+      </svg>
+    );
+  }, [focusPerimeterPx]);
+
+  const showAerial = hasRasterOverlay && aerialState !== 'failed';
 
   return (
     <div
@@ -185,10 +237,10 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
 
       {/* Aerial overlay — exactly one panel */}
       <div style={{ background: '#ffffff', marginBottom: 12 }}>
-        {hasRasterOverlay ? (
+        {showAerial ? (
           <RasterOverlayDebugView
             pdfMode
-            imageUrl={rasterUrl}
+            imageUrl={aerialDataUrl ?? rasterUrl}
             rasterSize={rasterSize}
             planes_px={planes_px}
             edges_px={edges_px}
@@ -203,16 +255,36 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
           <div
             data-pdf-overlay-panel="true"
             style={{
+              position: 'relative',
               background: '#ffffff',
               border: '1px solid #cbd5e1',
               borderRadius: 6,
-              padding: 32,
-              textAlign: 'center',
-              color: '#64748b',
-              fontSize: 13,
+              padding: 0,
+              aspectRatio: '4 / 3',
+              width: '100%',
+              overflow: 'hidden',
             }}
           >
-            aerial unavailable in export
+            {overlaySvg}
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                padding: '8px 12px',
+                background: 'rgba(255,255,255,0.92)',
+                borderTop: '1px solid #e2e8f0',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#0f172a', fontWeight: 600 }}>
+                Aerial image unavailable in PDF export
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                Overlay lines are still shown for diagnostic review.
+              </div>
+            </div>
           </div>
         )}
       </div>
