@@ -86,6 +86,9 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [orders, setOrders] = useState<AbcOrderRow[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [statusLookups, setStatusLookups] = useState<
+    Record<string, { ok: boolean; status?: number; body?: any; error?: string; at: string }>
+  >({});
 
   const load = useCallback(async () => {
     if (!tenantId) return;
