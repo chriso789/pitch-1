@@ -35,6 +35,8 @@ import MeasurementVisualQAOverlay from "./MeasurementVisualQAOverlay";
 import { useMeasurementJob } from "@/hooks/useMeasurementJob";
 import { Layers as LayersIcon } from "lucide-react";
 import { resolveMeasurementDiagnosticState } from "@/lib/measurements/measurementDiagnosticState";
+import { getRasterOverlayData as getRasterOverlayDataShared } from "@/lib/measurements/rasterOverlayData";
+import MeasurementReportPdfVisualSection from "./MeasurementReportPdfVisualSection";
 
 interface MeasurementReportDialogProps {
   open: boolean;
@@ -1233,111 +1235,9 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   );
 };
 
-const parseRasterSizeFromUrl = (
-  url?: string | null,
-): { width: number; height: number } | null => {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const size = parsed.searchParams.get("size");
-    const scale = Number(parsed.searchParams.get("scale") || 1);
-    const match = size?.match(/^(\d+)x(\d+)$/);
-    if (match) {
-      return {
-        width: Number(match[1]) * scale,
-        height: Number(match[2]) * scale,
-      };
-    }
-  } catch {
-    // Non-standard image URLs can still render; fall through to default below.
-  }
-  return { width: 1280, height: 1280 };
-};
+const getRasterOverlayData = getRasterOverlayDataShared;
 
-const getRasterOverlayData = (measurement: any) => {
-  const grj = measurement?.geometry_report_json || {};
-  if (grj?.registration_precedence_applied === true) {
-    return {
-      grj,
-      rasterUrl: null,
-      rasterSize: null,
-      planes_px: [],
-      edges_px: [],
-      footprint_px: [],
-      hasRasterOverlay: false,
-    };
-  }
-  const overlayDbg = grj?.overlay_debug || {};
-  const rasterUrl = overlayDbg?.raster_url ||
-    measurement?.satellite_overlay_url ||
-    measurement?.google_maps_image_url ||
-    measurement?.mapbox_image_url ||
-    grj?.raster_image_url ||
-    null;
-  const rasterSize = overlayDbg?.raster_size ||
-    grj?.raster_size ||
-    measurement?.analysis_image_size ||
-    parseRasterSizeFromUrl(rasterUrl);
-  // Prefer _debug_only_ prefixed fields (new contract) with fallback to legacy names
-  const planes_px = Array.isArray(grj?._debug_only_planes_px)
-    ? grj._debug_only_planes_px
-    : Array.isArray(grj?.planes_px)
-    ? grj.planes_px
-    : [];
-  const edges_px = Array.isArray(grj?._debug_only_edges_px)
-    ? grj._debug_only_edges_px
-    : Array.isArray(grj?.edges_px)
-    ? grj.edges_px
-    : [];
-  const footprint_px = Array.isArray(overlayDbg?.footprint_px)
-    ? overlayDbg.footprint_px
-    : Array.isArray(grj?.footprint_px)
-    ? grj.footprint_px
-    : [];
-  const hasRasterOverlay = Boolean(
-    rasterUrl && rasterSize &&
-      (planes_px.length > 0 || edges_px.length > 0 || footprint_px.length > 0),
-  );
 
-  // Roof Focus perimeter priority (must match MeasurementVisualQAOverlay):
-  // selected -> refined -> raw -> footprint. Used so the SVG debug panel
-  // crops the same area as the canvas overlay.
-  const asRing = (v: any): Array<[number, number]> => {
-    if (!Array.isArray(v)) return [];
-    const out: Array<[number, number]> = [];
-    for (const p of v) {
-      if (Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
-        out.push([Number(p[0]), Number(p[1])]);
-      }
-    }
-    return out;
-  };
-  const aerialCandidateGraph = (grj as any)?.aerial_candidate_roof_graph
-    ?? (grj as any)?.debug_layers?.aerial_candidate_roof_graph;
-  const focusPerimeterPx =
-    asRing((grj as any)?.selected_perimeter_px).length >= 3
-      ? asRing((grj as any)?.selected_perimeter_px)
-      : asRing((grj as any)?.phase3_5?.refined_perimeter_px).length >= 3
-      ? asRing((grj as any)?.phase3_5?.refined_perimeter_px)
-      : asRing(aerialCandidateGraph?.perimeter_ring_px).length >= 3
-      ? asRing(aerialCandidateGraph?.perimeter_ring_px)
-      : asRing((grj as any)?.phase3_5?.raw_perimeter_px).length >= 3
-      ? asRing((grj as any)?.phase3_5?.raw_perimeter_px)
-      : asRing((grj as any)?.perimeter_topology?.perimeter_ring_px).length >= 3
-      ? asRing((grj as any)?.perimeter_topology?.perimeter_ring_px)
-      : asRing(footprint_px);
-
-  return {
-    grj,
-    rasterUrl,
-    rasterSize,
-    planes_px,
-    edges_px,
-    footprint_px,
-    focusPerimeterPx,
-    hasRasterOverlay,
-  };
-};
 
 const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   open,
@@ -1577,22 +1477,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const root = reportContentRef.current;
     if (!root) throw new Error("Report preview is not ready yet.");
 
-    // Force-open all <details> elements so diagnostic data is captured in the PDF
-    const detailsEls = Array.from(root.querySelectorAll("details"));
-    const previouslyOpen = detailsEls.map((d) => d.open);
-    detailsEls.forEach((d) => {
-      d.open = true;
-    });
-
-    const pages = Array.from(
-      root.querySelectorAll<HTMLElement>(".measurement-report-page"),
+    // Capture the dedicated PDF-only root. This is a visual-first export
+    // (header + roof-focused aerial + compact diagnostic chips) rendered
+    // off-screen by MeasurementReportPdfVisualSection, NOT the live
+    // interactive dialog DOM. If the root is missing the export aborts
+    // with a clear error rather than silently falling back to the
+    // debug-grid-dominated dialog DOM.
+    const pdfRoot = root.querySelector<HTMLElement>(
+      '[data-pdf-report-root="true"]',
     );
-    if (pages.length === 0) {
-      // Restore collapsed state
-      detailsEls.forEach((d, i) => {
-        d.open = previouslyOpen[i];
-      });
-      throw new Error("No report pages are available to export.");
+    if (!pdfRoot) {
+      console.error("PDF export root missing: data-pdf-report-root");
+      throw new Error("PDF export root missing.");
     }
 
     await document.fonts?.ready;
@@ -1610,24 +1506,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       const usableWidth = pdfWidth - margin * 2;
       const usableHeight = pdfHeight - margin * 2;
 
-      for (let index = 0; index < pages.length; index += 1) {
-        const pageImage = await capturePageImage(pages[index], profile);
-        const ratio = Math.min(
-          usableWidth / pageImage.width,
-          usableHeight / pageImage.height,
-        );
-        const width = pageImage.width * ratio;
-        const height = pageImage.height * ratio;
-        if (index > 0) candidate.addPage();
-        candidate.addImage(
-          pageImage.imgData,
-          "JPEG",
-          (pdfWidth - width) / 2,
-          margin,
-          width,
-          height,
-        );
-      }
+      const pageImage = await capturePageImage(pdfRoot, profile);
+      const ratio = Math.min(
+        usableWidth / pageImage.width,
+        usableHeight / pageImage.height,
+      );
+      const width = pageImage.width * ratio;
+      const height = pageImage.height * ratio;
+      candidate.addImage(
+        pageImage.imgData,
+        "JPEG",
+        (pdfWidth - width) / 2,
+        margin,
+        width,
+        height,
+      );
 
       const size = candidate.output("blob").size;
       pdf = candidate;
@@ -1642,12 +1535,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "measurement-report";
     pdf?.save(`${safeAddress}-measurement-report.pdf`);
-
-    // Restore collapsed state
-    detailsEls.forEach((d, i) => {
-      d.open = previouslyOpen[i];
-    });
   };
+
 
   useEffect(() => {
     if (!open) {
@@ -2075,7 +1964,31 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         )}
 
         <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
-          <div ref={reportContentRef}>
+          <div ref={reportContentRef} className="relative">
+            {/* PDF-only export root. Rendered off-screen but in the DOM so
+                html2canvas can capture it. Excludes interactive controls,
+                raw JSON, and the debug grid that previously dominated the
+                exported PDF. The download path captures THIS root only. */}
+            {effectiveMeasurement && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: '-100000px',
+                  top: 0,
+                  width: '900px',
+                  background: '#ffffff',
+                  pointerEvents: 'none',
+                  zIndex: -1,
+                }}
+              >
+                <MeasurementReportPdfVisualSection
+                  measurement={effectiveMeasurement}
+                  address={address}
+                />
+              </div>
+            )}
+
             {effectiveMeasurement?.id && (
               <div className="mb-6">
                 <AIMeasurement3DDebugViewer
@@ -2084,6 +1997,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                 />
               </div>
             )}
+
 
             {!previewGate.ok
               ? (
