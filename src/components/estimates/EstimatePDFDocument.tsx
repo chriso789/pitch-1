@@ -857,11 +857,6 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           </PageShell>
         );
       })}
-      
-      {/* Render attachment pages (marketing flyers, etc.) after main content */}
-      {templateAttachments && templateAttachments.length > 0 && (
-        <AttachmentPagesRenderer attachments={templateAttachments} />
-      )}
     </div>
   );
 };
