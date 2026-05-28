@@ -825,15 +825,14 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       letterSpacing: '0.01em',
     }}>
       {pages.pages.map((pageContent, idx) => {
-        // Cover page + the two new editorial pages (Why Choose Us, Process Timeline)
-        // already include their own data-report-page wrapper and full-bleed design.
-        // Skip PageShell for them so we don't double-wrap headers/footers.
-        const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage;
-        const isStandalonePage = hasRenderedCoverPage && idx <= 2;
+        // Cover trio pages (CoverPage, WhyChooseUs, ProcessTimeline) already include
+        // their own full-bleed wrapper — skip PageShell so we don't double-wrap.
+        const isStandalonePage = pages.standaloneFlags[idx] === true;
 
         if (isStandalonePage) {
           return <React.Fragment key={`standalone-${idx}`}>{pageContent}</React.Fragment>;
         }
+
 
         // Wrap other pages in PageShell
         return (
