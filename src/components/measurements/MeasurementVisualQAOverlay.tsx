@@ -692,7 +692,12 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const bb = bboxOf(rawRing);
   const bbDisp = bb
     ? { cx: (bb.cx - viewportSrc.minX) * scale, cy: (bb.cy - viewportSrc.minY) * scale }
+    : null;
+
   // Overlay Truth — the resolved frame source the report JSON authoritatively
+  // exposes. Mirrors the backend early-DSM gate's resolveFrameMismatch so the
+  // banner, debug card and gate read the same source.
+
   // exposes. Mirrors the backend early-DSM gate's resolveFrameMismatch so the
   // banner, debug card and gate read the same source.
   const overlayFrameResolution = resolveFrameMismatch(grj);
