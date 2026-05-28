@@ -1,0 +1,1 @@
+ALTER TABLE public.abc_oauth_states ADD COLUMN IF NOT EXISTS return_origin text;

@@ -600,6 +600,7 @@ export type Database = {
           expires_at: string
           integration_id: string | null
           redirect_uri: string
+          return_origin: string | null
           state: string
           tenant_id: string
         }
@@ -610,6 +611,7 @@ export type Database = {
           expires_at?: string
           integration_id?: string | null
           redirect_uri: string
+          return_origin?: string | null
           state: string
           tenant_id: string
         }
@@ -620,6 +622,7 @@ export type Database = {
           expires_at?: string
           integration_id?: string | null
           redirect_uri?: string
+          return_origin?: string | null
           state?: string
           tenant_id?: string
         }
