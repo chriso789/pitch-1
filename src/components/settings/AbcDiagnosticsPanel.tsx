@@ -352,55 +352,117 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
               const isExpanded = expanded === o.id;
               const status = (o.order_status || 'pending').toLowerCase();
               const failed = /reject|fail|cancel|error/.test(status);
-              const received = !failed && webhookCount > 0;
               const transactionID = o.raw_payload?.transactionID || null;
               const tracker = o.order_number || o.confirmation_number;
+              const lookup = statusLookups[o.id];
+
+              // Lifecycle derivation
+              const httpStatus =
+                o.audit?.status_code ?? o.raw_payload?.response?.status ?? null;
+              const apiAccepted =
+                httpStatus != null && httpStatus >= 200 && httpStatus < 300 && !failed;
+              const apiErrored = (httpStatus != null && (httpStatus < 200 || httpStatus >= 300)) || failed;
+              const hasRef = !!(o.confirmation_number || o.order_number);
+
+              // Main banner text
+              let banner: { tone: 'ok' | 'warn' | 'err'; text: string } | null = null;
+              if (apiErrored) {
+                banner = { tone: 'err', text: 'ABC API rejected request — inspect response.' };
+              } else if (webhookCount > 0 && lastWebhook) {
+                banner = {
+                  tone: 'ok',
+                  text: `Last ABC webhook: ${lastWebhook.event_type || 'update'} · ${format(
+                    new Date(lastWebhook.received_at),
+                    'MMM d, h:mm a',
+                  )}`,
+                };
+              } else if (apiAccepted && hasRef) {
+                banner = { tone: 'ok', text: 'ABC API accepted order — confirmation received.' };
+              } else if (apiAccepted) {
+                banner = { tone: 'warn', text: 'ABC API accepted order — waiting on order reference.' };
+              }
 
               return (
                 <div key={o.id} className="rounded-md border p-3 text-sm">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div className="min-w-0 space-y-1 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      {/* Lifecycle pill row */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge variant="secondary" className="bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30">
                           ABC
                         </Badge>
                         <span className="font-medium font-mono text-xs">
                           {o.purchase_order || o.request_id || '—'}
                         </span>
-                        {failed ? (
+
+                        {/* 1. Sent */}
+                        <Badge className="gap-1 bg-green-600 text-white hover:bg-green-600">
+                          <CheckCircle2 className="h-3 w-3" /> Sent
+                        </Badge>
+
+                        {/* 2. API response */}
+                        {apiErrored ? (
                           <Badge variant="destructive" className="gap-1">
-                            <AlertCircle className="h-3 w-3" /> {o.order_status}
+                            <AlertCircle className="h-3 w-3" /> API error{httpStatus ? ` ${httpStatus}` : ''}
+                          </Badge>
+                        ) : apiAccepted ? (
+                          <Badge className="gap-1 bg-green-600 text-white hover:bg-green-600">
+                            <CheckCircle2 className="h-3 w-3" /> API accepted
                           </Badge>
                         ) : (
-                          <Badge className="gap-1 bg-green-600 text-white hover:bg-green-600">
-                            <CheckCircle2 className="h-3 w-3" /> {o.order_status || 'submitted'}
-                          </Badge>
+                          <Badge variant="outline" className="gap-1">API response pending</Badge>
                         )}
-                        {received && (
+
+                        {/* 3. Confirmation / order ref */}
+                        {o.confirmation_number ? (
                           <Badge className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600">
-                            <CheckCircle2 className="h-3 w-3" /> Received
-                            {lastWebhook &&
-                              ` · ${format(new Date(lastWebhook.received_at), 'MMM d, h:mm a')}`}
+                            <CheckCircle2 className="h-3 w-3" /> Confirmation received
+                          </Badge>
+                        ) : o.order_number ? (
+                          <Badge className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600">
+                            <CheckCircle2 className="h-3 w-3" /> Order # received
+                          </Badge>
+                        ) : apiAccepted ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                          >
+                            No order reference returned
+                          </Badge>
+                        ) : null}
+
+                        {/* 4. Webhook */}
+                        {webhookCount > 0 ? (
+                          <Badge className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600">
+                            <Webhook className="h-3 w-3" /> {webhookCount} webhook update
+                            {webhookCount === 1 ? '' : 's'}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="gap-1 text-muted-foreground">
+                            <Webhook className="h-3 w-3" /> No webhook updates yet
                           </Badge>
                         )}
-                        <Badge variant="outline" className="gap-1">
-                          <Webhook className="h-3 w-3" /> {webhookCount} webhook
-                          {webhookCount === 1 ? '' : 's'}
-                        </Badge>
-                        {o.source === 'sandbox' && (
+
+                        {o.source && (
                           <Badge variant="outline" className="text-[10px]">
-                            sandbox
+                            {o.source}
                           </Badge>
                         )}
                       </div>
 
-                      {received && lastWebhook && (
-                        <div className="rounded border border-emerald-600/30 bg-emerald-600/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-400">
-                          Last ABC update:{' '}
-                          <code className="font-semibold">{o.order_status || '—'}</code>
-                          {lastWebhook.event_type && (
-                            <span className="ml-1">— {lastWebhook.event_type}</span>
-                          )}
+                      {/* Main banner */}
+                      {banner && (
+                        <div
+                          className={
+                            'rounded border px-2 py-1 text-xs ' +
+                            (banner.tone === 'ok'
+                              ? 'border-emerald-600/30 bg-emerald-600/10 text-emerald-700 dark:text-emerald-400'
+                              : banner.tone === 'warn'
+                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+                              : 'border-destructive/40 bg-destructive/10 text-destructive')
+                          }
+                        >
+                          {banner.text}
                         </div>
                       )}
 
@@ -426,13 +488,6 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                         </div>
                       )}
 
-                      {!tracker && o.source === 'sandbox' && (
-                        <div className="rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-xs text-amber-800 dark:text-amber-300">
-                          Sandbox order submitted. ABC did not return an order/confirmation number in
-                          this response.
-                        </div>
-                      )}
-
                       <div className="text-xs text-muted-foreground space-y-0.5">
                         <div>
                           Submitted {format(new Date(o.created_at), 'MMM d yyyy, h:mm:ss a')} (
@@ -440,17 +495,11 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                         </div>
                         {o.branch_number && <div>Branch: {o.branch_number}</div>}
                         {o.ship_to_number && <div>Ship-To: {o.ship_to_number}</div>}
-                        {o.order_number && (
-                          <div className="flex items-center gap-1">
-                            ABC orderNumber: <code className="text-[11px]">{o.order_number}</code>
-                            <button onClick={() => copy(o.order_number!, 'orderNumber')}>
-                              <Copy className="h-3 w-3 hover:text-foreground" />
-                            </button>
-                          </div>
-                        )}
+
+                        {/* Prominent confirmation */}
                         {o.confirmation_number && (
-                          <div className="flex items-center gap-1">
-                            confirmationNumber:{' '}
+                          <div className="flex items-center gap-1 text-foreground">
+                            <span className="font-medium">confirmationNumber:</span>{' '}
                             <code className="text-[11px]">{o.confirmation_number}</code>
                             <button
                               onClick={() => copy(o.confirmation_number!, 'confirmationNumber')}
@@ -459,6 +508,18 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                             </button>
                           </div>
                         )}
+                        {o.order_number ? (
+                          <div className="flex items-center gap-1">
+                            orderNumber: <code className="text-[11px]">{o.order_number}</code>
+                            <button onClick={() => copy(o.order_number!, 'orderNumber')}>
+                              <Copy className="h-3 w-3 hover:text-foreground" />
+                            </button>
+                          </div>
+                        ) : apiAccepted ? (
+                          <div className="italic">
+                            orderNumber: Not returned by ABC {o.source || 'sandbox'} response
+                          </div>
+                        ) : null}
                         {o.request_id && (
                           <div className="flex items-center gap-1">
                             requestId: <code className="text-[11px]">{o.request_id}</code>
@@ -519,47 +580,71 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
 
                   {isExpanded && (
                     <div className="mt-3 space-y-3 border-t pt-3">
-                      {o.audit && (
-                        <div className="rounded border p-2 text-xs space-y-1">
-                          <div className="font-medium">Latest audit row</div>
-                          <div>Endpoint: <code className="text-[11px]">{o.audit.endpoint}</code></div>
-                          <div>
-                            HTTP {o.audit.status_code ?? '—'} · {o.audit.duration_ms ?? '—'}ms ·{' '}
-                            {o.audit.error_code || 'ok'}
-                          </div>
-                          <div className="text-muted-foreground">
-                            {format(new Date(o.audit.created_at), 'MMM d, h:mm:ss a')}
-                          </div>
-                        </div>
-                      )}
-                      <div>
-                        <div className="text-xs font-medium mb-1">Request payload</div>
+                      {/* A. Sent Request */}
+                      <div className="rounded border p-2 text-xs space-y-1">
+                        <div className="font-medium">A. Sent Request</div>
+                        {o.audit ? (
+                          <>
+                            <div>Endpoint: <code className="text-[11px]">{o.audit.endpoint || '—'}</code></div>
+                            <div>Action: <code className="text-[11px]">{o.audit.action}</code></div>
+                            <div className="text-muted-foreground">
+                              {format(new Date(o.audit.created_at), 'MMM d, h:mm:ss a')}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-muted-foreground">No audit row matched this order.</div>
+                        )}
+                        <div className="mt-1 font-medium">Request payload</div>
                         <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]">
-                          {JSON.stringify(o.raw_payload?.request ?? { note: 'no request captured' }, null, 2)}
+                          {JSON.stringify(
+                            o.audit?.request_body_redacted ??
+                              o.raw_payload?.request ?? { note: 'no request captured' },
+                            null,
+                            2,
+                          )}
                         </pre>
                       </div>
-                      <div>
-                        <div className="text-xs font-medium mb-1">
-                          ABC response (HTTP {o.raw_payload?.response?.status ?? '—'})
+
+                      {/* B. API Response */}
+                      <div className="rounded border p-2 text-xs space-y-1">
+                        <div className="font-medium">B. API Response</div>
+                        <div>
+                          HTTP {httpStatus ?? '—'}
+                          {o.audit?.duration_ms != null && ` · ${o.audit.duration_ms}ms`}
+                          {o.audit?.error_code ? ` · ${o.audit.error_code}` : ''}
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 text-muted-foreground">
+                          <span>confirmationNumber: {o.confirmation_number || '—'}</span>
+                          <span>orderNumber: {o.order_number || '—'}</span>
+                          <span>transactionID: {transactionID || '—'}</span>
                         </div>
                         <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]">
-                          {JSON.stringify(o.raw_payload?.response?.body ?? { note: 'no response captured' }, null, 2)}
+                          {JSON.stringify(
+                            o.audit?.response_body ??
+                              o.raw_payload?.response?.body ?? { note: 'no response captured' },
+                            null,
+                            2,
+                          )}
                         </pre>
                       </div>
-                      <div>
-                        <div className="text-xs font-medium mb-1">
-                          Webhook timeline ({o.webhooks.length})
+
+                      {/* C. Webhook / Status Timeline */}
+                      <div className="rounded border p-2 text-xs space-y-2">
+                        <div className="font-medium">
+                          C. Webhook / Status Timeline ({o.webhooks.length})
                         </div>
                         {o.webhooks.length === 0 ? (
-                          <div className="text-xs text-muted-foreground">
-                            No webhooks received yet.
+                          <div className="text-muted-foreground">
+                            No ABC webhook events received for this order yet.
                           </div>
                         ) : (
                           <div className="space-y-2">
                             {o.webhooks.map((w) => (
-                              <div key={w.id} className="rounded border p-2 text-xs">
+                              <div key={w.id} className="rounded border p-2">
                                 <div className="flex items-center justify-between gap-2">
-                                  <code className="font-semibold">{w.event_type || '—'}</code>
+                                  <code className="font-semibold">
+                                    Webhook received: {w.event_type || '—'}
+                                  </code>
                                   <span className="text-muted-foreground">
                                     {format(new Date(w.received_at), 'MMM d, h:mm:ss a')}
                                   </span>
@@ -576,6 +661,35 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                                 )}
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {lookup && (
+                          <div
+                            className={
+                              'rounded border p-2 ' +
+                              (lookup.ok
+                                ? 'border-emerald-600/30 bg-emerald-600/5'
+                                : 'border-destructive/40 bg-destructive/5')
+                            }
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">
+                                Status lookup {lookup.ok ? 'succeeded' : 'failed'}
+                                {lookup.status ? ` (HTTP ${lookup.status})` : ''}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {format(new Date(lookup.at), 'MMM d, h:mm:ss a')}
+                              </span>
+                            </div>
+                            {lookup.error && (
+                              <div className="text-destructive mt-1">{lookup.error}</div>
+                            )}
+                            {lookup.body !== undefined && (
+                              <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-[10px]">
+                                {JSON.stringify(lookup.body, null, 2)}
+                              </pre>
+                            )}
                           </div>
                         )}
                       </div>
