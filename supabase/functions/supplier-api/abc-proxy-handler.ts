@@ -783,9 +783,90 @@ export const handle = async (req) => {
       const respBody: any = r.json ?? null;
       const first = Array.isArray(respBody) ? respBody[0] : respBody?.orders?.[0] ?? respBody;
       const orderNumber =
-        first?.orderNumber ?? first?.order?.orderNumber ?? first?.orderId ?? null;
+        first?.orderNumber ?? first?.order_number ?? first?.order?.orderNumber ?? first?.orderId ?? null;
       const confirmationNumber =
-        first?.confirmationNumber ?? first?.order?.confirmationNumber ?? null;
+        first?.confirmationNumber ?? first?.confirmation_number ?? first?.order?.confirmationNumber ?? null;
+      const transactionID =
+        first?.transactionID ?? first?.transactionId ?? first?.transaction_id ?? null;
+
+      // Persist sandbox attempt to abc_orders (query-then-insert/update).
+      try {
+        const { data: existing } = await (supabase as any)
+          .from("abc_orders")
+          .select("id")
+          .eq("tenant_id", tenant_id)
+          .or(
+            [
+              `request_id.eq.${requestId}`,
+              `purchase_order.eq.${purchaseOrder}`,
+              orderNumber ? `order_number.eq.${orderNumber}` : null,
+              confirmationNumber ? `confirmation_number.eq.${confirmationNumber}` : null,
+            ].filter(Boolean).join(","),
+          )
+          .limit(1)
+          .maybeSingle();
+
+        const orderStatus = r.ok
+          ? (orderNumber || confirmationNumber ? "submitted" : "submitted_pending_reference")
+          : "error";
+
+        const orderRow = {
+          tenant_id,
+          request_id: requestId,
+          purchase_order: purchaseOrder,
+          order_number: orderNumber,
+          confirmation_number: confirmationNumber,
+          order_status: orderStatus,
+          branch_number: branchNumber,
+          ship_to_number: shipToNumber,
+          sold_to_number: shipToNumber,
+          ordered_on: new Date().toISOString().slice(0, 10),
+          delivery_requested_for: deliveryRequestedFor,
+          currency: "USD",
+          source: "sandbox",
+          raw_payload: {
+            request: payload,
+            response: { status: r.status, body: r.json ?? r.text },
+            transactionID,
+          },
+          updated_at: new Date().toISOString(),
+        };
+
+        let orderId: string | null = existing?.id ?? null;
+        if (orderId) {
+          await (supabase as any).from("abc_orders").update(orderRow).eq("id", orderId);
+        } else {
+          const { data: ins } = await (supabase as any)
+            .from("abc_orders")
+            .insert(orderRow)
+            .select("id")
+            .single();
+          orderId = ins?.id ?? null;
+        }
+
+        if (orderId) {
+          await (supabase as any)
+            .from("abc_order_lines")
+            .delete()
+            .eq("order_id", orderId)
+            .eq("tenant_id", tenant_id);
+          const line0 = orderObj.lines?.[0];
+          if (line0) {
+            await (supabase as any).from("abc_order_lines").insert({
+              order_id: orderId,
+              tenant_id,
+              line_id: String(line0.id ?? 1),
+              item_number: line0.itemNumber,
+              item_description: line0.itemDescription,
+              ordered_qty: Number(line0.orderedQty?.value ?? 1),
+              ordered_uom: line0.orderedQty?.uom ?? "EA",
+              raw_payload: line0,
+            });
+          }
+        }
+      } catch (persistErr) {
+        console.warn("[supplier-api abc] submit_test_order persist failed", persistErr);
+      }
 
       return json({
         success: r.ok,
@@ -796,8 +877,11 @@ export const handle = async (req) => {
         orderResponse: { status: r.status, body: r.json ?? r.text },
         orderNumber,
         confirmationNumber,
+        transactionID,
         requestId,
         purchaseOrder,
+        branchNumber,
+        shipToNumber,
         error_code,
         timestamp: new Date().toISOString(),
       });
