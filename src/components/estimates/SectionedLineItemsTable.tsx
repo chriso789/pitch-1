@@ -14,19 +14,21 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { 
-  Package, 
-  Hammer, 
-  Pencil, 
-  Check, 
-  X, 
+import {
+  Package,
+  Hammer,
+  Pencil,
+  Check,
+  X,
   RotateCcw,
   Trash2,
   Plus,
   StickyNote,
   GripVertical,
-  AlertTriangle
+  AlertTriangle,
+  PiggyBank,
 } from 'lucide-react';
+
 import {
   DndContext,
   closestCenter,
