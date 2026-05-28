@@ -372,7 +372,11 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         0, 0, W, H,
       );
     } else {
-      ctx.fillStyle = '#0f172a';
+      // Live overlay must never paint a giant dark rectangle when the aerial
+      // raster is missing/loading — that was the "black panel" the user saw
+      // while scrolling. Use a neutral light surface so the SVG overlay stays
+      // readable and the panel never flashes black during raster re-decode.
+      ctx.fillStyle = '#f8fafc';
       ctx.fillRect(0, 0, W, H);
     }
 
