@@ -802,36 +802,48 @@ export const handle = async (req) => {
         const branchNumber =
           (body.branchNumber || body.branch_code || (conn as any)?.default_branch_code || "")
             .toString().trim();
-        const deliveryType =
-          body.delivery_method === "pickup" ? "PICKUP"
-            : body.delivery_method === "ground_drop" ? "GROUND_DROP"
-              : "ROOF_LOAD";
+        // Map our delivery method enum -> ABC delivery service codes.
+        // CPU = Customer Pickup, OTG = Other Ground, OTR = Other Roof, COM = Commercial.
+        const deliveryService =
+          body.delivery_method === "pickup" ? "CPU"
+            : body.delivery_method === "ground_drop" ? "OTG"
+              : body.delivery_method === "roof_load" ? "OTR"
+                : "CPU";
 
         const parseAddr = (raw?: string) => {
-          if (!raw) return undefined;
+          if (!raw) return { line1: "", city: "", state: "", postal: "", country: "USA" };
           const m = raw.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
           return m
-            ? { addressLine1: m[1].trim(), city: m[2].trim(), state: m[3].toUpperCase(), postalCode: m[4] }
-            : { addressLine1: raw.trim() };
+            ? { line1: m[1].trim(), city: m[2].trim(), state: m[3].toUpperCase(), postal: m[4], country: "USA" }
+            : { line1: raw.trim(), city: "", state: "", postal: "", country: "USA" };
         };
 
-        const poNumber = `PITCH-${body.job_number || "JOB"}-${Date.now()}`;
+        const ts = Date.now();
+        const poNumber = `PITCH-${body.job_number || "JOB"}-${ts}`;
         payload = [{
-          sourceSystem: "PITCH",
-          purchaseOrderNumber: poNumber,
-          shipToNumber,
+          requestId: poNumber,
+          purchaseOrder: poNumber,
           branchNumber,
-          deliveryType,
-          requestedDeliveryDate: body.delivery_date,
-          shipTo: parseAddr(body.delivery_address),
-          notes: body.notes || (body.customer_name ? `For ${body.customer_name}` : undefined),
+          deliveryService,
+          typeCode: "SO",
+          dates: body.delivery_date ? { deliveryRequestedFor: body.delivery_date } : undefined,
+          currency: "USD",
+          shipTo: {
+            name: body.customer_name || "",
+            number: shipToNumber,
+            address: parseAddr(body.delivery_address),
+          },
+          orderComments: body.notes
+            ? [{ code: "H", description: String(body.notes).slice(0, 500) }]
+            : [],
           lines: items.map((i, idx) => ({
-            lineNumber: idx + 1,
+            id: idx + 1,
             itemNumber: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
-            description: i.description || i.item_name,
-            quantity: Number(i.quantity),
-            unitOfMeasure: (i.unit || "EA").toUpperCase(),
-            color: i.color_specs || undefined,
+            itemDescription: i.description || i.item_name,
+            orderedQty: {
+              value: Number(i.quantity),
+              uom: (i.unit || "EA").toUpperCase(),
+            },
           })),
         }];
       }
