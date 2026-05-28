@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { PushToSupplierDialog } from './PushToSupplierDialog';
 import { LiveOrderTracker } from './LiveOrderTracker';
 import { SrsDiagnosticsPanel } from './SrsDiagnosticsPanel';
+import { AbcDiagnosticsPanel } from '@/components/settings/AbcDiagnosticsPanel';
 
 interface Props {
   projectId: string;
@@ -115,6 +116,8 @@ export function ProjectMaterialsTab({
       <LiveOrderTracker projectId={projectId} />
 
       <SrsDiagnosticsPanel projectId={projectId} />
+
+      <AbcDiagnosticsPanel projectId={projectId} />
 
       <PushToSupplierDialog
         open={pushOpen}
