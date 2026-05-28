@@ -1477,22 +1477,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const root = reportContentRef.current;
     if (!root) throw new Error("Report preview is not ready yet.");
 
-    // Force-open all <details> elements so diagnostic data is captured in the PDF
-    const detailsEls = Array.from(root.querySelectorAll("details"));
-    const previouslyOpen = detailsEls.map((d) => d.open);
-    detailsEls.forEach((d) => {
-      d.open = true;
-    });
-
-    const pages = Array.from(
-      root.querySelectorAll<HTMLElement>(".measurement-report-page"),
+    // Capture the dedicated PDF-only root. This is a visual-first export
+    // (header + roof-focused aerial + compact diagnostic chips) rendered
+    // off-screen by MeasurementReportPdfVisualSection, NOT the live
+    // interactive dialog DOM. If the root is missing the export aborts
+    // with a clear error rather than silently falling back to the
+    // debug-grid-dominated dialog DOM.
+    const pdfRoot = root.querySelector<HTMLElement>(
+      '[data-pdf-report-root="true"]',
     );
-    if (pages.length === 0) {
-      // Restore collapsed state
-      detailsEls.forEach((d, i) => {
-        d.open = previouslyOpen[i];
-      });
-      throw new Error("No report pages are available to export.");
+    if (!pdfRoot) {
+      console.error("PDF export root missing: data-pdf-report-root");
+      throw new Error("PDF export root missing.");
     }
 
     await document.fonts?.ready;
@@ -1510,24 +1506,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       const usableWidth = pdfWidth - margin * 2;
       const usableHeight = pdfHeight - margin * 2;
 
-      for (let index = 0; index < pages.length; index += 1) {
-        const pageImage = await capturePageImage(pages[index], profile);
-        const ratio = Math.min(
-          usableWidth / pageImage.width,
-          usableHeight / pageImage.height,
-        );
-        const width = pageImage.width * ratio;
-        const height = pageImage.height * ratio;
-        if (index > 0) candidate.addPage();
-        candidate.addImage(
-          pageImage.imgData,
-          "JPEG",
-          (pdfWidth - width) / 2,
-          margin,
-          width,
-          height,
-        );
-      }
+      const pageImage = await capturePageImage(pdfRoot, profile);
+      const ratio = Math.min(
+        usableWidth / pageImage.width,
+        usableHeight / pageImage.height,
+      );
+      const width = pageImage.width * ratio;
+      const height = pageImage.height * ratio;
+      candidate.addImage(
+        pageImage.imgData,
+        "JPEG",
+        (pdfWidth - width) / 2,
+        margin,
+        width,
+        height,
+      );
 
       const size = candidate.output("blob").size;
       pdf = candidate;
@@ -1542,12 +1535,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "measurement-report";
     pdf?.save(`${safeAddress}-measurement-report.pdf`);
-
-    // Restore collapsed state
-    detailsEls.forEach((d, i) => {
-      d.open = previouslyOpen[i];
-    });
   };
+
 
   useEffect(() => {
     if (!open) {
