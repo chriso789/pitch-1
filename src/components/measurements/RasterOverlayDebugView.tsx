@@ -226,6 +226,25 @@ export function RasterOverlayDebugView({
   }, [displayEdges, displayFootprint]);
 
   if (!imageUrl || !rasterSize) {
+    if (pdfMode) {
+      return (
+        <div
+          data-pdf-overlay-panel="true"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: 32,
+            textAlign: 'center',
+            color: '#64748b',
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: 13,
+          }}
+        >
+          aerial unavailable in export
+        </div>
+      );
+    }
     return (
       <Card>
         <CardHeader>
@@ -237,6 +256,97 @@ export function RasterOverlayDebugView({
           </p>
         </CardContent>
       </Card>
+    );
+  }
+
+  if (pdfMode) {
+    return (
+      <div
+        data-pdf-overlay-panel="true"
+        className="relative w-full overflow-hidden border border-border rounded"
+        style={{ background: '#ffffff', paddingBottom: `${aspectPct}%` }}
+      >
+        <svg
+          viewBox={viewBox}
+          preserveAspectRatio="xMidYMid meet"
+          className="absolute inset-0 w-full h-full block"
+          style={{ background: '#ffffff' }}
+        >
+          {!imageFailed && (
+            <image
+              href={imageUrl}
+              x={0}
+              y={0}
+              width={rasterSize.width}
+              height={rasterSize.height}
+              opacity={0.95}
+              preserveAspectRatio="none"
+              onError={() => setImageFailed(true)}
+            />
+          )}
+          {imageFailed && (
+            <g>
+              <rect
+                x={focus.cropBboxPx.minX}
+                y={focus.cropBboxPx.minY}
+                width={focus.cropBboxPx.w}
+                height={focus.cropBboxPx.h}
+                fill="#ffffff"
+                stroke="#cbd5e1"
+                strokeDasharray="12 8"
+                strokeWidth={2}
+              />
+              <text
+                x={focus.cropBboxPx.minX + focus.cropBboxPx.w / 2}
+                y={focus.cropBboxPx.minY + focus.cropBboxPx.h / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#64748b"
+                fontSize={Math.max(16, focus.cropBboxPx.w / 28)}
+                fontFamily="system-ui, sans-serif"
+              >
+                aerial unavailable in export
+              </text>
+            </g>
+          )}
+          {displayPlanes.map((p, i) => {
+            const pts = (p.polygon || [])
+              .map((pt) => `${pt[0]},${pt[1]}`)
+              .join(' ');
+            if (!pts) return null;
+            return (
+              <polygon
+                key={`pl-${i}`}
+                points={pts}
+                fill="rgba(34,197,94,0.18)"
+                stroke="#16a34a"
+                strokeWidth={2}
+              />
+            );
+          })}
+          {clippedDisplayEdges.map((e, i) => (
+            <line
+              key={`e-${i}`}
+              x1={e.p1[0]}
+              y1={e.p1[1]}
+              x2={e.p2[0]}
+              y2={e.p2[1]}
+              stroke={EDGE_COLORS[e.type] || '#0f172a'}
+              strokeWidth={3}
+              strokeLinecap="round"
+            />
+          ))}
+          {displayFootprint.length >= 3 && (
+            <polygon
+              points={displayFootprint.map((pt) => `${pt[0]},${pt[1]}`).join(' ')}
+              fill="none"
+              stroke="#eab308"
+              strokeWidth={4}
+              strokeDasharray="12 8"
+            />
+          )}
+        </svg>
+      </div>
     );
   }
 
