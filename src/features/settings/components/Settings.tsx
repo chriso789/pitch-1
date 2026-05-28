@@ -279,6 +279,10 @@ export const Settings = () => {
         );
       }
 
+      // Hide tabs that are surfaced elsewhere in the app
+      const HIDDEN_TAB_KEYS = new Set(["my-money", "commissions"]);
+      filteredTabs = filteredTabs.filter(t => !HIDDEN_TAB_KEYS.has(t.tab_key));
+
       setTabConfig(filteredTabs);
       const hasProductTabs = filteredTabs.some(t => PRODUCT_TAB_KEYS.includes(t.tab_key));
       const tabExists = filteredTabs.find(t => t.tab_key === activeTab) || 
