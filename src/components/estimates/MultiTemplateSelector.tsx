@@ -177,6 +177,8 @@ interface MultiTemplateSelectorProps {
   onSaveChanges?: () => Promise<void>;
   saveChangesRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   clearEditingEstimateId?: string | null;
+  previewEstimateRequestId?: string | null;
+  onPreviewEstimateRequestHandled?: () => void;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
@@ -185,7 +187,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   onEstimateCreated,
   onUnsavedChangesChange,
   saveChangesRef,
-  clearEditingEstimateId
+  clearEditingEstimateId,
+  previewEstimateRequestId,
+  onPreviewEstimateRequestHandled
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -218,6 +222,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const [showUpdateTemplateDialog, setShowUpdateTemplateDialog] = useState(false);
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
+  const [pendingPreviewEstimateId, setPendingPreviewEstimateId] = useState<string | null>(null);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   const [isCreatingNewEstimate, setIsCreatingNewEstimate] = useState(false);
