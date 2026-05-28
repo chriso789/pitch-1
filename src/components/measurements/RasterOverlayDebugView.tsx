@@ -266,12 +266,20 @@ export function RasterOverlayDebugView({
       <div
         data-pdf-overlay-panel="true"
         className="relative w-full overflow-hidden border border-border rounded"
-        style={{ background: '#ffffff', paddingBottom: `${aspectPct}%` }}
+        style={{
+          background: '#ffffff',
+          width: '100%',
+          aspectRatio: '4 / 3',
+          maxHeight: 360,
+          minHeight: 220,
+        }}
       >
         <svg
           viewBox={viewBox}
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 w-full h-full block"
+          width="100%"
+          height="100%"
+          className="absolute inset-0 block"
           style={{ background: '#ffffff' }}
         >
           {!imageFailed && (
@@ -297,17 +305,30 @@ export function RasterOverlayDebugView({
                 stroke="#cbd5e1"
                 strokeDasharray="12 8"
                 strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
               />
               <text
                 x={focus.cropBboxPx.minX + focus.cropBboxPx.w / 2}
-                y={focus.cropBboxPx.minY + focus.cropBboxPx.h / 2}
+                y={focus.cropBboxPx.minY + focus.cropBboxPx.h / 2 - focus.cropBboxPx.h * 0.04}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#0f172a"
+                fontSize={Math.max(14, focus.cropBboxPx.w / 32)}
+                fontWeight={600}
+                fontFamily="system-ui, sans-serif"
+              >
+                Aerial image unavailable in PDF export
+              </text>
+              <text
+                x={focus.cropBboxPx.minX + focus.cropBboxPx.w / 2}
+                y={focus.cropBboxPx.minY + focus.cropBboxPx.h / 2 + focus.cropBboxPx.h * 0.04}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill="#64748b"
-                fontSize={Math.max(16, focus.cropBboxPx.w / 28)}
+                fontSize={Math.max(11, focus.cropBboxPx.w / 44)}
                 fontFamily="system-ui, sans-serif"
               >
-                aerial unavailable in export
+                Overlay geometry shown without aerial background
               </text>
             </g>
           )}
@@ -320,9 +341,10 @@ export function RasterOverlayDebugView({
               <polygon
                 key={`pl-${i}`}
                 points={pts}
-                fill="rgba(34,197,94,0.18)"
+                fill="rgba(34,197,94,0.10)"
                 stroke="#16a34a"
                 strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
               />
             );
           })}
@@ -334,8 +356,9 @@ export function RasterOverlayDebugView({
               x2={e.p2[0]}
               y2={e.p2[1]}
               stroke={EDGE_COLORS[e.type] || '#0f172a'}
-              strokeWidth={3}
+              strokeWidth={2}
               strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
           ))}
           {displayFootprint.length >= 3 && (
@@ -343,14 +366,16 @@ export function RasterOverlayDebugView({
               points={displayFootprint.map((pt) => `${pt[0]},${pt[1]}`).join(' ')}
               fill="none"
               stroke="#eab308"
-              strokeWidth={4}
-              strokeDasharray="12 8"
+              strokeWidth={2}
+              strokeDasharray="8 6"
+              vectorEffect="non-scaling-stroke"
             />
           )}
         </svg>
       </div>
     );
   }
+
 
   return (
     <Card>
