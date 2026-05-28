@@ -61,8 +61,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   
   const cleanupPdf = useCallback(() => {
     const docToCleanup = pdfDocRef.current;
-  const cleanupPdf = useCallback(() => {
-    const docToCleanup = pdfDocRef.current;
     if (docToCleanup) {
       try {
         docToCleanup.destroy();
