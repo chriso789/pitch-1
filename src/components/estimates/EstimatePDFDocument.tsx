@@ -138,6 +138,20 @@ interface EstimatePDFDocumentProps {
   pageOrder?: PageOrderItem[];
   // Per-company template style
   templateStyle?: string | null;
+  /**
+   * Additional estimates to append inline into the estimate_content section.
+   * Their pages are grouped with the main estimate so that downstream sections
+   * (photos, warranty, attachments) always come AFTER all estimate content,
+   * matching the user-defined page order.
+   */
+  additionalEstimates?: Array<{
+    estimateNumber: string;
+    estimateName?: string;
+    materialItems: LineItem[];
+    laborItems: LineItem[];
+    breakdown: EstimatePDFDocumentProps['breakdown'];
+    config: EstimatePDFDocumentProps['config'];
+  }>;
 }
 
 const formatCurrency = (amount: number) => {
