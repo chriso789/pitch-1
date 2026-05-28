@@ -139,7 +139,7 @@ export const EstimateBuilder = () => {
     setLineItems([...lineItems, newItem]);
   };
 
-  };
+
 
   const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
     setLineItems(items => 
