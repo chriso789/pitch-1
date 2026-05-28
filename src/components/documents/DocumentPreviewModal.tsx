@@ -159,13 +159,10 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           
           setPdfDoc(pdf);
           setPdfNumPages(pdf.numPages);
-          setPdfCurrentPage(1);
           setPdfScale(1.5);
-          
-          // Render first page
-          const rendered = await renderPageToDataUrl(pdf, 1, 1.5);
-          setPdfRenderedPage(rendered);
+          setPdfRenderedPages([]);
           setPreviewUrl(null); // Clear preview URL since we're using PDF.js
+          // All pages will be rendered by the scale/doc effect below
           
           // Also store public/signed URL for "Open in new tab"
           if (isPublicBucket) {
