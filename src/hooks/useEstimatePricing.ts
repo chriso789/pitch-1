@@ -19,7 +19,16 @@ export interface LineItem {
   sort_order?: number;
   trade_type?: string;            // e.g. 'roofing', 'gutters', 'siding'
   trade_label?: string;           // e.g. 'Roofing', 'Gutters'
+  /**
+   * When true, this line item is treated as a pass-through cost:
+   * - excluded from the overhead (OH%) base
+   * - excluded from the profit-margin base (no profit applied)
+   * - added to the selling price at raw cost
+   * Used for client-supplied / reimbursable items.
+   */
+  exclude_from_overhead?: boolean;
 }
+
 
 export interface PricingConfig {
   overheadPercent: number;
