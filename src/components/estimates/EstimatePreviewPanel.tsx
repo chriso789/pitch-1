@@ -663,8 +663,9 @@ export function EstimatePreviewPanel({
   }, [pipelineEntryId, contactId, tenantId, userId, toast]);
 
   // Single source of truth: mirror pageOrder[id].enabled into options.show* keys.
-  // This keeps the existing render code working while letting the Page Order panel
-  // be the only place a user toggles section visibility.
+  // The Page Order panel is the only place to toggle section *visibility*.
+  // Manufacturer/Workmanship warranties remain individually toggleable as sub-controls
+  // of the "Warranty Info" page-order entry.
   useEffect(() => {
     const map: Record<string, keyof PDFComponentOptions> = {
       cover_page: 'showCoverPage',
@@ -681,7 +682,7 @@ export function EstimatePreviewPanel({
           changed = true;
         }
       }
-      // Warranty is one slot in pageOrder controlling both manufacturer + workmanship
+      // When the warranty slot is turned OFF in page order, force both warranty sub-options off.
       const warranty = pageOrder.find(p => p.id === 'warranty_info');
       if (warranty && !warranty.enabled) {
         if (next.showManufacturerWarranty) { next.showManufacturerWarranty = false; changed = true; }
@@ -690,6 +691,19 @@ export function EstimatePreviewPanel({
       return changed ? next : prev;
     });
   }, [pageOrder]);
+
+  // Reverse sync: if a warranty sub-toggle is enabled while the warranty_info slot is off,
+  // turn the slot back on so the page actually renders.
+  useEffect(() => {
+    const wantWarranty = options.showManufacturerWarranty || options.showWorkmanshipWarranty;
+    if (!wantWarranty) return;
+    const warranty = pageOrder.find(p => p.id === 'warranty_info');
+    if (warranty && !warranty.enabled) {
+      setPageOrder(prev => prev.map(p => p.id === 'warranty_info' ? { ...p, enabled: true } : p));
+    }
+  }, [options.showManufacturerWarranty, options.showWorkmanshipWarranty, pageOrder]);
+
+
 
 
   // Filter template attachments to exclude removed ones
