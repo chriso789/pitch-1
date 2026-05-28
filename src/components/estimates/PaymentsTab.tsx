@@ -13,7 +13,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle, Pencil
+  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle, Pencil, ExternalLink
+
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -1484,17 +1485,28 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                              <DropdownMenuItem onClick={() => {
-                                if ((inv as any).stripe_payment_link_url) {
-                                  navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
-                                  toast.success('Stripe link copied!');
-                                } else {
-                                  handleSendPaymentLink(inv);
-                                }
-                              }}>
-                                <CreditCard className="h-4 w-4 mr-2" />
-                                {(inv as any).stripe_payment_link_url ? 'Copy Stripe Link' : 'Stripe Payment Link'}
-                              </DropdownMenuItem>
+                              {(inv as any).stripe_payment_link_url ? (
+                                <>
+                                  <DropdownMenuItem onClick={() => {
+                                    window.open((inv as any).stripe_payment_link_url, '_blank', 'noopener,noreferrer');
+                                  }}>
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    Open Stripe Link
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
+                                    toast.success('Stripe link copied!');
+                                  }}>
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    Copy Stripe Link
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
+                                <DropdownMenuItem onClick={() => handleSendPaymentLink(inv)}>
+                                  <CreditCard className="h-4 w-4 mr-2" />
+                                  Create Stripe Payment Link
+                                </DropdownMenuItem>
+                              )}
                               {zelleEnabled && (
                                 <DropdownMenuItem onClick={() => {
                                   if (pendingZelleLink) {
@@ -1510,6 +1522,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>
+
                           </DropdownMenu>
                         </>
                       )}
