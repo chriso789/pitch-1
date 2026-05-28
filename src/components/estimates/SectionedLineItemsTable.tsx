@@ -405,6 +405,11 @@ export function SectionedLineItemsTable({
           {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
         </TableCell>
         <TableCell className="text-right font-mono font-medium">
+          {formatCurrency(item.line_total)}
+          {item.exclude_from_overhead && (
+            <div className="text-[10px] text-amber-600 font-normal mt-0.5">pass-through</div>
+          )}
+        </TableCell>
         {editable && (
           <TableCell className="w-10">
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -448,7 +453,6 @@ export function SectionedLineItemsTable({
         )}
       </TableRow>
 
-      </TableRow>
     );
   };
 
