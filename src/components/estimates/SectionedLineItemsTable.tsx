@@ -126,6 +126,19 @@ export function SectionedLineItemsTable({
   const [editingCell, setEditingCell] = useState<EditableCell | null>(null);
   const [editValue, setEditValue] = useState('');
 
+  // Pass-through items are billed at cost separately and should NOT
+  // be rolled into Materials/Labor subtotals or the Direct Cost Total.
+  const materialsPassThrough = materialItems
+    .filter(i => i.exclude_from_overhead)
+    .reduce((s, i) => s + (i.line_total || 0), 0);
+  const laborPassThrough = laborItems
+    .filter(i => i.exclude_from_overhead)
+    .reduce((s, i) => s + (i.line_total || 0), 0);
+  const passThroughTotal = materialsPassThrough + laborPassThrough;
+  const displayMaterialsTotal = materialsTotal - materialsPassThrough;
+  const displayLaborTotal = laborTotal - laborPassThrough;
+  const displayDirectCostTotal = displayMaterialsTotal + displayLaborTotal;
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
