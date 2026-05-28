@@ -189,8 +189,35 @@ export function computeAlignmentStatus(
     resolved.frame_mismatch_raw.toLowerCase() !== "ok" &&
     !!resolved.frame_mismatch_source;
 
+  // ---- Crop-valid evidence directly from the rendered Overlay Transform
+  // diagnostics object. If the UI is already showing valid crop math
+  // (source_px + crop_bbox + first_pt_disp + bbox_center_disp inside the
+  // display crop + target_mask_overlap >= 0.90), trust it. This is what
+  // closes the wiring gap between the diagnostics card and the alignment
+  // helper — the helper no longer has to re-derive from raw JSON.
+  const inDisp = (
+    p: [number, number] | null | undefined,
+    box: { width: number; height: number } | null | undefined,
+  ): boolean =>
+    !!p && !!box && isNum(p[0]) && isNum(p[1]) &&
+    p[0] >= 0 && p[1] >= 0 && p[0] <= box.width && p[1] <= box.height;
+
+  const otOverlap = isNum(ot?.target_mask_overlap as number | undefined)
+    ? (ot!.target_mask_overlap as number)
+    : null;
+  const otOverlapOk = otOverlap == null || otOverlap >= 0.9;
+  const overlayDiagnosticsCropValid =
+    !!ot &&
+    !!ot.crop_bbox_px &&
+    !!ot.source_px &&
+    inDisp(ot.first_pt_disp ?? null, ot.display_px_within_crop ?? null) &&
+    inDisp(ot.bbox_center_disp ?? null, ot.display_px_within_crop ?? null) &&
+    otOverlapOk;
+
   let rasterOverlayDisplacement: RasterOverlayDisplacement;
-  if (resolved.frame_mismatch_ok) {
+  if (overlayDiagnosticsCropValid && !frameRawMismatch) {
+    rasterOverlayDisplacement = "ok";
+  } else if (resolved.frame_mismatch_ok) {
     rasterOverlayDisplacement = "ok";
   } else if (
     hasCoordSpace &&
@@ -201,13 +228,6 @@ export function computeAlignmentStatus(
   ) {
     rasterOverlayDisplacement = "ok";
   } else if (
-    // Crop-valid evidence: the Overlay Transform card already proves the
-    // crop math is valid and raster-aligned. When the overlay transform
-    // exposes a valid crop bbox AND either (a) the selected perimeter is
-    // surfaced or (b) the perimeter bbox center projects inside the crop,
-    // treat the aerial overlay as aligned even if coord_space wasn't
-    // explicitly the literal string "raster_px". This stops the UI from
-    // reporting "unknown" while the diagnostics show a valid crop.
     hasCrop &&
     (selectedPerimeterPresent || pointInBbox(bboxCenterSrc, cropBbox)) &&
     !frameRawMismatch
@@ -218,6 +238,7 @@ export function computeAlignmentStatus(
   } else {
     rasterOverlayDisplacement = "unknown";
   }
+
 
   // --- DSM registration displacement -------------------------------------
   const geoToDsm = dig(grj, "geo_to_dsm_transform");
