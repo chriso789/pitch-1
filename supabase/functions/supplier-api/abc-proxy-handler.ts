@@ -538,7 +538,23 @@ export const handle = async (req) => {
       });
     }
 
+
+    // ---------------- sandbox_test_login_status ----------------
+    if (action === "sandbox_test_login_status") {
+      const username = Deno.env.get("ABC_SANDBOX_TEST_USERNAME") || null;
+      const passwordSet = !!Deno.env.get("ABC_SANDBOX_TEST_PASSWORD");
+      return json({
+        success: true,
+        configured: !!username && passwordSet,
+        username: username ?? null,
+        password_masked: passwordSet ? "********" : null,
+        environment: env,
+        note: "Sandbox test login is used only for the manual OAuth consent step. ABC sandbox is non-production QA.",
+      });
+    }
+
     // ---------------- test_connection ----------------
+
     if (action === "test_connection") {
       let metaOk = false;
       let metaStatus = 0;
