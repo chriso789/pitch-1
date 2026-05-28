@@ -36,6 +36,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 const ABC_CONFIG = {
   authBase: {
@@ -167,6 +168,7 @@ interface SearchHit {
 export function ABCConnectionSettings() {
   const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
+  const { allowSandboxDefaults } = useSupplierDeveloperMode();
 
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,13 +207,15 @@ export function ABCConnectionSettings() {
   const [defaultBranch, setDefaultBranch] = useState('');
   const [environment, setEnvironment] = useState<ABCEnvironment>('sandbox');
 
-  // Apply sandbox UI defaults whenever the environment is sandbox and a field is empty
+  // Apply sandbox UI defaults only for O'Brien sandbox tenant or developers.
+  // Other tenants must NEVER see Sandy's ship-to / branch / sample query.
   useEffect(() => {
     if (environment !== 'sandbox') return;
+    if (!allowSandboxDefaults) return;
     setShipToNumber((v) => v || SANDBOX_DEFAULTS.shipTo);
     setBranchNumber((v) => v || SANDBOX_DEFAULTS.branch);
     setProductQuery((v) => v || SANDBOX_DEFAULTS.query);
-  }, [environment]);
+  }, [environment, allowSandboxDefaults]);
 
   useEffect(() => {
     if (effectiveTenantId) loadConnection();
@@ -820,7 +824,7 @@ export function ABCConnectionSettings() {
     </div>
   );
 
-  const DemoWorkflowCard = environment === 'sandbox' && (
+  const DemoWorkflowCard = environment === 'sandbox' && allowSandboxDefaults && (
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Sandbox Demo Workflow</CardTitle>
@@ -842,11 +846,11 @@ export function ABCConnectionSettings() {
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <Label className="text-xs">Ship-To Number</Label>
-            <Input value={shipToNumber} onChange={(e) => setShipToNumber(e.target.value)} placeholder={SANDBOX_DEFAULTS.shipTo} />
+            <Input value={shipToNumber} onChange={(e) => setShipToNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.shipTo : 'Ship-To #'} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Branch Number</Label>
-            <Input value={branchNumber} onChange={(e) => setBranchNumber(e.target.value)} placeholder={SANDBOX_DEFAULTS.branch} />
+            <Input value={branchNumber} onChange={(e) => setBranchNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.branch : 'Branch #'} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Item Number</Label>

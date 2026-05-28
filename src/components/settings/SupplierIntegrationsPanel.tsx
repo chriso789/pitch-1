@@ -1,0 +1,320 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { formatDistanceToNow } from 'date-fns';
+
+type SupplierKey = 'abc' | 'srs' | 'qxo';
+
+interface SupplierStatus {
+  connected: boolean;
+  lastValidatedAt: string | null;
+  lastError: string | null;
+  lastOrderAt: string | null;
+  lastOrderStatus: string | null;
+  ordersCount: number;
+}
+
+interface OrderRow {
+  id: string;
+  supplier: SupplierKey;
+  reference: string;
+  status: string;
+  createdAt: string;
+  branch: string | null;
+}
+
+const SUPPLIER_META: Record<SupplierKey, { name: string; description: string; icon: any; color: string }> = {
+  abc: {
+    name: 'ABC Supply',
+    description: 'Live pricing and orders for shingles, underlayment, and accessories.',
+    icon: Building2,
+    color: 'text-orange-500 bg-orange-500/10',
+  },
+  srs: {
+    name: 'SRS Distribution',
+    description: 'Order materials and track deliveries from SRS branches.',
+    icon: Truck,
+    color: 'text-emerald-500 bg-emerald-500/10',
+  },
+  qxo: {
+    name: 'QXO / Beacon',
+    description: 'Pricing, orders, and invoice sync from QXO (Beacon) accounts.',
+    icon: Package,
+    color: 'text-blue-500 bg-blue-500/10',
+  },
+};
+
+const EMPTY_STATUS: SupplierStatus = {
+  connected: false,
+  lastValidatedAt: null,
+  lastError: null,
+  lastOrderAt: null,
+  lastOrderStatus: null,
+  ordersCount: 0,
+};
+
+interface Props {
+  /** Caller can request the advanced developer tab from outside. */
+  onOpenAdvanced?: (supplier: SupplierKey) => void;
+}
+
+/**
+ * Customer-facing supplier integrations panel. Strictly tenant-scoped:
+ * every query filters by useEffectiveTenantId() and RLS enforces it
+ * server-side as well. Hides all OAuth URLs / raw audit / WAF / sandbox
+ * tooling — those belong in the Advanced (Developer) tab.
+ */
+export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
+  const tenantId = useEffectiveTenantId();
+  const [loading, setLoading] = useState(true);
+  const [statuses, setStatuses] = useState<Record<SupplierKey, SupplierStatus>>({
+    abc: EMPTY_STATUS,
+    srs: EMPTY_STATUS,
+    qxo: EMPTY_STATUS,
+  });
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [abcConn, srsConn, qxoConn, abcOrders, srsOrders, qxoOrders] = await Promise.all([
+          (supabase as any).from('abc_connections').select('connection_status, last_validated_at, last_error, updated_at').eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+          (supabase as any).from('srs_connections').select('connection_status, last_validated_at, last_error, updated_at').eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+          (supabase as any).from('qxo_connections').select('connection_status, last_validated_at, last_error, has_credentials, updated_at').eq('tenant_id', tenantId).maybeSingle(),
+          (supabase as any).from('abc_orders').select('id, order_number, confirmation_number, order_status, branch_number, created_at').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(20),
+          (supabase as any).from('srs_orders').select('id, order_number, order_status, branch_code, created_at').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(20),
+          (supabase as any).from('qxo_orders').select('id, order_number, order_status, branch_code, created_at').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(20),
+        ]);
+
+        if (cancelled) return;
+
+        const abcOrderRows: OrderRow[] = ((abcOrders?.data as any[]) || []).map((o) => ({
+          id: o.id,
+          supplier: 'abc',
+          reference: o.order_number || o.confirmation_number || '—',
+          status: o.order_status || 'pending',
+          createdAt: o.created_at,
+          branch: o.branch_number,
+        }));
+        const srsOrderRows: OrderRow[] = ((srsOrders?.data as any[]) || []).map((o) => ({
+          id: o.id,
+          supplier: 'srs',
+          reference: o.order_number || '—',
+          status: o.order_status || 'pending',
+          createdAt: o.created_at,
+          branch: o.branch_code,
+        }));
+        const qxoOrderRows: OrderRow[] = ((qxoOrders?.data as any[]) || []).map((o) => ({
+          id: o.id,
+          supplier: 'qxo',
+          reference: o.order_number || '—',
+          status: o.order_status || 'pending',
+          createdAt: o.created_at,
+          branch: o.branch_code,
+        }));
+
+        const combined = [...abcOrderRows, ...srsOrderRows, ...qxoOrderRows].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+
+        const next: Record<SupplierKey, SupplierStatus> = {
+          abc: {
+            connected: abcConn?.data?.connection_status === 'connected',
+            lastValidatedAt: abcConn?.data?.last_validated_at ?? null,
+            lastError: abcConn?.data?.last_error ?? null,
+            lastOrderAt: abcOrderRows[0]?.createdAt ?? null,
+            lastOrderStatus: abcOrderRows[0]?.status ?? null,
+            ordersCount: abcOrderRows.length,
+          },
+          srs: {
+            connected: srsConn?.data?.connection_status === 'connected',
+            lastValidatedAt: srsConn?.data?.last_validated_at ?? null,
+            lastError: srsConn?.data?.last_error ?? null,
+            lastOrderAt: srsOrderRows[0]?.createdAt ?? null,
+            lastOrderStatus: srsOrderRows[0]?.status ?? null,
+            ordersCount: srsOrderRows.length,
+          },
+          qxo: {
+            connected:
+              qxoConn?.data?.connection_status === 'connected' ||
+              !!qxoConn?.data?.has_credentials,
+            lastValidatedAt: qxoConn?.data?.last_validated_at ?? null,
+            lastError: qxoConn?.data?.last_error ?? null,
+            lastOrderAt: qxoOrderRows[0]?.createdAt ?? null,
+            lastOrderStatus: qxoOrderRows[0]?.status ?? null,
+            ordersCount: qxoOrderRows.length,
+          },
+        };
+
+        setStatuses(next);
+        setOrders(combined.slice(0, 25));
+      } catch (e) {
+        console.error('[SupplierIntegrationsPanel] load failed:', e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  const cards = useMemo(() => (['abc', 'srs', 'qxo'] as SupplierKey[]).map((k) => ({ key: k, meta: SUPPLIER_META[k], status: statuses[k] })), [statuses]);
+
+  if (!tenantId) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          Select a company to view supplier integrations.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">Supplier Integrations</h2>
+        <p className="text-muted-foreground">
+          Connect your supplier accounts to send orders and track status from inside Pitch.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {cards.map(({ key, meta, status }) => {
+          const Icon = meta.icon;
+          return (
+            <Card key={key} className="flex flex-col">
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${meta.color}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base">{meta.name}</CardTitle>
+                      <CardDescription className="text-xs line-clamp-2">{meta.description}</CardDescription>
+                    </div>
+                  </div>
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : status.connected ? (
+                    <Badge variant="default" className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600">
+                      <CheckCircle2 className="h-3 w-3" /> Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="gap-1">
+                      <XCircle className="h-3 w-3" /> Not connected
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col gap-2 text-xs">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Last sync</span>
+                  <span>
+                    {status.lastValidatedAt
+                      ? formatDistanceToNow(new Date(status.lastValidatedAt), { addSuffix: true })
+                      : '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Last order</span>
+                  <span>
+                    {status.lastOrderAt
+                      ? `${status.lastOrderStatus || 'pending'} · ${formatDistanceToNow(new Date(status.lastOrderAt), { addSuffix: true })}`
+                      : '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Recent orders</span>
+                  <span>{status.ordersCount}</span>
+                </div>
+                {status.lastError && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 text-destructive text-[11px] p-2">
+                    {status.lastError}
+                  </div>
+                )}
+                <div className="mt-auto pt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={status.connected ? 'outline' : 'default'}
+                    onClick={() => onOpenAdvanced?.(key)}
+                  >
+                    {status.connected ? 'Manage' : 'Connect'}
+                  </Button>
+                  {status.connected && (
+                    <Button size="sm" variant="ghost" onClick={() => onOpenAdvanced?.(key)}>
+                      Disconnect
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" /> Supplier Order History
+          </CardTitle>
+          <CardDescription>
+            Orders sent from your company across all connected suppliers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              No supplier orders yet. Connect a supplier above, then send your first order from a project's Materials tab.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground border-b">
+                  <tr>
+                    <th className="text-left font-medium py-2 pr-3">Supplier</th>
+                    <th className="text-left font-medium py-2 pr-3">Reference</th>
+                    <th className="text-left font-medium py-2 pr-3">Branch</th>
+                    <th className="text-left font-medium py-2 pr-3">Status</th>
+                    <th className="text-left font-medium py-2 pr-3">Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((o) => (
+                    <tr key={`${o.supplier}-${o.id}`} className="border-b last:border-0">
+                      <td className="py-2 pr-3">
+                        <Badge variant="outline" className="uppercase">{o.supplier}</Badge>
+                      </td>
+                      <td className="py-2 pr-3 font-mono text-xs">{o.reference}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{o.branch || '—'}</td>
+                      <td className="py-2 pr-3 capitalize">{o.status}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">
+                        {formatDistanceToNow(new Date(o.createdAt), { addSuffix: true })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
