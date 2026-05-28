@@ -2,7 +2,7 @@
 // Legacy ABC/QXO/SRS/Billtrust supplier functions forward here.
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant } from "../_shared/router.ts";
-import { handle as abcProxyHandle } from "../abc-api-proxy/handler.ts";
+import { handle as abcProxyHandle } from "./abc-proxy-handler.ts";
 import { handle as billtrustAuthHandle } from "../billtrust-auth/handler.ts";
 import { handle as billtrustPricingHandle } from "../billtrust-pricing/handler.ts";
 
