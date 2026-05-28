@@ -112,14 +112,36 @@ function pointInBbox(p: [number, number] | null, bb: ReturnType<typeof asBbox>):
   return p[0] >= bb.minX && p[0] <= bb.maxX && p[1] >= bb.minY && p[1] <= bb.maxY;
 }
 
-/**
- * computeAlignmentStatus
- * ----------------------
- * Reads geometry_report_json and derives the split displacement statuses,
- * the manual-approval lock reason, the banner copy, and the explicit metric
- * block the Visual QA UI renders.
- */
-export function computeAlignmentStatus(measurement: any): AlignmentStatus {
+export function computeAlignmentStatus(
+  measurement: any,
+  options: ComputeAlignmentStatusOptions = {},
+): AlignmentStatus {
+  const grj = (measurement?.geometry_report_json ?? {}) as any;
+  const ot = options.overlayTransform ?? null;
+
+  // --- inputs ------------------------------------------------------------
+  const resolved = resolveFrameMismatch(grj);
+
+  const coordSpace =
+    (ot?.coord_space as string | undefined) ??
+    (dig(grj, "overlay_transform.coord_space") as string | undefined) ??
+    (dig(grj, "coordinate_space_candidate") as string | undefined) ??
+    (dig(grj, "overlay_debug.coord_space") as string | undefined) ??
+    null;
+
+  const sourcePx =
+    (ot?.source_px ?? null) ??
+    dig(grj, "overlay_transform.source_raster_px") ??
+    dig(grj, "source_raster_px") ??
+    dig(grj, "raster_size_px") ??
+    null;
+
+  const cropBbox =
+    (ot?.crop_bbox_px ?? null) ??
+    asBbox(dig(grj, "overlay_transform.crop_bbox_px")) ??
+    asBbox(dig(grj, "crop_bbox_px")) ??
+    asBbox(dig(grj, "overlay_debug.crop_bbox_px"));
+
   const grj = (measurement?.geometry_report_json ?? {}) as any;
 
   // --- inputs ------------------------------------------------------------
