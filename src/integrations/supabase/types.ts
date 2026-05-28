@@ -884,6 +884,7 @@ export type Database = {
       }
       abc_webhook_events: {
         Row: {
+          abc_order_id: string | null
           accepted: boolean
           authorization_header_present: boolean | null
           confirmation_number: string | null
@@ -892,13 +893,20 @@ export type Database = {
           invoice_number: string | null
           order_number: string | null
           payload: Json
+          payload_hash: string | null
           processing_error: string | null
+          provider: string | null
+          provider_event_id: string | null
+          purchase_order: string | null
+          quarantine_reason: string | null
           received_at: string
           signature_match: boolean | null
+          signature_valid: boolean | null
           tenant_id: string | null
           webhook_id: string | null
         }
         Insert: {
+          abc_order_id?: string | null
           accepted?: boolean
           authorization_header_present?: boolean | null
           confirmation_number?: string | null
@@ -907,13 +915,20 @@ export type Database = {
           invoice_number?: string | null
           order_number?: string | null
           payload: Json
+          payload_hash?: string | null
           processing_error?: string | null
+          provider?: string | null
+          provider_event_id?: string | null
+          purchase_order?: string | null
+          quarantine_reason?: string | null
           received_at?: string
           signature_match?: boolean | null
+          signature_valid?: boolean | null
           tenant_id?: string | null
           webhook_id?: string | null
         }
         Update: {
+          abc_order_id?: string | null
           accepted?: boolean
           authorization_header_present?: boolean | null
           confirmation_number?: string | null
@@ -922,21 +937,37 @@ export type Database = {
           invoice_number?: string | null
           order_number?: string | null
           payload?: Json
+          payload_hash?: string | null
           processing_error?: string | null
+          provider?: string | null
+          provider_event_id?: string | null
+          purchase_order?: string | null
+          quarantine_reason?: string | null
           received_at?: string
           signature_match?: boolean | null
+          signature_valid?: boolean | null
           tenant_id?: string | null
           webhook_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "abc_webhook_events_abc_order_id_fkey"
+            columns: ["abc_order_id"]
+            isOneToOne: false
+            referencedRelation: "abc_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       abc_webhooks: {
         Row: {
           active_since: string | null
           created_at: string
+          environment: string | null
           events: string[]
           id: string
           integration_id: string | null
+          last_event_received_at: string | null
           name: string
           raw_payload: Json
           secret: string | null
@@ -950,9 +981,11 @@ export type Database = {
         Insert: {
           active_since?: string | null
           created_at?: string
+          environment?: string | null
           events?: string[]
           id?: string
           integration_id?: string | null
+          last_event_received_at?: string | null
           name: string
           raw_payload?: Json
           secret?: string | null
@@ -966,9 +999,11 @@ export type Database = {
         Update: {
           active_since?: string | null
           created_at?: string
+          environment?: string | null
           events?: string[]
           id?: string
           integration_id?: string | null
+          last_event_received_at?: string | null
           name?: string
           raw_payload?: Json
           secret?: string | null
