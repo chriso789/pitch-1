@@ -387,46 +387,31 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             </div>
           ) : previewType === 'pdf' && isPdfReady ? (
             <div className="w-full h-full flex flex-col min-h-[60vh]">
-              {/* PDF rendered page */}
-              <div className="flex-1 overflow-auto flex items-start justify-center p-4 bg-muted/20">
-                {pdfLoading ? (
-                  <div className="flex items-center justify-center min-h-[400px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  <img 
-                    src={pdfRenderedPage.dataUrl} 
-                    alt={`Page ${pdfCurrentPage} of ${currentDoc?.filename}`}
+              {/* All PDF pages stacked vertically — scroll to navigate */}
+              <div className="flex-1 overflow-auto flex flex-col items-center gap-4 p-4 bg-muted/20">
+                {pdfRenderedPages.map((page, idx) => (
+                  <img
+                    key={idx}
+                    src={page.dataUrl}
+                    alt={`Page ${idx + 1} of ${currentDoc?.filename}`}
                     className="max-w-full shadow-lg rounded"
-                    style={{ maxHeight: '70vh' }}
                   />
+                ))}
+                {pdfLoading && pdfRenderedPages.length < pdfNumPages && (
+                  <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading page {pdfRenderedPages.length + 1} of {pdfNumPages}…
+                  </div>
                 )}
               </div>
-              
+
               {/* PDF controls */}
               <div className="flex items-center justify-center gap-4 p-3 border-t bg-muted/50">
-                {/* Page navigation */}
-                <div className="flex items-center gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={handlePdfPrevPage}
-                    disabled={pdfCurrentPage <= 1 || pdfLoading}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-muted-foreground min-w-[80px] text-center">
-                    Page {pdfCurrentPage} / {pdfNumPages}
-                  </span>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={handlePdfNextPage}
-                    disabled={pdfCurrentPage >= pdfNumPages || pdfLoading}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <span className="text-sm text-muted-foreground">
+                  {pdfNumPages} {pdfNumPages === 1 ? 'page' : 'pages'} — scroll to view
+                </span>
+
+                <div className="h-4 w-px bg-border" />
                 
                 <div className="h-4 w-px bg-border" />
                 
