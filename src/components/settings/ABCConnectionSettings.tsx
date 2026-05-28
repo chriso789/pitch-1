@@ -824,7 +824,7 @@ export function ABCConnectionSettings() {
     </div>
   );
 
-  const DemoWorkflowCard = environment === 'sandbox' && (
+  const DemoWorkflowCard = environment === 'sandbox' && allowSandboxDefaults && (
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Sandbox Demo Workflow</CardTitle>
@@ -846,11 +846,11 @@ export function ABCConnectionSettings() {
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <Label className="text-xs">Ship-To Number</Label>
-            <Input value={shipToNumber} onChange={(e) => setShipToNumber(e.target.value)} placeholder={SANDBOX_DEFAULTS.shipTo} />
+            <Input value={shipToNumber} onChange={(e) => setShipToNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.shipTo : 'Ship-To #'} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Branch Number</Label>
-            <Input value={branchNumber} onChange={(e) => setBranchNumber(e.target.value)} placeholder={SANDBOX_DEFAULTS.branch} />
+            <Input value={branchNumber} onChange={(e) => setBranchNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.branch : 'Branch #'} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Item Number</Label>
