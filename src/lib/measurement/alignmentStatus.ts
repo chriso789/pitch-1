@@ -142,27 +142,7 @@ export function computeAlignmentStatus(
     asBbox(dig(grj, "crop_bbox_px")) ??
     asBbox(dig(grj, "overlay_debug.crop_bbox_px"));
 
-  const grj = (measurement?.geometry_report_json ?? {}) as any;
 
-  // --- inputs ------------------------------------------------------------
-  const resolved = resolveFrameMismatch(grj);
-
-  const coordSpace =
-    (dig(grj, "overlay_transform.coord_space") as string | undefined) ??
-    (dig(grj, "coordinate_space_candidate") as string | undefined) ??
-    (dig(grj, "overlay_debug.coord_space") as string | undefined) ??
-    null;
-
-  const sourcePx =
-    dig(grj, "overlay_transform.source_raster_px") ??
-    dig(grj, "source_raster_px") ??
-    dig(grj, "raster_size_px") ??
-    null;
-
-  const cropBbox =
-    asBbox(dig(grj, "overlay_transform.crop_bbox_px")) ??
-    asBbox(dig(grj, "crop_bbox_px")) ??
-    asBbox(dig(grj, "overlay_debug.crop_bbox_px"));
 
   const bboxCenterSrc =
     asPoint(dig(grj, "overlay_transform.perimeter_bbox_center_src")) ??
