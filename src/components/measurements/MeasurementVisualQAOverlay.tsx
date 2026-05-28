@@ -760,7 +760,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     top: `${-viewportSrc.minY * scale}px`,
   };
 
-  };
+
 
 
   return (
