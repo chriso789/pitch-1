@@ -96,15 +96,16 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
         ${data.customer.email ? `<div style="font-size:12px;color:#4b5563;margin-top:2px">${escape(data.customer.email)}</div>` : ''}
         ${data.customer.phone ? `<div style="font-size:12px;color:#4b5563;margin-top:2px">${escape(data.customer.phone)}</div>` : ''}
       </div>
-      <div style="text-align:right;min-width:200px">
+      <div style="text-align:right;min-width:220px">
         <div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Invoice Date:</span><span style="font-weight:600">${escape(data.invoiceDate)}</span></div>
         ${data.dueDate ? `<div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Due Date:</span><span style="font-weight:600">${escape(data.dueDate)}</span></div>` : ''}
+        ${typeof data.contractTotal === 'number' && data.contractTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:24px;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">Contract Amount:</span><span style="font-weight:600">${fmt(data.contractTotal)}</span></div>` : ''}
         <div style="margin-top:12px;padding:10px 14px;background:#f3f4f6;border-radius:6px">
           <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280">Amount Due</div>
           <div style="font-size:22px;font-weight:700;color:#0a2540">${fmt(data.amount)}</div>
         </div>
       </div>
-    </div>
+
 
     <!-- LINE ITEMS -->
     <div style="padding:0 32px">
@@ -194,33 +195,35 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
           })
       )
     );
-
     const canvas = await html2canvas(container, {
-      scale: 1.5,
+      scale: 3,
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
       windowWidth: 780,
     });
 
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
     const pageWidth = 612;
     const pageHeight = 792;
-    const imgData = canvas.toDataURL('image/jpeg', 0.65);
+    // PNG keeps text crisp; jsPDF still compresses it.
+    const imgData = canvas.toDataURL('image/png');
     const imgWidth = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
     let heightLeft = imgHeight;
     let position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
     heightLeft -= pageHeight;
 
     while (heightLeft > 0) {
       position -= pageHeight;
       pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
       heightLeft -= pageHeight;
     }
+
+
 
     return pdf.output('blob');
   } finally {
