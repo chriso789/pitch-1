@@ -607,10 +607,38 @@ export const handle = async (req) => {
 
     // ---------------- search_products / get_item ----------------
     if (action === "search_products") {
+      // ABC documented body: filters[] + pagination{}.
       const endpoint = `${cfg.apiBase}/product/v1/search/items`;
+      const filters: Array<Record<string, unknown>> = [];
+      const itemNumber = (body.itemNumber || "").toString().trim();
+      const query = (body.query || "").toString().trim();
+      if (itemNumber) {
+        filters.push({
+          key: "itemNumber",
+          condition: "equals",
+          values: [itemNumber],
+          joinCondition: "and",
+        });
+      } else {
+        filters.push({
+          key: "itemDescription",
+          condition: "contains",
+          values: [query],
+          joinCondition: "and",
+        });
+      }
+      const branchNumber = (body.branchNumber || "").toString().trim();
+      if (branchNumber) {
+        filters.push({
+          key: "branchNumber",
+          condition: "equals",
+          values: [branchNumber],
+          joinCondition: "and",
+        });
+      }
       const payload = {
-        query: body.query ?? "",
-        branchNumber: body.branchNumber || undefined,
+        filters,
+        pagination: { itemsPerPage: 10, pageNumber: 1 },
       };
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
