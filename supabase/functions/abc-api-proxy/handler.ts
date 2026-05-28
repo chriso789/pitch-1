@@ -825,6 +825,26 @@ export const handle = async (req) => {
       delivery.setUTCDate(delivery.getUTCDate() + 1);
       const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
 
+      // Try to fetch a real unit price from ABC first (required field for /order/v2/orders).
+      // Falls back to 0.01 if pricing call fails — sandbox still validates payload shape.
+      let unitPrice = 0.01;
+      try {
+        const priceEndpoint = `${cfg.apiBase}/price/v2/items`;
+        const pricePayload = [{
+          branchNumber,
+          shipToNumber,
+          items: [{ itemNumber, quantity: 1, uom: "EA" }],
+        }];
+        const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
+        const pj: any = pr.json;
+        const firstPrice =
+          pj?.[0]?.items?.[0]?.unitPrice ??
+          pj?.[0]?.items?.[0]?.netPrice ??
+          pj?.items?.[0]?.unitPrice ??
+          pj?.unitPrice;
+        if (typeof firstPrice === "number" && firstPrice > 0) unitPrice = firstPrice;
+      } catch (_e) { /* non-fatal — proceed with fallback price */ }
+
       const orderObj = body.order ?? {
         requestId,
         purchaseOrder,
@@ -838,11 +858,19 @@ export const handle = async (req) => {
           number: shipToNumber,
           address: {
             line1: "123 Test Street",
+            line2: "",
+            line3: "",
             city: "North Port",
             state: "FL",
             postal: "34286",
             country: "USA",
           },
+          contacts: [{
+            name: "ABC Sandbox Test",
+            phone: "9415550100",
+            email: "connect_user@test.com",
+            type: "PRIMARY",
+          }],
         },
         orderComments: [
           {
@@ -851,10 +879,11 @@ export const handle = async (req) => {
           },
         ],
         lines: [{
-          id: 1,
+          id: "1",
           itemNumber,
           itemDescription: "Sandbox test item",
           orderedQty: { value: 1, uom: "EA" },
+          unitPrice,
         }],
       };
 
