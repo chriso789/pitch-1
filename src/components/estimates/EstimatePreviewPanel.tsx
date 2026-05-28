@@ -1618,53 +1618,22 @@ export function EstimatePreviewPanel({
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                     pageOrder={pageOrder}
                     templateStyle={activeTemplateStyle}
+                    additionalEstimates={Array.from(selectedAdditionalIds)
+                      .map((estId) => fetchedEstimates.get(estId))
+                      .filter((d): d is NonNullable<typeof d> => !!d)
+                      .map((d) => ({
+                        estimateNumber: d.estimateNumber,
+                        estimateName: d.estimateName,
+                        materialItems: d.materialItems,
+                        laborItems: d.laborItems,
+                        breakdown: d.breakdown,
+                        config: d.config,
+                      }))}
                   />
-                  
-                  {/* Additional selected estimates */}
-                  {(() => {
-                    const additionalIds = Array.from(selectedAdditionalIds);
-                    return additionalIds.map((estId, idx) => {
-                      const data = fetchedEstimates.get(estId);
-                      if (!data) return (
-                        <div key={estId} className="flex items-center justify-center py-8">
-                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                          <span className="ml-2 text-sm text-muted-foreground">Loading estimate...</span>
-                        </div>
-                      );
-                      const isLast = idx === additionalIds.length - 1;
-                      return (
-                        <EstimatePDFDocument
-                          key={estId}
-                          estimateNumber={data.estimateNumber}
-                          estimateName={data.estimateName}
-                          customerName={customerName}
-                          customerAddress={customerAddress}
-                          customerPhone={customerPhone}
-                          customerEmail={customerEmail}
-                          companyInfo={companyInfo || undefined}
-                          companyName={companyInfo?.name || 'Company'}
-                          companyLogo={companyInfo?.logo_url || undefined}
-                          materialItems={data.materialItems}
-                          laborItems={data.laborItems}
-                          breakdown={data.breakdown}
-                          config={data.config}
-                          warrantyTerms={warrantyTerms}
-                          options={options}
-                          measurementSummary={measurementSummary || undefined}
-                          createdAt={new Date().toISOString()}
-                          jobPhotos={[]}
-                          skipCoverPage={true}
-                          skipWarrantyAndTerms={!isLast}
-                          skipExtraPages={true}
-                          pageOrder={pageOrder}
-                          templateStyle={activeTemplateStyle}
-                        />
-                      );
-                    });
-                  })()}
-                  
-                  {/* Attachments are rendered inside the main EstimatePDFDocument
-                      at the position defined by pageOrder. */}
+
+                  {/* Additional estimates are now merged into the main document
+                      via the additionalEstimates prop so they respect page order. */}
+
                 </div>
               </div>
             </div>
