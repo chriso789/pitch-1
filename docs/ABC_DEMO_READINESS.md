@@ -127,6 +127,21 @@ Every call writes a row to `abc_api_audit` with URL, payload, status, and respon
 
 `deliveryService` codes: `CPU` (customer pickup), `OTG` (other ground), `OTR` (other roof), `COM` (commercial), `EXP`, `OTW`, `TPC`.
 
+## Sandy-confirmed sandbox values
+
+| Field | Value |
+| --- | --- |
+| Ship-To Number | `2010466-2` |
+| Branch Number | `1209` |
+| Item Number | any item available at branch 1209 (use Product Search) |
+
+Sandbox is ABC's internal QA environment — orders do NOT create real production work.
+
+## Persistent diagnostics
+
+Every `submit_test_order` call writes/updates a row in `public.abc_orders` (with a single line in `public.abc_order_lines`). The Settings → Integrations → **ABC Submit Diagnostics** panel renders these rows like the SRS diagnostics panel — supplier badge, status pill, webhook count, "Last ABC update" banner, Job/Customer/Address (if linked), and Inspect drawer with request/response/audit/webhook timeline. Sandbox attempts that come back without an `orderNumber` or `confirmationNumber` are stored with `order_status = submitted_pending_reference` and still appear in the panel using `requestId` + `purchaseOrder` as proof of submission. Failed submits persist as `order_status = error` with the rejection mapped from the audit response.
+
+
 ## Troubleshooting
 
 ### "ABC redirects me to the developer dashboard instead of the callback"
