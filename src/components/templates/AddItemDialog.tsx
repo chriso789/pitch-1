@@ -23,27 +23,53 @@ interface AddItemDialogProps {
     sections?: string[];
     saveToCatalog?: boolean;
   }) => void;
+  /** Section toggles to render. Falls back to a sane built-in list. */
+  availableSections?: { value: string; label: string }[];
+  /** Sections pre-checked when the dialog opens. */
+  defaultSections?: string[];
 }
 
 const UNITS = ['SQ', 'LF', 'EA', 'BX', 'RL', 'BDL', 'GAL', 'PC', 'LB'];
 
-const SECTION_OPTIONS = [
-  { value: 'roof', label: 'Roofing' },
+const FALLBACK_SECTION_OPTIONS = [
+  { value: 'roofing', label: 'Roofing' },
+  { value: 'siding', label: 'Siding' },
   { value: 'gutter', label: 'Gutters' },
   { value: 'exterior', label: 'Exterior' },
   { value: 'interior', label: 'Interior' },
   { value: 'labor', label: 'Labor' },
 ];
 
-export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps) => {
+export const AddItemDialog = ({
+  open,
+  onOpenChange,
+  onAdd,
+  availableSections,
+  defaultSections,
+}: AddItemDialogProps) => {
+  const sectionOptions = (availableSections && availableSections.length > 0)
+    ? availableSections
+    : FALLBACK_SECTION_OPTIONS;
+  const initialSections = defaultSections && defaultSections.length > 0
+    ? defaultSections
+    : [sectionOptions[0]?.value].filter(Boolean) as string[];
+
   const [tab, setTab] = useState<'catalog' | 'custom'>('catalog');
   const [itemType, setItemType] = useState<'material' | 'labor'>('material');
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('EA');
   const [unitCost, setUnitCost] = useState('');
   const [sku, setSku] = useState('');
-  const [sections, setSections] = useState<string[]>(['roof']);
+  const [sections, setSections] = useState<string[]>(initialSections);
   const [saveToCatalog, setSaveToCatalog] = useState(false);
+
+  // Re-sync pre-checked sections when the dialog (re)opens or defaults change.
+  React.useEffect(() => {
+    if (open) {
+      setSections(initialSections);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultSections?.join('|')]);
 
   const handleMaterialSelect = (material: any) => {
     onAdd({
