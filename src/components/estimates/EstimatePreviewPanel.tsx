@@ -1613,7 +1613,7 @@ export function EstimatePreviewPanel({
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
-                    templateAttachments={[]}
+                    templateAttachments={allAttachments}
                     jobPhotos={previewJobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                     pageOrder={pageOrder}
@@ -1663,10 +1663,8 @@ export function EstimatePreviewPanel({
                     });
                   })()}
                   
-                  {/* Render attachments at the very end, after all estimates */}
-                  {allAttachments.length > 0 && (
-                    <AttachmentPagesRenderer attachments={allAttachments} />
-                  )}
+                  {/* Attachments are rendered inside the main EstimatePDFDocument
+                      at the position defined by pageOrder. */}
                 </div>
               </div>
             </div>

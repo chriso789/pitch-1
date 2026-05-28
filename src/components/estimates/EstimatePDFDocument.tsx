@@ -766,6 +766,17 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       }
     }
 
+    // --- Attachments section (place per page order rather than always at end) ---
+    const showAttachments = !skipExtraPages && templateAttachments && templateAttachments.length > 0 && sectionEnabled('attachments');
+    if (showAttachments) {
+      sections['attachments'] = {
+        isStandalone: true,
+        nodes: [
+          <AttachmentPagesRenderer key="attachments-block" attachments={templateAttachments!} />,
+        ],
+      };
+    }
+
     // --- Assemble in user-defined order ---
     // Iterate effectivePageOrder; if a section id matches, append it. Estimate content always renders.
     // Sections referenced in pageOrder appear in that exact order; any built sections not listed
@@ -800,7 +811,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       signaturePageIdx,
       standaloneFlags,
     };
-  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms]);
+  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments]);
 
 
   const commonProps = {
@@ -846,11 +857,6 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           </PageShell>
         );
       })}
-      
-      {/* Render attachment pages (marketing flyers, etc.) after main content */}
-      {templateAttachments && templateAttachments.length > 0 && (
-        <AttachmentPagesRenderer attachments={templateAttachments} />
-      )}
     </div>
   );
 };

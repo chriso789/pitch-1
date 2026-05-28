@@ -179,11 +179,6 @@ export function PageOrderManager({
 
   return (
     <div className="space-y-2">
-      <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
-        <FileText className="h-3 w-3" />
-        Page Order
-      </h4>
-      
       <p className="text-[10px] text-muted-foreground">
         Drag to reorder • Toggle to show/hide
       </p>
