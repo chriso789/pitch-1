@@ -1389,6 +1389,31 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           <Receipt className="h-4 w-4" />
           Invoices ({(invoices || []).length})
         </h4>
+
+        {/* Contract context bar — always visible so totals are clear next to invoices */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 p-3 rounded-lg border bg-muted/30 text-xs">
+          <div>
+            <p className="text-muted-foreground">Contract Total</p>
+            <p className="font-semibold text-sm">{formatCurrency(Number(sellingPrice) || 0)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Invoiced</p>
+            <p className="font-semibold text-sm">
+              {formatCurrency((invoices || []).reduce((s: number, i: any) => s + Number(i.amount || 0), 0))}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Already Paid</p>
+            <p className="font-semibold text-sm text-green-600">{formatCurrency(totalPaid)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Contract Balance</p>
+            <p className={cn("font-semibold text-sm", contractBalance > 0 ? "text-red-600" : "text-green-600")}>
+              {formatCurrency(contractBalance)}
+            </p>
+          </div>
+        </div>
+
         {(invoices || []).length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No invoices yet</p>
         ) : (
