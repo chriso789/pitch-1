@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
+import { AbcWebhookPanel } from '@/components/settings/abc/AbcWebhookPanel';
 
 const ABC_CONFIG = {
   authBase: {
@@ -1188,7 +1189,12 @@ export function ABCConnectionSettings() {
                   </p>
                 </div>
 
+                {allowSandboxDefaults && (
+                  <AbcWebhookPanel tenantId={effectiveTenantId ?? null} environment={environment} />
+                )}
+
               </div>
+
             </AccordionContent>
           </AccordionItem>
         </Accordion>

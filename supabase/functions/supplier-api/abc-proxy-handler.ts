@@ -1218,6 +1218,8 @@ export const handle = async (req) => {
         error_code,
         timestamp: new Date().toISOString(),
       });
+    }
+
     // ---------------- register_webhook ----------------
     if (action === "register_webhook") {
       if (!userId) return json({ success: false, error: "unauthenticated_user" }, 401);
