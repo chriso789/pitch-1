@@ -1,20 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'public/**'
-      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
       - 'public/**'
       - '.github/ISSUE_TEMPLATE/**'
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
