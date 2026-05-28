@@ -711,8 +711,54 @@ export const handle = async (req) => {
         status_code: r.status, response_body: r.json ?? r.text, error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
+
+      // Persist status-lookup result onto the matching abc_orders row.
+      // abc_orders has no `last_status_payload` column — stash into raw_payload.status_lookup.
+      if (r.ok) {
+        try {
+          const respBody: any = r.json ?? null;
+          const first = Array.isArray(respBody) ? respBody[0] : respBody?.orders?.[0] ?? respBody;
+          const newStatus =
+            first?.status ?? first?.orderStatus ?? first?.order_status ?? null;
+
+          const filters: string[] = [];
+          if (body.orderNumber) filters.push(`order_number.eq.${body.orderNumber}`);
+          if (body.confirmationNumber) filters.push(`confirmation_number.eq.${body.confirmationNumber}`);
+
+          if (filters.length) {
+            const { data: existing } = await (supabase as any)
+              .from("abc_orders")
+              .select("id, raw_payload")
+              .eq("tenant_id", tenant_id)
+              .or(filters.join(","))
+              .limit(1)
+              .maybeSingle();
+
+            if (existing?.id) {
+              const merged = {
+                ...(existing.raw_payload || {}),
+                status_lookup: {
+                  status: r.status,
+                  body: r.json ?? r.text,
+                  at: new Date().toISOString(),
+                },
+              };
+              const upd: any = {
+                raw_payload: merged,
+                updated_at: new Date().toISOString(),
+              };
+              if (newStatus) upd.order_status = String(newStatus).toLowerCase();
+              await (supabase as any).from("abc_orders").update(upd).eq("id", existing.id);
+            }
+          }
+        } catch (e) {
+          console.warn("[supplier-api abc] get_order_status persist failed", e);
+        }
+      }
+
       return json({ success: r.ok, environment: env, endpoint, status: r.status, body: r.json ?? r.text, error_code });
     }
+
 
     // ---------------- submit_test_order ----------------
     if (action === "submit_test_order") {
