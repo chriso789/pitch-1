@@ -135,7 +135,6 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("state", state)
       .maybeSingle();
-
     if (stateErr || !stateRow) {
       // Best-effort: tag any error on the tenant's integrations.
       if (preTenantId) {
@@ -145,6 +144,7 @@ Deno.serve(async (req) => {
           .eq("tenant_id", preTenantId);
         for (const i of ints ?? []) await setIntegrationError(i.id, "invalid_state");
       }
+      return htmlRedirect(returnTo + "error&msg=invalid_state", "Invalid or expired state.");
     }
 
     // If the start_oauth call captured the originating app origin (e.g. preview URL),
@@ -154,7 +154,6 @@ Deno.serve(async (req) => {
       returnTo = `${stateOrigin.replace(/\/$/, "")}/settings?tab=supplier-connections&supplier=abc&abc=`;
     }
 
-    }
     if (new Date(stateRow.expires_at).getTime() < Date.now()) {
       await setIntegrationError(stateRow.integration_id, "state_expired");
       await supabase.from("abc_oauth_states").delete().eq("state", state);
