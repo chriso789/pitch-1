@@ -1337,15 +1337,43 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 <div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded text-xs text-yellow-700">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
                   <span>
-                    QuickBooks not connected.{' '}
-                    <a href="/settings" className="underline font-medium">Connect in Settings</a>
-                  </span>
-                </div>
-              )}
+      {/* Invoices List */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold flex items-center gap-2">
+            <Receipt className="h-4 w-4" />
+            Invoices ({(invoices || []).length})
+          </h4>
+        </div>
 
-              {paymentMethod === 'quickbooks' && qboConnection && (
-                <div className="flex items-center gap-2 p-2 bg-green-500/10 rounded text-xs text-green-700">
-                  <Building2 className="h-4 w-4 flex-shrink-0" />
+        {/* Contract context bar — always visible so totals are clear next to invoices */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 p-3 rounded-lg border bg-muted/30 text-xs">
+          <div>
+            <p className="text-muted-foreground">Contract Total</p>
+            <p className="font-semibold text-sm">{formatCurrency(Number(sellingPrice) || 0)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Invoiced</p>
+            <p className="font-semibold text-sm">
+              {formatCurrency((invoices || []).reduce((s: number, i: any) => s + Number(i.amount || 0), 0))}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Already Paid</p>
+            <p className="font-semibold text-sm text-green-600">{formatCurrency(totalPaid)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Contract Balance</p>
+            <p className={cn("font-semibold text-sm", contractBalance > 0 ? "text-red-600" : "text-green-600")}>
+              {formatCurrency(contractBalance)}
+            </p>
+          </div>
+        </div>
+
+        {(invoices || []).length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No invoices yet</p>
+        ) : (
+
                   <span>Connected to QuickBooks (Realm: {qboConnection.realm_id})</span>
                 </div>
               )}
