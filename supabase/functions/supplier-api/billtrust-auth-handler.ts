@@ -358,7 +358,7 @@ async function logAuditEvent(
         table_name: 'supplier_accounts',
         record_id: entityId || 'none',
         new_values: details
-      };
+      });
   } catch (error) {
     console.error('Failed to log audit event:', error);
   }
