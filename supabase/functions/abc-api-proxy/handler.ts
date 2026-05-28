@@ -607,10 +607,38 @@ export const handle = async (req) => {
 
     // ---------------- search_products / get_item ----------------
     if (action === "search_products") {
+      // ABC documented body: filters[] + pagination{}.
       const endpoint = `${cfg.apiBase}/product/v1/search/items`;
+      const filters: Array<Record<string, unknown>> = [];
+      const itemNumber = (body.itemNumber || "").toString().trim();
+      const query = (body.query || "").toString().trim();
+      if (itemNumber) {
+        filters.push({
+          key: "itemNumber",
+          condition: "equals",
+          values: [itemNumber],
+          joinCondition: "and",
+        });
+      } else {
+        filters.push({
+          key: "itemDescription",
+          condition: "contains",
+          values: [query],
+          joinCondition: "and",
+        });
+      }
+      const branchNumber = (body.branchNumber || "").toString().trim();
+      if (branchNumber) {
+        filters.push({
+          key: "branchNumber",
+          condition: "equals",
+          values: [branchNumber],
+          joinCondition: "and",
+        });
+      }
       const payload = {
-        query: body.query ?? "",
-        branchNumber: body.branchNumber || undefined,
+        filters,
+        pagination: { itemsPerPage: 10, pageNumber: 1 },
       };
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
@@ -774,36 +802,48 @@ export const handle = async (req) => {
         const branchNumber =
           (body.branchNumber || body.branch_code || (conn as any)?.default_branch_code || "")
             .toString().trim();
-        const deliveryType =
-          body.delivery_method === "pickup" ? "PICKUP"
-            : body.delivery_method === "ground_drop" ? "GROUND_DROP"
-              : "ROOF_LOAD";
+        // Map our delivery method enum -> ABC delivery service codes.
+        // CPU = Customer Pickup, OTG = Other Ground, OTR = Other Roof, COM = Commercial.
+        const deliveryService =
+          body.delivery_method === "pickup" ? "CPU"
+            : body.delivery_method === "ground_drop" ? "OTG"
+              : body.delivery_method === "roof_load" ? "OTR"
+                : "CPU";
 
         const parseAddr = (raw?: string) => {
-          if (!raw) return undefined;
+          if (!raw) return { line1: "", city: "", state: "", postal: "", country: "USA" };
           const m = raw.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
           return m
-            ? { addressLine1: m[1].trim(), city: m[2].trim(), state: m[3].toUpperCase(), postalCode: m[4] }
-            : { addressLine1: raw.trim() };
+            ? { line1: m[1].trim(), city: m[2].trim(), state: m[3].toUpperCase(), postal: m[4], country: "USA" }
+            : { line1: raw.trim(), city: "", state: "", postal: "", country: "USA" };
         };
 
-        const poNumber = `PITCH-${body.job_number || "JOB"}-${Date.now()}`;
+        const ts = Date.now();
+        const poNumber = `PITCH-${body.job_number || "JOB"}-${ts}`;
         payload = [{
-          sourceSystem: "PITCH",
-          purchaseOrderNumber: poNumber,
-          shipToNumber,
+          requestId: poNumber,
+          purchaseOrder: poNumber,
           branchNumber,
-          deliveryType,
-          requestedDeliveryDate: body.delivery_date,
-          shipTo: parseAddr(body.delivery_address),
-          notes: body.notes || (body.customer_name ? `For ${body.customer_name}` : undefined),
+          deliveryService,
+          typeCode: "SO",
+          dates: body.delivery_date ? { deliveryRequestedFor: body.delivery_date } : undefined,
+          currency: "USD",
+          shipTo: {
+            name: body.customer_name || "",
+            number: shipToNumber,
+            address: parseAddr(body.delivery_address),
+          },
+          orderComments: body.notes
+            ? [{ code: "H", description: String(body.notes).slice(0, 500) }]
+            : [],
           lines: items.map((i, idx) => ({
-            lineNumber: idx + 1,
+            id: idx + 1,
             itemNumber: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
-            description: i.description || i.item_name,
-            quantity: Number(i.quantity),
-            unitOfMeasure: (i.unit || "EA").toUpperCase(),
-            color: i.color_specs || undefined,
+            itemDescription: i.description || i.item_name,
+            orderedQty: {
+              value: Number(i.quantity),
+              uom: (i.unit || "EA").toUpperCase(),
+            },
           })),
         }];
       }
@@ -823,7 +863,7 @@ export const handle = async (req) => {
         try {
           const respFirst = Array.isArray(r.json) ? r.json[0] : r.json;
           const orderObj = payload[0];
-          const orderNumber = respFirst?.orderNumber || respFirst?.order_number || orderObj.purchaseOrderNumber;
+          const orderNumber = respFirst?.orderNumber || respFirst?.order_number || orderObj.purchaseOrder;
           const confirmation = respFirst?.confirmationNumber || respFirst?.confirmation_number || null;
           const totalAmount =
             Number(respFirst?.totalAmount || respFirst?.total_amount || 0) ||
@@ -834,12 +874,12 @@ export const handle = async (req) => {
             .insert({
               tenant_id,
               order_number: orderNumber,
-              purchase_order: orderObj.purchaseOrderNumber,
+              purchase_order: orderObj.purchaseOrder,
               confirmation_number: confirmation,
               order_status: respFirst?.status || "submitted",
               branch_number: orderObj.branchNumber || null,
-              sold_to_number: orderObj.shipToNumber || null,
-              ship_to_number: orderObj.shipToNumber || null,
+              sold_to_number: orderObj.shipTo?.number || null,
+              ship_to_number: orderObj.shipTo?.number || null,
               ordered_on: new Date().toISOString().slice(0, 10),
               delivery_requested_for: body.delivery_date || null,
               total_amount: totalAmount,

@@ -125,11 +125,18 @@ export function ABCConnectionSettings() {
   const [oauthDebug, setOauthDebug] = useState<any | null>(null);
   const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
 
+  // Demo-required inputs for live Sandy walkthrough
+  const [demoShipTo, setDemoShipTo] = useState('');
+  const [demoBranch, setDemoBranch] = useState('');
+  const [demoItemNumber, setDemoItemNumber] = useState('');
+  const [readiness, setReadiness] = useState<any | null>(null);
+  const [readinessBusy, setReadinessBusy] = useState(false);
+
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
-  const [environment, setEnvironment] = useState<ABCEnvironment>('production');
+  const [environment, setEnvironment] = useState<ABCEnvironment>('sandbox');
 
 
   useEffect(() => {
@@ -249,11 +256,28 @@ export function ABCConnectionSettings() {
   };
 
   const handleSubmitTestOrder = async () => {
+    const shipTo = (demoShipTo || accountNumber || '').trim();
+    const branch = (demoBranch || defaultBranch || '').trim();
+    const item = demoItemNumber.trim();
+    if (!shipTo || !branch || !item) {
+      toast({
+        title: 'Demo inputs required',
+        description: 'ABC sandbox Ship-To, Branch, and Item Number are required for demo validation.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSubmittingOrder(true);
     setOrderResult(null);
     try {
       const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-        body: { action: 'submit_test_order', environment },
+        body: {
+          action: 'submit_test_order',
+          environment,
+          shipToNumber: shipTo,
+          branchNumber: branch,
+          itemNumber: item,
+        },
       });
       if (error) throw error;
       setOrderResult(data);
@@ -274,6 +298,39 @@ export function ABCConnectionSettings() {
       setSubmittingOrder(false);
     }
   };
+
+  const loadReadiness = async () => {
+    if (!effectiveTenantId) return;
+    setReadinessBusy(true);
+    try {
+      const [{ data: cbLog }, { data: auditRow }] = await Promise.all([
+        (supabase as any)
+          .from('abc_oauth_callback_logs')
+          .select('created_at, environment, has_code, has_error, error, error_description, state')
+          .eq('tenant_id', effectiveTenantId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        (supabase as any)
+          .from('abc_api_audit')
+          .select('created_at, environment, action, endpoint, status_code, error_code, duration_ms')
+          .eq('tenant_id', effectiveTenantId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      setReadiness({ callbackLog: cbLog, auditLog: auditRow });
+    } catch (e: any) {
+      setReadiness({ error: formatErrorMessage(e) });
+    } finally {
+      setReadinessBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (effectiveTenantId) loadReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTenantId, environment]);
 
   const handleRevoke = async () => {
     if (!effectiveTenantId || !connection) return;
@@ -609,6 +666,58 @@ export function ABCConnectionSettings() {
               If clicking <strong>Begin OAuth Authorization</strong> sends you to ABC login but you land on the ABC developer app dashboard instead of being redirected back here, ABC did not complete the OAuth redirect. Confirm: (1) the app has the redirect URI <code className="font-mono">{SERVER_REDIRECT_URI}</code> registered exactly, (2) the test user is assigned to the app, and (3) the login is performed with the customer test account <code className="font-mono">connect_user@test.com</code> rather than the developer portal account.
             </p>
           </div>
+
+          {environment === 'production' && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              <strong>Production is live.</strong> ABC demo order validation should use Sandbox unless ABC explicitly instructs otherwise.
+            </div>
+          )}
+
+          {/* Demo Readiness panel */}
+          <div className="rounded-md border p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" /> Demo Readiness
+              </div>
+              <Button size="sm" variant="ghost" onClick={loadReadiness} disabled={readinessBusy}>
+                {readinessBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Refresh'}
+              </Button>
+            </div>
+            <div className="grid gap-1 md:grid-cols-2 text-xs">
+              <EndpointRow label="OAuth Client ID" value={clientId || ''} />
+              <EndpointRow label="Client secret on server" value={hasSecret ? `••••${connection?.client_secret_last_four}` : ''} hint={!hasSecret ? 'Not set' : undefined} />
+              <EndpointRow label="Redirect URI" value={SERVER_REDIRECT_URI} hint="Must match ABC app registration EXACTLY" />
+              <EndpointRow label="Environment" value={environment} />
+              <EndpointRow label="Scopes" value={ABC_CONFIG.scopes} />
+              <EndpointRow label="Token status" value={isConnected ? 'connected' : (connection?.connection_status || 'disconnected')} />
+              <EndpointRow label="Last token refresh" value={connection?.last_validated_at ? new Date(connection.last_validated_at).toLocaleString() : ''} />
+              <EndpointRow
+                label="Last callback hit"
+                value={readiness?.callbackLog
+                  ? `${new Date(readiness.callbackLog.created_at).toLocaleString()} · code=${readiness.callbackLog.has_code} · err=${readiness.callbackLog.error || '—'}`
+                  : ''}
+              />
+              <EndpointRow
+                label="Last ABC API call"
+                value={readiness?.auditLog
+                  ? `${new Date(readiness.auditLog.created_at).toLocaleString()} · ${readiness.auditLog.action} · HTTP ${readiness.auditLog.status_code} · ${readiness.auditLog.error_code || 'ok'}`
+                  : ''}
+              />
+            </div>
+            <div className="border-t pt-3 space-y-2">
+              <div className="text-xs font-medium">Sandbox demo inputs (required to submit test order)</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input placeholder="Ship-To Number" value={demoShipTo} onChange={(e) => setDemoShipTo(e.target.value)} />
+                <Input placeholder="Branch Number" value={demoBranch} onChange={(e) => setDemoBranch(e.target.value)} />
+                <Input placeholder="Item Number" value={demoItemNumber} onChange={(e) => setDemoItemNumber(e.target.value)} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Get these values from Sandy before the demo. Submission is blocked until all three are filled to prevent sending placeholder values to ABC.
+              </p>
+            </div>
+          </div>
+
+
 
 
 
