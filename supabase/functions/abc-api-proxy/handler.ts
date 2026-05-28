@@ -485,16 +485,30 @@ export const handle = async (req) => {
       const { verifier, challenge } = await pkce();
       const state = b64url(crypto.getRandomValues(new Uint8Array(24)));
 
+      const rawReturnOrigin = (body.return_origin || "").toString().trim();
+      let safeReturnOrigin: string | null = null;
+      try {
+        if (rawReturnOrigin) {
+          const u = new URL(rawReturnOrigin);
+          // Only accept http(s) origins and strip any path
+          if (u.protocol === "http:" || u.protocol === "https:") {
+            safeReturnOrigin = `${u.protocol}//${u.host}`;
+          }
+        }
+      } catch { /* ignore bad origin */ }
+
       const { error: stateErr } = await supabase.from("abc_oauth_states").insert({
         state,
         tenant_id,
         integration_id: (integration as any).id,
         code_verifier: verifier,
         redirect_uri: redirectUri,
+        return_origin: safeReturnOrigin,
         created_by: userId,
         expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       });
       if (stateErr) throw stateErr;
+
 
       const url = new URL(authorizeBaseUrl);
       url.searchParams.set("response_type", "code");

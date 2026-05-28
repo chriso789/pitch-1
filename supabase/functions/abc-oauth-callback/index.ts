@@ -42,7 +42,8 @@ Deno.serve(async (req) => {
   const errParam = url.searchParams.get("error");
   const errDesc = url.searchParams.get("error_description");
 
-  const returnTo = `${APP_BASE}/settings?tab=supplier-connections&supplier=abc&abc=`;
+  let returnTo = `${APP_BASE}/settings?tab=supplier-connections&supplier=abc&abc=`;
+
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -134,7 +135,6 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("state", state)
       .maybeSingle();
-
     if (stateErr || !stateRow) {
       // Best-effort: tag any error on the tenant's integrations.
       if (preTenantId) {
@@ -146,6 +146,14 @@ Deno.serve(async (req) => {
       }
       return htmlRedirect(returnTo + "error&msg=invalid_state", "Invalid or expired state.");
     }
+
+    // If the start_oauth call captured the originating app origin (e.g. preview URL),
+    // redirect the user back there instead of the hardcoded production domain.
+    const stateOrigin = (stateRow as any).return_origin as string | null | undefined;
+    if (stateOrigin && /^https?:\/\//.test(stateOrigin)) {
+      returnTo = `${stateOrigin.replace(/\/$/, "")}/settings?tab=supplier-connections&supplier=abc&abc=`;
+    }
+
     if (new Date(stateRow.expires_at).getTime() < Date.now()) {
       await setIntegrationError(stateRow.integration_id, "state_expired");
       await supabase.from("abc_oauth_states").delete().eq("state", state);
