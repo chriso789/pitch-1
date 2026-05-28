@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
+import { AbcWebhookPanel } from '@/components/settings/abc/AbcWebhookPanel';
 
 const ABC_CONFIG = {
   authBase: {
