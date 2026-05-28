@@ -538,6 +538,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   skipExtraPages = false,
   pageOrder,
   templateStyle,
+  additionalEstimates,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
   const tmpl = getTemplateComponents(templateStyle);
