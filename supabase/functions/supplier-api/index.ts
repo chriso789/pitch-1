@@ -35,4 +35,19 @@ app.post("/quote/parse", (c) => jsonErr(c, "not_migrated", "Route scaffolded; lo
 app.post("/material-order/create", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
 app.post("/material-order/fulfillment", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
 
-Deno.serve(app.fetch);
+// Supabase delivers requests with the function name as the first path segment
+// (e.g. `/supplier-api/abc/proxy`). Strip it so Hono routes defined as
+// `/abc/proxy` match correctly. Root invokes (via supabase.functions.invoke)
+// arrive as `/` or `/supplier-api` and pass through unchanged.
+Deno.serve((req) => {
+  const url = new URL(req.url);
+  if (url.pathname.startsWith("/supplier-api/")) {
+    url.pathname = url.pathname.slice("/supplier-api".length) || "/";
+    return app.fetch(new Request(url.toString(), req));
+  }
+  if (url.pathname === "/supplier-api") {
+    url.pathname = "/";
+    return app.fetch(new Request(url.toString(), req));
+  }
+  return app.fetch(req);
+});
