@@ -154,25 +154,33 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
     const minY = Math.min(...ys);
     const maxX = Math.max(...xs);
     const maxY = Math.max(...ys);
-    const pad = Math.max(8, (maxX - minX) * 0.05);
+    // Generous padding so polygon is not flush against the panel edge.
+    const pad = Math.max(40, Math.max(maxX - minX, maxY - minY) * 0.3);
     const vb = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
     const pts = focusPerimeterPx.map((p) => `${p[0]},${p[1]}`).join(' ');
     return (
       <svg
         viewBox={vb}
         preserveAspectRatio="xMidYMid meet"
+        width="100%"
+        height="100%"
         style={{
           position: 'absolute',
           inset: 0,
-          width: '100%',
-          height: '100%',
           pointerEvents: 'none',
         }}
       >
-        <polygon points={pts} fill="rgba(59,130,246,0.08)" stroke="#2563eb" strokeWidth={2} />
+        <polygon
+          points={pts}
+          fill="rgba(59,130,246,0.10)"
+          stroke="#2563eb"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
     );
   }, [focusPerimeterPx]);
+
 
   const showAerial = hasRasterOverlay && aerialState !== 'failed';
 
