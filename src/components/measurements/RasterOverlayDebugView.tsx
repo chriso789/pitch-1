@@ -165,8 +165,10 @@ export function RasterOverlayDebugView({
       perimeterPx: Array.isArray(focusPerimeterPx) ? focusPerimeterPx : [],
       // displayWidth is arbitrary here — only crop bbox + viewBox are used.
       displayWidth: 1000,
+      // PDF export wants generous padding so the perimeter never clips the panel edge.
+      ...(pdfMode ? { padFraction: 0.3, minPadPx: 140, maxPadPx: 220 } : {}),
     });
-  }, [focusPerimeterPx, rasterSize?.width, rasterSize?.height]);
+  }, [focusPerimeterPx, rasterSize?.width, rasterSize?.height, pdfMode]);
 
   const viewBox = focus.viewBox;
   const aspectPct = (focus.cropBboxPx.h / focus.cropBboxPx.w) * 100;
