@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calculator, FileText, Plus, Trash2, Edit, DollarSign } from "lucide-react";
+import { Calculator, FileText, Plus, Trash2, Edit, DollarSign, PiggyBank } from "lucide-react";
+
 import { toast } from "sonner";
 
 interface EstimateTemplate {
