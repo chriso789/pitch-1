@@ -103,8 +103,21 @@ describe("MeasurementReportPdfVisualSection — PDF root contract", () => {
     const panel = container.querySelector<HTMLElement>(
       '[data-pdf-overlay-panel="true"]',
     )!;
-    expect(panel.textContent ?? "").toMatch(/aerial unavailable in export/i);
+    expect(panel.textContent ?? "").toMatch(/aerial image unavailable in pdf export/i);
+    expect(panel.textContent ?? "").toMatch(/overlay lines are still shown/i);
     expect(panel.style.background.toLowerCase()).toMatch(/^(#ffffff|rgb\(255, 255, 255\))$/);
+  });
+
+  it("still renders the perimeter polygon over the placeholder when aerial fails", () => {
+    const { container } = render(
+      <MeasurementReportPdfVisualSection measurement={measurement} />,
+    );
+    const panel = container.querySelector<HTMLElement>(
+      '[data-pdf-overlay-panel="true"]',
+    )!;
+    const polygon = panel.querySelector("polygon");
+    expect(polygon).toBeTruthy();
+    expect(polygon!.getAttribute("points")).toContain("600,500");
   });
 
   it("renders the compact debug table after the overlay panel and excludes Raw JSON", () => {
