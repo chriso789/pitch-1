@@ -127,10 +127,14 @@ export function useEstimatePricing(
   );
 
   // Change order items are excluded from all cost/pricing calculations
-  const changeOrderItems = useMemo(() => 
+  const changeOrderItems = useMemo(() =>
     lineItems
       .filter(item => item.item_type === 'change_order')
       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+    [lineItems]
+  );
+
+  // Calculate pricing breakdown
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
     const laborTotal = laborItems.reduce((sum, item) => sum + item.line_total, 0);
@@ -150,17 +154,12 @@ export function useEstimatePricing(
 
     if (isFixedPrice) {
       // Fixed price mode: user-entered price IS the final tax-included price
-      // Back-calculate the pre-tax selling price to make everything fit
-      
-      // Calculate materials ratio first (for tax calculation)
       const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
-      
-      // Derive pre-tax selling price from fixed price
-      const taxMultiplier = config.salesTaxEnabled 
+      const taxMultiplier = config.salesTaxEnabled
         ? 1 + (materialsRatio * (config.salesTaxRate / 100))
         : 1;
-      
-      sellingPrice = fixedPrice! / taxMultiplier;  // Pre-tax selling price
+
+      sellingPrice = fixedPrice! / taxMultiplier; // Pre-tax selling price
       // Overhead/profit apply only to the core (non-pass-through) portion
       const coreSelling = Math.max(0, sellingPrice - passThroughTotal);
       overheadAmount = coreSelling * (config.overheadPercent / 100);
@@ -168,15 +167,12 @@ export function useEstimatePricing(
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
     } else {
       // Standard mode: solve for selling price algebraically using the CORE direct cost
-      // Pass-through items are tacked onto the final price at raw cost.
       const overheadDecimal = config.overheadPercent / 100;
       const profitDecimal = config.profitMarginPercent / 100;
       const materialsRatioForTax = directCost > 0 ? materialsTotal / directCost : 0;
       const taxFactor = config.salesTaxEnabled ? materialsRatioForTax * (config.salesTaxRate / 100) : 0;
 
-      // Core selling price (covers overhead + profit on coreDirectCost)
       const divisor = 1 - overheadDecimal * (1 + taxFactor) - profitDecimal;
-
       let coreSelling: number;
       if (divisor <= 0) {
         coreSelling = coreDirectCost * 3; // Fallback
@@ -191,14 +187,24 @@ export function useEstimatePricing(
       actualProfitMargin = config.profitMarginPercent;
     }
 
-    
-    // Store pre-tax selling price for internal accounting
+    const totalCost = directCost + overheadAmount;
+    const netProfit = sellingPrice - directCost - overheadAmount;
+
+    let repCommissionAmount: number;
+    if (config.commissionStructure === 'profit_split') {
+      repCommissionAmount = Math.max(0, netProfit * (config.repCommissionPercent / 100));
+    } else {
+      repCommissionAmount = sellingPrice * (config.repCommissionPercent / 100);
+    }
+
+    const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
+    const materialsSellingPortion = sellingPrice * materialsRatio;
+    const salesTaxAmount = config.salesTaxEnabled
+      ? materialsSellingPortion * (config.salesTaxRate / 100)
+      : 0;
+
     const preTaxSellingPrice = sellingPrice;
-    
-    // BAKE TAX INTO SELLING PRICE - customer sees one total with tax included
     const finalSellingPrice = sellingPrice + salesTaxAmount;
-    
-    // totalWithTax = same as finalSellingPrice for backward compatibility
     const totalWithTax = finalSellingPrice;
 
     return {
@@ -210,14 +216,15 @@ export function useEstimatePricing(
       profitAmount,
       netProfit,
       repCommissionAmount,
-      sellingPrice: finalSellingPrice, // NOW INCLUDES TAX
-      preTaxSellingPrice, // Internal: before tax
+      sellingPrice: finalSellingPrice,
+      preTaxSellingPrice,
       actualProfitMargin,
       materialsSellingPortion,
-      salesTaxAmount, // Still tracked for internal accounting
-      totalWithTax, // Same as sellingPrice (backward compat)
+      salesTaxAmount,
+      totalWithTax,
     };
   }, [materialItems, laborItems, config, isFixedPrice, fixedPrice]);
+
 
   // Update a single line item
   const updateLineItem = useCallback((id: string, updates: Partial<LineItem>) => {
