@@ -357,6 +357,7 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
               const lookup = statusLookups[o.id];
 
               // Lifecycle derivation
+              // Lifecycle derivation
               const httpStatus =
                 o.audit?.status_code ?? o.raw_payload?.response?.status ?? null;
               const apiAccepted =
@@ -364,9 +365,24 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
               const apiErrored = (httpStatus != null && (httpStatus < 200 || httpStatus >= 300)) || failed;
               const hasRef = !!(o.confirmation_number || o.order_number);
 
+              // WAF detection: proxy returns synthetic 499 with { waf: true } when
+              // Imperva/Incapsula challenges block the upstream ABC call.
+              const respBody = o.audit?.response_body ?? o.raw_payload?.response?.body;
+              const wafBlocked =
+                httpStatus === 499 ||
+                respBody?.waf === true ||
+                (typeof respBody === 'string' &&
+                  /incapsula|imperva|_incapsula_resource|incident_id/i.test(respBody));
+
               // Main banner text
               let banner: { tone: 'ok' | 'warn' | 'err'; text: string } | null = null;
-              if (apiErrored) {
+              if (wafBlocked) {
+                banner = {
+                  tone: 'err',
+                  text:
+                    'ABC WAF blocked sandbox API call (Imperva/Incapsula). Sandbox egress IP likely not on ABC allowlist — see docs/ABC_WAF_ALLOWLIST.md.',
+                };
+              } else if (apiErrored) {
                 banner = { tone: 'err', text: 'ABC API rejected request — inspect response.' };
               } else if (webhookCount > 0 && lastWebhook) {
                 banner = {
