@@ -1613,7 +1613,7 @@ export function EstimatePreviewPanel({
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
-                    templateAttachments={[]}
+                    templateAttachments={allAttachments}
                     jobPhotos={previewJobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                     pageOrder={pageOrder}
