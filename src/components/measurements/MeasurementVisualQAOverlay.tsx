@@ -154,7 +154,9 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const registration = readRegistrationBlock(measurement);
   const registrationFailed = isRegistrationFailure(measurement);
   const approvalAllowed = !registrationFailed && canApproveManualPerimeter(registration);
-  const banner = registrationBanner(registration);
+  // Banner is computed below, AFTER alignmentStatus, so the resolved Overlay
+  // Transform diagnostics can override the registration block's frame source.
+
 
   const rasterUrl: string | null =
     overlayDbg?.raster_url ||
