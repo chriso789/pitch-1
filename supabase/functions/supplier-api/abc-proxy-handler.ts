@@ -717,17 +717,32 @@ export const handle = async (req) => {
     // ---------------- submit_test_order ----------------
     if (action === "submit_test_order") {
       const endpoint = `${cfg.apiBase}/order/v2/orders`;
-      const branchNumber = (body.branchNumber || body.branch_code || Deno.env.get("ABC_DEFAULT_BRANCH") || "0001").toString();
-      const shipToNumber = (body.shipToNumber || Deno.env.get("ABC_ACCOUNT_NUMBER") || "TEST-ACCOUNT").toString();
-      const itemNumber = (body.itemNumber || "TEST-SHINGLE-001").toString();
+      const branchNumber = (body.branchNumber || body.branch_code || "").toString().trim();
+      const shipToNumber = (body.shipToNumber || "").toString().trim();
+      const itemNumber = (body.itemNumber || "").toString().trim();
+      if (!branchNumber || !shipToNumber || !itemNumber) {
+        return json({
+          success: false,
+          error: "missing_demo_inputs",
+          interpretation:
+            "shipToNumber, branchNumber, and itemNumber are all required. Use Product Search to select a real item at the target branch.",
+        }, 400);
+      }
       const ts = Date.now();
+      const requestId = `PITCH-TEST-${ts}`;
+      const purchaseOrder = `PITCH-TEST-${ts}`;
+
+      const delivery = new Date();
+      delivery.setUTCDate(delivery.getUTCDate() + 1);
+      const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
 
       const orderObj = body.order ?? {
-        requestId: `PITCH-TEST-${ts}`,
-        purchaseOrder: `PITCH-TEST-${ts}`,
+        requestId,
+        purchaseOrder,
         branchNumber,
         deliveryService: "CPU",
         typeCode: "SO",
+        dates: { deliveryRequestedFor },
         currency: "USD",
         shipTo: {
           name: "ABC Sandbox Test",
@@ -740,6 +755,12 @@ export const handle = async (req) => {
             country: "USA",
           },
         },
+        orderComments: [
+          {
+            code: "H",
+            description: "PITCH integration sandbox test order - non-production QA",
+          },
+        ],
         lines: [{
           id: 1,
           itemNumber,
@@ -758,6 +779,14 @@ export const handle = async (req) => {
         status_code: r.status, response_body: r.json ?? r.text, error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
+
+      const respBody: any = r.json ?? null;
+      const first = Array.isArray(respBody) ? respBody[0] : respBody?.orders?.[0] ?? respBody;
+      const orderNumber =
+        first?.orderNumber ?? first?.order?.orderNumber ?? first?.orderId ?? null;
+      const confirmationNumber =
+        first?.confirmationNumber ?? first?.order?.confirmationNumber ?? null;
+
       return json({
         success: r.ok,
         environment: env,
@@ -765,10 +794,15 @@ export const handle = async (req) => {
         tokenIssued: true,
         orderRequest: payload,
         orderResponse: { status: r.status, body: r.json ?? r.text },
+        orderNumber,
+        confirmationNumber,
+        requestId,
+        purchaseOrder,
         error_code,
         timestamp: new Date().toISOString(),
       });
     }
+
 
 
     // ---------------- place_order / submit_order (legacy) ----------------
