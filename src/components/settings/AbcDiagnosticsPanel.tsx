@@ -297,6 +297,16 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
         },
       });
       if (error) throw error;
+      setStatusLookups((s) => ({
+        ...s,
+        [o.id]: {
+          ok: !!data?.success,
+          status: data?.status,
+          body: data?.body ?? data,
+          error: data?.error,
+          at: new Date().toISOString(),
+        },
+      }));
       toast({
         title: data?.success ? 'Status refreshed' : 'Refresh failed',
         description: data?.success ? 'ABC status updated.' : data?.error || 'See Inspect for details.',
@@ -304,6 +314,10 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
       });
       await load();
     } catch (e: any) {
+      setStatusLookups((s) => ({
+        ...s,
+        [o.id]: { ok: false, error: e?.message || String(e), at: new Date().toISOString() },
+      }));
       toast({ title: 'Refresh failed', description: e?.message || String(e), variant: 'destructive' });
     } finally {
       setRefreshingId(null);
