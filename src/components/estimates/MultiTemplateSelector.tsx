@@ -578,7 +578,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   useEffect(() => {
     if (!previewEstimateRequestId) return;
 
-    if (previewEstimateRequestId === existingEstimateId && lineItems.length > 0) {
+    if (previewEstimateRequestId === existingEstimateId) {
       setShowPreviewPanel(true);
       onPreviewEstimateRequestHandled?.();
       return;
@@ -598,11 +598,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   }, [previewEstimateRequestId]);
 
   useEffect(() => {
-    if (pendingPreviewEstimateId && existingEstimateId === pendingPreviewEstimateId && lineItems.length > 0) {
+    if (pendingPreviewEstimateId && existingEstimateId === pendingPreviewEstimateId) {
       setPendingPreviewEstimateId(null);
       setShowPreviewPanel(true);
     }
-  }, [pendingPreviewEstimateId, existingEstimateId, lineItems.length]);
+  }, [pendingPreviewEstimateId, existingEstimateId]);
 
   // Clear editing state when a deleted estimate ID matches what we're editing
   useEffect(() => {
