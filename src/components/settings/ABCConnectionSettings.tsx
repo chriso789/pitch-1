@@ -195,7 +195,9 @@ export function ABCConnectionSettings() {
   const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
   const [readiness, setReadiness] = useState<any | null>(null);
   const [readinessBusy, setReadinessBusy] = useState(false);
+  const [sandboxLogin, setSandboxLogin] = useState<{ configured: boolean; username: string | null } | null>(null);
   const [forceAdvancedOpen, setForceAdvancedOpen] = useState<string | undefined>(undefined);
+
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
