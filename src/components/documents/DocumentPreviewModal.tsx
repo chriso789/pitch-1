@@ -103,6 +103,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     renderAll();
     return () => { cancelled = true; };
   }, [pdfDoc, pdfNumPages, pdfScale]);
+
+  useEffect(() => {
     // Clear previous state immediately when document changes
     if (!currentDoc || !isOpen) {
       setPreviewUrl(null);
