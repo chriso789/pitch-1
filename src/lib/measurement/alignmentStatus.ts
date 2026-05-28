@@ -160,6 +160,11 @@ export function computeAlignmentStatus(measurement: any): AlignmentStatus {
   const perimeterProjectsInside =
     pointInBbox(bboxCenterSrc, cropBbox) || selectedPerimeterPresent;
 
+  const frameRawMismatch =
+    typeof resolved.frame_mismatch_raw === "string" &&
+    resolved.frame_mismatch_raw.toLowerCase() !== "ok" &&
+    !!resolved.frame_mismatch_source;
+
   let rasterOverlayDisplacement: RasterOverlayDisplacement;
   if (resolved.frame_mismatch_ok) {
     rasterOverlayDisplacement = "ok";
@@ -172,10 +177,15 @@ export function computeAlignmentStatus(measurement: any): AlignmentStatus {
   ) {
     rasterOverlayDisplacement = "ok";
   } else if (
-    typeof resolved.frame_mismatch_raw === "string" &&
-    resolved.frame_mismatch_raw.toLowerCase() !== "ok" &&
-    resolved.frame_mismatch_source
+    // Crop-valid evidence: when the overlay transform exposes a valid crop
+    // bbox and the selected perimeter projects inside it, treat the aerial
+    // overlay as aligned even if coord_space wasn't explicitly raster_px.
+    hasCrop &&
+    selectedPerimeterPresent &&
+    !frameRawMismatch
   ) {
+    rasterOverlayDisplacement = "ok";
+  } else if (frameRawMismatch) {
     rasterOverlayDisplacement = "mismatch";
   } else {
     rasterOverlayDisplacement = "unknown";

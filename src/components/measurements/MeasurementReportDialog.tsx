@@ -1492,6 +1492,17 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     }
 
     await document.fonts?.ready;
+    try {
+      const { waitForImagesInRoot } = await import(
+        "@/lib/measurements/exportImageLoader"
+      );
+      const states = await waitForImagesInRoot(pdfRoot, { timeoutMs: 5000 });
+      // eslint-disable-next-line no-console
+      console.log("PDF export image states:", states);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("PDF export image wait failed; proceeding to capture", e);
+    }
     let pdf: jsPDF | null = null;
     for (const profile of PDF_EXPORT_PROFILES) {
       const candidate = new jsPDF({
