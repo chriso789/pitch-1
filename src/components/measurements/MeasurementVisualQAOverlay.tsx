@@ -698,6 +698,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   // banner, debug card and gate read the same source.
   const overlayFrameResolution = resolveFrameMismatch(grj);
   const dsmTransformAvailable = dsmAllowed;
+  const alignmentStatus = computeAlignmentStatus(measurement);
 
 
   return (
