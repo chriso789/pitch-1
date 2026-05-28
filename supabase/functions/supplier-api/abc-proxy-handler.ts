@@ -62,8 +62,21 @@ async function pkce() {
   return { verifier, challenge: b64url(digest) };
 }
 
+/** Detect Imperva/Incapsula WAF challenges in upstream responses. */
+function detectWaf(status: number, text: string | null | undefined): boolean {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  if (t.includes("_incapsula_resource")) return true;
+  if (t.includes("incident_id") && t.includes("incapsula")) return true;
+  if (t.includes("incident id") && (t.includes("imperva") || t.includes("incapsula"))) return true;
+  if ((status === 403 || status === 406 || status === 503) && t.includes("<html") &&
+      (t.includes("incapsula") || t.includes("imperva") || t.includes("request unsuccessful"))) return true;
+  return false;
+}
+
 /** Map ABC/transport errors to stable codes the UI can act on. */
 function mapAbcError(status: number, body: any): string {
+  if (status === 499) return "abc_waf_blocked"; // sentinel injected by callAbc on WAF detection
   if (status === 0) return "abc_network_error";
   if (status === 400) return "abc_400_bad_payload";
   if (status === 401) return "abc_401_unauthorized";
@@ -77,6 +90,7 @@ function mapAbcError(status: number, body: any): string {
   if (err.includes("scope")) return "missing_scope";
   return `abc_${status}`;
 }
+
 
 interface TokenLookup {
   token?: string;
