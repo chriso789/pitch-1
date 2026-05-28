@@ -302,15 +302,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (currentIndex < documents.length - 1) setCurrentIndex(currentIndex + 1);
   };
 
-  // PDF page navigation
-  const handlePdfPrevPage = () => {
-    if (pdfCurrentPage > 1) setPdfCurrentPage(p => p - 1);
-  };
-
-  const handlePdfNextPage = () => {
-    if (pdfCurrentPage < pdfNumPages) setPdfCurrentPage(p => p + 1);
-  };
-
   // PDF zoom
   const handlePdfZoomIn = () => {
     setPdfScale(s => Math.min(3, s + 0.25));
@@ -322,7 +313,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
   const previewType = getPreviewType();
   const showNavigation = documents.length > 1;
-  const isPdfReady = pdfDoc && pdfRenderedPage;
+  const isPdfReady = pdfDoc && pdfRenderedPages.length > 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
