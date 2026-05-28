@@ -766,6 +766,17 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       }
     }
 
+    // --- Attachments section (place per page order rather than always at end) ---
+    const showAttachments = !skipExtraPages && templateAttachments && templateAttachments.length > 0 && sectionEnabled('attachments');
+    if (showAttachments) {
+      sections['attachments'] = {
+        isStandalone: true,
+        nodes: [
+          <AttachmentPagesRenderer key="attachments-block" attachments={templateAttachments!} />,
+        ],
+      };
+    }
+
     // --- Assemble in user-defined order ---
     // Iterate effectivePageOrder; if a section id matches, append it. Estimate content always renders.
     // Sections referenced in pageOrder appear in that exact order; any built sections not listed
