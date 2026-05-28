@@ -626,6 +626,60 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         })
         .eq('id', editingInvoice.id);
       if (error) throw new Error(error.message || 'Failed to update invoice');
+
+      // Regenerate the PDF so updated totals + contract total are reflected
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        let customer = { name: '', address: '', email: '', phone: '' } as Record<string, string>;
+        try {
+          const { data: pe } = await supabase
+            .from('pipeline_entries')
+            .select('contact_id, contacts!pipeline_entries_contact_id_fkey(first_name,last_name,email,phone,address_street,address_city,address_state,address_zip)')
+            .eq('id', pipelineEntryId)
+            .maybeSingle();
+          const c: any = (pe as any)?.contacts;
+          if (c) {
+            customer.name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+            customer.email = c.email || '';
+            customer.phone = c.phone || '';
+            customer.address = [
+              c.address_street,
+              [c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', '),
+            ].filter(Boolean).join('\n');
+          }
+        } catch {}
+
+        const createdAt = editingInvoice.created_at ? new Date(editingInvoice.created_at) : new Date();
+        const due = editDueDate ? new Date(editDueDate + 'T00:00:00') : null;
+        await generateAndSaveInvoicePdf({
+          tenantId: activeTenantId!,
+          pipelineEntryId,
+          userId: user.id,
+          data: {
+            invoiceNumber: editingInvoice.invoice_number,
+            invoiceDate: format(createdAt, 'MMM d, yyyy'),
+            dueDate: due ? format(due, 'MMM d, yyyy') : null,
+            notes: editNotes || null,
+            lineItems: editLineItems,
+            amount: newAmount,
+            company: companyInfo,
+            customer,
+            alreadyPaid: totalPaid || 0,
+            paymentHistory: (payments || []).map((p: any) => ({
+              date: format(new Date(p.payment_date), 'MMM d, yyyy'),
+              amount: Number(p.amount) || 0,
+              method: p.payment_method || '',
+              reference: p.reference_number || '',
+            })),
+            contractTotal: Number(sellingPrice) || 0,
+          },
+        });
+      } catch (pdfErr) {
+        console.warn('Invoice PDF regen failed on edit:', pdfErr);
+      }
+
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
@@ -1282,16 +1336,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               {paymentMethod === 'quickbooks' && !qboConnection && (
                 <div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded text-xs text-yellow-700">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  <span>
-                    QuickBooks not connected.{' '}
-                    <a href="/settings" className="underline font-medium">Connect in Settings</a>
-                  </span>
-                </div>
-              )}
+                  <span>Connected to QuickBooks (Realm: {qboConnection.realm_id})</span>
 
-              {paymentMethod === 'quickbooks' && qboConnection && (
-                <div className="flex items-center gap-2 p-2 bg-green-500/10 rounded text-xs text-green-700">
-                  <Building2 className="h-4 w-4 flex-shrink-0" />
                   <span>Connected to QuickBooks (Realm: {qboConnection.realm_id})</span>
                 </div>
               )}
@@ -1343,6 +1389,31 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           <Receipt className="h-4 w-4" />
           Invoices ({(invoices || []).length})
         </h4>
+
+        {/* Contract context bar — always visible so totals are clear next to invoices */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 p-3 rounded-lg border bg-muted/30 text-xs">
+          <div>
+            <p className="text-muted-foreground">Contract Total</p>
+            <p className="font-semibold text-sm">{formatCurrency(Number(sellingPrice) || 0)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Invoiced</p>
+            <p className="font-semibold text-sm">
+              {formatCurrency((invoices || []).reduce((s: number, i: any) => s + Number(i.amount || 0), 0))}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Already Paid</p>
+            <p className="font-semibold text-sm text-green-600">{formatCurrency(totalPaid)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Contract Balance</p>
+            <p className={cn("font-semibold text-sm", contractBalance > 0 ? "text-red-600" : "text-green-600")}>
+              {formatCurrency(contractBalance)}
+            </p>
+          </div>
+        </div>
+
         {(invoices || []).length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No invoices yet</p>
         ) : (
