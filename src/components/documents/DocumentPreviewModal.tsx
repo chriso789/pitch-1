@@ -36,14 +36,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [zoom, setZoom] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // PDF.js state
+  // PDF.js state — render ALL pages and let the user scroll
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [pdfNumPages, setPdfNumPages] = useState(0);
-  const [pdfCurrentPage, setPdfCurrentPage] = useState(1);
-  const [pdfRenderedPage, setPdfRenderedPage] = useState<RenderedPage | null>(null);
+  const [pdfRenderedPages, setPdfRenderedPages] = useState<RenderedPage[]>([]);
   const [pdfScale, setPdfScale] = useState(1.5);
   const [pdfLoading, setPdfLoading] = useState(false);
-
   const currentDoc = documents.length > 0 ? documents[currentIndex] : document;
 
   useEffect(() => {
