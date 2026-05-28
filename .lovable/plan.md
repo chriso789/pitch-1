@@ -1,160 +1,57 @@
-# Fix live overlay renderer (dark panel + unknown alignment)
+# Estimate Preview – Page Order + Job Photos Duplication Fix
 
-Scope: frontend/presentation only. No backend, DSM, topology, gates, or schema changes.
+## Problem
 
-## Problem (what we now know)
+1. **Job Photos appears more than once** in the preview/export.
+   - When additional estimates are selected, the appended `<EstimatePDFDocument>` instances are rendered with the same `options` and `jobPhotos`, so Job Photos (and Measurement Details / Warranty) render again at the end of every appended estimate.
+   - The "Extra Pages" toggles and the "Page Order" toggles control *two parallel state stores* (`options.showJobPhotos` vs `pageOrder[id=job_photos].enabled`), so flipping one without the other produces inconsistent output that looks like a duplicate.
+2. **Page reordering doesn't work.** `PageOrderManager` updates a `pageOrder` array, but `EstimatePDFDocument` never reads it — section order is hardcoded.
 
-- Live "Roof Focus" panel briefly renders correctly, then becomes a giant dark rectangle as it re-mounts / scrolls.
-- First aerial/process image is still full-tile zoom — does not use Roof Focus.
-- `overlay_transform` diagnostics already prove the crop math is valid (`crop_bbox_px 500,471→790,782`, `display_px_within_crop 715×768`, `target_mask_overlap 0.976`).
-- Yet `Measurement Alignment → Aerial overlay = unknown` and `Overlay Truth → Overlay frame = unknown`.
+## Goals
 
-Root cause: the renderer and the alignment/diagnostics read overlay state from different shapes, and the panel containers (`RasterOverlayDebugView`, MeasurementVisualQAOverlay first aerial) each do their own raster/SVG sizing, so the raster `<img>` and SVG overlay drift out of sync (dark fallback fills the gap).
+- One single source of truth for "which extra pages are on" and "in what order they appear".
+- Drag-and-drop in Page Order actually reorders the rendered/exported PDF.
+- Job Photos (and other extra pages) appear **exactly once** regardless of how many additional estimates are appended.
 
-## Fix
+## Changes
 
-### 1. New shared component: `RoofFocusedOverlayPanel`
+### 1. Single source of truth: `pageOrder`
+- `EstimatePreviewPanel.tsx`
+  - Treat `pageOrder` as the canonical state for: Cover Page, Measurement Details, Job Photos, Manufacturer Warranty, Workmanship Warranty, Attachments (Estimate Content stays locked).
+  - Add a small `useEffect` that syncs `pageOrder[id].enabled` → the matching `options.showXxx` keys whenever `pageOrder` changes, so existing render code keeps working without a large refactor.
+  - Remove the duplicate `ToggleRow`s for Cover Page / Measurement Details / Job Photos / Manufacturer Warranty / Workmanship Warranty from the "Extra Pages" block. Keep only the contextual sub‑controls there (Cover Photo source + thumbnail, Photo Layout selector) and gate them on the corresponding `pageOrder` entry being enabled.
+  - Keep the Page Order collapsible expanded by default (`useState(true)`).
 
-`src/components/measurements/RoofFocusedOverlayPanel.tsx` (new). Single panel used by:
+### 2. Make `pageOrder` actually order pages
+- `EstimatePDFDocument.tsx`
+  - Add optional prop `pageOrder?: PageOrderItem[]`.
+  - Refactor the `useMemo` that builds `pages` so each extra-page section (cover, measurement details, job photos, warranty, change orders treated as part of estimate content) is built into a small map `sectionBuilders: Record<sectionId, () => ReactNode[]>`.
+  - The final `pageList` is assembled by iterating `pageOrder` (falling back to `DEFAULT_PAGE_ORDER` when prop not supplied) and only appending sections whose `enabled` is true. Estimate Content stays in its current relative slot.
+  - `currentPage` / `totalPageCount` accounting moves inside the iteration so headers/footers stay correct.
 
-- MeasurementVisualQAOverlay first aerial/process view
-- MeasurementVisualQAOverlay Roof Focus view
-- RasterOverlayDebugView
-- MeasurementReportPdfVisualSection (PDF mode)
+### 3. Stop appended estimates from re-emitting extra pages
+- `EstimatePreviewPanel.tsx`
+  - For every additional estimate rendered in the `selectedAdditionalIds` loop:
+    - Pass `jobPhotos={[]}` (or a new `skipExtraPages` prop) so Job Photos / Measurement / Warranty pages only ever render on the **primary** `EstimatePDFDocument`.
+    - Already passes `skipCoverPage`; add `skipMeasurementDetails`, `skipJobPhotos`, `skipWarranty` props on `EstimatePDFDocument` (or one combined `skipExtraPages`) and short-circuit those builders.
 
-Contract:
-
-- Inputs: `rasterUrl | dataUrl | null`, `rasterSize`, `perimeterPx` candidates, `overlays` (layer list), `mode: "live" | "pdf"`, `displayWidth`.
-- Computes ONE viewport via `roofFocusViewport(...)` + `pickFocusPerimeter(...)`.
-- Renders raster `<img>` and SVG in the SAME positioned container, both sized to `displayPxWithinCrop`, both using the same `viewBox` / projection. Raster uses `object-fit: none` + CSS transform `translate(-minX*scale, -minY*scale) scale(cropScale)` so the cropped region of the source raster aligns 1:1 with the SVG viewBox.
-- Panel container: `position: relative`, `aspect-ratio: 4/3`, `max-height: 420px` (live) / `360px` (pdf), `min-height: 240px`, `background: transparent`. No dark/black fallback fill in live mode; placeholder only renders when both raster and dataUrl fail.
-- Exports `data-overlay-panel="true"` and (in pdf mode) keeps `data-pdf-overlay-panel="true"`.
-
-### 2. Force first aerial/process view through the shared panel
-
-`MeasurementVisualQAOverlay.tsx`:
-
-- Replace inline raster/SVG block of the first aerial diagram with `<RoofFocusedOverlayPanel mode="live" ... />` using the same `perimeterPx` priority as Roof Focus (`pickFocusPerimeter([selected, refined, raw, footprint])`).
-- Keep the existing layer toggle UI and metric chips; they feed `overlays` into the panel.
-
-### 3. Retire dark fallback container in live mode
-
-`RasterOverlayDebugView.tsx`:
-
-- Delegate rendering to `RoofFocusedOverlayPanel` (`mode="live"`).
-- Remove `bg-black` / dark inner wrappers. Loading state: light neutral skeleton (`bg-muted/40`), not black. Image-error state: render SVG overlay only on white, with the existing "aerial unavailable" copy.
-
-### 4. PDF section uses the same component
-
-`MeasurementReportPdfVisualSection.tsx`:
-
-- Replace the bespoke PDF overlay block with `<RoofFocusedOverlayPanel mode="pdf" imageUrl={dataUrl ?? rasterUrl} ... />`. Existing `fetchAsDataUrl` + `waitForImagesInRoot` flow stays in `MeasurementReportDialog.tsx`.
-- Keep the single `[data-pdf-overlay-panel="true"]` invariant.
-
-### 5. Fix alignment helpers to read what diagnostics already show
-
-`src/lib/measurement/alignmentStatus.ts`:
-
-- When `overlay_transform.crop_bbox_px` is valid AND a selected/refined/raw perimeter exists, return `aerial_overlay = aligned` regardless of whether `coord_space` is the literal string `"raster_px"` (the live payload sometimes omits it but still emits valid crop evidence).
-- When `overlay_transform.crop_bbox_px` is valid, `Overlay Truth → Overlay frame` resolves to `raster_px` (the de facto frame) instead of `unknown`.
-- Preserve explicit `frame_mismatch` lock when overlay reports `mismatch`. Do not weaken DSM-missing lock.
-
-### 6. Tests
-
-- `RoofFocusedOverlayPanel.dom.test.tsx` (new): raster `<img>` and SVG share container size, both honor `cropScale`, no `bg-black`/`bg-neutral-900` in live mode, single panel marker per mode.
-- Extend `alignmentStatus.test.ts`: payload with valid `crop_bbox_px` but no `coord_space` → `aerial_overlay = aligned`, `overlay_frame = raster_px`.
-- Extend `MeasurementReportPdfVisualSection.dom.test.tsx`: PDF section uses `RoofFocusedOverlayPanel`, dimensions still clamped, placeholder still renders on image failure.
-- `MeasurementVisualQAOverlay` smoke test: first aerial view renders `RoofFocusedOverlayPanel` with `isFocused: true` when a perimeter is available.
-
-## Acceptance
-
-- First aerial/process view is Roof-Focused on the house (not full-tile).
-- Roof Focus panel never turns into a dark rectangle — image and SVG stay co-sized; failure shows white panel + overlay + label, never black.
-- `Measurement Alignment → Aerial overlay = aligned` and `Overlay Truth → Overlay frame = raster_px` on the current Fonsica payload.
-- Overlay Transform card, crop math, and the rendered viewport are demonstrably the same numbers.
-- PDF export still produces exactly one `[data-pdf-overlay-panel]` and still degrades gracefully when raster fails.
-- DSM Size 998×998, Debug Roof Lines 6, Aerial Candidate Graph 12 edges, `customer_report_ready = false`, reportable roof lines = 0 — all unchanged.
-- No backend, DSM, topology, gate, or schema changes.
+### 4. Minor UX polish
+- `PageOrderManager.tsx`
+  - Add a one-line helper text reminding the user that order here is the order pages export in.
+  - Keep the existing disabled/auto-add behavior for Attachments / Measurements / Job Photos when no content exists.
 
 ## Out of scope
+- No backend or schema changes.
+- No change to PDF styling, photo chunking math, or the photo grid layout.
+- No change to share/export plumbing beyond what's needed to thread the new prop.
 
-- Backend DSM registration, derived bounds runtime, CPU policy, topology/pitch/facet logic, `customer_report_ready` promotion, reportable roof line promotion, DB schema.
-- Actual Fonsica live rerun (verification via tests + DOM snapshots; live rerun is a separate session action).
+## Acceptance
+- Toggling Job Photos in the Page Order panel hides/shows exactly one Job Photos section in the preview and exported PDF.
+- Dragging "Job Photos" above "Measurement Details" in Page Order reorders them in the rendered preview and exported PDF.
+- Selecting additional estimates no longer adds extra Job Photos / Measurement / Warranty pages after each appended estimate.
+- The old "Extra Pages" duplicate switches are gone; only Page Order controls visibility for those sections. Photo Layout and Cover Photo source pickers still work and are gated on the corresponding Page Order entry being enabled.
 
-## Files
-
-- new `src/components/measurements/RoofFocusedOverlayPanel.tsx`
-- edit `src/components/measurements/MeasurementVisualQAOverlay.tsx`
-- edit `src/components/measurements/RasterOverlayDebugView.tsx`
-- edit `src/components/measurements/MeasurementReportPdfVisualSection.tsx`
-- edit `src/lib/measurement/alignmentStatus.ts`
-- new/extended tests under `src/components/measurements/__tests__/` and `src/lib/measurement/__tests__/`  
-  
-Now the issue is finally isolated correctly.
-  Your screenshots prove the problem is in the **live renderer itself**, not just PDF export. The crop math is actually good, but the UI renderer is breaking the raster/SVG synchronization and filling the rest of the container with a dark fallback.
-  The key evidence:
-  ```
-
-  ```
-  ```
-  crop_bbox_px = 500,471→790,782
-  display_px_within_crop = 715×768
-  first_pt_disp = 238.3,197.6
-  bbox_center_disp = 357.5,384.1
-  target_mask_overlap = 0.976
-  ```
-  That means:
-  -   
-  the Roof Focus viewport math is valid  
-
-  -   
-  the overlay projection math is valid  
-
-  -   
-  the renderer/container is what’s failing  
-
-  And the UI contradiction proves the state sources are split:
-  ```
-
-  ```
-  ```
-  Measurement Alignment:
-  Aerial overlay = unknown
-
-  Overlay Truth:
-  Overlay frame = unknown
-  ```
-  while the Overlay Transform card already proves the crop is valid and raster-aligned.
-  So:
-  -   
-  diagnostics table uses one overlay state source  
-
-  -   
-  alignment/banner renderer uses another  
-
-  -   
-  raster image + SVG overlay are not using one unified crop/render component  
-
-  -   
-  dark fallback background is leaking into live mode  
-
-  I pushed the corrected implementation plan into the repo issue:
-  -   
-  one shared `RoofFocusedOverlayPanel`  
-
-  -   
-  one crop transform for BOTH raster + SVG  
-
-  -   
-  no dark live fallback containers  
-
-  -   
-  bounded panel sizing  
-
-  -   
-  force first aerial/process image into Roof Focus too  
-
-  -   
-  alignment helpers must read the same overlay transform object the diagnostics already display  
-
-  That is the correct next fix.
+## Files touched
+- `src/components/estimates/EstimatePreviewPanel.tsx`
+- `src/components/estimates/EstimatePDFDocument.tsx`
+- `src/components/estimates/PageOrderManager.tsx` (copy tweak only)

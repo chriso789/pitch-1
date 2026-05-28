@@ -9,6 +9,7 @@ import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 import { getTemplateComponents } from './templates/registry';
+import { DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -131,6 +132,10 @@ interface EstimatePDFDocumentProps {
   // Multi-estimate deduplication flags
   skipCoverPage?: boolean;
   skipWarrantyAndTerms?: boolean;
+  /** Skip ALL extra pages (cover, measurement details, job photos, warranty). Used for appended additional estimates. */
+  skipExtraPages?: boolean;
+  /** Optional user-defined page order (drag-reorder). Falls back to DEFAULT_PAGE_ORDER. */
+  pageOrder?: PageOrderItem[];
   // Per-company template style
   templateStyle?: string | null;
 }
@@ -516,10 +521,19 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   templateAttachments,
   skipCoverPage = false,
   skipWarrantyAndTerms = false,
+  skipExtraPages = false,
+  pageOrder,
   templateStyle,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
   const tmpl = getTemplateComponents(templateStyle);
+  const effectivePageOrder = pageOrder && pageOrder.length > 0 ? pageOrder : DEFAULT_PAGE_ORDER;
+  // Helper: is a section enabled in the user's page order?
+  const sectionEnabled = (id: string): boolean => {
+    const entry = effectivePageOrder.find((p) => p.id === id);
+    // If not found, treat as enabled (back-compat)
+    return entry ? entry.enabled : true;
+  };
 
   const dateStr = createdAt 
     ? new Date(createdAt).toLocaleDateString('en-US', { 
@@ -535,13 +549,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
 
   // Build pages
   const pages = useMemo(() => {
-    const pageList: React.ReactNode[] = [];
-    
     // In unified mode, combine materials + labor so all trades appear in scope
     const scopeItems = opts.showUnifiedItems
       ? (() => {
           const combined = [...materialItems, ...laborItems];
-          // Build trade order map from first appearance (preserves builder order)
           const tradeOrder = new Map<string, number>();
           combined.forEach(item => {
             const trade = (item as any).trade_type || 'roofing';
@@ -558,86 +569,71 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           });
         })()
       : materialItems;
-    
-    // Chunk scope items for pagination (group-aware)
+
     const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION, opts);
-    
-    // Count total pages for page numbering
-    // Pre-build warranty pages to know their count
-    const warrantyPages = (!skipWarrantyAndTerms && (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty))
-      ? buildWarrantyPages(warrantyTerms, opts.showManufacturerWarranty, opts.showWorkmanshipWarranty)
-      : [];
 
-    let totalPageCount = itemChunks.length || 1; // At least 1 for main content
-    if (opts.showCoverPage && !skipCoverPage) totalPageCount++;
-    totalPageCount += warrantyPages.length;
-    if (opts.showMeasurementDetails && measurementSummary) totalPageCount++;
-    // Photos page count calculated below
-    
-    let currentPage = 0;
-    // Track which page index (in pageList) contains the signature block
-    let signaturePageIdx: number | null = null;
+    // Resolve which extra sections are enabled. skipExtraPages overrides everything for appended estimates.
+    const showCover = !skipExtraPages && !skipCoverPage && opts.showCoverPage && sectionEnabled('cover_page');
+    const showMeasurement = !skipExtraPages && opts.showMeasurementDetails && !!measurementSummary && sectionEnabled('measurement_details');
+    const showPhotos = !skipExtraPages && opts.showJobPhotos && !!jobPhotos && jobPhotos.length > 0 && sectionEnabled('job_photos');
+    const showWarranty = !skipExtraPages && !skipWarrantyAndTerms && (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty) && sectionEnabled('warranty_info');
 
-    // Cover page (if enabled and not skipped for multi-estimate dedup)
-    if (opts.showCoverPage && !skipCoverPage) {
-      currentPage++;
+    // Build each section's pages into a map keyed by section id.
+    // Each entry has nodes[] and an isStandalone flag (cover trio pages skip PageShell wrapping).
+    type Section = { nodes: React.ReactNode[]; isStandalone: boolean; signatureRelIdx?: number };
+    const sections: Record<string, Section> = {};
+
+    // --- Cover Page section (cover + WhyChooseUs + ProcessTimeline) ---
+    if (showCover) {
       const CoverPage = tmpl.CoverPage;
-      pageList.push(
-        <CoverPage
-          key="cover-page"
-          companyInfo={companyInfo}
-          companyLogo={companyLogo}
-          companyName={companyName}
-          customerName={opts.showCustomerName ? customerName : ''}
-          customerAddress={opts.showCustomerAddress ? customerAddress : ''}
-          estimateNumber={estimateNumber}
-          createdAt={createdAt}
-          propertyPhoto={opts.coverPagePropertyPhoto}
-          estimateName={estimateName}
-        />
-      );
-
-      // Trust / Why-Choose-Us page
-      currentPage++;
-      totalPageCount++;
       const WhyChooseUs = tmpl.WhyChooseUs;
-      pageList.push(
-        <WhyChooseUs
-          key="why-choose-us-page"
-          companyName={companyInfo?.name || companyName}
-          licenseNumber={companyInfo?.license_number}
-          establishedYear={companyInfo?.established_year}
-          brandStory={companyInfo?.brand_story}
-          brandMission={companyInfo?.brand_mission}
-          brandCertifications={companyInfo?.brand_certifications}
-          brandStats={companyInfo?.brand_stats as any}
-          brandTestimonial={companyInfo?.brand_testimonial as any}
-          brandCommitments={companyInfo?.brand_commitments as any}
-          brandPrimaryColor={companyInfo?.brand_primary_color}
-          brandAccentColor={companyInfo?.brand_accent_color}
-        />
-      );
-
-      // Process Timeline page
-      currentPage++;
-      totalPageCount++;
       const ProcessTimeline = tmpl.ProcessTimeline;
-      pageList.push(
-        <ProcessTimeline
-          key="process-timeline-page"
-          companyName={companyInfo?.name || companyName}
-          companyInfo={companyInfo}
-        />
-      );
+      sections['cover_page'] = {
+        isStandalone: true,
+        nodes: [
+          <CoverPage
+            key="cover-page"
+            companyInfo={companyInfo}
+            companyLogo={companyLogo}
+            companyName={companyName}
+            customerName={opts.showCustomerName ? customerName : ''}
+            customerAddress={opts.showCustomerAddress ? customerAddress : ''}
+            estimateNumber={estimateNumber}
+            createdAt={createdAt}
+            propertyPhoto={opts.coverPagePropertyPhoto}
+            estimateName={estimateName}
+          />,
+          <WhyChooseUs
+            key="why-choose-us-page"
+            companyName={companyInfo?.name || companyName}
+            licenseNumber={companyInfo?.license_number}
+            establishedYear={companyInfo?.established_year}
+            brandStory={companyInfo?.brand_story}
+            brandMission={companyInfo?.brand_mission}
+            brandCertifications={companyInfo?.brand_certifications}
+            brandStats={companyInfo?.brand_stats as any}
+            brandTestimonial={companyInfo?.brand_testimonial as any}
+            brandCommitments={companyInfo?.brand_commitments as any}
+            brandPrimaryColor={companyInfo?.brand_primary_color}
+            brandAccentColor={companyInfo?.brand_accent_color}
+          />,
+          <ProcessTimeline
+            key="process-timeline-page"
+            companyName={companyInfo?.name || companyName}
+            companyInfo={companyInfo}
+          />,
+        ],
+      };
     }
 
-    // Page 1: Customer info + first chunk of items + summary
-    currentPage++;
+    // --- Estimate Content section (first page + continuations + change orders) ---
+    const estimateNodes: React.ReactNode[] = [];
+    let estimateSignatureRelIdx: number | undefined = undefined;
     const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
-      signaturePageIdx = pageList.length; // index of this page in the list
+      estimateSignatureRelIdx = estimateNodes.length;
     }
-    pageList.push(
+    estimateNodes.push(
       <FirstPage
         key="page-1"
         customerName={customerName}
@@ -655,16 +651,13 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         estimateName={estimateName}
       />
     );
-
-    // Continuation pages for remaining items
     for (let i = 1; i < itemChunks.length; i++) {
-      currentPage++;
       const isLastItemPage = i === itemChunks.length - 1;
       const showTerms = isLastItemPage && opts.showTermsAndConditions && !skipWarrantyAndTerms;
       if (showTerms && opts.showSignatureBlock) {
-        signaturePageIdx = pageList.length;
+        estimateSignatureRelIdx = estimateNodes.length;
       }
-      pageList.push(
+      estimateNodes.push(
         <ItemsContinuationPage
           key={`items-page-${i + 1}`}
           items={itemChunks[i]}
@@ -678,13 +671,9 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         />
       );
     }
-
-    // Potential Change Orders page (if any)
     if (changeOrderItems.length > 0) {
-      currentPage++;
-      totalPageCount++;
       const coTotal = changeOrderItems.reduce((sum, item) => sum + item.line_total, 0);
-      pageList.push(
+      estimateNodes.push(
         <div key="change-orders-page" className="space-y-3">
           <div className="flex items-center gap-2 mb-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
@@ -732,23 +721,22 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         </div>
       );
     }
+    sections['estimate_content'] = {
+      nodes: estimateNodes,
+      isStandalone: false,
+      signatureRelIdx: estimateSignatureRelIdx,
+    };
 
-    warrantyPages.forEach((page, i) => {
-      currentPage++;
-      pageList.push(page);
-    });
-
-    // Measurement details page
-    if (opts.showMeasurementDetails && measurementSummary) {
-      currentPage++;
-      pageList.push(
-        <MeasurementPage key="measurement-page" measurementSummary={measurementSummary} />
-      );
+    // --- Measurement Details section ---
+    if (showMeasurement) {
+      sections['measurement_details'] = {
+        isStandalone: false,
+        nodes: [<MeasurementPage key="measurement-page" measurementSummary={measurementSummary!} />],
+      };
     }
 
-    // Job photos page(s) - layout labels represent the intended grid size
-    // (2×2 = 4 photos, 3×3 = 9 photos, 4×4 = 16 photos per page).
-    if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) {
+    // --- Job Photos section (auto-chunked) ---
+    if (showPhotos && jobPhotos) {
       const layout = opts.photoLayout || 'auto';
       const cols = getPhotoGridCols(jobPhotos.length, layout);
       const photosPerPage = getPhotosPerPage(layout, cols);
@@ -756,17 +744,64 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       for (let i = 0; i < jobPhotos.length; i += photosPerPage) {
         photoChunks.push(jobPhotos.slice(i, i + photosPerPage));
       }
-      photoChunks.forEach((chunk, chunkIdx) => {
-        currentPage++;
-        totalPageCount++;
-        pageList.push(
-          <PhotosPage key={`photos-page-${chunkIdx}`} jobPhotos={chunk} cols={cols} pageIndex={chunkIdx} totalPhotoPages={photoChunks.length} />
-        );
-      });
+      sections['job_photos'] = {
+        isStandalone: false,
+        nodes: photoChunks.map((chunk, chunkIdx) => (
+          <PhotosPage
+            key={`photos-page-${chunkIdx}`}
+            jobPhotos={chunk}
+            cols={cols}
+            pageIndex={chunkIdx}
+            totalPhotoPages={photoChunks.length}
+          />
+        )),
+      };
     }
 
-    return { pages: pageList, totalPages: totalPageCount, signaturePageIdx };
-  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms]);
+    // --- Warranty section ---
+    if (showWarranty) {
+      const warrantyNodes = buildWarrantyPages(warrantyTerms, opts.showManufacturerWarranty, opts.showWorkmanshipWarranty);
+      if (warrantyNodes.length > 0) {
+        sections['warranty_info'] = { isStandalone: false, nodes: warrantyNodes };
+      }
+    }
+
+    // --- Assemble in user-defined order ---
+    // Iterate effectivePageOrder; if a section id matches, append it. Estimate content always renders.
+    // Sections referenced in pageOrder appear in that exact order; any built sections not listed
+    // (shouldn't happen, but defensive) are appended at the end.
+    const pageList: React.ReactNode[] = [];
+    let signaturePageIdx: number | null = null;
+    const standaloneFlags: boolean[] = [];
+    const appendedIds = new Set<string>();
+
+    const appendSection = (id: string) => {
+      const sec = sections[id];
+      if (!sec) return;
+      if (id === 'estimate_content' && sec.signatureRelIdx !== undefined) {
+        signaturePageIdx = pageList.length + sec.signatureRelIdx;
+      }
+      sec.nodes.forEach((node) => {
+        pageList.push(node);
+        standaloneFlags.push(sec.isStandalone);
+      });
+      appendedIds.add(id);
+    };
+
+    effectivePageOrder.forEach((entry) => appendSection(entry.id));
+    // Fallback: append any built sections that weren't in pageOrder.
+    Object.keys(sections).forEach((id) => {
+      if (!appendedIds.has(id)) appendSection(id);
+    });
+
+    return {
+      pages: pageList,
+      totalPages: pageList.length,
+      signaturePageIdx,
+      standaloneFlags,
+    };
+  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms]);
+
 
   const commonProps = {
     companyLogo,
@@ -790,15 +825,14 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       letterSpacing: '0.01em',
     }}>
       {pages.pages.map((pageContent, idx) => {
-        // Cover page + the two new editorial pages (Why Choose Us, Process Timeline)
-        // already include their own data-report-page wrapper and full-bleed design.
-        // Skip PageShell for them so we don't double-wrap headers/footers.
-        const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage;
-        const isStandalonePage = hasRenderedCoverPage && idx <= 2;
+        // Cover trio pages (CoverPage, WhyChooseUs, ProcessTimeline) already include
+        // their own full-bleed wrapper — skip PageShell so we don't double-wrap.
+        const isStandalonePage = pages.standaloneFlags[idx] === true;
 
         if (isStandalonePage) {
           return <React.Fragment key={`standalone-${idx}`}>{pageContent}</React.Fragment>;
         }
+
 
         // Wrap other pages in PageShell
         return (
