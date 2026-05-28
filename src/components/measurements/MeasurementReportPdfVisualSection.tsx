@@ -270,30 +270,34 @@ const MeasurementReportPdfVisualSection: React.FC<MeasurementReportPdfVisualSect
               padding: 0,
               aspectRatio: '4 / 3',
               width: '100%',
+              maxHeight: 360,
+              minHeight: 220,
               overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {overlaySvg}
             <div
               style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                padding: '8px 12px',
-                background: 'rgba(255,255,255,0.92)',
-                borderTop: '1px solid #e2e8f0',
+                position: 'relative',
+                zIndex: 1,
                 textAlign: 'center',
+                padding: '8px 16px',
+                background: 'rgba(255,255,255,0.85)',
+                borderRadius: 4,
               }}
             >
               <div style={{ fontSize: 12, color: '#0f172a', fontWeight: 600 }}>
                 Aerial image unavailable in PDF export
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                Overlay lines are still shown for diagnostic review.
+                Overlay geometry shown without aerial background
               </div>
             </div>
           </div>
+
         )}
       </div>
 
