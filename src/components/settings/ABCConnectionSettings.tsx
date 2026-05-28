@@ -1174,7 +1174,7 @@ export function ABCConnectionSettings() {
       {DemoWorkflowCard}
       {TestConsoleCard}
       {LatestResultCard}
-      {OrderTrackingCard}
+      {DiagnosticsCard}
       {AdvancedSection}
     </div>
   );
