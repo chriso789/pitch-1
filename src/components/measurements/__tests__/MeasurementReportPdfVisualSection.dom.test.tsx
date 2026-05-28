@@ -42,7 +42,7 @@ describe("MeasurementReportPdfVisualSection — PDF root contract", () => {
     const root = container.querySelector<HTMLElement>(
       '[data-pdf-report-root="true"]',
     )!;
-    expect(root.style.background.toLowerCase()).toBe("#ffffff");
+    expect(root.style.background.toLowerCase()).toMatch(/^(#ffffff|rgb\(255, 255, 255\))$/);
   });
 
   it("excludes raw JSON and interactive control text", () => {
@@ -70,6 +70,6 @@ describe("MeasurementReportPdfVisualSection — PDF root contract", () => {
       '[data-pdf-overlay-panel="true"]',
     )!;
     expect(panel.textContent ?? "").toMatch(/aerial unavailable in export/i);
-    expect(panel.style.background.toLowerCase()).toBe("#ffffff");
+    expect(panel.style.background.toLowerCase()).toMatch(/^(#ffffff|rgb\(255, 255, 255\))$/);
   });
 });
