@@ -487,7 +487,20 @@ export const EstimateBuilder = () => {
                             {formatCurrency(item.total_cost)}
                           </div>
                         </div>
-                        <div className="col-span-1">
+                        <div className="col-span-1 flex gap-1">
+                          <Button
+                            variant={item.exclude_from_overhead ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => updateLineItem(item.id, 'exclude_from_overhead', !item.exclude_from_overhead)}
+                            className={item.exclude_from_overhead ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
+                            title={
+                              item.exclude_from_overhead
+                                ? 'Pass-through: not applied to overhead/profit. Click to include.'
+                                : 'Exclude from overhead & profit (pass-through at cost)'
+                            }
+                          >
+                            <PiggyBank className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -497,6 +510,7 @@ export const EstimateBuilder = () => {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
+
                       </div>
                     ))}
                   </div>
