@@ -282,7 +282,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     enabled: !!pipelineEntryId && !!estimates,
   });
 
-  const displayedEstimates = [...(estimates || []), ...recoveredPdfEstimates];
+  // Hide "PDF only" recovered estimates from the list — most actions on them
+  // (edit, duplicate, delete, pricing, profit) are disabled, so they add noise
+  // without giving the user anything actionable to do.
+  const displayedEstimates = [...(estimates || [])];
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes } = useQuery({
