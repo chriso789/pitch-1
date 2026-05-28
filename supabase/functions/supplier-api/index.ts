@@ -3,8 +3,8 @@
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant } from "../_shared/router.ts";
 import { handle as abcProxyHandle } from "./abc-proxy-handler.ts";
-import { handle as billtrustAuthHandle } from "../billtrust-auth/handler.ts";
-import { handle as billtrustPricingHandle } from "../billtrust-pricing/handler.ts";
+import { handle as billtrustAuthHandle } from "./billtrust-auth-handler.ts";
+import { handle as billtrustPricingHandle } from "./billtrust-pricing-handler.ts";
 
 const app = createRouter("supplier-api");
 
