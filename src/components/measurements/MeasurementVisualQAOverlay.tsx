@@ -16,7 +16,7 @@
 //     useMeasurementJob hook (no legacy route).
 // ============================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { resolveDsmStatusFields } from '@/lib/measurement/resolveDsmStatusFields';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -366,20 +366,11 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
 
-    // Aerial background — draw the source-pixel sub-rect of the image so the
-    // displayed canvas focuses on the roof while overlay coords stay in the
-    // same source-pixel space.
-    if (layers.aerial && imgRef.current) {
-      ctx.drawImage(
-        imgRef.current,
-        viewportSrc.minX, viewportSrc.minY, Math.max(1, viewportSrc.w), Math.max(1, viewportSrc.h),
-        0, 0, W, H,
-      );
-    } else {
-      // Live overlay must never paint a giant dark rectangle when the aerial
-      // raster is missing/loading — that was the "black panel" the user saw
-      // while scrolling. Use a neutral light surface so the SVG overlay stays
-      // readable and the panel never flashes black during raster re-decode.
+    // The aerial raster is rendered as a normal DOM <img> behind this canvas.
+    // That avoids Google Static Maps/CORS canvas edge-cases while keeping the
+    // overlay canvas transparent. Only paint a neutral fallback when the aerial
+    // layer is intentionally unavailable/disabled.
+    if (!layers.aerial || !rasterUrl) {
       ctx.fillStyle = '#f8fafc';
       ctx.fillRect(0, 0, W, H);
     }
@@ -707,6 +698,13 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const overlayFrameResolution = resolveFrameMismatch(grj);
   const dsmTransformAvailable = dsmAllowed;
   const alignmentStatus = computeAlignmentStatus(measurement);
+  const showRasterImage = layers.aerial && !!rasterUrl && rasterSizeResolved;
+  const rasterImageStyle: CSSProperties = {
+    width: `${rasterSize.width * scale}px`,
+    height: `${rasterSize.height * scale}px`,
+    left: `${-viewportSrc.minX * scale}px`,
+    top: `${-viewportSrc.minY * scale}px`,
+  };
 
 
   return (
@@ -814,6 +812,15 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           {/* Canvas */}
           <div ref={wrapRef} className="relative w-full rounded-md overflow-hidden border bg-muted">
+            {showRasterImage && (
+              <img
+                src={rasterUrl}
+                alt="Aerial raster background"
+                className="absolute z-0 max-w-none select-none pointer-events-none"
+                style={rasterImageStyle}
+                draggable={false}
+              />
+            )}
             {/* Viewport mode toggle (Full Tile / Roof Focus) */}
             {focusBbox && (
               <div className="absolute top-2 right-2 z-10 flex rounded border bg-background/90 backdrop-blur text-[11px] overflow-hidden shadow-sm">
@@ -835,7 +842,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
             )}
             <canvas
               ref={canvasRef}
-              style={{ width: '100%', height: displayHeight ? `${displayHeight}px` : 'auto', display: 'block', touchAction: 'none', cursor: editMode ? 'crosshair' : 'default' }}
+              style={{ width: '100%', height: displayHeight ? `${displayHeight}px` : 'auto', display: 'block', position: 'relative', zIndex: 1, touchAction: 'none', cursor: editMode ? 'crosshair' : 'default' }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
