@@ -36,14 +36,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [zoom, setZoom] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // PDF.js state
+  // PDF.js state — render ALL pages and let the user scroll
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [pdfNumPages, setPdfNumPages] = useState(0);
-  const [pdfCurrentPage, setPdfCurrentPage] = useState(1);
-  const [pdfRenderedPage, setPdfRenderedPage] = useState<RenderedPage | null>(null);
+  const [pdfRenderedPages, setPdfRenderedPages] = useState<RenderedPage[]>([]);
   const [pdfScale, setPdfScale] = useState(1.5);
   const [pdfLoading, setPdfLoading] = useState(false);
-
   const currentDoc = documents.length > 0 ? documents[currentIndex] : document;
 
   useEffect(() => {
@@ -73,29 +71,36 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     pdfDocRef.current = null;
     setPdfDoc(null);
     setPdfNumPages(0);
-    setPdfCurrentPage(1);
-    setPdfRenderedPage(null);
+    setPdfRenderedPages([]);
     clearPageCache();
   }, []);
 
-  // Render current PDF page when page or scale changes
+  // Re-render all pages when scale changes
   useEffect(() => {
-    if (!pdfDoc || pdfCurrentPage < 1 || pdfCurrentPage > pdfNumPages) return;
+    if (!pdfDoc || pdfNumPages < 1) return;
+    let cancelled = false;
 
-    const renderPage = async () => {
+    const renderAll = async () => {
       setPdfLoading(true);
       try {
-        const rendered = await renderPageToDataUrl(pdfDoc, pdfCurrentPage, pdfScale);
-        setPdfRenderedPage(rendered);
+        const pages: RenderedPage[] = [];
+        for (let i = 1; i <= pdfNumPages; i++) {
+          const rendered = await renderPageToDataUrl(pdfDoc, i, pdfScale);
+          if (cancelled) return;
+          pages.push(rendered);
+          // Progressive display
+          setPdfRenderedPages([...pages]);
+        }
       } catch (error) {
-        console.error('[PDF] Error rendering page:', error);
+        console.error('[PDF] Error rendering pages:', error);
       } finally {
-        setPdfLoading(false);
+        if (!cancelled) setPdfLoading(false);
       }
     };
 
-    renderPage();
-  }, [pdfDoc, pdfCurrentPage, pdfScale, pdfNumPages]);
+    renderAll();
+    return () => { cancelled = true; };
+  }, [pdfDoc, pdfNumPages, pdfScale]);
 
   useEffect(() => {
     // Clear previous state immediately when document changes
@@ -154,13 +159,10 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           
           setPdfDoc(pdf);
           setPdfNumPages(pdf.numPages);
-          setPdfCurrentPage(1);
           setPdfScale(1.5);
-          
-          // Render first page
-          const rendered = await renderPageToDataUrl(pdf, 1, 1.5);
-          setPdfRenderedPage(rendered);
+          setPdfRenderedPages([]);
           setPreviewUrl(null); // Clear preview URL since we're using PDF.js
+          // All pages will be rendered by the scale/doc effect below
           
           // Also store public/signed URL for "Open in new tab"
           if (isPublicBucket) {
@@ -300,15 +302,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (currentIndex < documents.length - 1) setCurrentIndex(currentIndex + 1);
   };
 
-  // PDF page navigation
-  const handlePdfPrevPage = () => {
-    if (pdfCurrentPage > 1) setPdfCurrentPage(p => p - 1);
-  };
-
-  const handlePdfNextPage = () => {
-    if (pdfCurrentPage < pdfNumPages) setPdfCurrentPage(p => p + 1);
-  };
-
   // PDF zoom
   const handlePdfZoomIn = () => {
     setPdfScale(s => Math.min(3, s + 0.25));
@@ -320,7 +313,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
   const previewType = getPreviewType();
   const showNavigation = documents.length > 1;
-  const isPdfReady = pdfDoc && pdfRenderedPage;
+  const isPdfReady = pdfDoc && pdfRenderedPages.length > 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -394,47 +387,30 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             </div>
           ) : previewType === 'pdf' && isPdfReady ? (
             <div className="w-full h-full flex flex-col min-h-[60vh]">
-              {/* PDF rendered page */}
-              <div className="flex-1 overflow-auto flex items-start justify-center p-4 bg-muted/20">
-                {pdfLoading ? (
-                  <div className="flex items-center justify-center min-h-[400px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  <img 
-                    src={pdfRenderedPage.dataUrl} 
-                    alt={`Page ${pdfCurrentPage} of ${currentDoc?.filename}`}
+              {/* All PDF pages stacked vertically — scroll to navigate */}
+              <div className="flex-1 overflow-auto flex flex-col items-center gap-4 p-4 bg-muted/20">
+                {pdfRenderedPages.map((page, idx) => (
+                  <img
+                    key={idx}
+                    src={page.dataUrl}
+                    alt={`Page ${idx + 1} of ${currentDoc?.filename}`}
                     className="max-w-full shadow-lg rounded"
-                    style={{ maxHeight: '70vh' }}
                   />
+                ))}
+                {pdfLoading && pdfRenderedPages.length < pdfNumPages && (
+                  <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading page {pdfRenderedPages.length + 1} of {pdfNumPages}…
+                  </div>
                 )}
               </div>
-              
+
               {/* PDF controls */}
               <div className="flex items-center justify-center gap-4 p-3 border-t bg-muted/50">
-                {/* Page navigation */}
-                <div className="flex items-center gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={handlePdfPrevPage}
-                    disabled={pdfCurrentPage <= 1 || pdfLoading}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-muted-foreground min-w-[80px] text-center">
-                    Page {pdfCurrentPage} / {pdfNumPages}
-                  </span>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={handlePdfNextPage}
-                    disabled={pdfCurrentPage >= pdfNumPages || pdfLoading}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                
+                <span className="text-sm text-muted-foreground">
+                  {pdfNumPages} {pdfNumPages === 1 ? 'page' : 'pages'} — scroll to view
+                </span>
+
                 <div className="h-4 w-px bg-border" />
                 
                 {/* Actions */}
