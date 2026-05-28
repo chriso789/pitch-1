@@ -133,11 +133,21 @@ Every call writes a row to `abc_api_audit` with URL, payload, status, and respon
       "number": "TEST-ACCOUNT",
       "address": {
         "line1": "123 Test Street",
+        "line2": "",
+        "line3": "",
         "city": "North Port",
         "state": "FL",
         "postal": "34286",
         "country": "USA"
-      }
+      },
+      "contacts": [
+        {
+          "name": "ABC Sandbox Test",
+          "functionCode": "SM",
+          "email": "connect_user@test.com",
+          "phones": [{ "number": "9415550100", "type": "MOBILE", "ext": "" }]
+        }
+      ]
     },
     "orderComments": [],
     "lines": [
@@ -145,7 +155,8 @@ Every call writes a row to `abc_api_audit` with URL, payload, status, and respon
         "id": 1,
         "itemNumber": "TEST-SHINGLE-001",
         "itemDescription": "Sandbox test item",
-        "orderedQty": { "value": 1, "uom": "EA" }
+        "orderedQty": { "value": 1, "uom": "EA" },
+        "unitPrice": { "value": 0.01, "uom": "EA", "instructions": "PITCH sandbox test" }
       }
     ]
   }
