@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calculator, FileText, Plus, Trash2, Edit, DollarSign } from "lucide-react";
+import { Calculator, FileText, Plus, Trash2, Edit, DollarSign, PiggyBank } from "lucide-react";
+
 import { toast } from "sonner";
 
 interface EstimateTemplate {
@@ -31,7 +32,10 @@ interface LineItem {
   material_cost: number;
   labor_cost: number;
   total_cost: number;
+  /** Pass-through cost: excluded from overhead/profit; added at raw cost. */
+  exclude_from_overhead?: boolean;
 }
+
 
 interface EstimateCalculation {
   roof_area: number;
@@ -122,7 +126,6 @@ export const EstimateBuilder = () => {
     setCalculatedEstimate(estimate);
     toast.success("Estimate calculated successfully!");
   };
-
   const addLineItem = () => {
     const newItem: LineItem = {
       id: Date.now().toString(),
@@ -131,10 +134,13 @@ export const EstimateBuilder = () => {
       unit: "sq",
       material_cost: 0,
       labor_cost: 0,
-      total_cost: 0
+      total_cost: 0,
+      exclude_from_overhead: false,
     };
     setLineItems([...lineItems, newItem]);
   };
+
+
 
   const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
     setLineItems(items => 
@@ -481,7 +487,20 @@ export const EstimateBuilder = () => {
                             {formatCurrency(item.total_cost)}
                           </div>
                         </div>
-                        <div className="col-span-1">
+                        <div className="col-span-1 flex gap-1">
+                          <Button
+                            variant={item.exclude_from_overhead ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => updateLineItem(item.id, 'exclude_from_overhead', !item.exclude_from_overhead)}
+                            className={item.exclude_from_overhead ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
+                            title={
+                              item.exclude_from_overhead
+                                ? 'Pass-through: not applied to overhead/profit. Click to include.'
+                                : 'Exclude from overhead & profit (pass-through at cost)'
+                            }
+                          >
+                            <PiggyBank className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -491,6 +510,7 @@ export const EstimateBuilder = () => {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
+
                       </div>
                     ))}
                   </div>

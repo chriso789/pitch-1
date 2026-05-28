@@ -264,7 +264,7 @@ async function callAbc(
   method: "GET" | "POST",
   url: string,
   body?: any,
-): Promise<{ status: number; json: any; text: string; ok: boolean }> {
+): Promise<{ status: number; json: any; text: string; ok: boolean; headers: Record<string, string> }> {
   const resp = await fetch(url, {
     method,
     headers: {
@@ -280,12 +280,15 @@ async function callAbc(
   const text = await resp.text();
   let json: any = null;
   try { json = JSON.parse(text); } catch { /* keep text */ }
+  const headers: Record<string, string> = {};
+  resp.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
   // WAF sentinel: Imperva/Incapsula blocks are not real ABC responses.
   if (!resp.ok && detectWaf(resp.status, text)) {
-    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false };
+    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false, headers };
   }
-  return { status: resp.status, json, text, ok: resp.ok };
+  return { status: resp.status, json, text, ok: resp.ok, headers };
 }
+
 
 
 interface ProxyRequest {
@@ -931,16 +934,33 @@ export const handle = async (req) => {
         tenant_id, environment: env, action, endpoint,
         request_body_redacted: payload,
         status_code: r.status, response_body: r.json ?? r.text, error_code,
-        duration_ms: Date.now() - startedAt, created_by: userId,
-      });
-
       // Hoist any tracking identifiers ABC returned so the UI can auto-track.
       const respBody: any = r.json ?? null;
       const first = Array.isArray(respBody) ? respBody[0] : respBody?.orders?.[0] ?? respBody;
-      const orderNumber =
+      let orderNumber =
         first?.orderNumber ?? first?.order_number ?? first?.order?.orderNumber ?? first?.orderId ?? null;
-      const confirmationNumber =
+      let confirmationNumber =
         first?.confirmationNumber ?? first?.confirmation_number ?? first?.order?.confirmationNumber ?? null;
+      const transactionID =
+        first?.transactionID ?? first?.transactionId ?? first?.transaction_id ?? null;
+
+      // 202 Accepted: ABC may not include a body. Pull async reference from
+      // Location / x-confirmation / x-order-id headers so the order isn't
+      // shown as "pending reference" forever.
+      if (!confirmationNumber && !orderNumber) {
+        const loc = r.headers?.location || r.headers?.["content-location"] || "";
+        const headerRef =
+          r.headers?.["x-confirmation-number"] ||
+          r.headers?.["x-confirmationnumber"] ||
+          r.headers?.["x-order-number"] ||
+          r.headers?.["x-order-id"] ||
+          r.headers?.["x-transaction-id"] ||
+          null;
+        const locTail = loc ? loc.split("?")[0].split("/").filter(Boolean).pop() : null;
+        const asyncRef = headerRef || locTail || transactionID || null;
+        if (asyncRef) confirmationNumber = String(asyncRef);
+      }
+
       const transactionID =
         first?.transactionID ?? first?.transactionId ?? first?.transaction_id ?? null;
 
