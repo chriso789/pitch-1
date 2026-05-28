@@ -16,7 +16,7 @@
 //     useMeasurementJob hook (no legacy route).
 // ============================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { resolveDsmStatusFields } from '@/lib/measurement/resolveDsmStatusFields';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -699,7 +699,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
   const dsmTransformAvailable = dsmAllowed;
   const alignmentStatus = computeAlignmentStatus(measurement);
   const showRasterImage = layers.aerial && !!rasterUrl && rasterSizeResolved;
-  const rasterImageStyle: React.CSSProperties = {
+  const rasterImageStyle: CSSProperties = {
     width: `${rasterSize.width * scale}px`,
     height: `${rasterSize.height * scale}px`,
     left: `${-viewportSrc.minX * scale}px`,
@@ -816,7 +816,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
               <img
                 src={rasterUrl}
                 alt="Aerial raster background"
-                className="absolute max-w-none select-none pointer-events-none"
+                className="absolute z-0 max-w-none select-none pointer-events-none"
                 style={rasterImageStyle}
                 draggable={false}
               />
@@ -842,7 +842,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
             )}
             <canvas
               ref={canvasRef}
-              style={{ width: '100%', height: displayHeight ? `${displayHeight}px` : 'auto', display: 'block', touchAction: 'none', cursor: editMode ? 'crosshair' : 'default' }}
+              style={{ width: '100%', height: displayHeight ? `${displayHeight}px` : 'auto', display: 'block', position: 'relative', zIndex: 1, touchAction: 'none', cursor: editMode ? 'crosshair' : 'default' }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
