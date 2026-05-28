@@ -264,7 +264,7 @@ async function callAbc(
   method: "GET" | "POST",
   url: string,
   body?: any,
-): Promise<{ status: number; json: any; text: string; ok: boolean }> {
+): Promise<{ status: number; json: any; text: string; ok: boolean; headers: Record<string, string> }> {
   const resp = await fetch(url, {
     method,
     headers: {
@@ -280,12 +280,14 @@ async function callAbc(
   const text = await resp.text();
   let json: any = null;
   try { json = JSON.parse(text); } catch { /* keep text */ }
-  // WAF sentinel: Imperva/Incapsula blocks are not real ABC responses.
+  const headers: Record<string, string> = {};
+  resp.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
   if (!resp.ok && detectWaf(resp.status, text)) {
-    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false };
+    return { status: 499, json: { waf: true, upstream_status: resp.status }, text, ok: false, headers };
   }
-  return { status: resp.status, json, text, ok: resp.ok };
+  return { status: resp.status, json, text, ok: resp.ok, headers };
 }
+
 
 interface ProxyRequest {
   action:
