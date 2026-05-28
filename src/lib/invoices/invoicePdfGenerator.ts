@@ -195,32 +195,34 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
           })
       )
     );
-
     const canvas = await html2canvas(container, {
-      scale: 1.5,
+      scale: 3,
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
       windowWidth: 780,
     });
 
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
     const pageWidth = 612;
     const pageHeight = 792;
-    const imgData = canvas.toDataURL('image/jpeg', 0.65);
+    // PNG keeps text crisp; jsPDF still compresses it.
+    const imgData = canvas.toDataURL('image/png');
     const imgWidth = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
     let heightLeft = imgHeight;
     let position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
     heightLeft -= pageHeight;
 
     while (heightLeft > 0) {
       position -= pageHeight;
       pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
       heightLeft -= pageHeight;
+    }
+
     }
 
     return pdf.output('blob');
