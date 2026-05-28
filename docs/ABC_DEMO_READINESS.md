@@ -45,6 +45,33 @@ Optional overrides:
 | `ABC_TOKEN_URL_PRODUCTION` | `https://auth.partners.abcsupply.com/oauth2/ausvvp0xuwGKLenYy357/v1/token` |
 | `ABC_DEFAULT_BRANCH` | fallback branch for canned demos |
 | `ABC_ACCOUNT_NUMBER` | fallback ship-to for canned demos |
+| `ABC_SANDBOX_TEST_USERNAME` | ABC-provided sandbox OAuth test user (e.g. `connect_user@test.com`). Safe to display. |
+| `ABC_SANDBOX_TEST_PASSWORD` | Temporary password for the sandbox OAuth test user. **Never commit, display, log, or return from any edge function.** |
+
+## ABC Sandbox OAuth Test Login
+
+ABC provided a sandbox OAuth test user for the manual Authorization Code Flow login.
+
+- **Username:** `connect_user@test.com`
+- **Password:** Stored temporarily as Supabase secret `ABC_SANDBOX_TEST_PASSWORD`. Do not commit, display, log, or expose this password. It must be typed manually into the ABC sandbox login screen.
+
+Usage:
+
+1. Open Pitch CRM.
+2. Go to **Settings → Integrations → ABC Supply**.
+3. Set **Environment** to `Sandbox`.
+4. Click **Connect ABC Supply** (Begin OAuth Authorization).
+5. When ABC's sandbox login opens, sign in using the sandbox test user above.
+6. Confirm ABC redirects back to:
+
+   ```
+   https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/abc-oauth-callback
+   ```
+
+If ABC redirects to the developer dashboard instead of the callback, this is an ABC-side app assignment, redirect URI, or OAuth client configuration issue (not a Pitch bug).
+
+Auto-login into the ABC OAuth consent screen is **not** implemented — ABC's Okta login blocks automated credential submission. The password is for manual entry only.
+
 
 ## Required OAuth scopes
 
