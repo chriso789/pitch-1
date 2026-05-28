@@ -75,6 +75,28 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     clearPageCache();
   }, []);
 
+  const getAuthorizedStorageUrl = useCallback(async (doc: Document) => {
+    const bucket = resolveStorageBucket(doc.document_type, doc.file_path);
+    const { data, error } = await supabase.functions.invoke('get-document-access-url', {
+      body: { document_id: doc.id, expires_in: 3600 },
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Unable to create a secure document link');
+    }
+
+    const signedUrl = (data as { signedUrl?: string; path?: string; bucket?: string; error?: string } | null)?.signedUrl;
+    if (!signedUrl) {
+      throw new Error((data as { error?: string } | null)?.error || 'Unable to create a secure document link');
+    }
+
+    return {
+      url: signedUrl,
+      bucket: (data as { bucket?: string } | null)?.bucket || bucket,
+      path: (data as { path?: string } | null)?.path || doc.file_path,
+    };
+  }, []);
+
   // Re-render all pages when scale changes
   useEffect(() => {
     if (!pdfDoc || pdfNumPages < 1) return;
@@ -129,31 +151,18 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         return;
       }
 
-      // Determine the correct storage bucket
-      const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
-      console.log(`[Preview] Loading from bucket: ${bucket}, path: ${currentDoc.file_path}`);
-
-      // Public buckets - use getPublicUrl (no RLS checks needed)
-      const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars', 
-                              'roof-reports', 'customer-photos', 'documents',
-                              'measurement-visualizations', 'measurement-reports'];
-      const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
-
       try {
+        const authorized = await getAuthorizedStorageUrl(currentDoc);
         const mimeType = currentDoc.mime_type || '';
         const filename = currentDoc.filename.toLowerCase();
         const isPDF = mimeType === 'application/pdf' || filename.endsWith('.pdf');
         
         // For PDFs, download and render with PDF.js to avoid iframe blocking
         if (isPDF) {
-          console.log('[PDF] Downloading PDF for in-app rendering...');
-          const { data, error } = await supabase.storage
-            .from(bucket)
-            .download(currentDoc.file_path);
-          
-          if (error) throw error;
-          
-          const arrayBuffer = await data.arrayBuffer();
+          const response = await fetch(authorized.url);
+          if (!response.ok) throw new Error('Unable to download the PDF for preview');
+
+          const arrayBuffer = await response.arrayBuffer();
           console.log('[PDF] Loading PDF with PDF.js...');
           const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
           
@@ -161,45 +170,18 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           setPdfNumPages(pdf.numPages);
           setPdfScale(1.5);
           setPdfRenderedPages([]);
-          setPreviewUrl(null); // Clear preview URL since we're using PDF.js
-          // All pages will be rendered by the scale/doc effect below
-          
-          // Also store public/signed URL for "Open in new tab"
-          if (isPublicBucket) {
-            const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-            setPreviewUrl(urlData.publicUrl);
-          } else {
-            const { data: signedData } = await supabase.storage
-              .from(bucket)
-              .createSignedUrl(currentDoc.file_path, 3600);
-            if (signedData?.signedUrl) {
-              setPreviewUrl(signedData.signedUrl);
-            }
-          }
+          setPreviewUrl(authorized.url);
         } else if (mimeType.startsWith('text/') || 
             mimeType === 'application/json' ||
             currentDoc.filename.match(/\.(txt|csv|json|md|log)$/i)) {
           // Text files - download and display content
-          const { data, error } = await supabase.storage
-            .from(bucket)
-            .download(currentDoc.file_path);
-          if (error) throw error;
-          const text = await data.text();
+          const response = await fetch(authorized.url);
+          if (!response.ok) throw new Error('Unable to download the document for preview');
+          const text = await response.text();
           setTextContent(text);
           setPreviewUrl(null);
         } else {
-          // Images and other files - use public URL or blob URL
-          if (isPublicBucket) {
-            const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-            setPreviewUrl(data.publicUrl);
-          } else {
-            const { data, error } = await supabase.storage
-              .from(bucket)
-              .download(currentDoc.file_path);
-            if (error) throw error;
-            const url = URL.createObjectURL(data);
-            setPreviewUrl(url);
-          }
+          setPreviewUrl(authorized.url);
         }
       } catch (error) {
         console.error('Error loading preview:', error);
@@ -217,7 +199,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         URL.revokeObjectURL(previewUrl);
       }
     };
-  }, [currentDoc?.id, isOpen, cleanupPdf]);
+  }, [currentDoc?.id, isOpen, cleanupPdf, getAuthorizedStorageUrl]);
 
   // Open document in new tab using public or signed URL
   const openInNewTab = async () => {
@@ -228,37 +210,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       window.open(previewUrl, '_blank');
       return;
     }
-    
-    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
-    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars', 
-                            'roof-reports', 'customer-photos', 'documents',
-                            'measurement-visualizations', 'measurement-reports'];
-    const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
-    
-    if (isPublicBucket) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-      window.open(data.publicUrl, '_blank');
-    } else {
-      const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
-      if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
-      }
-    }
+
+    const { url } = await getAuthorizedStorageUrl(currentDoc);
+    window.open(url, '_blank');
   };
 
   const getDocUrl = async (): Promise<string | null> => {
     if (!currentDoc) return null;
     if (previewUrl && previewUrl.startsWith('http')) return previewUrl;
-    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
-    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars',
-                            'roof-reports', 'customer-photos', 'documents',
-                            'measurement-visualizations', 'measurement-reports'];
-    if (PUBLIC_BUCKETS.includes(bucket)) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-      return data.publicUrl;
-    }
-    const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
-    return data?.signedUrl || null;
+    const { url } = await getAuthorizedStorageUrl(currentDoc);
+    return url;
   };
 
   const handlePrint = async () => {

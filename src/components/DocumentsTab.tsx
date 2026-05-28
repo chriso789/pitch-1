@@ -545,12 +545,19 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         a.click();
         return;
       }
-      
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .download(doc.file_path);
 
-      if (error) throw error;
+      const { data: accessData, error: accessError } = await supabase.functions.invoke('get-document-access-url', {
+        body: { document_id: doc.id, expires_in: 3600 },
+      });
+
+      if (accessError) throw accessError;
+
+      const signedUrl = (accessData as { signedUrl?: string; error?: string } | null)?.signedUrl;
+      if (!signedUrl) throw new Error((accessData as { error?: string } | null)?.error || 'Failed to create download link');
+
+      const response = await fetch(signedUrl);
+      if (!response.ok) throw new Error('Failed to download document');
+      const data = await response.blob();
 
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
