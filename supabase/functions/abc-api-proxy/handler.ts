@@ -502,6 +502,8 @@ export const handle = async (req) => {
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("scope", scopes);
       url.searchParams.set("state", state);
+      url.searchParams.set("prompt", "login");
+      url.searchParams.set("max_age", "0");
       url.searchParams.set("code_challenge", challenge);
       url.searchParams.set("code_challenge_method", "S256");
 
