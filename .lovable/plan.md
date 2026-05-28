@@ -1,107 +1,96 @@
-## Goal
+# PDF Export Verification — Finish the Loop
 
-Finish the in-flight PDF export + alignment-UI work so the report PDF leads with the Roof Focus aerial (no black box, no debug-table-first), and so the Visual QA / Overlay Truth area stops calling a valid raster overlay a "coordinate frame mismatch" when the real failure is a missing DSM transform.
+Scope stays in frontend/PDF/report rendering. No backend, no DSM registration, no topology/pitch/facet logic, no customer_report_ready gate, no geo/selected_perimeter math.
 
-Frontend / PDF / report rendering only. No backend, no geometry, no gates.
+## 1. Run the PDF root / export contract tests
 
-## Current state (already in place from prior turn)
+Execute:
 
-- `MeasurementReportPdfVisualSection.tsx` exists and renders a `[data-pdf-report-root="true"]` root with a single roof-focused overlay panel.
-- `MeasurementReportDialog.downloadVisibleReportPdf` already selects `[data-pdf-report-root="true"]` and logs `PDF export root missing: data-pdf-report-root` when missing.
-- `RasterOverlayDebugView` supports a `pdfMode` for white background / no controls.
-- `registration-gate.ts` already emits the correct DSM-incomplete banner copy when `frame_mismatch === "ok"`, via `resolveFrameMismatch`.
-- A `registrationBanner.frame-ok` test exists.
+- `src/components/measurements/__tests__/MeasurementReportPdfVisualSection.dom.test.tsx`
+- `src/lib/measurement/__tests__/alignmentStatus.test.ts`
+- `tests/components/MeasurementReportPdfVisualSection.test.tsx`
 
-## Part A — PDF export polish
+Extend the DOM test (or add a sibling export-wiring test) so it asserts every contract item, not just structure:
 
-1. **PDF root contract audit** in `MeasurementReportPdfVisualSection.tsx`:
-  - Confirm structure is strictly: header/status → one `[data-pdf-overlay-panel="true"]` Roof Focus visual → compact diagnostic chips → optional compact debug table.
-  - Force inline `background:#ffffff` on the root and the overlay panel; strip any `bg-muted`, dark variables, or `<pre>` raw JSON blocks.
-  - Aerial-unavailable fallback: white panel with light-gray border + label "aerial unavailable in export"; perimeter SVG still drawn on top.
-  - Ensure exactly one aerial panel exists (no stacked Visual QA + Roof Overlay).
-2. **PDF visual uses Roof Focus** when any of `selected_perimeter_px`, `aerial_candidate_roof_graph.perimeter_ring_px`, `raw_perimeter_px`, `perimeter_topology.perimeter_ring_px`, or footprint fallback is present — via shared `roofFocusViewport` helper; SVG `viewBox` = crop bbox; source points unchanged.
-3. **Capture path** in `MeasurementReportDialog.downloadVisibleReportPdf`:
-  - Keep `[data-pdf-report-root="true"]` selector and the loud console error on miss.
-  - Remove any leftover "force-open all `<details>`" / multi-`.measurement-report-page` capture path so the dialog DOM is never silently captured.
-4. **Compact debug table after visual** (optional section): if present, render inside the PDF root *after* the overlay; never before.
+- exactly one `[data-pdf-report-root="true"]` rendered by `MeasurementReportDialog` PDF mount
+- exactly one `[data-pdf-overlay-panel="true"]` inside that root
+- `downloadVisibleReportPdf` resolves its capture target via `root.querySelector('[data-pdf-report-root="true"]')` and bails loudly if missing (assert via mocked `html2canvas` receiving that exact element)
+- PDF root inner text does NOT contain: `Raw JSON`, `Edit vertices`, `Approve`, `Reject`, `Reset`, `AI Process Viewer`, or any layer toggle label (`raster`, `raw_perimeter`, `refined_perimeter`, etc.)
+- computed `backgroundColor` on PDF root and on the overlay panel is white (`rgb(255, 255, 255)`)
+- no descendant of the PDF root has a dark computed background (scan for `rgb(0,0,0)` / very-low-luminance fills)
+- when a perimeter exists in the fixture, the rendered SVG `viewBox` is NOT the full tile — it equals the Roof Focus crop bbox from `roofFocusViewport`
 
-## Part B — Alignment / displacement UI
+Report pass/fail per assertion.
 
-Files: `MeasurementVisualQAOverlay.tsx`, new `src/lib/measurement/alignmentStatus.ts`.
+## 2. Typecheck / build
 
-1. **New pure helper** `alignmentStatus.ts`:
-  ```ts
-   computeAlignmentStatus(measurement) => {
-     raster_overlay_displacement: "ok" | "unknown" | "mismatch",
-     dsm_registration_displacement: "missing" | "invalid" | "validated",
-     manual_approval_lock_reason: "dsm_registration_missing" | "frame_mismatch" | "target_unconfirmed" | null,
-     banner: { title, body } | null,
-     metrics: { perimeter_bbox_center_src, confirmed_center_src, raster_center_offset_px,
-                target_mask_overlap, perimeter_vs_mask_iou, legacy_centroid_offset_px? }
-   }
-  ```
-   Rules per spec: raster=ok when `coord_space=raster_px` + `source_px`/`raster_size_px` + `crop_bbox_px` + perimeter inside viewport + (`target_mask_overlap>=0.9` OR valid selected perimeter bbox); dsm=missing when all four DSM fields null/false.
-2. **New "Measurement Alignment" card** rendered above Overlay Truth with the five lines from the spec (Aerial overlay / Roof focus crop / DSM registration / Manual approval / Displacement source).
-3. **Overlay Truth card** (lines 956–971): drive labels from the helper — show `Overlay frame: OK / crop-valid`, `Overlay source: roof_focus_crop / raster_px`, `DSM transform: missing`, `Manual approval: locked by DSM registration` whenever `raster_overlay_displacement === "ok"`. Never render `unknown` if the crop math has the required evidence.
-4. **Visual QA banner**: continue to source copy from `registrationBanner` (already correct). Add a guard so any local banner rendered by `MeasurementVisualQAOverlay` also defers to the helper — never render "Coordinate frame mismatch" when `raster_overlay_displacement === "ok"`.
-5. **Explicit metrics block** under Overlay Truth: render the five values from the helper. Legacy `perimeter_centroid_offset_px` only appears with the prefix `Legacy centroid offset: N px (legacy/global diagnostic; not Roof Focus visual displacement)`.
+Run `tsc --noEmit` (already runs in harness) and confirm no errors in:
 
-## Tests
+- `MeasurementReportPdfVisualSection.tsx`
+- `MeasurementReportDialog.tsx`
+- `RasterOverlayDebugView.tsx`
+- `MeasurementVisualQAOverlay.tsx`
+- `alignmentStatus.ts`
+- `rasterOverlayData.ts`
+- `roofFocusViewport.ts`
 
-1. `**alignmentStatus.test.ts**` with the spec fixture; expect `raster_overlay_displacement === "ok"`, `dsm_registration_displacement === "missing"`, `manual_approval_lock_reason === "dsm_registration_missing"`, banner title `DSM registration incomplete — manual approval locked`, and that no output string contains "coordinate frame mismatch".
-2. `**MeasurementReportPdfVisualSection.dom.test.tsx**` (jsdom):
-  - `[data-pdf-report-root="true"]` exists; contains exactly one `[data-pdf-overlay-panel="true"]`; panel is the first major block.
-  - SVG `viewBox` ≠ full tile when perimeter exists (use spec crop bbox fixture).
-  - Computed `backgroundColor` of root and panel is white / not black.
-  - PDF root text does not include `Raw JSON`, `Edit vertices`, `Approve`, `Reject`, `Reset`, `AI Process Viewer`.
-3. **Export wiring smoke test** in the dialog test: assert `downloadVisibleReportPdf` queries `[data-pdf-report-root="true"]` and logs the required error string when absent.
+## 3. Optional compact debug table — PDF-safe, after the visual
 
-## Out of scope
+Add a `MeasurementReportPdfDebugTable` rendered inside `MeasurementReportPdfVisualSection`, AFTER the `[data-pdf-overlay-panel="true"]` panel and AFTER the compact diagnostics chips. Rules:
 
-Backend, DSM registration, derived bounds, CPU policy, topology/pitch/facet logic, customer-report gates, reportable roof line promotion, DB schema, geo/selected_perimeter coordinates, overlay measurement math.
+- read-only, no buttons, no toggles, no `Raw JSON` block, no `<pre>` dumps
+- whitelisted fields only: `result_state`, `geometry_source`, `pitch_source`, `facet_count`, `ridge_lf`, `hip_lf`, `valley_lf`, `eave_lf`, `rake_lf`, `coverage`, `validated_faces_pct`, `footprint_confidence`, `area_ratio`, `topology_score_vs_vendor`, `block_customer_report_reason`, `hard_fail_reason`
+- compact 2-column key/value grid, 11px font, `bg-white`/`text-foreground` only, no dark variants
+- max ~20 rows; truncate long strings; omit missing fields rather than rendering `null`
+- guarded by `pdfMode` so it never appears in the live interactive report
+- does NOT reintroduce the large interactive Measurement Data Summary grid, controls, or section headers from the live dialog
 
-## Acceptance
+If any of those constraints can't be met cleanly, skip the section and note it in the report.
 
-- PDF page 1: Roof Focus aerial near top, no black rectangle, debug table only after visual, no raw JSON, no controls, single overlay panel.
-- Visual QA: no "coordinate frame mismatch" copy for this report; Overlay Truth shows `crop-valid` + `DSM transform: missing` + `locked by DSM registration`; Measurement Alignment card present; explicit displacement metrics shown; legacy 878 px clearly labeled legacy.
-- `customer_report_ready` stays false; reportable roof lines stay 0.  
+## 4. Regenerate the Fonsica PDF
+
+Trigger the export through the same `downloadVisibleReportPdf` path used in production (no alternate code path). Open the PDF, convert pages to images, and check against acceptance:
+
+- Page 1 starts with header + status (address, result_state, geometry_source, alignment chips)
+- Roof-focused aerial overlay appears near the top of page 1
+- No large black rectangle under or around the aerial; aerial-unavailable fallback is the white placeholder, not a black box
+- Compact debug table (if added in step 3) appears after the visual, not before it
+- Raw JSON excluded; interactive controls excluded
+- Exactly one aerial overlay panel
+- Overlay uses Roof Focus crop (`viewBox` matches `cropBboxPx`)
+- `customer_report_ready` remains `false`; `reportable_roof_lines` count remains `0`
+
+## 5. If the black box still appears — stop and return a DOM/capture diff
+
+Do NOT touch derived bounds or topology. Instead emit a diagnostic block containing:
+
+- which DOM root `html2canvas` actually received (selector + outerHTML head)
+- count of `[data-pdf-overlay-panel="true"]` elements at capture time
+- whether the overlay `<img>` fired `load` vs `error` (or was never mounted)
+- `getComputedStyle(...).backgroundColor` for the PDF root and the overlay panel
+- the SVG `viewBox` string used at capture
+- whether any full interactive `measurement-report-page` / dialog body was inside the captured subtree (boolean + selector path)
+
+## Out of scope (do not touch this loop)
+
+- backend measurement logic, DSM registration, derived bounds runtime, CPU policy
+- topology / pitch / facet logic
+- `customer_report_ready` gates and reportable roof line promotion
+- DB schema, `selected_perimeter_px`, geo coordinates, overlay measurement math  
   
-I reviewed the latest Lovable plan and it’s correct. The remaining problems are now purely frontend/export clarity issues, not geometry problems.
-  The important runtime truth from the latest report is:
-  - Roof Focus crop math is now valid.
-  - Overlay projection is visually usable.
-  - The raster overlay is aligned enough for human verification.
+reviewed the latest Lovable verification plan and it’s correct.
+  At this point the remaining work is not geometry — it’s proving the new PDF-only export path is actually the one being captured, and proving the UI no longer mislabels the raster overlay as a coordinate mismatch when the real issue is DSM registration missing.
+  The important truths from the latest report are:
+  - Roof Focus crop math is already correct.
+  - Overlay display points are inside the viewport.
+  - The aerial overlay is visually usable.
   - DSM registration is still missing.
-  - The PDF export path is still capturing/rendering the wrong DOM/layout structure.
-  The biggest UX issue is still that the UI says:
-  ```
-
-  ```
-  ```
-  Coordinate frame mismatch — overlay not eligible for manual approval
-  ```
-  even though:
-  - `coord_space = raster_px`  
-
-  - `source_px = 1280×1280`  
-
-  -   
-  crop-relative display coordinates are inside viewport  
-
-  -   
-  target overlap is `0.976`  
-
-  So the next step absolutely should be:
-  -   
-  dedicated PDF-only visual export root  
-
-  -   
-  single roof-focused overlay panel  
-
-  -   
-  white export surfaces  
-
-  -   
-  alignment/displacement language split between raster overlay vs DSM registration  
-
+  - The PDF export still needs hard verification that it is capturing the dedicated `[data-pdf-report-root="true"]` instead of interactive/debug DOM.
+  The verification plan correctly focuses on:
+  - DOM/export contract assertions
+  - white-background enforcement
+  - single-overlay enforcement
+  - removal of interactive/debug controls
+  - alignment/displacement wording cleanup
+  - stopping immediately with a DOM/capture diff if the black box still appears
   I approved the plan and pushed the refined implementation/acceptance details into the repo issue.
