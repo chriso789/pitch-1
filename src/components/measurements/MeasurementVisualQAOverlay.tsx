@@ -813,7 +813,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           {/* Canvas */}
-          <div ref={wrapRef} className="relative w-full rounded-md overflow-hidden border bg-slate-900">
+          <div ref={wrapRef} className="relative w-full rounded-md overflow-hidden border bg-muted">
             {/* Viewport mode toggle (Full Tile / Roof Focus) */}
             {focusBbox && (
               <div className="absolute top-2 right-2 z-10 flex rounded border bg-background/90 backdrop-blur text-[11px] overflow-hidden shadow-sm">
