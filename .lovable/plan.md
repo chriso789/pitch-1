@@ -1,175 +1,355 @@
-# ABC Integration — Re-Audit vs. Today's Repo
+# Supplier Integration Tenant Isolation + Customer-Facing UI
 
-Verified against the live repo, not the May 14 plan.
+## Audit findings (current state)
 
-## 1. What already exists (do NOT rebuild)
+**RLS posture is already strong — no broad/missing policies found.**
 
-**Database (all present in `public`):**
-`abc_integrations`, `abc_connections`, `abc_tokens`, `abc_oauth_states`, `abc_oauth_callback_logs`, `abc_credential_audit`, `abc_accounts`, `abc_branches`, `abc_items`, `abc_item_availability`, `abc_price_requests`, `abc_orders`, `abc_order_lines`, `abc_order_job_links`, `abc_invoices`, `abc_invoice_lines`, `abc_webhooks`, `abc_webhook_events`, `abc_api_audit`.
 
-**Edge functions:**
+| Area                                                                                       | Status                                                                                                                              |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `abc_*` tables                                                                             | All 19 have RLS on; tenant-scoped policies via `get_user_active_tenant_id()` / `user_can_access_tenant()` / `abc_is_tenant_admin()` |
+| `abc_tokens`, `abc_oauth_states`, `qxo_credentials`                                        | RLS on, **0 policies** → service-role-only (correct, locked from clients)                                                           |
+| `abc_connections`                                                                          | Defense-in-depth: explicit `no_client_write` policy + tenant read                                                                   |
+| `abc_api_audit`                                                                            | Read restricted to tenant admins (master/owner/corporate/office_admin) only                                                         |
+| `srs_*`, `qxo_*`                                                                           | RLS on, tenant-scoped                                                                                                               |
+| `srs_order_items`, `srs_order_status_history`, `supplier_catalog*`, `supplier_price_list*` | No `tenant_id` column — need to verify policies scope via parent FK before claiming gap                                             |
 
-- `abc-api-proxy/` (index.ts + handler.ts) — working shim
-- `abc-oauth-callback/` — public OAuth redirect
-- `supplier-api/abc-proxy-handler.ts` — grouped proxy handler
-- `supplier-webhook/index.ts` — grouped function, scaffolded
 
-**Frontend:**
+**Conclusion:** No emergency RLS migration is needed. The leak risk is in **frontend code that doesn't filter `.eq('tenant_id', …)**` and **the Integrations UI exposing developer/debug surface to all tenants**.
 
-- `src/components/settings/ABCConnectionSettings.tsx` — sandbox connect flow, working
-- `src/components/settings/AbcDiagnosticsPanel.tsx` — already accepts `projectId` prop and self-filters on `job_id`/`estimate_id` (line 82, 106–111)
-- `src/components/orders/PushToSupplierDialog.tsx` — ABC branch already wired, calls `abc-api-proxy` with `action: 'submit_order'`
-- `src/components/orders/ProjectMaterialsTab.tsx` — mounts `PushToSupplierDialog` + `SrsDiagnosticsPanel`
+## What changes
 
-**Docs:** `docs/ABC_DEMO_READINESS.md`, `docs/ABC_WAF_ALLOWLIST.md` both present.
+### Phase 1 — Verify the four "no tenant_id" tables (read-only)
 
-## 2. Partially built
+Inspect existing policies on `srs_order_items`, `srs_order_status_history`, `supplier_catalog_items`, `supplier_catalogs`, `supplier_price_list_items`, `supplier_price_lists`. If they correctly scope via parent FK (`srs_orders.tenant_id`, etc.), document and move on. If not, add the missing policy in one small migration.
 
-- `supplier-webhook/index.ts` — exists as routed function but only has `/srs/orders` and `/qxo/orders` returning 501. No `/abc/events` route at all.
-- `abc_webhook_events` table exists, but nothing writes to it (no receiver).
+### Phase 2 — Frontend tenant-filter sweep
 
-## 3. Missing
+Add explicit `.eq('tenant_id', useEffectiveTenantId())` to every supplier query in:
 
-- Project-scoped ABC diagnostics card on the Materials tab (panel exists in Settings only).
-- `POST /abc/events` route inside `supplier-webhook` (ingestion, dedupe, tenant resolution, order/invoice updates).
-- Verified ABC webhook signature contract (header name, algorithm, payload format).
+- `src/components/settings/ABCConnectionSettings.tsx` (5 queries: `abc_connections`, `abc_oauth_callback_logs`, `abc_api_audit`)
+- `src/components/settings/AbcDiagnosticsPanel.tsx` (5 queries: `abc_orders`, `abc_order_job_links`, `abc_webhook_events`, `abc_api_audit`)
+- `src/components/settings/SRSConnectionSettings.tsx` (3 queries)
+- `src/components/settings/QXOConnectionSettings.tsx` (1 query)
 
-## 4. Obsolete from the May 14 plan
+RLS already enforces this server-side, but explicit filters prevent accidental cross-tenant leaks in code paths that ever run under service role and make the intent auditable.
 
-- "14 new standalone edge functions" — replaced by grouped `supplier-api` + `abc-api-proxy` shim + `supplier-webhook`. Do not recreate.
-- Separate `abc-webhook` standalone function — forbidden by the architecture guard; route lives inside `supplier-webhook`.
-- New `abc-*` tables to be "created in Phase 1" — already created.
-- Frontend `src/features/abc-supply/` module rewrite — superseded by existing `ABCConnectionSettings` + `AbcDiagnosticsPanel` + `PushToSupplierDialog`.
+### Phase 3 — New customer-facing Supplier Integrations page
 
-## 5. Must do before Sandy's demo
+New component: `src/components/settings/SupplierIntegrationsPanel.tsx`
 
-**Priority 1 — UI mount (no DB, no edge changes)**
+- Generic card per supplier (ABC, SRS, QXO, Billtrust) with: connected status, last sync, last order, Connect / Disconnect / View Order History.
+- Mount in `IntegrationsSettings.tsx` as the default view for normal users.
+- **No** OAuth URLs, token URLs, scopes, debug logs, callback logs, WAF notes, Sandy defaults — those move behind a role gate.
 
-- Edit `src/components/orders/ProjectMaterialsTab.tsx`: import `AbcDiagnosticsPanel` from `@/components/settings/AbcDiagnosticsPanel` and render `<AbcDiagnosticsPanel projectId={projectId} />` directly under the existing `<SrsDiagnosticsPanel projectId={projectId} />`.
+### Phase 4 — Role-gate the developer surface
 
-**Priority 2 — Webhook receiver (gated on docs verification)**
+Wrap the existing `ABCConnectionSettings`, `SRSConnectionSettings`, `QXOConnectionSettings`, `AbcDiagnosticsPanel` (settings-level), `abc_oauth_callback_logs` view, `abc_api_audit` table, WAF allowlist notes inside an "Advanced (Developer)" tab visible only when:
 
-Step 2a (research, no code): confirm from ABC partner docs:
+- `has_role(user, 'master')` OR
+- `has_role(user, 'platform_admin')` OR
+- `tenant_id === OBRIEN_TENANT_ID` (for sandbox demo continuity)
 
-- exact signature header name (e.g. `X-ABC-Signature` vs `X-Signature`)
-- exact algorithm (HMAC-SHA256 raw vs `sha256=` prefix vs JWT)
-- canonical payload-signing procedure
-- retry/backoff behavior
-- webhook registration API endpoint and event-type catalog
+The project-level `AbcDiagnosticsPanel projectId={projectId}` on the Materials tab stays for all users — it's already scoped to a single project's orders via RLS + the new explicit tenant filter.
 
-Step 2b (after 2a): add `POST /abc/events` to `supabase/functions/supplier-webhook/index.ts`:
+### Phase 5 — Isolate O'Brien sandbox defaults
 
-- Public route (no `requireAuth`/`requireTenant`).
-- Verify signature using the algorithm confirmed in 2a — do **not** assume generic HMAC.
-- Resolve tenant server-side: look up `abc_orders` / `abc_webhooks` row by ABC order/account id from payload; never trust `tenant_id` from body. Quarantine if not resolvable.
-- Idempotent upsert into `abc_webhook_events` keyed on provider event id (add unique index if missing).
-- Dispatch by event type → update `abc_orders.status`, insert/update `abc_invoices` + `abc_invoice_lines`, append delivery timestamps.
-- Write `abc_api_audit` row for every receipt (success, sig-fail, quarantine).
-- Return 200 only after persistence; 401 on bad signature; 202 on quarantine.
+- Pull the hardcoded Sandy defaults (Ship-To `2010466-2`, Branch `1209`, sandbox username, WAF observed IP notes) into a `isObrienSandboxTenant(tenantId)` helper.
+- Only render those defaults / hints in `ABCConnectionSettings` and `PushToSupplierDialog` when `isObrienSandboxTenant()` or platform_admin.
+- Other tenants see a blank Connect form, no preset values.
 
-**Secret needed before 2b:** `ABC_WEBHOOK_SIGNING_SECRET` (sandbox first). Ask user to add when 2a is confirmed.
+### Phase 6 — New Supplier Order History page
 
-## 6. After-demo (do not block Sandy)
+New route: `Settings → Integrations → Supplier Order History` (`src/pages/SupplierOrderHistory.tsx`)
 
-- Webhook registration automation (call ABC's webhook-register endpoint from a worker instead of manual portal entry).
-- `abc-token-refresh-scheduler` via `pg_cron` if not already covered by current refresh path.
-- Invoice PDF fetch worker (`abc_invoices.pdf_url` backfill).
-- Production environment toggle and admin gate (currently sandbox-only is correct).
-- Memory entry + `docs/abc-supply-integration.md` consolidation.
+- Union view across `abc_orders`, `srs_orders`, `qxo_orders` — each query explicitly `.eq('tenant_id', tenantId)`.
+- Columns: supplier, project/job, PO, supplier order #, confirmation #, status, branch, ship-to, submitted, last update, total, actions (Inspect, Refresh Status).
 
-## Architectural guardrails enforced
+### Phase 7 — Backend guardrail verification (read-only)
 
-- No new standalone edge function.
-- Webhook route is public, signature-verified, tenant resolved server-side from lookup row, audit-logged.
-- Frontend push flow unchanged.
-- No DB migrations required for Priority 1; Priority 2 may add one unique index on `abc_webhook_events(provider_event_id)` if not already present — will verify before writing the migration.
+Confirm `supabase/functions/abc-api-proxy/handler.ts` and `supabase/functions/supplier-api/abc-proxy-handler.ts`:
+
+- Resolve `tenant_id` from JWT (`_shared/auth.ts` + `_shared/tenant.ts`), never from body.
+- All `abc_tokens` / `abc_connections` fetches `.eq('tenant_id', resolvedTenantId)`.
+- All `abc_orders` / `abc_api_audit` writes use `resolvedTenantId`.
+
+Confirm `supabase/functions/supplier-webhook/index.ts` resolves tenant from `abc_webhooks` / `abc_orders` lookup, never trusts payload.
+
+If any of these are violated, fix in a follow-up patch (not in scope of this plan if clean).
+
+### Phase 8 — Acceptance checklist doc
+
+Add `docs/SUPPLIER_TENANT_ISOLATION_TEST.md` with the 5-section test plan from the request (A–E), so the user can walk through O'Brien vs second-tenant verification manually.
+
+## Explicitly out of scope
+
+- No `result_state` / measurement work.
+- No changes to `PushToSupplierDialog` ABC submit logic itself (already tenant-scoped via `abc-api-proxy`).
+- No new edge function folders (per Pitch CRM Architecture Guard).
+- No webhook signature work — that's still gated on ABC partner docs verification from the prior plan.
 
 ## Decision gate
 
-Approve Priority 1 → I ship it immediately (single-file UI edit).
-Priority 2 waits until you (or I, via web search of ABC partner docs) confirm the signature contract. Say the word and I'll search the ABC partner docs first.  
+Approve and I'll start with **Phase 1 + Phase 2** (verify + explicit tenant filters — lowest risk, highest payoff), then **Phase 3 + Phase 4** (new panel + role-gated developer view), then Phases 5/6/7/8. Each phase is a separate, reviewable batch — not one giant commit.  
   
+I would approve this plan, but I would **change the order**.
 
+Right now Lovable wants to do:
 
 ```
-Approved.
 
-Execute Priority 1 immediately:
-
-1. Edit:
-src/components/orders/ProjectMaterialsTab.tsx
-
-2. Import:
-import { AbcDiagnosticsPanel } from "@/components/settings/AbcDiagnosticsPanel";
-
-Use the correct export style from the existing component.
-
-3. Render:
-<AbcDiagnosticsPanel projectId={projectId} />
-
-directly under:
-<SrsDiagnosticsPanel projectId={projectId} />
-
-4. Do not change the existing PushToSupplierDialog flow.
-5. Do not change the ABC submit_order payload.
-6. Do not change database schema.
-7. Do not add new edge functions.
-8. Deploy and verify that the project Materials tab now shows ABC Submit Diagnostics for that project.
-
-Acceptance:
-- Open project → Materials tab.
-- Confirm Materials list exists.
-- Confirm Push To Supplier still exists.
-- Confirm SRS diagnostics still exists.
-- Confirm ABC Submit Diagnostics now appears under SRS diagnostics.
-- Push ABC sandbox order from the project.
-- Confirm confirmation number appears in project-scoped ABC panel.
-- Confirm Inspect and Refresh Status work from the project page.
-
-Priority 2 is approved only after webhook docs verification.
-
-Before writing the /abc/events route, search/verify the official ABC webhook docs and confirm:
-- webhook registration endpoint
-- exact callback URL expectations
-- exact event types
-- exact signature header name
-- exact signing algorithm
-- exact payload canonicalization/signing method
-- retry behavior
-- expected response codes
-- whether sandbox sends real webhook events
-
-Do not assume generic HMAC-SHA256 unless ABC docs confirm it.
-
-Once verified, implement inside:
-supabase/functions/supplier-webhook/index.ts
-
-Route:
-POST /abc/events
-
-Do not create a standalone abc-webhook function.
-
-Required behavior:
-- public route
-- signature verified
-- tenant resolved server-side only
-- never trust tenant_id from payload
-- insert abc_webhook_events
-- dedupe provider event id
-- update abc_orders status
-- upsert abc_invoices / abc_invoice_lines for invoice events
-- audit every receipt in abc_api_audit
-- quarantine unresolved tenant/order events
-- return correct response codes based on ABC docs
-
-Secret:
-Use ABC_WEBHOOK_SIGNING_SECRET only after ABC confirms the signing contract.
-
-Report back after Priority 1 with:
-- file changed
-- deploy status
-- screenshot/result confirming ABC Submit Diagnostics appears in project Materials tab
-- whether project-level ABC Send to Supplier still works
 ```
 
-For Sandy’s demo, this gives you the right project-level story without overbuilding before you know ABC’s exact webhook contract.
+```
+Phase 1
+Phase 2
+Phase 3
+Phase 4
+Phase 5
+Phase 6
+Phase 7
+Phase 8
+```
+
+That's too much before Sandy's demo.
+
+The highest risk is not RLS. The audit already says RLS is strong across the ABC/SRS/QXO tables. 
+
+What matters is:
+
+### Immediate Priorities
+
+#### Phase 2 — Tenant Filter Sweep
+
+Approve immediately.
+
+Even though RLS exists, explicit:
+
+```
+
+```
+
+```
+.eq('tenant_id', tenantId)
+```
+
+on every supplier query is cheap protection and makes the code auditable. 
+
+#### Phase 4 — Role-Gate Developer Surface
+
+Approve immediately.
+
+This is the biggest UI problem today.
+
+Normal contractors should NOT see:
+
+```
+
+```
+
+```
+OAuth URLs
+Token URLs
+Scopes
+Callback logs
+WAF diagnostics
+Sandbox test data
+Audit logs
+```
+
+The current ABC page still feels like a developer console.
+
+---
+
+### Next Priority
+
+#### Phase 5 — O'Brien Sandbox Isolation
+
+Approve immediately.
+
+The Sandy defaults:
+
+```
+
+```
+
+```
+Ship-To 2010466-2
+Branch 1209
+Sandbox login notes
+WAF notes
+```
+
+must not appear for every tenant. 
+
+This is a quick win.
+
+---
+
+### After That
+
+#### Phase 3 — Supplier Integrations Panel
+
+Approve.
+
+This is the customer-facing experience you ultimately want:
+
+```
+
+```
+
+```
+ABC Supply
+Connected
+
+SRS
+Connected
+
+QXO
+Disconnected
+
+Billtrust
+Connected
+```
+
+with:
+
+```
+
+```
+
+```
+Connect
+Disconnect
+View Orders
+```
+
+instead of exposing integration internals.
+
+---
+
+### Phase 6
+
+Approve.
+
+The Supplier Order History page is the right abstraction layer.
+
+Instead of:
+
+```
+
+```
+
+```
+ABC Orders
+SRS Orders
+QXO Orders
+```
+
+users should see:
+
+```
+
+```
+
+```
+Supplier Order History
+```
+
+and filter by supplier.
+
+---
+
+### Phase 1
+
+Do last.
+
+The audit already says no obvious RLS gap exists. 
+
+Don't burn demo time auditing FK-scoped tables until the UI is fixed.
+
+---
+
+### Phase 7
+
+Do after demo.
+
+That's backend verification.
+
+Good work, but not demo-critical.
+
+---
+
+### Phase 8
+
+Do after demo.
+
+Documentation won't make or break Sandy's call.
+
+---
+
+## What I would send Lovable
+
+```
+
+```
+
+```
+Approved with revised priority order.
+
+Priority A
+Phase 2 — Explicit tenant filters
+
+Priority B
+Phase 4 — Role-gate developer surface
+
+Priority C
+Phase 5 — O'Brien sandbox isolation
+
+Priority D
+Phase 3 — Supplier Integrations Panel
+
+Priority E
+Phase 6 — Supplier Order History
+
+After demo:
+Phase 1
+Phase 7
+Phase 8
+
+Reason:
+
+The audit already shows strong RLS posture across ABC/SRS/QXO tables.
+
+The biggest current risk is user experience and accidental visibility of developer/demo tooling.
+
+Goal before Sandy's demo:
+
+Normal tenants should only see:
+
+- Connect Supplier
+- Disconnect Supplier
+- Supplier Order History
+- Order Status
+
+They should NOT see:
+
+- OAuth URLs
+- Token URLs
+- Callback logs
+- WAF diagnostics
+- Sandbox defaults
+- O'Brien demo settings
+- abc_api_audit
+- abc_oauth_callback_logs
+
+Implement the UI isolation first.
+
+Then isolate O'Brien-specific sandbox defaults.
+
+Then build the Supplier Integrations and Supplier Order History pages.
+
+Leave deep RLS verification and documentation passes until after demo unless a concrete issue is found.
+```
+
+That gets you to a **multi-tenant SaaS-ready supplier experience** much faster than continuing to focus on backend auditing that already looks healthy.
