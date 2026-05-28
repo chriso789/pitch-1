@@ -1320,21 +1320,20 @@ export function EstimatePreviewPanel({
 
                 <Separator />
 
-                {/* Extra Pages Section */}
+                {/* Extra Page Options - sub-controls for sections enabled in Page Order */}
                 <div className="space-y-2">
                   <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
                     <FileText className="h-3 w-3" />
-                    Extra Pages
+                    Extra Page Options
                   </h4>
+                  <p className="text-[10px] text-muted-foreground pl-2 -mt-1">
+                    Use the Page Order panel below to show, hide, and reorder pages.
+                  </p>
                   <div className="space-y-2 pl-2">
-                    <ToggleRow
-                      label="Cover Page"
-                      checked={options.showCoverPage}
-                      onChange={(v) => updateOption('showCoverPage', v)}
-                    />
+                    {/* Cover Page sub-controls (visible only when cover_page is enabled in Page Order) */}
                     {options.showCoverPage && (
-                      <div className="pl-4 pt-1 space-y-2">
-                        <Label className="text-xs text-muted-foreground mb-1 block">Cover Photo</Label>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium">Cover Page Photo</Label>
                         <Select
                           value={coverPhotoSource}
                           onValueChange={(v) => {
@@ -1361,7 +1360,6 @@ export function EstimatePreviewPanel({
                           </SelectContent>
                         </Select>
 
-                        {/* Thumbnail picker for uploaded photos */}
                         {coverPhotoSource === 'uploaded' && jobPhotos.filter(p => p.id !== 'aerial').length > 0 && (
                           <div className="flex gap-1.5 overflow-x-auto pb-1">
                             {jobPhotos.filter(p => p.id !== 'aerial').map(photo => (
@@ -1381,7 +1379,6 @@ export function EstimatePreviewPanel({
                           </div>
                         )}
 
-                        {/* Preview thumbnail */}
                         {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
                           <div className="rounded overflow-hidden border border-border">
                             <SafeImage
@@ -1393,22 +1390,11 @@ export function EstimatePreviewPanel({
                         )}
                       </div>
                     )}
-                    <ToggleRow
-                      label="Measurement Details"
-                      checked={options.showMeasurementDetails}
-                      onChange={(v) => updateOption('showMeasurementDetails', v)}
-                      disabled={!measurementSummary}
-                    />
-                    <ToggleRow
-                      label="Job Photos"
-                      checked={options.showJobPhotos}
-                      onChange={(v) => updateOption('showJobPhotos', v)}
-                      badge={jobPhotos.length > 0 ? `${jobPhotos.length}` : undefined}
-                      disabled={jobPhotos.length === 0}
-                    />
+
+                    {/* Job Photos layout sub-control */}
                     {options.showJobPhotos && jobPhotos.length > 0 && (
-                      <div className="pl-4 pt-1">
-                        <Label className="text-xs text-muted-foreground mb-1 block">Photo Layout</Label>
+                      <div>
+                        <Label className="text-xs font-medium mb-1 block">Job Photos Layout</Label>
                         <Select
                           value={options.photoLayout || 'auto'}
                           onValueChange={(v) => setOptions(prev => ({ ...prev, photoLayout: v as any }))}
@@ -1426,6 +1412,8 @@ export function EstimatePreviewPanel({
                         </Select>
                       </div>
                     )}
+
+                    {/* Warranty sub-toggles (sub-controls of the Warranty Info page-order entry) */}
                     <ToggleRow
                       label="Manufacturer Warranty"
                       checked={options.showManufacturerWarranty}
@@ -1438,6 +1426,7 @@ export function EstimatePreviewPanel({
                     />
                   </div>
                 </div>
+
 
                 {/* Attachments Manager Section */}
                 <Separator />
