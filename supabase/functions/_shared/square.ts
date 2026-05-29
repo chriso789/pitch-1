@@ -348,6 +348,9 @@ export function redactSquareAccount(a: TenantSquareAccount | null) {
     merchant_id: a.merchant_id ?? null,
     merchant_name: a.merchant_name ?? null,
     selected_location_id: a.selected_location_id ?? null,
+    selected_location_name: a.selected_location_name ?? null,
+    scopes: a.scopes ?? [],
+
     access_token_expires_at: a.access_token_expires_at ?? null,
   };
 }
