@@ -44,9 +44,12 @@ interface AuditRow {
 
 const ROTATION_RECOMMENDED_DAYS = 90;
 const ROTATION_MANDATORY_DAYS = 180;
-
 export function SRSConnectionSettings() {
   const { activeCompanyId } = useCompanySwitcher();
+  const { canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
+  const { toast } = useToast();
+  const [connection, setConnection] = useState<SRSConnection | null>(null);
+
   const { toast } = useToast();
   const [connection, setConnection] = useState<SRSConnection | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
