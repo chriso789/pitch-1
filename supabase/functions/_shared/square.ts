@@ -59,11 +59,12 @@ export async function getTenantSquareAccount(
     .select(
       "tenant_id, environment, access_token, refresh_token, access_token_expires_at, merchant_id, merchant_name, selected_location_id, status",
     )
+    .select(
+      "tenant_id, environment, access_token, refresh_token, access_token_expires_at, merchant_id, merchant_name, selected_location_id, selected_location_name, scopes, status",
+    )
     .eq("tenant_id", tenantId)
     .maybeSingle();
-  if (error) {
-    console.error("[square] getTenantSquareAccount error", error);
-    return null;
+
   }
   return (data as TenantSquareAccount | null) ?? null;
 }
