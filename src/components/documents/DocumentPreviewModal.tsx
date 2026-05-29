@@ -471,6 +471,15 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           )}
         </div>
       </DialogContent>
+      {currentDoc && (
+        <ShareDocumentDialog
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+          documentId={currentDoc.id}
+          filename={currentDoc.filename}
+        />
+      )}
     </Dialog>
   );
+
 };
