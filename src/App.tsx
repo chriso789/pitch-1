@@ -49,6 +49,8 @@ const ViewQuote = React.lazy(() => import("@/pages/ViewQuote"));
 const PublicSignatureCapture = React.lazy(() => import("@/pages/PublicSignatureCapture"));
 const PublicProposalView = React.lazy(() => import("@/pages/PublicProposalView"));
 const PublicDocumentView = React.lazy(() => import("@/pages/PublicDocumentView"));
+const ViewDocumentTracked = React.lazy(() => import("@/pages/ViewDocumentTracked"));
+
 const PublicReportViewer = React.lazy(() => import("@/pages/PublicReportViewer"));
 const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
 const PublicPortalView = React.lazy(() => import("@/pages/PublicPortalView"));
