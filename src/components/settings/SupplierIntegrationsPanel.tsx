@@ -400,6 +400,15 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <ConnectSupplierDialog
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
+        supplier={connectSupplier}
+        tenantId={tenantId}
+        onConnected={() => setReloadKey((k) => k + 1)}
+      />
     </div>
   );
 }
+
