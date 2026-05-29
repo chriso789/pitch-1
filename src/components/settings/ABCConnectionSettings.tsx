@@ -193,6 +193,7 @@ export function ABCConnectionSettings() {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [orderResult, setOrderResult] = useState<any | null>(null);
   const [trackResult, setTrackResult] = useState<any | null>(null);
+  const [priceResult, setPriceResult] = useState<any | null>(null);
 
   const [oauthDebug, setOauthDebug] = useState<any | null>(null);
   const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
@@ -396,13 +397,67 @@ export function ABCConnectionSettings() {
       toast({ title: 'Missing inputs', description: 'Ship-To, Branch, and Item Number are all required.', variant: 'destructive' });
       return;
     }
-    await callProxy('price_items', {
+    setPriceResult(null);
+    const data: any = await callProxy('price_items', {
       shipToNumber: shipToNumber.trim(),
       branchNumber: branchNumber.trim(),
       purpose: 'estimating',
       lines: [{ itemNumber: itemNumber.trim(), quantity: Number(priceQty) || 1, unitOfMeasure: 'EA' }],
     });
+    if (!data?.success) {
+      toast({
+        title: 'Pricing failed',
+        description: data?.error || data?.error_code || `HTTP ${data?.status ?? '???'}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    // Normalize the line response across possible ABC payload shapes.
+    const respBody: any = data.body;
+    const lines: any[] =
+      respBody?.lines ||
+      respBody?.priceLines ||
+      respBody?.results ||
+      (Array.isArray(respBody) ? respBody : []) ||
+      [];
+    const line = lines[0] || {};
+    const unitPrice = Number(
+      line.unitPrice ?? line.netPrice ?? line.price ?? line.netUnitPrice ?? line.unit_price ?? NaN,
+    );
+    const extPrice = Number(
+      line.extendedPrice ?? line.extPrice ?? line.totalPrice ?? line.netExtendedPrice ?? NaN,
+    );
+    const qty = Number(line.quantity ?? priceQty) || 1;
+    const uom = line.uom || line.unitOfMeasure || 'EA';
+    const currency = line.currency || respBody?.currency || 'USD';
+    const parsed = {
+      itemNumber: line.itemNumber || itemNumber.trim(),
+      unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+      extendedPrice: Number.isFinite(extPrice)
+        ? extPrice
+        : Number.isFinite(unitPrice)
+          ? unitPrice * qty
+          : null,
+      quantity: qty,
+      uom,
+      currency,
+      raw: line,
+    };
+    setPriceResult(parsed);
+    if (parsed.unitPrice != null) {
+      toast({
+        title: `Price: $${parsed.unitPrice.toFixed(2)} / ${uom}`,
+        description: `${parsed.itemNumber} • Qty ${qty} • Ext $${(parsed.extendedPrice ?? 0).toFixed(2)}`,
+      });
+    } else {
+      toast({
+        title: 'Price returned but unreadable',
+        description: 'ABC responded 200 but no unitPrice field was found. See raw JSON below.',
+        variant: 'destructive',
+      });
+    }
   };
+
 
   const runTrackOrder = async (orderOrConfirm?: string) => {
     const raw = (orderOrConfirm ?? orderStatusNumber).trim();
@@ -978,7 +1033,34 @@ export function ABCConnectionSettings() {
               Get Price
             </Button>
           </div>
+          {priceResult && (
+            <div className="rounded border bg-muted/30 p-3 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">Item</div>
+                  <div className="font-mono">{priceResult.itemNumber}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Unit Price</div>
+                  <div className="text-lg font-semibold">
+                    {priceResult.unitPrice != null
+                      ? `$${priceResult.unitPrice.toFixed(2)} / ${priceResult.uom}`
+                      : '—'}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Ext. ({priceResult.quantity})</div>
+                  <div className="text-lg font-semibold">
+                    {priceResult.extendedPrice != null
+                      ? `$${priceResult.extendedPrice.toFixed(2)}`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
 
         {/* Submit Test Order */}
         <div className="rounded-md border p-3 space-y-3">
