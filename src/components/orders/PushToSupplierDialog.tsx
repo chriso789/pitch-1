@@ -871,6 +871,21 @@ export function PushToSupplierDialog({
                   <Input id="addr" value={shipAddress} onChange={e => setShipAddress(e.target.value)} />
                 </div>
 
+                {selected === 'abc' && (
+                  <div>
+                    <Label htmlFor="abc-shipto">
+                      ABC Ship-To account # {allowSandboxDefaults ? <span className="text-muted-foreground text-xs">(sandbox default 2010466-2)</span> : null}
+                    </Label>
+                    <Input
+                      id="abc-shipto"
+                      value={abcShipToNumber}
+                      onChange={e => setAbcShipToNumber(e.target.value)}
+                      placeholder="e.g. 2010466-2"
+                    />
+                  </div>
+                )}
+
+
                 <div>
                   <Label htmlFor="notes">Notes</Label>
                   <Textarea id="notes" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
