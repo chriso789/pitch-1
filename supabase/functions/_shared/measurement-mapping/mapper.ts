@@ -189,6 +189,26 @@ export function mapMeasurementsToTemplate(input: MapperInputs): MappingResult {
         reasonCode = "low_confidence";
       }
 
+      // Tag global-scope items running against aggregate-only imports so callers
+      // can show "used global total, no class evidence" in the UI/audit.
+      if (
+        status === "assigned" &&
+        itemRule.measurement_scope === "global" &&
+        ctx.meta.aggregate_only
+      ) {
+        status = "assigned_global_fallback";
+        reasonCode = "global_fallback";
+      }
+
+      // Surface manual-split provenance when the segments feeding this item are
+      // synthetic-reviewed (came from POST /manual-split).
+      const fromManualSplit =
+        matchedSegments.length > 0 &&
+        matchedSegments.every((s) => s.is_synthetic_split && s.reviewed);
+      if (status === "assigned" && fromManualSplit) {
+        reasonCode = "manual_split";
+      }
+
       const a: Assignment = {
         template_group_id: group.id,
         template_item_id: item.id,
@@ -206,6 +226,8 @@ export function mapMeasurementsToTemplate(input: MapperInputs): MappingResult {
           feature_types: itemRule.feature_types,
           section_rule_applied: sectionRule?.id ?? null,
           item_rule_applied: itemRule.id.startsWith("default:") ? "default_global" : itemRule.id,
+          manual_split: fromManualSplit,
+          aggregate_only: ctx.meta.aggregate_only,
         },
       };
 
