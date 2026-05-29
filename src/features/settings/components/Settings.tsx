@@ -76,6 +76,8 @@ import { ProductionChecklistSettings } from "@/components/settings/ProductionChe
 import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
 import SquareSettings from "@/components/settings/SquareSettings";
+import SquareConnectionCard from "@/components/settings/SquareConnectionCard";
+
 
 import { MyMoneyContent } from "@/pages/MyMoney";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
