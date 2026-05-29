@@ -46,7 +46,7 @@ export interface MappingFixture {
 
 const TENANT = "00000000-0000-0000-0000-000000000001";
 
-function imp(key: string, status = "normalized"): MeasurementImport {
+function imp(key: string, status = "normalized"): MeasurementImportFixtureRow {
   return {
     id: `imp-${key}`,
     tenant_id: TENANT,
