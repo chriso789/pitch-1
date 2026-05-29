@@ -231,13 +231,14 @@ export function mapMeasurementsToTemplate(input: MapperInputs): MappingResult {
         },
       };
 
-      if (status === "assigned" || status === "assigned_global_fallback") {
+      const finalStatus: AssignmentStatus = status;
+      if (finalStatus === "assigned" || finalStatus === "assigned_global_fallback") {
         assignedCount += 1;
         assignments.push(a);
-      } else if (status === "conflict") {
+      } else if (finalStatus === "conflict") {
         conflictCount += 1;
         conflicts.push(a);
-      } else if (status === "skipped") {
+      } else if (finalStatus === "skipped") {
         skippedCount += 1;
       } else {
         unresolvedCount += 1;
