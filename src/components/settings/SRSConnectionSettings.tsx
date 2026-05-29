@@ -50,8 +50,6 @@ export function SRSConnectionSettings() {
   const { toast } = useToast();
   const [connection, setConnection] = useState<SRSConnection | null>(null);
 
-  const { toast } = useToast();
-  const [connection, setConnection] = useState<SRSConnection | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
