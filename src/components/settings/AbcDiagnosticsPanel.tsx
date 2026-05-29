@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 interface Props {
   projectId?: string;
