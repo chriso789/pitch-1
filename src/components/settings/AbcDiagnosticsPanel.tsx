@@ -326,14 +326,14 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
   };
 
   return (
-    <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Bug className="h-4 w-4" /> ABC Submit Diagnostics
+          <Bug className="h-4 w-4" /> {showAdvanced ? 'ABC Submit Diagnostics' : 'ABC Order Status'}
         </CardTitle>
         <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
+      </CardHeader>
       </CardHeader>
       <CardContent>
         {loading ? (
