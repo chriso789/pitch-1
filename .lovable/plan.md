@@ -1,172 +1,85 @@
 
-# ABC Supply: Customer-Grade Connect, Catalog Search & Live Pricing
+# ABC v2 — Step 2 (Recommended: Option C, scoped)
 
-Aligns Pitch's ABC integration with ABC's published Third-Party Aggregator (TPA) model: **server token for platform data, user token (OAuth + PKCE) for everything customer-specific**. Removes manual pre-auth branch/account entry, replaces the generic supplier order modal with ABC-native concepts (Job Account / Ship-To / Branch / Delivery), and adds catalog search, color-aware SKU mapping, and contextual live pricing.
+Recommendation: **C, but with a hard scope line** — stand up the entire `abc-api` route surface in one pass so the frontend has stable contracts to build against, but only OAuth + accounts are *real* in this chunk. Catalog/availability/price/orders return well-typed stubs backed by the new tables (empty arrays, `price_pending: true`, etc.) so UI work in later steps doesn't block on backend, and we never accidentally ship a fake price or fake order to a tenant.
 
-Non-regression: keeps SRS workflow intact; preserves existing `pitch-crm-architecture-guard` rules (routes go through `abc-api` / `abc-worker` / `abc-webhook`, not new standalone functions); honors tenant isolation per `tenant-isolation-auditor` (every credential, ship-to, branch, mapping, pricing call scoped by `tenant_id` + `user_id`).
+Why not A: A leaves the frontend guessing at response shapes for 7 more routes, which causes churn when we wire the order modal and materials table later.
+Why not B: order-modal refactor depends on `/accounts` + `/catalog/family` shapes existing; doing it first means rework.
 
----
+## Scope of this chunk
 
-## 1. Two-layer integration model
+### 1. `abc-api` edge function (single routed Hono function, per EDGE_FUNCTION_RULES)
 
-**Platform layer (server token, shared across tenants)**
-- Catalog ingest + delta refresh (`Get All Items`, `sinceLastModifiedDateTime`).
-- Branch/location reference data.
-- Webhook subscriptions.
-- Filter inactive items before exposing to tenants.
+Routes mounted under `abc-api`, all `requireAuth` + `requireTenant` except `/oauth/callback` (public, validates `state`):
 
-**Tenant layer (user token, per connected user)**
-- OAuth Auth Code + PKCE via ABC Okta.
-- `offline_access` for refresh token.
-- Ship-to / job account / branch discovery.
-- Pricing, availability, order submission, order history, invoice history.
+| Route | Status this chunk | Notes |
+|---|---|---|
+| `POST /oauth/start` | **real** | Generates PKCE verifier+challenge, stores in `abc_oauth_state` (new tiny table, tenant+user scoped, TTL 10 min), returns ABC Okta authorize URL with `offline_access` scope |
+| `GET  /oauth/callback` | **real** | Public route. Validates `state`, exchanges code → tokens, encrypts refresh_token, upserts `abc_user_connections`, then calls ABC `GET /accounts` to discover ship-tos and `GET /accounts/{id}/branches` to populate `abc_ship_to_accounts` + `abc_account_branches`. Marks `is_default` / `is_home_branch`. Redirects back to `/settings/integrations?abc=connected` |
+| `POST /oauth/disconnect` | **real** | Revokes ABC token, deletes connection + ship-tos + branches for this user |
+| `GET  /accounts` | **real** | Returns ship-tos + branches for current user from DB |
+| `GET  /catalog/search` | **stub** | Returns `{ items: [], total: 0 }` with correct typed shape; full-text query parsed but no rows yet (catalog sync is Step 3) |
+| `GET  /catalog/family/:itemNumber` | **stub** | Returns `{ family: null, members: [] }` |
+| `POST /availability` | **stub** | Returns `{ items: [{ itemNumber, available: null, pending: true }] }` |
+| `POST /price` | **stub** | Returns `{ items: [{ itemNumber, uom, unitPrice: null, price_pending: true, reason: "catalog_not_synced" }] }` — never `$0.00`, never silently zero |
+| `POST /orders/submit` | **stub** | Returns HTTP 501 `{ ok:false, code:"abc_orders_not_enabled" }` until Step 6 — order modal must surface this as "Coming soon", never silently succeed |
+| `GET  /orders/:id` | **stub** | Same 501 |
 
-Strict rule: **no customer-specific call ever uses the server token.**
+All responses use the standard envelope `{ ok, data?, error?, code?, requestId }`.
 
----
+### 2. New tiny table: `abc_oauth_state`
 
-## 2. Customer-facing connect flow (replaces current form)
+```text
+abc_oauth_state(
+  state TEXT PK,
+  tenant_id UUID, user_id UUID,
+  code_verifier TEXT, redirect_uri TEXT,
+  created_at, expires_at  -- 10 min TTL
+)
+```
+RLS: user can only see their own rows; service role full. Cleanup via `expires_at < now()` in callback.
 
-Today's UI asks for branch + ship-to + environment before auth. That's wrong for normal tenants.
+### 3. Secrets needed (will request via secrets tool before deploying)
 
-New flow:
-1. **Card**: "Connect ABC Supply" → single primary button "Sign in with ABC Supply".
-2. Redirect to ABC Okta `/authorize` (PKCE, `offline_access` scope). Environment (sandbox vs prod) is resolved server-side from tenant/developer-mode context — never shown to normal users.
-3. Callback → `abc-api /oauth/callback` exchanges code for tokens, stores per-user encrypted credential row scoped by `tenant_id` + `user_id`.
-4. Immediately call `Search Accounts` → cache discovered `shipTos[]` with `branches[]` and `homeBranch`.
-5. Post-connect confirmation:
-   - Single ship-to + single home branch → auto-assign, show summary only.
-   - Multiple → compact picker for default Job Account + primary Branch.
-6. Connected state shows: account label, default branch, "Disconnect", "Last order", "Order history". Nothing else.
+- `ABC_CLIENT_ID` (per environment)
+- `ABC_CLIENT_SECRET`
+- `ABC_OKTA_BASE_URL` (sandbox vs prod)
+- `ABC_API_BASE_URL`
+- `ABC_TOKEN_ENCRYPTION_KEY` (for refresh_token at rest)
 
-Developer-only surface (gated by `useSupplierDeveloperMode().showAdvanced`) keeps env selector, raw OAuth URLs, webhook tools, WAF/diagnostics — unchanged from current behavior, just hidden from normal tenants.
+Server-token-only secrets (`ABC_PARTNER_TOKEN`) stay as-is — used later by `abc-worker` for catalog sync.
 
----
+### 4. Frontend changes (narrow, UI-only this chunk)
 
-## 3. Data model changes
+- **Replace `AbcConnectCard`** (the legacy "branch code + account number" form) with:
+  - If `useSupplierDeveloperMode().showAdvanced` → existing dev panel stays (sandbox login, env selector, raw audit), gated behind a "Developer" tab.
+  - Normal tenant view → single big **"Sign in with ABC Supply"** button → calls `/oauth/start`, redirects to ABC Okta.
+  - After callback, card shows: connection status, signed-in user email, list of ship-to accounts (default badge), home branch per ship-to, and a "Disconnect" button.
+- Add `useAbcConnection()` hook backed by `abc_user_connections` + `abc_ship_to_accounts` + `abc_account_branches`, tenant-scoped via `useEffectiveTenantId()`.
+- No changes to order modal or materials table yet — those land in Steps 5–6 once catalog/pricing are real.
 
-New / updated tables (all tenant-scoped, RLS + GRANTs per project rules):
+### 5. Guardrails honored
 
-- `abc_user_connections` — per `(tenant_id, user_id)` OAuth tokens, refresh token, expiry, scopes.
-- `abc_ship_to_accounts` — discovered ship-tos per connection: `ship_to_number`, address, contacts, `is_default`.
-- `abc_account_branches` — branches per ship-to: `branch_number`, name, `is_home_branch`.
-- `abc_catalog_items` — platform-wide indexed catalog (item number, description, family_id, family_name, color name/code, UOMs, dimensions, is_active, last_modified). Full-text index on description + item_number.
-- `abc_item_family_members` — sibling SKUs per family for color/variant lookup.
-- `abc_material_sku_mappings` — replaces single-SKU-on-material. Maps `(tenant_id, material_id, color)` → ABC `item_number`. This is the color-aware mapping the current schema lacks.
-- `abc_price_cache` — short-TTL cache keyed by `(ship_to_number, branch_number, item_number, uom, purpose)` to dedupe pricing calls within a session.
+- Hard rules: no fake geometry, no fake measurements — extended here to **no fake pricing and no fake orders**. Stubs are explicitly typed as `pending` / 501 so UI cannot render a misleading $0.00 or "order placed".
+- Edge function rules: one routed `abc-api`, not one function per route. `abc-oauth-callback` is the one allowed standalone (public redirect URL) and is listed in `EDGE_FUNCTION_RULES.md` exceptions — but here we keep callback as a route on `abc-api` with `verify_jwt = false` for just that path, which is simpler and already permitted (state param is the auth). If ABC's redirect URI registration requires a fixed standalone path, we'll split `abc-oauth-callback` out as a documented exception — flagged for confirmation below.
+- Multi-tenancy: every query uses `useEffectiveTenantId()` + explicit `.eq('tenant_id', ...)`.
+- Architecture guard: no new standalone functions beyond the (possibly) one OAuth callback.
 
-Existing `estimate_line_items.srs_item_code` pattern is generalized: line items get an optional `abc_item_number` + `abc_color` + `abc_uom` so the orderable identity is the specific colored SKU, not the family.
+### 6. Out of scope this chunk (queued for next chunks)
 
----
+- Step 3: `abc-worker` full-sync + delta-sync (populates `abc_catalog_items`, `abc_item_family_members`)
+- Step 4: live pricing hook + price cache writes
+- Step 5: materials table color-aware mapping UI (`abc_material_sku_mappings`)
+- Step 6: order modal refactor (ship-to + branch + delivery override) + real `/orders/submit`
+- Step 7: `abc-webhook` order-status → unified inbox
+- Step 8: developer-mode gating rollout to SRS + QXO
+- Step 9: per-tenant `abc_v2_enabled` flag + legacy form removal
 
-## 4. Edge function routes (no new standalone functions)
+## One question before I build
 
-All added to existing grouped functions per architecture guard:
+**OAuth callback shape** — do you want me to:
 
-**`abc-api`** (authenticated tenant routes, `requireAuth` + `requireTenant`)
-- `POST /oauth/start` — returns Okta authorize URL + PKCE challenge.
-- `GET  /oauth/callback` — token exchange, ship-to discovery, persist.
-- `POST /oauth/disconnect`
-- `GET  /accounts` — list cached ship-tos/branches for current user.
-- `POST /accounts/default` — set default ship-to + branch.
-- `GET  /catalog/search?q=&branch=&color=` — proxies `Search Items`, merges with `abc_catalog_items` index.
-- `GET  /catalog/family/:itemNumber` — returns family siblings for color picker.
-- `POST /availability` — body: `{ branch_number, items: [{item_number, qty, length?}] }` → `Search Item Availability`.
-- `POST /price` — body: `{ ship_to_number, branch_number, purpose, lines: [...] }` → `Price Items`. Always passes explicit `uom`. Handles `$0.00 = price pending` as warning, not error.
-- `POST /orders/submit` — Place Order with `branchNumber` + `shipTo.number` + optional `shipTo.address` override.
-- `GET  /orders` / `GET /orders/:id`
-- `GET  /invoices`
+- **(i)** Keep callback as a route on `abc-api` (`GET /oauth/callback` with `verify_jwt = false` for that path only) — simpler, one function, but ABC's registered redirect URI will be `https://<project>.functions.supabase.co/abc-api/oauth/callback`.
+- **(ii)** Split it out as a dedicated `abc-oauth-callback` standalone function (already listed as an approved exception in `EDGE_FUNCTION_RULES.md`), so the redirect URI is the cleaner `https://<project>.functions.supabase.co/abc-oauth-callback`.
 
-**`abc-worker`** (service-role / `INTERNAL_WORKER_SECRET`)
-- `POST /catalog/full-sync` — initial `Get All Items`.
-- `POST /catalog/delta-sync` — incremental using `sinceLastModifiedDateTime`; filters inactive.
-- Token refresh cron for `abc_user_connections` nearing expiry.
-
-**`abc-webhook`** (public, signature-verified, tenant resolved from payload)
-- Order status updates → unified inbox / project timeline.
-
-All routes declare auth mode explicitly per tenant-security-enforcer. Server resolves `tenant_id` from JWT; client-supplied `tenant_id` is ignored.
-
----
-
-## 5. Catalog search + color-aware SKU mapping UX
-
-Material line in estimate / order:
-- Inline search box → calls `/catalog/search`, debounced.
-- Result row: `Item Description · Color chip · ABC SKU · UOM · Branch availability badge`.
-- If the Pitch material line has a color, pre-filter family members by that color name/code (text match, not images — image URLs unreliable per ABC docs).
-- On select, silently call `/availability` for the chosen branch; if unavailable, show alternate siblings.
-- Persist mapping in `abc_material_sku_mappings` so the next estimate auto-suggests the same SKU.
-
-Materials table columns (when ABC selected): `Item · Color · ABC SKU · UOM · Qty · Live Price · Availability`. Replaces today's plain SKU text cell.
-
----
-
-## 6. Live pricing
-
-- Triggered after ship-to + branch are set on the order context.
-- `purpose=estimating` in estimate views, `purpose=ordering` in Push-to-Supplier modal.
-- UOM sent explicitly per line — never let ABC default to stocking UOM (SQ vs BD shingle trap).
-- `$0.00` response → render line with amber "Price pending at branch" badge, still submittable.
-- Refresh button per line + bulk refresh for the order; results cached via `abc_price_cache` for the session.
-
-`useLivePricing` hook gets a new `provider: 'abc'` branch that calls `abc-api/price` instead of the generic `material-pricing-api`.
-
----
-
-## 7. Order modal refactor (`PushToSupplierDialog` when vendor=ABC)
-
-Today: generic "branch code" + "ship-to address" text fields.
-
-New (ABC variant):
-- **Job Account (Ship-To)** — dropdown from discovered ship-tos, defaulted.
-- **Branch** — dropdown from branches associated with that ship-to, home branch defaulted.
-- **Delivery address** — separate section, prefilled from ship-to but editable; sent as `shipTo.address` override only when changed.
-- Line table uses the new ABC columns above.
-- Submit hits `abc-api /orders/submit`.
-
-If the tenant has exactly one ship-to and one branch, both selectors collapse to a read-only summary line.
-
----
-
-## 8. Normal-tenant vs developer UX separation
-
-- `ProjectMaterialsTab` already conditionally renders `AbcDiagnosticsPanel`. Keep it, but ensure it's gated by `useSupplierDeveloperMode().canSeeRawDiagnostics`.
-- Remove env labels, OAuth URLs, scopes, webhook register/list, WAF notes from the normal supplier card. Move them under a "Developer" subsection only visible when `showAdvanced` is true.
-- Same separation principle applied to SRS and QXO cards (UI-only pass for consistency — no backend changes for SRS/QXO in this plan).
-
----
-
-## 9. Out of scope for this plan
-
-- SRS/QXO backend rewrites (only UI consistency pass).
-- Image-based color picker (text-first per ABC doc reliability).
-- Invoice reconciliation UI beyond list view.
-- Multi-user ABC token sharing within a tenant (each user authenticates their own).
-
----
-
-## 10. Rollout order
-
-1. DB migrations (tables + RLS + GRANTs + indexes).
-2. `abc-api` OAuth + accounts routes; replace connect UI.
-3. `abc-worker` catalog full + delta sync; populate index.
-4. Catalog search route + UI search/match in estimate line items.
-5. Availability + family/color picker.
-6. Live pricing route + hook + UI badges.
-7. Order modal refactor (ABC variant) + `/orders/submit`.
-8. Order history + status webhook wiring.
-9. Hide developer surface from normal tenants; verify with `useSupplierDeveloperMode`.
-
-Each step ships behind a per-tenant feature flag (`abc_v2_enabled`) so the legacy form stays available until the new flow is verified end-to-end against ABC sandbox.
-
----
-
-## Technical notes
-
-- PKCE: `code_verifier` stored server-side in a short-TTL row keyed by `state`; never round-tripped to the browser.
-- Token storage: AES-encrypted at rest, decrypted only inside `abc-api`/`abc-worker`. Never returned to frontend.
-- Pricing cache TTL: 15 min for `estimating`, 60 s for `ordering`.
-- `abc_catalog_items` search: Postgres `tsvector` on `item_description || ' ' || item_number || ' ' || color_name`, GIN index.
-- Audit log entries for: connect, disconnect, default ship-to/branch change, order submit, token refresh failure.
-- All ABC API errors mapped to safe user-facing messages; raw responses only surfaced in developer diagnostics panel.
+If ABC's developer portal has already had a redirect URI registered for the legacy integration, tell me which one and I'll match it. Otherwise I'll default to **(ii)** because it matches the doc and is what ABC's TPA guide expects.
