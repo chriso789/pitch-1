@@ -1289,13 +1289,17 @@ export function ABCConnectionSettings() {
   return (
     <div className="space-y-6">
       {HeaderCard}
-      {ConnectionSetupCard}
+      {/* Connection Setup card asks for Pitch's OAuth client_id/secret with ABC.
+          These are platform credentials, NOT customer credentials — they must
+          stay behind the developer/admin gate. Normal tenants connect via
+          OAuth using Pitch's already-registered platform credentials. */}
+      {canSeeRawDiagnostics && ConnectionSetupCard}
       {ReadinessStrip}
       {DemoWorkflowCard}
-      {TestConsoleCard}
-      {LatestResultCard}
-      {DiagnosticsCard}
-      {AdvancedSection}
+      {canSeeRawDiagnostics && TestConsoleCard}
+      {canSeeRawDiagnostics && LatestResultCard}
+      {canSeeRawDiagnostics && DiagnosticsCard}
+      {canSeeRawDiagnostics && AdvancedSection}
     </div>
   );
 }
