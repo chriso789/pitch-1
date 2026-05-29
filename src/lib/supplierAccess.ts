@@ -37,11 +37,20 @@ export function useSupplierDeveloperMode() {
   return {
     /** true for master / platform_admin / users with is_developer flag */
     isDeveloper,
+    /** legacy alias kept for existing callers */
+    isDeveloperMode: isDeveloper,
     /** true when active tenant is the O'Brien sandbox/demo company */
     isObrien,
     /** any advanced surface — developer OR O'Brien (sandbox demo continuity) */
     showAdvanced,
     /** sandbox UI defaults (Sandy ship-to, branch, etc.) allowed for this user */
     allowSandboxDefaults: showAdvanced,
+    /** raw JSON inspectors, audit logs, WAF/callback diagnostics */
+    canSeeRawDiagnostics: showAdvanced,
+    /** webhook register/list tooling — admin only, never for tenants */
+    canManageWebhooks: isDeveloper,
+    /** sandbox/production environment selector visibility */
+    canChangeEnvironment: isDeveloper,
   };
 }
+
