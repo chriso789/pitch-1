@@ -542,7 +542,7 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                             orderNumber: Not returned by ABC {o.source || 'sandbox'} response
                           </div>
                         ) : null}
-                        {o.request_id && (
+                        {showAdvanced && o.request_id && (
                           <div className="flex items-center gap-1">
                             requestId: <code className="text-[11px]">{o.request_id}</code>
                             <button onClick={() => copy(o.request_id!, 'requestId')}>
@@ -558,7 +558,7 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                             </button>
                           </div>
                         )}
-                        {transactionID && (
+                        {showAdvanced && transactionID && (
                           <div className="flex items-center gap-1">
                             transactionID: <code className="text-[11px]">{transactionID}</code>
                             <button onClick={() => copy(String(transactionID), 'transactionID')}>
