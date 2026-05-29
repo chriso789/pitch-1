@@ -23,6 +23,8 @@ export interface TenantSquareAccount {
   merchant_id: string;
   merchant_name: string | null;
   selected_location_id: string | null;
+  selected_location_name: string | null;
+  scopes: string[] | null;
   status: string;
 }
 
