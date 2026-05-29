@@ -180,7 +180,13 @@ export function PushToSupplierDialog({
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
   const [branchCode, setBranchCode] = useState('');
+  const [abcShipToNumber, setAbcShipToNumber] = useState('');
   const [userBranchPrefs, setUserBranchPrefs] = useState<Record<string, string>>({});
+  // O'Brien Contracting tenant — pre-fills ABC sandbox demo defaults
+  // (branch 1209, ship-to 2010466-2) so the demo flow doesn't trip on
+  // empty required fields. Production tenants get no auto-fill.
+  const OBRIEN_TENANT_ID = '14de934e-7964-4afd-940a-620d2ace125d';
+  const allowSandboxDefaults = tenantId === OBRIEN_TENANT_ID;
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('roof_load');
   const [deliveryDate, setDeliveryDate] = useState<string>(() => {
     const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
@@ -238,11 +244,17 @@ export function PushToSupplierDialog({
           .select('default_branch_code, environment, connection_status')
           .eq('tenant_id', tenantId as any)
           .maybeSingle(),
+        // ABC: a tenant can have BOTH a sandbox/staging row AND a production row.
+        // maybeSingle() would error/return null when multiple rows exist, which
+        // is why "ABC Supply not connected" was firing for O'Brien even though
+        // their sandbox row was connection_status='connected'. Mirror the
+        // source-of-truth used by ABCConnectionSettings: fetch all rows, then
+        // prefer a connected one (sandbox/staging counts as connected).
         supabase
           .from('abc_connections')
-          .select('default_branch_code, environment, connection_status')
+          .select('default_branch_code, environment, connection_status, account_number, updated_at')
           .eq('tenant_id', tenantId as any)
-          .maybeSingle(),
+          .order('updated_at', { ascending: false }),
       ]);
 
       if (srsRes.data && (srsRes.data.connection_status === 'connected' || srsRes.data.valid_indicator)) {
@@ -282,30 +294,42 @@ export function PushToSupplierDialog({
         });
       }
 
-      if (abcRes.data && abcRes.data.connection_status === 'connected') {
+      const abcRows = (abcRes.data || []) as Array<{
+        default_branch_code: string | null;
+        environment: string | null;
+        connection_status: string | null;
+        account_number: string | null;
+      }>;
+      // Prefer a connected row (sandbox/staging counts), then any row at all.
+      const abcConnected = abcRows.find(r => r.connection_status === 'connected');
+      const abcAny = abcConnected || abcRows[0] || null;
+      if (abcConnected) {
+        const envLabel = abcConnected.environment === 'production' ? '' : ' (Sandbox)';
         found.push({
           key: 'abc',
-          label: `ABC Supply${abcRes.data.environment === 'production' ? '' : ' (Sandbox)'}`,
-          defaultBranch: prefs.abc || abcRes.data.default_branch_code,
-          environment: abcRes.data.environment,
+          label: `ABC Supply${envLabel}`,
+          defaultBranch: prefs.abc || abcConnected.default_branch_code,
+          environment: abcConnected.environment,
           status: 'connected',
         });
       } else {
-        const status = abcRes.data?.connection_status;
-        const isPending = status === 'pending' || (abcRes.data && !abcRes.data.connection_status);
+        const status = abcAny?.connection_status;
+        const isPending = status === 'pending' || (abcAny && !abcAny.connection_status);
+        const envHint = abcAny?.environment === 'production' ? 'production' : 'sandbox';
         found.push({
           key: 'abc',
           label: 'ABC Supply',
           defaultBranch: null,
-          environment: abcRes.data?.environment ?? null,
-          status: abcRes.data ? 'error' : 'not_configured',
-          statusNote: !abcRes.data
-            ? 'Connect in Settings → Integrations'
+          environment: abcAny?.environment ?? null,
+          status: abcAny ? 'error' : 'not_configured',
+          statusNote: !abcAny
+            ? `ABC ${envHint} connection not found for this company — connect in Settings → Integrations → ABC Supply`
             : isPending
-            ? 'Not authorized yet — complete OAuth in Settings → Integrations → ABC Supply'
-            : `Connection ${status || 'error'} — re-authenticate in Settings → Integrations`,
+            ? `ABC ${envHint} connection is pending — complete OAuth in Settings → Integrations → ABC Supply`
+            : `ABC ${envHint} connection ${status || 'error'} — re-authenticate in Settings → Integrations`,
         });
       }
+
 
       if (cancelled) return;
       setUserBranchPrefs(prefs);
@@ -317,11 +341,29 @@ export function PushToSupplierDialog({
       } else if (connected.length === 0) {
         setSelected(null);
       }
+
+
       setLoadingSuppliers(false);
     })();
 
     return () => { cancelled = true; };
   }, [open, tenantId]);
+
+  // ABC-specific defaults: when ABC is the selected supplier and we're in
+  // sandbox/staging on the O'Brien demo tenant, pre-fill the branch number
+  // and ship-to account so the demo flow is one-click.
+  useEffect(() => {
+    if (selected !== 'abc') return;
+    const abcOpt = suppliers.find(s => s.key === 'abc');
+    if (!abcOpt || abcOpt.status !== 'connected') return;
+    const isSandbox = abcOpt.environment !== 'production';
+    if (allowSandboxDefaults && isSandbox) {
+      if (!branchCode.trim()) setBranchCode('1209');
+      if (!abcShipToNumber.trim()) setAbcShipToNumber('2010466-2');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, suppliers, allowSandboxDefaults]);
+
 
   const totalCost = useMemo(
     () => editableItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_cost || 0), 0),
@@ -671,6 +713,8 @@ export function PushToSupplierDialog({
             job_number: jobNumber,
             customer_name: customerName,
             branch_code: branchCode.trim() || undefined,
+            branch_number: branchCode.trim() || undefined,
+            ship_to_number: abcShipToNumber.trim() || undefined,
             delivery_method: deliveryMethod,
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
@@ -784,17 +828,29 @@ export function PushToSupplierDialog({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <Label htmlFor="branch">
-                      Branch code <span className="text-destructive">*</span>
+                      {selected === 'abc' ? 'ABC Branch Number' : 'Branch code'}{' '}
+                      <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="branch"
                       value={branchCode}
-                      onChange={e => setBranchCode(e.target.value.toUpperCase())}
-                      placeholder="e.g. SROCA"
+                      onChange={e =>
+                        setBranchCode(
+                          selected === 'abc' ? e.target.value : e.target.value.toUpperCase()
+                        )
+                      }
+                      placeholder={
+                        selected === 'abc'
+                          ? allowSandboxDefaults
+                            ? '1209'
+                            : 'e.g. 1209'
+                          : 'e.g. SROCA'
+                      }
                       aria-invalid={selected === 'srs' && !branchCode.trim()}
                       className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
                     />
                   </div>
+
                   <div>
                     <Label htmlFor="dmethod">Delivery method</Label>
                     <Select value={deliveryMethod} onValueChange={(v: any) => setDeliveryMethod(v)}>
@@ -816,6 +872,21 @@ export function PushToSupplierDialog({
                   <Label htmlFor="addr">Ship-to address</Label>
                   <Input id="addr" value={shipAddress} onChange={e => setShipAddress(e.target.value)} />
                 </div>
+
+                {selected === 'abc' && (
+                  <div>
+                    <Label htmlFor="abc-shipto">
+                      ABC Ship-To account # {allowSandboxDefaults ? <span className="text-muted-foreground text-xs">(sandbox default 2010466-2)</span> : null}
+                    </Label>
+                    <Input
+                      id="abc-shipto"
+                      value={abcShipToNumber}
+                      onChange={e => setAbcShipToNumber(e.target.value)}
+                      placeholder="e.g. 2010466-2"
+                    />
+                  </div>
+                )}
+
 
                 <div>
                   <Label htmlFor="notes">Notes</Label>
