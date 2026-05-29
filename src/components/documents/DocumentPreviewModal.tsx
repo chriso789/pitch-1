@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink, Printer } from 'lucide-react';
+import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink, Printer, Share2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
@@ -35,6 +35,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   // PDF.js state — render ALL pages and let the user scroll
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
@@ -235,6 +236,19 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     setTimeout(tryPrint, 1500);
   };
 
+  const handleShare = async () => {
+    const url = await getDocUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: open in new tab if clipboard fails
+      window.open(url, '_blank');
+    }
+  };
+
   const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
     if (!currentDoc) return 'unsupported';
     
@@ -319,6 +333,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   Download
                 </Button>
               )}
+              {currentDoc && (
+                <Button size="sm" variant="outline" onClick={handleShare}>
+                  {copied ? (
+                    <Check className="h-4 w-4 mr-2 text-green-600" />
+                  ) : (
+                    <Share2 className="h-4 w-4 mr-2" />
+                  )}
+                  {copied ? 'Copied!' : 'Share'}
+                </Button>
+              )}
             </div>
           </div>
         </DialogHeader>
@@ -389,6 +413,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   <Button size="sm" variant="ghost" onClick={() => onDownload(currentDoc)}>
                     <Download className="h-4 w-4 mr-2" />
                     Download
+                  </Button>
+                )}
+                {currentDoc && (
+                  <Button size="sm" variant="ghost" onClick={handleShare}>
+                    {copied ? (
+                      <Check className="h-4 w-4 mr-2 text-green-600" />
+                    ) : (
+                      <Share2 className="h-4 w-4 mr-2" />
+                    )}
+                    {copied ? 'Copied!' : 'Share'}
                   </Button>
                 )}
               </div>
