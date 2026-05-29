@@ -397,13 +397,67 @@ export function ABCConnectionSettings() {
       toast({ title: 'Missing inputs', description: 'Ship-To, Branch, and Item Number are all required.', variant: 'destructive' });
       return;
     }
-    await callProxy('price_items', {
+    setPriceResult(null);
+    const data: any = await callProxy('price_items', {
       shipToNumber: shipToNumber.trim(),
       branchNumber: branchNumber.trim(),
       purpose: 'estimating',
       lines: [{ itemNumber: itemNumber.trim(), quantity: Number(priceQty) || 1, unitOfMeasure: 'EA' }],
     });
+    if (!data?.success) {
+      toast({
+        title: 'Pricing failed',
+        description: data?.error || data?.error_code || `HTTP ${data?.status ?? '???'}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    // Normalize the line response across possible ABC payload shapes.
+    const respBody: any = data.body;
+    const lines: any[] =
+      respBody?.lines ||
+      respBody?.priceLines ||
+      respBody?.results ||
+      (Array.isArray(respBody) ? respBody : []) ||
+      [];
+    const line = lines[0] || {};
+    const unitPrice = Number(
+      line.unitPrice ?? line.netPrice ?? line.price ?? line.netUnitPrice ?? line.unit_price ?? NaN,
+    );
+    const extPrice = Number(
+      line.extendedPrice ?? line.extPrice ?? line.totalPrice ?? line.netExtendedPrice ?? NaN,
+    );
+    const qty = Number(line.quantity ?? priceQty) || 1;
+    const uom = line.uom || line.unitOfMeasure || 'EA';
+    const currency = line.currency || respBody?.currency || 'USD';
+    const parsed = {
+      itemNumber: line.itemNumber || itemNumber.trim(),
+      unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+      extendedPrice: Number.isFinite(extPrice)
+        ? extPrice
+        : Number.isFinite(unitPrice)
+          ? unitPrice * qty
+          : null,
+      quantity: qty,
+      uom,
+      currency,
+      raw: line,
+    };
+    setPriceResult(parsed);
+    if (parsed.unitPrice != null) {
+      toast({
+        title: `Price: $${parsed.unitPrice.toFixed(2)} / ${uom}`,
+        description: `${parsed.itemNumber} • Qty ${qty} • Ext $${(parsed.extendedPrice ?? 0).toFixed(2)}`,
+      });
+    } else {
+      toast({
+        title: 'Price returned but unreadable',
+        description: 'ABC responded 200 but no unitPrice field was found. See raw JSON below.',
+        variant: 'destructive',
+      });
+    }
   };
+
 
   const runTrackOrder = async (orderOrConfirm?: string) => {
     const raw = (orderOrConfirm ?? orderStatusNumber).trim();
