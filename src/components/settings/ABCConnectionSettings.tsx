@@ -691,15 +691,17 @@ export function ABCConnectionSettings() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={environment} onValueChange={(value) => setEnvironment(normalizeABCEnvironment(value))}>
-              <SelectTrigger className="w-[180px] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sandbox">Sandbox</SelectItem>
-                <SelectItem value="production">Production</SelectItem>
-              </SelectContent>
-            </Select>
+            {canChangeEnvironment && (
+              <Select value={environment} onValueChange={(value) => setEnvironment(normalizeABCEnvironment(value))}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sandbox">Sandbox</SelectItem>
+                  <SelectItem value="production">Production</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <Badge variant={isConnected ? 'default' : 'secondary'}>
               {isConnected ? (
                 <><CheckCircle className="h-3 w-3 mr-1" /> Connected</>
