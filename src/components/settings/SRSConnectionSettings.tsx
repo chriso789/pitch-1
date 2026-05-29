@@ -10,7 +10,9 @@ import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useToast } from '@/hooks/use-toast';
 import { SrsDiagnosticsPanel } from '@/components/orders/SrsDiagnosticsPanel';
 import { SRSReconciliationPanel } from '@/components/orders/SRSReconciliationPanel';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
+
 
 interface SRSConnection {
   id: string;
@@ -42,11 +44,12 @@ interface AuditRow {
 
 const ROTATION_RECOMMENDED_DAYS = 90;
 const ROTATION_MANDATORY_DAYS = 180;
-
 export function SRSConnectionSettings() {
   const { activeCompanyId } = useCompanySwitcher();
+  const { canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
   const { toast } = useToast();
   const [connection, setConnection] = useState<SRSConnection | null>(null);
+
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -387,16 +390,19 @@ export function SRSConnectionSettings() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Environment</Label>
-              <Select value={environment} onValueChange={setEnvironment}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="staging">Staging (Testing)</SelectItem>
-                  <SelectItem value="production">Production (Live)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {canChangeEnvironment && (
+              <div className="space-y-2">
+                <Label>Environment</Label>
+                <Select value={environment} onValueChange={setEnvironment}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="staging">Staging (Testing)</SelectItem>
+                    <SelectItem value="production">Production (Live)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
 
             <div className="space-y-2">
               <Label>Customer Code</Label>

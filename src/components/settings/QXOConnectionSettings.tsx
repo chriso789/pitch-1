@@ -12,6 +12,7 @@ import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck } from
 import { QXOArDashboard } from './QXOArDashboard';
 import { QXOActivityPanel } from './QXOActivityPanel';
 import { QXOBrowser } from './QXOBrowser';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 // NOTE: Secrets (username/password/client_id/tokens) are stored in the
 // service-role-only `qxo_credentials` table and are never read by the
@@ -33,7 +34,9 @@ interface QXOConnection {
 
 export function QXOConnectionSettings() {
   const { activeCompanyId } = useCompanySwitcher();
+  const { canChangeEnvironment } = useSupplierDeveloperMode();
   const { toast } = useToast();
+
   const [connection, setConnection] = useState<QXOConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -193,17 +196,20 @@ export function QXOConnectionSettings() {
                 </div>
               </div>
             </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Environment</Label>
-              <Select value={environment} onValueChange={setEnvironment}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="staging">Staging (Testing)</SelectItem>
-                  <SelectItem value="production">Production (Live)</SelectItem>
-                </SelectContent>
+            {canChangeEnvironment && (
+              <div className="space-y-2">
+                <Label>Environment</Label>
+                <Select value={environment} onValueChange={setEnvironment}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="staging">Staging (Testing)</SelectItem>
+                    <SelectItem value="production">Production (Live)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
               </Select>
             </div>
 

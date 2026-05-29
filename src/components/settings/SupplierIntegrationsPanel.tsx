@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { ConnectSupplierDialog } from './ConnectSupplierDialog';
 
 type SupplierKey = 'abc' | 'srs' | 'qxo';
+
 
 interface SupplierStatus {
   connected: boolean;
@@ -70,6 +73,7 @@ interface Props {
  */
 export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
   const tenantId = useEffectiveTenantId();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState<Record<SupplierKey, SupplierStatus>>({
     abc: EMPTY_STATUS,
@@ -77,10 +81,15 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
     qxo: EMPTY_STATUS,
   });
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectSupplier, setConnectSupplier] = useState<SupplierKey | null>(null);
+  const [disconnecting, setDisconnecting] = useState<SupplierKey | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!tenantId) return;
     let cancelled = false;
+
 
     const load = async () => {
       setLoading(true);
@@ -167,9 +176,45 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [tenantId]);
+  }, [tenantId, reloadKey]);
+
+  const openConnect = (supplier: SupplierKey) => {
+    setConnectSupplier(supplier);
+    setConnectOpen(true);
+  };
+
+  const handleDisconnect = async (supplier: SupplierKey) => {
+    if (!tenantId) return;
+    if (!confirm(`Disconnect ${SUPPLIER_META[supplier].name}? Stored credentials will be removed.`)) return;
+    setDisconnecting(supplier);
+    try {
+      if (supplier === 'srs') {
+        const { error } = await supabase.functions.invoke('srs-api-proxy', {
+          body: { action: 'revoke_credentials', tenant_id: tenantId },
+        });
+        if (error) throw error;
+      } else if (supplier === 'qxo') {
+        const { error } = await supabase.functions.invoke('qxo-save-credentials', {
+          body: { tenant_id: tenantId, clear: true },
+        });
+        if (error) throw error;
+      } else if (supplier === 'abc') {
+        const { error } = await supabase.functions.invoke('abc-save-account', {
+          body: { tenant_id: tenantId, clear: true },
+        });
+        if (error) throw error;
+      }
+      toast({ title: `${SUPPLIER_META[supplier].name} disconnected` });
+      setReloadKey((k) => k + 1);
+    } catch (e: any) {
+      toast({ title: 'Disconnect failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setDisconnecting(null);
+    }
+  };
 
   const cards = useMemo(() => (['abc', 'srs', 'qxo'] as SupplierKey[]).map((k) => ({ key: k, meta: SUPPLIER_META[k], status: statuses[k] })), [statuses]);
+
 
   if (!tenantId) {
     return (
@@ -246,16 +291,27 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                   </div>
                 )}
                 <div className="mt-auto pt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant={status.connected ? 'outline' : 'default'}
-                    onClick={() => onOpenAdvanced?.(key)}
-                  >
-                    {status.connected ? 'Manage' : 'Connect'}
-                  </Button>
-                  {status.connected && (
-                    <Button size="sm" variant="ghost" onClick={() => onOpenAdvanced?.(key)}>
-                      Disconnect
+                  {status.connected ? (
+                    <>
+                      {onOpenAdvanced && (
+                        <Button size="sm" variant="outline" onClick={() => onOpenAdvanced(key)}>
+                          Manage
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        disabled={disconnecting === key}
+                        onClick={() => handleDisconnect(key)}
+                      >
+                        {disconnecting === key && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                        Disconnect
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => openConnect(key)}>
+                      Connect Account
                     </Button>
                   )}
                 </div>
@@ -263,7 +319,36 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
             </Card>
           );
         })}
+
+        {/* Billtrust — payments integration placeholder */}
+        <Card className="flex flex-col">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center text-violet-500 bg-violet-500/10">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base">Billtrust</CardTitle>
+                  <CardDescription className="text-xs line-clamp-2">
+                    Supplier invoice payments and AR reconciliation.
+                  </CardDescription>
+                </div>
+              </div>
+              <Badge variant="secondary" className="gap-1">Coming soon</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col gap-2 text-xs">
+            <p className="text-muted-foreground">
+              Pay supplier invoices and reconcile statements automatically. Available in an upcoming release.
+            </p>
+            <div className="mt-auto pt-3">
+              <Button size="sm" variant="outline" disabled>Notify Me</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
 
       <Card>
         <CardHeader>
@@ -315,6 +400,15 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <ConnectSupplierDialog
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
+        supplier={connectSupplier}
+        tenantId={tenantId}
+        onConnected={() => setReloadKey((k) => k + 1)}
+      />
     </div>
   );
 }
+
