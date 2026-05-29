@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      abc_account_branches: {
+        Row: {
+          address_line1: string | null
+          branch_number: string
+          city: string | null
+          created_at: string
+          id: string
+          is_default: boolean
+          is_home_branch: boolean
+          name: string | null
+          postal_code: string | null
+          raw: Json | null
+          ship_to_id: string
+          state: string | null
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address_line1?: string | null
+          branch_number: string
+          city?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_home_branch?: boolean
+          name?: string | null
+          postal_code?: string | null
+          raw?: Json | null
+          ship_to_id: string
+          state?: string | null
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address_line1?: string | null
+          branch_number?: string
+          city?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_home_branch?: boolean
+          name?: string | null
+          postal_code?: string | null
+          raw?: Json | null
+          ship_to_id?: string
+          state?: string | null
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_account_branches_ship_to_id_fkey"
+            columns: ["ship_to_id"]
+            isOneToOne: false
+            referencedRelation: "abc_ship_to_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       abc_accounts: {
         Row: {
           account_kind: string
@@ -160,6 +222,69 @@ export type Database = {
           storefront?: string | null
           tenant_id?: string
           time_zone_code?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_catalog_items: {
+        Row: {
+          color_code: string | null
+          color_name: string | null
+          costing_uom: string | null
+          created_at: string
+          dimensions: Json | null
+          family_id: string | null
+          family_name: string | null
+          is_active: boolean
+          is_dimensional: boolean
+          item_description: string
+          item_number: string
+          last_modified_at: string | null
+          raw: Json | null
+          search_tsv: unknown
+          specifications: Json | null
+          stocking_uom: string | null
+          uoms: Json | null
+          updated_at: string
+        }
+        Insert: {
+          color_code?: string | null
+          color_name?: string | null
+          costing_uom?: string | null
+          created_at?: string
+          dimensions?: Json | null
+          family_id?: string | null
+          family_name?: string | null
+          is_active?: boolean
+          is_dimensional?: boolean
+          item_description: string
+          item_number: string
+          last_modified_at?: string | null
+          raw?: Json | null
+          search_tsv?: unknown
+          specifications?: Json | null
+          stocking_uom?: string | null
+          uoms?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          color_code?: string | null
+          color_name?: string | null
+          costing_uom?: string | null
+          created_at?: string
+          dimensions?: Json | null
+          family_id?: string | null
+          family_name?: string | null
+          is_active?: boolean
+          is_dimensional?: boolean
+          item_description?: string
+          item_number?: string
+          last_modified_at?: string | null
+          raw?: Json | null
+          search_tsv?: unknown
+          specifications?: Json | null
+          stocking_uom?: string | null
+          uoms?: Json | null
           updated_at?: string
         }
         Relationships: []
@@ -502,6 +627,39 @@ export type Database = {
         }
         Relationships: []
       }
+      abc_item_family_members: {
+        Row: {
+          color_code: string | null
+          color_name: string | null
+          created_at: string
+          family_id: string
+          id: string
+          item_description: string | null
+          item_number: string
+          raw: Json | null
+        }
+        Insert: {
+          color_code?: string | null
+          color_name?: string | null
+          created_at?: string
+          family_id: string
+          id?: string
+          item_description?: string | null
+          item_number: string
+          raw?: Json | null
+        }
+        Update: {
+          color_code?: string | null
+          color_name?: string | null
+          created_at?: string
+          family_id?: string
+          id?: string
+          item_description?: string | null
+          item_number?: string
+          raw?: Json | null
+        }
+        Relationships: []
+      }
       abc_items: {
         Row: {
           created_at: string
@@ -542,6 +700,51 @@ export type Database = {
           primary_asset_id?: string | null
           raw_payload?: Json
           status?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      abc_material_sku_mappings: {
+        Row: {
+          abc_item_number: string
+          abc_uom: string | null
+          color: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          material_id: string | null
+          material_name: string | null
+          notes: string | null
+          preferred_branch_number: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          abc_item_number: string
+          abc_uom?: string | null
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_id?: string | null
+          material_name?: string | null
+          notes?: string | null
+          preferred_branch_number?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          abc_item_number?: string
+          abc_uom?: string | null
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_id?: string | null
+          material_name?: string | null
+          notes?: string | null
+          preferred_branch_number?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -793,6 +996,57 @@ export type Database = {
         }
         Relationships: []
       }
+      abc_price_cache: {
+        Row: {
+          branch_number: string
+          currency: string | null
+          expires_at: string
+          fetched_at: string
+          id: string
+          item_number: string
+          price_pending: boolean
+          purpose: string
+          raw: Json | null
+          ship_to_number: string
+          tenant_id: string
+          unit_price: number | null
+          uom: string
+          user_id: string
+        }
+        Insert: {
+          branch_number: string
+          currency?: string | null
+          expires_at: string
+          fetched_at?: string
+          id?: string
+          item_number: string
+          price_pending?: boolean
+          purpose: string
+          raw?: Json | null
+          ship_to_number: string
+          tenant_id: string
+          unit_price?: number | null
+          uom: string
+          user_id: string
+        }
+        Update: {
+          branch_number?: string
+          currency?: string | null
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          item_number?: string
+          price_pending?: boolean
+          purpose?: string
+          raw?: Json | null
+          ship_to_number?: string
+          tenant_id?: string
+          unit_price?: number | null
+          uom?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       abc_price_requests: {
         Row: {
           branch_number: string
@@ -834,6 +1088,74 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: []
+      }
+      abc_ship_to_accounts: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          connection_id: string
+          contacts: Json | null
+          country: string | null
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string | null
+          postal_code: string | null
+          raw: Json | null
+          ship_to_number: string
+          state: string | null
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          connection_id: string
+          contacts?: Json | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string | null
+          postal_code?: string | null
+          raw?: Json | null
+          ship_to_number: string
+          state?: string | null
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          connection_id?: string
+          contacts?: Json | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string | null
+          postal_code?: string | null
+          raw?: Json | null
+          ship_to_number?: string
+          state?: string | null
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abc_ship_to_accounts_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "abc_user_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       abc_tokens: {
         Row: {
@@ -881,6 +1203,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      abc_user_connections: {
+        Row: {
+          access_token_encrypted: string | null
+          created_at: string
+          environment: string
+          id: string
+          last_error: string | null
+          last_refresh_at: string | null
+          okta_subject: string | null
+          refresh_token_encrypted: string | null
+          scopes: string[] | null
+          status: string
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          last_error?: string | null
+          last_refresh_at?: string | null
+          okta_subject?: string | null
+          refresh_token_encrypted?: string | null
+          scopes?: string[] | null
+          status?: string
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          last_error?: string | null
+          last_refresh_at?: string | null
+          okta_subject?: string | null
+          refresh_token_encrypted?: string | null
+          scopes?: string[] | null
+          status?: string
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       abc_webhook_events: {
         Row: {
@@ -15504,6 +15877,9 @@ export type Database = {
       }
       estimate_line_items: {
         Row: {
+          abc_color: string | null
+          abc_item_number: string | null
+          abc_uom: string | null
           created_at: string
           description: string | null
           estimate_id: string
@@ -15529,6 +15905,9 @@ export type Database = {
           vendor_id: string | null
         }
         Insert: {
+          abc_color?: string | null
+          abc_item_number?: string | null
+          abc_uom?: string | null
           created_at?: string
           description?: string | null
           estimate_id: string
@@ -15554,6 +15933,9 @@ export type Database = {
           vendor_id?: string | null
         }
         Update: {
+          abc_color?: string | null
+          abc_item_number?: string | null
+          abc_uom?: string | null
           created_at?: string
           description?: string | null
           estimate_id?: string
