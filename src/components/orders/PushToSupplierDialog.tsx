@@ -177,6 +177,7 @@ export function PushToSupplierDialog({
 }: Props) {
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
+  const abcConnection = useAbcConnectionStatus();
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
