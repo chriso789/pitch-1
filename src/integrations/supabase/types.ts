@@ -45907,6 +45907,45 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_webhook_events: {
+        Row: {
+          accepted: boolean
+          event_id: string
+          event_type: string
+          id: string
+          payload: Json | null
+          processed_at: string | null
+          processing_error: string | null
+          received_at: string
+          signature_valid: boolean
+          tenant_id: string | null
+        }
+        Insert: {
+          accepted?: boolean
+          event_id: string
+          event_type: string
+          id?: string
+          payload?: Json | null
+          processed_at?: string | null
+          processing_error?: string | null
+          received_at?: string
+          signature_valid?: boolean
+          tenant_id?: string | null
+        }
+        Update: {
+          accepted?: boolean
+          event_id?: string
+          event_type?: string
+          id?: string
+          payload?: Json | null
+          processed_at?: string | null
+          processing_error?: string | null
+          received_at?: string
+          signature_valid?: boolean
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       subcontractor_assignments: {
         Row: {
           actual_end_time: string | null
