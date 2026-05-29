@@ -12,6 +12,7 @@ import { buildScopedContext } from "./context.ts";
 import { evaluateFormula, MissingClassMeasurementError } from "./formula.ts";
 import type {
   Assignment,
+  AssignmentStatus,
   MappingResult,
   MeasurementFeature,
   MeasurementSegment,
