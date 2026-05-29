@@ -10,7 +10,9 @@ import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useToast } from '@/hooks/use-toast';
 import { SrsDiagnosticsPanel } from '@/components/orders/SrsDiagnosticsPanel';
 import { SRSReconciliationPanel } from '@/components/orders/SRSReconciliationPanel';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
+
 
 interface SRSConnection {
   id: string;
