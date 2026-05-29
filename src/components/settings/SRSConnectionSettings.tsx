@@ -390,16 +390,19 @@ export function SRSConnectionSettings() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Environment</Label>
-              <Select value={environment} onValueChange={setEnvironment}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="staging">Staging (Testing)</SelectItem>
-                  <SelectItem value="production">Production (Live)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {canChangeEnvironment && (
+              <div className="space-y-2">
+                <Label>Environment</Label>
+                <Select value={environment} onValueChange={setEnvironment}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="staging">Staging (Testing)</SelectItem>
+                    <SelectItem value="production">Production (Live)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
 
             <div className="space-y-2">
               <Label>Customer Code</Label>
