@@ -333,6 +333,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   Download
                 </Button>
               )}
+              {currentDoc && (
+                <Button size="sm" variant="outline" onClick={handleShare}>
+                  {copied ? (
+                    <Check className="h-4 w-4 mr-2 text-green-600" />
+                  ) : (
+                    <Share2 className="h-4 w-4 mr-2" />
+                  )}
+                  {copied ? 'Copied!' : 'Share'}
+                </Button>
+              )}
             </div>
           </div>
         </DialogHeader>
