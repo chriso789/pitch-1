@@ -75,6 +75,8 @@ import ZelleSettings from "@/components/settings/ZelleSettings";
 import { ProductionChecklistSettings } from "@/components/settings/ProductionChecklistSettings";
 import { MaterialAuditContent } from "@/pages/MaterialAuditPage";
 import TenantStripeConnectPanel from "@/components/stripe/TenantStripeConnectPanel";
+import SquareSettings from "@/components/settings/SquareSettings";
+
 import { MyMoneyContent } from "@/pages/MyMoney";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { CompanyReferralSettingsPanel } from "@/components/company-referrals/settings/CompanyReferralSettingsPanel";
