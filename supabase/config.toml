@@ -433,6 +433,10 @@ verify_jwt = true
 [functions.send-document-email]
 verify_jwt = true
 
+[functions.track-document-view]
+verify_jwt = false
+
+
 [functions.import-canvass-contacts]
 verify_jwt = true
 
