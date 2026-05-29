@@ -1033,7 +1033,34 @@ export function ABCConnectionSettings() {
               Get Price
             </Button>
           </div>
+          {priceResult && (
+            <div className="rounded border bg-muted/30 p-3 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">Item</div>
+                  <div className="font-mono">{priceResult.itemNumber}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Unit Price</div>
+                  <div className="text-lg font-semibold">
+                    {priceResult.unitPrice != null
+                      ? `$${priceResult.unitPrice.toFixed(2)} / ${priceResult.uom}`
+                      : '—'}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Ext. ({priceResult.quantity})</div>
+                  <div className="text-lg font-semibold">
+                    {priceResult.extendedPrice != null
+                      ? `$${priceResult.extendedPrice.toFixed(2)}`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
 
         {/* Submit Test Order */}
         <div className="rounded-md border p-3 space-y-3">
