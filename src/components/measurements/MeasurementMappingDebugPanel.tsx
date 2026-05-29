@@ -80,17 +80,34 @@ export function MeasurementMappingDebugPanel({ measurementImportId, calcTemplate
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Import summary */}
+        {/* Import summary + mode + type */}
         <section>
           <h4 className="text-sm font-semibold mb-2">Import</h4>
           {importQuery.isLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
           {bundle?.import && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              <div><span className="text-muted-foreground">ID:</span> <span className="font-mono">{bundle.import.id.slice(0, 8)}</span></div>
-              <div><span className="text-muted-foreground">Provider:</span> {bundle.import.provider ?? "—"}</div>
-              <div><span className="text-muted-foreground">Status:</span> {bundle.import.import_status}</div>
-              <div><span className="text-muted-foreground">Segments / Features:</span> {bundle.segments.length} / {bundle.features.length}</div>
-            </div>
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-2">
+                <div><span className="text-muted-foreground">ID:</span> <span className="font-mono">{bundle.import.id.slice(0, 8)}</span></div>
+                <div><span className="text-muted-foreground">Provider:</span> {bundle.import.provider ?? "—"}</div>
+                <div><span className="text-muted-foreground">Status:</span> {bundle.import.import_status}</div>
+                <div><span className="text-muted-foreground">Segments / Features:</span> {bundle.segments.length} / {bundle.features.length}</div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="outline">
+                  mode: {calcTemplateId ? "section-aware" : "legacy"}
+                </Badge>
+                <Badge variant="outline">
+                  import type: {(() => {
+                    const segs = bundle.segments;
+                    if (segs.some((s) => s.is_synthetic_split)) return "manual-split";
+                    const classes = new Set(segs.map((s) => s.surface_class));
+                    if (classes.has("flat") && classes.has("sloped")) return "mixed";
+                    if (segs.length === 1 && segs[0].pitch_scope !== "segment") return "aggregate-only";
+                    return "segmented";
+                  })()}
+                </Badge>
+              </div>
+            </>
           )}
         </section>
 
