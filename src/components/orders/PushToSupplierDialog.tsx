@@ -349,6 +349,22 @@ export function PushToSupplierDialog({
     return () => { cancelled = true; };
   }, [open, tenantId]);
 
+  // ABC-specific defaults: when ABC is the selected supplier and we're in
+  // sandbox/staging on the O'Brien demo tenant, pre-fill the branch number
+  // and ship-to account so the demo flow is one-click.
+  useEffect(() => {
+    if (selected !== 'abc') return;
+    const abcOpt = suppliers.find(s => s.key === 'abc');
+    if (!abcOpt || abcOpt.status !== 'connected') return;
+    const isSandbox = abcOpt.environment !== 'production';
+    if (allowSandboxDefaults && isSandbox) {
+      if (!branchCode.trim()) setBranchCode('1209');
+      if (!abcShipToNumber.trim()) setAbcShipToNumber('2010466-2');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, suppliers, allowSandboxDefaults]);
+
+
   const totalCost = useMemo(
     () => editableItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_cost || 0), 0),
     [editableItems]
