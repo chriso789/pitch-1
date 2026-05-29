@@ -16004,12 +16004,14 @@ export type Database = {
           formula_evaluated: string | null
           id: string
           is_dry_run: boolean
+          mapping_run_id: string | null
           matched_by: Json
           measurement_import_id: string
           quantity: number | null
           reason_code: string | null
           segment_ids: string[]
           status: string
+          superseded_at: string | null
           template_group_id: string | null
           template_item_id: string | null
           tenant_id: string
@@ -16025,12 +16027,14 @@ export type Database = {
           formula_evaluated?: string | null
           id?: string
           is_dry_run?: boolean
+          mapping_run_id?: string | null
           matched_by?: Json
           measurement_import_id: string
           quantity?: number | null
           reason_code?: string | null
           segment_ids?: string[]
           status?: string
+          superseded_at?: string | null
           template_group_id?: string | null
           template_item_id?: string | null
           tenant_id: string
@@ -16046,12 +16050,14 @@ export type Database = {
           formula_evaluated?: string | null
           id?: string
           is_dry_run?: boolean
+          mapping_run_id?: string | null
           matched_by?: Json
           measurement_import_id?: string
           quantity?: number | null
           reason_code?: string | null
           segment_ids?: string[]
           status?: string
+          superseded_at?: string | null
           template_group_id?: string | null
           template_item_id?: string | null
           tenant_id?: string
