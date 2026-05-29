@@ -231,7 +231,7 @@ export function mapMeasurementsToTemplate(input: MapperInputs): MappingResult {
         },
       };
 
-      if (status === "assigned") {
+      if (status === "assigned" || status === "assigned_global_fallback") {
         assignedCount += 1;
         assignments.push(a);
       } else if (status === "conflict") {
