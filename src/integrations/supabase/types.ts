@@ -15664,6 +15664,7 @@ export type Database = {
           template_category: string
           tenant_id: string
           updated_at: string
+          use_section_mapping: boolean
         }
         Insert: {
           base_labor_hours_per_sq?: number
@@ -15685,6 +15686,7 @@ export type Database = {
           template_category?: string
           tenant_id: string
           updated_at?: string
+          use_section_mapping?: boolean
         }
         Update: {
           base_labor_hours_per_sq?: number
@@ -15706,6 +15708,7 @@ export type Database = {
           template_category?: string
           tenant_id?: string
           updated_at?: string
+          use_section_mapping?: boolean
         }
         Relationships: []
       }
@@ -15987,6 +15990,101 @@ export type Database = {
             columns: ["vendor_id"]
             isOneToOne: false
             referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_measurement_assignments: {
+        Row: {
+          calc_template_id: string | null
+          confidence: number | null
+          created_at: string
+          estimate_id: string | null
+          feature_ids: string[]
+          formula_evaluated: string | null
+          id: string
+          is_dry_run: boolean
+          matched_by: Json
+          measurement_import_id: string
+          quantity: number | null
+          reason_code: string | null
+          segment_ids: string[]
+          status: string
+          template_group_id: string | null
+          template_item_id: string | null
+          tenant_id: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          calc_template_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          estimate_id?: string | null
+          feature_ids?: string[]
+          formula_evaluated?: string | null
+          id?: string
+          is_dry_run?: boolean
+          matched_by?: Json
+          measurement_import_id: string
+          quantity?: number | null
+          reason_code?: string | null
+          segment_ids?: string[]
+          status?: string
+          template_group_id?: string | null
+          template_item_id?: string | null
+          tenant_id: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          calc_template_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          estimate_id?: string | null
+          feature_ids?: string[]
+          formula_evaluated?: string | null
+          id?: string
+          is_dry_run?: boolean
+          matched_by?: Json
+          measurement_import_id?: string
+          quantity?: number | null
+          reason_code?: string | null
+          segment_ids?: string[]
+          status?: string
+          template_group_id?: string | null
+          template_item_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_measurement_assignments_calc_template_id_fkey"
+            columns: ["calc_template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calculation_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_measurement_assignments_measurement_import_id_fkey"
+            columns: ["measurement_import_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_measurement_assignments_template_group_id_fkey"
+            columns: ["template_group_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calc_template_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_measurement_assignments_template_item_id_fkey"
+            columns: ["template_item_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calc_template_items"
             referencedColumns: ["id"]
           },
         ]
@@ -25976,6 +26074,72 @@ export type Database = {
           },
         ]
       }
+      measurement_features: {
+        Row: {
+          archived_at: string | null
+          confidence: number
+          count_value: number | null
+          created_at: string
+          feature_type: string
+          geometry_geojson: Json | null
+          id: string
+          length_ft: number | null
+          measurement_import_id: string
+          primary_segment_id: string | null
+          provider_feature_key: string | null
+          reviewed: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          confidence?: number
+          count_value?: number | null
+          created_at?: string
+          feature_type: string
+          geometry_geojson?: Json | null
+          id?: string
+          length_ft?: number | null
+          measurement_import_id: string
+          primary_segment_id?: string | null
+          provider_feature_key?: string | null
+          reviewed?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          confidence?: number
+          count_value?: number | null
+          created_at?: string
+          feature_type?: string
+          geometry_geojson?: Json | null
+          id?: string
+          length_ft?: number | null
+          measurement_import_id?: string
+          primary_segment_id?: string | null
+          provider_feature_key?: string | null
+          reviewed?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_features_measurement_import_id_fkey"
+            columns: ["measurement_import_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_features_primary_segment_id_fkey"
+            columns: ["primary_segment_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_ground_truth: {
         Row: {
           address: string
@@ -26073,6 +26237,69 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      measurement_imports: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          import_status: string
+          job_id: string | null
+          provider: string
+          quality_score: number | null
+          raw_payload: Json
+          roof_measurement_id: string | null
+          source_doc_id: string | null
+          source_fingerprint: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          import_status?: string
+          job_id?: string | null
+          provider?: string
+          quality_score?: number | null
+          raw_payload?: Json
+          roof_measurement_id?: string | null
+          source_doc_id?: string | null
+          source_fingerprint?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          import_status?: string
+          job_id?: string | null
+          provider?: string
+          quality_score?: number | null
+          raw_payload?: Json
+          roof_measurement_id?: string | null
+          source_doc_id?: string | null
+          source_fingerprint?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_imports_roof_measurement_id_fkey"
+            columns: ["roof_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_imports_roof_measurement_id_fkey"
+            columns: ["roof_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
             referencedColumns: ["id"]
           },
         ]
@@ -26457,6 +26684,87 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      measurement_segments: {
+        Row: {
+          archived_at: string | null
+          area_sqft: number | null
+          classification_confidence: number
+          classification_reason: string | null
+          created_at: string
+          geometry_geojson: Json | null
+          id: string
+          is_split_residual: boolean
+          is_synthetic_split: boolean
+          measurement_import_id: string
+          name: string | null
+          parent_segment_id: string | null
+          pitch_rise_over_12: number | null
+          pitch_scope: string
+          provider_segment_key: string | null
+          reviewed: boolean
+          surface_class: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          area_sqft?: number | null
+          classification_confidence?: number
+          classification_reason?: string | null
+          created_at?: string
+          geometry_geojson?: Json | null
+          id?: string
+          is_split_residual?: boolean
+          is_synthetic_split?: boolean
+          measurement_import_id: string
+          name?: string | null
+          parent_segment_id?: string | null
+          pitch_rise_over_12?: number | null
+          pitch_scope?: string
+          provider_segment_key?: string | null
+          reviewed?: boolean
+          surface_class?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          area_sqft?: number | null
+          classification_confidence?: number
+          classification_reason?: string | null
+          created_at?: string
+          geometry_geojson?: Json | null
+          id?: string
+          is_split_residual?: boolean
+          is_synthetic_split?: boolean
+          measurement_import_id?: string
+          name?: string | null
+          parent_segment_id?: string | null
+          pitch_rise_over_12?: number | null
+          pitch_scope?: string
+          provider_segment_key?: string | null
+          reviewed?: boolean
+          surface_class?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_segments_measurement_import_id_fkey"
+            columns: ["measurement_import_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_segments_parent_segment_id_fkey"
+            columns: ["parent_segment_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_segments"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -48914,6 +49222,59 @@ export type Database = {
           },
         ]
       }
+      template_item_rules: {
+        Row: {
+          allow_global_fallback: boolean
+          allow_unknown: boolean
+          created_at: string
+          exclusive_group: string | null
+          feature_types: string[]
+          id: string
+          item_id: string
+          measurement_scope: string
+          min_confidence: number
+          surface_classes: string[]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          allow_global_fallback?: boolean
+          allow_unknown?: boolean
+          created_at?: string
+          exclusive_group?: string | null
+          feature_types?: string[]
+          id?: string
+          item_id: string
+          measurement_scope?: string
+          min_confidence?: number
+          surface_classes?: string[]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          allow_global_fallback?: boolean
+          allow_unknown?: boolean
+          created_at?: string
+          exclusive_group?: string | null
+          feature_types?: string[]
+          id?: string
+          item_id?: string
+          measurement_scope?: string
+          min_confidence?: number
+          surface_classes?: string[]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_item_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: true
+            referencedRelation: "estimate_calc_template_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       template_items: {
         Row: {
           active: boolean
@@ -48997,6 +49358,56 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      template_section_rules: {
+        Row: {
+          allow_unknown: boolean
+          created_at: string
+          feature_types: string[]
+          group_id: string
+          id: string
+          max_pitch: number | null
+          min_pitch: number | null
+          priority: number
+          surface_classes: string[]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          allow_unknown?: boolean
+          created_at?: string
+          feature_types?: string[]
+          group_id: string
+          id?: string
+          max_pitch?: number | null
+          min_pitch?: number | null
+          priority?: number
+          surface_classes?: string[]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          allow_unknown?: boolean
+          created_at?: string
+          feature_types?: string[]
+          group_id?: string
+          id?: string
+          max_pitch?: number | null
+          min_pitch?: number | null
+          priority?: number
+          surface_classes?: string[]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_section_rules_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: true
+            referencedRelation: "estimate_calc_template_groups"
             referencedColumns: ["id"]
           },
         ]
