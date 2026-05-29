@@ -125,4 +125,227 @@ export async function verifySquareWebhookSignature(opts: {
   );
   const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
   return b64 === opts.signatureHeader;
+  return b64 === opts.signatureHeader;
 }
+
+// ============================================================
+// OAuth helpers
+// ============================================================
+
+export interface SquareOAuthEnvConfig {
+  appId: string;
+  appSecret: string;
+  environment: SquareEnvironment;
+  redirectUri: string;
+  webhookSignatureKey: string;
+}
+
+export function loadSquareOAuthConfig(envOverride?: SquareEnvironment): SquareOAuthEnvConfig {
+  const environment =
+    (envOverride ??
+      (Deno.env.get("SQUARE_ENVIRONMENT") as SquareEnvironment | undefined) ??
+      "sandbox") as SquareEnvironment;
+  const appId =
+    (environment === "production"
+      ? Deno.env.get("SQUARE_APP_ID_PRODUCTION")
+      : Deno.env.get("SQUARE_APP_ID_SANDBOX")) ??
+    Deno.env.get("SQUARE_APP_ID") ??
+    "";
+  const appSecret =
+    (environment === "production"
+      ? Deno.env.get("SQUARE_APP_SECRET_PRODUCTION")
+      : Deno.env.get("SQUARE_APP_SECRET_SANDBOX")) ??
+    Deno.env.get("SQUARE_APP_SECRET") ??
+    "";
+  const redirectUri =
+    Deno.env.get("SQUARE_OAUTH_REDIRECT_URI") ??
+    `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/payment-api/square/oauth/callback`;
+  const webhookSignatureKey = Deno.env.get("SQUARE_WEBHOOK_SIGNATURE_KEY") ?? "";
+  return { appId, appSecret, environment, redirectUri, webhookSignatureKey };
+}
+
+export function squareOAuthAuthorizeBase(env: SquareEnvironment): string {
+  // OAuth authorize lives on the merchant-facing domain.
+  return env === "production"
+    ? "https://connect.squareup.com/oauth2/authorize"
+    : "https://connect.squareupsandbox.com/oauth2/authorize";
+}
+
+export const SQUARE_OAUTH_SCOPES = [
+  "MERCHANT_PROFILE_READ",
+  "PAYMENTS_READ",
+  "PAYMENTS_WRITE",
+  "ORDERS_READ",
+  "ORDERS_WRITE",
+  "ITEMS_READ",
+  "CUSTOMERS_READ",
+  "CUSTOMERS_WRITE",
+];
+
+function bytesToB64Url(bytes: Uint8Array): string {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64UrlToBytes(s: string): Uint8Array {
+  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
+  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
+  const out = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+  return out;
+}
+
+async function hmacSign(key: string, data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(data));
+  return bytesToB64Url(new Uint8Array(sig));
+}
+
+export interface SquareOAuthState {
+  tenantId: string;
+  userId: string;
+  env: SquareEnvironment;
+  nonce: string;
+  exp: number; // unix seconds
+}
+
+/** Sign a state payload as a short HMAC token (payload.signature) — no secret in browser. */
+export async function signSquareOAuthState(state: SquareOAuthState, key: string): Promise<string> {
+  const payload = bytesToB64Url(new TextEncoder().encode(JSON.stringify(state)));
+  const sig = await hmacSign(key, payload);
+  return `${payload}.${sig}`;
+}
+
+export async function verifySquareOAuthState(token: string, key: string): Promise<SquareOAuthState | null> {
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = await hmacSign(key, payload);
+  if (expected !== sig) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(b64UrlToBytes(payload))) as SquareOAuthState;
+    if (!parsed.exp || parsed.exp < Math.floor(Date.now() / 1000)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export interface SquareTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  merchant_id: string;
+  token_type: string;
+  scope?: string;
+}
+
+/** Exchange authorization code for OAuth tokens. */
+export async function exchangeSquareOAuthCode(
+  cfg: SquareOAuthEnvConfig,
+  code: string,
+): Promise<SquareTokenResponse> {
+  const res = await fetch(`${squareApiBase(cfg.environment)}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Square-Version": SQUARE_API_VERSION },
+    body: JSON.stringify({
+      client_id: cfg.appId,
+      client_secret: cfg.appSecret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: cfg.redirectUri,
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`square_token_exchange_failed:${res.status}:${t.slice(0, 300)}`);
+  }
+  return (await res.json()) as SquareTokenResponse;
+}
+
+/** Refresh an expired access token. */
+export async function refreshSquareAccessToken(
+  cfg: SquareOAuthEnvConfig,
+  refreshToken: string,
+): Promise<SquareTokenResponse> {
+  const res = await fetch(`${squareApiBase(cfg.environment)}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Square-Version": SQUARE_API_VERSION },
+    body: JSON.stringify({
+      client_id: cfg.appId,
+      client_secret: cfg.appSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`square_token_refresh_failed:${res.status}:${t.slice(0, 300)}`);
+  }
+  return (await res.json()) as SquareTokenResponse;
+}
+
+/** Revoke an OAuth authorization at Square (used on disconnect). */
+export async function revokeSquareOAuthToken(
+  cfg: SquareOAuthEnvConfig,
+  accessToken: string,
+  merchantId: string,
+): Promise<boolean> {
+  const res = await fetch(`${squareApiBase(cfg.environment)}/oauth2/revoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Square-Version": SQUARE_API_VERSION,
+      "Authorization": `Client ${cfg.appSecret}`,
+    },
+    body: JSON.stringify({
+      client_id: cfg.appId,
+      access_token: accessToken,
+      merchant_id: merchantId,
+    }),
+  });
+  return res.ok;
+}
+
+export interface SquareLocation {
+  id: string;
+  name: string;
+  status: string;
+  currency: string;
+}
+
+/** List merchant locations using current access token. */
+export async function listSquareLocations(account: TenantSquareAccount): Promise<SquareLocation[]> {
+  const res = await squareFetch(account, "/v2/locations");
+  if (!res.ok) throw new Error(`square_locations_failed:${res.status}`);
+  const json = await res.json();
+  return (json.locations ?? []).map((l: Record<string, unknown>) => ({
+    id: String(l.id ?? ""),
+    name: String(l.name ?? ""),
+    status: String(l.status ?? ""),
+    currency: String(l.currency ?? "USD"),
+  }));
+}
+
+/** Safe DTO of a tenant's Square account — never contains tokens. */
+export function redactSquareAccount(a: TenantSquareAccount | null) {
+  if (!a) return { connected: false as const, status: "disconnected" as const };
+  const needsReauth = a.status === "needs_reauth";
+  return {
+    connected: a.status === "connected" && !!a.access_token,
+    status: a.status,
+    needs_reauth: needsReauth,
+    environment: a.environment,
+    merchant_id: a.merchant_id ?? null,
+    merchant_name: a.merchant_name ?? null,
+    selected_location_id: a.selected_location_id ?? null,
+    access_token_expires_at: a.access_token_expires_at ?? null,
+  };
+}
+
