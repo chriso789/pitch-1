@@ -341,7 +341,7 @@ export function PushToSupplierDialog({
     })();
 
     return () => { cancelled = true; };
-  }, [open, tenantId]);
+  }, [open, tenantId, abcConnection.loading, abcConnection.state, abcConnection.environment, abcConnection.defaultBranchCode]);
 
   // ABC-specific defaults: when ABC is the selected supplier and we're in
   // sandbox/staging on the O'Brien demo tenant, pre-fill the branch number
