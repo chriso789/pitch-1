@@ -10,11 +10,23 @@
 //   - expected    : invariants the mapper output must satisfy
 
 import type {
-  MeasurementImport,
   MeasurementSegment,
   MeasurementFeature,
   SurfaceClass,
 } from "./types.ts";
+
+// Lightweight import row shape — only used by fixtures (the real DB type
+// lives in the frontend types module and is not needed by the Deno mapper).
+interface MeasurementImportFixtureRow {
+  id: string;
+  tenant_id: string;
+  roof_measurement_id: string | null;
+  job_id: string | null;
+  provider: string;
+  import_status: string;
+  raw_payload: Record<string, unknown>;
+  created_at: string;
+}
 
 export interface MappingFixture {
   key: string;
