@@ -176,9 +176,45 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [tenantId]);
+  }, [tenantId, reloadKey]);
+
+  const openConnect = (supplier: SupplierKey) => {
+    setConnectSupplier(supplier);
+    setConnectOpen(true);
+  };
+
+  const handleDisconnect = async (supplier: SupplierKey) => {
+    if (!tenantId) return;
+    if (!confirm(`Disconnect ${SUPPLIER_META[supplier].name}? Stored credentials will be removed.`)) return;
+    setDisconnecting(supplier);
+    try {
+      if (supplier === 'srs') {
+        const { error } = await supabase.functions.invoke('srs-api-proxy', {
+          body: { action: 'revoke_credentials', tenant_id: tenantId },
+        });
+        if (error) throw error;
+      } else if (supplier === 'qxo') {
+        const { error } = await supabase.functions.invoke('qxo-save-credentials', {
+          body: { tenant_id: tenantId, clear: true },
+        });
+        if (error) throw error;
+      } else if (supplier === 'abc') {
+        const { error } = await supabase.functions.invoke('abc-save-account', {
+          body: { tenant_id: tenantId, clear: true },
+        });
+        if (error) throw error;
+      }
+      toast({ title: `${SUPPLIER_META[supplier].name} disconnected` });
+      setReloadKey((k) => k + 1);
+    } catch (e: any) {
+      toast({ title: 'Disconnect failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setDisconnecting(null);
+    }
+  };
 
   const cards = useMemo(() => (['abc', 'srs', 'qxo'] as SupplierKey[]).map((k) => ({ key: k, meta: SUPPLIER_META[k], status: statuses[k] })), [statuses]);
+
 
   if (!tenantId) {
     return (
