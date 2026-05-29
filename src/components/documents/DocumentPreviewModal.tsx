@@ -35,7 +35,9 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+
   const [copied, setCopied] = useState(false);
 
   // PDF.js state — render ALL pages and let the user scroll
