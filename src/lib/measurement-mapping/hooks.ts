@@ -89,7 +89,7 @@ export function useManualMeasurementSplit(importId: string | null | undefined) {
       const { data, error } = await edgeApi<{ created: number }>(
         "measurement-api",
         `/measurement-imports/${importId}/manual-split`,
-        payload,
+        payload as unknown as Record<string, unknown>,
       );
       if (error) throw new Error(error);
       return data!;
