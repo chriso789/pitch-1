@@ -70,9 +70,9 @@ interface Props {
  * every query filters by useEffectiveTenantId() and RLS enforces it
  * server-side as well. Hides all OAuth URLs / raw audit / WAF / sandbox
  * tooling — those belong in the Advanced (Developer) tab.
- */
 export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
   const tenantId = useEffectiveTenantId();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState<Record<SupplierKey, SupplierStatus>>({
     abc: EMPTY_STATUS,
@@ -80,6 +80,15 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
     qxo: EMPTY_STATUS,
   });
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectSupplier, setConnectSupplier] = useState<SupplierKey | null>(null);
+  const [disconnecting, setDisconnecting] = useState<SupplierKey | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+
 
   useEffect(() => {
     if (!tenantId) return;
