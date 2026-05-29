@@ -566,7 +566,13 @@ export const Settings = () => {
       case "subscription":
         return <SubscriptionManagement />;
       case "payments":
-        return <TenantStripeConnectPanel />;
+        return (
+          <div className="space-y-6">
+            <TenantStripeConnectPanel />
+            <SquareSettings />
+          </div>
+        );
+
       case "production-checklist":
         return <ProductionChecklistSettings />;
       case "material-audit":
