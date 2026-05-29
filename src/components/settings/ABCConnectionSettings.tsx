@@ -193,6 +193,7 @@ export function ABCConnectionSettings() {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [orderResult, setOrderResult] = useState<any | null>(null);
   const [trackResult, setTrackResult] = useState<any | null>(null);
+  const [priceResult, setPriceResult] = useState<any | null>(null);
 
   const [oauthDebug, setOauthDebug] = useState<any | null>(null);
   const [oauthDebugBusy, setOauthDebugBusy] = useState(false);
