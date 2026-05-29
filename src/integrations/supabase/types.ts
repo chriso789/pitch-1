@@ -27354,6 +27354,14 @@ export type Database = {
           payment_type: string
           pipeline_entry_id: string | null
           project_id: string | null
+          provider: string | null
+          provider_event_id: string | null
+          provider_location_id: string | null
+          provider_order_id: string | null
+          provider_payment_id: string | null
+          provider_payment_link_id: string | null
+          provider_payment_link_url: string | null
+          provider_status: string | null
           shareable_token: string | null
           status: string
           stripe_payment_link_id: string | null
@@ -27375,6 +27383,14 @@ export type Database = {
           payment_type?: string
           pipeline_entry_id?: string | null
           project_id?: string | null
+          provider?: string | null
+          provider_event_id?: string | null
+          provider_location_id?: string | null
+          provider_order_id?: string | null
+          provider_payment_id?: string | null
+          provider_payment_link_id?: string | null
+          provider_payment_link_url?: string | null
+          provider_status?: string | null
           shareable_token?: string | null
           status?: string
           stripe_payment_link_id?: string | null
@@ -27396,6 +27412,14 @@ export type Database = {
           payment_type?: string
           pipeline_entry_id?: string | null
           project_id?: string | null
+          provider?: string | null
+          provider_event_id?: string | null
+          provider_location_id?: string | null
+          provider_order_id?: string | null
+          provider_payment_id?: string | null
+          provider_payment_link_id?: string | null
+          provider_payment_link_url?: string | null
+          provider_status?: string | null
           shareable_token?: string | null
           status?: string
           stripe_payment_link_id?: string | null
@@ -34043,6 +34067,9 @@ export type Database = {
           payment_date: string
           payment_method: string | null
           pipeline_entry_id: string
+          provider: string | null
+          provider_event_id: string | null
+          provider_payment_id: string | null
           reference_number: string | null
           tenant_id: string
         }
@@ -34056,6 +34083,9 @@ export type Database = {
           payment_date?: string
           payment_method?: string | null
           pipeline_entry_id: string
+          provider?: string | null
+          provider_event_id?: string | null
+          provider_payment_id?: string | null
           reference_number?: string | null
           tenant_id: string
         }
@@ -34069,6 +34099,9 @@ export type Database = {
           payment_date?: string
           payment_method?: string | null
           pipeline_entry_id?: string
+          provider?: string | null
+          provider_event_id?: string | null
+          provider_payment_id?: string | null
           reference_number?: string | null
           tenant_id?: string
         }
@@ -44623,6 +44656,51 @@ export type Database = {
           },
         ]
       }
+      square_webhook_events: {
+        Row: {
+          accepted: boolean
+          event_id: string
+          event_type: string
+          id: string
+          merchant_id: string | null
+          payload: Json
+          payload_hash: string | null
+          processed_at: string | null
+          processing_error: string | null
+          received_at: string
+          signature_valid: boolean
+          tenant_id: string | null
+        }
+        Insert: {
+          accepted?: boolean
+          event_id: string
+          event_type: string
+          id?: string
+          merchant_id?: string | null
+          payload: Json
+          payload_hash?: string | null
+          processed_at?: string | null
+          processing_error?: string | null
+          received_at?: string
+          signature_valid?: boolean
+          tenant_id?: string | null
+        }
+        Update: {
+          accepted?: boolean
+          event_id?: string
+          event_type?: string
+          id?: string
+          merchant_id?: string | null
+          payload?: Json
+          payload_hash?: string | null
+          processed_at?: string | null
+          processing_error?: string | null
+          received_at?: string
+          signature_valid?: boolean
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       srs_branches: {
         Row: {
           address: string | null
@@ -48951,6 +49029,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_square_accounts: {
+        Row: {
+          access_token: string | null
+          access_token_expires_at: string | null
+          connected_at: string | null
+          connected_by: string | null
+          created_at: string
+          disconnected_at: string | null
+          environment: string
+          id: string
+          last_payment_sync_at: string | null
+          last_webhook_at: string | null
+          merchant_id: string | null
+          merchant_name: string | null
+          refresh_token: string | null
+          scopes: string[]
+          selected_location_id: string | null
+          selected_location_name: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          access_token_expires_at?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          environment?: string
+          id?: string
+          last_payment_sync_at?: string | null
+          last_webhook_at?: string | null
+          merchant_id?: string | null
+          merchant_name?: string | null
+          refresh_token?: string | null
+          scopes?: string[]
+          selected_location_id?: string | null
+          selected_location_name?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          access_token_expires_at?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          environment?: string
+          id?: string
+          last_payment_sync_at?: string | null
+          last_webhook_at?: string | null
+          merchant_id?: string | null
+          merchant_name?: string | null
+          refresh_token?: string | null
+          scopes?: string[]
+          selected_location_id?: string | null
+          selected_location_name?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       tenant_stripe_accounts: {
         Row: {

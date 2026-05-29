@@ -1,111 +1,146 @@
-# Plan: Tenant-Safe Supplier Integration UI
+## Goal
 
-`useSupplierDeveloperMode()` already exists in `src/lib/supplierAccess.ts` (returns `isDeveloper`, `isObrien`, `showAdvanced`, `allowSandboxDefaults`). I'll extend it with the granular flags requested and route every supplier surface through it. No backend/schema changes.
+Add Square as a tenant-facing payment provider the right way:
+- OAuth Connect (no token paste)
+- Square-hosted checkout links per invoice (no custom card form)
+- Signed `payment.updated` webhook reconciling into `project_payments`
+- Idempotent so one webhook never double-records a payment
 
-## 1. Extend the gating helper
+Pre-requisite: normalize the invoice payment-link server contract so Stripe, Zelle, and Square all flow through the same `create-invoice-payment-link` route. Server resolves tenant, invoice, balance, contact, and project — never trusts client-posted amounts.
 
-`src/lib/supplierAccess.ts` — return:
-```
-{
-  isDeveloperMode,          // master | platform_admin | is_developer
-  isObrien,                 // O'Brien sandbox tenant
-  showAdvanced,             // isDeveloperMode || isObrien
-  allowSandboxDefaults,     // showAdvanced
-  canSeeRawDiagnostics,     // showAdvanced
-  canManageWebhooks,        // isDeveloperMode (admin-only, never normal tenants)
-  canChangeEnvironment,     // isDeveloperMode
-}
-```
-Keep old aliases so existing callers (`AbcDiagnosticsPanel`) keep working.
+Square UI gated to master / O'Brien only at launch (per tenant-security policy and your direction). Open to all tenants after live validation.
 
-## 2. ABC settings — `src/components/settings/ABCConnectionSettings.tsx`
+---
 
-Normal tenant view (what stays visible):
-- Header: "ABC Supply" + connection status badge (Connected / Not Connected / Expired)
-- Account # input
-- Branch / Ship-To input (only the operational fields, no Sandy defaults)
-- "Connect ABC Supply Account" button (OAuth) + Disconnect
-- "View Order History" link
-- Last order / last sync
+## Phase 0 — Payment-contract cleanup (do FIRST, before Square)
 
-Gated behind `isDeveloperMode` (or `showAdvanced` where O'Brien needs sandbox continuity):
-- Environment selector (Sandbox/Production toggle) — `canChangeEnvironment`
-- OAuth Authorize URL, Token URL, Redirect URI, Scopes copy boxes
-- Client ID / Secret status, raw token JSON, "Test Token" console
-- WAF allowlist / egress IP guidance
-- Sandbox default helpers (Sandy 2010466-2, Branch 1209) — `allowSandboxDefaults` only
-- Webhook register/list panel (`AbcWebhookPanel`) — `canManageWebhooks`
-- Raw audit / callback log viewer — `canSeeRawDiagnostics`
+Routed through existing `payments-api` grouped function per architecture guard.
 
-When developer-only env selector is hidden, environment is implicit: production for normal tenants, sandbox for O'Brien.
+1. **New canonical route**: `POST /create-invoice-payment-link`
+   - Body: `{ invoice_id: uuid, provider: 'stripe' | 'square' | 'zelle' }`
+   - Server resolves: tenant_id from JWT → invoice → outstanding balance → contact → project → tenant provider connection.
+   - Rejects if balance ≤ 0, invoice belongs to another tenant, or provider not connected for that tenant.
+   - Writes `payment_links` row with `provider`, `invoice_id`, `amount`, `status='pending'`, `provider_*` IDs.
+   - Returns `{ url, payment_link_id }`.
 
-## 3. SRS settings — `src/components/settings/SRSConnectionSettings.tsx`
+2. **Fix Stripe contract drift**
+   - `stripe-create-payment-link` becomes a thin internal helper called by the new route — no longer called directly from the AR UI.
+   - Repair `stripe-webhook` (currently 501) to verify signature, ack 2xx fast, and write `project_payments` idempotently keyed on `stripe_event_id`.
 
-Normal view:
-- Connect SRS Account, Customer Code, Integration Key (or invoice validation fields if SRS requires), Save/Connect, Disconnect, View Orders, status badge.
+3. **Zelle alignment**
+   - "Send Zelle Info" → calls canonical route with `provider='zelle'`, which generates the tokenized Zelle page URL via existing `zelle-payment-page` GET handler. No behavior change for users.
 
-Hidden behind `isDeveloperMode` / `showAdvanced`:
-- "Environment: Staging (Testing)" label and any Sandbox/Prod selector (this is the explicit bad example to remove)
-- Base URL / token URL / scopes
-- Sandbox test login + Sandy test ship-to / branch defaults (`allowSandboxDefaults`)
-- Raw API response inspector, reconciliation debug, webhook tooling
+4. **AR page (`AccountsReceivablePage`) refactor**
+   - Replace direct `stripe-create-payment-link` / `zelle-payment-page` calls with a single `createInvoicePaymentLink(invoice_id, provider)` hook.
+   - No more client-posted amounts.
 
-## 4. QXO settings — `src/components/settings/QXOConnectionSettings.tsx`
+---
 
-Normal view:
-- Connect QXO Account, customer/account fields, Save/Connect, Disconnect, View Orders, status badge.
+## Phase 1 — Square OAuth Connect
 
-Hidden behind `isDeveloperMode`:
-- Environment selector, OAuth/token URLs, scopes
-- Raw payload inspector, audit log
+### Database
+New migration: `tenant_square_accounts`
+- `id`, `tenant_id` (unique), `environment` ('sandbox'|'production'), `access_token_encrypted`, `refresh_token_encrypted`, `access_token_expires_at`, `merchant_id`, `merchant_name`, `selected_location_id`, `selected_location_name`, `scopes text[]`, `status` ('connected'|'needs_reauth'|'disconnected'), `connected_by uuid`, `connected_at`, `disconnected_at`, `last_webhook_at`, timestamps.
+- RLS: SELECT/UPDATE/DELETE only for users with access to `tenant_id`; INSERT only via edge function (service role).
+- GRANTs for `authenticated` + `service_role`.
+- Tokens encrypted via pgsodium or stored in vault-style helper (matching how `tenant_stripe_accounts` handles secrets — verify pattern in repo and mirror it).
 
-## 5. Supplier dashboard — `src/components/settings/SupplierIntegrationsPanel.tsx`
+### Edge function routes (in `payments-api` group)
+- `GET  /square/oauth/authorize-url` → returns Square OAuth URL with state token tied to tenant_id + user_id (signed JWT, short TTL).
+- `GET  /square/oauth/callback` (public, no JWT required, validates state) → exchanges code, stores tokens, fetches merchant + locations, stores first location as default.
+- `POST /square/locations` → list locations from Square for the connected tenant.
+- `POST /square/set-location` → update `selected_location_id`.
+- `POST /square/disconnect` → revoke tokens with Square, mark status disconnected.
 
-Restructure into 4 clean cards: ABC Supply, SRS Distribution, QXO, Billtrust (Coming Soon / Connect Payments).
+### Webhook routes (in `payments-webhook` group)
+- `POST /square/oauth-revoked` → handles `oauth.authorization.revoked`, marks tenant disconnected.
 
-Each card (normal tenants):
-- Logo + name
-- Status badge: Connected / Not Connected / Expired
-- Buttons: Connect / Disconnect / View Order History
-- "Last order" + "Last sync" metadata
+### Settings UI (Settings → Payments)
+New `SquareConnectionCard.tsx`:
+- Status badge: Connected / Needs Reconnect / Disconnected
+- Connect Square button (launches OAuth popup → callback closes it → invalidate query)
+- Merchant name, default location selector, sandbox/production indicator
+- Last webhook sync, Disconnect button
+- **Gated behind `isMasterUser` for now** (per visibility decision); other tenants see "Coming soon" or nothing.
 
-No environment labels, no sandbox chips, no "Staging" pills for normal tenants. Developer mode adds an "Env: sandbox/prod" chip and a "Developer Tools" expander per card.
+---
 
-## 6. Order history — Supplier Order History view
+## Phase 2 — Square hosted checkout + reconciliation
 
-Normal tenant inspect drawer shows only: supplier, project, PO, order #, confirmation #, status, submitted, last updated, clean status timeline.
+### Edge function additions
+- `payments-api`: when `create-invoice-payment-link` is called with `provider='square'`:
+  - Pull tenant's Square access token + selected location.
+  - Call Square Checkout API `POST /v2/online-checkout/payment-links` (quick_pay mode: name, price_money, location_id, redirect_url back to portal).
+  - Persist `payment_links.provider='square'`, `provider_payment_link_id`, `provider_order_id`, `provider_location_id`, `provider_status='pending'`.
+  - Return hosted URL.
 
-Behind `canSeeRawDiagnostics`: raw request/response JSON, audit endpoint URLs, webhook payloads, transaction IDs, request IDs. (This mirrors the gating already implemented in `AbcDiagnosticsPanel`; apply same pattern to `SrsDiagnosticsPanel` and the QXO equivalent.)
+### Webhook routes (in `payments-webhook` group)
+- `POST /square/payment-updated` → verifies `x-square-hmacsha256-signature` against `SQUARE_WEBHOOK_SIGNATURE_KEY`, acks 2xx fast.
+  - Idempotency: dedupe on `square_event_id` (new `processed_webhook_events` table OR existing equivalent — audit first).
+  - Look up `payment_links` by `provider_order_id` / `provider_payment_id`.
+  - On `COMPLETED`: insert `project_payments` row (idempotent on `provider_payment_id`), update `payment_links.status='paid'`, update invoice balance.
+  - Update `tenant_square_accounts.last_webhook_at`.
 
-## 7. Project Materials tab — `src/components/orders/ProjectMaterialsTab.tsx`
+### Provider extension on `payment_links`
+- Migration: add `provider`, `provider_order_id`, `provider_payment_id`, `provider_location_id`, `provider_status`, `square_event_id` (if not present). Backfill `provider='stripe'` for existing rows.
 
-Normal users:
-- "Push to Supplier" lists only connected suppliers; disconnected ones show "Connect in Settings" with a deep link to `/settings` → Integrations → Suppliers
-- `LiveOrderTracker` stays (operational order status for their own project)
-- `SrsDiagnosticsPanel` and `AbcDiagnosticsPanel` render in **normal mode** (operational only)
+---
 
-Developer mode: panels expand to show raw diagnostics (already done for ABC; replicate for SRS).
+## Phase 3 — Secrets & deploy
 
-## 8. O'Brien isolation
+Secrets needed (will request via `add_secret`):
+- `SQUARE_APP_ID`
+- `SQUARE_APP_SECRET`
+- `SQUARE_WEBHOOK_SIGNATURE_KEY`
+- `SQUARE_ENVIRONMENT` (sandbox initially)
+- `SQUARE_OAUTH_STATE_SECRET` (signing key for state JWT)
 
-`isObrien` is already tenant-scoped via `useCompanySwitcher().activeCompany.tenant_name`. Sandbox defaults / Sandy values / O'Brien notes render only when `isObrien || isDeveloperMode`. Order history queries already filter by `tenant_id` via existing RLS — no second-tenant leakage possible from the frontend gating change. I'll add a note but not change DB policy.
+Square dashboard configuration (user-facing):
+- OAuth redirect URL: `https://<project-ref>.functions.supabase.co/payments-api/square/oauth/callback`
+- Webhook subscription URL: `https://<project-ref>.functions.supabase.co/payments-webhook/square/payment-updated`
+- Subscribe events: `payment.updated`, `oauth.authorization.revoked`
 
-## 9. Acceptance verification
+---
 
-After the edits I'll:
-- Load `/settings` → Integrations → Suppliers as the current (O'Brien) tenant, screenshot the developer view.
-- Re-render with `isDeveloperMode=false` (simulated via a non-master tenant switch) and screenshot the clean view.
-- Confirm SRS no longer shows "Environment: Staging (Testing)" for normal tenants.
+## Out of scope (deferred)
 
-## Files to change
+- Square Invoices API (revisit only if we want Square to own installment schedules)
+- Square Web Payments SDK (embedded card form)
+- Opening Square to all tenants — happens after live validation
+- Refunds / partial-payment UI
 
-- `src/lib/supplierAccess.ts` — extend hook return shape
-- `src/components/settings/ABCConnectionSettings.tsx`
-- `src/components/settings/SRSConnectionSettings.tsx`
-- `src/components/settings/QXOConnectionSettings.tsx`
-- `src/components/settings/SupplierIntegrationsPanel.tsx`
-- `src/components/settings/abc/AbcWebhookPanel.tsx` (wrap whole panel in `canManageWebhooks`)
-- `src/components/orders/SrsDiagnosticsPanel.tsx` (mirror ABC gating)
-- `src/components/orders/ProjectMaterialsTab.tsx` (connected-supplier filter + "Connect in Settings" affordance)
+---
 
-No edge functions, no migrations, no schema changes.
+## Files touched (estimate)
+
+Backend:
+- `supabase/migrations/*` — `tenant_square_accounts`, `payment_links` extension, `processed_webhook_events` if needed
+- `supabase/functions/payments-api/` — new routes (Square OAuth + canonical link creator)
+- `supabase/functions/payments-webhook/` — new Square webhook routes; repair stripe-webhook
+- `supabase/functions/_shared/square.ts` — Square SDK wrapper + signature verifier + token encryption helpers
+
+Frontend:
+- `src/components/settings/SquareConnectionCard.tsx` (new)
+- `src/components/settings/SupplierIntegrationsPanel.tsx` or payments equivalent — mount Square card
+- `src/hooks/useCreateInvoicePaymentLink.ts` (new) — single hook for AR
+- `src/pages/AccountsReceivablePage.tsx` — swap to canonical hook
+- `src/lib/edgeApi.ts` — confirm routing helper exists; reuse
+
+---
+
+## Risk / dependencies
+
+- Token encryption: must mirror whatever `tenant_stripe_accounts` does today — I'll audit before the migration so we don't invent a new pattern.
+- `stripe-webhook` is currently 501; repairing it is in scope (Phase 0 step 2) but will surface any historic missed events. We'll log but not retro-process.
+- `payment_links` shape today may already differ from this plan — I'll read the live schema before writing the migration.
+
+---
+
+## Sequencing
+
+1. Plan approval (this).
+2. Audit: live schema of `payment_links`, `project_invoices`, `project_payments`, `tenant_stripe_accounts`; existing `payments-api` / `payments-webhook` routers; Square dashboard credentials available?
+3. Phase 0 migrations + canonical route + AR refactor + Stripe webhook repair. Ship & verify.
+4. Request Square secrets, run Phase 1 migration, build OAuth routes + Settings card. Ship & verify connect flow in sandbox.
+5. Phase 2 link creation + webhook. Sandbox end-to-end payment test.
+6. Open Square card to all tenants once green.
