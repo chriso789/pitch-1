@@ -169,7 +169,7 @@ interface SearchHit {
 export function ABCConnectionSettings() {
   const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
-  const { allowSandboxDefaults } = useSupplierDeveloperMode();
+  const { allowSandboxDefaults, canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
 
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -691,15 +691,17 @@ export function ABCConnectionSettings() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={environment} onValueChange={(value) => setEnvironment(normalizeABCEnvironment(value))}>
-              <SelectTrigger className="w-[180px] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sandbox">Sandbox</SelectItem>
-                <SelectItem value="production">Production</SelectItem>
-              </SelectContent>
-            </Select>
+            {canChangeEnvironment && (
+              <Select value={environment} onValueChange={(value) => setEnvironment(normalizeABCEnvironment(value))}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sandbox">Sandbox</SelectItem>
+                  <SelectItem value="production">Production</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <Badge variant={isConnected ? 'default' : 'secondary'}>
               {isConnected ? (
                 <><CheckCircle className="h-3 w-3 mr-1" /> Connected</>
@@ -1287,13 +1289,17 @@ export function ABCConnectionSettings() {
   return (
     <div className="space-y-6">
       {HeaderCard}
-      {ConnectionSetupCard}
+      {/* Connection Setup card asks for Pitch's OAuth client_id/secret with ABC.
+          These are platform credentials, NOT customer credentials — they must
+          stay behind the developer/admin gate. Normal tenants connect via
+          OAuth using Pitch's already-registered platform credentials. */}
+      {canSeeRawDiagnostics && ConnectionSetupCard}
       {ReadinessStrip}
       {DemoWorkflowCard}
-      {TestConsoleCard}
-      {LatestResultCard}
-      {DiagnosticsCard}
-      {AdvancedSection}
+      {canSeeRawDiagnostics && TestConsoleCard}
+      {canSeeRawDiagnostics && LatestResultCard}
+      {canSeeRawDiagnostics && DiagnosticsCard}
+      {canSeeRawDiagnostics && AdvancedSection}
     </div>
   );
 }

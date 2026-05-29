@@ -12,6 +12,7 @@ import { Truck, Loader2, Package, AlertCircle, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 
 type SupplierKey = 'srs' | 'qxo' | 'abc';
 
@@ -176,6 +177,7 @@ export function PushToSupplierDialog({
 }: Props) {
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
+  const abcConnection = useAbcConnectionStatus();
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
@@ -214,6 +216,9 @@ export function PushToSupplierDialog({
 
   useEffect(() => {
     if (!open || !tenantId) return;
+    // Wait for ABC connection status to load so we don't briefly tell the
+    // user ABC is disconnected when it isn't.
+    if (abcConnection.loading) return;
     let cancelled = false;
 
     (async () => {
@@ -233,7 +238,7 @@ export function PushToSupplierDialog({
         prefs = ((profile as any)?.default_supplier_branches as Record<string, string>) || {};
       }
 
-      const [srsRes, qxoRes, abcRes] = await Promise.all([
+      const [srsRes, qxoRes] = await Promise.all([
         supabase
           .from('srs_connections')
           .select('default_branch_code, environment, connection_status, valid_indicator')
@@ -244,17 +249,6 @@ export function PushToSupplierDialog({
           .select('default_branch_code, environment, connection_status')
           .eq('tenant_id', tenantId as any)
           .maybeSingle(),
-        // ABC: a tenant can have BOTH a sandbox/staging row AND a production row.
-        // maybeSingle() would error/return null when multiple rows exist, which
-        // is why "ABC Supply not connected" was firing for O'Brien even though
-        // their sandbox row was connection_status='connected'. Mirror the
-        // source-of-truth used by ABCConnectionSettings: fetch all rows, then
-        // prefer a connected one (sandbox/staging counts as connected).
-        supabase
-          .from('abc_connections')
-          .select('default_branch_code, environment, connection_status, account_number, updated_at')
-          .eq('tenant_id', tenantId as any)
-          .order('updated_at', { ascending: false }),
       ]);
 
       if (srsRes.data && (srsRes.data.connection_status === 'connected' || srsRes.data.valid_indicator)) {
@@ -294,41 +288,41 @@ export function PushToSupplierDialog({
         });
       }
 
-      const abcRows = (abcRes.data || []) as Array<{
-        default_branch_code: string | null;
-        environment: string | null;
-        connection_status: string | null;
-        account_number: string | null;
-      }>;
-      // Prefer a connected row (sandbox/staging counts), then any row at all.
-      const abcConnected = abcRows.find(r => r.connection_status === 'connected');
-      const abcAny = abcConnected || abcRows[0] || null;
-      if (abcConnected) {
-        const envLabel = abcConnected.environment === 'production' ? '' : ' (Sandbox)';
+      // ABC: single source of truth via useAbcConnectionStatus(). The hook
+      // already handles "tenant may have both sandbox AND production rows"
+      // and "staging === sandbox" normalization, so the dialog cannot drift
+      // out of sync with ABCConnectionSettings.
+      if (abcConnection.isConnected) {
+        const envLabel = abcConnection.environment === 'production' ? '' : ' (Sandbox)';
         found.push({
           key: 'abc',
           label: `ABC Supply${envLabel}`,
-          defaultBranch: prefs.abc || abcConnected.default_branch_code,
-          environment: abcConnected.environment,
+          defaultBranch: prefs.abc || abcConnection.defaultBranchCode,
+          environment: abcConnection.environment,
           status: 'connected',
         });
       } else {
-        const status = abcAny?.connection_status;
-        const isPending = status === 'pending' || (abcAny && !abcAny.connection_status);
-        const envHint = abcAny?.environment === 'production' ? 'production' : 'sandbox';
+        const state = abcConnection.state;
+        const envHint =
+          abcConnection.environment === 'production' ? 'production' : 'sandbox';
+        const note =
+          state === 'pending'
+            ? `ABC ${envHint} connection is pending — complete OAuth in Settings → Integrations → ABC Supply`
+            : state === 'expired'
+            ? `ABC ${envHint} session expired — reconnect in Settings → Integrations → ABC Supply`
+            : state === 'error'
+            ? `ABC ${envHint} connection error — re-authenticate in Settings → Integrations`
+            : `ABC ${envHint} connection not found for this company — connect in Settings → Integrations → ABC Supply`;
         found.push({
           key: 'abc',
           label: 'ABC Supply',
           defaultBranch: null,
-          environment: abcAny?.environment ?? null,
-          status: abcAny ? 'error' : 'not_configured',
-          statusNote: !abcAny
-            ? `ABC ${envHint} connection not found for this company — connect in Settings → Integrations → ABC Supply`
-            : isPending
-            ? `ABC ${envHint} connection is pending — complete OAuth in Settings → Integrations → ABC Supply`
-            : `ABC ${envHint} connection ${status || 'error'} — re-authenticate in Settings → Integrations`,
+          environment: abcConnection.environment,
+          status: abcConnection.row ? 'error' : 'not_configured',
+          statusNote: note,
         });
       }
+
 
 
       if (cancelled) return;
@@ -347,7 +341,7 @@ export function PushToSupplierDialog({
     })();
 
     return () => { cancelled = true; };
-  }, [open, tenantId]);
+  }, [open, tenantId, abcConnection.loading, abcConnection.state, abcConnection.environment, abcConnection.defaultBranchCode]);
 
   // ABC-specific defaults: when ABC is the selected supplier and we're in
   // sandbox/staging on the O'Brien demo tenant, pre-fill the branch number
