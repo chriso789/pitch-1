@@ -291,16 +291,27 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                   </div>
                 )}
                 <div className="mt-auto pt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant={status.connected ? 'outline' : 'default'}
-                    onClick={() => onOpenAdvanced?.(key)}
-                  >
-                    {status.connected ? 'Manage' : 'Connect'}
-                  </Button>
-                  {status.connected && (
-                    <Button size="sm" variant="ghost" onClick={() => onOpenAdvanced?.(key)}>
-                      Disconnect
+                  {status.connected ? (
+                    <>
+                      {onOpenAdvanced && (
+                        <Button size="sm" variant="outline" onClick={() => onOpenAdvanced(key)}>
+                          Manage
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        disabled={disconnecting === key}
+                        onClick={() => handleDisconnect(key)}
+                      >
+                        {disconnecting === key && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                        Disconnect
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => openConnect(key)}>
+                      Connect Account
                     </Button>
                   )}
                 </div>
