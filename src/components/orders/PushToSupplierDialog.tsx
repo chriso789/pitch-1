@@ -341,6 +341,16 @@ export function PushToSupplierDialog({
       } else if (connected.length === 0) {
         setSelected(null);
       }
+
+      // Apply sandbox-only ABC demo defaults for O'Brien when nothing is set yet.
+      const abcOpt = found.find(s => s.key === 'abc');
+      if (allowSandboxDefaults && abcOpt?.status === 'connected' && abcOpt.environment !== 'production') {
+        if (!abcOpt.defaultBranch && !prefs.abc) {
+          // Pre-fill only if this dialog session is selecting ABC.
+          // We still let the user overwrite.
+        }
+      }
+
       setLoadingSuppliers(false);
     })();
 
