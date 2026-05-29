@@ -46,6 +46,7 @@ const ContractReports = React.lazy(() => import("@/pages/ContractReports"));
 const MaterialCalculations = React.lazy(() => import("@/pages/MaterialCalculations"));
 const MaterialOrders = React.lazy(() => import("@/pages/MaterialOrders"));
 const MaterialOrderDetail = React.lazy(() => import("@/pages/MaterialOrderDetail"));
+const SupplierOrderHistory = React.lazy(() => import("@/pages/SupplierOrderHistory"));
 const ApprovalRules = React.lazy(() => import("@/pages/ApprovalRules"));
 const PendingApprovals = React.lazy(() => import("@/pages/PendingApprovals"));
 const ManagerApprovalQueue = React.lazy(() => import("@/pages/ManagerApprovalQueue"));
@@ -158,7 +159,8 @@ export default function ProtectedRoutes() {
         <Route path="/power-dialer-agent" element={<ProtectedRoute><PowerDialerAgent /></ProtectedRoute>} />
         <Route path="/contract-reports" element={<ProtectedRoute><ContractReports /></ProtectedRoute>} />
         <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
-        <Route path="/material-orders" element={<ProtectedRoute><MaterialOrders /></ProtectedRoute>} />
+        <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
+        <Route path="/supplier-orders" element={<ProtectedRoute><SupplierOrderHistory /></ProtectedRoute>} />
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
         <Route path="/material-audit" element={<ProtectedRoute><MaterialAuditPage /></ProtectedRoute>} />
         <Route path="/approval-rules" element={<ProtectedRoute><ApprovalRules /></ProtectedRoute>} />
