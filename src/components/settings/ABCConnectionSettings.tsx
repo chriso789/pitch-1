@@ -169,7 +169,7 @@ interface SearchHit {
 export function ABCConnectionSettings() {
   const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
-  const { allowSandboxDefaults } = useSupplierDeveloperMode();
+  const { allowSandboxDefaults, canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
 
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
