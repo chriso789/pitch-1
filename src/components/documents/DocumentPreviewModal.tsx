@@ -5,6 +5,7 @@ import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
+import { ShareDocumentDialog } from './ShareDocumentDialog';
 
 interface Document {
   id: string;
@@ -36,6 +37,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [zoom, setZoom] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+
 
   // PDF.js state — render ALL pages and let the user scroll
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
@@ -236,18 +239,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     setTimeout(tryPrint, 1500);
   };
 
-  const handleShare = async () => {
-    const url = await getDocUrl();
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: open in new tab if clipboard fails
-      window.open(url, '_blank');
-    }
+  const handleShare = () => {
+    if (!currentDoc) return;
+    setShareOpen(true);
   };
+
 
   const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
     if (!currentDoc) return 'unsupported';
@@ -475,6 +471,15 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           )}
         </div>
       </DialogContent>
+      {currentDoc && (
+        <ShareDocumentDialog
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+          documentId={currentDoc.id}
+          filename={currentDoc.filename}
+        />
+      )}
     </Dialog>
   );
+
 };

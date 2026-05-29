@@ -35966,6 +35966,7 @@ export type Database = {
         Row: {
           contact_id: string | null
           created_at: string | null
+          document_id: string | null
           estimate_id: string | null
           expires_at: string | null
           id: string
@@ -35987,6 +35988,7 @@ export type Database = {
         Insert: {
           contact_id?: string | null
           created_at?: string | null
+          document_id?: string | null
           estimate_id?: string | null
           expires_at?: string | null
           id?: string
@@ -36008,6 +36010,7 @@ export type Database = {
         Update: {
           contact_id?: string | null
           created_at?: string | null
+          document_id?: string | null
           estimate_id?: string | null
           expires_at?: string | null
           id?: string
@@ -36040,6 +36043,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_ai_aged_contacts"
             referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "quote_tracking_links_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "quote_tracking_links_estimate_id_fkey"

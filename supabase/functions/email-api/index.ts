@@ -39,6 +39,8 @@ app.post("/company/onboarding/test", (c) => delegate(c.req.raw, "test-company-on
 
 // Document / quote / order delivery
 app.post("/quote/send", (c) => delegate(c.req.raw, "send-quote-email", "email-api"));
+app.post("/document/send", (c) => delegate(c.req.raw, "send-document-email", "email-api"));
+
 app.post("/material-order/send", (c) => delegate(c.req.raw, "material-order-send-email", "email-api"));
 app.post("/labor-order/send", (c) => delegate(c.req.raw, "labor-order-send-email", "email-api"));
 app.post("/report-packet/send", (c) => delegate(c.req.raw, "report-packet-send-resend", "email-api"));
