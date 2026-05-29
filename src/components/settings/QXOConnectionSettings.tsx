@@ -12,6 +12,7 @@ import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, ShieldCheck } from
 import { QXOArDashboard } from './QXOArDashboard';
 import { QXOActivityPanel } from './QXOActivityPanel';
 import { QXOBrowser } from './QXOBrowser';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 // NOTE: Secrets (username/password/client_id/tokens) are stored in the
 // service-role-only `qxo_credentials` table and are never read by the
