@@ -121,6 +121,10 @@ export interface MappingPreviewResult {
     conflicts: number;
     skipped: number;
   };
+  /** True when the call was a dry-run preview (no rows persisted). */
+  dry_run?: boolean;
+  /** Run id from a persist call. Null for dry-runs. */
+  mapping_run_id?: string | null;
 }
 
 export interface ManualSplitPayload {
