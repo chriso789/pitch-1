@@ -232,7 +232,7 @@ export function mapMeasurementsToTemplate(input: MapperInputs): MappingResult {
         },
       };
 
-      const finalStatus: AssignmentStatus = status;
+      const finalStatus = status as AssignmentStatus;
       if (finalStatus === "assigned" || finalStatus === "assigned_global_fallback") {
         assignedCount += 1;
         assignments.push(a);
