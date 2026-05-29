@@ -10,16 +10,24 @@ export type FeatureType =
   | "step_flashing" | "wall_flashing" | "parapet" | "gutter" | "downspout"
   | "drain" | "pipe_boot" | "vent" | "skylight" | "chimney" | "other";
 
-export type AssignmentStatus = "assigned" | "unresolved" | "conflict" | "manual" | "skipped";
+export type AssignmentStatus =
+  | "assigned"
+  | "assigned_global_fallback"
+  | "unresolved"
+  | "conflict"
+  | "manual"
+  | "skipped";
 
 export type ReasonCode =
   | "global_only_import"
+  | "global_fallback"
   | "missing_class_measurement"
   | "unknown_pitch"
   | "low_confidence"
   | "no_matching_segment"
   | "formula_error"
-  | "rule_no_match";
+  | "rule_no_match"
+  | "manual_split";
 
 export interface MeasurementSegment {
   id: string;
