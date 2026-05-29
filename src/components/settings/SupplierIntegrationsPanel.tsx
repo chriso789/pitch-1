@@ -319,7 +319,36 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
             </Card>
           );
         })}
+
+        {/* Billtrust — payments integration placeholder */}
+        <Card className="flex flex-col">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center text-violet-500 bg-violet-500/10">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base">Billtrust</CardTitle>
+                  <CardDescription className="text-xs line-clamp-2">
+                    Supplier invoice payments and AR reconciliation.
+                  </CardDescription>
+                </div>
+              </div>
+              <Badge variant="secondary" className="gap-1">Coming soon</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col gap-2 text-xs">
+            <p className="text-muted-foreground">
+              Pay supplier invoices and reconcile statements automatically. Available in an upcoming release.
+            </p>
+            <div className="mt-auto pt-3">
+              <Button size="sm" variant="outline" disabled>Notify Me</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
 
       <Card>
         <CardHeader>
