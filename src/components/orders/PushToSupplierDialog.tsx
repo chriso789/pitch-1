@@ -238,11 +238,17 @@ export function PushToSupplierDialog({
           .select('default_branch_code, environment, connection_status')
           .eq('tenant_id', tenantId as any)
           .maybeSingle(),
+        // ABC: a tenant can have BOTH a sandbox/staging row AND a production row.
+        // maybeSingle() would error/return null when multiple rows exist, which
+        // is why "ABC Supply not connected" was firing for O'Brien even though
+        // their sandbox row was connection_status='connected'. Mirror the
+        // source-of-truth used by ABCConnectionSettings: fetch all rows, then
+        // prefer a connected one (sandbox/staging counts as connected).
         supabase
           .from('abc_connections')
-          .select('default_branch_code, environment, connection_status')
+          .select('default_branch_code, environment, connection_status, account_number, updated_at')
           .eq('tenant_id', tenantId as any)
-          .maybeSingle(),
+          .order('updated_at', { ascending: false }),
       ]);
 
       if (srsRes.data && (srsRes.data.connection_status === 'connected' || srsRes.data.valid_indicator)) {
@@ -282,30 +288,42 @@ export function PushToSupplierDialog({
         });
       }
 
-      if (abcRes.data && abcRes.data.connection_status === 'connected') {
+      const abcRows = (abcRes.data || []) as Array<{
+        default_branch_code: string | null;
+        environment: string | null;
+        connection_status: string | null;
+        account_number: string | null;
+      }>;
+      // Prefer a connected row (sandbox/staging counts), then any row at all.
+      const abcConnected = abcRows.find(r => r.connection_status === 'connected');
+      const abcAny = abcConnected || abcRows[0] || null;
+      if (abcConnected) {
+        const envLabel = abcConnected.environment === 'production' ? '' : ' (Sandbox)';
         found.push({
           key: 'abc',
-          label: `ABC Supply${abcRes.data.environment === 'production' ? '' : ' (Sandbox)'}`,
-          defaultBranch: prefs.abc || abcRes.data.default_branch_code,
-          environment: abcRes.data.environment,
+          label: `ABC Supply${envLabel}`,
+          defaultBranch: prefs.abc || abcConnected.default_branch_code,
+          environment: abcConnected.environment,
           status: 'connected',
         });
       } else {
-        const status = abcRes.data?.connection_status;
-        const isPending = status === 'pending' || (abcRes.data && !abcRes.data.connection_status);
+        const status = abcAny?.connection_status;
+        const isPending = status === 'pending' || (abcAny && !abcAny.connection_status);
+        const envHint = abcAny?.environment === 'production' ? 'production' : 'sandbox';
         found.push({
           key: 'abc',
           label: 'ABC Supply',
           defaultBranch: null,
-          environment: abcRes.data?.environment ?? null,
-          status: abcRes.data ? 'error' : 'not_configured',
-          statusNote: !abcRes.data
-            ? 'Connect in Settings → Integrations'
+          environment: abcAny?.environment ?? null,
+          status: abcAny ? 'error' : 'not_configured',
+          statusNote: !abcAny
+            ? `ABC ${envHint} connection not found for this company — connect in Settings → Integrations → ABC Supply`
             : isPending
-            ? 'Not authorized yet — complete OAuth in Settings → Integrations → ABC Supply'
-            : `Connection ${status || 'error'} — re-authenticate in Settings → Integrations`,
+            ? `ABC ${envHint} connection is pending — complete OAuth in Settings → Integrations → ABC Supply`
+            : `ABC ${envHint} connection ${status || 'error'} — re-authenticate in Settings → Integrations`,
         });
       }
+
 
       if (cancelled) return;
       setUserBranchPrefs(prefs);
