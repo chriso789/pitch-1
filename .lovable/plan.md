@@ -1,74 +1,111 @@
-# ABC Webhook — Deploy, Wire UI, Validate
+# Plan: Tenant-Safe Supplier Integration UI
 
-End-to-end deploy + validation of the receiver/registration system already built. Sandbox-first, O'Brien-enabled, tenant-ready. No HMAC. Duplicates return 200.
+`useSupplierDeveloperMode()` already exists in `src/lib/supplierAccess.ts` (returns `isDeveloper`, `isObrien`, `showAdvanced`, `allowSandboxDefaults`). I'll extend it with the granular flags requested and route every supplier surface through it. No backend/schema changes.
 
-## Priority 1 — Deploy
+## 1. Extend the gating helper
 
-1. Apply pending migration `20260528232317_63424b94-e5cd-4e35-94f3-70cd3f6deb94.sql` (adds `abc_webhooks.environment` + `last_event_received_at`, `abc_webhook_events.provider/provider_event_id/payload_hash/signature_valid/abc_order_id/quarantine_reason`, unique indexes for idempotency, FK on `abc_order_id`).
-2. Deploy edge functions: `supplier-webhook`, `supplier-api`. Skip `abc-api-proxy` (unchanged).
-3. Pull recent edge function logs for both and confirm clean cold start (no import errors, no `Deno.serve` issues, npm: specifiers resolve).
+`src/lib/supplierAccess.ts` — return:
+```
+{
+  isDeveloperMode,          // master | platform_admin | is_developer
+  isObrien,                 // O'Brien sandbox tenant
+  showAdvanced,             // isDeveloperMode || isObrien
+  allowSandboxDefaults,     // showAdvanced
+  canSeeRawDiagnostics,     // showAdvanced
+  canManageWebhooks,        // isDeveloperMode (admin-only, never normal tenants)
+  canChangeEnvironment,     // isDeveloperMode
+}
+```
+Keep old aliases so existing callers (`AbcDiagnosticsPanel`) keep working.
 
-## Priority 2 — Wire Developer UI
+## 2. ABC settings — `src/components/settings/ABCConnectionSettings.tsx`
 
-In `src/components/settings/ABCConnectionSettings.tsx`, **inside the existing Developer / Advanced section only**, gated by `useSupplierDeveloperMode().allowSandboxDefaults`:
+Normal tenant view (what stays visible):
+- Header: "ABC Supply" + connection status badge (Connected / Not Connected / Expired)
+- Account # input
+- Branch / Ship-To input (only the operational fields, no Sandy defaults)
+- "Connect ABC Supply Account" button (OAuth) + Disconnect
+- "View Order History" link
+- Last order / last sync
 
-- New `<AbcWebhookPanel />` component (new file `src/components/settings/abc/AbcWebhookPanel.tsx`).
-- Buttons:
-  - **Register ABC Webhook** → calls `supplier-api` action `register_webhook` (env = sandbox).
-  - **List ABC Webhooks** → calls `list_webhooks`, refreshes panel.
-- Webhook status card per row:
-  - environment (sandbox/prod), callback URL, subscribed events (`ORDER_UPDATE`, `ORDER_INVOICED`), status (active/inactive/error), `secret_stored: yes/no`, `last_event_received_at`, last event type, last `quarantine_reason`.
-- Redacted fields: never render `secret`, raw registration response secret, or Authorization values. Show `secret_stored` boolean only.
+Gated behind `isDeveloperMode` (or `showAdvanced` where O'Brien needs sandbox continuity):
+- Environment selector (Sandbox/Production toggle) — `canChangeEnvironment`
+- OAuth Authorize URL, Token URL, Redirect URI, Scopes copy boxes
+- Client ID / Secret status, raw token JSON, "Test Token" console
+- WAF allowlist / egress IP guidance
+- Sandbox default helpers (Sandy 2010466-2, Branch 1209) — `allowSandboxDefaults` only
+- Webhook register/list panel (`AbcWebhookPanel`) — `canManageWebhooks`
+- Raw audit / callback log viewer — `canSeeRawDiagnostics`
 
-## Priority 3 — Synthetic Receiver Tests
+When developer-only env selector is hidden, environment is implicit: production for normal tenants, sandbox for O'Brien.
 
-Run via `supabase--curl_edge_functions` against deployed `supplier-webhook`. Use a sandbox `abc_webhooks` row created in test 1; use its `id` and stored `secret` for tests 2–6.
+## 3. SRS settings — `src/components/settings/SRSConnectionSettings.tsx`
 
-| # | Test | POST shape | Expected |
-|---|------|-----------|----------|
-| 1 | `register_webhook` | `supplier-api` action | local row created, secret stored, callback `…/supplier-webhook/abc/events/{webhook_id}` |
-| 2 | Valid `ORDER_UPDATE` | Authorization: stored secret | event row, `signature_valid=true`, `abc_order_id` resolved, `abc_orders.raw_payload.webhook_latest` updated, 200 |
-| 3 | Invalid `ORDER_UPDATE` | Authorization: bogus | event row `signature_valid=false`, orders untouched, **401** |
-| 4 | Duplicate `ORDER_UPDATE` | replay #2 verbatim | **200 `{duplicate:true}`**, no second row, no double-mutation |
-| 5 | Unresolved order | unknown order/PO id | event row, `quarantine_reason='unresolved_order'`, **202 `{quarantined:true}`**, orders untouched |
-| 6 | `ORDER_INVOICED` | `webhookDetails[].apiKey` = stored secret | event row, `abc_orders.order_status='invoiced'`, `abc_invoices` upserted |
+Normal view:
+- Connect SRS Account, Customer Code, Integration Key (or invoice validation fields if SRS requires), Save/Connect, Disconnect, View Orders, status badge.
 
-Verify via `supabase--read_query` against `abc_webhooks`, `abc_webhook_events`, `abc_orders`, `abc_invoices`.
+Hidden behind `isDeveloperMode` / `showAdvanced`:
+- "Environment: Staging (Testing)" label and any Sandbox/Prod selector (this is the explicit bad example to remove)
+- Base URL / token URL / scopes
+- Sandbox test login + Sandy test ship-to / branch defaults (`allowSandboxDefaults`)
+- Raw API response inspector, reconciliation debug, webhook tooling
 
-## Priority 4 — Project Diagnostics Proof
+## 4. QXO settings — `src/components/settings/QXOConnectionSettings.tsx`
 
-Open a project Materials tab in preview and confirm:
-- SRS diagnostics still renders
-- ABC Submit Diagnostics renders
-- Webhook event timeline appears in Inspect (driven by `abc_webhook_events`)
-- Refresh Status still works
+Normal view:
+- Connect QXO Account, customer/account fields, Save/Connect, Disconnect, View Orders, status badge.
 
-If a webhook timeline component does not yet exist in `AbcDiagnosticsPanel`, add a small read-only "Webhook Events" sub-list (latest 10 events for the order: timestamp, event type, signature_valid, quarantine_reason). No new tables.
+Hidden behind `isDeveloperMode`:
+- Environment selector, OAuth/token URLs, scopes
+- Raw payload inspector, audit log
 
-## Priority 5 — Report
+## 5. Supplier dashboard — `src/components/settings/SupplierIntegrationsPanel.tsx`
 
-Single report containing:
-- Migration name applied
-- Deploy status per function + log tail summary
-- UI files changed
-- `register_webhook` response summary (secret masked as `********`)
-- Callback URL
-- Tests 1–6 pass/fail with row counts and HTTP codes
-- Diagnostics panel proof (text or screenshot)
-- Any failure with exact error
+Restructure into 4 clean cards: ABC Supply, SRS Distribution, QXO, Billtrust (Coming Soon / Connect Payments).
 
-Secrets never printed — always `********`.
+Each card (normal tenants):
+- Logo + name
+- Status badge: Connected / Not Connected / Expired
+- Buttons: Connect / Disconnect / View Order History
+- "Last order" + "Last sync" metadata
 
-## Files (expected)
+No environment labels, no sandbox chips, no "Staging" pills for normal tenants. Developer mode adds an "Env: sandbox/prod" chip and a "Developer Tools" expander per card.
 
-- New: `src/components/settings/abc/AbcWebhookPanel.tsx`
-- Edit: `src/components/settings/ABCConnectionSettings.tsx` (mount panel inside dev section)
-- Edit (only if missing): `src/components/projects/AbcDiagnosticsPanel.tsx` — add Webhook Events sub-list
-- No new migrations
-- No edge function code changes (deploy as-is)
+## 6. Order history — Supplier Order History view
 
-## Out of scope
+Normal tenant inspect drawer shows only: supplier, project, PO, order #, confirmation #, status, submitted, last updated, clean status timeline.
 
-- HMAC, timestamp verification, IP allowlist — pending ABC confirmation
-- Production env registration — sandbox only
-- Tenant-wide rollout — remains O'Brien + developers via existing gate
+Behind `canSeeRawDiagnostics`: raw request/response JSON, audit endpoint URLs, webhook payloads, transaction IDs, request IDs. (This mirrors the gating already implemented in `AbcDiagnosticsPanel`; apply same pattern to `SrsDiagnosticsPanel` and the QXO equivalent.)
+
+## 7. Project Materials tab — `src/components/orders/ProjectMaterialsTab.tsx`
+
+Normal users:
+- "Push to Supplier" lists only connected suppliers; disconnected ones show "Connect in Settings" with a deep link to `/settings` → Integrations → Suppliers
+- `LiveOrderTracker` stays (operational order status for their own project)
+- `SrsDiagnosticsPanel` and `AbcDiagnosticsPanel` render in **normal mode** (operational only)
+
+Developer mode: panels expand to show raw diagnostics (already done for ABC; replicate for SRS).
+
+## 8. O'Brien isolation
+
+`isObrien` is already tenant-scoped via `useCompanySwitcher().activeCompany.tenant_name`. Sandbox defaults / Sandy values / O'Brien notes render only when `isObrien || isDeveloperMode`. Order history queries already filter by `tenant_id` via existing RLS — no second-tenant leakage possible from the frontend gating change. I'll add a note but not change DB policy.
+
+## 9. Acceptance verification
+
+After the edits I'll:
+- Load `/settings` → Integrations → Suppliers as the current (O'Brien) tenant, screenshot the developer view.
+- Re-render with `isDeveloperMode=false` (simulated via a non-master tenant switch) and screenshot the clean view.
+- Confirm SRS no longer shows "Environment: Staging (Testing)" for normal tenants.
+
+## Files to change
+
+- `src/lib/supplierAccess.ts` — extend hook return shape
+- `src/components/settings/ABCConnectionSettings.tsx`
+- `src/components/settings/SRSConnectionSettings.tsx`
+- `src/components/settings/QXOConnectionSettings.tsx`
+- `src/components/settings/SupplierIntegrationsPanel.tsx`
+- `src/components/settings/abc/AbcWebhookPanel.tsx` (wrap whole panel in `canManageWebhooks`)
+- `src/components/orders/SrsDiagnosticsPanel.tsx` (mirror ABC gating)
+- `src/components/orders/ProjectMaterialsTab.tsx` (connected-supplier filter + "Connect in Settings" affordance)
+
+No edge functions, no migrations, no schema changes.
