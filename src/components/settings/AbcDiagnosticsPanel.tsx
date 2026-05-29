@@ -79,10 +79,10 @@ function mapRejectMessage(o: AbcOrderRow): string | null {
   if (o.audit?.error_code) return `${o.audit.error_code} (HTTP ${o.audit.status_code ?? '—'})`;
   return `HTTP ${o.raw_payload?.response?.status ?? '—'}`;
 }
-
 export function AbcDiagnosticsPanel({ projectId }: Props) {
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
+  const { showAdvanced } = useSupplierDeveloperMode();
   const [loading, setLoading] = useState(true);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [orders, setOrders] = useState<AbcOrderRow[]>([]);
