@@ -33,7 +33,9 @@ interface QXOConnection {
 
 export function QXOConnectionSettings() {
   const { activeCompanyId } = useCompanySwitcher();
+  const { canChangeEnvironment } = useSupplierDeveloperMode();
   const { toast } = useToast();
+
   const [connection, setConnection] = useState<QXOConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
