@@ -568,13 +568,14 @@ export const Settings = () => {
       case "voice-assistant":
         return <VoiceAssistantSettings />;
       case "subscription":
-        return <SubscriptionManagement />;
-      case "payments":
         return (
           <div className="space-y-6">
             <TenantStripeConnectPanel />
+            <SquareConnectionCard />
             <SquareSettings />
           </div>
+        );
+
         );
 
       case "production-checklist":
