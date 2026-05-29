@@ -180,7 +180,13 @@ export function PushToSupplierDialog({
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
   const [branchCode, setBranchCode] = useState('');
+  const [abcShipToNumber, setAbcShipToNumber] = useState('');
   const [userBranchPrefs, setUserBranchPrefs] = useState<Record<string, string>>({});
+  // O'Brien Contracting tenant — pre-fills ABC sandbox demo defaults
+  // (branch 1209, ship-to 2010466-2) so the demo flow doesn't trip on
+  // empty required fields. Production tenants get no auto-fill.
+  const OBRIEN_TENANT_ID = '14de934e-7964-4afd-940a-620d2ace125d';
+  const allowSandboxDefaults = tenantId === OBRIEN_TENANT_ID;
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('roof_load');
   const [deliveryDate, setDeliveryDate] = useState<string>(() => {
     const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
