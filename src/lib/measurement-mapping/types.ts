@@ -1,9 +1,7 @@
-// Section-aware measurement mapping — shared types.
-// Phase 1: foundation + template rules + mapping engine (no override UI).
+// Frontend types mirroring supabase/functions/_shared/measurement-mapping.
+// Keep in lockstep with the Deno types. Phase 1: foundation + mapping preview.
 
 export type SurfaceClass = "flat" | "low_slope" | "sloped" | "other" | "unknown";
-
-export type PitchScope = "segment" | "global" | "none";
 
 export type FeatureType =
   | "ridge" | "hip" | "valley" | "eave" | "rake" | "drip_edge"
@@ -29,6 +27,17 @@ export type ReasonCode =
   | "rule_no_match"
   | "manual_split";
 
+export interface MeasurementImport {
+  id: string;
+  tenant_id: string;
+  roof_measurement_id: string | null;
+  job_id: string | null;
+  provider: string | null;
+  import_status: string;
+  raw_payload: unknown;
+  created_at: string;
+}
+
 export interface MeasurementSegment {
   id: string;
   tenant_id: string;
@@ -36,7 +45,7 @@ export interface MeasurementSegment {
   name: string | null;
   area_sqft: number | null;
   pitch_rise_over_12: number | null;
-  pitch_scope: PitchScope;
+  pitch_scope: "segment" | "global" | "none";
   surface_class: SurfaceClass;
   classification_confidence: number;
   classification_reason: string | null;
@@ -81,38 +90,7 @@ export interface TemplateItemRule {
   exclusive_group: string | null;
 }
 
-// Sentinel for "this class has no evidence". Differs from numeric 0.
-export const UNAVAILABLE = Symbol.for("measurement_mapping.unavailable");
-export type Unavailable = typeof UNAVAILABLE;
-export type MaybeNumber = number | Unavailable;
-
-export function isUnavailable(v: unknown): v is Unavailable {
-  return v === UNAVAILABLE;
-}
-
-export interface ClassBucket {
-  area_sqft: MaybeNumber;
-  squares: MaybeNumber;
-  segment_count: number;
-  avg_confidence: number;
-}
-
-export interface ScopedContext {
-  global: {
-    roof: { total_sqft: number; squares: number };
-    features: Record<string, number>;
-  };
-  class: Record<"flat" | "low_slope" | "sloped" | "other" | "unknown", ClassBucket>;
-  section: Record<string, Record<string, number>>;
-  meta: {
-    has_class_split: boolean;
-    aggregate_only: boolean;
-    total_segments: number;
-    total_features: number;
-  };
-}
-
-export interface Assignment {
+export interface EstimateMeasurementAssignment {
   template_group_id: string;
   template_item_id: string;
   segment_ids: string[];
@@ -126,12 +104,16 @@ export interface Assignment {
   matched_by: Record<string, unknown>;
 }
 
-export interface MappingResult {
+export interface MappingConflict extends EstimateMeasurementAssignment {
+  status: "conflict";
+}
+
+export interface MappingPreviewResult {
   measurement_import_id: string;
   calc_template_id: string;
-  assignments: Assignment[];
-  unresolved: Assignment[];
-  conflicts: Assignment[];
+  assignments: EstimateMeasurementAssignment[];
+  unresolved: EstimateMeasurementAssignment[];
+  conflicts: MappingConflict[];
   summary: {
     total_items: number;
     assigned: number;
@@ -139,4 +121,10 @@ export interface MappingResult {
     conflicts: number;
     skipped: number;
   };
+}
+
+export interface ManualSplitPayload {
+  flat?: { area_sqft: number };
+  low_slope?: { area_sqft: number };
+  sloped?: { area_sqft: number };
 }
