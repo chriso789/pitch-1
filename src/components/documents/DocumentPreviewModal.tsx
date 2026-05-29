@@ -236,6 +236,19 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     setTimeout(tryPrint, 1500);
   };
 
+  const handleShare = async () => {
+    const url = await getDocUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: open in new tab if clipboard fails
+      window.open(url, '_blank');
+    }
+  };
+
   const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
     if (!currentDoc) return 'unsupported';
     
