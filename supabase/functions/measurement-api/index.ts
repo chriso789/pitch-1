@@ -226,31 +226,52 @@ app.post("/estimate-templates/:id/map-measurements", async (c) => {
     item_rules: itemRules as any,
   });
 
-  // Persist (dry_run or not — both are recorded for audit; is_dry_run differentiates).
-  const allAssignments = [...result.assignments, ...result.unresolved, ...result.conflicts];
-  if (allAssignments.length) {
-    const rows = allAssignments.map((a) => ({
-      tenant_id: tenantId,
-      estimate_id: estimateId,
-      measurement_import_id: importId,
-      calc_template_id: calcTemplateId,
-      template_group_id: a.template_group_id,
-      template_item_id: a.template_item_id,
-      segment_ids: a.segment_ids,
-      feature_ids: a.feature_ids,
-      quantity: a.quantity,
-      unit: a.unit,
-      formula_evaluated: a.formula_evaluated,
-      confidence: a.confidence,
-      status: a.status,
-      reason_code: a.reason_code,
-      matched_by: a.matched_by,
-      is_dry_run: dryRun,
-    }));
-    await svc.from("estimate_measurement_assignments").insert(rows);
+  // Idempotency contract:
+  //   - dry_run=true  -> NEVER touches estimate_measurement_assignments. Pure preview.
+  //   - dry_run=false -> Supersedes any prior active rows for (import,template,estimate)
+  //                      then inserts a fresh batch under a new mapping_run_id.
+  let mappingRunId: string | null = null;
+  if (!dryRun) {
+    mappingRunId = crypto.randomUUID();
+
+    const supersedeQuery = svc
+      .from("estimate_measurement_assignments")
+      .update({ superseded_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId)
+      .eq("measurement_import_id", importId)
+      .eq("calc_template_id", calcTemplateId)
+      .eq("is_dry_run", false)
+      .is("superseded_at", null);
+    if (estimateId) supersedeQuery.eq("estimate_id", estimateId);
+    else supersedeQuery.is("estimate_id", null);
+    await supersedeQuery;
+
+    const allAssignments = [...result.assignments, ...result.unresolved, ...result.conflicts];
+    if (allAssignments.length) {
+      const rows = allAssignments.map((a) => ({
+        tenant_id: tenantId,
+        estimate_id: estimateId,
+        measurement_import_id: importId,
+        calc_template_id: calcTemplateId,
+        template_group_id: a.template_group_id,
+        template_item_id: a.template_item_id,
+        segment_ids: a.segment_ids,
+        feature_ids: a.feature_ids,
+        quantity: a.quantity,
+        unit: a.unit,
+        formula_evaluated: a.formula_evaluated,
+        confidence: a.confidence,
+        status: a.status,
+        reason_code: a.reason_code,
+        matched_by: a.matched_by,
+        is_dry_run: false,
+        mapping_run_id: mappingRunId,
+      }));
+      await svc.from("estimate_measurement_assignments").insert(rows);
+    }
   }
 
-  return jsonOk(c, result);
+  return jsonOk(c, { ...result, dry_run: dryRun, mapping_run_id: mappingRunId });
 });
 
 serveRouter(app);
