@@ -5,6 +5,7 @@ import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
+import { ShareDocumentDialog } from './ShareDocumentDialog';
 
 interface Document {
   id: string;
