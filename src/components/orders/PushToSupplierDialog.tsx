@@ -713,6 +713,8 @@ export function PushToSupplierDialog({
             job_number: jobNumber,
             customer_name: customerName,
             branch_code: branchCode.trim() || undefined,
+            branch_number: branchCode.trim() || undefined,
+            ship_to_number: abcShipToNumber.trim() || undefined,
             delivery_method: deliveryMethod,
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
