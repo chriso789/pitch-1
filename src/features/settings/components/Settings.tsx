@@ -568,6 +568,8 @@ export const Settings = () => {
       case "voice-assistant":
         return <VoiceAssistantSettings />;
       case "subscription":
+        return <SubscriptionManagement />;
+      case "payments":
         return (
           <div className="space-y-6">
             <TenantStripeConnectPanel />
@@ -576,7 +578,6 @@ export const Settings = () => {
           </div>
         );
 
-        );
 
       case "production-checklist":
         return <ProductionChecklistSettings />;
