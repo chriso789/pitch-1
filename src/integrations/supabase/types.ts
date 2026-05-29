@@ -26083,6 +26083,8 @@ export type Database = {
       measurement_features: {
         Row: {
           archived_at: string | null
+          backfill_run_id: string | null
+          backfill_status: string | null
           confidence: number
           count_value: number | null
           created_at: string
@@ -26094,11 +26096,15 @@ export type Database = {
           primary_segment_id: string | null
           provider_feature_key: string | null
           reviewed: boolean
+          source: string | null
           tenant_id: string
           updated_at: string
+          voided_at: string | null
         }
         Insert: {
           archived_at?: string | null
+          backfill_run_id?: string | null
+          backfill_status?: string | null
           confidence?: number
           count_value?: number | null
           created_at?: string
@@ -26110,11 +26116,15 @@ export type Database = {
           primary_segment_id?: string | null
           provider_feature_key?: string | null
           reviewed?: boolean
+          source?: string | null
           tenant_id: string
           updated_at?: string
+          voided_at?: string | null
         }
         Update: {
           archived_at?: string | null
+          backfill_run_id?: string | null
+          backfill_status?: string | null
           confidence?: number
           count_value?: number | null
           created_at?: string
@@ -26126,8 +26136,10 @@ export type Database = {
           primary_segment_id?: string | null
           provider_feature_key?: string | null
           reviewed?: boolean
+          source?: string | null
           tenant_id?: string
           updated_at?: string
+          voided_at?: string | null
         }
         Relationships: [
           {
@@ -26249,6 +26261,9 @@ export type Database = {
       }
       measurement_imports: {
         Row: {
+          aggregate_only: boolean | null
+          backfill_run_id: string | null
+          backfill_status: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -26258,12 +26273,18 @@ export type Database = {
           quality_score: number | null
           raw_payload: Json
           roof_measurement_id: string | null
+          source: string | null
           source_doc_id: string | null
           source_fingerprint: string | null
           tenant_id: string
+          total_area_sqft: number | null
           updated_at: string
+          voided_at: string | null
         }
         Insert: {
+          aggregate_only?: boolean | null
+          backfill_run_id?: string | null
+          backfill_status?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -26273,12 +26294,18 @@ export type Database = {
           quality_score?: number | null
           raw_payload?: Json
           roof_measurement_id?: string | null
+          source?: string | null
           source_doc_id?: string | null
           source_fingerprint?: string | null
           tenant_id: string
+          total_area_sqft?: number | null
           updated_at?: string
+          voided_at?: string | null
         }
         Update: {
+          aggregate_only?: boolean | null
+          backfill_run_id?: string | null
+          backfill_status?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -26288,10 +26315,13 @@ export type Database = {
           quality_score?: number | null
           raw_payload?: Json
           roof_measurement_id?: string | null
+          source?: string | null
           source_doc_id?: string | null
           source_fingerprint?: string | null
           tenant_id?: string
+          total_area_sqft?: number | null
           updated_at?: string
+          voided_at?: string | null
         }
         Relationships: [
           {
@@ -26697,6 +26727,8 @@ export type Database = {
         Row: {
           archived_at: string | null
           area_sqft: number | null
+          backfill_run_id: string | null
+          backfill_status: string | null
           classification_confidence: number
           classification_reason: string | null
           created_at: string
@@ -26711,13 +26743,17 @@ export type Database = {
           pitch_scope: string
           provider_segment_key: string | null
           reviewed: boolean
+          source: string | null
           surface_class: string
           tenant_id: string
           updated_at: string
+          voided_at: string | null
         }
         Insert: {
           archived_at?: string | null
           area_sqft?: number | null
+          backfill_run_id?: string | null
+          backfill_status?: string | null
           classification_confidence?: number
           classification_reason?: string | null
           created_at?: string
@@ -26732,13 +26768,17 @@ export type Database = {
           pitch_scope?: string
           provider_segment_key?: string | null
           reviewed?: boolean
+          source?: string | null
           surface_class?: string
           tenant_id: string
           updated_at?: string
+          voided_at?: string | null
         }
         Update: {
           archived_at?: string | null
           area_sqft?: number | null
+          backfill_run_id?: string | null
+          backfill_status?: string | null
           classification_confidence?: number
           classification_reason?: string | null
           created_at?: string
@@ -26753,9 +26793,11 @@ export type Database = {
           pitch_scope?: string
           provider_segment_key?: string | null
           reviewed?: boolean
+          source?: string | null
           surface_class?: string
           tenant_id?: string
           updated_at?: string
+          voided_at?: string | null
         }
         Relationships: [
           {
