@@ -380,8 +380,9 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
               if (wafBlocked) {
                 banner = {
                   tone: 'err',
-                  text:
-                    'ABC WAF blocked sandbox API call (Imperva/Incapsula). Sandbox egress IP likely not on ABC allowlist — see docs/ABC_WAF_ALLOWLIST.md.',
+                  text: showAdvanced
+                    ? 'ABC WAF blocked sandbox API call (Imperva/Incapsula). Sandbox egress IP likely not on ABC allowlist — see docs/ABC_WAF_ALLOWLIST.md.'
+                    : 'ABC could not process this order right now. Please try again shortly or contact support.',
                 };
               } else if (apiErrored) {
                 banner = { tone: 'err', text: 'ABC API rejected request — inspect response.' };
